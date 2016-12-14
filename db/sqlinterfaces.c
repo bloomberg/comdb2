@@ -3943,7 +3943,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         thr_set_current_sql(rec->sql);
     }
 
-    reqlog_set_actual_sql(thd->logger, (char *)rec->sql);
+    reqlog_set_sql(thd->logger, (char *)rec->sql);
 
     /* if don't have a stmt */
     do {

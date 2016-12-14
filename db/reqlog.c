@@ -1782,7 +1782,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, const char *sqlstmt,
     }
 }
 
-void reqlog_set_actual_sql(struct reqlogger *logger, char *sqlstmt)
+void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
 {
     if (sqlstmt && logger->stmt == NULL) {
         logger->stmt = arena_strdup(logger->arena, sqlstmt);
