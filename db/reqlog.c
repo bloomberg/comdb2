@@ -1208,11 +1208,12 @@ struct reqlogger *reqlog_alloc(void)
     return logger;
 }
 
-void reqlog_free(struct reqlogger *reqlogger)
+void reqlog_free(struct reqlogger *logger)
 {
-    if (reqlogger) {
-        arena_destroy(reqlogger->arena);
-        free(reqlogger);
+    if (logger) {
+        arena_destroy(logger->arena);
+        if (logger->stmt) free(logger->stmt);
+        free(logger);
     }
 }
 
@@ -1220,6 +1221,7 @@ void reqlog_reset_logger(struct reqlogger *logger)
 {
     if (logger) {
         arena_free_all(logger->arena);
+        if (logger->stmt) free(logger->stmt);
         bzero(&logger->start_transient,
               sizeof(struct reqlogger) -
                   offsetof(struct reqlogger, start_transient));
@@ -1767,13 +1769,14 @@ void reqlog_new_sql_request(struct reqlogger *logger, const char *sqlstmt,
     if (!logger) {
         return;
     }
+    if (logger->stmt) free(logger->stmt);
     logger->stmt = NULL;
 
     reqlog_reset_logger(logger);
     logger->request_type = "sql request";
     logger->opcode = OP_SQL;
     if (sqlstmt) {
-        logger->stmt = arena_strdup(logger->arena, sqlstmt);
+        logger->stmt = strdup(sqlstmt);
     }
     logger->startms = time_epochms();
     reqlog_start_request(logger);
@@ -1784,8 +1787,9 @@ void reqlog_new_sql_request(struct reqlogger *logger, const char *sqlstmt,
 
 void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
 {
+    if (logger->stmt) free(logger->stmt);
     if (sqlstmt && logger->stmt == NULL) {
-        logger->stmt = arena_strdup(logger->arena, sqlstmt);
+        logger->stmt = strdup(sqlstmt);
     }
     if (logger->stmt) {
         reqlog_logl(logger, REQL_INFO, logger->stmt);
