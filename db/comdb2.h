@@ -3083,8 +3083,6 @@ int blkseq_num_in_progress(void);
 extern int gbl_coordinator_parallel_transaction_threshold;
 extern int gbl_num_rr_rejected;
 extern int gbl_sql_time_threshold;
-extern double gbl_sql_cost_trace_threshold;
-extern double gbl_sql_cost_warn_threshold;
 extern double gbl_sql_cost_error_threshold;
 
 extern int gbl_allow_mismatched_tag_size;

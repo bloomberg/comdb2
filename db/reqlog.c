@@ -1165,16 +1165,6 @@ void reqlog_stat(void)
     logmsg(LOGMSG_USER, "request truncation     : %s\n",
            reqltruncate ? "enabled" : "disabled");
     logmsg(LOGMSG_USER, "SQL cost thresholds    :\n");
-    logmsg(LOGMSG_USER, "   trace               : ");
-    if (gbl_sql_cost_trace_threshold == -1)
-        logmsg(LOGMSG_USER, "not set\n");
-    else
-        logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_trace_threshold);
-    logmsg(LOGMSG_USER, "   warn                : ");
-    if (gbl_sql_cost_warn_threshold == -1)
-        logmsg(LOGMSG_USER, "not set\n");
-    else
-        logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_warn_threshold);
     logmsg(LOGMSG_USER, "   error               : ");
     if (gbl_sql_cost_error_threshold == -1)
         logmsg(LOGMSG_USER, "not set\n");
@@ -2254,14 +2244,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     } else {
         norm_reqs++;
     }
-#if 0
-    if (logger->sqlcost > gbl_sql_cost_warn_threshold)
-        fprintf(stderr, "WARNING: expensive SQL query\n");
-    if (logger->sqlcost > gbl_sql_cost_trace_threshold || logger->sqlcost > gbl_sql_cost_warn_threshold) {
-        log_header(logger, default_out, 0);
-        dumpf(logger, default_out, "rows=%d cost=%f query: %s\n", logger->sqlrows, logger->sqlcost, logger->stmt);
-    }
-#endif
 
     if (logger->iq && logger->iq->blocksql_tran) {
         if (gbl_time_osql)

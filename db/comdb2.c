@@ -520,8 +520,6 @@ int gbl_sql_time_threshold = 5000;
 
 int gbl_allow_mismatched_tag_size = 0;
 
-double gbl_sql_cost_trace_threshold = -1;
-double gbl_sql_cost_warn_threshold = -1;
 double gbl_sql_cost_error_threshold = -1;
 
 int gbl_parallel_recovery_threads = 0;
