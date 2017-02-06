@@ -77,6 +77,8 @@ protobuf/sqlquery.pb-c.h
 protobuf/sqlresponse.pb-c.h
 protobuf/bpfunc.pb-c.c
 protobuf/bpfunc.pb-c.h
+protobuf/log.pb-c.c
+protobuf/log.pb-c.h
 sqlite/keywordhash.h
 sqlite/opcodes.h
 bdb/llog_auto.h

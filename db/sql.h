@@ -502,6 +502,8 @@ struct sqlclntstate {
     uint32_t init_gen;
     int8_t gen_changed;
     uint8_t skip_peer_chk;
+
+    char fingerprint[16];
 };
 
 /* Query stats. */
