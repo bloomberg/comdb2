@@ -414,10 +414,9 @@ static int log_async(struct sqlclntstate *clnt, int cost, int nrows, int timems)
     ev.sql->query = clnt->sql_query;
     comdb2uuidstr(clnt->fingerprint, fingerprint);
     ev.sql->fingerprint = fingerprint;
-    sz = cdb2__event__get_packed_size(&ev);
-    sz += sizeof(int32_t);
+    sz = cdb2__event__get_packed_size(&ev) + sizeof(int32_t);
     buf = malloc(sz);
-    int32_t szf = htonl(sz);
+    int32_t szf = htonl(sz - sizeof(int32_t));
     memcpy(buf, &szf, sizeof(int32_t));
     cdb2__event__pack(&ev, buf + sizeof(int32_t));
     async_enqueue(buf, sz);
