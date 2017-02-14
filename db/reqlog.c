@@ -94,7 +94,7 @@ struct print_event {
     unsigned event_flag;
     int length; /* -ve if not known, in which case text must be \0
                    terminated */
-    const char *text;
+    char *text;
 };
 
 enum { MAX_PREFIXES = 16 };
@@ -150,7 +150,7 @@ struct reqlogger {
     struct logevent *last_event;
 
     /* the sql statement */
-    const char *stmt;
+    char *stmt;
     char *tags;
     void *tagbuf;
     void *nullbits;
@@ -1198,11 +1198,28 @@ struct reqlogger *reqlog_alloc(void)
     return logger;
 }
 
+static void reqlog_free_all(struct reqlogger *logger)
+{
+    struct logevent *event;
+    struct print_event *pevent;
+    struct tablelist *table;
+
+    while (event = logger->events) {
+        logger->events = event->next;
+        if (event->type == EVENT_PRINT) {
+            pevent = (struct print_event*)event;
+            free(pevent->text);
+        }
+        free(event);
+    }
+}
+
 void reqlog_free(struct reqlogger *logger)
 {
     if (logger) {
-        arena_destroy(logger->arena);
         if (logger->stmt) free(logger->stmt);
+        reqlog_free_all(logger);
+        arena_destroy(logger->arena);
         free(logger);
     }
 }
@@ -1210,8 +1227,9 @@ void reqlog_free(struct reqlogger *logger)
 void reqlog_reset_logger(struct reqlogger *logger)
 {
     if (logger) {
-        arena_free_all(logger->arena);
         if (logger->stmt) free(logger->stmt);
+        reqlog_free_all(logger);
+        arena_free_all(logger->arena);
         bzero(&logger->start_transient,
               sizeof(struct reqlogger) -
                   offsetof(struct reqlogger, start_transient));
@@ -1236,59 +1254,54 @@ static void reqlog_append_event(struct reqlogger *logger,
 /* push an output trace prefix */
 int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
 {
-    if (logger) {
-        char buf[256];
-        char *s = NULL;
-        int len;
-        va_list args_c;
+    char *s;
+    int len;
+    int nchars;
+    va_list args_c;
 
-        va_copy(args_c, args);
-        len = vsnprintf(buf, sizeof(buf), fmt, args);
+    if (logger == NULL)
+        return 0;
 
-        if (len >= sizeof(buf) && reqltruncate == 0) {
-            s = arena_alloc_align(logger->arena, len + 1,
-                                  SYSARENA_1_BYTE_ALIGN);
-            if (!s) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__,
-                        len + 1);
-                va_end(args_c);
-                return -1;
-            }
-            len = vsnprintf(s, len + 1, fmt, args_c);
-        } else if (len >= sizeof(buf)) {
-            len = sizeof(buf) - 1;
+    len = 256;
+    s = malloc(len);
+    if (!s) {
+        logmsg(LOGMSG_ERROR, "%s:malloc(%d) failed\n", __func__, len);
+        return -1;
+    }
+
+    va_copy(args_c, args);
+    nchars = vsnprintf(s, len, fmt, args);
+    if (nchars >= len && reqltruncate == 0) {
+        len = nchars + 1;
+        s = realloc(s, len);
+        if (!s) {
+            fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            return -1;
         }
-        va_end(args_c);
+        len = vsnprintf(s, len, fmt, args_c);
+    } else {
+        s[len] = '\0';
+    }
+    va_end(args_c);
 
-        if (logger->dump_mask) {
-            flushdump(logger, NULL);
-            prefix_push(&logger->prefix, s ? s : buf, len);
+    if (logger->dump_mask) {
+        flushdump(logger, NULL);
+        prefix_push(&logger->prefix, s, len);
+    }
+
+    if (logger->event_mask) {
+        struct push_prefix_event *event;
+
+        event = malloc(sizeof(struct push_prefix_event));
+        if (!event) {
+            logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            return -1;
         }
-
-        if (logger->event_mask) {
-            struct push_prefix_event *event;
-
-            if (!s) {
-                s = arena_alloc_align(logger->arena, len + 1,
-                                      SYSARENA_1_BYTE_ALIGN);
-                if (!s) {
-                    logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__,
-                            len + 1);
-                    return -1;
-                }
-                memcpy(s, buf, len + 1);
-            }
-
-            event =
-                arena_alloc(logger->arena, sizeof(struct push_prefix_event));
-            if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
-                return -1;
-            }
-            event->length = len;
-            event->text = s;
-            reqlog_append_event(logger, EVENT_PUSH_PREFIX, event);
-        }
+        event->length = len;
+        event->text = s;
+        reqlog_append_event(logger, EVENT_PUSH_PREFIX, event);
+    } else {
+        free(s);
     }
     return 0;
 }
@@ -1315,9 +1328,9 @@ int reqlog_popprefix(struct reqlogger *logger)
 
         if (logger->event_mask) {
             struct pop_prefix_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct pop_prefix_event));
+            event = malloc(sizeof(struct pop_prefix_event));
             if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 return -1;
             }
             reqlog_append_event(logger, EVENT_POP_PREFIX, event);
@@ -1336,9 +1349,9 @@ int reqlog_popallprefixes(struct reqlogger *logger)
 
         if (logger->event_mask) {
             struct pop_prefix_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct pop_prefix_event));
+            event = malloc(sizeof(struct pop_prefix_event));
             if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 return -1;
             }
             reqlog_append_event(logger, EVENT_POP_PREFIX_ALL, event);
@@ -1350,53 +1363,54 @@ int reqlog_popallprefixes(struct reqlogger *logger)
 static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
                            const char *fmt, va_list args)
 {
-    char buf[256];
-    char *s = NULL;
+    char *s;
     int len;
+    int nchars;
     va_list args_c;
 
+    if (logger == NULL)
+        return 0;
+
+    len = 256;
+    s = malloc(len);
+    if (!s) {
+        fprintf(stderr, "%s:malloc(%d) failed\n", __func__, len);
+        return -1;
+    }
+
     va_copy(args_c, args);
-    len = vsnprintf(buf, sizeof(buf), fmt, args);
-    if (len >= sizeof(buf) && reqltruncate == 0) {
-        s = arena_alloc_align(logger->arena, len + 1, SYSARENA_1_BYTE_ALIGN);
+    nchars = vsnprintf(s, len, fmt, args);
+    if (nchars >= len && reqltruncate == 0) {
+        len = nchars + 1;
+        s = realloc(s, len);
         if (!s) {
-            logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__, len + 1);
-            va_end(args_c);
+            logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             return -1;
         }
-        len = vsnprintf(s, len + 1, fmt, args_c);
-    } else if (len >= sizeof(buf)) {
-        len = sizeof(buf) - 1;
+        len = vsnprintf(s, len, fmt, args_c);
+    } else {
+        s[len] = '\0';
     }
     va_end(args_c);
 
     if (logger->dump_mask & event_flag) {
-        dump(logger, NULL, s ? s : buf, len);
+        dump(logger, NULL, s, len);
     }
 
     if (logger->event_mask & event_flag) {
         struct print_event *event;
 
-        if (!s) {
-            s = arena_alloc_align(logger->arena, len + 1,
-                                  SYSARENA_1_BYTE_ALIGN);
-            if (!s) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__,
-                        len + 1);
-                return -1;
-            }
-            memcpy(s, buf, len + 1);
-        }
-
-        event = arena_alloc(logger->arena, sizeof(struct print_event));
+        event = malloc(sizeof(struct print_event));
         if (!event) {
-            logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
             return -1;
         }
         event->event_flag = event_flag;
         event->length = len;
         event->text = s;
         reqlog_append_event(logger, EVENT_PRINT, event);
+    } else {
+        free(s);
     }
     return 0;
 }
@@ -1428,48 +1442,16 @@ int reqlog_logf(struct reqlogger *logger, unsigned event_flag, const char *fmt,
     return 0;
 }
 
-/* Log a string literal.  This avoids copying the string. */
+/* Log a string literal. Wrapper for logf */
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s)
 {
     if (logger && (logger->mask & event_flag)) {
-        if (logger->event_mask & event_flag) {
-            struct print_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct print_event));
-            if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
-                return -1;
-            }
-            event->event_flag = event_flag;
-            event->length = -1; /* to indicate length is unknown */
-            event->text = s;
-            reqlog_append_event(logger, EVENT_PRINT, event);
-        }
-        if (logger->dump_mask & event_flag) {
-            dump(logger, NULL, s, strlen(s));
-        }
-    }
-    return 0;
-}
-
-/* similar, but string length is supplied. */
-int reqlog_logll(struct reqlogger *logger, unsigned event_flag, const char *s,
-                 size_t len)
-{
-    if (logger && (logger->mask & event_flag)) {
-        if (logger->event_mask & event_flag) {
-            struct print_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct print_event));
-            if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
-                return -1;
-            }
-            event->event_flag = event_flag;
-            event->length = len;
-            event->text = s;
-            reqlog_append_event(logger, EVENT_PRINT, event);
-        }
-        if (logger->dump_mask & event_flag) {
-            dump(logger, NULL, s, len);
+        if ((logger->dump_mask & event_flag) &&
+            ((logger->event_mask & event_flag) == 0)) {
+            /* Just dump, don't bother allocating */
+	  logmsg(LOGMSG_ERROR, NULL, s, strlen(s));
+        } else if (logger->event_mask & event_flag) {
+            reqlog_logf(logger, event_flag, s);
         }
     }
     return 0;
@@ -1486,17 +1468,16 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
         size_t ii;
         static const char *hexchars = "0123456789abcdef";
 
-        hexstr =
-            arena_alloc_align(logger->arena, len * 2, SYSARENA_1_BYTE_ALIGN);
+        hexstr = malloc(len * 2);
         if (!hexstr) {
-            logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
             return -1;
         }
 
         if (logger->event_mask & event_flag) {
-            event = arena_alloc(logger->arena, sizeof(struct print_event));
+            event = malloc(sizeof(struct print_event));
             if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 return -1;
             }
 

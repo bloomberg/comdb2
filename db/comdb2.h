@@ -2881,8 +2881,6 @@ int reqlog_logv(struct reqlogger *logger, unsigned event_flag, const char *fmt,
 int reqlog_logf(struct reqlogger *logger, unsigned event_flag, const char *fmt,
                 ...);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
-int reqlog_logll(struct reqlogger *logger, unsigned event_flag, const char *s,
-                 size_t len);
 int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
                   size_t len);
 void reqlog_set_cost(struct reqlogger *logger, double cost);
