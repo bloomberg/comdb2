@@ -21,7 +21,9 @@
 
 /* COMDB2 MODIFICATION */
 int sqlite3WhereTrace = 0;
-
+int shard_check_parallelism(int iTable);
+int comdb2_shard_table_constraints(Parse *pParse, 
+        const char *zName, const char *zDatabase, Expr **pWhere);
 /* Forward declaration of methods */
 static int whereLoopResize(sqlite3*, WhereLoop*, int);
 
@@ -4470,6 +4472,13 @@ WhereInfo *sqlite3WhereBegin(
   sqlite3 *db;               /* Database connection */
   int rc;                    /* Return code */
   u8 bFordelete = 0;         /* OPFLAG_FORDELETE or zero, as appropriate */
+  Expr *pNewExpr = pWhere;
+
+  if(comdb2_shard_table_constraints(pParse, pTabList->a[0].zName, 
+              pTabList->a[0].zDatabase, &pNewExpr)) {
+      pWhere = pNewExpr;
+  }
+
 
   assert( (wctrlFlags & WHERE_ONEPASS_MULTIROW)==0 || (
         (wctrlFlags & WHERE_ONEPASS_DESIRED)!=0 
@@ -4844,6 +4853,14 @@ WhereInfo *sqlite3WhereBegin(
         /* COMDB2 MODIFICATION */
         if (iDb != 1)
           sqlite3VdbeAddTable(v,pTab);
+
+        /* we are encoding an index access; for the outer most index scan, 
+           try to parallelize the access */
+        if(shard_check_parallelism(pIx->tnum)){
+          pParse->rc = SQLITE_SCHEMA;
+          pParse->nErr++;
+          goto whereBeginError;
+        }
 
         sqlite3VdbeAddOp3(v, op, iIndexCur, pIx->tnum, iDb);
 

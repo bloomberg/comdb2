@@ -262,6 +262,9 @@ void currange_free(CurRange *cr);
 
 struct stored_proc;
 struct lua_State;
+struct par_connector;
+typedef struct par_connector par_connector_t;
+
 
 enum early_verify_error {
     EARLY_ERR_VERIFY = 1,
@@ -644,6 +647,13 @@ struct sqlclntstate {
     int statement_query_effects;
 
     int verify_remote_schemas;
+
+    /* sharding scheme */
+    par_connector_t *conns;
+    int nconns;
+    int conns_idx;
+    int shard_slice;
+
     char *argv0;
     char *stack;
 
@@ -894,6 +904,9 @@ struct sql_thread {
     int rootpage_nentries;
     unsigned char had_temptables;
     unsigned char had_tablescans;
+
+    /* current shard; cut 0 we support only one partition */
+    int crtshard;
 };
 
 /* makes master swing verbose */

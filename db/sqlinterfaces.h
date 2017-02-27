@@ -77,4 +77,27 @@ void reset_clnt_flags(struct sqlclntstate *);
 int lock_client_write_lock(struct sqlclntstate *clnt);
 void unlock_client_write_lock(struct sqlclntstate *clnt);
 
+/* SHARD
+
+struct sql_state;
+struct client_comm_if {
+    int (*send_row_format)(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                           struct sql_state *rec, int ncols,
+                           CDB2SQLRESPONSE__Column **columns);
+    int (*send_row_data)(struct sqlthdstate *thd, struct sqlclntstate *clnt,
+                         int new_row_data_type, int ncols, int row_id, int rc,
+                         CDB2SQLRESPONSE__Column **columns);
+    void (*send_prepare_error)(struct sqlclntstate *clnt, const char *errstr,
+                              int clnt_retry);
+    int (*send_run_error)(struct sqlclntstate *clnt, const char *errstr,
+                          int client_rc);
+    int (*flush)(struct sqlclntstate *clnt);
+    int (*send_cost)(struct sqlclntstate *clnt);
+    int (*send_effects)(struct sqlclntstate *clnt);
+    void (*send_done)(struct sqlthdstate *thd, struct sqlclntstate *clnt, 
+                     const char *func, int line);
+    int (*send_dummy)(struct sqlclntstate *clnt);
+};
+void sql_reset_sqlthread(sqlite3 *db, struct sql_thread *thd);
+*/
 #endif

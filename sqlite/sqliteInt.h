@@ -4581,4 +4581,8 @@ void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *
 void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 void comdb2WriteTransaction(Parse*);
 
+/* COMDB2 MODIFICATION */
+int sqlite3RecordCompareExprList(UnpackedRecord *rec, Mem *mems);
+int sqlite3ExprList2MemArray(ExprList *list, Mem *mems);
+
 #endif /* _SQLITEINT_H_ */

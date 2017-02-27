@@ -702,6 +702,8 @@ struct sql_thread *start_sql_thread(void)
     listc_abl(&thedb->sql_threads, thd);
     Pthread_mutex_unlock(&gbl_sql_lock);
 
+    thd->crtshard = 0;
+
     return thd;
 }
 
@@ -5647,6 +5649,35 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                                  .cmp = bias_cmp,
                                  .cur = pCur,
                                  .unpacked = pIdxKey};
+
+        /* here, if we are a splinter, we update the key properly */                          
+        #if 0
+        if(thd->crtshard >=  1) {
+            struct db *db = thedb->dbs[pCur->tblnum];
+            shard_limits_t*shards = db->shards[pCur->ixnum];
+
+            /* if the key is before our start, update the search to start
+               if the key is bigger than start if next shard (if any), return EOF
+               otherwise use the actual key */
+            if(thd->crtshard>1) {
+                /*adjust left */
+                if(sqlite3RecordCompareExprList(pIdxKey, 
+                            &shards->mems[thd->crtshard-2]) < 0) {
+                    /* replace pIdxKey with shards->mems */
+                    /* THIS IS HACK! leaks and crashes
+                    pIdxKey->aMem = shards->mems; */
+                }
+            }
+            if(thd->crtshard-1 < shards->limits->nExpr) {
+                /*adjust right */
+                if(sqlite3RecordCompareExprList(pIdxKey, 
+                            &shards->mems[thd->crtshard-1])>=0) {
+                    /* the result is eof */
+                }
+            }
+            
+        }
+        #endif
         ondisk_len = rc =
             sqlite_unpacked_to_ondisk(pCur, pIdxKey, fail_reason, &info);
         if (rc < 0) {

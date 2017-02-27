@@ -1946,6 +1946,12 @@ cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
     comdb2bulkimport(pParse, &A, &B, &C, &D);
 }
 
+//////////////////// COMDB2 RANGE PARTITION //////////////////////////////////
+//
+cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) RP. {
+    comdb2CreateRangePartition(pParse, &A, &B, C);
+}
+
 //////////////////// COMDB2 PARTITION //////////////////////////////////
 
 cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {

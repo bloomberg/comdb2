@@ -85,6 +85,7 @@ typedef long long tranid_t;
 #include "thrman.h"
 #include "comdb2uuid.h"
 #include "machclass.h"
+#include "shard_range.h"
 #include "tunables.h"
 #include "comdb2_plugin.h"
 
@@ -665,6 +666,8 @@ struct dbtable {
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
+
+    shard_limits_t* sharding;
 
     int numblobs;
 
@@ -3527,6 +3530,8 @@ extern int gbl_mifid2_datetime_range;
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
 
+extern void hexdump(const void *buf, int size);
+
 /* Global switch for perfect checkpoint. */
 extern int gbl_use_perfect_ckp;
 /* (For testing only) Configure how long a checkpoint
@@ -3534,6 +3539,8 @@ extern int gbl_use_perfect_ckp;
 extern int gbl_ckp_sleep_before_sync;
 
 int set_rowlocks(void *trans, int enable);
+
+void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid);
 
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */

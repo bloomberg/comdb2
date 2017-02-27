@@ -307,6 +307,7 @@ static Keyword aKeywordTable[] = {
   { "PERIOD",           "TK_PERIOD",        ALWAYS,                 0},
   { "PROCEDURE",        "TK_PROCEDURE",     ALWAYS,                 0},
   { "PUT",              "TK_PUT",           ALWAYS,                 0},
+  { "RANGE",            "TK_RANGE",         ALWAYS,                 0},
   { "REBUILD",          "TK_REBUILD",       ALWAYS,                 0},
   { "READ",             "TK_READ",          ALWAYS,                 0},
   { "READONLY",         "TK_READONLY",      ALWAYS,                 0},
