@@ -1212,6 +1212,11 @@ static void reqlog_free_all(struct reqlogger *logger)
         }
         free(event);
     }
+
+    while (table = logger->tables) {
+        logger->tables = table->next;
+        free(table);
+    }
 }
 
 void reqlog_free(struct reqlogger *logger)
@@ -1518,10 +1523,9 @@ void reqlog_usetable(struct reqlogger *logger, const char *tablename)
             }
         }
         len = strlen(tablename);
-        table = arena_alloc(logger->arena,
-                            offsetof(struct tablelist, name) + len + 1);
+        table = malloc(offsetof(struct tablelist, name) + len + 1);
         if (!table) {
-            logmsg(LOGMSG_ERROR, "%s: arena_alloc failed\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         } else {
             table->next = logger->tables;
             table->count = 1;
