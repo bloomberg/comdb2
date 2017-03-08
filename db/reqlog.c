@@ -50,7 +50,6 @@
 #include <plbitlib.h>
 #include <lockmacro.h>
 #include <memory_sync.h>
-#include <sysarena.h>
 
 #include <epochlib.h>
 
@@ -113,9 +112,6 @@ struct tablelist {
 };
 
 struct reqlogger {
-    /* get all our memory for logevent structs from the arena */
-    struct arena *arena;
-
     char origin[128];
 
     /* Everything from here onwards is transient and can be reset
@@ -1188,13 +1184,6 @@ struct reqlogger *reqlog_alloc(void)
         return NULL;
     }
 
-    logger->arena = arena_new(malloc, free, 64 * 1024, 64 * 1024);
-    if (!logger->arena) {
-        logmsg(LOGMSG_ERROR, "%s: arena_new failed\n", __func__);
-        free(logger);
-        return NULL;
-    }
-
     return logger;
 }
 
@@ -1224,7 +1213,6 @@ void reqlog_free(struct reqlogger *logger)
     if (logger) {
         if (logger->stmt) free(logger->stmt);
         reqlog_free_all(logger);
-        arena_destroy(logger->arena);
         free(logger);
     }
 }
@@ -1234,7 +1222,6 @@ void reqlog_reset_logger(struct reqlogger *logger)
     if (logger) {
         if (logger->stmt) free(logger->stmt);
         reqlog_free_all(logger);
-        arena_free_all(logger->arena);
         bzero(&logger->start_transient,
               sizeof(struct reqlogger) -
                   offsetof(struct reqlogger, start_transient));
@@ -1721,13 +1708,8 @@ void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
             case CLIENT_BLOB:
             case CLIENT_BYTEARRAY: {
                 uint8_t *b = (uint8_t *)tagbuf + f->offset;
-                static const char *hexchars = "0123456789abcdef";
                 reqlog_logf(logger, REQL_INFO, " %s blob ", f->name);
-                for (int i = 0; i < f->len; i++) {
-                    reqlog_logf(logger, REQL_INFO, "%c%c",
-                                hexchars[(b[i] & 0xf0) >> 4],
-                                hexchars[b[i] & 0x0f]);
-                }
+                reqlog_loghex(logger, REQL_INFO, b, f->len);
                 break;
             }
             }
@@ -2031,16 +2013,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
-
-    if (gbl_fingerprint_queries) {
-        static const char hex[] = "0123456789abcdef";
-        unsigned char fingerprint_str[33];
-        fingerprint_str[32] = 0;
-        for (int i = 0; i < 16; i++) {
-            fingerprint_str[i*2] = hex[(logger->fingerprint[i] & 0xf0) >> 4];
-            fingerprint_str[i*2+1] = hex[logger->fingerprint[i] & 0x0f];
-        }
-        reqlog_logf(logger, REQL_INFO, "fingerprint %s", fingerprint_str);
+    if (logger->fingerprint) {
+        reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
     }
 
     logger->in_request = 0;
@@ -2123,10 +2097,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
                 }
             }
             if (!use_rule) {
-                use_rule =
-                    arena_alloc(logger->arena, sizeof(struct logruleuse));
+                use_rule = malloc(sizeof(struct logruleuse));
                 if (!use_rule) {
-                    logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                    logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 } else {
                     use_rule->next = use_rules;
                     use_rule->event_mask = rule->event_mask;
@@ -2153,6 +2126,11 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
             log(logger, use_rule->out, use_rule->event_mask);
             deref_output_ll(use_rule->out);
         }
+        while (use_rule = use_rules) {
+            use_rules = use_rule->next;
+            free(use_rule);
+        }
+
         pthread_mutex_unlock(&rules_mutex);
     }
 
