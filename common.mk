@@ -4,14 +4,14 @@ common:
 
 # bb Module
 bb_MEMGEN:=bb/mem_bb.h
-bb_SOURCES:=arena.c averager.c bb_asprintf.c bbhrtime.c bb_oscompat.c	\
-          cheapstub.c comdb2file.c comdb2_pthread_create.c ctrace.c	    \
-          debug_switches.c flibc.c fsnapf.c intern_strings.c list.c	    \
+bb_SOURCES:=averager.c bb_asprintf.c bbhrtime.c bb_oscompat.c		\
+          cheapstub.c comdb2file.c comdb2_pthread_create.c ctrace.c	\
+          debug_switches.c flibc.c fsnapf.c intern_strings.c list.c	\
           lockassert.c mem.c misc.c nodemap.c object_pool.c passfd.c	\
-          plhash.c pool.c portmuxusr.c queue.c roll_file.c rtcpu.c	    \
+          plhash.c pool.c portmuxusr.c queue.c roll_file.c rtcpu.c	\
           safestrerror.c sbuf2.c segstring.c sltpck.c str0.c strbuf.c	\
-          switches.c tcputil.c thdpool.c thread_malloc.c		        \
-          thread_util.c timers.c utilmisc.c walkback.c xstring.c        \
+          switches.c tcputil.c thdpool.c thread_malloc.c		\
+          thread_util.c timers.c utilmisc.c walkback.c xstring.c	\
           ssl_support.c logmsg.c
 bb_abs_SOURCES:=$(foreach src,$(bb_SOURCES),bb/$(src))
 bb_OBJS=$(patsubst %.c,%.o,$(bb_abs_SOURCES))
