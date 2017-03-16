@@ -299,6 +299,7 @@ static pthread_mutex_t nodestats_calc_lk = PTHREAD_MUTEX_INITIALIZER;
  * different then you add rules and you have to lock around the list. */
 static int long_request_ms = 2000;
 static struct output *long_request_out = NULL;
+static struct output *sql_request_out = NULL;
 static struct output *bad_cstr_out = NULL;
 static pthread_mutex_t rules_mutex;
 static LISTC_T(struct logrule) rules;
@@ -323,7 +324,6 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-
 static int reqltruncate = 1;
 
 /* sometimes you have to debug the debugger */
@@ -830,6 +830,11 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
+    filename = comdb2_location("logs", "%s.sqlreqs", dbname);
+    sql_request_out = get_output_ll(filename);
+    free(filename);
+
+
     scanrules_ll();
     return 0;
 }
@@ -1193,6 +1198,8 @@ static void reqlog_free_all(struct reqlogger *logger)
     struct print_event *pevent;
     struct tablelist *table;
 
+    if (logger->stmt) free(logger->stmt);
+
     while (event = logger->events) {
         logger->events = event->next;
         if (event->type == EVENT_PRINT) {
@@ -1211,7 +1218,6 @@ static void reqlog_free_all(struct reqlogger *logger)
 void reqlog_free(struct reqlogger *logger)
 {
     if (logger) {
-        if (logger->stmt) free(logger->stmt);
         reqlog_free_all(logger);
         free(logger);
     }
@@ -1220,7 +1226,6 @@ void reqlog_free(struct reqlogger *logger)
 void reqlog_reset_logger(struct reqlogger *logger)
 {
     if (logger) {
-        if (logger->stmt) free(logger->stmt);
         reqlog_free_all(logger);
         bzero(&logger->start_transient,
               sizeof(struct reqlogger) -
@@ -1272,7 +1277,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         }
         len = vsnprintf(s, len, fmt, args_c);
     } else {
-        s[len] = '\0';
+        len = nchars;
     }
     va_end(args_c);
 
@@ -1381,7 +1386,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         }
         len = vsnprintf(s, len, fmt, args_c);
     } else {
-        s[len] = '\0';
+        len = nchars;
     }
     va_end(args_c);
 
@@ -1719,38 +1724,32 @@ void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
     free_tag_schema(s);
 }
 
-void reqlog_new_sql_request(struct reqlogger *logger, const char *sqlstmt,
+void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
+{
+    if (sqlstmt) {
+        if (logger->stmt) free(logger->stmt);
+        logger->stmt = strdup(sqlstmt);
+    }
+    if (logger->stmt) {
+        reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
+        dumpf(logger, sql_request_out, "sql=%s\n", logger->stmt);
+    }
+}
+
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
                             char *tags, void *tagbuf, int tagbufsz,
                             void *nullbits, int numbits)
 {
     if (!logger) {
         return;
     }
-    if (logger->stmt) free(logger->stmt);
-    logger->stmt = NULL;
-
     reqlog_reset_logger(logger);
     logger->request_type = "sql request";
     logger->opcode = OP_SQL;
-    if (sqlstmt) {
-        logger->stmt = strdup(sqlstmt);
-    }
     logger->startms = time_epochms();
     reqlog_start_request(logger);
-    if (logger->stmt) {
-        reqlog_logl(logger, REQL_INFO, logger->stmt);
-    }
-}
 
-void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
-{
-    if (logger->stmt) free(logger->stmt);
-    if (sqlstmt && logger->stmt == NULL) {
-        logger->stmt = strdup(sqlstmt);
-    }
-    if (logger->stmt) {
-        reqlog_logl(logger, REQL_INFO, logger->stmt);
-    }
+    reqlog_set_sql(logger, sqlstmt);
 }
 
 void reqlog_diffstat_init(struct reqlogger *logger)
@@ -1854,9 +1853,9 @@ static void log_header(struct reqlogger *logger, struct output *out,
                        int is_long)
 {
     pthread_mutex_lock(&rules_mutex);
-    pthread_mutex_lock(&long_request_out->mutex);
+    pthread_mutex_lock(&out->mutex);
     log_header_ll(logger, out, is_long);
-    pthread_mutex_unlock(&long_request_out->mutex);
+    pthread_mutex_unlock(&out->mutex);
     pthread_mutex_unlock(&rules_mutex);
 }
 
@@ -2139,6 +2138,11 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
         logmsg(LOGMSG_WARN, "WARNING: THIS DATABASE IS RECEIVING NON NUL "
                         "TERMINATED CSTRINGS\n");
         log_header(logger, default_out, 0);
+    }
+
+    /* check for sqlreqs */
+    if (logger->opcode == OP_SQL && !logger->iq) {
+        log_header(logger, sql_request_out, 0);
     }
 
     /* check for long requests */
