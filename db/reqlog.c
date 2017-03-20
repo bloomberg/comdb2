@@ -56,7 +56,8 @@
 #include "comdb2.h"
 #include "sqloffload.h"
 #include "osqlblockproc.h"
-#include <cdb2_constants.h>
+#include "cdb2_constants.h"
+#include "comdb2_atomic.h"
 
 #include "nodemap.h"
 #include "intern_strings.h"
@@ -151,6 +152,7 @@ struct reqlogger {
     void *tagbuf;
     void *nullbits;
 
+    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
     double sqlcost;
 
@@ -1732,7 +1734,9 @@ void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
     }
     if (logger->stmt) {
         reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
-        dumpf(logger, sql_request_out, "sql=%s\n", logger->stmt);
+        dumpf(logger, sql_request_out, "sql_begin #%d: sql=%s\n",
+              logger->nsqlreqs,
+              logger->stmt);
     }
 }
 
@@ -1749,6 +1753,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
     logger->startms = time_epochms();
     reqlog_start_request(logger);
 
+    logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
     reqlog_set_sql(logger, sqlstmt);
 }
 
