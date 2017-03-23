@@ -1748,7 +1748,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
         return;
     }
     reqlog_reset_logger(logger);
-    logger->request_type = "sql request";
+    logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startms = time_epochms();
     reqlog_start_request(logger);
@@ -1813,14 +1813,16 @@ static void print_client_query_stats(struct reqlogger *logger,
 }
 
 /* print the request header for the request. */
-static void log_header_ll(struct reqlogger *logger, struct output *out,
-                          int is_long)
+static void log_header_ll(struct reqlogger *logger, struct output *out)
 {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
     struct reqlog_print_callback_args args;
 
-    if (is_long) {
+    if (out == long_request_out) {
         dumpf(logger, out, "LONG REQUEST %d msec ", logger->durationms);
+    } else if (out == sql_request_out) {
+        dumpf(logger, out, "sql_end #%d: %d msec ", logger->nsqlreqs,
+              logger->durationms);
     } else {
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               logger->durationms);
@@ -1831,6 +1833,10 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
         struct ireq *iq = logger->iq;
         if (iq->reptimems > 0) {
             uint64_t rate = iq->txnsize / iq->reptimems;
+
+            if (out == sql_request_out)
+                dumpf(logger, out, "sql_end #%d:", logger->nsqlreqs);
+
             dumpf(logger, out,
                   "  Committed %llu log bytes in %d ms rep time (%llu "
                   "bytes/ms)\n",
@@ -1845,7 +1851,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
     args.out = out;
     bdb_print_stats(thread_stats, "  ", reqlog_print_callback, &args);
 
-    if (is_long &&
+    if (out == long_request_out &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SHOW_COST_IN_LONGREQ)) {
         struct client_query_stats *qstats = get_query_stats_from_thd();
         if (qstats)
@@ -1859,7 +1865,7 @@ static void log_header(struct reqlogger *logger, struct output *out,
 {
     pthread_mutex_lock(&rules_mutex);
     pthread_mutex_lock(&out->mutex);
-    log_header_ll(logger, out, is_long);
+    log_header_ll(logger, out);
     pthread_mutex_unlock(&out->mutex);
     pthread_mutex_unlock(&rules_mutex);
 }
@@ -1881,7 +1887,10 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
                     flushdump(logger, out);
                 }
                 if (logger->dumplinepos == 0) {
-                    dump(logger, out, "  ", 2);
+                    if (out == sql_request_out)
+                        dumpf(logger, out, "sql_end #%d:  ", logger->nsqlreqs);
+                    else
+                        dump(logger, out, "  ", 2);
                 } else {
                     dump(logger, out, ", ", 2);
                 }
@@ -1899,7 +1908,7 @@ static void log(struct reqlogger *logger, struct output *out,
 
     pthread_mutex_lock(&out->mutex);
     prefix_init(&logger->prefix);
-    log_header_ll(logger, out, 0);
+    log_header_ll(logger, out);
     if (event_mask == 0) {
         pthread_mutex_unlock(&out->mutex);
         return;
