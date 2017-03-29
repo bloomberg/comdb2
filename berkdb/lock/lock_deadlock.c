@@ -1039,14 +1039,33 @@ __adjust_lockerid_priority_td(dbenv, atype, lip, dd_id, id_array, increment)
 }
 #endif
 
+
 /* we populate object from scratch so don't need previous
  * content; a realloc is more expensive than just free/malloc
  * because it may need to copy content to new area 
+ * when ask size is larger than current, allocate 1.5 as much
+ * when ask size is smaller than half of current, shrink to new size
+ * otherwise do nothing as we are within the requested size
  */
-static int __resize_object(DB_ENV *dbenv, void *obj, int * obj_size, int new_size, const char *obj_name)
+static inline int __resize_object(DB_ENV *dbenv, void **obj, size_t *obj_size, 
+        int new_size, const char *obj_name)
 {
+    size_t new_obj_size = *obj_size;
+    if(*obj_size < new_size)
+        new_obj_size = new_size + new_size/2;
+    else if(new_size < (*obj_size) / 2)
+        new_obj_size = new_size;
 
-
+    if(*obj_size != new_obj_size) {
+        static int dcount = 0;
+        printf("Resizing %s from %d to %d, count %d\n", obj_name, *obj_size, new_size, ++dcount);
+        __os_free(dbenv, *obj);
+		int ret = __os_malloc (dbenv, new_obj_size, obj);
+		if (ret)
+            return ret;
+        *obj_size = new_obj_size;
+    }
+    return 0;
 }
 
 
@@ -1065,7 +1084,7 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	DB_LOCKTAB *lt;
 	db_timeval_t now, min_timeout;
 	u_int32_t count, dd, *entryp, id, ndx, nentries;
-	sparse_map_t *sparse_map;
+	sparse_map_t *sparse_map = NULL;
 	u_int8_t *pptr;
 	size_t allocSz;
 	int expire_only, is_first, ret, ii;
@@ -1122,19 +1141,12 @@ retry:	count = region->stat.st_nlockers;
 
 	allocSz = (size_t)count * sizeof(locker_info);
 
-	if (dd_id_array_size < allocSz) {
-		__os_free (dbenv, dd_id_array);
-        static int dcount = 0;
-        printf("Resizing %s from %d to %d, count %d\n", obj_name, dd_id_array_size, allocSz, ++dcount);
-
-		if ((ret = __os_malloc (dbenv, allocSz, &dd_id_array))!=0) {
-			if (sparse_map) {
-				free_sparse_map(dbenv, sparse_map);
-			}
-			return (ret);
-		}
-		dd_id_array_size = allocSz;
-	}
+    ret = __resize_object(dbenv, (void**) &dd_id_array, &dd_id_array_size, allocSz, "dd_id_array");
+    if(ret) {
+        if (sparse_map) 
+            free_sparse_map(dbenv, sparse_map);
+        return ret;
+    }
 	memset(dd_id_array, 0, allocSz);
 
 
@@ -1200,35 +1212,21 @@ retry:	count = region->stat.st_nlockers;
 		dd_bitmap = NULL;
 	} else {
 		allocSz = (size_t)count *sizeof(u_int32_t) * nentries;
-
-		if (dd_bitmap_size < allocSz) {
-			__os_free (dbenv, dd_bitmap);
-			if ((ret = __os_malloc (dbenv, allocSz, &dd_bitmap))!=0)
-				 return (ret);
-
-			dd_bitmap_size = allocSz;
-		}
+        ret = __resize_object(dbenv, (void**) &dd_bitmap, &dd_bitmap_size, allocSz, "dd_bitmap");
+		if (ret)
+            return ret;
 		memset(dd_bitmap, 0, allocSz);
 		sparse_map = NULL;
 	}
 
 	allocSz = sizeof(u_int32_t) * nentries;
-	if (dd_tmpmap_size < allocSz) {
-		__os_free (dbenv, dd_tmpmap);
-        static int tcount = 0;
-        printf("Resizing dd_tmpmap from %d to %d, count %d\n", dd_tmpmap_size, allocSz, ++tcount);
-
-		if ((ret = __os_malloc (dbenv, allocSz, &dd_tmpmap))!=0) {
-			if (sparse_map) {
-				free_sparse_map(dbenv, sparse_map);
-			}
-			return (ret);
-		}
-		dd_tmpmap_size = allocSz;
-	}
+    ret = __resize_object(dbenv, (void**) &dd_tmpmap, &dd_tmpmap_size, allocSz, "dd_tmpmap");
+    if(ret) {
+        if (sparse_map) 
+            free_sparse_map(dbenv, sparse_map);
+        return ret;
+    }
 	memset(dd_tmpmap, 0, allocSz);
-
-
 
 
 	/*
@@ -1395,13 +1393,10 @@ look_waiters:
 			if (sparse_map) {
 				if (sparse_map->map[dd] == NULL) {
 					if ((ret =
-						__os_calloc(dbenv, nentries,
-						    sizeof(u_int32_t),
+						__os_calloc(dbenv, nentries, sizeof(u_int32_t),
 						    &sparse_map->map[dd]))!=0) {
-						free_sparse_map(dbenv,
-						    sparse_map);
-						unlock_obj_partition(region,
-						    partition);
+						free_sparse_map(dbenv, sparse_map);
+						unlock_obj_partition(region, partition);
 						return (ret);
 					}
 					sparse_map->alloclist[sparse_map->
