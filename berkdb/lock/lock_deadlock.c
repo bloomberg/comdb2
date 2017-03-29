@@ -594,8 +594,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	region->need_dd = 0;
 
 	/* Build the waits-for bitmap. */
-	ret =
-	    __dd_build(dbenv, atype, &bitmap, &sparse_map, &nlockers, &nalloc,
+	ret = __dd_build(dbenv, atype, &bitmap, &sparse_map, &nlockers, &nalloc,
 	    &idmap, is_client);
 	lock_max = region->stat.st_cur_maxid;
 	unlock_lockers(region);
@@ -650,8 +649,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	int found_tracked = 0;
 
 	/* Find a deadlock. */
-	if ((ret =
-		__dd_find(dbenv, bitmap, sparse_map, idmap, nlockers, nalloc,
+	if ((ret = __dd_find(dbenv, bitmap, sparse_map, idmap, nlockers, nalloc,
 		    &deadp, &deadwho, &found_tracked))!=0)
 		 return (ret);
 
@@ -873,8 +871,7 @@ dokill:
 		}
 
 		if (gbl_print_deadlock_cycles)
-			__dd_print_deadlock_cycle(idmap, *deadp, nlockers,
-			    killid);
+			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
 		/* Kill the locker with lockid idmap[killid]. */
 		if ((ret = __dd_abort(dbenv, &idmap[killid]))!=0) {
@@ -1042,6 +1039,17 @@ __adjust_lockerid_priority_td(dbenv, atype, lip, dd_id, id_array, increment)
 }
 #endif
 
+/* we populate object from scratch so don't need previous
+ * content; a realloc is more expensive than just free/malloc
+ * because it may need to copy content to new area 
+ */
+static int __resize_object(DB_ENV *dbenv, void *obj, int * obj_size, int new_size, const char *obj_name)
+{
+
+
+}
+
+
 static int
 __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	DB_ENV *dbenv;
@@ -1112,10 +1120,12 @@ retry:	count = region->stat.st_nlockers;
 
 	count +=20;
 
-	allocSz = (size_t)count *sizeof(locker_info);
+	allocSz = (size_t)count * sizeof(locker_info);
 
 	if (dd_id_array_size < allocSz) {
 		__os_free (dbenv, dd_id_array);
+        static int dcount = 0;
+        printf("Resizing %s from %d to %d, count %d\n", obj_name, dd_id_array_size, allocSz, ++dcount);
 
 		if ((ret = __os_malloc (dbenv, allocSz, &dd_id_array))!=0) {
 			if (sparse_map) {
@@ -1205,6 +1215,8 @@ retry:	count = region->stat.st_nlockers;
 	allocSz = sizeof(u_int32_t) * nentries;
 	if (dd_tmpmap_size < allocSz) {
 		__os_free (dbenv, dd_tmpmap);
+        static int tcount = 0;
+        printf("Resizing dd_tmpmap from %d to %d, count %d\n", dd_tmpmap_size, allocSz, ++tcount);
 
 		if ((ret = __os_malloc (dbenv, allocSz, &dd_tmpmap))!=0) {
 			if (sparse_map) {
