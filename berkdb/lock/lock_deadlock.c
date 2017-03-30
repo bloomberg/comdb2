@@ -891,7 +891,7 @@ dokill:
 			 __db_err(dbenv, "Aborted locker %lx",
 			    (u_long)idmap[killid].id);
 	}
-	out:__os_free (dbenv, tmpmap);
+out:__os_free (dbenv, tmpmap);
 
 err1:
 	if (copymap != NULL)
@@ -1044,27 +1044,19 @@ __adjust_lockerid_priority_td(dbenv, atype, lip, dd_id, id_array, increment)
  * content; a realloc is more expensive than just free/malloc
  * because it may need to copy content to new area 
  * when ask size is larger than current, allocate 1.5 as much
- * when ask size is smaller than half of current, shrink to new size
- * otherwise do nothing as we are within the requested size
+ * otherwise do nothing 
  */
 static inline int __resize_object(DB_ENV *dbenv, void **obj, size_t *obj_size, 
-        int new_size, const char *obj_name)
+        size_t new_size)
 {
-    size_t new_obj_size = *obj_size;
-    if(*obj_size < new_size)
-        new_obj_size = new_size + new_size/2;
-    else if(new_size < (*obj_size) / 2)
-        new_obj_size = new_size;
-
-    if(*obj_size != new_obj_size) {
-        static int dcount = 0;
-        printf("Resizing %s from %d to %d, count %d\n", obj_name, *obj_size, new_size, ++dcount);
-        __os_free(dbenv, *obj);
-		int ret = __os_malloc (dbenv, new_obj_size, obj);
-		if (ret)
-            return ret;
-        *obj_size = new_obj_size;
-    }
+    if(new_size < *obj_size)
+        return 0;
+    new_size = new_size + new_size/2;
+    __os_free(dbenv, *obj);
+    int ret = __os_malloc (dbenv, new_size, obj);
+    if (ret)
+        return ret;
+    *obj_size = new_size;
     return 0;
 }
 
@@ -1087,13 +1079,12 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	sparse_map_t *sparse_map = NULL;
 	u_int8_t *pptr;
 	size_t allocSz;
-	int expire_only, is_first, ret, ii;
+	int is_first, ret, ii;
+
 	static u_int32_t *dd_bitmap = NULL;
 	static size_t dd_bitmap_size = 0;
-
 	static u_int32_t *dd_tmpmap = NULL;
 	static size_t dd_tmpmap_size = 0;
-
 	static locker_info *dd_id_array = NULL;
 	static size_t dd_id_array_size = 0;
 
@@ -1103,7 +1094,7 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	LOCK_SET_TIME_INVALID(&now);
 
 	LOCK_SET_TIME_MAX(&min_timeout);
-	expire_only = atype == DB_LOCK_EXPIRE;
+	int expire_only = (atype == DB_LOCK_EXPIRE);
 
 
 	/*
@@ -1116,7 +1107,6 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	 */
 	if (expire_only) {
 		count = 0;
-
 		nentries = 0;
 		goto obj_loop;
 	}
@@ -1138,10 +1128,10 @@ retry:	count = region->stat.st_nlockers;
 		 __db_err(dbenv, "%lu lockers", (u_long)count);
 
 	count +=20;
-
 	allocSz = (size_t)count * sizeof(locker_info);
 
-    ret = __resize_object(dbenv, (void**) &dd_id_array, &dd_id_array_size, allocSz, "dd_id_array");
+    ret = __resize_object(dbenv, (void**) &dd_id_array, 
+            &dd_id_array_size, allocSz);
     if(ret) {
         if (sparse_map) 
             free_sparse_map(dbenv, sparse_map);
@@ -1177,8 +1167,7 @@ retry:	count = region->stat.st_nlockers;
 			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
 			ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
 			ptr_idarr->saveme =
-			    F_ISSET(lip,
-			    (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
+			    F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
 			ptr_idarr->in_abort =
 			    (F_ISSET(lip, DB_LOCKER_INABORT) != 0);
 			ptr_idarr->tracked =
@@ -1201,18 +1190,17 @@ retry:	count = region->stat.st_nlockers;
 	}
 
 	count = id;
-
 	nentries = ALIGN(count, 32) / 32;
 
 	if (gbl_sparse_lockerid_map) {
-		if ((ret =
-			allocate_sparse_map(dbenv, nentries, &sparse_map))!=0) {
+		if ((ret = allocate_sparse_map(dbenv, nentries, &sparse_map))!=0) {
 			return (ret);
 		}
 		dd_bitmap = NULL;
 	} else {
-		allocSz = (size_t)count *sizeof(u_int32_t) * nentries;
-        ret = __resize_object(dbenv, (void**) &dd_bitmap, &dd_bitmap_size, allocSz, "dd_bitmap");
+		allocSz = (size_t)count * sizeof(u_int32_t) * nentries;
+        ret = __resize_object(dbenv, (void**) &dd_bitmap, 
+                &dd_bitmap_size, allocSz);
 		if (ret)
             return ret;
 		memset(dd_bitmap, 0, allocSz);
@@ -1220,7 +1208,7 @@ retry:	count = region->stat.st_nlockers;
 	}
 
 	allocSz = sizeof(u_int32_t) * nentries;
-    ret = __resize_object(dbenv, (void**) &dd_tmpmap, &dd_tmpmap_size, allocSz, "dd_tmpmap");
+    ret = __resize_object(dbenv, (void**) &dd_tmpmap, &dd_tmpmap_size, allocSz);
     if(ret) {
         if (sparse_map) 
             free_sparse_map(dbenv, sparse_map);
@@ -1244,21 +1232,20 @@ obj_loop:
 		u_int32_t partition = op->partition;
 		u_int32_t generation = op->generation;
 
-		if (partition <gbl_lk_parts) {
+		if (partition < gbl_lk_parts) {
 			unlock_detector(region);
 			lock_obj_partition(region, partition);
 		} else {
 			puts("WHAT IS THIS STATE?");
 			abort();
 		}
-		if (partition !=op->partition ||generation != op->generation) {
+		if (partition != op->partition || generation != op->generation) {
 			unlock_obj_partition(region, partition);
 
 			if (sparse_map) {
 				clear_sparse_map(dbenv, sparse_map);
 			} else {
-				memset(dd_bitmap, 0,
-				    count *sizeof(u_int32_t) * nentries);
+				memset(dd_bitmap, 0, count *sizeof(u_int32_t) * nentries);
 			}
 			goto obj_loop;
 		}
@@ -1335,23 +1322,18 @@ look_waiters:
 				continue;
 
 			if (lp->status == DB_LSTAT_WAITING) {
-				if (__lock_expired(dbenv,
-					&now, &lockerp->lk_expire)) {
+				if (__lock_expired(dbenv, &now, &lockerp->lk_expire)) {
 					lp->status = DB_LSTAT_EXPIRED;
 					MUTEX_UNLOCK(dbenv, &lp->mutex);
-
 					continue;
 				}
-				if (LOCK_TIME_GREATER(&min_timeout,
-					&lockerp->lk_expire))
+				if (LOCK_TIME_GREATER(&min_timeout, &lockerp->lk_expire))
 					min_timeout = lockerp->lk_expire;
 
 			}
 
-			if (expire_only) {
+			if (expire_only)
 				continue;
-			}
-
 
 			int has_master = 0;
 
@@ -1386,7 +1368,7 @@ look_waiters:
 			 * If the transaction is pending abortion, then
 			 * ignore it on this iteration.
 			 */
-			if (lp->status !=DB_LSTAT_WAITING) {
+			if (lp->status != DB_LSTAT_WAITING) {
 				continue;
 			}
 
@@ -1429,16 +1411,14 @@ look_waiters:
 	if (LOCK_TIME_ISVALID(&region->next_timeout)) {
 		if (LOCK_TIME_ISMAX(&min_timeout))
 			LOCK_SET_TIME_INVALID(&region->next_timeout);
-
 		else
 			region->next_timeout = min_timeout;
 	}
+
 	if (expire_only)
 		return (0);
 
-
 	int fix_pure_readers = 0;
-
 	if (atype == DB_LOCK_MINWRITE_NOREAD || atype == DB_LOCK_MINWRITE_EVER)
 		fix_pure_readers = 1;
 
@@ -1518,44 +1498,32 @@ again1:			lp = SH_LIST_FIRST(&child->heldby,
 
 					lock_obj_partition(region, lpartition);
 
-					if (SH_LIST_EMPTY(&lockerp->
-						child_locker)) {
-						unlock_obj_partition(region,
-						    lpartition);
+					if (SH_LIST_EMPTY(&lockerp-> child_locker)) {
+						unlock_obj_partition(region, lpartition);
 						goto next_child;
 					}
-					if (lp !=SH_LIST_FIRST(&child->heldby,
-						__db_lock)) {
-						unlock_obj_partition(region,
-						    lpartition);
+					if (lp !=SH_LIST_FIRST(&child->heldby, __db_lock)) {
+						unlock_obj_partition(region, lpartition);
 						goto again1;
 					}
 					if (lpartition != lp->lpartition) {
-						unlock_obj_partition(region,
-						    lpartition);
+						unlock_obj_partition(region, lpartition);
 						goto again1;
 					}
 					if (lp->status == DB_LSTAT_WAITING) {
-						dd_id_array[id].last_locker_id =
-						    child->id;
+						dd_id_array[id].last_locker_id = child->id;
 						lo = lp->lockobj;
 
-						if (lo->partition !=lp->
-						    lpartition) {
-							unlock_obj_partition
-							    (region,
-							    lpartition);
+						if (lo->partition !=lp->lpartition) {
+							unlock_obj_partition(region, lpartition);
 							//Fail fast for now - want to catch it doing this
 							abort();
 						}
 						goto get_lock;
 					}
-					unlock_obj_partition(region,
-					    lpartition);
+					unlock_obj_partition(region, lpartition);
 				}
-next_child:			child =
-				    SH_LIST_NEXT(child, child_link,
-				    __db_locker);
+next_child:			child = SH_LIST_NEXT(child, child_link, __db_locker);
 			} while (child !=NULL);
 		}
 
@@ -1598,17 +1566,15 @@ again2:	lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock);
 				goto again2;
 			}
 			dd_id_array[id].last_locker_id = lockerp->id;
-			get_lock:dd_id_array[id].last_lock =
-			    R_OFFSET(&lt->reginfo, lp);
+get_lock:   dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
 			dd_id_array[id].last_obj = lp->lockobj;
 			pptr = lo->lockobj.data;
 
 			if (lo->lockobj.size >=sizeof(db_pgno_t))
-				memcpy(&dd_id_array[id].pgno,
-				    pptr, sizeof(db_pgno_t));
+				memcpy(&dd_id_array[id].pgno, pptr, sizeof(db_pgno_t));
 			else
 				dd_id_array[id].pgno = 0;
-			out:unlock_obj_partition(region, lpartition);
+out:        unlock_obj_partition(region, lpartition);
 		}
 		unlock_locker_partition(region, lkr_partition);
 	}
@@ -1907,7 +1873,7 @@ __dd_abort(dbenv, info)
 	region->stat.st_ndeadlocks++;
 ounlock:unlock_obj_partition(region, partition);
 unlock:unlock_locker_partition(region, lockerp->partition);
-	out:unlock_lockers(region);
+out:unlock_lockers(region);
 	UNLOCKREGION(dbenv, lt);
 
 	return (ret);
@@ -2260,7 +2226,7 @@ __dd_abort_holders(dbenv, sh_obj)
 		}
 	}
 
-	out:
+out:
 	    /* Free info if I allocated it */
 	if (info && free_info) {
 		__os_free (dbenv, info);
@@ -2438,7 +2404,7 @@ __dd_abort_waiters(dbenv, sh_obj)
 		}
 	}
 
-	out:
+out:
 	    /* Free info if I allocated it */
 	if (info && free_info) {
 		__os_free (dbenv, info);
