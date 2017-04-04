@@ -4642,16 +4642,9 @@ const char *sqlite3BtreeGetJournalname(Btree *pBt)
 
 void get_current_lsn(struct sqlclntstate *clnt)
 {
-    struct ireq iq;
-    void *bdb_handle;
-    struct db *db;
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = thedb->dbs[0]; /* this is not used but required */
-    db = iq.usedb;
+    struct db *db = thedb->dbs[0]; /* this is not used but required */
     if (db) {
         bdb_get_current_lsn(db->handle, &(clnt->file), &(clnt->offset));
-    } else if (iq.use_handle) {
-        bdb_get_current_lsn(iq.use_handle, &(clnt->file), &(clnt->offset));
     } else {
         logmsg(LOGMSG_ERROR, "get_current_lsn: ireq has no bdb handle\n");
         abort();
@@ -5113,6 +5106,10 @@ int sqlite3BtreeCommit(Btree *pBt)
             }
         } else {
             rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+            osqlstate_t *osql = &thd->sqlclntstate->osql;
+            if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
+                osql->xerr.errval = 0;
+            }
         }
         break;
 
@@ -11540,8 +11537,8 @@ int bt_hash_table(char *table, int szkb)
     struct db *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
-    void *metatran = NULL;
-    void *tran = NULL;
+    tran_type *metatran = NULL;
+    tran_type *tran = NULL;
     int rc, bdberr = 0;
     int bthashsz;
 
@@ -11595,8 +11592,8 @@ int del_bt_hash_table(char *table)
     struct db *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
-    void *metatran = NULL;
-    void *tran = NULL;
+    tran_type *metatran = NULL;
+    tran_type *tran = NULL;
     int rc, bdberr = 0;
     int bthashsz;
 

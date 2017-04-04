@@ -241,6 +241,7 @@ mem_*.c
 mem_*.h
 builddeps
 debian
+dbsize
 
 # jdbc driver
 !cdb2jdbc/**

@@ -6362,18 +6362,16 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         free_blob_buffers(blobs, MAXBLOBS);
 
         if (iq->sc != NULL) {
-            if (strcmp(
-                    ((struct schema_change_type *)iq->sc)->original_master_node,
-                    gbl_mynode)) // TODO: Fix the type of the pointer once there
-                                 // is an accessor method
-                return -1; // Can't commit without resuming locally, also change
-                           // return code
-            rc = finalize_schema_change(iq->sc);
 
+            if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
+                return -1;
+            }
+            if (iq->sc->db) iq->usedb = iq->sc->db;
+            rc = finalize_schema_change(iq, trans);
             iq->sc = NULL;
-
-            if (rc != SC_OK)
+            if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
+            }
         }
 
         // TODO Notify all bpfunc of success
@@ -7042,12 +7040,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 strcmp(sc->original_master_node, gbl_mynode))
                 sc->resume = 1;
 
-            rc = start_schema_change(NULL, sc, iq);
-
-            if (rc == SC_COMMIT_PENDING)
-                iq->sc = sc;
-            else
+            iq->sc = sc;
+            if (sc->db == NULL) {
+                sc->db = getdbbyname(sc->table);
+            }
+            if (sc->db) iq->usedb = sc->db;
+            rc = start_schema_change_tran(iq, trans);
+            if (rc != SC_COMMIT_PENDING) {
                 iq->sc = NULL;
+            }
 
             return rc == SC_COMMIT_PENDING || !rc ? 0 : ERR_SC;
         }

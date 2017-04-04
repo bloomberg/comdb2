@@ -17,13 +17,12 @@
 #ifndef INCLUDE_SC_LOGIC_H
 #define INCLUDE_SC_LOGIC_H
 
-int dryrun_int(struct schema_change_type *, struct db *db, struct db *newdb,
-               struct scinfo *);
+
+#include "schemachange.h"
+
+int dryrun_int(struct schema_change_type *, struct db *db, struct db *newdb, struct scinfo *);
 int dryrun(struct schema_change_type *s);
-struct sc_arg;
-int do_schema_change_thd(struct sc_arg *);
-int do_fastinit(struct schema_change_type *s);
-int finalize_schema_change_thd(struct schema_change_type *s);
+int finalize_schema_change_thd(struct ireq*, tran_type *);
 int do_setcompr(struct ireq *iq, const char *rec, const char *blob);
 int delete_temp_table(struct schema_change_type *s, struct db *newdb);
 
@@ -34,4 +33,6 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb);
 int verify_constraints_exist(struct db *from_db, struct db *to_db,
                              struct db *new_db, struct schema_change_type *s);
 
+int do_schema_change_tran(sc_arg_t *);
+int do_schema_change(struct schema_change_type *);
 #endif

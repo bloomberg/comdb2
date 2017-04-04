@@ -15,7 +15,6 @@
  */
 
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_stripes.h"
 
 void apply_new_stripe_settings(int newdtastripe, int newblobstripe)
@@ -57,7 +56,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
-        void *tran = NULL;
+        tran_type *tran = NULL;
         struct ireq iq = {0};
 
         init_fake_ireq(thedb, &iq);

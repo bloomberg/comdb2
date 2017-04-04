@@ -14,9 +14,26 @@
    limitations under the License.
  */
 
+#include <unistd.h>
+#include <poll.h>
+
+#include <memory_sync.h>
+#include <str0.h>
+#include <views.h>
+
 #include "schemachange.h"
-#include "schemachange_int.h"
+#include "sc_global.h"
 #include "sc_logic.h"
+#include "sc_util.h"
+#include "sc_struct.h"
+#include "sc_queues.h"
+#include "sc_schema.h"
+#include "sc_lua.h"
+#include "sc_add_table.h"
+#include "sc_alter_table.h"
+#include "sc_fastinit_table.h"
+#include "sc_stripes.h"
+#include "sc_drop_table.h"
 #include "analyze.h"
 #include "logmsg.h"
 
@@ -60,7 +77,7 @@ static void reset_sc_thread(enum thrtype oldtype, struct schema_change_type *s)
  * the new master knows to resume 
  * We mark schemachange over in mark_schemachange_over()
  */
-static int mark_sc_in_llmeta(struct schema_change_type *s)
+static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
 {
     int bdberr;
     int rc = SC_OK;
@@ -78,7 +95,7 @@ static int mark_sc_in_llmeta(struct schema_change_type *s)
          * retry several times */
         for (retries = 0;
              retries < max_retries &&
-                 (bdb_set_in_schema_change(NULL /*input_trans*/, s->table,
+                 (bdb_set_in_schema_change(trans, s->table,
                                            packed_sc_data, packed_sc_data_len,
                                            &bdberr) ||
                   bdberr != BDBERR_NOERROR);
@@ -102,6 +119,11 @@ static int mark_sc_in_llmeta(struct schema_change_type *s)
 
     free(packed_sc_data);
     return rc;
+}
+
+static int mark_sc_in_llmeta(struct schema_change_type *s)
+{
+    return mark_sc_in_llmeta_tran(s, NULL);
 }
 
 
@@ -216,7 +238,7 @@ int do_alter_table_shard(struct schema_change_type *s, struct ireq *iq,
         s->timepart_newdbs[indx] = s->newdb;
     }
 
-    mark_schemachange_over(NULL, s->table);
+    mark_schemachange_over(s->table);
 
     if (rc)
     {
@@ -293,7 +315,7 @@ static int do_alter_table(struct schema_change_type *s, struct ireq *iq)
             return SC_MASTER_DOWNGRADE;
 
         if (rc) {
-            mark_schemachange_over(NULL, s->table);
+            mark_schemachange_over(s->table);
         } else if (s->finalize) {
             if (s->type == DBTYPE_TAGGED_TABLE && !s->timepart_nshards) {
                 /* check for rename outside of taking schema lock */
@@ -329,7 +351,7 @@ int do_upgrade_table(struct schema_change_type *s)
         rc = do_upgrade_table_int(s);
 
     if (rc) {
-        mark_schemachange_over(NULL, s->table);
+        mark_schemachange_over(s->table);
     } else if (s->finalize) {
         rc = finalize_upgrade_table(s);
     } else {
@@ -339,64 +361,82 @@ int do_upgrade_table(struct schema_change_type *s)
     return rc;
 }
 
-int do_fastinit(struct schema_change_type *s)
+typedef int (*ddl_t)(struct ireq *, tran_type *);
+
+/*
+** Start transaction if not passed in (comdb2sc.tsk)
+** If started transaction, then
+**   1. also commit it
+**   2. log scdone here
+*/
+static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
+                    scdone_t type)
 {
-#ifdef DEBUG
-    printf("do_fastinit() %s\n", s->resume?"resuming":"");
-#endif
     int rc;
+    tran_type *tran = input_tran;
+    struct schema_change_type *s = iq->sc;
 
-    wrlock_schema_lk();
-    set_original_tablename(s);
+    if (tran == NULL) {
+        rc = trans_start_sc(iq, NULL, &tran);
+        if (rc) {
+            sc_errf(s, "Failed to start finalize transaction\n");
+            return rc;
+        }
+    }
 
-    if (!s->resume)
-        set_sc_flgs(s);
-
-    if ((rc = mark_sc_in_llmeta(s)))
-        goto end;
-
-    propose_sc(s);
-    rc = do_fastinit_int(s);
+    rc = func(iq, tran);
 
     if (rc) {
-        mark_schemachange_over(NULL, s->table);
-    } else if (s->finalize) {
-        rc = finalize_fastinit_table(s);
-    } else {
-        rc = SC_COMMIT_PENDING;
+        if (input_tran == NULL) {
+            trans_abort(iq, tran);
+        }
+        return rc;
     }
-end:
-    unlock_schema_lk();
-    broadcast_sc_end(sc_seed);
 
+    if (input_tran == NULL) {
+        //void all_locks(void*);
+        //all_locks(thedb->bdb_env);
+        rc = trans_commit_adaptive(iq, tran, gbl_mynode);
+        if (rc) {
+            sc_errf(s, "Failed to commit finalize transaction\n");
+            return rc;
+        }
+
+        int bdberr = 0;
+        if ((rc = bdb_llog_scdone(s->db->handle, type, 1, &bdberr)) ||
+            bdberr != BDBERR_NOERROR) {
+            sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
+            return -1;
+        }
+    } else {
+        llog_scdone_t *scdone = malloc(sizeof(llog_scdone_t));
+        scdone->handle = s->db->handle;
+        scdone->type = type;
+        iq->scdone = scdone;
+    }
     return rc;
 }
 
-int do_add_table(struct schema_change_type *s, struct ireq *iq)
+static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
+                  scdone_t type)
 {
     int rc;
-
+    struct schema_change_type *s = iq->sc;
     wrlock_schema_lk();
     set_original_tablename(s);
-
-    if (!s->resume)
-        set_sc_flgs(s);
-    if ((rc = mark_sc_in_llmeta(s)))
-        goto end;
-    
-    if (rc == SC_OK)
-        rc = do_add_table_int(s, iq);
-
+    if (!s->resume) set_sc_flgs(s);
+    if ((rc = mark_sc_in_llmeta(s))) goto end; // non-tran
+    propose_sc(s);
+    rc = pre(iq, tran);
     if (rc) {
-        mark_schemachange_over(NULL, s->table);
+        mark_schemachange_over(s->table); // non-tran
     } else if (s->finalize) {
-        rc = finalize_add_table(s);
+        rc = do_finalize(post, iq, tran, type);
     } else {
         rc = SC_COMMIT_PENDING;
     }
-end:
-    unlock_schema_lk();
-
+end:unlock_schema_lk();
+    broadcast_sc_end(sc_seed);
     return rc;
 }
 
@@ -454,12 +494,17 @@ int do_alter_stripes(struct schema_change_type *s)
     return rc;
 }
 
-int do_schema_change_thd(struct sc_arg *arg)
+int do_schema_change_tran(sc_arg_t *arg)
 {
-    struct schema_change_type *s = arg->s;
     struct ireq *iq = arg->iq;
+    tran_type *trans = arg->trans;
     free(arg);
 
+    if (iq == NULL) {
+        abort();
+    }
+
+    struct schema_change_type *s = iq->sc;
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
 
@@ -477,10 +522,12 @@ int do_schema_change_thd(struct sc_arg *arg)
         rc = do_lua_sfunc(s);
     else if (s->is_afunc)
         rc = do_lua_afunc(s);
+    else if (s->fastinit && s->drop_table)
+        rc = do_ddl(do_drop_table, finalize_drop_table, iq, trans, drop);
     else if (s->fastinit)
-        rc = do_fastinit(s);
+        rc = do_ddl(do_fastinit, finalize_fastinit_table, iq, trans, fastinit);
     else if (s->addonly)
-        rc = do_add_table(s, iq);
+        rc = do_ddl(do_add_table, finalize_add_table, iq, trans, add);
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)
@@ -497,8 +544,26 @@ int do_schema_change_thd(struct sc_arg *arg)
     return rc;
 }
 
-int finalize_schema_change_thd(struct schema_change_type *s)
+int do_schema_change(struct schema_change_type *s)
 {
+    struct ireq iq;
+    init_fake_ireq(thedb, &iq);
+    iq.sc = s;
+    if (s->db == NULL) {
+        s->db = getdbbyname(s->table);
+    }
+    iq.usedb = s->db;
+    sc_arg_t *arg = malloc(sizeof(sc_arg_t));
+    arg->iq = &iq;
+    arg->trans = NULL;
+    return do_schema_change_tran(arg);
+}
+
+int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
+{
+    if (iq == NULL || iq->sc == NULL)
+        abort();
+    struct schema_change_type *s = iq->sc;
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
 
@@ -515,10 +580,12 @@ int finalize_schema_change_thd(struct schema_change_type *s)
         rc = finalize_lua_sfunc();
     else if (s->is_afunc)
         rc = finalize_lua_afunc();
+    else if (s->fastinit && s->drop_table)
+        rc = do_finalize(finalize_drop_table, iq, trans, drop);
     else if (s->fastinit)
-        rc = finalize_fastinit_table(s);
+        rc = do_finalize(finalize_fastinit_table, iq, trans, fastinit);
     else if (s->addonly)
-        rc = finalize_add_table(s);
+        rc = do_finalize(finalize_add_table, iq, trans, add);
     else if (s->type == DBTYPE_TAGGED_TABLE)
         rc = finalize_alter_table(s);
     else if (s->fulluprecs || s->partialuprecs)
@@ -604,8 +671,16 @@ int resume_schema_change(void)
                     scabort = 1;
             }
 
-
-            if (scabort) {
+            /*
+            **   _
+            **  | |_ ___ _ __ ___  _ __
+            **  | __/ _ \ '_ ` _ \| '_ \
+            **  | ||  __/ | | | | | |_) |
+            **   \__\___|_| |_| |_| .__/
+            **                    |_|
+            */
+            if (1 || scabort) {
+                system("figlet force scabort");
                 logmsg(LOGMSG_WARN, "Cancelling schema change\n");
                 rc = unlink(abort_filename);
                 if (rc)
@@ -636,7 +711,7 @@ int resume_schema_change(void)
             MEMORY_SYNC;
 
             /* start the schema change back up */
-            rc = start_schema_change(thedb, s, NULL);
+            rc = start_schema_change(s);
             if (rc != SC_OK && rc != SC_ASYNC) {
                 return -1;
             }
@@ -817,7 +892,7 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
 int delete_temp_table(struct schema_change_type *s, struct db *newdb)
 {
     int i, rc, bdberr;
-    void *tran;
+    tran_type *tran;
     struct ireq iq;
 
     rc = bdb_close_only(newdb->handle, &bdberr);
@@ -880,7 +955,7 @@ int delete_temp_table(struct schema_change_type *s, struct db *newdb)
 int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
 {
     int rc;
-    void *tran = NULL;
+    tran_type *tran = NULL;
     if ((rc = trans_start(iq, NULL, &tran)) != 0) {
         sbuf2printf(iq->sb, ">%s -- trans_start rc:%d\n", __func__, rc);
         return rc;

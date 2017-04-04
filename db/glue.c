@@ -278,7 +278,8 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*        TRANSACTIONAL STUFF        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-int trans_start_int_int(struct ireq *iq, void *parent_trans, void **out_trans,
+static
+int trans_start_int_int(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans,
                         int logical, int sc, int retries)
 {
     int bdberr;
@@ -316,35 +317,35 @@ int trans_start_int_int(struct ireq *iq, void *parent_trans, void **out_trans,
     return 0;
 }
 
-int trans_start_int(struct ireq *iq, void *parent_trans, void **out_trans,
+int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
                     int logical, int retries)
 {
     return trans_start_int_int(iq, parent_trans, out_trans, logical, 0,
                                retries);
 }
 
-int trans_start_logical_sc(struct ireq *iq, void **out_trans)
+int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
     return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
 }
 
-int trans_start_logical(struct ireq *iq, void **out_trans)
+int trans_start_logical(struct ireq *iq, tran_type **out_trans)
 {
     return trans_start_int(iq, NULL, out_trans, 1, 0);
 }
 
-int rowlocks_check_commit_physical(bdb_state_type *bdb_state, void *tran,
+int rowlocks_check_commit_physical(bdb_state_type *bdb_state, tran_type *tran,
                                    int blockop_count)
 {
     return bdb_rowlocks_check_commit_physical(bdb_state, tran, blockop_count);
 }
 
-int is_rowlocks_transaction(void *tran)
+int is_rowlocks_transaction(tran_type *tran)
 {
     return bdb_is_rowlocks_transaction(tran);
 }
 
-int trans_start(struct ireq *iq, void *parent_trans, void **out_trans)
+int trans_start(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
 {
     if (gbl_rowlocks)
         return trans_start_logical(iq, out_trans);
@@ -352,13 +353,13 @@ int trans_start(struct ireq *iq, void *parent_trans, void **out_trans)
         return trans_start_int(iq, parent_trans, out_trans, 0, 0);
 }
 
-int trans_start_sc(struct ireq *iq, void *parent_trans, void **out_trans)
+int trans_start_sc(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
 {
     return trans_start_int(iq, parent_trans, out_trans, 0, 0);
 }
 
-int trans_start_set_retries(struct ireq *iq, void *parent_trans,
-                            void **out_trans, int retries)
+int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
+                            tran_type **out_trans, int retries)
 {
     int rc = 0;
 
@@ -4606,8 +4607,8 @@ int put_csc2_file(const char *table, void *tran, int version, const char *text)
  * schema is returned in a pointer set to *text (must be freed by the caller)
  * schema length is returnedin *len
  * returns !0 on failure or 0 on success */
-int get_csc2_file_tran(tran_type *tran, const char *table, int version,
-                       char **text, int *len)
+int get_csc2_file_tran(const char *table, int version,
+                       char **text, int *len, tran_type *tran)
 {
     int bdberr;
     if (bdb_get_csc2(tran, table, version, text, &bdberr) ||
@@ -4624,16 +4625,14 @@ int get_csc2_file_tran(tran_type *tran, const char *table, int version,
 
 int get_csc2_file(const char *table, int version, char **text, int *len)
 {
-    return get_csc2_file_tran(NULL /*tran*/, table, version, text, len);
+    return get_csc2_file_tran(table, version, text, len, NULL);
 }
 
-int get_csc2_version_tran(tran_type *tran, const char *table, int *bdberr)
+int get_csc2_version_tran(const char *table, tran_type *tran)
 {
     int csc2_vers, rc, lcl_bdberr;
     rc = bdb_get_csc2_highest(tran, table, &csc2_vers, &lcl_bdberr);
     if (rc || lcl_bdberr != BDBERR_NOERROR) {
-        if (bdberr)
-            *bdberr = lcl_bdberr;
         logmsg(LOGMSG_ERROR, "get_csc2_version_tran failed to get version\n");
         return -1;
     }
@@ -4642,7 +4641,7 @@ int get_csc2_version_tran(tran_type *tran, const char *table, int *bdberr)
 
 int get_csc2_version(const char *table)
 {
-    return get_csc2_version_tran(NULL /*tran*/, table, NULL);
+    return get_csc2_version_tran(table, NULL);
 }
 
 int put_blobstripe_genid(struct db *db, void *tran, unsigned long long genid)
@@ -4665,167 +4664,36 @@ int get_blobstripe_genid(struct db *db, unsigned long long *genid)
     return rc;
 }
 
-int put_db_odh(struct db *db, void *tran, int odh)
-{
-    struct metahdr hdr;
-    int n_odh = htonl(odh);
-    int rc;
-    hdr.rrn = META_ONDISK_HEADER_RRN;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_odh, sizeof(n_odh));
-    return rc;
+#define get_put_db(x, y)                                                   \
+int put_db_##x(struct db *db, tran_type *tran, int value)                  \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    int tmp = htonl(value);                                                \
+    return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
+}                                                                          \
+int get_db_##x##_tran(struct db *db, int *value, tran_type *tran)          \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    int tmp;                                                               \
+    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
+    if (rc == 0)                                                           \
+        *value = ntohl(tmp);                                               \
+    else                                                                   \
+        *value = 0;                                                        \
+    return rc;                                                             \
+}                                                                          \
+int get_db_##x(struct db *db, int *value)                                  \
+{                                                                          \
+    return get_db_##x##_tran(db, value, NULL);                             \
 }
 
-int get_db_odh(struct db *db, int *odh)
-{
-    struct metahdr hdr;
-    int n_odh;
-    int rc;
-    hdr.rrn = META_ONDISK_HEADER_RRN;
-    hdr.attr = 0;
-    rc = meta_get(db, &hdr, (void *)&n_odh, sizeof(n_odh));
-    if (rc == 0)
-        *odh = ntohl(n_odh);
-    else
-        *odh = 0;
-    return rc;
-}
-
-int put_db_inplace_updates(struct db *db, void *tran, int ipupdates)
-{
-    struct metahdr hdr;
-    int n_inplace = htonl(ipupdates);
-    int rc;
-    hdr.rrn = META_INPLACE_UPDATES;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_inplace, sizeof(n_inplace));
-    return rc;
-}
-
-int get_db_inplace_updates(struct db *db, int *ipupdates)
-{
-    struct metahdr hdr;
-    int rc, n_inplace;
-    hdr.rrn = META_INPLACE_UPDATES;
-    hdr.attr = 0;
-    rc = meta_get(db, &hdr, (void *)&n_inplace, sizeof(n_inplace));
-    *ipupdates = ntohl(n_inplace);
-    return rc;
-}
-
-int put_db_compress(struct db *db, void *tran, int compress)
-{
-    struct metahdr hdr;
-    int n_compress = htonl(compress);
-    int rc;
-    hdr.rrn = META_COMPRESS_RRN;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_compress, sizeof(n_compress));
-    return rc;
-}
-
-int get_db_compress(struct db *db, int *compress)
-{
-    struct metahdr hdr;
-    int rc, n_compress;
-    hdr.rrn = META_COMPRESS_RRN;
-    hdr.attr = 0;
-    rc = meta_get(db, &hdr, (void *)&n_compress, sizeof(n_compress));
-    *compress = ntohl(n_compress);
-    return rc;
-}
-
-int put_db_compress_blobs(struct db *db, void *tran, int compress_blobs)
-{
-    struct metahdr hdr;
-    int rc, n_compress_blobs = htonl(compress_blobs);
-    hdr.rrn = META_COMPRESS_BLOBS_RRN;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_compress_blobs,
-                  sizeof(n_compress_blobs));
-    return rc;
-}
-
-int get_db_compress_blobs(struct db *db, int *compress_blobs)
-{
-    struct metahdr hdr;
-    int rc;
-    hdr.rrn = META_COMPRESS_BLOBS_RRN;
-    hdr.attr = 0;
-    int n_compress_blobs;
-    rc =
-        meta_get(db, &hdr, (void *)&n_compress_blobs, sizeof(n_compress_blobs));
-    *compress_blobs = ntohl(n_compress_blobs);
-    return rc;
-}
-
-int put_db_instant_schema_change(struct db *db, void *tran, int isc)
-{
-    struct metahdr hdr;
-    int rc, n_isc = htonl(isc);
-    hdr.rrn = META_INSTANT_SCHEMA_CHANGE;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_isc, sizeof(n_isc));
-    return rc;
-}
-
-int get_db_instant_schema_change(struct db *db, int *isc)
-{
-    struct metahdr hdr;
-    int rc;
-    hdr.rrn = META_INSTANT_SCHEMA_CHANGE;
-    hdr.attr = 0;
-    int n_isc = 0;
-    rc = meta_get(db, &hdr, (void *)&n_isc, sizeof(n_isc));
-    *isc = ntohl(n_isc);
-    return rc;
-}
-
-int put_db_datacopy_odh(struct db *db, void *tran, int cdc)
-{
-    struct metahdr hdr;
-    int rc, n_cdc = htonl(cdc);
-    /*printf("%s %s: %d\n", __func__, db->dbname, cdc);*/
-    hdr.rrn = META_DATACOPY_ODH;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_cdc, sizeof(n_cdc));
-    return rc;
-}
-
-int get_db_datacopy_odh(struct db *db, int *cdc)
-{
-    struct metahdr hdr;
-    int rc;
-    hdr.rrn = META_DATACOPY_ODH;
-    hdr.attr = 0;
-    int n_cdc = 0;
-    rc = meta_get(db, &hdr, (void *)&n_cdc, sizeof(n_cdc));
-    *cdc = ntohl(n_cdc);
-    /*printf("%s %s: %d\n", __func__, db->dbname, *cdc);*/
-    return rc;
-}
-
-int put_db_bthash(struct db *db, void *tran, int bthashsz)
-{
-    struct metahdr hdr;
-    int rc, n_bthashsz = htonl(bthashsz);
-    hdr.rrn = META_BTHASH;
-    hdr.attr = 0;
-    rc = meta_put(db, tran, &hdr, (void *)&n_bthashsz, sizeof(n_bthashsz));
-    return rc;
-}
-
-int get_db_bthash(struct db *db, int *bthashsz)
-{
-    struct metahdr hdr;
-    int rc;
-    hdr.rrn = META_BTHASH;
-    hdr.attr = 0;
-    int n_bthashsz = 0;
-    rc = meta_get(db, &hdr, (void *)&n_bthashsz, sizeof(n_bthashsz));
-    *bthashsz = ntohl(n_bthashsz);
-    return rc;
-}
+get_put_db(odh, META_ONDISK_HEADER_RRN)
+get_put_db(inplace_updates, META_INPLACE_UPDATES)
+get_put_db(compress, META_COMPRESS_RRN)
+get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
+get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
+get_put_db(datacopy_odh, META_DATACOPY_ODH)
+get_put_db(bthash, META_BTHASH)
 
 static int put_meta_int(const char *table, void *tran, int rrn, int key,
                         int value)
@@ -4922,7 +4790,7 @@ static int meta_put(struct db *db, void *input_tran, struct metahdr *hdr1,
                     void *data, int dtalen)
 {
     struct ireq iq = {0};
-    void *trans;
+    tran_type *trans;
     int rc;
     int rrn;
     int fnd;
@@ -5647,7 +5515,7 @@ int reinit_db(struct db *db)
     int rc, bdberr;
     void *bdb_handle;
     int retries = 0;
-    void *trans;
+    tran_type *trans;
     struct ireq iq = {0};
 
     bdb_handle = get_bdb_handle(db, AUXDB_NONE);

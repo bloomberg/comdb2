@@ -23,7 +23,7 @@ extern volatile int gbl_lua_version;
 extern volatile int gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
-typedef enum {
+typedef enum scdone {
     alter,
     fastinit,
     add = fastinit, /* but, getdbbyname == NULL */

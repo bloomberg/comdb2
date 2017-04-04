@@ -1237,7 +1237,7 @@ typedef struct bpfunc_lstnode {
 
 typedef LISTC_T(bpfunc_lstnode_t) bpfunc_list_t;
 /*******************************************************************/
-
+struct llog_scdone;
 struct ireq {
     /* bzero-ing this entire struct was turning out to be very expensive.
      * So organizing this into 3 regions:
@@ -1429,6 +1429,7 @@ struct ireq {
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 
     unsigned char have_snap_info;
+    struct llog_scdone *scdone;
 };
 
 /* comdb array struct */
@@ -1982,7 +1983,7 @@ void backend_update_sync(struct dbenv *dbenv);
 void backend_sync_stat(struct dbenv *dbenv);
 
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb);
-void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq);
+void init_fake_ireq(struct dbenv *, struct ireq *);
 int set_tran_lowpri(struct ireq *iq, tran_type *tran);
 
 /* long transaction routines */
@@ -1992,22 +1993,22 @@ int add_new_transaction_entry(struct dbenv *dbenv, void *entry);
 void tran_dump(struct long_trn_stat *tstats);
 
 /* transactional stuff */
-int trans_start(struct ireq *iq, void *parent_trans, void **out_trans);
-int trans_start_sc(struct ireq *iq, void *parent_trans, void **out_trans);
-int trans_start_set_retries(struct ireq *iq, void *parent_trans,
-                            void **out_trans, int retries);
-int trans_start_logical(struct ireq *iq, void **out_trans);
-int is_rowlocks_transaction(void *trans);
-int rowlocks_check_commit_physical(bdb_state_type *bdb_state, void *tran,
+int trans_start(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
+                            int retries);
+int trans_start_logical(struct ireq *, tran_type **out);
+int is_rowlocks_transaction(tran_type *);
+int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
-tran_type *trans_start_readcommitted(struct ireq *iq, int ignore_newer_updates,
+tran_type *trans_start_readcommitted(struct ireq *, int ignore_newer_updates,
                                      int trak);
-tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, 
-                                int file, int offset, int *error);
-tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
+tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
+                                    int file, int offset, int *error);
+tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file,
                                 int offset, int *error);
-tran_type *trans_start_queryisolation(struct ireq *iq, int trak);
-tran_type *trans_start_socksql(struct ireq *iq, int ignore_newer_updates,
+tran_type *trans_start_queryisolation(struct ireq *, int trak);
+tran_type *trans_start_socksql(struct ireq *, int ignore_newer_updates,
                                int trak);
 
 int trans_commit(struct ireq *iq, void *trans, char *source_host);
@@ -2360,30 +2361,38 @@ int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
 int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
 
-int put_db_init_with_odh(struct db *db, void *tran, int init_with_odh);
-int get_db_init_with_odh(struct db *db, int *init_with_odh);
-int put_db_odh(struct db *db, void *tran, int odh);
+int put_db_odh(struct db *db, tran_type *, int odh);
 int get_db_odh(struct db *db, int *odh);
-int put_db_compress(struct db *db, void *tran, int compress);
+int get_db_odh_tran(struct db *, int *odh, tran_type *);
+int put_db_compress(struct db *db, tran_type *, int compress);
 int get_db_compress(struct db *db, int *compress);
-int put_db_compress_blobs(struct db *db, void *tran, int compress_blobs);
+int get_db_compress_tran(struct db *, int *compress, tran_type *);
+int put_db_compress_blobs(struct db *db, tran_type *, int compress_blobs);
 int get_db_compress_blobs(struct db *db, int *compress_blobs);
-int put_db_inplace_updates(struct db *db, void *tran, int ipupdates);
+int get_db_compress_blobs_tran(struct db *, int *compress_blobs, tran_type *);
+int put_db_inplace_updates(struct db *db, tran_type *, int ipupdates);
 int get_db_inplace_updates(struct db *db, int *ipupdates);
-int put_db_datacopy_odh(struct db *db, void *tran, int cdc);
+int get_db_inplace_updates_tran(struct db *, int *ipupdates, tran_type *);
+int put_db_datacopy_odh(struct db *db, tran_type *, int cdc);
 int get_db_datacopy_odh(struct db *db, int *cdc);
-int put_db_bthash(struct db *db, void *tran, int bthashsz);
+int get_db_datacopy_odh_tran(struct db *, int *cdc, tran_type *);
+int put_db_bthash(struct db *db, tran_type *, int bthashsz);
 int get_db_bthash(struct db *db, int *bthashsz);
+int get_db_bthash_tran(struct db *, int *bthashsz, tran_type *);
+int put_db_instant_schema_change(struct db *db, tran_type *tran, int isc);
+int get_db_instant_schema_change(struct db *db, int *isc);
+int get_db_instant_schema_change_tran(struct db *, int *isc, tran_type *tran);
+
 int set_meta_odh_flags(struct db *db, int odh, int compress, int compress_blobs,
                        int ipupates);
 int set_meta_odh_flags_tran(struct db *db, tran_type *tran, int odh,
                             int compress, int compress_blobs, int ipupdates);
 
 int get_csc2_version(const char *table);
-int get_csc2_version_tran(tran_type *tran, const char *table, int *bdberr);
+int get_csc2_version_tran(const char *table, tran_type *);
 int get_csc2_file(const char *table, int version, char **text, int *len);
-int get_csc2_file_tran(tran_type *tran, const char *table, int version,
-                       char **text, int *len);
+int get_csc2_file_tran(const char *table, int version,
+                       char **text, int *len, tran_type *);
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
 int put_csc2_stuff(struct db *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct db *db, void *tran, unsigned long long genid);
@@ -2511,7 +2520,6 @@ void get_copy_rootpages(struct sql_thread *thd);
 void free_copy_rootpages(struct sql_thread *thd);
 void create_master_tables(void);
 int new_indexes_syntax_check(struct ireq *iq);
-int add_schema_change_tables(void);
 void handle_isql(struct db *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct db *db);
 int handle_fastsql(struct thr_handle *thr_self, SBUF2 *sb, struct db *db,
@@ -3371,8 +3379,6 @@ void osql_checkboard_check_down_nodes(char *host);
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
 
-int put_db_instant_schema_change(struct db *db, void *tran, int isc);
-int get_db_instant_schema_change(struct db *db, int *isc);
 int vtag_to_ondisk(struct db *db, uint8_t *rec, int *len, uint8_t ver,
                    unsigned long long genid);
 int vtag_to_ondisk_vermap(struct db *db, uint8_t *rec, int *len, uint8_t ver);

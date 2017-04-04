@@ -739,7 +739,7 @@ void dbqueue_admin(struct dbenv *dbenv)
  * don't end up with millions of empty queue extents. */
 static void goose_queue(struct db *db)
 {
-    void *trans;
+    tran_type *trans;
     struct ireq iq;
     int rc, retries, debug = 0;
     int num_goosed = 0;
@@ -768,7 +768,7 @@ again:
         return;
 
     for (retries = 0; retries < gbl_maxretries; retries++) {
-        void *trans;
+        tran_type *trans;
         int rc;
         int startms, diffms;
 
@@ -857,7 +857,6 @@ again:
 /* Add a goose record to the given queue */
 void dbqueue_goose(struct db *db, int force)
 {
-    void *trans;
     struct ireq iq;
     int rc, retries, debug = 0;
     int gotlk = 0;
@@ -887,7 +886,7 @@ void dbqueue_goose(struct db *db, int force)
     }
 
     for (retries = 0; retries < gbl_maxretries; retries++) {
-        void *trans;
+        tran_type *trans;
         int rc;
         int startms, diffms;
 
@@ -1650,7 +1649,7 @@ int consume(struct ireq *iq, const void *fnd, struct consumer *consumer,
 
         /* Inner loop - short delay between retries */
         for (retries = 0; retries < gbl_maxretries; retries++) {
-            void *trans;
+            tran_type *trans;
             int rc;
             int startms, diffms;
 

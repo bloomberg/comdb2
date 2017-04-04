@@ -1,5 +1,8 @@
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_lua.h"
 #include "translistener.h"
 

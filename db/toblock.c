@@ -2051,7 +2051,7 @@ enum {
 
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
-                        struct ireq *iq, void **trans, void **parent_trans,
+                        struct ireq *iq, tran_type **trans, tran_type **parent_trans,
                         int *osql_needtransaction)
 {
     int rc = 0;
@@ -2115,8 +2115,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     return rc;
 }
 
-static int osql_destroy_transaction(struct ireq *iq, void **parent_trans,
-                                    void **trans, int *osql_needtransaction)
+static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
+                                    tran_type **trans, int *osql_needtransaction)
 {
     int error = 0;
     int rc = 0;
@@ -2458,8 +2458,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int irc;
     char *source_host;
     char key[MAXKEYLEN];
-    void *trans = NULL; /*transaction handle */
-    void *parent_trans = NULL;
+    tran_type *trans = NULL; /*transaction handle */
+    tran_type *parent_trans = NULL;
     /* for updates */
     char saved_fndkey[MAXKEYLEN];
     int saved_rrn = 0;
@@ -5704,6 +5704,12 @@ add_blkseq:
         int bdberr;
         if (iq->osql_flags & OSQL_FLAGS_ANALYZE) {
             bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
+        } else if (iq->scdone) {
+            int bdberr;
+            llog_scdone_t *s = iq->scdone;
+            bdb_llog_scdone(s->handle, s->type, 1, &bdberr);
+            free(iq->scdone);
+            iq->scdone = NULL;
         }
         if (iq->osql_flags & OSQL_FLAGS_ROWLOCKS) {
             bdb_llog_rowlocks(thedb->bdb_env, iq->osql_rowlocks_enable ?

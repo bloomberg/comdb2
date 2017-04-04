@@ -1638,8 +1638,9 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     return 0;
 }
 
-int bdb_handle_reset(bdb_state_type *bdb_state)
+int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
+    DB_TXN *tid = trans ? trans->tid : NULL;
     int rc = closedbs(bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
@@ -1652,7 +1653,7 @@ int bdb_handle_reset(bdb_state_type *bdb_state)
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, NULL);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, tid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -1660,6 +1661,10 @@ int bdb_handle_reset(bdb_state_type *bdb_state)
     bdb_state->isopen = 1;
 
     return 0;
+}
+int bdb_handle_reset(bdb_state_type *bdb_state)
+{
+    return bdb_handle_reset_tran(bdb_state, NULL);
 }
 
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb)
@@ -5856,13 +5861,14 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
 }
 
 bdb_state_type *
-bdb_create(const char name[], const char dir[], int lrl, short numix,
-           const short ixlen[], const signed char ixdups[],
-           const signed char ixrecnum[], const signed char ixdta[],
-           const signed char ixcollattr[], const signed char ixnulls[],
-           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
-           int *bdberr)
+bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
+                const short ixlen[], const signed char ixdups[],
+                const signed char ixrecnum[], const signed char ixdta[],
+                const signed char ixcollattr[], const signed char ixnulls[],
+                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int *bdberr, tran_type *trans)
 {
+    DB_TXN *tid = trans ? trans->tid : NULL;
     bdb_state_type *bdb_state, *ret;
 
     *bdberr = BDBERR_NOERROR;
@@ -5882,7 +5888,7 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
                          NULL, /* netinfo_signal */
                          0,    /* upgrade */
                          1,    /* create */
-                         bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, NULL, 0,
+                         bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, tid, 0,
                          NULL /* open lite options */
                          );
 
@@ -5933,6 +5939,19 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                        BDBTYPE_TABLE, NULL, 0, NULL);
 
     return ret;
+}
+
+bdb_state_type *
+bdb_create(const char name[], const char dir[], int lrl, short numix,
+           const short ixlen[], const signed char ixdups[],
+           const signed char ixrecnum[], const signed char ixdta[],
+           const signed char ixcollattr[], const signed char ixnulls[],
+           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+           int *bdberr)
+{
+    return bdb_create_tran(name, dir, lrl, numix, ixlen, ixdups, ixrecnum,
+                           ixdta, ixcollattr, ixnulls, numdtafiles,
+                           parent_bdb_handle, temp, bdberr, NULL);
 }
 
 /* open another database in the same transaction/replication
@@ -7398,7 +7417,7 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
 }
 
 /* queue all found unused files for garbage collection */
-int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
+int bdb_list_unused_files_tran(bdb_state_type *bdb_state, int *bdberr, char *powner, tran_type *tran)
 {
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -7520,7 +7539,7 @@ int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
                 /* try to find the file version amongst the active data files */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
                      ++i) {
-                    rc = bdb_get_file_version_data(bdb_state, NULL /*tran*/,
+                    rc = bdb_get_file_version_data(bdb_state, tran,
                                                    i /*dtanum*/, &version_num,
                                                    bdberr);
                     if (rc == 0) {
@@ -7534,7 +7553,7 @@ int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
 
                 /* try to find the file version amongst the active indices */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(bdb_state, NULL /*tran*/,
+                    rc = bdb_get_file_version_index(bdb_state, tran,
                                                     i /*dtanum*/, &version_num,
                                                     bdberr);
                     if (rc == 0) {
@@ -7589,6 +7608,11 @@ done:
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
+{
+    return bdb_list_unused_files_tran(bdb_state, bdberr, powner, NULL);
 }
 
 int bdb_have_unused_files(void) { return oldfile_list_empty() != 1; }

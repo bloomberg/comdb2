@@ -511,6 +511,14 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr);
 
+bdb_state_type *
+bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
+                const short ixlen[], const signed char ixdups[],
+                const signed char ixrecnum[], const signed char ixdta[],
+                const signed char ixcollattr[], const signed char ixnulls[],
+                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int *bdberr, tran_type *);
+
 /* open a databasent.  no actual db files are created. */
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
@@ -520,7 +528,8 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              int *bdberr);
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
-int bdb_handle_reset(bdb_state_type *bdb_state);
+int bdb_handle_reset(bdb_state_type *);
+int bdb_handle_reset_tran(bdb_state_type *, tran_type *);
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb);
 int bdb_handle_dbp_drop_hash(bdb_state_type *bdb_state);
 int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state);
@@ -1073,6 +1082,7 @@ int bdb_del_ix(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
 
 int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr);
 int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner);
+int bdb_list_unused_files_tran(bdb_state_type *, int *bdberr, char *powner, tran_type *);
 
 /* make new stripes */
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,

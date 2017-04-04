@@ -14,16 +14,20 @@
    limitations under the License.
  */
 
+#include <unistd.h>
+#include <stdbool.h>
+#include <poll.h>
+
+#include <bdb_fetch.h>
+
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_records.h"
+#include "sc_global.h"
+#include "sc_schema.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
 
 extern int gbl_partial_indexes;
-
-/* Hopefully this goes to a proper header at one point */
-extern unsigned long long get_genid(bdb_state_type *bdb_state, int dtastripe);
 
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
@@ -165,7 +169,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
         bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_SC_USE_NUM_THREADS));
 }
 
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, void *trans)
+void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, tran_type *trans)
 {
     unsigned stripe;
     for (stripe = 0; stripe < gbl_dtastripe; ++stripe) {

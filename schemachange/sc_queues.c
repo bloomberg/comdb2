@@ -15,7 +15,6 @@
  */
 
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_queues.h"
 #include "translistener.h"
 #include "logmsg.h"

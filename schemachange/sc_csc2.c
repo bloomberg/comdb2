@@ -15,8 +15,10 @@
  */
 
 #include "limit_fortify.h"
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_csc2.h"
 #include "debug_switches.h"
 #include "machine.h"
@@ -186,7 +188,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
     if (db && db->sc_to) {
         version = db->sc_to->version;
     } else {
-        version = get_csc2_version_tran(tran, table, NULL);
+        version = get_csc2_version_tran(table, tran);
         if (version < 0 || db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema\n", __func__);
             return -1;

@@ -31,4 +31,6 @@ int sc_via_ddl_only();
 // check table for index name length
 int validate_ix_names(struct db *db);
 
+int sc_via_ddl_only();
+
 #endif

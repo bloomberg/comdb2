@@ -175,7 +175,9 @@ getcmd ::= ANALYZE THRESHOLD nm(Y) dbnm(Z). {
 
 ///////////////////// COMDB2 PUT statements //////////////////////////////////
 
-cmd ::= PUT putcmd.
+cmd ::= PUT putcmd. {
+    comdb2WriteTransaction(pParse);
+}
 
 putcmd ::= ANALYZE COVERAGE nm(Y) dbnm(Z) INTEGER(F). {
     int tmp;

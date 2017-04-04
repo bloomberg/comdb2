@@ -13,10 +13,12 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+#include <sys/statvfs.h>
 
+#include <memory_sync.h>
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_util.h"
+#include "sc_global.h"
 #include "sc_schema.h"
 #include "intern_strings.h"
 #include "views.h"
@@ -398,7 +400,7 @@ int set_header_and_properties(void *tran, struct db *newdb,
 /* mark in llmeta that schemachange is finished
  * we mark schemachange start in mark_sc_in_llmeta()
  */
-int mark_schemachange_over(void *tran, const char *table)
+int mark_schemachange_over_tran(const char *table, tran_type *tran)
 {
     /* mark the schema change over */
     int bdberr;
@@ -420,7 +422,12 @@ int mark_schemachange_over(void *tran, const char *table)
     return SC_OK;
 }
 
-int prepare_table_version_one(void *tran, struct db *db,
+int mark_schemachange_over(const char *table)
+{
+    return mark_schemachange_over_tran(table, NULL);
+}
+
+int prepare_table_version_one(tran_type *tran, struct db *db,
                               struct schema **version)
 {
     int rc, bdberr;
@@ -430,7 +437,7 @@ int prepare_table_version_one(void *tran, struct db *db,
     char tag[MAXTAGLEN];
 
     /* For init with instant_sc, add ONDISK as version 1.  */
-    rc = get_csc2_file_tran(tran, db->dbname, -1, &ondisk_text, NULL);
+    rc = get_csc2_file_tran(db->dbname, -1, &ondisk_text, NULL, tran);
     if (rc) {
         logmsg(LOGMSG_FATAL, "Couldn't get latest csc2 from llmeta for %s! PANIC!!\n",
                db->dbname);
@@ -981,32 +988,37 @@ void transfer_db_settings(struct db *olddb, struct db *newdb)
 }
 
 /* use callers transaction if any, need to do I/O */
-int set_odh_options_tran(struct db *db, void *trans, int *bdberr)
+void set_odh_options_tran(struct db *db, tran_type *trans)
 {
     int compr = 0;
     int blob_compr = 0;
     int datacopy_odh = 0;
 
-    get_db_odh(db, &db->odh);
-    get_db_instant_schema_change(db, &db->instant_schema_change);
-    get_db_datacopy_odh(db, &datacopy_odh);
-    get_db_inplace_updates(db, &db->inplace_updates);
-    get_db_compress(db, &compr);
-    get_db_compress_blobs(db, &blob_compr);
-    db->version = get_csc2_version_tran(trans, db->dbname, bdberr);
+    get_db_odh_tran(db, &db->odh, trans);
+    get_db_instant_schema_change_tran(db, &db->instant_schema_change, trans);
+    get_db_datacopy_odh_tran(db, &datacopy_odh, trans);
+    get_db_inplace_updates_tran(db, &db->inplace_updates, trans);
+    get_db_compress_tran(db, &compr, trans);
+    get_db_compress_blobs_tran(db, &blob_compr, trans);
+    db->version = get_csc2_version_tran(db->dbname, trans);
 
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
                          db->instant_schema_change, db->version, compr,
                          blob_compr, datacopy_odh);
 
+    /*
     if (db->version < 0)
         return -1;
 
     return 0;
+    */
 }
 
 /* Get flags from llmeta and set db, bdb_state */
-void set_odh_options(struct db *db) { set_odh_options_tran(db, NULL, NULL); }
+void set_odh_options(struct db *db)
+{
+    set_odh_options_tran(db, NULL);
+}
 
 int compare_constraints(const char *table, struct db *newdb)
 {

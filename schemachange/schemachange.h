@@ -176,10 +176,10 @@ struct schema_change_type {
 };
 
 struct ireq;
-struct sc_arg {
-    struct schema_change_type *s;
+typedef struct {
+    tran_type *trans;
     struct ireq *iq;
-};
+} sc_arg_t;
 
 struct scinfo {
     int olddb_compress;
@@ -218,15 +218,18 @@ enum schema_change_views_rc {
     SC_VIEW_ERR_SC = -4
 };
 
-size_t schemachange_packed_size(struct schema_change_type *s);
-struct ireq;
-int start_schema_change(struct dbenv *, struct schema_change_type *,
-                        struct ireq *);
-int finalize_schema_change(struct schema_change_type *s);
+#include <bdb_schemachange.h>
+typedef struct llog_scdone {
+    void *handle;
+    scdone_t type;
+} llog_scdone_t;
 
+size_t schemachange_packed_size(struct schema_change_type *s);
+int start_schema_change_tran(struct ireq *, tran_type *tran);
+int start_schema_change(struct schema_change_type *);
+int finalize_schema_change(struct ireq *, tran_type *);
 int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize,
                  int isqueuedb);
-
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
                         int sync);
@@ -267,7 +270,7 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 
-int change_schema(struct dbenv *dbenvin, char *table, char *fname, int odh,
+int change_schema(char *table, char *fname, int odh,
                   int compress, int compress_blobs);
 
 int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
@@ -291,7 +294,21 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                                     unsigned long long newgenid,
                                     const void *od_dta,
                                     unsigned long long ins_keys, int od_len);
-int add_schema_change_tables(void);
+int add_schema_change_tables();
 
-unsigned long long get_genid(bdb_state_type *bdb_state, int dtastripe);
+extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
+
+int appsock_schema_change(SBUF2 *sb, int *keepsocket);
+
+void handle_setcompr(SBUF2 *sb);
+
+void vsb_printf(SBUF2 *sb, const char *sb_prefix, const char *prefix,
+                const char *fmt, va_list args);
+void sb_printf(SBUF2 *sb, const char *fmt, ...);
+void sb_errf(SBUF2 *sb, const char *fmt, ...);
+
+void sc_printf(struct schema_change_type *s, const char *fmt, ...);
+void sc_errf(struct schema_change_type *s, const char *fmt, ...);
+int do_dryrun(struct schema_change_type *);
+
 #endif

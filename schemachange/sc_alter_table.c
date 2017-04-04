@@ -14,11 +14,19 @@
    limitations under the License.
  */
 
+#include <unistd.h>
+#include <crc32c.h>
+#include <memory_sync.h>
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_alter_table.h"
-#include "crc32c.h"
 #include "logmsg.h"
+#include "sc_global.h"
+#include "sc_schema.h"
+#include "sc_struct.h"
+#include "sc_csc2.h"
+#include "sc_util.h"
+#include "sc_logic.h"
+#include "sc_records.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct db *db, struct db *newdb,
@@ -168,7 +176,7 @@ static void adjust_version(int changed, struct scinfo *scinfo,
     }
 }
 
-static int prepare_version_for_dbs_without_instant_sc(void *tran, struct db *db,
+static int prepare_version_for_dbs_without_instant_sc(tran_type *tran, struct db *db,
                                                       struct db *newdb)
 {
     int rc;
@@ -615,8 +623,8 @@ int finalize_alter_table(struct schema_change_type *s)
     struct ireq iq;
     struct db *db;
     struct db *newdb;
-    void *transac = NULL;
-    void *tran = NULL;
+    tran_type *transac = NULL;
+    tran_type *tran = NULL;
     void *old_bdb_handle, *new_bdb_handle;
     int olddb_bthashsz;
     struct db **dbs;
@@ -768,7 +776,7 @@ retry_version_update:
             goto retry_version_update;
         }
 
-        if ((rc = mark_schemachange_over(tran, db->dbname)))
+        if ((rc = mark_schemachange_over_tran(db->dbname, tran)))
             goto retry_version_update;
     }
 
@@ -897,10 +905,7 @@ retry_version_update:
             goto failed;
         }
 
-        if (set_odh_options_tran(db, transac, &bdberr)) {
-            sc_errf(s, "Failed to read odh options bdberr %d\n", bdberr);
-            goto failed;
-        }
+        set_odh_options_tran(db, transac);
 
         if (polddb_bthashsz[indx]) {
             logmsg(LOGMSG_INFO, "Rebuilding bthash for table %s, size %dkb per stripe\n",
@@ -1057,7 +1062,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
 {
     int rc;
     int nretries;
-    void *tran = NULL;
+    tran_type *tran = NULL;
 
     struct ireq iq;
     init_fake_ireq(thedb, &iq);
@@ -1073,7 +1078,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         if (rc != 0)
             continue;
 
-        rc = mark_schemachange_over(tran, s->db->dbname);
+        rc = mark_schemachange_over_tran(s->db->dbname, tran);
         if (rc != 0)
             continue;
 

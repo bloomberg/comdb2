@@ -7,11 +7,11 @@ schemachange/sc_alter_table.o	\
 schemachange/sc_add_table.o	\
 schemachange/sc_callbacks.o	\
 schemachange/sc_csc2.o		\
-schemachange/sc_delete_table.o	\
+schemachange/sc_drop_table.o	\
+schemachange/sc_fastinit_table.o \
 schemachange/sc_global.o	\
 schemachange/sc_logic.o		\
 schemachange/sc_lua.o		\
-schemachange/sc_net.o		\
 schemachange/sc_queues.o	\
 schemachange/sc_records.o	\
 schemachange/sc_schema.o	\

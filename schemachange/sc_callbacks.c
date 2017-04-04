@@ -14,9 +14,15 @@
    limitations under the License.
  */
 
+#include <memory_sync.h>
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_callbacks.h"
+#include "sc_global.h"
+#include "sc_add_table.h"
+#include "sc_schema.h"
+#include "sc_util.h"
+#include "sc_lua.h"
+#include "sc_queues.h"
 #include "translistener.h"
 #include "views.h"
 #include "logmsg.h"
@@ -59,7 +65,7 @@ static int reload_rowlocks(bdb_state_type *bdb_state, scdone_t type)
 
 /* if genid <= sc_genids[stripe] then schemachange has already processed up to
  * that point */
-inline int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
+int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                             unsigned long long genid,
                                             unsigned long long stripe_ptr)
 {
@@ -422,7 +428,7 @@ int schema_change_abort_callback(void)
 /* Deletes all the files that are no longer needed after a schema change.  Also
  * sets a timer that the checkpoint thread checks by calling
  * sc_del_unused_files_check_progress() */
-void sc_del_unused_files(struct db *db)
+void sc_del_unused_files_tran(struct db *db, tran_type *tran)
 {
     int bdberr;
 
@@ -431,7 +437,7 @@ void sc_del_unused_files(struct db *db)
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        if (bdb_list_unused_files(db->handle, &bdberr, "schemachange") ||
+        if (bdb_list_unused_files_tran(db->handle, &bdberr, "schemachange", tran) ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors listing old files\n");
     } else {
@@ -443,6 +449,11 @@ void sc_del_unused_files(struct db *db)
     pthread_mutex_lock(&gbl_sc_lock);
     sc_del_unused_files_start_ms = 0;
     pthread_mutex_unlock(&gbl_sc_lock);
+}
+
+void sc_del_unused_files(struct db *db)
+{
+    return sc_del_unused_files_tran(db, NULL);
 }
 
 /* Checks to see if a schema change has been trying to delete files for longer
@@ -603,9 +614,9 @@ int scdone_callback(const char table[], scdone_t type)
     if (type == setcompr) {
         logmsg(LOGMSG_INFO, "Replicant setting compression flags for table:%s\n", table);
     } else if (type == add && add_new_db) {
+        printf("Replicant adding table:%s\n", table);
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
-        if (add_table_to_environment(table_copy, NULL, csc2text, NULL, NULL,
-                                     NULL)) {
+        if (add_table_to_environment(table_copy, csc2text, NULL, NULL, NULL)) {
             logmsg(LOGMSG_FATAL, "%s: error adding table "
                             "%s.\n",
                     __func__, table);

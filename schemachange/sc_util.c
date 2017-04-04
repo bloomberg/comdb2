@@ -15,7 +15,6 @@
  */
 
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_util.h"
 #include "logmsg.h"
 
@@ -111,7 +110,7 @@ char *get_temp_db_name(struct db *db, char *prefix, char tmpname[])
 }
 
 // get offset of key name without .NEW. added to the name
-inline int get_offset_of_keyname(const char *idx_name)
+int get_offset_of_keyname(const char *idx_name)
 {
     const char strnew[] = ".NEW.";
     int offset = 0;

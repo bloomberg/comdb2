@@ -31,7 +31,8 @@ struct convert_record_data {
     pthread_t tid;
     int isThread;
     struct schema_change_type *s;
-    void *dta_buf, *trans;
+    void *dta_buf;
+    tran_type *trans;
     enum convert_scan_mode scanmode;
     int live, lastrrn, lasttime, outrc;
     unsigned int totnretries;
@@ -70,5 +71,5 @@ void convert_record_data_cleanup(struct convert_record_data *data);
 
 int init_sc_genids(struct db *db, struct schema_change_type *s);
 
-void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, void *trans);
+void live_sc_enter_exclusive_all(bdb_state_type *, tran_type *);
 #endif

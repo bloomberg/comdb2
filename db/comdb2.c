@@ -143,6 +143,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
+#include <schemachange.h>
 
 #define tokdup strndup
 
@@ -1246,7 +1247,7 @@ static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
     int rc;
-    void *trans;
+    tran_type *trans;
     struct ireq iq;
     int bdberr = 0;
     int empty = 0;

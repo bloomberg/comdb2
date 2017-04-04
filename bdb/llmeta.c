@@ -7305,7 +7305,7 @@ rep:
 
     int fndlen;
     char *tmpstr = NULL;
-    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, NULL, llkey,
+    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, llkey,
                                             (void **)&tmpstr, &fndlen,
                                             &bdberr)) != 0) {
 
@@ -7883,7 +7883,7 @@ int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
     rc = bdb_lite_exact_fetch_alloc(llmeta_bdb_state, key, &dta, &foundlen,
                                     bdberr);
     if (rc) {
-        *bdberr == BDBERR_FETCH_DTA;
+        *bdberr = BDBERR_FETCH_DTA;
         goto done;
     }
     p_buf = dta;

@@ -5531,7 +5531,7 @@ int add_cmacc_stmt_no_side_effects(struct db *db, int alt)
 
 /* this routine is called from comdb2 when all is well
    (we checked that all schemas are defined, etc.) */
-void fix_lrl_ixlen(void)
+void fix_lrl_ixlen_tran(tran_type *tran)
 {
     int tbl, ix;
     char namebuf[MAXTAGLEN + 1];
@@ -5558,10 +5558,10 @@ void fix_lrl_ixlen(void)
 
         if (bdb_have_llmeta()) {
             int ver;
-            ver = get_csc2_version(db->dbname);
+            ver = get_csc2_version_tran(db->dbname, tran);
             if (ver > 0) {
-                get_csc2_file(db->dbname, ver, &db->csc2_schema,
-                              &db->csc2_schema_len);
+                get_csc2_file_tran(db->dbname, ver, &db->csc2_schema,
+                              &db->csc2_schema_len, tran);
             }
         } else {
             if (!db->csc2_schema)  
@@ -5571,6 +5571,11 @@ void fix_lrl_ixlen(void)
         }
     }
     /* TODO: schema information for foreign tables */
+}
+
+void fix_lrl_ixlen()
+{
+    fix_lrl_ixlen_tran(NULL);
 }
 
 static int tablecount = 0;

@@ -15,9 +15,10 @@
  */
 
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_struct.h"
 #include "logmsg.h"
+#include "sc_csc2.h"
+#include "sc_schema.h"
 
 /************ SCHEMACHANGE TO BUF UTILITY FUNCTIONS
  * *****************************/

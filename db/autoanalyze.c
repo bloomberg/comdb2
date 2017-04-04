@@ -164,7 +164,7 @@ static int get_num_rows_from_stat1(struct db *tbldb)
     char *rec = NULL;
     int val = 0;
     struct ireq iq;
-    void *trans = NULL;
+    tran_type *trans = NULL;
 
     init_fake_ireq(thedb, &iq);
     iq.usedb = getdbbyname("sqlite_stat1");

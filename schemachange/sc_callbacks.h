@@ -51,8 +51,8 @@ int scdone_callback(const char table[], scdone_t type);
 
 int schema_change_abort_callback(void);
 
-void sc_del_unused_files(struct db *db);
-
+void sc_del_unused_files(struct db *);
+void sc_del_unused_files_tran(struct db *, tran_type *);
 void sc_del_unused_files_check_progress(void);
 
 void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet);
