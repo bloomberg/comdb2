@@ -149,15 +149,12 @@ free_sparse_map(dbenv, sparse_map)
 	DB_ENV *dbenv;
 	sparse_map_t *sparse_map;
 {
-	int i, idx;
-	u_int32_t *map;
-
 	clear_sparse_map(dbenv, sparse_map);
 
-	if (sparse_map &&sparse_map->alloclist)
+	if (sparse_map && sparse_map->alloclist)
 		__os_free (dbenv, sparse_map->alloclist);
 
-	if (sparse_map &&sparse_map->map)
+	if (sparse_map && sparse_map->map)
 		__os_free (dbenv, sparse_map->map);
 
 	if (sparse_map)
@@ -526,8 +523,8 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	locker_info *idmap;
 	sparse_map_t *sparse_map, *sparse_copymap;
 	u_int32_t *bitmap, *copymap, **deadp, *deadwho, **free_me, *free_me_2,
-	    *tmpmap, *mymap;
-	u_int32_t i, j, keeper, killid, limit, nalloc, nlockers, dwhoix;
+	    *tmpmap;
+	u_int32_t i, keeper, killid, limit, nalloc, nlockers, dwhoix;
 	u_int32_t lock_max, txn_max;
 	extern int gbl_print_deadlock_cycles;
 	extern int gbl_deadlock_policy_override;
@@ -1079,7 +1076,7 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	sparse_map_t *sparse_map = NULL;
 	u_int8_t *pptr;
 	size_t allocSz;
-	int is_first, ret, ii;
+	int is_first, ret;
 
 	static u_int32_t *dd_bitmap = NULL;
 	static size_t dd_bitmap_size = 0;
@@ -1765,7 +1762,7 @@ __dd_abort(dbenv, info)
 	DB_LOCKREGION *region;
 	DB_LOCKTAB *lt;
 	u_int32_t ndx, partition;
-	int ret, release_partition = 0;
+	int ret;
 
 	lt = dbenv->lk_handle;
 	region = lt->reginfo.primary;
@@ -2080,7 +2077,6 @@ __dd_abort_holders(dbenv, sh_obj)
 	DB_LOCKOBJ *sh_obj;
 {
 	int ret = 0;
-	int lpart;
 	struct __db_lock *lp, *cntl, *lk;
 	locker_info *info = NULL, *infop;
 	int infoidx = 0;
@@ -2097,8 +2093,6 @@ __dd_abort_holders(dbenv, sh_obj)
 	for (lp = SH_TAILQ_FIRST(&sh_obj->holders, __db_lock);
 	    lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 		DB_LOCKER *lockerp;
-		u_int32_t ndx;
-
 		/* Grab the locker */
 		lockerp = lp->holderp;
 
@@ -2226,8 +2220,7 @@ __dd_abort_holders(dbenv, sh_obj)
 		}
 	}
 
-out:
-	    /* Free info if I allocated it */
+    /* Free info if I allocated it */
 	if (info && free_info) {
 		__os_free (dbenv, info);
 	}
@@ -2264,7 +2257,6 @@ __dd_abort_waiters(dbenv, sh_obj)
 	for (lp = SH_TAILQ_FIRST(&sh_obj->waiters, __db_lock);
 	    lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 		DB_LOCKER *lockerp;
-		u_int32_t ndx;
 
 		/* Grab the locker */
 		lockerp = lp->holderp;
