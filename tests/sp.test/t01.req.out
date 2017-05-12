@@ -263,8 +263,8 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (id='8eb31cbc-f341-433b-9110-53713e0dd257')
 (id=1)
 (testcase='SET INVALID DEFAULTS - VERSIONED SPs HAVE CHECKS')
-[put default procedure sp2000 '2000'] failed with rc -5 OP #3 BLOCK2_SEQV2(824): no such procedure sp2000:2000
-[put default procedure sp1 '2000'] failed with rc -5 OP #3 BLOCK2_SEQV2(824): no such procedure sp1:2000
+[put default procedure sp2000 '2000'] failed with rc 304 OP #3 BLOCK2_SEQV2(824): no such procedure sp2000:2000
+[put default procedure sp1 '2000'] failed with rc 304 OP #3 BLOCK2_SEQV2(824): no such procedure sp1:2000
 (testcase='SHOULD GET SAME RESULTS AS comdb2sc.tsk')
 (version='1')
 (i=0)

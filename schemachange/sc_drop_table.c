@@ -24,7 +24,7 @@
 #include "sc_global.h"
 #include "sc_callbacks.h"
 
-static int delete_table(struct db *db, void * trans)
+static int delete_table(struct db *db, tran_type *tran)
 {
     remove_constraint_pointers(db);
 
@@ -38,31 +38,34 @@ static int delete_table(struct db *db, void * trans)
     delete_db(table);
     MEMORY_SYNC;
     delete_schema(table);
-    bdb_del_table_csonparameters(trans, table);
+    bdb_del_table_csonparameters(tran, table);
     return 0;
 }
 
 int do_drop_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db = iq->usedb;
+    struct db *db;
+    iq->usedb = db = s->db = getdbbyname(s->table);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
+        reqerrstr(iq, ERR_SC, "Table doesn't exists");
         return SC_TABLE_DOESNOT_EXIST;
     }
     if (db->n_rev_constraints > 0) {
         sc_errf(s, "Can't drop tables with foreign constraints\n");
+        reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
         return -1;
     }
+
     return SC_OK;
 }
 
 int finalize_drop_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db = iq->usedb;
-    int retries = 0;
-    int rc;
+    struct db *db = s->db;
+    int rc = 0;
     int bdberr = 0;
 
     /* Before this handle is closed, lets wait for all the db reads to finish*/
@@ -71,27 +74,22 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
+    if ((rc = mark_schemachange_over_tran(db->dbname, tran))) return rc;
+
+    delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
     bdberr = bdb_reset_csc2_version(tran, db->dbname, db->version);
     if (bdberr != BDBERR_NOERROR)
         return -1;
 
-    if ((rc = mark_schemachange_over_tran(db->dbname, tran)))
-        return rc;
-
-    delete_table(db, tran);
-    if ((rc = bdb_del(db->handle, tran, &bdberr)) != 0) {
-        sc_errf(s, "%s: bdb_del failed with rc: %d bdberr: %d\n", __func__,
-                rc, bdberr);
-        return rc;
-    } else if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
+    if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
         sc_errf(s, "%s: bdb_del_file_versions failed with rc: %d bdberr: "
                    "%d\n",
                 __func__, rc, bdberr);
         return rc;
     }
 
-    if ((rc = table_version_upsert(db, tran, &bdberr)) != 0) {
+    if (s->drop_table && (rc = table_version_upsert(db, tran, &bdberr)) != 0) {
         sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
         return rc;
     }
@@ -108,6 +106,14 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
     create_master_tables(); /* create sql statements */
  
     live_sc_off(db);
+
+    if (!gbl_create_mode) {
+        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->dbname,
+               db->version);
+    }
+
+    if (gbl_replicate_local)
+        local_replicant_write_clear(db);
 
     /* delete files we don't need now */
     sc_del_unused_files_tran(db, tran);

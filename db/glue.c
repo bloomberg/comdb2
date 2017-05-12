@@ -6183,13 +6183,13 @@ int table_version_upsert(struct db *db, void *trans, int *bdberr)
  * Retrieves table version or 0 if no entry
  *
  */
-unsigned long long table_version_select(struct db *db)
+unsigned long long table_version_select(struct db *db, tran_type *tran)
 {
     int bdberr;
     unsigned long long version;
     int rc;
 
-    rc = bdb_table_version_select(db->handle, NULL, &version, &bdberr);
+    rc = bdb_table_version_select(db->handle, tran, &version, &bdberr);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, bdberr);

@@ -4991,7 +4991,6 @@ backout:
         reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
     }
 
-
     /* starting writes, no more reads */
     iq->p_buf_in = NULL;
     iq->p_buf_in_end = NULL;
@@ -5701,34 +5700,22 @@ add_blkseq:
     if (outrc == 0) {
         /* Committed new sqlite_stat1 statistics from analyze - reload sqlite
          * engines */
-        int bdberr;
-        if (iq->osql_flags & OSQL_FLAGS_ANALYZE) {
-            bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
-        } else if (iq->scdone) {
-            int bdberr;
-            llog_scdone_t *s = iq->scdone;
-            bdb_llog_scdone(s->handle, s->type, 1, &bdberr);
-            free(iq->scdone);
-            iq->scdone = NULL;
-        }
-        if (iq->osql_flags & OSQL_FLAGS_ROWLOCKS) {
-            bdb_llog_rowlocks(thedb->bdb_env, iq->osql_rowlocks_enable ?
-                    rowlocks_on : rowlocks_off, &bdberr);
-        }
-        if (iq->osql_flags & OSQL_FLAGS_GENID48) {
-            bdb_set_genid_format(iq->osql_genid48_enable ? LLMETA_GENID_48BIT : 
-                    LLMETA_GENID_ORIGINAL, &bdberr);
-            bdb_llog_genid_format(thedb->bdb_env, iq->osql_genid48_enable ?
-                    genid48_enable : genid48_disable, &bdberr);
-        }
         iq->dbenv->txns_committed++;
         if (iq->dbglog_file) {
             dbglog_dump_write_stats(iq);
             sbuf2close(iq->dbglog_file);
             iq->dbglog_file = NULL;
         }
-    } else
+        osql_postcommit_handle(iq);
+    } else {
         iq->dbenv->txns_aborted++;
+        osql_postabort_handle(iq);
+    }
+
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
 
     /* update stats (locklessly so we may get gibberish - I know this
      * and don't care) */

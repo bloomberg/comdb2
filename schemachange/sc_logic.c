@@ -83,6 +83,10 @@ static int mark_sc_in_llmeta_tran(struct schema_change_type *s, void *trans)
     int rc = SC_OK;
     void *packed_sc_data = NULL;
     size_t packed_sc_data_len;
+    uuidstr_t us;
+    comdb2uuidstr(s->uuid, us);
+    logmsg(LOGMSG_INFO, "%s: table '%s' rqid [%llx %s]\n", __func__, s->table,
+           s->rqid, us);
     if (pack_schema_change_type(s, &packed_sc_data, &packed_sc_data_len)) {
         sc_errf(s, "could not pack the schema change data for storage in "
                    "low level meta table\n");
@@ -182,7 +186,7 @@ static int master_downgrading(struct schema_change_type *s)
     return SC_OK;
 }
 
-static void stop_and_free_sc(int rc, struct schema_change_type *s)
+static void stop_and_free_sc(int rc, struct schema_change_type *s, int free_sc)
 {
     if (!s->partialuprecs) {
         if (rc != 0) {
@@ -195,7 +199,8 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s)
     }
     sc_set_running(0, sc_seed, NULL, 0);
 
-    free_schema_change_type(s);
+    if (free_sc)
+        free_schema_change_type(s);
     /* free any memory csc2 allocated when parsing schema */
     csc2_free_all();
 }
@@ -212,9 +217,9 @@ static int set_original_tablename(struct schema_change_type *s)
 
 /*********** Outer Business logic for schemachanges ************************/
 
-int do_alter_table_shard(struct schema_change_type *s, struct ireq *iq,
-                         int indx, int maxindx) 
+int do_alter_table_shard(struct ireq *iq, int indx, int maxindx, void *tran) 
 {
+    struct schema_change_type *s = iq->sc;
     int rc;
 
     if(!s->timepart_dbs) {
@@ -223,26 +228,11 @@ int do_alter_table_shard(struct schema_change_type *s, struct ireq *iq,
         s->timepart_nshards = maxindx;
     }
 
-
-    set_original_tablename(s);
-
-    if ((rc = mark_sc_in_llmeta(s)))
-        return rc;
-
-    propose_sc(s);
-
-    rc = do_alter_table_int(s, iq);
+    rc = do_alter_table_int(iq, tran);
 
     if(!rc) {
         s->timepart_dbs[indx] = s->db;
         s->timepart_newdbs[indx] = s->newdb;
-    }
-
-    mark_schemachange_over(s->table);
-
-    if (rc)
-    {
-        /* clean previous indx schema changes */
     }
 
     return rc;
@@ -288,51 +278,21 @@ static void check_for_idx_rename(struct db *newdb, struct db *olddb)
 
 /* Schema change thread.  We must already have set the schema change running
  * flag and the seed in sc_seed. */
-static int do_alter_table(struct schema_change_type *s, struct ireq *iq)
+static int do_alter_table(struct ireq *iq, tran_type *tran)
 {
+    struct schema_change_type *s = iq->sc;
+    int rc;
 #ifdef DEBUG
     printf("do_alter_table() %s\n", s->resume?"resuming":"");
 #endif
-    int rc;
-
-    if (!s->resume)
-        set_sc_flgs(s);
 
     if (!timepart_is_timepart(s->table, 1) &&
         /* resuming a stopped view sc */
-        !(s->resume && timepart_is_shard(s->table, 1))) {
-        set_original_tablename(s);
+        !(s->resume && timepart_is_shard(s->table, 1)))
+        rc = do_alter_table_int(iq, tran);
+    else
+        rc = timepart_alter_timepart(iq, tran, do_alter_table_shard);
 
-        if ((rc = mark_sc_in_llmeta(s)))
-            return rc;
-
-        propose_sc(s);
-
-        if (rc == SC_OK)
-            rc = do_alter_table_int(s, iq);
-
-        if (master_downgrading(s))
-            return SC_MASTER_DOWNGRADE;
-
-        if (rc) {
-            mark_schemachange_over(s->table);
-        } else if (s->finalize) {
-            if (s->type == DBTYPE_TAGGED_TABLE && !s->timepart_nshards) {
-                /* check for rename outside of taking schema lock */
-                /* handle renaming sqlite_stat1 entries for idx */
-                check_for_idx_rename(s->newdb, s->db);
-            }
-            wrlock_schema_lk();
-            rc = finalize_alter_table(s);
-            unlock_schema_lk();
-        } else {
-            rc = SC_COMMIT_PENDING;
-        }
-    } else {
-        rc = timepart_alter_timepart(s, iq, s->table, do_alter_table_shard);
-    }
-
-    broadcast_sc_end(sc_seed);
     return rc;
 }
 
@@ -412,7 +372,7 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
         llog_scdone_t *scdone = malloc(sizeof(llog_scdone_t));
         scdone->handle = s->db->handle;
         scdone->type = type;
-        iq->scdone = scdone;
+        iq->sc->scdone = scdone;
     }
     return rc;
 }
@@ -422,20 +382,32 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
 {
     int rc;
     struct schema_change_type *s = iq->sc;
-    wrlock_schema_lk();
+
+    if (s->finalize_only) {
+        return s->sc_rc;
+    }
+    if (type != alter)
+        wrlock_schema_lk();
     set_original_tablename(s);
     if (!s->resume) set_sc_flgs(s);
-    if ((rc = mark_sc_in_llmeta(s))) goto end; // non-tran
+    if ((rc = mark_sc_in_llmeta_tran(s, NULL))) goto end; // non-tran ??
     propose_sc(s);
-    rc = pre(iq, tran);
+    rc = pre(iq, NULL); //non-tran ??
+    if (type == alter && master_downgrading(s)) {
+        s->sc_rc = SC_MASTER_DOWNGRADE;
+        return SC_MASTER_DOWNGRADE;
+    }
     if (rc) {
-        mark_schemachange_over(s->table); // non-tran
+        mark_schemachange_over_tran(s->table, NULL); // non-tran ??
     } else if (s->finalize) {
         rc = do_finalize(post, iq, tran, type);
     } else {
         rc = SC_COMMIT_PENDING;
     }
-end:unlock_schema_lk();
+end:
+    s->sc_rc = rc;
+    if (type != alter)
+        unlock_schema_lk();
     broadcast_sc_end(sc_seed);
     return rc;
 }
@@ -505,6 +477,8 @@ int do_schema_change_tran(sc_arg_t *arg)
     }
 
     struct schema_change_type *s = iq->sc;
+    s->iq = iq;
+    pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
 
@@ -531,15 +505,19 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)
-        rc = do_alter_table(s, iq);
+        rc = do_ddl(do_alter_table, finalize_alter_table, iq, trans, alter);
     else if (s->type == DBTYPE_QUEUE)
         rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
 
     reset_sc_thread(oldtype, s);
-    if (rc != SC_COMMIT_PENDING && rc != SC_MASTER_DOWNGRADE)
-        stop_and_free_sc(rc, s);
+    if (s->resume != SC_NEW_MASTER_RESUME && rc != SC_COMMIT_PENDING &&
+        rc != SC_MASTER_DOWNGRADE) {
+        pthread_mutex_unlock(&s->mtx);
+        stop_and_free_sc(rc, s, 1 /*free_sc*/);
+    } else
+        pthread_mutex_unlock(&s->mtx);
 
     return rc;
 }
@@ -564,8 +542,10 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     if (iq == NULL || iq->sc == NULL)
         abort();
     struct schema_change_type *s = iq->sc;
+    pthread_mutex_lock(&s->mtx);
     enum thrtype oldtype = prepare_sc_thread(s);
     int rc = SC_OK;
+    int keep_sc_locked = iq->sc_locked;
 
     if (s->type == DBTYPE_TAGGED_TABLE && !s->timepart_nshards) {
         /* check for rename outside of taking schema lock */
@@ -573,7 +553,10 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         check_for_idx_rename(s->newdb, s->db);
     }
 
-    wrlock_schema_lk();
+    if (!iq->sc_locked) {
+        wrlock_schema_lk();
+        iq->sc_locked = 1;
+    }
     if (s->is_trigger)
         rc = finalize_trigger(s);
     else if (s->is_sfunc)
@@ -587,15 +570,47 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     else if (s->addonly)
         rc = do_finalize(finalize_add_table, iq, trans, add);
     else if (s->type == DBTYPE_TAGGED_TABLE)
-        rc = finalize_alter_table(s);
+        rc = do_finalize(finalize_alter_table, iq, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)
         rc = finalize_upgrade_table(s);
-    unlock_schema_lk();
+    if (!keep_sc_locked && !iq->sc->scdone) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
 
     reset_sc_thread(oldtype, s);
+    pthread_mutex_unlock(&s->mtx);
 
-    stop_and_free_sc(rc, s);
+    stop_and_free_sc(rc, s, 0 /*free_sc*/);
     return rc;
+}
+
+void *sc_resuming_watchdog(void *p)
+{
+    int backout_schema_change(struct ireq *iq);
+    struct ireq iq;
+    struct schema_change_type *stored_sc = NULL;
+    int time = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_WATCHDOG_TIMER);
+    logmsg(LOGMSG_INFO, "%s: started, sleeping %d seconds\n", __func__, time);
+    sleep(time);
+    logmsg(LOGMSG_INFO, "%s: waking up\n", __func__);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    init_fake_ireq(thedb, &iq);
+    pthread_mutex_lock(&sc_resuming_mtx);
+    stored_sc = sc_resuming;
+    while (stored_sc) {
+        iq.sc = stored_sc;
+        stored_sc = stored_sc->sc_next;
+        logmsg(LOGMSG_INFO, "%s: aborting schema change of table '%s'\n",
+               __func__, iq.sc->table);
+        backout_schema_change(&iq);
+        free_schema_change_type(iq.sc);
+        iq.sc = NULL;
+    }
+    sc_resuming = NULL;
+    logmsg(LOGMSG_INFO, "%s: existing\n", __func__);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    pthread_mutex_unlock(&sc_resuming_mtx);
 }
 
 int resume_schema_change(void)
@@ -619,6 +634,8 @@ int resume_schema_change(void)
     }
     pthread_mutex_unlock(&schema_change_in_progress_mutex);
 
+    pthread_mutex_lock(&sc_resuming_mtx);
+    sc_resuming = NULL;
     for (i = 0; i < thedb->num_dbs; ++i) {
         int bdberr;
         void *packed_sc_data = NULL;
@@ -639,10 +656,11 @@ int resume_schema_change(void)
                    "schema change, resuming...\n",
                    thedb->dbs[i]->dbname);
 
-            s = malloc(sizeof(struct schema_change_type));
+            s = new_schemachange_type();
             if (!s) {
                 logmsg(LOGMSG_ERROR, "resume_schema_change: ran out of memory\n");
                 free(packed_sc_data);
+                pthread_mutex_unlock(&sc_resuming_mtx);
                 return -1;
             }
 
@@ -652,6 +670,7 @@ int resume_schema_change(void)
                            "from the low level meta table\n");
                 free(packed_sc_data);
                 free(s);
+                pthread_mutex_unlock(&sc_resuming_mtx);
                 return -1;
             }
 
@@ -679,7 +698,7 @@ int resume_schema_change(void)
             **   \__\___|_| |_| |_| .__/
             **                    |_|
             */
-            if (1 || scabort) {
+            if (scabort) {
                 system("figlet force scabort");
                 logmsg(LOGMSG_WARN, "Cancelling schema change\n");
                 rc = unlink(abort_filename);
@@ -689,45 +708,71 @@ int resume_schema_change(void)
                             abort_filename);
                 free(abort_filename);
                 free(s);
+                pthread_mutex_unlock(&sc_resuming_mtx);
                 return 0;
             }
             free(abort_filename);
 
             if (s->fulluprecs || s->partialuprecs) {
                 logmsg(LOGMSG_DEBUG, "%s: This was a table upgrade. Skipping...\n", __func__);
-                free(s);
-                return 0;
+                free_schema_change_type(s);
+                continue;
             }
             if(s->type != DBTYPE_TAGGED_TABLE) { /* see do_schema_change_thd()*/
                 logmsg(LOGMSG_ERROR, "%s: only type DBTYPE_TAGGED_TABLE can resume\n", __func__);
-                free(s);
-                return 0;
+                free_schema_change_type(s);
+                continue;
             }
 
             s->nothrevent = 0;
-            s->resume = 1; /* we are trying to resume this sc */
-            s->finalize = 1; /* finalize at the end of resume */
+            /* we are trying to resume this sc */
+
+            uuidstr_t us;
+            comdb2uuidstr(s->uuid, us);
+            logmsg(LOGMSG_INFO, "%s: resuming schema change: rqid [%llx %s] "
+                   "table %s, add %d, drop %d, fastinit %d, alter %d\n",
+                   __func__, s->rqid, us, s->table, s->addonly, s->drop_table,
+                   s->fastinit, s->alteronly);
+
+            if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+                s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
+                s->resume = SC_RESUME;
+                s->finalize = 1; /* finalize at the end of resume */
+            } else {
+                s->resume = SC_NEW_MASTER_RESUME;
+                s->finalize = 0; /* wait for resubmit of bplog */
+            }
 
             MEMORY_SYNC;
 
             /* start the schema change back up */
             rc = start_schema_change(s);
             if (rc != SC_OK && rc != SC_ASYNC) {
+                pthread_mutex_unlock(&sc_resuming_mtx);
                 return -1;
+            } else if (s->finalize == 0) {
+                s->sc_next = sc_resuming;
+                sc_resuming = s;
             }
-
-            return 0;
         }
     }
 
-    return 0;
+    if (sc_resuming) {
+        pthread_t tid;
+        rc = pthread_create(&tid, NULL, sc_resuming_watchdog, NULL);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n");
+    }
+    pthread_mutex_unlock(&sc_resuming_mtx);
+    return rc;
 }
 
 /****************** Table functions ***********************************/
 /****************** Functions down here will likely be moved elsewhere *****/
 
 /* this assumes threads are not active in db */
-int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp)
+int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
+                        tran_type *tran)
 {
     char *tmpname;
     int bdberr;
@@ -765,12 +810,12 @@ int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp)
 
     if (!db->handle) /* did not/could not open existing one, creating new one */
     {
-        db->handle =
-            bdb_create(tmpname, db->dbenv->basedir, db->lrl, db->nix,
-                       db->ix_keylen, db->ix_dupes, db->ix_recnums,
-                       db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
-                       db->numblobs + 1, /* one main record + the blobs blobs */
-                       db->dbenv->bdb_env, temp, &bdberr);
+        db->handle = bdb_create_tran(
+            tmpname, db->dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
+            db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
+            db->ix_nullsallowed,
+            db->numblobs + 1, /* one main record + the blobs blobs */
+            db->dbenv->bdb_env, temp, &bdberr, tran);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed to open %s, rcode %d\n", __func__, tmpname,
                    bdberr);
@@ -797,7 +842,7 @@ int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp)
  * new.tablename file versions causing horrifying bugs.
  * @return returns 0 on success; !0 otherwise
  */
-int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
+int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb, tran_type *tran)
 {
     int i;
     int bdberr;
@@ -811,10 +856,10 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
     for (i = 0; i < (1 /*dta*/ + p_db->numblobs); ++i) {
         unsigned long long file_version;
 
-        if (bdb_get_file_version_data(p_db->handle, NULL /*tran*/, i,
-                                      &file_version, &bdberr) ||
+        if (bdb_get_file_version_data(p_db->handle, tran, i, &file_version,
+                                      &bdberr) ||
             bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_get_file_version_index failed for db "
+            logmsg(LOGMSG_ERROR, "%s: bdb_get_file_version_data failed for db "
                             "data %d\n",
                     __func__, i);
             return -1;
@@ -827,8 +872,8 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
     for (i = 0; i < p_db->nix; ++i) {
         unsigned long long file_version;
 
-        if (bdb_get_file_version_index(p_db->handle, NULL /*tran*/, i,
-                                       &file_version, &bdberr) ||
+        if (bdb_get_file_version_index(p_db->handle, tran, i, &file_version,
+                                       &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: bdb_get_file_version_index failed for db "
                             "index %d\n",
@@ -847,8 +892,8 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
     for (i = 0; i < (1 /*dta*/ + p_newdb->numblobs); ++i) {
         unsigned long long file_version;
 
-        if (bdb_get_file_version_data(p_newdb->handle, NULL /*tran*/, i,
-                                      &file_version, &bdberr) ||
+        if (bdb_get_file_version_data(p_newdb->handle, tran, i, &file_version,
+                                      &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: bdb_get_file_version_data failed for newdb "
                             "data %d\n",
@@ -863,8 +908,8 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
     for (i = 0; i < p_newdb->nix; ++i) {
         unsigned long long file_version;
 
-        if (bdb_get_file_version_index(p_newdb->handle, NULL /*tran*/, i,
-                                       &file_version, &bdberr) ||
+        if (bdb_get_file_version_index(p_newdb->handle, tran, i, &file_version,
+                                       &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: bdb_get_file_version_index failed for newdb "
                             "index %d\n",
@@ -889,11 +934,12 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb)
 }
 
 /* close and remove the temp table after a failed schema change. */
-int delete_temp_table(struct schema_change_type *s, struct db *newdb)
+int delete_temp_table(struct ireq *iq, struct db *newdb)
 {
+    struct schema_change_type *s = iq->sc;
+    tran_type *tran = NULL;
     int i, rc, bdberr;
-    tran_type *tran;
-    struct ireq iq;
+    struct db *usedb_sav;
 
     rc = bdb_close_only(newdb->handle, &bdberr);
     if (rc) {
@@ -901,11 +947,12 @@ int delete_temp_table(struct schema_change_type *s, struct db *newdb)
         return -1;
     }
 
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = newdb;
-    rc = trans_start(&iq, NULL, &tran);
+    usedb_sav = iq->usedb;
+    iq->usedb = newdb;
+    rc = trans_start(iq, NULL, &tran);
     if (rc) {
         sc_errf(s, "%d: trans_start rc %d\n", __LINE__, rc);
+        iq->usedb = usedb_sav;
         return -1;
     }
 
@@ -926,11 +973,12 @@ int delete_temp_table(struct schema_change_type *s, struct db *newdb)
         }
 
         if (rc != 0) {
-            trans_abort(&iq, tran);
+            trans_abort(iq, tran);
             poll(NULL, 0, rand() % 100 + 1);
-            rc = trans_start(&iq, NULL, &tran);
+            rc = trans_start(iq, NULL, &tran);
             if (rc) {
                 sc_errf(s, "%d: trans_start rc %d\n", __LINE__, rc);
+                iq->usedb = usedb_sav;
                 return -1;
             }
         } else
@@ -940,15 +988,18 @@ int delete_temp_table(struct schema_change_type *s, struct db *newdb)
         sc_errf(s, "Still failed to delete temp table for %s.  I am giving up "
                    "and going home.",
                 newdb->dbname);
+        iq->usedb = usedb_sav;
         return -1;
     }
 
-    rc = trans_commit(&iq, tran, gbl_mynode);
+    rc = trans_commit(iq, tran, gbl_mynode);
     if (rc) {
         sc_errf(s, "%d: trans_commit rc %d\n", __LINE__, rc);
+        iq->usedb = usedb_sav;
         return -1;
     }
 
+    iq->usedb = usedb_sav;
     return 0;
 }
 
@@ -1082,5 +1133,23 @@ int dryrun_int(struct schema_change_type *s, struct db *db, struct db *newdb,
 
 out:
     print_schemachange_info(s, db, newdb);
+    return 0;
+}
+
+int backout_schema_change(struct ireq *iq)
+{
+    struct schema_change_type *s = iq->sc;
+    mark_schemachange_over(s->table);
+    sc_set_running(0, sc_seed, gbl_mynode, time(NULL));
+    if (s->addonly) {
+        delete_temp_table(iq, s->db);
+        delete_db(s->table);
+        create_sqlmaster_records(NULL);
+        create_master_tables();
+    }
+    else {
+        reload_db_tran(s->db, NULL);
+        sc_del_unused_files(s->db);
+    }
     return 0;
 }

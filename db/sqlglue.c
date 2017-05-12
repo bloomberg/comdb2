@@ -4041,6 +4041,9 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             free_cached_idx(clnt->idxInsert);
             free_cached_idx(clnt->idxDelete);
         }
+        if (rc == SQLITE_DDL_MISUSE)
+            sqlite3VdbeError(pCur->vdbe,
+                             "Transactional DDL Error: Overlapping Tables");
     }
 
 done:
@@ -4889,6 +4892,9 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
     }
     get_current_lsn(clnt);
 
+    clnt->ddl_tables = hash_init_str(0);
+    clnt->dml_tables = hash_init_str(0);
+
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_SOSQL:
     case TRANLEVEL_RECOM:
@@ -5147,6 +5153,15 @@ int sqlite3BtreeCommit(Btree *pBt)
     /* we need to reset this here */
     clnt->writeTransaction = 0;
 
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
+
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Commit(pBt %d)      = %s\n",
                 pBt->btreeid, sqlite3ErrStr(rc));
@@ -5264,6 +5279,15 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
 
     /* we need to reset this here */
     clnt->writeTransaction = 0;
+
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Rollback(pBt %d)      = %s\n",
@@ -7680,7 +7704,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             unsigned long long version;
             int short_version;
 
-            version = table_version_select(db);
+            version = table_version_select(db, NULL);
             short_version = fdb_table_version(version);
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
@@ -8735,6 +8759,9 @@ int sqlite3BtreeInsert(
             free_cached_idx(clnt->idxInsert);
             free_cached_idx(clnt->idxDelete);
         }
+        if (rc == SQLITE_DDL_MISUSE)
+            sqlite3VdbeError(pCur->vdbe,
+                             "Transactional DDL Error: Overlapping Tables");
     }
 
 done:

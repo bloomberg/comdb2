@@ -1078,7 +1078,8 @@ int bdb_del_list_add_all(bdb_state_type *bdb_state, tran_type *tran, void *list,
 }
 
 /* deletes all the files that are no longer in use by a table */
-int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
+int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr)
 {
     const char *blob_ext = ".blob";
     const char *data_ext = ".data";
@@ -1185,7 +1186,7 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
                 /* try to find the file version amongst the active data files */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
                      ++i) {
-                    rc = bdb_get_file_version_data(bdb_state, NULL /*tran*/,
+                    rc = bdb_get_file_version_data(bdb_state, tran,
                                                    i /*dtanum*/, &version_num,
                                                    bdberr);
                     if (rc == 0) {
@@ -1199,7 +1200,7 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
 
                 /* try to find the file version amongst the active indiciese */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(bdb_state, NULL /*tran*/,
+                    rc = bdb_get_file_version_index(bdb_state, tran,
                                                     i /*dtanum*/, &version_num,
                                                     bdberr);
                     if (rc == 0) {
@@ -1227,8 +1228,8 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
                     print(bdb_state, "deleting file %s\n", ent->d_name);
 
                     if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
-                                                    NULL /*parent_tid*/, &tid,
-                                                    0 /*flags*/)) {
+                                                    tran ? tran->tid : NULL,
+                                                    &tid, 0 /*flags*/)) {
                         logmsg(LOGMSG_ERROR, "%s: failed to begin trans for "
                                         "deleteing file: %s\n",
                                 __func__, ent->d_name);
@@ -1258,6 +1259,11 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_del_unused_files_tran(bdb_state, NULL, bdberr);
 }
 
 int bdb_del_list_free(void *list, int *bdberr)
@@ -1403,8 +1409,7 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     int dtanum, strnum;
 
     int flags = 0;
-    if (nosync)
-        flags = DB_NOSYNC;
+    if (nosync) flags = DB_NOSYNC;
 
     print(bdb_state, "in closedbs(name=%s)\n", bdb_state->name);
 
@@ -1417,11 +1422,12 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
         for (strnum = 0; strnum < MAXSTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
-                    bdb_state->dbp_data[dtanum][strnum], flags);
+                    bdb_state->dbp_data[dtanum][strnum], NULL, flags);
                 if (0 != rc) {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_ERROR,
                            "closedbs: error closing %s[%d][%d]: %d %s\n",
-                           bdb_state->name, dtanum, strnum, rc, db_strerror(rc));
+                           bdb_state->name, dtanum, strnum, rc,
+                           db_strerror(rc));
                 }
             }
         }
@@ -1430,10 +1436,10 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
-            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
+            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, flags);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "closedbs: error closing %s->dbp_ix[%d] %d %s\n",
+                logmsg(LOGMSG_ERROR,
+                       "closedbs: error closing %s->dbp_ix[%d] %d %s\n",
                        bdb_state->name, i, rc, db_strerror(rc));
             }
         }
@@ -4069,7 +4075,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
                     print(bdb_state, "open_dbs: cannot open %s: %d %s\n",
                           tmpname, rc, db_strerror(rc));
-                    rc = dbp->close(dbp, 0);
+                    rc = dbp->close(dbp, NULL, 0);
                     if (0 != rc)
                         logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n",
                                 tmpname, rc, db_strerror(rc));
@@ -4172,7 +4178,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
             print(bdb_state, "open_dbs: cannot open %s: %d %s\n", tmpname, rc,
                   db_strerror(rc));
-            rc = dbp->close(dbp, 0);
+            rc = dbp->close(dbp, NULL, 0);
             if (rc != 0)
                 logmsg(LOGMSG_ERROR, "bdp_dta->close(%s) failed: rc=%d %s\n",
                         tmpname, rc, db_strerror(rc));
@@ -4306,7 +4312,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
                 bdb_state->dbp_ix[i]->err(bdb_state->dbp_ix[i], rc, "%s",
                                           tmpname);
-                rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], 0);
+                rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, 0);
                 logmsg(LOGMSG_ERROR, "close ix=%d name=%s failed rc=%d\n", i,
                         tmpname, rc);
                 logmsg(LOGMSG_ERROR, "couldnt open ix db\n");
@@ -4499,7 +4505,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
                 logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: cannot open %s: %d %s\n",
                         tmpname, rc, db_strerror(rc));
-                rc = dbp->close(dbp, 0);
+                rc = dbp->close(dbp, NULL, 0);
                 if (0 != rc)
                     logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n", tmpname,
                             rc, db_strerror(rc));
@@ -4524,7 +4530,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
     /* Now go and close all the tables. */
     for (ii = 0; ii < dbp_count; ii++) {
-        rc = dbp_array[ii]->close(dbp_array[ii], 0);
+        rc = dbp_array[ii]->close(dbp_array[ii], NULL, 0);
         if (0 != rc)
             logmsg(LOGMSG_ERROR,
                     "bdb_create_stripes_int: DB->close #%d failed: rc=%d %s\n",
@@ -6382,7 +6388,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
             bdb_remove_fileid_pglogs_queue(bdb_state, dbp->fileid);
-            dbp->close(dbp, DB_NOSYNC);
+            dbp->close(dbp, NULL, DB_NOSYNC);
         }
 
         rc = dbenv->dbremove(dbenv, tid, filename, NULL, 0);
@@ -6818,8 +6824,7 @@ int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc;
 
-    if (bdb_state->envonly)
-        return 0;
+    if (bdb_state->envonly) return 0;
 
     BDB_READLOCK("bdb_close_only");
 
@@ -7417,7 +7422,8 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
 }
 
 /* queue all found unused files for garbage collection */
-int bdb_list_unused_files_tran(bdb_state_type *bdb_state, int *bdberr, char *powner, tran_type *tran)
+int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                               int *bdberr, char *powner)
 {
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -7612,7 +7618,7 @@ done:
 
 int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
 {
-    return bdb_list_unused_files_tran(bdb_state, bdberr, powner, NULL);
+    return bdb_list_unused_files_tran(bdb_state, NULL, bdberr, powner);
 }
 
 int bdb_have_unused_files(void) { return oldfile_list_empty() != 1; }

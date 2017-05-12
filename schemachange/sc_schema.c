@@ -988,19 +988,19 @@ void transfer_db_settings(struct db *olddb, struct db *newdb)
 }
 
 /* use callers transaction if any, need to do I/O */
-void set_odh_options_tran(struct db *db, tran_type *trans)
+void set_odh_options_tran(struct db *db, tran_type *tran)
 {
     int compr = 0;
     int blob_compr = 0;
     int datacopy_odh = 0;
 
-    get_db_odh_tran(db, &db->odh, trans);
-    get_db_instant_schema_change_tran(db, &db->instant_schema_change, trans);
-    get_db_datacopy_odh_tran(db, &datacopy_odh, trans);
-    get_db_inplace_updates_tran(db, &db->inplace_updates, trans);
-    get_db_compress_tran(db, &compr, trans);
-    get_db_compress_blobs_tran(db, &blob_compr, trans);
-    db->version = get_csc2_version_tran(db->dbname, trans);
+    get_db_odh_tran(db, &db->odh, tran);
+    get_db_instant_schema_change_tran(db, &db->instant_schema_change, tran);
+    get_db_datacopy_odh_tran(db, &datacopy_odh, tran);
+    get_db_inplace_updates_tran(db, &db->inplace_updates, tran);
+    get_db_compress_tran(db, &compr, tran);
+    get_db_compress_blobs_tran(db, &blob_compr, tran);
+    db->version = get_csc2_version_tran(db->dbname, tran);
 
     set_bdb_option_flags(db, db->odh, db->inplace_updates,
                          db->instant_schema_change, db->version, compr,

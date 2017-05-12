@@ -26,6 +26,8 @@ void print_schemachange_info(struct schema_change_type *s, struct db *db,
 
 void set_schemachange_options(struct schema_change_type *s, struct db *db,
                               struct scinfo *scinfo);
+void set_schemachange_options_tran(struct schema_change_type *s, struct db *db,
+                                   struct scinfo *scinfo, tran_type *tran);
 
 int print_status(struct schema_change_type *s);
 

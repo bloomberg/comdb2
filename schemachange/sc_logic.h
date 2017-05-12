@@ -24,9 +24,9 @@ int dryrun_int(struct schema_change_type *, struct db *db, struct db *newdb, str
 int dryrun(struct schema_change_type *s);
 int finalize_schema_change_thd(struct ireq*, tran_type *);
 int do_setcompr(struct ireq *iq, const char *rec, const char *blob);
-int delete_temp_table(struct schema_change_type *s, struct db *newdb);
+int delete_temp_table(struct ireq *iq, struct db *newdb);
 
-int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb);
+int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb, tran_type *tran);
 /****** This function is inside constraints.c and it was used by schemachange.c,
  * before it was declared extern in the c files I am putting the definition here
  * to move a step towards a proper header file. */

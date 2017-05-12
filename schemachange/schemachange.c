@@ -47,21 +47,143 @@ int start_schema_change_tran(struct ireq *iq, tran_type * trans)
         return SC_NOT_MASTER;
     }
 
+    if (!s->resume && sc_resuming &&
+        (s->addonly || s->drop_table || s->fastinit || s->alteronly)) {
+        struct schema_change_type *last_sc = NULL;
+        struct schema_change_type *stored_sc = NULL;
+
+        pthread_mutex_lock(&sc_resuming_mtx);
+        stored_sc = sc_resuming;
+        while (stored_sc) {
+            if (strcasecmp(stored_sc->table, s->table) == 0) {
+                uuidstr_t us;
+                comdb2uuidstr(stored_sc->uuid, us);
+                logmsg(LOGMSG_INFO, "Found ongoing schema change: rqid [%llx %s] "
+                       "table %s, add %d, drop %d, fastinit %d, alter %d\n",
+                       stored_sc->rqid, us, stored_sc->table, stored_sc->addonly,
+                       stored_sc->drop_table, stored_sc->fastinit,
+                       stored_sc->alteronly);
+                if (stored_sc->rqid == iq->sorese.rqid &&
+                    comdb2uuidcmp(stored_sc->uuid, iq->sorese.uuid) == 0) {
+                    if (last_sc)
+                        last_sc = stored_sc->sc_next;
+                    else
+                        sc_resuming = NULL;
+                    stored_sc->sc_next = NULL;
+                } else {
+                    /* TODO: found an ongoing sc with different rqid
+                     * should we fail this one or override the old one?
+                     *
+                     * For now, I am failing this one.
+                     */
+                    sc_errf(s, "schema change already in progress\n");
+                    free_schema_change_type(s);
+                    pthread_mutex_unlock(&sc_resuming_mtx);
+                    return SC_CANT_SET_RUNNING;
+                }
+                break;
+            }
+
+            last_sc = stored_sc;
+            stored_sc = stored_sc->sc_next;
+        }
+        pthread_mutex_unlock(&sc_resuming_mtx);
+        if (stored_sc) {
+            stored_sc->tran = trans;
+            stored_sc->iq = iq;
+            free_schema_change_type(s);
+            s = stored_sc;
+            iq->sc = s;
+            pthread_mutex_lock(&s->mtx);
+            s->finalize_only = 1;
+            s->nothrevent = 1;
+            s->resume = SC_RESUME;
+            pthread_mutex_unlock(&s->mtx);
+            uuidstr_t us;
+            comdb2uuidstr(s->uuid, us);
+            logmsg(LOGMSG_INFO, "Resuming schema change: rqid [%llx %s] "
+                   "table %s, add %d, drop %d, fastinit %d, alter %d\n",
+                   s->rqid, us, s->table, s->addonly, s->drop_table,
+                   s->fastinit, s->alteronly);
+
+        } else {
+            int bdberr;
+            void *packed_sc_data = NULL;
+            size_t packed_sc_data_len;
+            if (bdb_get_in_schema_change(s->table, &packed_sc_data,
+                                         &packed_sc_data_len, &bdberr) ||
+                bdberr != BDBERR_NOERROR) {
+                logmsg(LOGMSG_WARN, "%s: failed to discover whether table: "
+                       "%s is in the middle of a schema change\n",
+                       __func__, s->table);
+            }
+            if (packed_sc_data) {
+                stored_sc = new_schemachange_type();
+                if (!stored_sc) {
+                    logmsg(LOGMSG_ERROR, "%s: ran out of memory\n", __func__);
+                    free(packed_sc_data);
+                    free_schema_change_type(s);
+                    return -1;
+                }
+                if (unpack_schema_change_type(stored_sc, packed_sc_data,
+                                              packed_sc_data_len)) {
+                    logmsg(LOGMSG_ERROR, "%s: failed to unpack sc\n", __func__);
+                    free(packed_sc_data);
+                    free(stored_sc);
+                    free_schema_change_type(s);
+                    return -1;
+                }
+                free(packed_sc_data);
+                packed_sc_data = NULL;
+                rc = bdb_set_in_schema_change(NULL, stored_sc->table, NULL, 0,
+                                              &bdberr);
+                if (rc)
+                    logmsg(LOGMSG_ERROR,
+                           "%s: failed to cancel resuming schema change %d %d\n",
+                           __func__, rc, bdberr);
+            }
+            if (stored_sc && !stored_sc->fulluprecs && !stored_sc->partialuprecs &&
+                stored_sc->type == DBTYPE_TAGGED_TABLE) {
+                if (stored_sc->rqid == iq->sorese.rqid &&
+                    comdb2uuidcmp(stored_sc->uuid, iq->sorese.uuid) == 0) {
+                    s->rqid = stored_sc->rqid;
+                    comdb2uuidcpy(s->uuid, stored_sc->uuid);
+                    s->resume = 1;
+                    uuidstr_t us;
+                    comdb2uuidstr(s->uuid, us);
+                    logmsg(LOGMSG_INFO, "Resuming schema change: rqid [%llx %s] "
+                           "table %s, add %d, drop %d, fastinit %d, alter %d\n",
+                           s->rqid, us, s->table, s->addonly, s->drop_table,
+                           s->fastinit, s->alteronly);
+                }
+                free_schema_change_type(stored_sc);
+            } else
+                logmsg(LOGMSG_INFO, "No ongoing schema change of table %s\n",
+                       s->table);
+        }
+    }
+
     strcpy(s->original_master_node, gbl_mynode);
     unsigned long long seed;
-    if(s->resume) {
+    if (trans && s->tran == trans && iq->sc_seed) {
+        seed = iq->sc_seed;
+        logmsg(LOGMSG_INFO, "Starting schema change: "
+               "transactionally reuse seed 0x%llx\n", seed);
+    }
+    else if (s->resume) {
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
         if ((rc = fetch_schema_change_seed(s, thedb, &seed))) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
             return rc;
         }
-        logmsg(LOGMSG_INFO, "Resuming schema change: fetched seed 0x%llx\n", seed);
-    }
-    else {
+        logmsg(LOGMSG_INFO, "Resuming schema change: fetched seed 0x%llx\n",
+               seed);
+    } else {
         seed = get_genid(thedb->bdb_env, 0);
         unsigned int *iptr = (unsigned int *) &seed;
         iptr[1] = htonl(crc32c(gbl_mynode, strlen(gbl_mynode)));
+        logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
     }
 
     rc = sc_set_running(1, seed, gbl_mynode, time(NULL));
@@ -96,7 +218,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type * trans)
         }
     }
 
-    if (thedb->master == gbl_mynode && !s->resume) {
+    if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != sc_seed) {
         logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n", sc_seed);
         int bdberr;
         int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed, &bdberr); 
@@ -104,12 +226,13 @@ int start_schema_change_tran(struct ireq *iq, tran_type * trans)
             logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
         }
     }
+    iq->sc_seed = sc_seed;
 
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->trans = trans;
     arg->iq = iq;
 
-    if(s->resume) {
+    if(s->resume && s->alteronly && !s->finalize_only) {
         gbl_sc_resume_start = time_epochms();
     }
     /*
@@ -118,14 +241,18 @@ int start_schema_change_tran(struct ireq *iq, tran_type * trans)
     */
     if (s->nothrevent) {
         if (!s->partialuprecs)
-            logmsg(LOGMSG_DEBUG, "Executing SYNCHRONOUSLY\n");
+            logmsg(LOGMSG_INFO, "Executing SYNCHRONOUSLY\n");
         rc = do_schema_change_tran(arg);
     } else {
         if (!s->partialuprecs)
-            logmsg(LOGMSG_DEBUG, "Executing ASYNCHRONOUSLY\n");
+            logmsg(LOGMSG_INFO, "Executing ASYNCHRONOUSLY\n");
         pthread_t tid;
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                            (void *(*)(void *))do_schema_change_tran, arg);
+        if (trans)
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change_tran, arg);
+        else
+            rc = pthread_create(&tid, &gbl_pthread_attr_detached,
+                                (void *(*)(void *))do_schema_change, s);
         if (rc) {
             logmsg(LOGMSG_ERROR, "start_schema_change:pthread_create rc %d %s\n", rc,
                     strerror(errno));
@@ -188,6 +315,7 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int rc;
+    assert(iq->sc->tran == NULL || iq->sc->tran == trans);
     if (s->nothrevent) {
         logmsg(LOGMSG_DEBUG, "Executing SYNCHRONOUSLY\n");
         rc = finalize_schema_change_thd(iq, trans);
@@ -218,7 +346,7 @@ int change_schema(char *table, char *fname, int odh,
 {
     struct schema_change_type *s;
 
-    s = malloc(sizeof(struct schema_change_type));
+    s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
@@ -239,7 +367,7 @@ int morestripe(struct dbenv *dbenvin, int newstripe, int blobstripe)
 {
     struct schema_change_type *s;
 
-    s = malloc(sizeof(struct schema_change_type));
+    s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
@@ -257,7 +385,7 @@ int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
 {
     struct schema_change_type *s;
 
-    s = malloc(sizeof(struct schema_change_type));
+    s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
@@ -282,7 +410,7 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
         return -1;
     }
 
-    s = malloc(sizeof(struct schema_change_type));
+    s = new_schemachange_type();
     if (!s) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
@@ -650,7 +778,7 @@ static int add_table_for_recovery(struct ireq *iq)
 
     bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
 
-    rc = open_temp_db_resume(newdb, new_prefix, 1, 0);
+    rc = open_temp_db_resume(newdb, new_prefix, 1, 0, NULL);
     if (rc) {
         backout_schemas(newdb->dbname);
         abort();
@@ -695,7 +823,7 @@ int add_schema_change_tables()
                    "schema change, adding table...\n",
                    __func__, thedb->dbs[i]->dbname);
 
-            s = malloc(sizeof(struct schema_change_type));
+            s = new_schemachange_type();
             if (!s) {
                 logmsg(LOGMSG_ERROR, "%s: ran out of memory\n", __func__);
                 free(packed_sc_data);
@@ -1518,8 +1646,8 @@ void handle_setcompr(SBUF2 *sb)
     sbuf2flush(sb);
 }
 
-void vsb_printf(SBUF2 *sb, const char *sb_prefix, const char *prefix,
-                const char *fmt, va_list args)
+void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
+                const char *prefix, const char *fmt, va_list args)
 {
     char line[1024];
     char *s;
@@ -1534,7 +1662,7 @@ void vsb_printf(SBUF2 *sb, const char *sb_prefix, const char *prefix,
             sbuf2printf(sb, "%s%s\n", sb_prefix, s);
             sbuf2flush(sb);
         }
-        logmsg(LOGMSG_INFO, "%s%s\n", prefix, s);
+        logmsg(lvl, "%s%s\n", prefix, s);
         ctrace("%s%s\n", prefix, s);
 
         s = next + 1;
@@ -1555,7 +1683,7 @@ void sb_printf(SBUF2 *sb, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    vsb_printf(sb, "?", "", fmt, args);
+    vsb_printf(LOGMSG_INFO, sb, "?", "", fmt, args);
 
     va_end(args);
 }
@@ -1565,7 +1693,7 @@ void sb_errf(SBUF2 *sb, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    vsb_printf(sb, "!", "", fmt, args);
+    vsb_printf(LOGMSG_ERROR, sb, "!", "", fmt, args);
 
     va_end(args);
 }
@@ -1583,7 +1711,8 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
     if (s && s->sb)
         pthread_mutex_lock(&schema_change_sbuf2_lock);
 
-    vsb_printf((s) ? s->sb : NULL, "?", "Schema change info: ", fmt, args);
+    vsb_printf(LOGMSG_INFO, (s) ? s->sb : NULL, "?", "Schema change info: ",
+               fmt, args);
 
     if (s && s->sb)
         pthread_mutex_unlock(&schema_change_sbuf2_lock);
@@ -1604,7 +1733,8 @@ void sc_errf(struct schema_change_type *s, const char *fmt, ...)
     if (s && s->sb)
         pthread_mutex_lock(&schema_change_sbuf2_lock);
 
-    vsb_printf((s) ? s->sb : NULL, "!", "Schema change error: ", fmt, args);
+    vsb_printf(LOGMSG_ERROR, (s) ? s->sb : NULL, "!", "Schema change error: ",
+               fmt, args);
 
     if (s && s->sb)
         pthread_mutex_unlock(&schema_change_sbuf2_lock);

@@ -37,7 +37,21 @@ int do_fastinit(struct ireq *iq, tran_type *tran)
 
 int finalize_fastinit_table(struct ireq *iq, tran_type *tran)
 {
-    return finalize_drop_table(iq, tran)
+    int rc = 0;
+    struct schema_change_type *s = iq->sc;
+    extern int gbl_broken_max_rec_sz;
+    int saved_broken_max_rec_sz = gbl_broken_max_rec_sz;
+
+    if(s->db->lrl > COMDB2_MAX_RECORD_SIZE) {
+        //we want to allow fastiniting this tbl
+        gbl_broken_max_rec_sz = s->db->lrl - COMDB2_MAX_RECORD_SIZE;
+    }
+
+    rc = finalize_drop_table(iq, tran)
         || do_add_table(iq, tran)
         || finalize_add_table(iq, tran);
+
+    gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
+
+    return rc;
 }

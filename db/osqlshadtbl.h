@@ -141,6 +141,13 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
                           unsigned long long genid);
 
 /**
+ * Record a schemachange for this transaction
+ *
+ */
+int osql_save_schemachange(struct sql_thread *thd,
+                           struct schema_change_type *sc);
+
+/**
  * Process shadow tables
  *
  */

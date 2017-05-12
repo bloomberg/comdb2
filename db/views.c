@@ -2310,11 +2310,12 @@ done:
  * Alter a timepart 
  *
  */
-int timepart_alter_timepart(
-    struct schema_change_type *s, struct ireq *iq, const char *original_name, 
-    int alter(struct schema_change_type *s, struct ireq *iq, int indx,
-              int maxindx))
+int timepart_alter_timepart(struct ireq *iq, void *tran,
+                            int alter(struct ireq *iq, int indx, int maxindx,
+                                      void *tran))
 {
+   struct schema_change_type *s = iq->sc;
+   const char *original_name = s->table;
    timepart_views_t *views = thedb->timepart_views;
    timepart_view_t *view;
    int rc;
@@ -2341,7 +2342,7 @@ int timepart_alter_timepart(
 
    for(i=start;i<view->nshards; i++) {
       strncpy0(s->table, view->shards[i].tblname, sizeof(s->table));
-      rc = alter(s, iq, i, view->nshards);
+      rc = alter(iq, i, view->nshards, tran);
       if(rc) {
          rc = VIEW_ERR_SC;
          break;

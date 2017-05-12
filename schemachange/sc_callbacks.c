@@ -437,11 +437,12 @@ void sc_del_unused_files_tran(struct db *db, tran_type *tran)
     pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        if (bdb_list_unused_files_tran(db->handle, &bdberr, "schemachange", tran) ||
+        if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
+                                       "schemachange") ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors listing old files\n");
     } else {
-        if (bdb_del_unused_files(db->handle, &bdberr) ||
+        if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
             bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "errors deleting files\n");
     }
@@ -614,7 +615,6 @@ int scdone_callback(const char table[], scdone_t type)
     if (type == setcompr) {
         logmsg(LOGMSG_INFO, "Replicant setting compression flags for table:%s\n", table);
     } else if (type == add && add_new_db) {
-        printf("Replicant adding table:%s\n", table);
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
         if (add_table_to_environment(table_copy, csc2text, NULL, NULL, NULL)) {
             logmsg(LOGMSG_FATAL, "%s: error adding table "
@@ -677,7 +677,7 @@ int scdone_callback(const char table[], scdone_t type)
     }
 
     set_odh_options(db);
-    db->tableversion = table_version_select(db);
+    db->tableversion = table_version_select(db, NULL);
 
     /* Make sure to add a version 1 schema for instant-schema change tables */
     if (add_new_db && db->odh && db->instant_schema_change) {

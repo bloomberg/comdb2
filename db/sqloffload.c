@@ -59,7 +59,7 @@
 #define TEST_RECOM
 #endif
 
-int gbl_master_swing_osql_verbose = 0;
+int gbl_master_swing_osql_verbose = 1;
 
 int g_osql_ready = 0;
 int tran2netreq(int dbtran)
@@ -659,4 +659,113 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
     return 0;
+}
+
+static void osql_analyze_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_ANALYZE)) {
+        bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
+    }
+}
+
+static void osql_rowlocks_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_ROWLOCKS)) {
+        bdb_llog_rowlocks(thedb->bdb_env,
+                          iq->osql_rowlocks_enable ? rowlocks_on : rowlocks_off,
+                          &bdberr);
+    }
+}
+
+static void osql_genid48_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_GENID48)) {
+        bdb_set_genid_format(iq->osql_genid48_enable ? LLMETA_GENID_48BIT
+                                                     : LLMETA_GENID_ORIGINAL,
+                             &bdberr);
+        bdb_llog_genid_format(thedb->bdb_env,
+                              iq->osql_genid48_enable ? genid48_enable
+                                                      : genid48_disable,
+                              &bdberr);
+    }
+}
+
+static void osql_scdone_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
+        llog_scdone_t *s;
+        struct schema_change_type *sc_next;
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            s = iq->sc->scdone;
+            if (s) {
+                bdb_llog_scdone(s->handle, s->type, 1, &bdberr);
+                free(s);
+                iq->sc->scdone = NULL;
+            }
+            sc_next = iq->sc->sc_next;
+            free_schema_change_type(iq->sc);
+            iq->sc = sc_next;
+        }
+    }
+}
+
+static void osql_scdone_abort_callback(struct ireq *iq)
+{
+    if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            int backout_schema_change(struct ireq * iq);
+            struct schema_change_type *sc_next;
+            llog_scdone_t *s = iq->sc->scdone;
+            if (s) {
+                free(s);
+                iq->sc->scdone = NULL;
+            }
+            backout_schema_change(iq);
+            sc_next = iq->sc->sc_next;
+            free_schema_change_type(iq->sc);
+            iq->sc = sc_next;
+        }
+    }
+}
+
+typedef void (*osql_callback_t)(struct ireq *iq);
+/* must matches OSQL_FLAGS_* enums order */
+static osql_callback_t commit_callbacks[] = {
+    NULL,                          /* OSQL_FLAGS_RECORD_COST */
+    NULL,                          /* OSQL_FLAGS_AUTH */
+    osql_analyze_commit_callback,  /* OSQL_FLAGS_ANALYZE */
+    NULL,                          /* OSQL_FLAGS_CHECK_SELFLOCK */
+    NULL,                          /* OSQL_FLAGS_USE_BLKSEQ */
+    osql_rowlocks_commit_callback, /* OSQL_FLAGS_ROWLOCKS */
+    osql_genid48_commit_callback,  /* OSQL_FLAGS_GENID48 */
+    osql_scdone_commit_callback    /* OSQL_FLAGS_SCDONE */
+};
+static osql_callback_t abort_callbacks[] = {
+    NULL,                      /* OSQL_FLAGS_RECORD_COST */
+    NULL,                      /* OSQL_FLAGS_AUTH */
+    NULL,                      /* OSQL_FLAGS_ANALYZE */
+    NULL,                      /* OSQL_FLAGS_CHECK_SELFLOCK */
+    NULL,                      /* OSQL_FLAGS_USE_BLKSEQ */
+    NULL,                      /* OSQL_FLAGS_ROWLOCKS */
+    NULL,                      /* OSQL_FLAGS_GENID48 */
+    osql_scdone_abort_callback /* OSQL_FLAGS_SCDONE */
+};
+
+void osql_postcommit_handle(struct ireq *iq)
+{
+    commit_callbacks[OSQL_FLAGS_ANALYZE](iq);
+    commit_callbacks[OSQL_FLAGS_ROWLOCKS](iq);
+    commit_callbacks[OSQL_FLAGS_GENID48](iq);
+    commit_callbacks[OSQL_FLAGS_SCDONE](iq);
+}
+
+void osql_postabort_handle(struct ireq *iq)
+{
+    abort_callbacks[OSQL_FLAGS_SCDONE](iq);
 }

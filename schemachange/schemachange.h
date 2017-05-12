@@ -122,6 +122,18 @@ struct schema_change_type {
     int drop_table;
     int dbnum;
     int finalize; /* Whether the schema change should be committed */
+    int finalize_only; /* only commit the schema change */
+
+    pthread_mutex_t mtx; /* mutex for thread sync */
+    int sc_rc;
+
+    struct ireq *iq;
+    void *tran; /* transactional schemachange */
+    unsigned long long rqid;
+    uuid_t uuid;
+
+    struct schema_change_type *sc_next;
+    struct llog_scdone *scdone;
 
 /* instead of failing to resume schemachange, generate sc plan
  * compatible with previous versions of comdb2 depending on which of
@@ -218,6 +230,12 @@ enum schema_change_views_rc {
     SC_VIEW_ERR_SC = -4
 };
 
+enum schema_change_resume {
+    SC_NOT_RESUME = 0,
+    SC_RESUME = 1,
+    SC_NEW_MASTER_RESUME = 2
+};
+
 #include <bdb_schemachange.h>
 typedef struct llog_scdone {
     void *handle;
@@ -254,7 +272,7 @@ int pack_schema_change_type(struct schema_change_type *s, void **packed,
 int unpack_schema_change_type(struct schema_change_type *s, void *packed,
                               size_t packed_len);
 
-void init_schemachange_type(struct schema_change_type *sc);
+struct schema_change_type *init_schemachange_type(struct schema_change_type *sc);
 
 struct schema_change_type *new_schemachange_type();
 
@@ -302,8 +320,8 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket);
 
 void handle_setcompr(SBUF2 *sb);
 
-void vsb_printf(SBUF2 *sb, const char *sb_prefix, const char *prefix,
-                const char *fmt, va_list args);
+void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
+                const char *prefix, const char *fmt, va_list args);
 void sb_printf(SBUF2 *sb, const char *fmt, ...);
 void sb_errf(SBUF2 *sb, const char *fmt, ...);
 

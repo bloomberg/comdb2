@@ -264,10 +264,9 @@ int timepart_is_timepart(const char *name, int lock);
  * Alter a timepart 
  *
  */
-int timepart_alter_timepart(
-    struct schema_change_type *s, struct ireq *iq, const char *original_name, 
-    int alter(struct schema_change_type *s, struct ireq *iq, int indx,
-              int maxindx));
+int timepart_alter_timepart(struct ireq *iq, void *tran,
+                            int alter(struct ireq *iq, int indx, int maxindx,
+                                      void *tran));
 
 /**
  * Under views lock, call a function for each shard

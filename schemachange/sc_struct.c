@@ -23,9 +23,10 @@
 /************ SCHEMACHANGE TO BUF UTILITY FUNCTIONS
  * *****************************/
 
-void init_schemachange_type(struct schema_change_type *sc)
+struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
 {
     memset(sc, 0, sizeof(struct schema_change_type));
+    sc->tran = NULL;
     sc->type = DBTYPE_TAGGED_TABLE;
     sc->sb = NULL;
     sc->newcsc2 = NULL;
@@ -43,6 +44,11 @@ void init_schemachange_type(struct schema_change_type *sc)
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
+    if (pthread_mutex_init(&sc->mtx, NULL)) {
+        free_schema_change_type(sc);
+        return NULL;
+    }
+    return sc;
 }
 
 struct schema_change_type *new_schemachange_type()
@@ -50,7 +56,7 @@ struct schema_change_type *new_schemachange_type()
     struct schema_change_type *sc =
         (struct schema_change_type *)malloc(sizeof(struct schema_change_type));
     if (sc != NULL)
-        init_schemachange_type(sc);
+        sc = init_schemachange_type(sc);
 
     return sc;
 }
@@ -80,9 +86,12 @@ void free_schema_change_type(struct schema_change_type *s)
         }
 
         free_dests(s);
+        pthread_mutex_destroy(&s->mtx);
 
         if (s->sb && s->must_close_sb)
             close_appsock(s->sb);
+        if (s->scdone)
+            free(s->scdone);
         if (!s->onstack) {
             free(s);
             s = NULL;
@@ -112,6 +121,7 @@ size_t schemachange_packed_size(struct schema_change_type *s)
     s->newcsc2_len = (s->newcsc2) ? strlen(s->newcsc2) + 1 : 0;
 
     s->packed_len =
+        sizeof(s->rqid) + sizeof(s->uuid) +
         sizeof(s->type) + sizeof(s->table_len) + s->table_len +
         sizeof(s->fname_len) + s->fname_len + sizeof(s->aname_len) +
         s->aname_len + sizeof(s->avgitemsz) + sizeof(s->fastinit) +
@@ -161,6 +171,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     if (p_buf >= p_buf_end)
         return NULL;
+
+    p_buf = buf_put(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
+
+    p_buf = buf_no_net_put(&s->uuid, sizeof(s->uuid), p_buf, p_buf_end);
 
     p_buf = buf_put(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
@@ -311,6 +325,10 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         return NULL;
 
     bzero(s, sizeof(struct schema_change_type));
+
+    p_buf = (uint8_t *)buf_get(&s->rqid, sizeof(s->rqid), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_no_net_get(&s->uuid, sizeof(s->uuid), p_buf, p_buf_end);
 
     p_buf = (uint8_t *)buf_get(&s->type, sizeof(s->type), p_buf, p_buf_end);
 
@@ -690,25 +708,25 @@ void print_schemachange_info(struct schema_change_type *s, struct db *db,
     }
 }
 
-void set_schemachange_options(struct schema_change_type *s, struct db *db,
-                              struct scinfo *scinfo)
+void set_schemachange_options_tran(struct schema_change_type *s, struct db *db,
+                                   struct scinfo *scinfo, tran_type *tran)
 {
     int rc;
 
     /* Get properties from meta */
-    rc = get_db_compress(db, &scinfo->olddb_compress);
+    rc = get_db_compress_tran(db, &scinfo->olddb_compress, tran);
     if (rc)
         scinfo->olddb_compress = 0;
 
-    rc = get_db_compress_blobs(db, &scinfo->olddb_compress_blobs);
+    rc = get_db_compress_blobs_tran(db, &scinfo->olddb_compress_blobs, tran);
     if (rc)
         scinfo->olddb_compress_blobs = 0;
 
-    rc = get_db_inplace_updates(db, &scinfo->olddb_inplace_updates);
+    rc = get_db_inplace_updates_tran(db, &scinfo->olddb_inplace_updates, tran);
     if (rc)
         scinfo->olddb_inplace_updates = 0;
 
-    rc = get_db_instant_schema_change(db, &scinfo->olddb_instant_sc);
+    rc = get_db_instant_schema_change_tran(db, &scinfo->olddb_instant_sc, tran);
     if (rc)
         scinfo->olddb_instant_sc = 0;
 
@@ -727,6 +745,12 @@ void set_schemachange_options(struct schema_change_type *s, struct db *db,
 
     if (s->instant_sc == -1)
         s->instant_sc = scinfo->olddb_instant_sc;
+}
+
+void set_schemachange_options(struct schema_change_type *s, struct db *db,
+                              struct scinfo *scinfo)
+{
+    return set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
 int print_status(struct schema_change_type *s)

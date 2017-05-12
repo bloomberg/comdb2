@@ -6361,17 +6361,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         /* just in case */
         free_blob_buffers(blobs, MAXBLOBS);
 
-        if (iq->sc != NULL) {
-
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
                 return -1;
             }
             if (iq->sc->db) iq->usedb = iq->sc->db;
             rc = finalize_schema_change(iq, trans);
-            iq->sc = NULL;
             if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
             }
+            iq->sc = iq->sc->sc_next;
         }
 
         // TODO Notify all bpfunc of success
@@ -6527,7 +6527,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
          * but since we changed the way we backup stats (used to be in llmeta)
          * this opcode is only used to reload stats now
          */
-        iq->osql_flags |= OSQL_FLAGS_ANALYZE;
+        bset(&iq->osql_flags, OSQL_FLAGS_ANALYZE);
     } break;
     case OSQL_INSREC:
     case OSQL_INSERT: {
@@ -7024,34 +7024,34 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_SCHEMACHANGE: {
         uint8_t *p_buf = (uint8_t *)msg + sizeof(osql_uuid_rpl_t);
         uint8_t *p_buf_end = p_buf + msglen;
-        if (iq->sc != NULL) {
-            return -1; // Only one schemachange at the time; // this should also
-                       // backout previous one
-        } else {
-            struct schema_change_type *sc = new_schemachange_type();
-            p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
+        struct schema_change_type *sc = new_schemachange_type();
+        p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
 
-            if (p_buf == NULL)
-                return -1;
+        if (p_buf == NULL)
+            return -1;
 
-            sc->nothrevent = 1;
-            sc->finalize = 0;
-            if (sc->original_master_node[0] != 0 &&
-                strcmp(sc->original_master_node, gbl_mynode))
-                sc->resume = 1;
+        sc->nothrevent = 1;
+        sc->finalize = 0;
+        if (sc->original_master_node[0] != 0 &&
+            strcmp(sc->original_master_node, gbl_mynode))
+            sc->resume = 1;
 
-            iq->sc = sc;
-            if (sc->db == NULL) {
-                sc->db = getdbbyname(sc->table);
-            }
-            if (sc->db) iq->usedb = sc->db;
-            rc = start_schema_change_tran(iq, trans);
-            if (rc != SC_COMMIT_PENDING) {
-                iq->sc = NULL;
-            }
-
-            return rc == SC_COMMIT_PENDING || !rc ? 0 : ERR_SC;
+        iq->sc = sc;
+        if (sc->db == NULL) {
+            sc->db = getdbbyname(sc->table);
         }
+        sc->tran = trans;
+        if (sc->db) iq->usedb = sc->db;
+        rc = start_schema_change_tran(iq, trans);
+        if (rc != SC_COMMIT_PENDING) {
+            iq->sc = NULL;
+        } else {
+            iq->sc->sc_next = iq->sc_pending;
+            iq->sc_pending = iq->sc;
+            bset(&iq->osql_flags,  OSQL_FLAGS_SCDONE);
+        }
+
+        return rc == SC_COMMIT_PENDING || !rc ? 0 : ERR_SC;
     } break;
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
@@ -7232,12 +7232,12 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     /* for socksql, is this a retry that need to be checked for self-deadlock?
      */
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
-        (req.flags & OSQL_FLAGS_CHECK_SELFLOCK)) {
+        (btst(&req.flags, OSQL_FLAGS_CHECK_SELFLOCK))) {
         /* just make sure we are above the threshold */
         iq->sorese.verify_retries += gbl_osql_verify_ext_chk;
     }
 
-    if ((req.flags & OSQL_FLAGS_USE_BLKSEQ)) {
+    if (btst(&req.flags, OSQL_FLAGS_USE_BLKSEQ)) {
         iq->sorese.use_blkseq = 1;
     } else {
         iq->sorese.use_blkseq = 0;

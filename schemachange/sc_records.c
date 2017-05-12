@@ -229,7 +229,7 @@ int init_sc_genids(struct db *db, struct schema_change_type *s)
          * if we have been rebuilding the data files we can grab the genids
          * straight from there, otherwise we look in the llmeta table */
         if (is_dta_being_rebuilt(db->plan))
-            rc = bdb_find_newest_genid(db->handle, NULL /*tran*/, stripe, rec,
+            rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec,
                                        &dtalen, dtalen, &sc_genids[stripe],
                                        &ver, &bdberr);
         else
@@ -267,6 +267,8 @@ static inline int convert_server_record_cachedmap(
     if (rc) {
         convert_failure_reason_str(&reason, table, from->tag, to->tag, err,
                                    sizeof(err));
+        if (s->iq)
+            reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
         sc_errf(s, "convert_server_record_cachedmap: cannot convert data %s\n",
                 err);
         return rc;
@@ -291,6 +293,8 @@ static int convert_server_record_blobs(const void *inbufp, const char *from_tag,
     if (rc) {
         convert_failure_reason_str(&reason, db->table, from_tag, db->tag, err,
                                    sizeof(err));
+        if (s->iq)
+            reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
         sc_errf(s, "convert_server_record_blobs: cannot convert data %s\n",
                 err);
         return 1;
@@ -509,9 +513,25 @@ static int convert_record(struct convert_record_data *data)
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
 
-            sc_printf(data->s, "finished stripe %d, setting genid %llx\n",
-                      data->stripe, data->sc_genids[data->stripe]);
-            return 0;
+            int usellmeta = 0;
+            if (!data->to->plan) {
+                usellmeta = 1; /* new dta does not have old genids */
+            } else if (data->to->plan->dta_plan) {
+                usellmeta = 0; /* the genid is in new dta */
+            } else {
+                usellmeta = 1; /* dta is not being built */
+            }
+            rc = 0;
+            if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
+                int bdberr;
+                rc = bdb_set_high_genid_stripe(NULL, data->to->dbname,
+                                               data->stripe, -1ULL, &bdberr);
+                if (rc != 0)
+                    rc = -1; // convert_record expects -1
+            }
+            sc_printf(data->s, "finished stripe %d, setting genid %llx, rc %d\n",
+                      data->stripe, data->sc_genids[data->stripe], rc);
+            return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
@@ -866,21 +886,41 @@ err: /*if (is_schema_change_doomed())*/
             return 1;
         }
 
+        if (data->s->iq)
+            reqerrstr(
+                data->s->iq, ERR_SC,
+                "Could not add duplicate entry in index %d rrn %d genid 0x%llx",
+                ixfailnum, rrn, genid);
         sc_errf(data->s, "Could not add duplicate entry in index %d "
                          "rrn %d genid 0x%llx\n",
                 ixfailnum, rrn, genid);
         return -2;
     } else if (rc == ERR_CONSTR) {
+        if (data->s->iq)
+            reqerrstr(
+                data->s->iq, ERR_SC,
+                "Error verifying constraints changed rrn %d genid 0x%llx",
+                rrn, genid);
         sc_errf(data->s, "Error verifying constraints changed!"
                          " rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
+        if (data->s->iq)
+            reqerrstr(
+                data->s->iq, ERR_SC,
+                "Error verifying partial indexes rrn %d genid 0x%llx",
+                rrn, genid);
         sc_errf(data->s, "Error verifying partial indexes!"
                          " rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc != 0) {
+        if (data->s->iq)
+            reqerrstr(
+                data->s->iq, ERR_SC,
+                "Error adding record rc %d rrn %d genid 0x%llx",
+                rc, rrn, genid);
         sc_errf(data->s, "Error adding record rcode %d opfailcode %d "
                          "ixfailnum %d rrn %d genid 0x%llx\n",
                 rc, opfailcode, ixfailnum, rrn, genid);
@@ -1036,8 +1076,8 @@ void *convert_records_thd(struct convert_record_data *data)
 cleanup:
     if (data->outrc == 0) {
         sc_printf(data->s,
-                  "successfully converted %lld records with %d retries\n",
-                  data->nrecs, data->totnretries);
+                  "successfully converted %lld records with %d retries "
+                  "stripe %d\n", data->nrecs, data->totnretries, data->stripe);
     } else {
         if (gbl_sc_abort) {
             sc_errf(data->s,
@@ -1161,6 +1201,7 @@ int convert_all_records(struct db *from, struct db *to,
         outrc = data.outrc;
     } else {
         struct convert_record_data threadData[gbl_dtastripe];
+        int threadSkipped[gbl_dtastripe];
         pthread_attr_t attr;
         int rc = 0;
 
@@ -1177,6 +1218,14 @@ int convert_all_records(struct db *from, struct db *to,
              */
             threadData[ii] = data;
             threadData[ii].stripe = ii;
+
+            if (sc_genids[ii] == -1ULL) {
+                sc_printf(threadData[ii].s, "stripe %d was done\n",
+                          threadData[ii].stripe);
+                threadSkipped[ii] = 1;
+                continue;
+            } else
+                threadSkipped[ii] = 0;
 
             sc_printf(threadData[ii].s, "starting thread for stripe: %d\n",
                       threadData[ii].stripe);
@@ -1201,6 +1250,9 @@ int convert_all_records(struct db *from, struct db *to,
         /* wait for all threads to complete */
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
             void *ret;
+
+            if (threadSkipped[ii])
+                continue;
 
             /* if the threadid is NULL, skip this one */
             if (!threadData[ii].tid) {

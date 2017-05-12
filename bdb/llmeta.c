@@ -3717,6 +3717,12 @@ int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
                                   get_dtafile_from_genid(genid), genid, bdberr);
 }
 
+int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
+                              int stripe, unsigned long long genid, int *bdberr)
+{
+    return bdb_set_high_genid_int(input_trans, db_name, stripe, genid, bdberr);
+}
+
 /* looks up the last procesed genid for a given stripe in the in progress schema
  * change, returned values have no meaning if bdb_get_in_schema_change does not
  * say we are in a schema change or if the schema change is rebuilding its data

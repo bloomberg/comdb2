@@ -35,6 +35,9 @@ int gbl_default_livesc = 1;
 int gbl_default_plannedsc = 1;
 int gbl_default_sc_scanmode = SCAN_PARALLEL;
 
+pthread_mutex_t sc_resuming_mtx = PTHREAD_MUTEX_INITIALIZER;
+struct schema_change_type *sc_resuming = NULL;
+
 /* Throttle settings, which you can change with message traps.  Note that if
  * you have gbl_sc_usleep=0, the important live writer threads never get to
  * run. */
@@ -151,8 +154,12 @@ int sc_set_running(int running, uint64_t seed, char *host, time_t time)
     if (thedb->master == gbl_mynode) {
         if (running && gbl_schema_change_in_progress) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            logmsg(LOGMSG_ERROR, "schema change already in progress\n");
-            return -1;
+            if (seed == sc_seed)
+                return 0;
+            else {
+                logmsg(LOGMSG_ERROR, "schema change already in progress\n");
+                return -1;
+            }
         } else if (!running && seed != sc_seed && seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_ERROR, "cannot stop schema change; wrong seed given\n");
@@ -171,6 +178,8 @@ int sc_set_running(int running, uint64_t seed, char *host, time_t time)
         gbl_sc_resume_start = 0;
     }
     ctrace("sc_set_running: running=%d seed=0x%llx\n", running,
+           (unsigned long long)seed);
+    logmsg(LOGMSG_INFO, "sc_set_running: running=%d seed=0x%llx\n", running,
            (unsigned long long)seed);
     pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;

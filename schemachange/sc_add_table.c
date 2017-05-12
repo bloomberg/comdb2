@@ -90,11 +90,11 @@ static inline int get_db_handle(struct db *newdb, void *trans)
     return SC_OK;
 }
 
-static inline int init_bthashsize(struct db *newdb)
+static inline int init_bthashsize_tran(struct db *newdb, tran_type *tran)
 {
     int bthashsz;
 
-    if (get_db_bthash(newdb, &bthashsz) != 0)
+    if (get_db_bthash_tran(newdb, &bthashsz, tran) != 0)
         bthashsz = 0;
 
     if (bthashsz) {
@@ -171,9 +171,16 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
 
     gbl_sc_commit_count++;
-    thedb->dbs =
-        realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
-    thedb->dbs[thedb->num_dbs++] = newdb;
+    if (s && s->fastinit && s->db) {
+        replace_db_idx(newdb, s->db->dbs_idx, 1);
+        free(s->db->handle);
+        free_db_and_replace(s->db, NULL);
+    } else {
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        newdb->dbs_idx = thedb->num_dbs;
+        thedb->dbs[thedb->num_dbs++] = newdb;
+    }
 
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
@@ -193,7 +200,7 @@ int add_table_to_environment(char *table, const char *csc2,
     */
 
     newdb->iq = NULL;
-    init_bthashsize(newdb);
+    init_bthashsize_tran(newdb, trans);
 
     return SC_OK;
 
