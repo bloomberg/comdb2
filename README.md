@@ -8,7 +8,7 @@ cost (latency) node which is available. Client library provides
 transparent reconnect.
 
 Work on Comdb2 was started at Bloomberg LP in 2004 and it has been under heavy
-developement since. More information about the architechture of the project can
+development since. More information about the architecture of the project can
 be found in our [VLDB 2016 paper](http://www.vldb.org/pvldb/vol9/p1377-scotti.pdf)
 and for more information on usage please look in in the [Docs](https://bloomberg.github.io/comdb2/overview_home.html).
 
