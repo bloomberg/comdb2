@@ -5,7 +5,7 @@ bash -n "$0" | exit 1
 set -x
 
 RESTART_DELAY=35
-NUMREC=250
+NUMREC=500
 
 # Debug variable
 debug=0
@@ -188,7 +188,7 @@ insert_records()
         fi
         # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
-        #sleep 0.001
+        sleep 0.01
     done
     echo "done inserting round $nins"
 }
@@ -334,6 +334,7 @@ pid=$!
 while ps -p $pid &> /dev/null ; do
     echo "insert running, killrestart all nodes"
     kill_restart_cluster $RESTART_DELAY
+    sleep 2
 done
 
 master=`getmaster`
