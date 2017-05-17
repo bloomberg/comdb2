@@ -7124,7 +7124,10 @@ retry_read:
         clnt->tzname[0] = '\0';
         clnt->osql.count_changes = 1;
         clnt->heartbeat = 1;
-        clnt->dbtran.mode = tdef_to_tranlevel(SQL_TDEF_SOCK);
+        clnt->dbtran.mode = tdef_to_tranlevel( gbl_sql_tranlevel_default );
+        if (clnt->dbtran.mode < TRANLEVEL_SOSQL) {
+            clnt->dbtran.mode = TRANLEVEL_SOSQL;
+        }
         goto retry_read;
     }
 
@@ -7705,7 +7708,10 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     clnt.osql.count_changes = 1;
-    clnt.dbtran.mode = tdef_to_tranlevel(SQL_TDEF_SOCK);
+    clnt->dbtran.mode = tdef_to_tranlevel( gbl_sql_tranlevel_default );
+    if (clnt->dbtran.mode < TRANLEVEL_SOSQL) {
+        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+    }
     clnt.high_availability = 0;
 
     sbuf2settimeout(
