@@ -20,9 +20,8 @@ and for more information on usage please look in the [Docs](https://bloomberg.gi
 | Directory | Description |
 | --- | --- |
 | bb/           | Useful generic modules |
-| bbinc/        | Header files |
+| bbinc/        | Header & Generic include files |
 | bdb/          | Table layer |
-| bbinc/        | Generic include files |
 | berkdb/       | Btrees layer |
 | cdb2api/      | Client code |
 | cdb2jdbc/     | JDBC driver |
