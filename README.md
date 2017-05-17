@@ -101,7 +101,7 @@ needed.
    ```bash
    vi /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
    configure add current machine's name, e.g.
-   hostname mptest-1.comdb2.dob1.bcpc.bloomberg.com
+   hostname mptest-1.comdb2.example.com
    ```
 
 7. On one machine, create a database.
@@ -113,12 +113,12 @@ needed.
    ```
    vi /home/mponomar/db/mikedb.lrl
    add
-   cluster nodes mptest-1.comdb2.dob1.bcpc.bloomberg.com mptest-2.comdb2.dob1.bcpc.bloomberg.com
+   cluster nodes mptest-1.comdb2.example.com mptest-2.comdb2.example.com
    ```
    
 9. On other nodes, copy the database over:
    ```
-   copycomdb2 mptest-1.comdb2.dob1.bcpc.bloomberg.com:/home/mponomar/db/mikedb.lrl
+   copycomdb2 mptest-1.comdb2.example.com:/home/mponomar/db/mikedb.lrl
    ```
    
 0. On all nodes, start the database.
