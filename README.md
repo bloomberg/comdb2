@@ -30,7 +30,7 @@ and for more information on usage please look in in the [Docs](https://bloomberg
 | comdb2tests/  | Contains all the tests that will be run for this version |
 | config/       | lrl config files |
 | contrib/      | Misc useful programs that aren't part of core Comdb2 |
-| crc32c/       | Dhecksum component |
+| crc32c/       | Checksum component |
 | csc2/         | csc2 processing |
 | csc2files/    | csc2 config files |
 | cson/         | JSON library |
