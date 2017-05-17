@@ -214,33 +214,23 @@ void fillTableOption(struct schema_change_type* sc, int opt)
     else
         sc->instant_sc = 1;
 
+    sc->compress_blobs = -1;
     if (OPT_ON(opt, BLOB_RLE))
         sc->compress_blobs = BDB_COMPRESS_RLE8;
-    if (OPT_ON(opt, BLOB_CRLE))
-        sc->compress_blobs = BDB_COMPRESS_NONE; // FIX this it should not exist
-    if (OPT_ON(opt, BLOB_ZLIB))
+    else if (OPT_ON(opt, BLOB_ZLIB))
         sc->compress_blobs = BDB_COMPRESS_ZLIB;
-    if (OPT_ON(opt, BLOB_LZ4))
+    else if (OPT_ON(opt, BLOB_LZ4))
         sc->compress_blobs = BDB_COMPRESS_LZ4;
 
-    if (sc->compress_blobs != BDB_COMPRESS_RLE8 &&
-        sc->compress_blobs != BDB_COMPRESS_ZLIB && 
-        sc->compress_blobs != BDB_COMPRESS_LZ4)
-                sc->compress_blobs = BDB_COMPRESS_NONE;
-
+    sc->compress = -1;
     if (OPT_ON(opt, REC_RLE))
         sc->compress = BDB_COMPRESS_RLE8;
-    if (OPT_ON(opt, REC_CRLE))
+    else if (OPT_ON(opt, REC_CRLE))
         sc->compress = BDB_COMPRESS_CRLE;
-    if (OPT_ON(opt, REC_ZLIB))
+    else if (OPT_ON(opt, REC_ZLIB))
         sc->compress = BDB_COMPRESS_ZLIB;
-    if (OPT_ON(opt, REC_LZ4))
+    else if (OPT_ON(opt, REC_LZ4))
         sc->compress = BDB_COMPRESS_LZ4;
-
-    if (sc->compress != BDB_COMPRESS_RLE8 &&
-        sc->compress != BDB_COMPRESS_ZLIB && 
-        sc->compress != BDB_COMPRESS_LZ4)
-                sc->compress = BDB_COMPRESS_NONE;
 
     if (OPT_ON(opt, FORCE_REBUILD))
         sc->force_rebuild = 1;

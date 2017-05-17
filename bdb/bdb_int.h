@@ -1010,6 +1010,8 @@ struct bdb_state_tag {
 
     pthread_mutex_t durable_lsn_lk;
     pthread_cond_t durable_lsn_wait;
+
+    uint16_t *fld_hints;
 };
 
 /* define our net user types */

@@ -190,8 +190,6 @@ bdb/mem_bdb.c
 bdb/mem_bdb.h
 berkdb/mem_berkdb.c
 berkdb/mem_berkdb.h
-comdb2rle/mem_comdb2rle.c
-comdb2rle/mem_comdb2rle.h
 csc2/mem_csc2.c
 csc2/mem_csc2.h
 datetime/mem_datetime.c
@@ -258,6 +256,7 @@ tests/tools/hatest
 tests/tools/bound
 tests/tools/localrep
 tests/tools/utf8
+tests/tools/crle
 
 # jepsen c test
 jepsen/ctest/test*

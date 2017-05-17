@@ -13,7 +13,8 @@ export TESTID:=$(shell tools/get_random.sh)
 CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
 
-basicops:
+
+basicops_nokey:
 	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
@@ -24,6 +25,8 @@ basicops:
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
+
+basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
 
 TOTAL=$(words $(MAKECMDGOALS))
@@ -42,9 +45,9 @@ showparams:
 	@echo CLUSTER=${CLUSTER}
 
 tools:
-	@$(MAKE) -s -C tools
+	@$(MAKE) -sC tools
 
-$(patsubst %.test,%,$(shell ls -d *.test)): basicops tools $(SRCHOME)/cdb2sql $(SRCHOME)/cdb2_dump $(SRCHOME)/cdb2_stat
+$(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): basicops tools $(SRCHOME)/cdb2sql $(SRCHOME)/cdb2_dump $(SRCHOME)/cdb2_stat
 
 $(SRCHOME)/cdb2sql: $(SRCHOME)/comdb2
 	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2sql
@@ -55,6 +58,8 @@ $(SRCHOME)/cdb2_dump:  $(SRCHOME)/comdb2
 $(SRCHOME)/cdb2_stat:  $(SRCHOME)/comdb2
 	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2_stat
 
+crle: basicops_nokey tools
+	@$(MAKE) -sC crle.test
 
 %: %.test
 	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running $< $$N/${TOTAL}
@@ -69,7 +74,6 @@ $(SRCHOME)/cdb2_stat:  $(SRCHOME)/comdb2
 
 %.tool: %.test
 	+$(MAKE) -C $(patsubst %.tool,%,$<) tool
-
 
 stop:
 	@./stopall

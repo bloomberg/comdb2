@@ -725,7 +725,8 @@ struct db {
     int nsqlix;
 
     /*backend db engine handle*/
-    void *handle;
+    bdb_state_type *handle;
+
     /* meta-data.  this may be a lite db.  it may be NULL, because older
      * comdb2s didn't have meta dbs.  also it may be NULL if the dbenv
      * meta handle is non-NULL - the new approach is one meta table per
