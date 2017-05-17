@@ -787,9 +787,9 @@ These options are toggle-able at runtime.
 |dumpthreadonexit | off | If set to 'on' dump resources held by a thread on exit
 |num_record_converts | 100 | During schema changes, pack this many records into a transaction.
 |maxcolumns | 255 | Raise the maximum permitted number of columns per table.  There's a hard limit of 1024.
-|enable_partial_indexes | not set | If set, allows partial index definitions in table schema.  See (partial indices)[table_schema.html#partial-indices]
+|enable_partial_indexes | not set | If set, allows partial index definitions in table schema.  See [partial indices](table_schema.html#partial-indices)
 |disable_partial_indexes | | Disables partial indices
-|querylimit | | See (query limit commands)[#query-limit-commands]
+|querylimit | | See [query limit commands](#query-limit-commands)
 |maxretries | 500 | Maximum number of times a transactions will be retried on a deadlock
 |deadlock_rep_retry_max | not set | If set, will reset the deadlock mode after this many deadlocks on the replicant while applying the log stream.
 |enable_sparse_lockerid_map | set | If set, allocates a sparse map of lockers for deadlock resolution
