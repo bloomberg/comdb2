@@ -103,7 +103,9 @@ needed.
    hostname mptest-1.comdb2.example.com
    ```
 
-7. On one machine, create a database.
+7. On one machine, create a database - this example creates a database called _mikedb_ stored in _~/db_.
+
+   Note if still in the comdb2 repo root, the required cbd2sql binary is in place - the following commands assume this.
    ```
    comdb2 --create --dir ~/db mikedb
    ```
@@ -129,7 +131,7 @@ needed.
 1. On any node, start using the database.  You don't have any tables yet.  You can add them with *cdb2sql* 
    Example -
    ```sql
-   cdb2sql mikedb local 'CREATE TABLE t1 {
+   ./cdb2sql mikedb local 'CREATE TABLE t1 {
         schema {
             int a
         }
@@ -138,8 +140,8 @@ needed.
 
    Database can be queried/updated with cdb2sql:
    ```sql
-   cdb2sql mikedb local 'insert into t1(a) values(1)'
+   ./cdb2sql mikedb local 'insert into t1(a) values(1)'
    (rows inserted=1)
-   cdb2sql mikedb local 'select * from t1'
+   ./cdb2sql mikedb local 'select * from t1'
    (a=1)
    ```
