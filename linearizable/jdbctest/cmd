@@ -1,0 +1,1 @@
+java -cp target/jdbctest-1.0-SNAPSHOT.jar:/home/mhannum/comdb2/cdb2jdbc/target/cdb2jdbc-2.0.0-dist/libexec/cdb2jdbc/cdb2jdbc-2.0.0.jar:/home/mhannum/comdb2/cdb2jdbc/target/cdb2jdbc-2.0.0-dist/libexec/cdb2jdbc/protobuf-java-2.6.1.jar com.bloomberg.comdb2.App

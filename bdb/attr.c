@@ -1,0 +1,238 @@
+/*
+   Copyright 2015 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+#include <pthread.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#include <stddef.h>
+
+#include <db.h>
+// #include <peutil.h> /* for time_epoch() */
+
+#include <ctrace.h>
+
+#include <net.h>
+#include "bdb_int.h"
+#include "locks.h"
+
+#include <plbitlib.h> /* for bset/btst */
+#include <logmsg.h>
+
+void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
+                      int attr, int value)
+{
+    /* Overrides for special cases */
+    switch (attr) {
+    case BDB_ATTR_BLOBSTRIPE:
+        if (value)
+            bdb_attr->blobstripe = bdb_attr->dtastripe;
+        else
+            bdb_attr->blobstripe = 0;
+        return;
+
+    case BDB_ATTR_COMMITDELAY:
+        /* set delay */
+        bdb_attr->commitdelay = value;
+
+        /* if max is set, cap at max */
+        if ((bdb_attr->commitdelaymax > 0) &&
+            (bdb_attr->commitdelay > bdb_attr->commitdelaymax))
+            bdb_attr->commitdelay = bdb_attr->commitdelaymax;
+        return;
+
+    case BDB_ATTR_REP_WORKERS:
+        bdb_attr->rep_workers = value;
+        if (bdb_state && bdb_state->dbenv)
+            bdb_state->dbenv->set_num_recovery_worker_threads(bdb_state->dbenv,
+                                                              value);
+        return;
+
+    case BDB_ATTR_REP_PROCESSORS:
+        bdb_attr->rep_processors = value;
+        if (bdb_state && bdb_state->dbenv)
+            bdb_state->dbenv->set_num_recovery_processor_threads(
+                bdb_state->dbenv, value);
+        return;
+
+    case BDB_ATTR_REP_MEMSIZE:
+        bdb_attr->rep_memsize = value;
+        if (bdb_state && bdb_state->dbenv)
+            bdb_state->dbenv->set_recovery_memsize(bdb_state->dbenv, value);
+
+    case BDB_ATTR_PAGE_EXTENT_SIZE:
+        bdb_attr->page_extent_size = value;
+        if (bdb_state && bdb_state->dbenv)
+            bdb_state->dbenv->set_page_extent_size(bdb_state->dbenv, value);
+        return;
+
+    case BDB_ATTR_TRACK_REPLICATION_TIMES:
+        bdb_attr->track_replication_times = value;
+        if (bdb_state && value == 0)
+            bdb_disable_replication_time_tracking(bdb_state);
+        break;
+    }
+
+#define DEF_ATTR(NAME, name, type, dflt)                                       \
+    case BDB_ATTR_##NAME:                                                      \
+        bdb_attr->name = value;                                                \
+        break;
+    switch (attr) {
+#include "attr.h"
+    default:
+        logmsg(LOGMSG_ERROR, "%s: unknown attribute %d\n", __func__, attr);
+        break;
+    }
+#undef DEF_ATTR
+
+    if (attr == BDB_ATTR_REPLIMIT) {
+        if (bdb_state) {
+            if (bdb_state->dbenv) {
+                int rc;
+                const char *fname;
+#if defined(BERKDB_4_5) || defined(BERKDB_46)
+                rc = bdb_state->dbenv->rep_set_limit(bdb_state->dbenv, 0,
+                                                     bdb_attr->replimit);
+#else
+                rc = bdb_state->dbenv->set_rep_limit(bdb_state->dbenv, 0,
+                                                     bdb_attr->replimit);
+#endif
+                if (rc)
+                    logmsg(LOGMSG_ERROR, "%s:set_rep_limit: %d %s\n", __func__, rc,
+                            bdb_strerror(rc));
+                else
+                    logmsg(LOGMSG_USER, "dbenv->set_rep_limit called with new rep limit %d\n",
+                        bdb_attr->replimit);
+            }
+        } else
+            logmsg(LOGMSG_ERROR, 
+                "%s: BDB_ATTR_REPLIMIT changed but environment not updated\n",
+                __func__);
+
+    } else if (attr == BDB_ATTR_REPMETHODMAXSLEEP) {
+        /* echo the attribute change into the berkdb layer
+         * (gbl_rep_method_max_sleep_cnt is defined in rep/rep_method.c) */
+        extern int gbl_rep_method_max_sleep_cnt;
+        gbl_rep_method_max_sleep_cnt = bdb_attr->repmethodmaxsleep;
+    }
+}
+
+void bdb_attr_set(bdb_attr_type *bdb_attr, int attr, int value)
+{
+    bdb_attr_set_int(NULL, bdb_attr, attr, value);
+}
+
+int bdb_attr_set_by_name(bdb_state_type *bdb_handle, bdb_attr_type *bdb_attr,
+                         const char *attrname, int value)
+{
+#define DEF_ATTR(NAME, name, type, dflt)                                       \
+    else if (strcasecmp(attrname, #NAME) == 0)                                 \
+    {                                                                          \
+        bdb_attr_set_int(bdb_handle, bdb_attr, BDB_ATTR_##NAME, value);        \
+    }
+    if (!attrname) {
+        logmsg(LOGMSG_ERROR, "%s: attrname is NULL\n", __func__);
+        return -1;
+    }
+#include "attr.h"
+    else {
+        logmsg(LOGMSG_ERROR, "%s: unknown attribute %s\n", __func__, attrname);
+        return -1;
+    }
+#undef DEF_ATTR
+    return 0;
+}
+
+int bdb_attr_get(bdb_attr_type *bdb_attr, int attr)
+{
+#define DEF_ATTR(NAME, name, type, dflt)                                       \
+    case BDB_ATTR_##NAME:                                                      \
+        return bdb_attr->name;
+    switch (attr) {
+#include "attr.h"
+    default:
+        logmsg(LOGMSG_ERROR, "%s: unknown attribute %d\n", __func__, attr);
+        return -1;
+    }
+#undef DEF_ATTR
+}
+
+static const char *bdb_attr_units(int type)
+{
+    switch (type) {
+    case BDB_ATTRTYPE_SECS:
+        return " secs";
+    case BDB_ATTRTYPE_MSECS:
+        return " msecs";
+    case BDB_ATTRTYPE_USECS:
+        return " usecs";
+    case BDB_ATTRTYPE_BYTES:
+        return " bytes";
+    case BDB_ATTRTYPE_KBYTES:
+        return " kbytes";
+    case BDB_ATTRTYPE_MBYTES:
+        return " megabytes";
+    case BDB_ATTRTYPE_BOOLEAN:
+        return " (boolean)";
+    case BDB_ATTRTYPE_QUANTITY:
+        return "";
+    case BDB_ATTRTYPE_PERCENT:
+        return "%";
+    default:
+        return " (unknown type?!)";
+    }
+}
+
+void bdb_attr_dump(FILE *fh, const bdb_attr_type *bdb_attr)
+{
+#define DEF_ATTR(NAME, name, type, dflt)                                       \
+    logmsg(LOGMSG_USER, "%-20s = %d%s\n", #NAME, bdb_attr->name,                       \
+            bdb_attr_units(BDB_ATTRTYPE_##type));
+#include "attr.h"
+#undef DEF_ATTR
+}
+
+void *bdb_attr_create(void)
+{
+    bdb_attr_type *bdb_attr;
+
+    bdb_attr = mymalloc(sizeof(bdb_attr_type));
+    bzero(bdb_attr, sizeof(bdb_attr_type));
+#define DEF_ATTR(NAME, name, type, dflt) bdb_attr->name = (dflt);
+#include "attr.h"
+#undef DEF_ATTR
+
+    /* echo our default attribute setting into the berkdb library */
+    bdb_attr_set(bdb_attr, BDB_ATTR_REPMETHODMAXSLEEP,
+                 bdb_attr->repmethodmaxsleep);
+    listc_init(&bdb_attr->deferred_berkdb_options,
+               offsetof(struct deferred_berkdb_option, lnk));
+
+    return bdb_attr;
+}

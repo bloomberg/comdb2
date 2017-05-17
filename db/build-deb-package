@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -e
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [[ "$branch" = "debian" ]]; then
+   echo 2>&1 "You probably don't want to run this in the debian branch."
+   exit 1
+fi
+
+changed=$(git status --porcelain | wc -l)
+# save any changes
+if [[ $changed -gt 1 ]]; then
+   git stash save --include-untracked
+fi
+
+git merge --no-commit debian
+if [[ $changed -gt 1 ]]; then
+    git stash apply stash@{0}
+fi
+
+# build
+# if build fails we still want to get back to where we were, so don't
+# abort on error
+set +e
+make -j4 deb-current
+set -e
+
+# get back to where we were
+git reset --hard
+git clean -q -f -x -d
+if [[ $changed -gt 1 ]]; then
+    git stash pop
+fi

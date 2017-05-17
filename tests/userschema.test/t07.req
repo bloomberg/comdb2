@@ -1,0 +1,4 @@
+select * from comdb2_tablepermissions
+set user mohit
+set password mohit
+select * from comdb2_tablepermissions order by tablename

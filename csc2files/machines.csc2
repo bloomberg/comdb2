@@ -1,0 +1,9 @@
+tag ondisk {
+    cstring cluster[50]
+    cstring room[10]
+    cstring name[50]
+}
+
+keys {
+    "clustermachs" = cluster + name
+}

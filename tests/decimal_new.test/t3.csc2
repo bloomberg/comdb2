@@ -1,0 +1,11 @@
+schema
+{
+   int         id
+   decimal128  d128
+}
+
+keys
+{
+   "ID"         = id
+   dup "D128"   = d128
+}

@@ -1,0 +1,42 @@
+// transaction_history.csc2
+
+schema
+{
+    int       transaction_history_id            // primary key
+    datetime  tx_tsp                            // tsp of transaction
+    int       portfolio_id                      // foreign key
+    int       uuid                              //   + UUID
+    int       rcv_recomm_id     null=yes        // foreign key
+
+    double    cash_balance                      // cash held after transaction
+    double    short_collateral_balance          // collateral for short borrow
+    double    short_cover_balance dbstore=0.0   // TO BE DELETED
+    double    current_allocation  null=yes dbload=0.0 // current allocation 
+}
+
+tag default
+{
+    int       transaction_history_id
+    datetime  tx_tsp
+    int       portfolio_id
+    int       uuid
+    int       rcv_recomm_id
+
+    double    cash_balance
+    double    short_collateral_balance
+    double    short_cover_balance
+    double    current_allocation
+}
+
+keys
+{
+    "TRANSACTION_HISTORY_ID" = transaction_history_id
+
+    dup "PORTFOLIO_ID" = portfolio_id
+    dup "PORTFOLIO_ID_UUID" = portfolio_id + uuid + rcv_recomm_id
+    dup "RCV_RECOMM_ID" = rcv_recomm_id
+
+    dup "PORTFOLIO_ID_UUID_TX_TSP" = portfolio_id + uuid + tx_tsp
+    dup "RCV_RECOMM_ID_TX_TSP" = rcv_recomm_id + tx_tsp
+}
+

@@ -1,0 +1,406 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Grab my database name.
+dbnm=$1
+
+TMPDIR=${TMPDIR:-/tmp}
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+function comdb2dumpcsc {
+    cdb2sql --tabs ${CDB2_OPTIONS} $1 default "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'"
+}
+
+for table in $(comdb2dumpcsc $dbnm); do 
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $table"
+done
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate sqlite_stat1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate sqlite_stat4"
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t1 {
+schema
+{
+    int      a
+    cstring  b[32]
+    blob     c
+    int      d
+}
+
+keys
+{
+dup "A" =  a
+dup "B" =  b
+}
+}
+'
+
+# Do schema changes
+function do_schema_changes
+{
+    typeset max=$1
+    typeset iter=0
+    typeset scnt=0
+
+    schema=t$(( scnt % 2 + 1)).csc2
+
+    while [[ $scnt -lt $max ]]; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
+
+        if [[ $? != 0 ]]; then
+
+            echo "Error schema-changing on iteration $scnt"
+            echo "Testcase failed"
+            return 1
+
+        fi
+
+        let scnt=scnt+1
+
+    done
+
+    return 0
+}
+
+function do_rebuild
+{
+    typeset max=$1
+    typeset iter=0
+    typeset scnt=0
+
+    schema=t$(( scnt % 2 + 1)).csc2
+
+    while [[ $scnt -lt $max ]]; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+
+        if [[ $? != 0 ]]; then
+            echo "Error schema-changing on iteration $scnt"
+            echo "Testcase failed"
+            return 1
+        fi
+        let scnt=scnt+1
+    done
+
+    return 0
+}
+
+function delete_records
+{
+    nrecs=$1
+    j=0
+    echo "deleting $nrecs records."
+    echo "" > deleted.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from t1 where a == $j" >> deleted.out
+        if [ $? -ne 0 ] ; then
+            continue
+        fi
+        let j=j+1
+    done
+}
+
+function update_records
+{
+    nrecs=$1
+    j=0
+    echo "Updating $nrecs records."
+    echo "" > updated.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a == $j" >> updated.out
+        if [ $? -ne 0 ] ; then
+            continue
+        fi
+        let j=j+1
+    done
+}
+
+
+function insert_records
+{
+    j=0
+    nrecs=$1
+    echo "Inserting $nrecs records."
+    echo "" > inserted.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values ($j,'test1',x'1234',$j)"  >> inserted.out
+        if [ $? -ne 0 ] ; then
+            continue
+        fi
+        let j=j+1
+    done
+}
+
+
+function insert_records_tran
+{
+    j=0
+    nrecs=$1
+    echo "Inserting $nrecs records."
+    echo "" > inserts.in
+
+    echo "begin" >> inserts.in
+    while [[ $j -lt $nrecs ]]; do 
+        echo "insert into t1(a,b,c,d) values ($j,'test1',x'1234',$j)"  >> inserts.in
+        let j=j+1
+    done
+    echo "commit" >> inserts.in
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < inserts.in >> inserted2.out 2>&1
+}
+
+
+function get_autoanalyze_stat
+{
+    master=$1
+
+    fl=stat.out
+    # note - should go to master
+    cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm  'exec procedure sys.cmd.send("stat autoanalyze")' | grep "Table t1" > $fl
+
+    sCnt=`cat $fl | cut -d= -f2 | awk '{print $1}'`
+    lRun=`cat $fl | cut -d= -f3 | sed 's/[^(]*(\([^)]*\))/\1/' `
+    echo "count $sCnt, lastrun $lRun" >&2
+    echo $sCnt $lRun > $TMPDIR/$$.out
+    read savedCnt lastRun < $TMPDIR/$$.out
+    rm -f $TMPDIR/$$.out
+}
+
+
+function stats_should_be
+{
+    Cnt=$1
+    lRun=$2
+    v1=$3
+    v2=$4
+
+    if [[ $Cnt -ne $v1 ]] ; then
+        echo "savedCnt $Cnt -ne $v1"
+        echo "Failed"
+        exit -1
+    fi
+    if [[ $lRun -ne $v2 ]] ; then
+        echo "lastRun $lRun -ne $v2"
+        echo "Failed"
+        exit -1
+    fi
+}
+
+
+
+
+
+#the following four lines only needed when testing locally
+#cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb setattr aa_min_percent 0")'
+#cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb setattr aa_count_upd 0")'
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
+
+
+# START OPERATIONS 
+
+echo ""
+echo "running test in machine $(hostname):${PWD}"
+
+echo "Testing adding num records that exceeds the threshold"
+
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+echo "just initialized, stats should be blank at this point"
+get_autoanalyze_stat $master 
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 0 0
+
+echo ""
+insert_records 900
+
+echo ""
+echo "stats should have data, but date still be blank"
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 900 0
+
+sleep 26 
+
+echo ""
+echo "stats should have same amount of data, date still be blank"
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 900 0
+
+cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("bdb setattr autoanalyze 0")'
+
+echo ""
+echo "updates dont count towards counter -- must be small otherwise we loose delta -- new goes to prev"
+update_records 101
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 900 0
+
+cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
+
+echo ""
+echo "make updates to count towards counter"
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER ; do 
+        cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_count_upd 1")'
+    done
+else
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb setattr aa_count_upd 1")'
+fi
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 1001 0
+
+
+sleep 26
+
+prevDate=$lastRun
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+echo "autoanalyze should have triggered stats should be blank now, but date should be set"
+
+if [ $lastRun -eq $prevDate ] ; then
+    echo "lastRun $lastRun is eq to $prevDate "
+    echo "Failed"
+    exit -1
+fi
+
+stats_should_be $savedCnt  $lastRun 0 $lastRun
+
+
+echo ""
+echo "deleting records"
+prevDate=$lastRun
+delete_records 10
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 10 $prevDate
+
+sleep 6
+
+
+echo ""
+echo "stats should be updated, date stays the same"
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 10 $prevDate
+
+sleep 5 
+
+echo "Testing that manually running analyze zeros out counters"
+date
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select now()'
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.analyze("t1")'
+
+sleep 2 #allow time for master to receive msg and reset counter
+
+echo ""
+echo "stats should be blank, date should be updated"
+prevDate=$lastRun
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+if [ $lastRun -eq $prevDate ] ; then
+    echo "lastRun $lastRun is eq to $prevDate but should not be due to analyze"
+    echo "Failed"
+    exit -1
+fi
+
+stats_should_be $savedCnt  $lastRun 0 $lastRun
+sleep 2 
+
+
+echo "Testing Fastinit"
+
+prevDate=$lastRun
+insert_records 100
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+echo "stats should be updated, date stays the same"
+stats_should_be $savedCnt  $lastRun 100 $prevDate
+
+sleep 26
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 100 $prevDate
+
+
+
+
+echo ""
+echo "fast init t1 should cause analyze to run"
+
+tbl=t1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
+prevDate=$lastRun
+sleep 2 
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+
+if [ $lastRun -eq $prevDate ] ; then
+    echo "lastRun $lastRun is eq to $prevDate "
+    echo "Failed"
+    exit -1
+fi
+
+stats_should_be $savedCnt  $lastRun 0 $lastRun
+
+
+
+sleep 26 
+
+echo ""
+echo "Testing Percent based insert "
+
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER ; do 
+        cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_min_percent 5")'
+        cdb2sql --tabs ${CDB2_OPTIONS} --host $node $dbnm 'exec procedure sys.cmd.send("bdb setattr aa_min_percent_jitter 100")'
+
+    done
+else
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb setattr aa_min_percent 5")'
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb setattr aa_min_percent_jitter 100")'
+fi
+
+cdb2sql --tabs --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 0")'
+
+insert_records_tran 200
+prevDate=$lastRun
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+stats_should_be $savedCnt  $lastRun 200 $prevDate
+
+cdb2sql --tabs --host $master $dbnm 'exec procedure sys.cmd.send("bdb setattr autoanalyze 1")'
+
+insert_records_tran 1
+sleep 26
+date
+
+get_autoanalyze_stat $master
+echo ""; cat stat.out | grep "Table t1" 
+
+if [ $lastRun -eq $prevDate ] ; then
+    echo "lastRun $lastRun is eq to $prevDate -- insert should have triggered autoanalyze"
+    echo "Failed"
+    exit -1
+fi
+
+stats_should_be $savedCnt  $lastRun 0 $lastRun
+
+
+#can also test downgrade master until it is a different node
+#stats should be the same as before
+
+echo "Success"

@@ -1,0 +1,64 @@
+#!/bin/sh
+bash -n "$0" | exit 1
+
+dbnm=$1
+keydir=$TESTDIR
+
+# Write a bad key file
+cp $DBDIR/comdb2db.cfg $DBDIR/query1.cfg
+echo "comdb2_config:ssl_key=$keydir/badkey.pem" >>$DBDIR/query1.cfg
+# BAD: Client should reject the key as the permissions are too open.
+cdb2sql --cdb2cfg $DBDIR/query1.cfg $dbnm default \
+    "SELECT 'TESTKEYPERM'" 2>&1 | grep -c 'too open'
+if [ $? != 0 ]; then
+  echo "Failed to perform key permission check."
+  exit 1
+fi
+
+# Write a bad cert path
+cp $DBDIR/comdb2db.cfg $DBDIR/query2.cfg
+echo "comdb2_config:ssl_cert_path=$DBDIR" >>$DBDIR/query2.cfg
+# BAD: Server should reject because of no client cert found
+cdb2sql --cdb2cfg $DBDIR/query2.cfg $dbnm default "SELECT 'TESTNOCERT'" >>output.actual 2>&1
+
+# Write a bad ca file
+cp $DBDIR/comdb2db.cfg $DBDIR/query3.cfg
+echo "comdb2_config:ssl_ca=$keydir/badca.pem" >>$DBDIR/query3.cfg
+# BAD: Client should reject it as the server cert is not trusted by 'badca.pem'
+cdb2sql --cdb2cfg $DBDIR/query3.cfg $dbnm default "SELECT 'TESTBADCA'" >>output.actual 2>&1
+
+# Write a bad cert path and enable verify
+cp $DBDIR/comdb2db.cfg $DBDIR/query4.cfg
+echo "comdb2_config:ssl_mode=VERIFY_CA
+comdb2_config:ssl_cert_path=$DBDIR" >>$DBDIR/query4.cfg
+# BAD: API should reject because no default ca found
+cdb2sql --cdb2cfg $DBDIR/query4.cfg $dbnm default "SELECT 'TESTDEFAULTCA'" 2>&1 | \
+    grep -c 'Could not read cacert'
+if [ $? != 0 ]; then
+  echo "Failed to auto search cacert file."
+  exit 1
+fi
+
+# GOOD
+echo "SELECT 'TESTSIMPLESQL1'
+SELECT 'TESTSIMPLESQL2'" | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >>output.actual 2>&1
+diff output.actual output.expected
+
+if [ $? != 0 ]; then
+  echo "Failed. Please check diff."
+  exit 1
+fi
+
+./ssl_bench $dbnm
+if [ $? != 0 ]; then
+  echo "ssl_bench test failed."
+  exit 1
+fi
+
+cnt=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('memstat ssl')" | wc -l`
+if [ $cnt = 0 ]; then
+  echo "SSL memory not present"
+  exit 1
+fi
+
+echo "Passed."

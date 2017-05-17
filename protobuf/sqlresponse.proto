@@ -1,0 +1,136 @@
+//package com.bloomberg.cdb2;
+syntax = "proto2";
+
+option java_package = "com.bloomberg.comdb2.jdbc";
+
+enum CDB2_ColumnType {
+    INTEGER      = 1;
+    REAL         = 2;
+    CSTRING      = 3;
+    BLOB         = 4;
+    DATETIME     = 6;
+    INTERVALYM   = 7;
+    INTERVALDS   = 8;
+    DATETIMEUS   = 9;
+    INTERVALDSUS = 10;
+}
+
+enum CDB2_ErrorCode {
+    OK                 =  0;
+    DUP_OLD            =  1;
+    CONNECT_ERROR      = -1;
+    NOTCONNECTED       = -2;
+
+    PREPARE_ERROR      = -3;
+    PREPARE_ERROR_OLD  = 1003;
+
+    IO_ERROR           = -4;
+    INTERNAL           = -5;
+    NOSTATEMENT        = -6;
+    BADCOLUMN          = -7;
+    BADSTATE           = -8;
+    ASYNCERR           = -9;
+    OK_ASYNC              = -10;
+
+    INVALID_ID              = -12;
+    RECORD_OUT_OF_RANGE     = -13;
+
+    REJECTED                = -15;
+    STOPPED                 = -16;
+    BADREQ                  = -17;
+    DBCREATE_FAILED         = -18;
+
+    THREADPOOL_INTERNAL     = -20;  /* some error in threadpool code */
+    READONLY                = -21;
+
+    NOMASTER                = -101;
+    UNTAGGED_DATABASE       = -102;
+    CONSTRAINTS             = -103;
+    DEADLOCK                =  203;
+
+    TRAN_IO_ERROR           = -105;
+    ACCESS                  = -106;
+
+    TRAN_MODE_UNSUPPORTED   = -107;
+    MASTER_TIMEOUT          = -109;
+    WRONG_DB                = -111;
+
+    VERIFY_ERROR            = 2;
+    FKEY_VIOLATION          = 3;
+    NULL_CONSTRAINT         = 4;
+
+    CONV_FAIL               = 113;
+    NONKLESS                = 114;
+    MALLOC                  = 115;
+    NOTSUPPORTED            = 116;
+
+    DUPLICATE               =  299;
+    TZNAME_FAIL             =  401;
+    CHANGENODE              =  402;
+    UNKNOWN                 =  300;
+}
+
+enum ResponseHeader {
+   SQL_RESPONSE    = 1002;
+   DBINFO_RESPONSE = 1005;
+   SQL_EFFECTS     = 1006;
+   SQL_RESPONSE_PING = 1007; // SQL_RESPONSE + requesting ack
+   SQL_RESPONSE_PONG = 1008;
+   SQL_RESPONSE_TRACE = 1009;
+}
+
+enum ResponseType {
+  COLUMN_NAMES  = 1;
+  COLUMN_VALUES = 2;
+  LAST_ROW      = 3;
+  COMDB2_INFO   = 4; // For info about features, or snapshot file/offset etc
+  SP_TRACE      = 5;
+  SP_DEBUG      = 6;
+}
+
+enum CDB2ServerFeatures {
+    SKIP_ROWS    = 1;
+}
+
+message CDB2_DBINFORESPONSE {
+    message nodeinfo {
+        required string  name = 1;
+        required int32   number = 2;
+        required int32   incoherent = 3;
+        optional int32   room = 4;
+        optional int32   port = 5;
+    }
+    required nodeinfo master = 1;
+    repeated nodeinfo nodes  = 2;     // These are slave nodes, we need to parse through these only.
+    optional bool require_ssl = 3;
+}
+
+message CDB2_EFFECTS {
+    required int32 num_affected = 1;
+    required int32 num_selected = 2;
+    required int32 num_updated  = 3;
+    required int32 num_deleted  = 4;
+    required int32 num_inserted = 5;
+}
+
+message CDB2_SQLRESPONSE {
+    required ResponseType response_type=1; // enum ReponseType
+    message column {
+        optional CDB2_ColumnType type = 1;
+        required bytes value = 2;
+        optional bool isnull = 3 [default = false];  
+    }
+    repeated column value=2;
+    optional CDB2_DBINFORESPONSE dbinforesponse =3;
+    required CDB2_ErrorCode error_code = 4;
+    optional string error_string = 5;
+    optional CDB2_EFFECTS effects = 6; 
+    message snapshotinfo {
+        required int32 file = 1;
+        required int32 offset = 2;
+    }
+    optional snapshotinfo snapshot_info=7;
+    optional uint64 row_id   = 8; // in case of retry, this will be used to identify the rows which need to be discarded
+    repeated CDB2ServerFeatures  features = 9; // This can tell client about features enabled in comdb2
+    optional string info_string = 10;
+}

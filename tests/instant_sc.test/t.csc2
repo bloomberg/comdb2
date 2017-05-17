@@ -1,0 +1,11 @@
+schema
+{
+    int i
+    int j
+}
+
+keys
+{
+    "0" = i
+    datacopy "1" = i
+}

@@ -1,0 +1,16 @@
+schema
+{
+  int uuid
+  int value
+}
+
+keys
+{
+    "UUID1"      = uuid
+}
+
+constraints
+{
+    "UUID1" -> <"t1":"UUID">
+    on update cascade
+}

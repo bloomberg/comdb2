@@ -1,0 +1,6 @@
+(selectid=0, order=0, from=0, detail='EXECUTE LIST SUBQUERY 1')
+(selectid=0, order=0, from=0, detail='EXECUTE LIST SUBQUERY 1')
+(selectid=0, order=0, from=0, detail='SEARCH TABLE AGGRQUOTES USING INDEX aggrquotes_ix_8 (trade_date=? AND bond_type=? AND sp_rating>? AND sp_rating<?) (88 rows)')
+(selectid=0, order=0, from=0, detail='EXECUTE LIST SUBQUERY 1')
+(selectid=0, order=0, from=0, detail='EXECUTE LIST SUBQUERY 1')
+(selectid=0, order=0, from=0, detail='SEARCH TABLE AGGRQUOTES USING INDEX aggrquotes_ix_7 (trade_date=? AND bond_type=? AND mdy_rating>? AND mdy_rating<?) (88 rows)')

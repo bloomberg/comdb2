@@ -1,0 +1,11 @@
+#DRQS 28787012
+
+select * from t1
+select * from t2
+insert into t1 values(1,2,3,4,5)
+insert into t1 values(1,2,3,4,5)
+insert into t1 values(1,2,3,4,5)
+insert into t1 values(1,2,3,4,5)
+insert into t1 values(1,2,3,4,5)
+insert into t2 select * from t1
+select * from t2 order by i

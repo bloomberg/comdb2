@@ -1,0 +1,76 @@
+//package com.bloomberg.cdb2;
+syntax = "proto2";
+
+option java_package = "com.bloomberg.comdb2.jdbc";
+
+enum CDB2RequestType {
+    CDB2QUERY = 1;
+    SQLQUERY  = 2;
+    DBINFO    = 3;
+    RESET     = 108;
+    /* To tell the server to perform SSL_accept(). */
+    SSLCONN   = 121;
+}
+
+enum CDB2ClientFeatures {
+    SKIP_ROWS            = 1;
+    ALLOW_MASTER_EXEC    = 2;
+    ALLOW_MASTER_DBINFO  = 3;
+    ALLOW_QUEUING        = 4;
+    /* To tell the server that the client is SSL-capable. */
+    SSL                  = 5;
+}
+
+message CDB2_FLAG {
+  required int32 option = 1;
+  required int32 value = 2;
+}
+
+message CDB2_SQLQUERY {
+  required string dbname = 1;
+  required string sql_query = 2;
+  repeated CDB2_FLAG flag = 3;
+  required bool little_endian = 4;
+  message bindvalue {
+    required string varname = 1;
+    required int32  type    = 2;
+    required bytes  value   = 3;
+    optional bool   isnull  = 4 [default = false];
+    optional int32  index   = 5;
+  }
+  repeated bindvalue bindvars = 5;
+  optional string tzname = 6;
+  repeated string set_flags = 7;
+  repeated int32 types = 8;
+  optional string mach_class = 9 [default = "unknown"];
+  optional bytes cnonce = 10;
+  message snapshotinfo {
+    required int32  file    = 1;
+    required int32  offset  = 2;
+  }
+  optional snapshotinfo snapshot_info = 11; 
+  optional int64 skip_rows = 12; // number of rows to be skipped, -1 (skip all rows)
+  optional int32 retry = 13  [default = 0];
+  // if begin retry < query retry then skip all the rows from server, if same then skip (skip_rows)
+  repeated int32 features = 14; // Client can negotiate on this.
+  message cinfo {
+    required int32  pid      = 1;
+    required int32  th_id    = 2;
+    required int32  host_id  = 3;
+
+  }
+  optional cinfo client_info = 15;
+}
+
+
+message CDB2_DBINFO {
+  required string dbname = 1;
+  required bool little_endian = 2;
+  optional bool want_effects = 3;
+}
+
+message CDB2_QUERY {
+  optional CDB2_SQLQUERY sqlquery = 1;
+  optional CDB2_DBINFO   dbinfo = 2;
+  optional string        spcmd  = 3;
+}

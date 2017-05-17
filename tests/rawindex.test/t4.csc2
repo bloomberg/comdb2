@@ -1,0 +1,12 @@
+schema
+{
+    int     i
+    u_int   j
+    int     p
+    u_int   q
+}
+
+keys
+{
+    "index" = <DESCEND> i + <DESCEND> j + p + q
+}

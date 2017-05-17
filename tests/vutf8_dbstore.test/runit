@@ -1,0 +1,77 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -x
+
+# This testcase checks dbstore setting for vutf8
+# when we add a new vutf8 field dbstore should work correctly:
+# if dbstore is too large to fit in dta, it should spill to 
+# blob dta files--for existing rows to be valid that means adding such field
+# should trigger a rebuild.
+
+dbnm=$1
+debug=0
+cppid=-1
+
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a, b1) values (1, x'12345678')"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a, b1) values (2, x'22345678')"
+
+#t1_2 should be instant sc
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_2.csc2 ` }"
+do_verify
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a, b1) values (3, x'32345678')"
+do_verify
+
+#reset
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_1.csc2 ` }"
+do_verify
+
+
+#t1_3 should force rebuild
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_3.csc2 ` }"
+do_verify
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a, b1) values (4, x'42345678')"
+do_verify
+
+
+#reset
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_1.csc2 ` }"
+do_verify
+
+
+#t1_4 should force rebuild
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat t1_4.csc2 ` }"
+do_verify
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a, b1) values (5, x'52345678')"
+do_verify
+
+
+echo "Success!"
+exit 0

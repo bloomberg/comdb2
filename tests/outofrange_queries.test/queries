@@ -1,0 +1,93 @@
+#baseline result without keys (comparisons done in SQLite)
+cdb2sql ${CDB2_OPTIONS} $db $where - > /dev/null 2>&1 <<'EOF'
+drop table if exists t
+create table t {schema {
+    short s null=yes
+    int   i null=yes
+    float f null=yes
+    cstring c[4] null=yes
+    u_short us null=yes
+    u_int ui null=yes
+}}$$
+insert into t values(null, null, null, null, null, null)
+insert into t values(-32768,-2147483648,-3.402823466e+38,'', 0, 0)
+insert into t values(32767,2147483647,3.402823466e+38,'zzz', 65535, 4294967295)
+
+drop table if exists u
+create table u {schema { cstring c[4] null=yes }}$$
+insert into u values(null),(null),(null)
+insert into u values('aab'), ('aab'), ('aab')
+insert into u values('aac'), ('aac'), ('aac')
+insert into u values('aad'), ('aad'), ('aad')
+
+drop table if exists v
+create table v {schema {
+    cstring c0[4] null=yes
+    cstring c1[4] null=yes
+}}$$
+insert into u values(null, null), (null, null), (null, null)
+insert into v values('aab', 'aab'), ('aab', 'aac'), ('aab', 'aad')
+insert into v values('aac', 'aab'), ('aac', 'aac'), ('aac', 'aad')
+insert into v values('aad', 'aab'), ('aad', 'aac'), ('aad', 'aad')
+EOF
+cdb2sql ${CDB2_OPTIONS} --exponent --precision 10 -s -f sqls $db $where >expected 2>&1
+
+
+#results with asc keys
+cdb2sql ${CDB2_OPTIONS} $db $where - >/dev/null 2>&1 <<'EOF'
+alter table t {schema {
+    short s null=yes
+    int   i null=yes
+    float f null=yes
+    cstring c[4] null=yes
+    u_short us null=yes
+    u_int ui null=yes
+}
+keys {
+    "s" = s
+    "i" = i
+    "f" = f
+    "c" = c
+    "us" = us
+    "ui" = ui
+}}$$
+alter table u {schema { cstring c[4] null=yes } keys { dup "c" = c }}$$
+alter table v {schema {
+    cstring c0[4] null=yes
+    cstring c1[4] null=yes
+}
+keys {
+    "c01" = c0 + c1
+}}$$
+EOF
+cdb2sql ${CDB2_OPTIONS} --exponent --precision 10 -s -f sqls $db $where >output1 2>&1
+
+
+#results with desc keys
+cdb2sql ${CDB2_OPTIONS} $db $where - >/dev/null 2>&1 <<'EOF'
+alter table t {schema {
+    short s null=yes
+    int   i null=yes
+    float f null=yes
+    cstring c[4] null=yes
+    u_short us null=yes
+    u_int ui null=yes
+}
+keys {
+    "s" = <DESCEND> s
+    "i" = <DESCEND> i
+    "f" = <DESCEND> f
+    "c" = <DESCEND> c
+    "us" = <DESCEND> us
+    "ui" = <DESCEND> ui
+}}$$
+alter table u {schema { cstring c[4] null=yes } keys { dup "c" = <DESCEND> c }}$$
+alter table v {schema {
+    cstring c0[4] null=yes
+    cstring c1[4] null=yes
+}
+keys {
+    "c01" = <DESCEND> c0 + <DESCEND> c1
+}}$$
+EOF
+cdb2sql ${CDB2_OPTIONS} --exponent --precision 10 -s -f sqls $db $where >output2 2>&1

@@ -1,0 +1,1 @@
+create table dum { tag ondisk { cstring txt[128] } }

@@ -1,0 +1,266 @@
+PREFIX llog
+
+INCLUDE #include <ctype.h>
+INCLUDE #include <errno.h>
+INCLUDE #include <stdlib.h>
+INCLUDE #include <string.h>
+INCLUDE #include <sys/types.h>
+INCLUDE 
+INCLUDE #include <db.h>
+INCLUDE 
+INCLUDE #include "llog_auto.h"
+/* 
+   Summary: these records contain enough information to UNDO
+   a subtransaction. They contain no redo information.
+ */
+BEGIN savegenid 10001
+DBT table DBT s
+DBT genid DBT s
+END
+
+BEGIN scdone 10002
+DBT table DBT s
+DBT fastinit DBT s
+END
+
+BEGIN undo_add_dta 10003
+DBT table     DBT s
+ARG dtafile   short hd
+ARG dtastripe short hd
+ARG genid     genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+DBT lock      DBT s
+END
+
+BEGIN undo_add_ix 10004
+DBT table     DBT s
+ARG ix        short hd
+ARG genid     genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG keylen    int d
+ARG dtalen    int d
+END
+
+BEGIN ltran_commit 10005
+ARG ltranid        genid_t llx
+POINTER prevllsn   DB_LSN * lu
+ARG gblcontext     genid_t llx
+ARG isabort        short hd
+END
+
+/* Berkeley log_put decomposes this record, so be careful changing it  */
+BEGIN ltran_start 10006
+ARG ltranid         genid_t llx
+/* needed for distributed locks */
+ARG ownerdb   int d
+/* no previous lsn necessary */
+END
+
+/* written when a physical transaction is
+   undone. prevllsn is as before. complsn
+   is the lsn of a record this compensates 
+   for. */
+BEGIN ltran_comprec 10007
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+POINTER complsn   DB_LSN * lu
+END
+
+/* Logical undo records for deletes.  Undo action is re-inserting 
+   the index/data record. */
+BEGIN undo_del_dta 10008
+DBT table     DBT s
+ARG genid     genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG dtafile   short hd
+ARG dtastripe short hd
+ARG dtalen    int d
+DBT lock      DBT s
+END
+
+BEGIN undo_del_ix 10009
+DBT table     DBT s
+ARG genid     genid_t llx
+ARG ix        short hd
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+DBT keylock   DBT s
+ARG keylen    int d
+ARG dtalen    int d
+END
+
+BEGIN undo_upd_dta 10010
+DBT table     DBT s
+ARG oldgenid  genid_t llx
+ARG newgenid  genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG dtafile   short hd
+ARG dtastripe short hd
+DBT lockold   DBT s
+DBT locknew   DBT s
+ARG old_dta_len    int d
+END
+
+BEGIN undo_upd_ix 10011
+DBT table     DBT s
+ARG oldgenid  genid_t llx
+ARG newgenid  genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG ix        short hd
+DBT key       DBT s
+ARG dtalen    int d
+END
+
+BEGIN repblob 10012
+ARG sessionid int d
+ARG seqno     int d
+DBT data      DBT s
+END
+
+/* 
+ * Rowlocks logical-logging is decoupled from snapisol-logical logging which
+ * does not use rowlocks.  The reason for this is that a non-rowlock'd snapisol 
+ * transaction will allow multiple logical logs under a single transaction. 
+ * Rowlocks recovery depends on only a single logical log per physical txn.
+ *
+ * I've documented the rowlocks required for each of these logs.  Some of these
+ * locks are write-duration, & don't have an entry in the logs.
+ */
+
+/* 
+ * Rowlock add_dta:
+ * Acquire a rowlock on the dta file for the new record 
+ */
+BEGIN undo_add_dta_lk 10013
+DBT table     DBT s
+ARG dtafile   short hd
+ARG dtastripe short hd
+ARG genid     genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+END
+
+/*
+ * Rowlock add_ix:
+ * Acquire a rowlock on the ix file for the new record 
+ */
+BEGIN undo_add_ix_lk 10014
+DBT table     DBT s
+ARG ix        short hd
+ARG genid     genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+DBT key       DBT s
+ARG dtalen    int d
+END
+
+/*
+ * Rowlock del_dta: 
+ * Acquire a wall-lock for the previous record
+ * Acquire a rowlock on the record
+ */
+BEGIN undo_del_dta_lk 10015
+DBT table     DBT s
+ARG genid     genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG dtafile   short hd
+ARG dtastripe short hd
+ARG dtalen    int d
+END
+
+/*
+ * Rowlock del_ix: 
+ * Acquire wall-locks for prev & next records  
+ * Acquire a short-term rowlock on the record itself (to make sure its not part of a wall)
+ * Probes into an index are protected by next-key locking
+ */
+BEGIN undo_del_ix_lk 10016
+DBT table     DBT s
+ARG genid     genid_t llx
+ARG ix        short hd
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG keylen    int d
+ARG dtalen    int d
+END
+
+/* 
+ * Rowlock upd_dta: 
+ * Acquire a wall-lock for the prev record 
+ * Acquire a rowlock for the old genid.
+ * Acquire a rowlock for the new genid.  
+ */
+BEGIN undo_upd_dta_lk 10017
+DBT table     DBT s
+ARG oldgenid  genid_t llx
+ARG newgenid  genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG dtafile   short hd
+ARG dtastripe short hd
+ARG old_dta_len    int d
+END
+
+/* 
+ * Rowlock upd_ix: 
+ * Acquire wall-locks for prev & next records 
+ * Acquire a short-term rowlock for the old genid (to make sure its not part of a wall) 
+ * Acquire a rowlock for the new genid. 
+ */
+BEGIN undo_upd_ix_lk 10018
+DBT table     DBT s
+ARG oldgenid  genid_t llx
+ARG newgenid  genid_t llx
+ARG ltranid   genid_t llx
+POINTER prevllsn  DB_LSN * lu
+ARG ix        short hd
+DBT key       DBT s
+ARG dtalen    int d
+END
+
+BEGIN blkseq 10019
+ARG time int64_t lld
+DBT key DBT s
+DBT data DBT s
+END
+
+/*
+ * Benchmark record for rowlocks/txn-regop
+ * Used as a way to diagnose rowlocks slowness
+ * The operation and args will tell us what to do on the remote side.  Cut 1 (default)
+ * is to simple call into an empty handler in bdb/rowlocks.c - do everything that the
+ * other rowlocks handlers do to set up and nothing else.
+ */
+BEGIN rowlocks_log_bench 10020
+ARG op        int d
+ARG arg1      int d
+ARG arg2      int d
+ARG ltranid   genid_t llx
+DBT payload   DBT s
+DBT lock1     DBT s
+DBT lock2     DBT s
+POINTER prevllsn  DB_LSN * lu
+END
+
+
+/*
+ * Same size as the rowlocks bench, but used as the 'commit' benchmark.  This 
+ * won't make it's way into bdb/rowlocks.c at all on the replicant.
+ */
+BEGIN commit_log_bench 10021
+ARG op        int d
+ARG arg1      int d
+ARG arg2      int d
+ARG ltranid   genid_t llx
+DBT payload   DBT s
+DBT lock1     DBT s
+DBT lock2     DBT s
+POINTER prevllsn  DB_LSN * lu
+END
+

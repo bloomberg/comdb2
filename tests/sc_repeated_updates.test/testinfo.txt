@@ -1,0 +1,2 @@
+testname: sc_repeated_updates
+version: r000024

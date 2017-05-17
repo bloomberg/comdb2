@@ -1,0 +1,21 @@
+schema
+{
+   int      a
+   blob     b
+}
+
+tag "noblob" 
+{
+    int a
+}
+
+tag "blob" 
+{
+    int a
+    blob b
+}
+
+keys
+{
+    dup "a"  =   a
+}

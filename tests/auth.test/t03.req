@@ -1,0 +1,5 @@
+set user user2
+set password password2
+select 'user2'
+#only op can turn off authentication
+put authentication off

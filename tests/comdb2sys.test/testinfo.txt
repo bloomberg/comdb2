@@ -1,0 +1,2 @@
+testname: comdb2sys
+version: r000031

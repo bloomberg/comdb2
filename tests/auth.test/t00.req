@@ -1,0 +1,5 @@
+put password 'password1' for 'user1'
+put password 'password2' for 'user2'
+grant op to user1
+#only op can turn on authentication
+put authentication on

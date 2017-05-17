@@ -1,0 +1,11 @@
+schema
+{
+	int i
+	int j
+	cstring k[200] null=yes
+}
+
+keys
+{
+	datacopy "i" = i + j + k
+}

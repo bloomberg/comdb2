@@ -1,0 +1,6 @@
+table t1 t1.csc2
+round_robin_stripes
+enable_snapshot_isolation
+notimeout
+setattr MAX_SHADOW_ROWS 10000000
+enable_true_serializable

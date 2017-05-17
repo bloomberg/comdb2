@@ -1,0 +1,187 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Cursor moves testcase for comdb2
+################################################################################
+
+# args
+a_dbn=$1
+a_timeout=$3
+a_tnum=$4
+a_descr=$5
+a_dbdir=$6
+a_testdir=$7
+a_testcases=$8
+a_comdb2=$9
+a_comdb2sql=${10}
+a_prox2=${11}
+a_rmtmach=${12}
+a_email=${13}
+a_setup=${14}
+a_notifyfail=${15}
+a_mode=${16}
+
+#cd $a_testdir
+
+# find input files
+files=$( find . -type f -name \*.req | sort )
+
+# counter 
+nfiles=0
+
+# last batch
+last_batch=
+
+# post-process
+pproc=cat
+
+# testcase output
+testcase_output=
+
+# expected output
+expected_output=
+
+# fastinit
+function fastinit
+{
+    # print debug trace
+    [[ "$debug" == "1" ]] && set -x
+
+    # args
+    typeset db=$1
+    typeset iter=$2
+    typeset tbl
+
+    # flagged?
+    if [[ ! -f $iter.fastinit ]]; then
+        return 0
+    fi
+
+    # fastinit
+    for tbl in $(cat $iter.fastinit) ; do
+        echo "cdb2sql ${CDB2_OPTIONS} $db default \"truncate $tbl\""
+        cdb2sql ${CDB2_OPTIONS} $db default "truncate $tbl"
+    done
+
+    return 0
+}
+
+# archcode function
+function myarch
+{
+    # print debug trace
+    [[ "$debug" == "1" ]] && set -x
+
+    u=$(uname)
+    a="<unknown>"
+    [[ "$u" == "SunOS" ]]   && a="sundev1"
+    [[ "$u" == "AIX" ]]     && a="ibm"
+    [[ "$u" == "HP-UX" ]]   && a="hp"
+    [[ "$u" == "Linux" ]]   && a="linux"
+
+    echo $a
+    return 0
+}
+
+
+
+# runstepper
+function runstepper
+{
+    # print debug trace
+    [[ "$debug" == "1" ]] && set -x
+
+    # args
+    typeset db=$1
+    typeset tcs=$2
+    typeset log=$3
+
+    # teststepper
+    typeset stp=${TESTSROOTDIR}/tools/stepper
+
+    # echo
+    echo "> $stp $db $tcs $log"
+
+    # execute
+    $stp $db $tcs $log
+}
+
+# Iterate through input files
+for testcase in $files ; do
+
+    # increment counter
+    let nfiles=nfiles+1
+
+    # cleanup testcase
+    testcase=${testcase##*/}
+    
+    # see if the prefix has changed
+    new_batch=${testcase%%_*}
+
+    # set output
+    output=$testcase.res
+    
+    # fastinit if requested
+    if [[ $new_batch != $last_batch ]] ; then
+
+        fastinit $a_dbn $new_batch
+        last_batch=$new_batch
+
+    fi
+
+    # Check for run-stepper
+    if [[ -f $new_batch.runstepper ]] ; then
+
+        runstepper $a_dbn $testcase $output
+
+    else
+
+        # Be verbose
+        cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+        echo $cmd
+
+        # run command
+        eval $cmd
+
+    fi
+
+    # post-process
+    if [[ -f $new_batch.post ]]; then
+
+        # zap file
+        > $output.postprocess
+
+        # collect post-processing tool
+        pproc=$(cat $new_batch.post)
+
+        # post-process output
+        $pproc $output >> $output.postprocess
+
+        # copy post-processed output to original
+        mv $output.postprocess $output
+    fi
+
+    # get testcase output
+    testcase_output=$(cat $output)
+
+    # get expected output
+    expected_output=$(cat $testcase.out)
+
+    # verify 
+    if [[ "$testcase_output" != "$expected_output" ]]; then
+
+        echo "  ^^^^^^^^^^^^"
+        echo "The above testcase (${testcase}) has failed!!!"
+        echo " "
+        echo "Use 'diff <expected-output> <my-output>' to see why:"
+        echo "> diff ${PWD}/{$testcase.out,$output}"
+        echo " "
+        diff $testcase.out $output
+        echo " "
+        exit 1
+
+    fi
+
+done
+
+echo "Testcase passed."

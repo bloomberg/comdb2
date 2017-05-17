@@ -1,0 +1,14 @@
+#!/bin/bash
+
+pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
+linearizable=$pathbase/linearizable
+scripts=$linearizable/scripts
+resources=$linearizable/resources
+machines="m1 m2 m3 m4 m5"
+
+if [[ -n "$db" ]]; then
+    dir=/home/ubuntu/db/$db
+    cpdir=/db/comdb2/$db
+else
+    echo "ERROR: the db variable is not set!!!!"
+fi

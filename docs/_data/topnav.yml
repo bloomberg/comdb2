@@ -1,0 +1,20 @@
+## Topnav single links
+## if you want to list an external url, use external_url instead of url. the theme will apply a different link base.
+topnav:
+- title: Topnav
+  items:
+    - title: Repository
+      external_url: https://github.com/bloomberg/comdb2
+
+#Topnav dropdowns
+#topnav_dropdowns:
+#- title: Topnav dropdowns
+#  folders:
+#    - title: dropdown1
+#      folderitems:
+#        - title: Innovati
+#          external_url: https://bbgithub.dev.bloomberg.com/Innovati
+#    - title: dowpdown2
+#      folderitems:
+#        - title: TEAM pages
+#          external_url: https://cms.prod.bloomberg.com/team/display/synv/Magma

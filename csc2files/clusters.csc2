@@ -1,0 +1,9 @@
+tag ondisk {
+    cstring name[50]           // db name
+    cstring cluster_name[50]   // eg: beta, should be called 'stage', really
+    cstring cluster_machs[50]  // eg: beta7, specific cluster
+}
+
+keys {
+    "name_cluster" = name + cluster_name
+}

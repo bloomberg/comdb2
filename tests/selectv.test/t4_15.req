@@ -1,0 +1,3 @@
+begin
+selectv * from (select * from t2) order by id;
+commit

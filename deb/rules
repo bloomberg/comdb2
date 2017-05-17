@@ -1,0 +1,45 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+export PREFIX=/opt/bb
+
+# Uncomment this to turn on verbose mode.
+export DH_VERBOSE=1
+
+debian/comdb2.build-stamp:
+	touch debian/comdb2.build-stamp
+
+debian/comdb2.install-stamp: debian/comdb2.build-stamp
+	mkdir -p debian/comdb2/opt/bb/bin
+	DESTDIR=debian/comdb2 PREFIX=/opt/bb make -j4 install
+	touch debian/comdb2.install-stamp
+
+debian/comdb2.binary-stamp: debian/comdb2.install-stamp
+	mkdir -p debian/comdb2/DEBIAN
+	dpkg-gencontrol -pcomdb2 -Pdebian/comdb2
+	cp debian/postinst debian/comdb2/DEBIAN/
+	dpkg-deb -b debian/comdb2 ../
+	touch debian/comdb2.binary-stamp
+
+debian/comdb2.clean:
+	make clean
+
+
+clean: debian/comdb2.clean
+	rm -rf debian/comdb2
+	rm -f debian/files debian/files.ignore debian/comdb2.*
+
+test:
+
+build: build-arch build-indep
+
+build-indep:
+
+build-arch: debian/comdb2.build-stamp
+
+binary: binary-arch binary-indep
+
+binary-indep:
+
+binary-arch: debian/comdb2.binary-stamp
+

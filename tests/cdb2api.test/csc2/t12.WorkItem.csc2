@@ -1,0 +1,65 @@
+
+schema
+{
+    int         work_item_id                    // PK - the unique id
+    int         problem_type_id                 // Broken site, tidy, etc.
+    int         source_id                       // FK - the source which this work item is modifying
+    int         state_id                        // FK - the state of the work item (and, indirectly, the source)
+    int         category_id                     // FK - category of the work item
+    int         work_item_type_id               // FK - WorkItemType
+    int         work_item_sub_type_id           // FK - WorkItemSubType
+    int         num_qc_resubmits                // the # times the work item was re-qc'd.
+    int         closed_by                       // analyst_id for the user that finished the work item
+    int         closed_on                       // date/time when the work item was finished
+    int         created_by                      // analyst_id for creator
+    int         created_on                      // create date
+    int         updated_by                      // analyst_id for last updater
+    int         updated_on                      // last update date
+    int         state_updated_on      dbstore=-1// date the state was last updated
+}
+
+tag "full"
+{
+    int         work_item_id                    // PK - the unique id
+    int         problem_type_id                 // Broken site, tidy, etc.
+    int         source_id                       // FK - the source which this work item is modifying
+    int         state_id                        // FK - the state of the work item (and, indirectly, the source)
+    int         category_id                     // FK - category of the work item
+    int         work_item_type_id               // FK - WorkItemType
+    int         work_item_sub_type_id           // FK - WorkItemSubType
+    int         num_qc_resubmits                // the # times the work item was re-qc'd.
+    int         closed_by                       // analyst_id for the user that finished the work item
+    int         closed_on                       // date/time when the work item was finished
+    int         created_by                      // analyst_id for creator
+    int         created_on                      // create date
+    int         updated_by                      // analyst_id for last updater
+    int         updated_on                      // last update date
+    int         state_updated_on                // date the state was last updated
+}
+
+keys
+{
+            "PK"                = work_item_id
+    dup     "FK_SOURCE"         = source_id
+    dup     "AK_PROBLEM_TYPE"   = problem_type_id + work_item_id + source_id
+    dup     "FK_STATE"          = state_id + state_updated_on + source_id + work_item_id + updated_on + closed_on + work_item_type_id + work_item_sub_type_id
+    dup     "FK_CATEGORY"       = category_id
+    dup     "FK_CREATOR"        = created_by 
+    dup     "FK_UPDATER"        = updated_by
+    dup     "AK_UPDATEDT"       = created_on 
+    dup     "AK_CREATEDT"       = updated_on
+    dup     "AK_CLOSEDDT"       = closed_on
+    dup     "FK_WORKITEMTYPE"   = work_item_type_id
+    dup     "FK_WORKITEMSUBTYPE"= work_item_sub_type_id
+    dup     "FK_STATEUPDDT"     = state_updated_on + state_updated_on
+}
+
+constraints
+{
+    "FK_CREATOR" -> <"Analyst":"PK">
+    "FK_UPDATER" -> <"Analyst":"PK">
+}
+
+
+
+

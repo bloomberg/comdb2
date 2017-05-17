@@ -1,0 +1,5 @@
+*.o
+*.sw[op]
+comdb2ar
+plink_timestamp.*
+tags

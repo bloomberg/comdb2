@@ -1,0 +1,14 @@
+//change dbstore only; old comdb2 will rebuild, new one will just increment version
+schema
+{
+    int k dbstore=9999
+    longlong j
+    int i
+    vutf8 v[10] dbstore="comdb2"
+}
+
+keys
+{
+    "0" = j
+    datacopy "1" = i
+}

@@ -1,0 +1,75 @@
+//package com.bloomberg.comdb2.bpfunc;
+syntax = "proto2";
+
+message bpfunc_create_timepart {
+  required string tablename = 1;
+  required string partition_name = 2;
+  required int32 period = 3;
+  required int32 retention = 4;
+  required int64 start = 5;
+}
+
+message bpfunc_drop_timepart {
+  required string partition_name = 1;
+}
+
+message bpfunc_grant {
+   required int32 yesno = 1;
+   required int32 perm = 2;
+   optional string table = 3;
+   required string username = 4;
+   optional string userschema = 5;
+}
+
+message bpfunc_password {
+    required int32 disable = 1;
+    required string user = 2;
+    optional string password = 3;
+
+}
+
+message bpfunc_authentication {
+    required int32 enabled = 1;
+}
+
+message bpfunc_alias {
+    required string remote = 1;
+    required string name = 2;
+}
+
+message bpfunc_analyze_threshold
+{   
+    required string tablename = 1;
+    required int32 newvalue = 2;
+}
+
+message bpfunc_analyze_coverage
+{
+    required string tablename = 1;
+    required int32 newvalue = 2;
+}
+
+message bpfunc_rowlocks_enable
+{
+    required int32 enable = 1;
+}
+
+message bpfunc_genid48_enable
+{
+    required int32 enable = 1;
+}
+
+message bpfunc_arg {
+    required  int32 type = 1;
+    optional  bpfunc_create_timepart crt_tp = 2;
+    optional  bpfunc_drop_timepart  drop_tp = 3;
+    optional  bpfunc_grant grant = 4;
+    optional  bpfunc_password pwd = 5;
+    optional  bpfunc_authentication auth = 6;
+    optional  bpfunc_alias alias = 7;
+    optional  bpfunc_analyze_threshold an_thr = 8;
+    optional  bpfunc_analyze_coverage an_cov = 9;
+    optional  bpfunc_rowlocks_enable rl_enable = 10;
+    optional  bpfunc_genid48_enable gn_enable = 11;
+}
+

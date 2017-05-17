@@ -1,0 +1,16 @@
+// zjobdb table dbgopts
+// debug options
+
+schema
+{
+  longlong rqstid // job request id
+  int host null=yes // debug host
+}
+
+keys
+{
+      "rqstid" = rqstid
+  dup "host" = host
+}
+
+

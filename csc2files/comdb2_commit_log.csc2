@@ -1,0 +1,16 @@
+tag ondisk {
+    longlong seqno
+    longlong seed
+    int nops
+}
+
+tag "log" {
+    longlong seqno
+    longlong seed
+    int nops
+}
+
+keys {
+    "seqno" = seqno
+    "seed" = seed
+}

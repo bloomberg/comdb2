@@ -1,0 +1,10 @@
+schema
+{
+    int      a
+}
+
+keys
+{
+    "A" =  a
+}
+

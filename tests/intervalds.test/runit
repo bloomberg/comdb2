@@ -1,0 +1,84 @@
+#!/bin/bash
+
+bash -n "$0" | exit 1 
+# Grab my database name.
+db=$1
+
+########## DAYS
+
+#adding negative days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast((now() - (now() + cast('-1' as days))) as int) as res\" 2>&1 "
+echo $cmd
+res=$(eval $cmd)
+echo $res
+if [ "$res" != 86400 ] ; then
+   echo "Adding negative days fails"
+   exit 1
+fi
+
+# adding positive days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() + cast('1' as days)) -now()) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 86400 ] ; then
+   echo "Adding positive days fails"
+   exit 1
+fi
+
+#subtractive negative days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() - cast('-1' as days))- now()) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 86400 ] ; then
+   echo "Subtracting negative days fails"
+   exit 1
+fi
+
+#subtracting positive days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(now() - (now() - cast('1' as days)) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 86400 ] ; then
+   echo "Subtracting positive days fails"
+   exit 1
+fi
+
+########## SECONDS
+
+#adding negative days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast((now() - (now() + cast('-60' as sec))) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 60 ] ; then
+   echo "Adding negative seconds fails"
+   exit 1
+fi
+
+# adding positive days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() + cast('60' as sec)) -now()) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 60 ] ; then
+   echo "Adding positive seconds fails"
+   exit 1
+fi
+
+#subtractive negative days
+cmd="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(((now() - cast('-60' as sec))- now()) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 60 ] ; then
+   echo "Subtracting negative seconds fails"
+   exit 1
+fi
+
+#subtracting positive days
+res="cdb2sql ${CDB2_OPTIONS} --tabs $db default \"select cast(now() - (now() - cast('60' as sec)) as int) as res\""
+echo $cmd
+res=$(eval $cmd)
+if [ "$res" != 60 ] ; then
+   echo "Subtracting positive seconds fails"
+   exit 1
+fi
+
+echo "Success"

@@ -1,0 +1,9 @@
+schema {
+    int a
+    float b
+    double c
+}
+
+keys {
+    dup "KEY_A" = a
+}

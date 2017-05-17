@@ -1,0 +1,9 @@
+schema
+{
+   int  id null=yes
+}
+
+keys
+{
+datacopy dup "ID"  = id
+}

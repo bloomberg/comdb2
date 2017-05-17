@@ -1,0 +1,38 @@
+// security.csc2
+
+schema
+{
+    int       security_id                       // security ID
+    int       security_type         null=yes    // type of security
+    int       sec_id_num            null=yes    // always 0
+    cstring   parsekey_sec_id[33]   null=yes    // parsekey ID
+    short     parsekey_sec_seq      null=yes    // parsekey sec
+    cstring   display_name[33]      null=yes    // display name
+    int       owner_uuid            null=yes    // owner UUID
+    
+    // ultimate parent company id, ID110
+    u_int     parent_company_id     null=yes
+}
+
+tag default
+{
+    int       security_id
+    int       security_type         
+    int       sec_id_num            
+    cstring   parsekey_sec_id[33]   
+    short     parsekey_sec_seq      
+    cstring   display_name[33]      
+    int       owner_uuid  
+    u_int     parent_company_id
+}
+
+keys
+{
+    // primary key
+    "SECURITY_ID" = security_id
+
+    dup "SECURITY_TYPE" = security_type
+    dup "PARSEKEY_ID_SEQ" = parsekey_sec_id + parsekey_sec_seq
+    dup "PARENT_COMPANY_ID" = parent_company_id
+}
+

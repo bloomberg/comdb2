@@ -1,0 +1,2 @@
+testname: sc_tableversion
+version: r000009

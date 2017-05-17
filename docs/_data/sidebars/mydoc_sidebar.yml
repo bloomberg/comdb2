@@ -1,0 +1,145 @@
+# This is your sidebar TOC. The sidebar code loops through sections here and provides the appropriate formatting.
+
+entries:
+- title: sidebar
+  product: Comdb2
+  version: 7.0pre
+  folders:
+
+  - title: Overview
+    output: web
+    folderitems:
+
+    - title: What is Comdb2?
+      url: /overview_home.html
+      output: web
+      type: homepage
+
+    - title: Installing Comdb2
+      url: /install.html
+      output: web
+      type: homepage
+
+    - title: Your first database
+      url: /example_db.html
+      output: web
+      type: homepage
+
+    - title: The Comdb2 transaction model
+      url: /transaction_model.html
+      output: web
+      type: homepage
+
+    - title: Linearizable Consistency
+      url: /durable.html
+      output: web
+      type: homepage
+
+    - title: Contributing to Comdb2
+      url: /contrib.html
+      output: web
+
+  - title: Programming for Comdb2
+    output: web
+    folderitems:
+
+    - title: SQL language
+      url: /sql.html
+      output: web
+
+    - title: Schema definition language
+      url: /table_schema.html
+      output: web   
+
+    - title: Data types
+      url: /datatypes.html
+      output: web
+
+    - title: Datetime types
+      url: /datetime.html
+      output: web
+
+    - title: Decimal types
+      url: /decimals.html
+      output: web
+
+    - title: Constraints
+      url: /constraints.html
+      output: web
+
+    - title: C API
+      url: /c_api.html
+      output: web
+
+    - title: JDBC API
+      url: /jdbc_api.html
+      output: web
+
+    - title: Writing language bindings
+      url: /client_protocol.html
+      output: web
+
+    - title: Stored procedures
+      url: /storedprocs.html
+      output: web
+
+    - title: System tables
+      url: /system_tables.html
+      output: web
+
+    - title: Triggers
+      url: /triggers.html
+      output: web
+
+  - title: Configuring databases
+    output: web
+    folderitems:
+
+    - title: Configuration files
+      url: /config_files.html
+      output: web
+
+    - title: Command line arguments
+      url: /args.html
+      output: web
+
+    - title: Setting up clusters
+      url: /cluster.html
+      output: web
+
+    - title: Client setup
+      url: /clients.html
+      output: web
+
+    - title: Setting up hosted services
+      url: /hosted.html
+      output: web
+
+    - title: Encryption
+      url: /crypto.html
+      output: web
+
+    - title: Authentication
+      url: /auth.html
+      output: web
+
+    - title: Configuring Secure Sockets Layer (SSL)
+      url: /ssl.html
+      output: web
+
+  - title: Operating databases
+    url: /operations.html
+    output: web
+    folderitems:
+
+    - title: Operational commands
+      url: /op.html
+      output: web
+
+    - title: Backups
+      url: /backups.html
+      output: web
+
+    - title: Examining logs
+      url: /logs.html
+      output: web

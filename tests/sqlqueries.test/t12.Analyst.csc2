@@ -1,0 +1,37 @@
+
+constants
+{
+    BBOTWFDB_ANALYST_NAME_LEN     = 64
+}
+
+schema
+{
+    int         analyst_id                                        // PK
+    int         uuid                                              // BB UUID
+    int         last_work_item_id   null=yes                      // allows easy recovery of a lost work item
+    cstring     name                [BBOTWFDB_ANALYST_NAME_LEN]   // Name of analyst
+    int         firm_id             dbstore=-1                    // FK to Firm table
+}
+
+tag "full"
+{
+    int         analyst_id
+    int         uuid
+    int         last_work_item_id
+    cstring     name                [BBOTWFDB_ANALYST_NAME_LEN]
+    int         firm_id
+}
+
+keys
+{
+            "PK"              = analyst_id
+    dup     "FK_WORKITEM"     = last_work_item_id
+            "AK_ID"           = analyst_id + firm_id + uuid + name
+}
+
+constraints
+{
+// comdb2 does not support foreign key constraints on nullable fields
+//    "FK_WORKITEM" -> <"WorkItem":"PK">
+}
+

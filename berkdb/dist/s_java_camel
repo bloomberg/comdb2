@@ -1,0 +1,25 @@
+#!/bin/sh -
+
+if [ $# -ne 1 -o ! -f $1/dbinc/db.in ] ; then
+    DBDIR=..
+else
+    DBDIR=$1
+fi
+
+trap 'rm -rf $TMP; exit 0' 0 1 2 3 13 15
+TMP=./_tmp
+mkdir -p $TMP
+
+for f in $DBDIR/java/src/com/sleepycat/db/*.java ; do
+	a=`basename $f`
+	# echo "Creating new API call while deprecating the old: $a"
+	perl ./camelize.pl -d $f > $TMP/$a
+	mv -f $TMP/$a $f
+done
+
+for f in $DBDIR/java/src/com/sleepycat/db/*.java ; do
+	a=`basename $f`
+	# echo "Updating method calls to new API: $a"
+	perl ./camelize.pl -c $f > $TMP/$a
+	mv -f $TMP/$a $f
+done

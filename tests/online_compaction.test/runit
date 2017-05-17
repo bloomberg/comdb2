@@ -1,0 +1,143 @@
+#!/bin/bash
+
+dbnm=$1
+dbdir=${DBDIR}
+bindir="${SRCHOME}"
+ofsrng=20000
+numrng=50
+ffdiff=0
+a_ssh='ssh'
+
+nsuccess=0
+
+echo "DBNAME is $dbnm"
+echo "DBDIR is $dbdir"
+echo "BIN DIR is $bindir"
+
+mynode=`hostname`
+myfnode=`hostname -f`
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "SELECT comdb2_host()"
+
+echo "I AM $mynode"
+echo "MASTER is $master"
+
+### create a helper table to flush cache
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "drop table dum"
+cdb2sql ${CDB2_OPTIONS} -f dum.csc2 $dbnm --host $master
+
+if [ $? != 0 ]; then
+  echo "FAILED to add table dum"
+  exit 1
+fi
+
+### generate SQL
+rm -rf dum.txt
+touch dum.txt
+echo 'BEGIN' >>dum.txt
+for i in `seq 1 30000`; do
+  echo 'insert into dum (txt) values ("It is only with the heart that one can see rightly; what is essential is invisible to the eye.");' >>dum.txt
+done
+echo 'COMMIT' >>dum.txt
+
+rm -rf sql.txt
+touch sql.txt
+echo 'BEGIN' >>sql.txt
+for i in `seq 1 24000`; do
+  echo "insert into t (i) values ($i);" >>sql.txt
+done
+echo 'COMMIT' >>sql.txt
+
+outloop=1
+while [ $outloop -le 4 ]; do
+  #### tbl and dta
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "drop table t"
+  cdb2sql ${CDB2_OPTIONS} -f t.csc2 $dbnm --host $master
+  cdb2sql ${CDB2_OPTIONS} -f sql.txt $dbnm --host $master >/dev/null
+  
+  inloop=1
+  while [ $inloop -le 1200 ]; do
+  
+    #### delete random recs
+    ofs=$RANDOM
+    let "ofs %= $ofsrng"
+    num=$RANDOM
+    let "num %= $numrng"
+    
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "delete from t limit $ofs, $num" >/dev/null
+    let inloop=$inloop+1
+  done
+
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
+  
+  newfile=`ls -t $dbdir/t_* | head -1`
+  
+  ffbefore=0
+  ffintbefore=0
+  if [ "$master" = "$mynode" ] || [ "$master" = "$myfnode" ]; then
+    cdb2_stat -d $newfile 2>&1
+    ffbefore=`cdb2_stat -d $newfile 2>&1 | grep 'tree leaf.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+    ffintbefore=`cdb2_stat -d $newfile 2>&1 | grep 'tree internal.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+  else
+    ffbefore=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree leaf.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
+    ffintbefore=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree internal.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
+  fi
+  
+  echo "leaf ff is $ffbefore"
+  echo "internal ff is $ffintbefore"
+
+  #### fill mpool
+  cdb2sql ${CDB2_OPTIONS} -f dum.txt $dbnm --host $master >/dev/null
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "SELECT * from dum" >/dev/null
+  
+  #### force pgcompact
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "SELECT * FROM t" >/dev/null
+
+  #### force to disk
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
+  
+  ffafter=0
+  ffintafter=0
+  if [ "$master" = "$mynode" ] || [ "$master" = "$myfnode" ]; then
+    cdb2_stat -d $newfile 2>&1
+    ffafter=`cdb2_stat -d $newfile 2>&1 | grep 'tree leaf.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+    ffintafter=`cdb2_stat -d $newfile 2>&1 | grep 'tree internal.*ff' | awk '{print substr($10,2,length($10)-2);}'`
+  else
+    ffafter=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree leaf.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
+    ffintafter=`$a_ssh $master "ls -t $dbdir/t_* | head -1 | xargs ${bindir}/cdb2_stat -d 2>&1 | grep 'tree internal.*ff'" | awk '{print substr($10,2,length($10)-2)}'`
+  fi
+  
+  let ffdiff=$ffafter-$ffbefore
+  let ffintdiff=$ffintafter-$ffintbefore
+  echo "leaf ff was $ffbefore, is $ffafter, ($ffafter - $ffbefore) = $ffdiff"
+  echo "internal ff was $ffintbefore, is $ffintafter, ($ffintafter - $ffintbefore) = $ffintdiff"
+  if [  $ffdiff -le 0 ]; then
+    echo "FF of leaf pages should INCREASE but not!"
+  elif [  $ffintdiff -ge 0 ]; then
+    echo "FF of internal pages should DECREASE but not!"
+  else
+    let nsuccess=$nsuccess+1
+  fi
+  
+  #### verify
+  gud=`cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.verify('t')"`
+  if [  $? -ne 0 ]; then
+    echo "FAILED VERIFY"
+    exit 1
+  fi
+  
+  echo "PASSED VERIFY PASS $outloop"
+  let outloop=$outloop+1
+  if [ $nsuccess -ne 0 ]; then
+    break
+  fi
+done
+
+if [ $nsuccess -ne 0 ]; then
+  echo "PASSED"
+  exit 0
+else
+  echo "FAILED"
+  exit 1
+fi

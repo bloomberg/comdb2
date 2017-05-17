@@ -1,0 +1,13 @@
+schema
+{
+   int      a
+   blob     b null=yes
+   vutf8    c null=yes
+}
+keys
+{
+dup "A"  =   a
+}
+
+
+

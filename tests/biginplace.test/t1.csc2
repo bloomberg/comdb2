@@ -1,0 +1,11 @@
+schema
+{
+   int      a null=yes
+   blob     b1 null=yes
+}
+
+keys
+{
+    dup "A" = a
+}
+

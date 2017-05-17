@@ -1,0 +1,64 @@
+#!/bin/bash
+
+TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
+SETUP_TIMEOUT=${SETUP_TIMEOUT:-1m}
+
+export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
+export PATH="${SRCHOME}/:${PATH}"
+successful=0
+
+DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
+echo Starting $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
+mkdir -p ${TESTDIR}/logs/
+
+function call_unsetup {
+    ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
+}
+
+
+function call_setup {
+    timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
+    rc=$?
+    glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`
+    if [ "x$glist" != "x" ] ; then
+        kill -9 $glist
+    fi
+    sleep 0.1
+    return $rc
+}
+
+call_setup
+rc=$?
+if [[ $rc -ne 0 ]]; then
+    echo "!$TESTCASE: setup failed"
+    echo "!$TESTCASE: see ${TESTDIR}/logs/${DBNAME}.setup"
+    call_unsetup
+    sleep 0.1
+    exit 1
+fi
+echo "!$TESTCASE: running"
+
+timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
+
+rc=${PIPESTATUS[0]}
+if [[ $rc -eq 0 ]]; then
+    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: success" >> ${TESTDIR}/test.log
+    successful=1
+elif [[ $rc -eq 124 ]]; then
+    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
+else
+    echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
+fi
+
+
+call_unsetup
+
+
+DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
+echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
+echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
+
+exit $rc

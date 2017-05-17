@@ -1,0 +1,13 @@
+tag ondisk
+{
+    cstring tbl[64]
+    cstring idx[64]
+    int     sampleno
+    int     samplelen
+    byte    sample[1024] /* entire record in sqlite format */
+}
+
+keys
+{
+    "0" = tbl + idx + sampleno
+}

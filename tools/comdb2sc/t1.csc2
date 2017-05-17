@@ -1,0 +1,14 @@
+tag ondisk {
+    int a
+    int b null=yes
+}
+
+tag "t" {
+    int a
+}
+
+keys {
+    dup "a" = a
+}
+
+

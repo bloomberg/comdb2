@@ -1,0 +1,25 @@
+#!/bin/bash
+
+pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
+scripts=$pathbase/linearizable/scripts
+. $scripts/setvars
+
+cd $pathbase
+
+rm $pathbase/tags
+
+rm -f ../comdb2_*
+#rsync -r . mpdev:comdb2/src
+#ssh mpdev "cd comdb2/src; rm ../comdb2_*; make deb-current; ls ../comdb2_*.deb"
+#scp mpdev:comdb2/*.deb ../comdb2.deb
+#[[ ! -f ../comdb2.deb ]] && exit 1
+make deb-current
+[[ $? -ne 0 ]] && exit 1
+mv ../comdb2_*.deb ../comdb2.deb
+
+sudo dpkg -i ../comdb2.deb
+for m in $machines; do scp ../comdb2.deb ${m}:/db/comdb2.deb; done
+for m in $machines; do 
+    echo ${m}
+    ssh ${m} sudo dpkg -i /db/comdb2.deb
+done

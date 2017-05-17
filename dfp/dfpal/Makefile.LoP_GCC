@@ -1,0 +1,147 @@
+# ------------------------------------------------------------------ #
+# Decimal Floating Point Abstraction Layer (DFPAL)                   #
+# Makefile for Linux on Power using GCC                              #
+# ------------------------------------------------------------------ #
+# (c) Copyright IBM Corporation, 2007.  All rights reserved.         #
+#                                                                    #
+# This software is made available under the terms of the             #
+# ICU License -- ICU 1.8.1 and later.                                #
+#                                                                    #
+# The description and User's Guide ("The DFPAL C Library") for       #
+# this software is called dfpalugaio.html.  This document is         #
+# included in this package and also available at:                    #
+# http://www2.hursley.ibm.com/decimal                                #
+#                                                                    #
+# Author:                                                            #
+#   Punit Shah (punit@us.ibm.com)                                    #
+#                                                                    #
+# Please send comments, suggestions, and corrections to the          #
+# the following email address:                                       #
+#   dfpal-l@austin.ibm.com                                           #
+#                                                                    #
+# Major contribution:                                                #
+#   Ian McIntosh (ianm@ca.ibm.com)                                   #
+#   Calvin Sze (calvins@us.ibm.com)                                  #
+# ------------------------------------------------------------------ #
+TARGET=libDFPAL.so
+
+#######################################################################
+# ASSUMPTION: decNumber package source code is in sibling directory
+# of this directory (in which this Makefile resides). Name of
+# decNumber pacakge source directory is 'decNumber'
+#######################################################################
+DN_DIR=../decNumber
+DN_OBJS=decNumber.o decContext.o \
+  decimal32.o decimal64.o decimal128.o decPacked.o \
+  decDouble.o decQuad.o
+DN_HEADER=$(DN_DIR)/decNumber.h $(DN_DIR)/decContext.h \
+  $(DN_DIR)/decimal32.h $(DN_DIR)/decimal64.h $(DN_DIR)/decimal128.h \
+  $(DN_DIR)/decNumberLocal.h $(DN_DIR)/decPacked.h $(DN_DIR)/decDPD.h \
+  $(DN_DIR)/decDouble.h $(DN_DIR)/decQuad.h
+DN_SOURCE=$(DN_DIR)/decNumber.c $(DN_DIR)/decContext.c \
+  $(DN_DIR)/decimal32.c $(DN_DIR)/decimal64.c $(DN_DIR)/decimal128.c \
+  $(DN_DIR)/decPacked.c $(DN_DIR)/decDouble.c $(DN_DIR)/decQuad.c
+
+DFPAL_OBJS=dfpal.o asmdfp.o
+
+DFPAL_SOURCE=dfpal.c asmdfp.S
+
+DFPAL_HEADER=dfpal.h dfpalct.h \
+  dfpalerr.h dfpaltypes.h asmdfp.h dfpstub.h
+
+
+#######################################################################
+# DFPAL Compile time switches
+#
+# (1)
+# DFPAL_INTEGER64_LITERAL_LL
+# DFPAL_INTEGER64_LITERAL_L
+# DFPAL_INTEGER64_LITERAL_i64
+#   Various platforms/compilers use different literal designator for
+#   64-bit integers. Set any one of above switch accordingly. The default
+#   is 'LL' and 'ULL'. AIX/XLC does not need to define any switch.
+#
+#   DFPAL_INTEGER64_LITERAL_i64 is for Windows platforms.
+#
+# (2)
+# DFPAL_OS_AIX5L
+# DFPAL_OS_WINDOWS
+# DFPAL_OS_LOP
+#   These are platform selction switches. Remaining platforms/compiler
+#   should compile with selection of appropriate 'literal designator'
+#   from (1) above, and (4) below.
+#
+# (3)
+# DFPAL_THREAD_SAFE
+#   Must use this switch for thread safe library.
+#
+# (4)
+# DFPAL_NO_HW_DFP
+#   If target platform/compiler does not support DFP in hardware or
+#   '#pragma mc_func' directives for hardware instruction inlining,
+#   use this switch. With this selection, only software (decNumber)
+#   operation is possible.
+#
+# (5)
+# DFPAL_STANDALONE_DLL (For Windows)
+#   DFPAL uses DllMain() facility of Windows to perform one time
+#   initialization. If DFPAL is compiled/linked as standalone DLL, then
+#   this must be defined.
+#
+#   In cases where DFPAL code is integrated/contained into some other
+#   module (DLL or EXE), do not define this and use container module's
+#   DllMain() or equivalent. The container module's DllMain() must call
+#   dfpalInitProcessContext() for DLL_PROCESS_ATTACH event. No other
+#   actions are necessary for remaining events.
+#
+# (6)
+# DFPAL_USE_DECFLOAT
+#   Uses decFloat module (part of of decNumber) to perform the arithmetic
+#   while DFPAL is operating in software mode. decFloat is faster than
+#   decNumber since it perform arithmetic directly on DPD encoding,
+#   eliminating need for intermediate conversion. Use of this switch
+#   has no impact on speed of hardware arithmetic operations
+#######################################################################
+DEFS=-DDFPAL_THREAD_SAFE -DDFPAL_OS_LOP -DDFPAL_INTEGER64_LITERAL_LL \
+  -DDECLITEND=0 -DDFPAL_USE_DECFLOAT
+
+########################################################################
+# Note: you must use --mlong-double-128 flag on Linux on Power with GCC!
+########################################################################
+OPT_CFLAGS= -m64 -mlong-double-128 -O3 $(DEFS)
+DEBUG_CFLAGS= -m64 -mlong-double-128 -g $(DEFS)
+
+CFLAGS+=$(OPT_CFLAGS)
+
+LDLIBS+=-lpthread
+LDFLAGS+= -m64 -shared
+
+INCDIR=-I $(DN_DIR)  -I .
+
+CC=gcc
+AR=ar
+LD=ld
+
+all: $(TARGET) dfpsample
+
+$(DFPAL_OBJS) : $(DFPAL_SOURCE)
+$(DFPAL_SOURCE) : $(DFPAL_HEADER) $(DN_HEADER)
+$(DN_SOURCE) : $(DN_HEADER)
+
+$(DN_OBJS) : $(DN_SOURCE)
+	$(CC) -c $(CFLAGS) -I $(DN_DIR)  -I . $(DN_SOURCE)
+
+$(TARGET) : $(DN_OBJS) $(DFPAL_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(DN_OBJS) $(DFPAL_OBJS) $(LDLIBS)
+
+dfpsample: dfpal-sample.c dfpal.h $(TARGET)
+	$(CC) -O3 -m64 -o $@ dfpal-sample.c -L. -lDFPAL
+
+.c.o:
+	$(CC) -c $(CFLAGS) $(INCDIR) $<
+
+.S.o:
+	$(CC) -c $(CFLAGS) $(INCDIR) $<
+
+clean:
+	rm -f $(DN_OBJS) $(DFPAL_OBJS) dfpsample $(TARGET) core

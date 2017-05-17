@@ -1,0 +1,124 @@
+#!/bin/bash
+
+set -e
+
+if [[ $# -ne 1 ]]; then
+    echo >&2 "Usage: dbname"
+    exit 1
+fi
+
+dbname=$1
+shift
+
+cdb2sql $dbname local '
+CREATE CSC2 TABLE classes {
+tag ondisk
+{
+    cstring class[32]
+}
+
+keys
+{
+    "class" = class
+}
+}
+'
+
+cdb2sql $dbname local '
+CREATE CSC2 TABLE databases {
+// databases.csc2
+//
+// Information about each comdb2 database
+tag ondisk
+{
+    // Name of this database - up to eight characters
+    cstring name[32]
+}
+
+keys
+{
+    "KEY_NAME"  = name
+}
+}
+'
+
+cdb2sql $dbname local '
+CREATE CSC2 TABLE machines {
+// machines.csc2
+//
+// This table stores data about the comdb2 machines.
+
+tag ondisk
+{
+    // Name of machine e.g. "pny-comdb2c1"
+    cstring     name[255]
+
+    // Name of the comdb2 cluster that this machine is part of e.g. "C"
+    cstring     cluster[32]
+
+    // Name of the machine room that this machine is part of e.g. "NY"
+    cstring     room[32]
+
+    // The class of this machine "alpha", "beta", "prod", etc
+    cstring class[32] null=yes
+}
+
+keys
+{
+    "KEY_NAME"     = name
+    dup "KEY_CLUSTER"  = cluster
+    dup "KEY_CLASS"    = class
+}
+
+constraints
+{
+    "KEY_CLASS"    -> <"classes":"class">
+}
+
+}
+'
+
+cdb2sql $dbname local '
+CREATE CSC2 TABLE clusters {
+// clusters.csc2
+//
+// Information about each database cluster installation
+
+tag ondisk
+{
+    // Database name - up to 8 characters
+    cstring     name[32]
+
+    // A name for this cluster.  Common choices are "test", "alpha", "beta",
+    // "prod".
+    cstring     cluster_name[32]
+
+    // The cluster machines that this database lives on e.g. "beta" or "E"
+    // (this refers to the actual machines and must exist in table machines)
+    cstring     cluster_machs[32]
+}
+
+keys
+{
+    // Primary key
+    "KEY_NAME_CLUSTER" = name + cluster_name
+
+    // For "what databases are on this machine" type queries
+    "KEY_MACHS_NAME_CLUSTER" = cluster_machs + name + cluster_name
+
+    // For foreign keys
+    dup "KEY_CLUSTER_MACHS" = cluster_machs
+    dup "KEY_NAME"          = name
+    dup "KEY_CLUSTER_CLASS" = cluster_name
+}
+
+constraints
+{
+    "KEY_NAME" -> <"databases":"KEY_NAME"> on delete cascade
+
+    "KEY_CLUSTER_MACHS" -> <"machines":"KEY_CLUSTER"> on delete cascade
+
+    "KEY_CLUSTER_CLASS" -> <"classes":"class">
+}
+}
+'

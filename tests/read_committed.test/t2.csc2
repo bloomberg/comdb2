@@ -1,0 +1,7 @@
+schema {
+    int a
+}
+keys 
+{
+    dup "idx"=a
+}

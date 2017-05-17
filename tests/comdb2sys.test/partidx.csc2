@@ -1,0 +1,11 @@
+schema
+{
+  int uuid
+  int value
+}
+
+keys
+{
+    "UUID"          = uuid
+    "UUID_WHERE"    = uuid {where value > 10}
+}

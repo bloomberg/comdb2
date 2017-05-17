@@ -1,0 +1,1 @@
+./instant_sc.sh

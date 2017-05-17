@@ -1,0 +1,1006 @@
+<html>
+<head><title>Decimal Floating Point Abstraction Layer (DFPAL) User's Guide</title></head>
+<body bgcolor="#FFFFFF">
+
+<font face=helvetica> <b>The DFPAL Library</b></font>, version 2.20 <br><em>&copy; Copyright IBM Corporation, 2007. All rights reserved.</em> </td>
+
+<h2><font face=helvetica color=#006644>Decimal Floating Point Abstraction Layer (DFPAL)</font></a></h2>
+
+
+<p><hr><h2><font face=helvetica color=#006644>User's guide</font></h2>This document describes Decimal Floating Point Abstraction Layer (DFPAL) implementation. DFPAL is a module written in C programming language. DFPAL detects availability of operating system and hardware support for the decimal floating point at runtime. If such support is available, it automatically branches into the hardware path and utilizes hardware for the decimal floating point arithmetic. On other hand, if operating system or hardware does not support decimal floating point (on POWER5++ or other processor architecture, for example) DFPAL branches into the software path and uses the <a href="http://www2.hursley.ibm.com/decimal/decnumber.html">decNumber module</a>. The decNumber arithmetic module is software implementation of the decimal floating point arithmetic.
+
+<p>
+Source code for DFPAL is available from International Components for Unicode (ICU) <a href="http://download.icu-project.org/files/DFPAL">DFPAL package</a>.
+
+<p>
+Contents:
+
+<ul compact style="margin-top:0.3ex">
+<li><a href="overview.html">Overview</a> &#8211; introduction and background
+<li><a href="example.html">Examples</a>
+  <ol>
+  <li><a href="example.html#example1">Simple addition</a>
+  <li><a href="example.html#example2">Decimal floating point exception status</a>
+  </ol>
+
+<li><a href="srclayout.html">Source files</a>
+<li><a href="compile.html">Compile DFPAL</a>
+<li><a href="dfpalmgmt.html">DFPAL initialization, error handling, <i>etc.</i></a>
+<li><a href="dfpctrl.html">Floating point controls</a> &#8211; rounding mode, exceptions and trap handling
+<li><a href="mathop.html">Arithmetic operations</a>
+<li><a href="dfpalfaq.html">Frequently Asked Questions</a>
+<li><a href="relnote.html">Release Notes</a>
+</ul>
+
+<p><hr><h2><font face=helvetica color=#006644>Overview</font></h2>Most processors support binary floating point in hardware. However, binary floating point is not suitable for financial or human-centric applications. An alternative to binary floating point is decimal floating point arithmetic. Unlike binary floating point arithmetic, the decimal floating point performs arithmetic in base 10 to provide better accuracy. Further details about decimal arithmetic can be found at <a href="http://www2.hursley.ibm.com/decimal">General Decimal Arithmetic</a>. The IBM POWER6 processor implements decimal floating point arithmetic in hardware. Programming language decimal floating point support is enabled by IBM XLC C/C++ compiler version 9 release. 
+
+<p>
+It will not be possible for many software vendors to migrate their build environment to the new compiler version required to utilize hardware decimal floating point. Typically, the compiler migration is not a trivial task due to regression, incompatibility and other concerns, furthermore it requires significant amount of resources and efforts. Additionally, such application will not be compatible and portable across platforms or compilers who do not support the decimal floating point feature. An application compiled with POWER6 as a target platform will not function on pre-POWER6 architectures (e.g. POWER5 family of processors) due to newer decimal floating point instructions available only with the POWER6 processor.
+
+<p>
+<u>D</u>ecimal <u>F</u>loating <u>P</u>oint <u>A</u>bstraction <u>L</u>ayer (DFPAL) addresses these issues. DFPAL allows applications to run virtually on any platform and still provides hardware acceleration on the POWER6 processor. DFPAL provides the following features:
+<ul>
+  <li> Application can run on pre-POWER6 and all other processor architecture. 
+  <li> DFPAL API arguments are in IEEE 754r (draft) standard format.
+  <li> Relatively smaller memory foot-print due to compact IEEE 754r (draft) standard DPD encoding.
+  <li> Hardware acceleration on the POWER6 processor with AIX, i5/OS (under PASE), and Linux on Power operating systems with decimal floating point support.
+  <li> Portable, platform independent.
+  <li> Thread-safe.
+</ul>
+
+
+<p><hr><h2><font face=helvetica color=#006644>DFPAL examples</font></h2><p><p><h3><font face=helvetica color=#006644>Simple addition</font></h3>
+<a name=example1>
+<pre>
+      1 #include &lt;stdio.h&gt;          // printf() etc.
+      2 #include &lt;stdlib.h&gt;         // malloc()/free()
+      3 
+      4 #include "dfpal.h"          // DFPAL API
+      5 
+      6 int main(int argc, char **argv)
+      7 {
+      8 decimal64 n1, n2, n3;       // 64-bit work numbers
+      9 decimal128 N1, N2, N3;      // 128-bit work numbers
+     10 char dfpstr[64];            // buffer for 'to string' conversion
+     11 int initErr, initOSErr;     // DFPAL initialization error place-holder
+     12 char *errStr=NULL;          // ...
+     13 
+     14   if (argc < 3) {
+     15     printf("Please supply two numbers to add.\n");
+     16     return(1);
+     17   }
+     18 
+     19   // initialize and check error; free memory if unsuccessful
+     20   if (dfpalInit((void *)malloc(dfpalMemSize())) != DFPAL_ERR_NO_ERROR) {
+     21     dfpalGetError(&initErr, &initOSErr, &errStr);
+     22     fprintf(stderr, "DFPAL Init error number:%d, error: %s\n",
+     23       initErr, errStr);
+     24     dfpalEnd(free);
+     25     return(1);
+     26   }
+     27 
+     28   // what version?
+     29   printf("Version of DFPAL: %s\n", dfpalVersion());
+     30 
+     31   // Is it running in software or hardware?
+     32   if (dfpalGetExeMode()!=PPCHW)
+     33     printf("DFPAL is operating in software\n");
+     34   else
+     35     printf("DFPAL is operating in hardware\n");
+     36 
+     37   // convert input strings to decimal64 format
+     38   n1=dec64FromString(argv[1]);
+     39   n2=dec64FromString(argv[2]);
+     40 
+     41   // add
+     42   n3 = dec64Add(n1,n2);
+     43   printf("n1 + n2 = %s\n", dec64ToString(n3, dfpstr));
+     44 
+     45   // convert decimal64 to decimal128
+     46   N1=dec128FromDecimal64(n1); // N1=(decimal128)n1
+     47   N2=dec128FromDecimal64(n2); // N2=(decimal128)n2
+     48   N3 = dec128Add(N1,N2);
+     49   printf("N1 + N2 = %s\n", dec128ToString(N3, dfpstr));
+     50 
+     51   dfpalEnd(free);  // cleanup; free memory used by DFPAL
+     52
+     53   return(0);
+     54 }
+</pre>
+
+<br><br><b>Line&nbsp;#:&nbsp;4</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Include required header file <code>dfpal.h</code>.
+
+<br><br><b>Line&nbsp;#:&nbsp;8-9</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Declare decimal floating point datatype work variables to hold 64-bit and 128-bit decimal floating point numbers. Application is required to use <code>decimal64</code> and <code>decimal128</code> names to avoid name collision with compiler native decimal floating point data type names.
+
+<br><br><b>Line&nbsp;#:&nbsp;20</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Initialize DFPAL using <code>dfpalInit()</code>. This example uses memory allocated using <code>malloc()</code> facility. Application can use its own memory allocation routine.
+
+<br><br><b>Line&nbsp;#:&nbsp;21</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Retrieve some information about the error.
+
+<br><br><b>Line&nbsp;#:&nbsp;22-23</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Print error.
+
+<br><br><b>Line&nbsp;#:&nbsp;24</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Call <code>dfpalEnd()</code> to cleanup and free memory.
+
+
+<br><br><b>Line&nbsp;#:&nbsp;29</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Check DFPAL version.
+
+<br><br><b>Line&nbsp;#:&nbsp;32-35</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Find out whether DFPAL is operating in hardware or software.
+
+<br><br><b>Line&nbsp;#:&nbsp;38-39</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Convert input string to <code>decimal64</code> format.
+
+<br><br><b>Line&nbsp;#:&nbsp;42-43</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Perform add operation on <code>decimal64</code> data type, print result using <code>dec64ToString()</code>.
+
+<br><br><b>Line&nbsp;#:&nbsp;46-47</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Typecast <code>decimal64</code> values to <code>decimal128</code> type (type conversion).
+
+<br><br><b>Line&nbsp;#:&nbsp;48-49</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Perform add operation on <code>decimal128</code> data types, print result using <code>dec128ToString()</code>.
+
+<br><br><b>Line&nbsp;#:&nbsp;51</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Call <code>dfpalEnd()</code> to cleanup and free memory.
+
+
+<br><br><hr align=center width=30%><br><br>
+
+
+<p><p><h3><font face=helvetica color=#006644>Decimal floating point exception status</font></h3>
+<a name=example2>
+
+<pre>
+      1 #include &lt;stdio.h&gt;          // printf() etc.
+      2 #include &lt;stdlib.h&gt;         // malloc()/free()
+      3 
+      4 #include "dfpal.h"          // DFPAL API
+      5 
+      6 #define PRINT_EXCEPTIONS(where, st) {                                      \
+      7   printf(#where "\n");                                                     \
+      8   printf("INVALID  OVERFLOW   UNDERFLOW  DIV_BY_ZERO  INEXACT\n");         \
+      9   printf("   %1d        %1d           %1d           %1d          %1d\n",   \
+     10     ((st)&DFPAL_FP_INVALID)?1:0, ((st)&DFPAL_FP_OVERFLOW)?1:0,             \
+     11     ((st)&DFPAL_FP_UNDERFLOW)?1:0, ((st)&DFPAL_FP_DIV_BY_ZERO)?1:0,        \
+     12     ((st)&DFPAL_FP_INEXACT)?1:0);                                          \
+     13 }
+     14 
+     15 
+     16 int main(int argc, char **argv)
+     17 {
+     18 decimal64 n1, n2, n3, n4;   // 64-bit work numbers
+     19 decimal128 N1, N2, N3, N4;  // 128-bit work numbers
+     20 char dfpstr[64];            // buffer for 'to string' conversion
+     21 int initErr, initOSErr;     // DFPAL initialization error place-holder
+     22 char *errStr=NULL;          // ...
+     23 dfpalflag_t xstatus;
+     24 
+     25   // initialize and check error; free memory if unsuccessful
+     26   if (dfpalInit((void *)malloc(dfpalMemSize())) != DFPAL_ERR_NO_ERROR) {
+     27     dfpalGetError(&initErr, &initOSErr, &errStr);
+     28     fprintf(stderr, "DFPAL Init error number:%d, error: %s\n",
+     29       initErr, errStr);
+     30     dfpalEnd(free);
+     31     return(1);
+     32   }
+     33 
+     34   dfpalClearStatusFlag(DFPAL_FP_ALL);
+     35 
+     36   // create some number to play with
+     37   n1=dec64FromString("9E+200");
+     38   n2=dec64FromString("9E-200");
+     39   N1=dec128FromString("9E+3200");
+     40   N2=dec128FromString("9E-3200");
+     41   // did anything go wrong in string conversion?
+     42   if ((xstatus=dfpalReadStatusFlag()) & DFPAL_FP_ALL)
+     43     PRINT_EXCEPTIONS(String Conversion, xstatus);
+     44 
+     45   // multiplication: this should cause overflow and inexact
+     46   n3=dec64Multiply(n1,n1);
+     47   printf("n1 * n2 = %s\n", dec64ToString(n3, dfpstr));
+     48   // overflow and inexact should be present
+     49   if ((xstatus=dfpalReadStatusFlag()) & DFPAL_FP_ALL)
+     50     PRINT_EXCEPTIONS(decimal64 multiply, xstatus);
+     51 
+     52   // division: this should cause divide by zero
+     53   N3=dec128Divide(N1, dec128Zero());
+     54   printf("N1 / 0 = %s\n", dec128ToString(N3, dfpstr));
+     55   // overflow, inexact, divide by zero should be present
+     56   if ((xstatus=dfpalReadStatusFlag()) & DFPAL_FP_ALL)
+     57     PRINT_EXCEPTIONS(decimal64 multiply, xstatus);
+     58 
+     59   // division: this should cause underflow and inexact
+     60   N3=dec128Divide(N2,N1);
+     61   printf("N1 / N2 = %s\n", dec128ToString(N3, dfpstr));
+     62   // overflow, inexact, underflow, divide by zero should be present
+     63   if ((xstatus=dfpalReadStatusFlag()) & DFPAL_FP_ALL)
+     64     PRINT_EXCEPTIONS(decimal128 divide, xstatus);
+     65 
+     66   // divide Inf/Inf: should cause invalid
+     67   n3=dec64Divide(n3, n3);
+     68   printf("Inf / Inf = %s\n", dec64ToString(n3, dfpstr));
+     69   // overflow, inexact, underflow, divide by zero, invalid  should be present
+     70   if ((xstatus=dfpalReadStatusFlag()) & DFPAL_FP_ALL)
+     71     PRINT_EXCEPTIONS(decimal64 divide, xstatus);
+     72 
+     73   dfpalEnd(free);  // cleanup; free memory used by DFPAL
+     74
+     75   return(0);
+     76 }
+</pre>
+
+<br><br><b>Line&nbsp;#:&nbsp;6-13</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Define helper macro to print floating point exception. In reality, application typically takes some corrective action when floating point exception(s) are encountered.
+
+<br><br><b>Line&nbsp;#:&nbsp;34</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Clear all floating point exception status at beginning.
+
+<br><br><b>Line&nbsp;#:&nbsp;37-41</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Create some numbers from strings.
+
+<br><br><b>Line&nbsp;#:&nbsp;42-43</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Check if string conversion caused any floating point exception. There should not be any.
+	
+<br><br><b>Line&nbsp;#:&nbsp;46-50</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Multiply operation to induce INEXACT and OVERFLOW floating point exceptions. Retrieve and print floating point exception flags.
+
+<br><br><b>Line&nbsp;#:&nbsp;53-57</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Divide operation to induce DIVIDE_BY_ZERO floating point exception. Retrieve and print floating point exception flags. At this time, all three floating point exceptions occurred so far should appear in the output.
+	
+<br><br><b>Line&nbsp;#:&nbsp;60-64</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Divide operation to induce UNDERFLOW and INEXACT floating point exceptions. Retrieve and print floating point exception flags. At this time, all four floating point exceptions occurred so far should appear in the output.
+
+<br><br><b>Line&nbsp;#:&nbsp;67-71</b><br>&nbsp;&nbsp;&nbsp;&nbsp;
+Divide operation using Infinity value for both operands to induce INVALID floating point exception.
+<p><hr><h2><font face=helvetica color=#006644>DFPAL source layout</font></h2>DFPAL source code is organized into following files. 
+<p>
+<p>
+
+<table cellpadding=12 width=100%>
+
+<tr>
+  <td><b><code>dfpal.c</code></b></td>
+  <td>Main source file; the only C source file.</td>
+</tr>
+
+<tr>
+  <td><b><code>asmdfp.S</code></b></td>
+  <td>POWER6 decimal floating point insturction assembly language code snippets for Linux on Power, for use with GCC compiler on Linux on Power.</td>
+</tr>
+
+<tr>
+  <td><b><code>dfpal.h</code></b></td>
+  <td>DFPAL API specification header file. Applications are required to include this header file into their C source file(s).</td>
+</tr>
+
+<tr>
+  <td><b><code>dfpalct.h</code></b></td>
+  <td>DFPAL context data structure. DFPAL context is persistent data to hold DFPAL runtime state (e.g. exception status, traps, rounding mode etc.). The context data is divided into two parts. A process-wide context (common to all threads) and thread-specific context. This header is not seen by the application.</td>
+</tr>
+
+<tr>
+  <td><b><code>dfpaltypes.h</code></b></td>
+  <td>DFPAL specific data type definitions. This header is used to achieve portability.</td>
+</tr>
+
+
+<tr>
+  <td><b><code>ppcdfp.h</code></b></td>
+  <td>POWER PC machine instructions for DFP arithmetic. Contains XLC <code>#pragma mc_func</code> macros for in-place instruction expansion. This header is not seen by the application.</td>
+</tr>
+
+<tr>
+  <td><b><code>asmdfp.h</code></b></td>
+  <td>Function prototype decleration corresponding to <code>asmdfp.S</code> snippets. This header is not seen by the application.</td>
+</tr>
+
+<tr>
+  <td><b><code>dfpstub.h</code></b></td>
+  <td>Stub code for POWER PC machine instructions. The stub is used when DFPAL is compiled with no hardware decimal floating point support (using <code>DFPAL_NO_HW_DFP</code>). This header is not seen by the application.</td>
+</tr>
+
+<tr>
+  <td><b><code>dfpalerr.h</code></b></td>
+  <td>DFPAL error codes and error messages. The error codes and error messages are separated to assist national language support (NLS) message catalog. </td>
+</tr>
+
+
+</table>
+
+<p><hr><h2><font face=helvetica color=#006644>How to compile DFPAL?</font></h2>DFPAL is successfully compiled with a variety of compilers on multiple platforms. DFPAL portability is enabled by a combination of coding style and compile time switches. Build instructions (Makefile), for various environments, are included in the package. Follow instructions in the makefile carefully, especially on AIX (e.g. -qlongdouble flag must be used with XLC on AIX) and Linux on Power (e.g. -mlong-double-128 flag must be used with GCC on Linux on Power). DFPAL can be compiled as a standalone library or can be integrated into the application itself.
+
+<p>
+
+<table cellpadding=10 align=center width=80% border=1 bgcolor=#DCDCDC><tr><td>
+<p><h4><font face=helvetica color=#006644>decNumber tuning</font></h4>
+Beginning decNumber version 3.40, the <code>DECENDIAN</code> setting (in decNumberLocal.h) has been removed to improve performance; instead, you must set the <a href="http://www2.hursley.ibm.com/decimal/dnopts.html#declitend"><code>DECLITEND</code> parameter</a> to 1 if compiling for a little-endian target (for example, AMD and Intel x86), or to 0 if compiling for a big-endian (IBM POWER processor) target.
+<br><br>
+The decNumber package included in the DFPAL package has <code>DECLITEND</code> value set to 0. Additionally, respective Makefiles set <code>DECLITEND</code> to appropriate value on compiler command line.
+</td></tr></table>
+
+
+
+<p><p><h3><font face=helvetica color=#006644>Compile time switches</font></h3>
+
+<table border=1 cellspacing=3 cellpadding=0 width="100%">
+ <tr>
+  <td>
+    <b><code>DFPAL_THREAD_SAFE</code></b>
+  </td>
+  <td>
+  Activate thread local storage for DFPAL context. This
+  switch must be specified on all platforms to enable multi-threading support.
+  Non multi-threaded application may get marginal performance benefit by not
+  defining this switch. Absence of this switch bypasses a thread local storage.
+  </td>
+ </tr>
+ <tr>
+  <td>
+    <b><code>DFPAL_OS_AIX5L</code></b>
+    <br>
+    <b><code>DFPAL_OS_LOP</code></b>
+    <br>
+    <b><code>DFPAL_OS_WINDOWS</code></b>
+  </td>
+  <td>
+  Specify target platform using one of these switches. Using <code>DFPAL_OS_AIX5L</code> implies detecting and
+  activating hardware decimal floating point with AIX on POWER6. Such code will run on any level of supported AIX operating system with any supported POWER processor. On pre-POWER6 processors, DFPAL will utilize   decNumber for the decimal floating point arithmetic.
+  <p>
+  Using <code>DFPAL_OS_LOP</code> implies detecting and activating hardware decimal floating point for Linux on Power platform, running on POWER6. Such code will run on any level of supported Linux on Power distribution, with any supported POWER processor. On pre-POWER6 processors, DFPAL will utilize decNumber for the decimal floating point arithmetic. Both IBM XLC and GCC compilers are supported.
+  <p>
+  Use <code>DFPAL_OS_WINDOWS</code> to compile on Microsoft Windows using Microsoft compiler. Windows has a different thread local storage model than POSIX (on Unix or Linux) thread local storage model.
+  </td>
+ </tr>
+ <tr>
+  <td>
+  <b><code>DFPAL_USE_INTTYPES_H</code></b>
+  <b><code>DFPAL_LOCAL_INTTYPES</code></b>
+  </td>
+  <td>
+  For C99 data types, some platform have <code>inttypes.h</code>, whereas others have </code>stdint.h</code> (e.g. AIX, Linux). Windows does not have either. Select appropriate switch for your platform. For Windows use <code>DFPAL_LOCAL_INTTYPES</code> switch. If your build environment does not work with any of these, create and
+  edit a file with <code>stdint.h</code> name and define appropriate data types.
+  </td>
+ </tr>
+
+ <tr>
+  <td>
+  <b><code>DFPAL_INTEGER64_LITERAL_LL</code></b>
+  <b><code>DFPAL_INTEGER64_LITERAL_L</code></b>
+  <b><code>DFPAL_INTEGER64_LITERAL_i64</code></b>
+  </td>
+  <td>
+  Various platforms/compilers use different literal designator for 64-bit integers. Set any one of these switch accordingly. The  default is <code>LL</code> and <code>ULL</code> for signed integer and unsigned integer, respectively. AIX/XLC do not require any switch from this list. 
+  
+<br><br><code>DFPAL_INTEGER64_LITERAL_i64</code> is for Windows platforms. 
+
+  <br><br>The easiest way to determine the literal designator for particular compiler/platform is to look at system header file <code>limits.h</code>.
+  </td>
+ </tr>
+
+ <tr>
+  <td>
+  <b><code>DFPAL_NO_HW_DFP</code></b>
+  </td>
+  <td>
+  Use this switch if target platform/compiler does not support hardware DFP or <code>#pragma mc_func</code>
+  directives for the hardware instruction inline expansion (e.g. using GCC compiler on AIX). DFPAL compiled with this switch will only use decNumber for the DFP arithmetic even if running on POWER6.
+  </td>
+ </tr>
+
+ <tr>
+  <td>
+  <b><code>DFPAL_USE_DECFLOAT</code></b>
+  </td>
+  <td>
+  decFloat is new API, part of the decNumber package, which performs arithmetic directly on densely packed decimal (DPD) encoding. Use of decFloat eliminates DPD encoding to decNumber format conversion, and vice versa, enabling faster operation in <em>software</em>. Use of this switch has no impact on speed of hardware arithmetic operations. Use this switch to use decFloat instead of decNumber. More information about the decFloat is available at <a href="http://www2.hursley.ibm.com/decimal/decnumber.html">decNumber module</a>.
+  </td>
+ </tr>
+
+ <tr>
+  <td>
+  <b><code>DFPAL_STANDALONE_DLL</code></b>
+  <br>(only for Windows)
+  </td>
+  <td>
+  This switch is relevant to Windows platform only. DFPAL is
+  using <code>pthread_once()</code> facility on Unix platforms with POSIX thread support. Windows does not have equivalent facility. Alternatively, DFPAL is using <code>DllMain()</code> facility on Windows platform. Compile with this switch if DFPAL is being compiled as standalone library (Dynamic Link Library or DLL). If DFPAL is integrated into some container module such as EXE or another DLL, use that container module's <code>DllMain()</code> equivalent facility. The container module's <code>DllMain()</code> equivalent facility must call <code>dfpalInitProcessContext()</code> for <code>DLL_PROCESS_ATTACH</code> event. No other actions are necessary for the remaining events.<br><br>A sample export symbol definition file <code>dfpalsymexp.def</code> is included for convenience.
+  </td>
+ </tr>
+ <tr>
+  <td>
+  <b><code>DFPAL_USE_COMPILER_DFP</code></b>
+  </td>
+  <td>
+  In future when application build environment is migrated to XLC version 9, this switch allows compiler native decimal floating point usage, bypassing DFPAL. Applications can take advantage of the fastest decimal floating point arithmetic using compile native decimal floating (as compared to the compiler native decimal floating point, all arithmetic operations have function call overhead with DFPAL). To be able to use this switch, application must use <code>decNN...()</code> macros rather than <code>decimalNN...()</code> functions (<code>decNN...()</code> directly map to either
+  <code>decimalNN...()</code> function call or equivalent compiler native decimal floating point operation).
+  </td>
+ </tr>
+</table>
+
+<p><p><h3><font face=helvetica color=#006644>AIX build instruction</font></h3> 
+On AIX, the XLC compiler is required to activate hardware decimal floating point. The following guidelines will ensure a successful compile process. A working sample Makefile is also included in the DFPAL package.
+
+<ul>
+ <li>XLC front-end <code>xlc_r</code> is recommended when building DFPAL for multi-threaded environment.</li>
+ <li>Must use <code>–qlongdouble</code> flag to direct 128-bit word length for <code>long double</code> datatype, internally used by DFPAL.</li>
+ <li>Remaining application code can be compiled with a different XLC front-end driver and does not have to use <code>–qlongdouble</code> flag. There shall be no linking or runtime problems mixing such object codes. </li>
+ <li>DFPAL is not tested with compiler optimization level higher than <code>-O2</code> on AIX, with XLC compiler.</li>
+ <li>Must use <code>-qflttrap</code> flag to enable floating point exception traps if application is using floating point exception traps (not a common practice). This flag is
+     not recommended if application does not rely on the floating point exception traps.</li>
+</ul>
+
+<p>Following is sample XLC command line on AIX (assumes application does not use floating point exception traps; add <code>-qflttrap</code> flag to following command, otherwise).</p>
+
+<code>xlc_r -c –q64 -O2 -DDFPAL_THREAD_SAFE -DDFPAL_OS_AIX5L -q64 -qlongdouble qflttrap -qlanglvl=stdc99 -I ../decNumber  -I . dfpal.c</code>
+
+
+<p><p><h3><font face=helvetica color=#006644>Linux on Power build instruction</font></h3> 
+On Linux on Power, either IBM XLC or GCC compiler can be used to activate and enable hardware decimal floating point support. The following guidelines will ensure a successful compile process. Working sample Makefiles (for use with IBM XLC and GCC) are also included in the DFPAL package.
+
+<ul>
+ <li>Must use <code>-mlong-double-128</code> flag to direct 128-bit word length for <code>long double</code> datatype, internally used by DFPAL.</li>
+ <li>DFPAL is not tested with compiler optimization level higher than <code>-O3</code> for GCC and -O for IBM XLC on Linux on Power.</li>
+</ul>
+
+<p>Following is sample GCC command line on Linux on Power.</p>
+
+<code>gcc -c -m64 -mlong-double-128 -O3 -DDFPAL_THREAD_SAFE -DDFPAL_OS_LOP -DDFPAL_INTEGER64_LITERAL_LL -I ../decNumber  -I . dfpal.c</code>
+
+
+<p><p><h3><font face=helvetica color=#006644>Unix build instruction</font></h3>
+
+Following is an example of typical command line for other Unix platforms (assumes literal designator is <code>L</code>).
+<p>
+<code>cc -c -DDFPAL_THREAD_SAFE -DDFPAL_NO_HW_DFP -DDFPAL_INTEGER64_LITERAL_L -I ../decNumber  -I . dfpal.c</code>
+
+<p><p><h3><font face=helvetica color=#006644>Windows build instructions</font></h3> 
+Following is typical command line using Microsoft compiler. A working sample Makefile is also included in the DFPAL package.
+<p>
+<code>cl -c -DDFPAL_THREAD_SAFE -DDFPAL_NO_HW_DFP -DDFPAL_LOCAL_INTTYPES -DDFPAL_INTEGER64_LITERAL_i64 -DDFPAL_STANDALONE_DLL -I ../decNumber  -I . dfpal.c</code>
+<p><hr><h2><font face=helvetica color=#006644>DFPAL management functions</font></h2>DFPAL management API consists of routines required for DFPAL initialization, error handling, status checking, and termination.
+
+<p><h4><font face=helvetica color=#006644>char * dfpalVersion(void)</font></h4>
+Return version number of DFPAL. This function can be called before <code>dfpalInit()</code>.
+
+<p><h4><font face=helvetica color=#006644>uint32_t dfpalMemSize(void)</font></h4>
+Returns amount of memory needed (in bytes) for thread specific context information. DFPAL purposefully does not allocate any dynamic memory to avoid interfering with any application specific memory management paradigm, e.g. certain application do not utilize standard <code>malloc()</code> for the application memory allocation. Instead, such applications have their own memory management layer based on shared memory, for example. This function shall be called before <code>dfpalInit()</code> to determine amount of memory needed by the DFPAL.
+
+<p><h4><font face=helvetica color=#006644>int32_t dfpalInit(void *context)</font></h4>
+DFPAL must be initialized using <code>dfpalInit()</code> before any of its service is accessed. The input <code>context</code> is pointer to allocated memory. This function either returns <code>DFPAL_ERR_NO_ERROR</code> or an error code indicating error condition. List of possible errors and error codes can be found in <code>dfpalerr.h</code>. For multi-threaded application, each thread using DFPAL service must initialize using this service. Additionally, application is responsible for making sure that memory passed as an argument is thread safe.
+<br><br>
+The <code>dfpalInit()</code> reads environment variable <code>DFPAL_EXE_MODE</code>. Possible values for this environment variable are <code>DNSW</code> (force DFPAL to use decNumber software mode), <code>PPCHW</code> (force DFPAL to use PowerPC hardware mode; <code>dfpalInit()</code> will return error if no hardware support available), or <code>AUTO</code> (auto detect). Default value, in absence of the environment variable or undefined value, is <code>AUTO</code>.
+
+<p><h4><font face=helvetica color=#006644>dfpalCSFlag *dfpalGetFlagHandle(void)</font></h4>
+Returns handle to global status flags, traps, and rounding mode control structure. The status flags, traps, and rounding mode are switched based on whether DFPAL is operating in hardware or software. This routine is useful when using DFPAL with runtime linking and loading using <code>dlopen()/dlsym()</code>. Applications not using runtime linking and loading do not have to use this.
+
+<p><h4><font face=helvetica color=#006644>void dfpalEnd(void (*memfree)(void *))</font></h4>
+Frees memory used by DFPAL, passed down to DFPAL by the <code>dfpalInit()</code> call earlier. It takes a pointer to function performing memory de-allocation. Typically, memory de-allocation function is corresponding to one used to allocate memory for the <code>dfpalInit()</code>.
+
+<p><h4><font face=helvetica color=#006644>enum dfpalExeMode dfpalGetExeMode(void)</font></h4>
+Returns current mode of execution. Returns <code>DNSW</code> (decNumber Software) if DFPAL is using decNumber software implementation for the decimal floating point arithmetic. Returns <code>PPCHW</code> (Power PC Hardware) if DFPAL is using hardware decimal floating point arithmetic.
+
+<p><h4><font face=helvetica color=#006644>void dfpalResetContext(void) [deprecated]</font></h4>
+Reset decNumber context structure. Avoid using this function.
+
+<p><h4><font face=helvetica color=#006644>int32_t dfpalGetError(int32_t *dfpalErr, int32_t *osErr, char **dfpalErrTxt)</font></h4>
+Returns last DFPAL error code. Also, DFPAL error code, operating system error code (if any) and DFPAL descriptive error text, respectively, is placed into function input parameters.
+
+<p><h4><font face=helvetica color=#006644>void dfpalClearError(void)</font></h4>
+Clear DFPAL error codes. Calling the <code>dfpalGetError()</code> after this function call will return “No error”.
+
+<p><h4><font face=helvetica color=#006644>int32_t dfpalErrorFlag(void)</font></h4>
+Similar to <code>dfpalGetError()</code> but only returns DFPAL error code.
+
+<p><h4><font face=helvetica color=#006644>void dfpalInitProcessContext(void)</font></h4>
+<em>Note: this is Windows specific function. Unix platforms shall never use this.</em><br>
+
+Initialize a process context. The process context is shared by all threads in read-only mode. This function is automatically called by the <code>dfpalInit()</code> on Unix platforms. On Windows platform, if DFPAL is integrated into some other container module, use that container module’s <code>DllMain()</code> equivalent facility to call <code>dfpalInitProcessContext()</code> for <code>DLL_PROCESS_ATTACH</code> event. Refer to <a href=compile.html>How to compile DFPAL?</a> for more details.
+<p><hr><h2><font face=helvetica color=#006644>Floating point controls: rounding mode, exception and trap handling</font></h2>These routines allow decimal floating point control, influencing decimal floating point arithmetic. The decimal floating point arithmetic unit (either decNumber or POWER6 processor) indicates exceptions conditions (overflow, underflow, divide by zero, invalid operation, inexact) by setting relevant status bits in the status field. The IEEE 754r (draft) standard requires following five exceptions, invalid operation, overflow, underflow, divide by zero, and inexact. For details about when these exception conditions arise refer to <a href="http://www2.hursley.ibm.com/decimal/decarith.html">General Decimal Arithmetic Specification</a>. 
+<p>
+
+The following guidelines shall be observed with DFPAL.
+
+<p>
+
+<ul> 
+  <li>Never use operating system or decNumber exception, trap and rounding mode definitions, i.e. do not use decNumber defines such as <code>DEC_Overflow</code>, <code>DEC_Underflow</code>, and operating system defines such as <code>FP_OVERFLOW, FP_UNDERFLOW</code> etc. (defined in <code>fpxcp.h</code>).
+  <li>Only use definitions and facility provides by the DFPAL. All DFPAL definitions are prefixed with <code>"DFPAL_"</code>. For example, <code>DFPAL_FP_OVERFLOW</code> and <code>DFPAL_FP_UNDERFLOW</code>. DFPAL definition values are dynamic, changed at runtime depending on whether DFPAL is operating in hardware or software.
+  <li>Never check output of any of the routines for boolean value. Perform bitwise and operation to determine particular status bit(s).
+  <li>POWER6 processor Floating Point Status and Control Register (FPSCR) holds status and control information. The FPSCR exception and trap bits are shared between binary floating point and the decimal floating point (rounding mode control in not shared between binary floating point and decimal floating point, however). This may result into cross-contamination, i.e. overflow caused by the binary floating point arithmetic operation will show up in the decimal floating status and vice versa. This can be avoided by carefully clearing and checking status before and after particular arithmetic operation or set of operations.
+  <li>Applications shall not call any decNumber functions directly.
+  <li>Unless it is a condition raised as a result of arithmetic operation or altered via following API, DFPAL never sets or clears status or control flags. The IEEE 754r (draft) standard requires that it is application’s responsibility to manage exceptions status flags.
+  <li>DFPAL floating point control routines are similar to AIX floating point control routines (<code>fp_clr_flag(), fp_set_flag(), fp_read_flag(), fp_swap_flag()</code> and so on). This will allow easy code migration to compiler native decimal floating point usage. 
+</ul>	
+
+<br><br><hr align=center width=30%><br><br>
+
+<p><p><h3><font face=helvetica color=#006644>Exception status flag management</font></h3>
+The following routines allow accessing and altering decimal floating point exception status value. DFPAL provides the following exception status flags. <b>An application must use following defines to access the exception flags</b>. For details about when the exceptions are raised refer to <a href="http://www2.hursley.ibm.com/decimal/decarith.html">General Decimal Arithmetic Specification</a>.
+
+<code>
+<ul>
+  <li>DFPAL_FP_INVALID
+  <li>DFPAL_FP_OVERFLOW
+  <li>DFPAL_FP_UNDERFLOW
+  <li>DFPAL_FP_DIV_BY_ZERO
+  <li>DFPAL_FP_INEXACT
+  <li>DFPAL_FP_ALL
+</ul>
+</code>
+
+<p><h4><font face=helvetica color=#006644>void dfpalClearStatusFlag(dfpalflag_t mask)</font></h4>
+Clear exception status flags specified by the <code>mask</code> parameter. A bit value of 1 in <code>mask</code> will clear that particular exception status flag. The exception status flags can be bitwise or’ed together indicating multiple status flag to be cleared. The exception status flag remains unchanged if the corresponding bit value is 0 in the <code>mask</code>. 
+
+<p><h4><font face=helvetica color=#006644>void dfpalClearAllStatusFlag()</font></h4>
+Clear all exception status flags. This function is equivalent to, but relatively faster than <code>dfpalClearStatusFlag()</code> function with <code>DFPAL_FP_ALL</code> argument.
+
+
+<p><h4><font face=helvetica color=#006644>void dfpalSetStatusFlag(dfpalflag_t mask)</font></h4>
+Set exception status flags specified by the <code>mask</code> parameter. Bit value of 1 in the <code>mask</code> will set that flag, value of 0 will clear the flag.
+
+<p><h4><font face=helvetica color=#006644>dfpalflag_t dfpalReadStatusFlag(void)</font></h4>
+Read current exception status flags. Return value of the function can be used in bitwise and operation to check presence of particular exception status.
+ 
+<p><h4><font face=helvetica color=#006644>dfpalflag_t dfpalSwapStatusFlag(dfpalflag_t mask)</font></h4>
+This is combination of the <code>dfpalSetStatusFlag()</code> and the <code> dfpalReadStatusFlag()</code>. Read and return current exception status flags, set exception status flags specified by the <code>mask</code> parameter.
+
+
+<p><p><h3><font face=helvetica color=#006644>Exception trap management</font></h3>
+The following routines allow accessing and altering decimal floating point trap control. DFPAL provides the following trap control flags. <b>An application must use following defines to access the trap control flags</b>. <code>SIGFPE</code> is raised when trap is enabled for that particular exception.
+
+<code>
+<ul>
+  <li>DFPAL_TRP_INVALID
+  <li>DFPAL_TRP_OVERFLOW
+  <li>DFPAL_TRP_UNDERFLOW
+  <li>DFPAL_TRP_DIV_BY_ZERO
+  <li>DFPAL_TRP_INEXACT
+  <li>DFPAL_TRP_ALL
+</ul>
+</code>
+
+<p>
+
+<p><h4><font face=helvetica color=#006644>void dfpalEnableTrap(dfpaltrap_t mask)</font></h4>
+Enable floating point trap for exception(s) specified by the <code>mask</code> parameter. Bit value of 1 will turn on trap for that particular exception. The traps can be bitwise or’ed together to indicate multiple traps to be enabled. 
+
+<p><h4><font face=helvetica color=#006644>void dfpalEnableAllTrap(void)</font></h4>
+Enable all five floating point exception traps.
+
+<p><h4><font face=helvetica color=#006644>void dfpalDisableTrap(dfpaltrap_t mask)</font></h4>
+Disable floating point trap for exception(s) specified by the <code>mask</code> parameter. Bit value of 1 will turn off trap for that particular exception. The traps can be bitwise or’ed together to indicate multiple traps to be disabled. 
+
+<p><h4><font face=helvetica color=#006644>void dfpalDisableAllTrap(void)</font></h4>
+Disable all five floating point exception traps.
+
+<p><h4><font face=helvetica color=#006644>uint8_t dfpalAnyTrapEnabled(void)</font></h4>
+Returns boolean value 1 if any trap is enabled, 0 otherwise.
+
+<p><h4><font face=helvetica color=#006644>uint8_t dfpalTrapEnabled(dfpaltrap_t mask)</font></h4>
+Returns boolean value 1 if any of the trap(s) specified by the <code>mask</code> parameter is enabled, 0 otherwise.
+
+<br><br><hr align=center width=30%><br><br>
+
+<p><p><h3><font face=helvetica color=#006644>Rounding mode control</font></h3>
+The following routines allow controlling and accessing decimal floating point rounding mode. DFPAL provides the following rounding mode definitions. <b>An application must use following defines to access the exception flags</b>. For details about how rounding mode influence decimal floating point arithmetic refer to <a href="http://www2.hursley.ibm.com/decimal/decarith.html">General Decimal Arithmetic</a>.
+
+<code>
+<ul>
+  <li>DFPAL_ROUND_TO_NEAREST_WITH_TIES_TO_EVEN
+  <li>DFPAL_ROUND_TOWARD_ZERO
+  <li>DFPAL_ROUND_TOWARD_POSITIVE_INFINITY
+  <li>DFPAL_ROUND_TOWARD_NEGATIVE_INFINITY
+  <li>DFPAL_ROUND_TO_NEAREST_WITH_TIES_AWAY_FROM_ZERO
+  <li>DFPAL_ROUND_TO_NEAREST_WITH_TIES_TOWARD_ZERO
+  <li>DFPAL_ROUND_AWAY_FROM_ZERO
+</ul>
+</code>
+
+<p>
+
+<p><h4><font face=helvetica color=#006644>dfpalrnd_t dfpalReadRoundingMode(void)</font></h4>
+Return current rounding mode.
+
+<p><h4><font face=helvetica color=#006644>dfpalrnd_t dfpalSwapRoundingMode(dfpalrnd_t rndmode)</font></h4>
+Return current rounding mode and set rounding mode specified by the <code>rndmode</code> parameter.
+
+<p><h4><font face=helvetica color=#006644>void dfpalSetRoundingMode(dfpalrnd_t rndmode)</font></h4>
+Set rounding mode specified by the <code>rndmode</code> parameter.
+
+<p><h4><font face=helvetica color=#006644>uint8_t dfpalSetExponentClamp(uint8_t) [deprecated]</font></h4>
+Set exponent clamp for decNumber context. Do not use this function.
+<p><hr><h2><font face=helvetica color=#006644>Floating point operations</font></h2>DFPAL supports 64-bit (precision=16 digits), and 128-bit (precision=34 digits) encoding formats. DFPAL also supports 32-bit (precision=7 digits) conversion routines to/from 64-bit encoding format. An application can emulate 32-bit encoding format arithmetic using the conversion routines coupled with 64-bit encoding format arithmetic. These encodings are referred as decimal32, decimal64, and decimal128. decimalNN is a general term referring to either decimal64 or decimal128 encoding formats. 
+
+<p>
+
+Decimal floating point operations are classified into the following categories.
+<ul>
+  <li>Data type conversion
+  <li>Arithmetic operation
+  <li>Miscellaneous: Field access, utility, data class
+</ul>
+
+<p>
+
+
+<table cellpadding=10 align=center width=80% border=1 bgcolor=#DCDCDC><tr><td>
+<p><h4><font face=helvetica color=#006644>Programming Note</font></h4>
+This guide refers to <code>decimalNN...()</code> routines. However, it is highly recommended that application program to <code>decNN...()</code> macros for easy migration to compiler native decimal floating point using the <code> DFPAL_USE_COMPILER_DFP</code> compile time switch. Refer to <a href=compile.html>How to compile DFPAL?</a> for more information. The <code>decNN...()</code> macros are listed in square brackets. 
+<br><br>
+Not all the facilities listed below is a part of the current <em>Extension for the programming language C to support decimal floating-point arithmetic</em> working draft technical report by the ISO/IEC JTC1 SC22 WG14 committee. The proposal for extension is continuously evolving. Refer to the current draft of the proposal for extension. Adhering to the facilities listed in the proposal for extension may simplify migration to compiler native decimal floating point usage later.
+</td></tr></table> 
+
+<p><p><h3><font face=helvetica color=#006644>Data type conversion</font></h3>
+DFPAL provides conversion to and from decimal floating point format and many other programming language intrinsic data types such as integer and floating point formats.
+
+
+<p><h4><font face=helvetica color=#006644>char * dfpal_decimalNNToString(const decimalNN rhs, char *out) [decNNToString]</font></h4>
+Convert input <code>rhs</code> from decimalNN to equivalent string representation, populate memory location pointed by the <code>out</code> parameter. Returns same memory location as <code>out</code>. Memory must be pre-allocated by application. 
+
+<p><h4><font face=helvetica color=#006644>decimalNN dfpal_decimalNNFromString(const char *dfpstr) [decNNFromString]</font></h4>
+Convert input <code>dfpstr</code> into decimalNN number. Exceptions are raised as discussed in <a href="http://www2.hursley.ibm.com/decimal/decarith.html">General Decimal Arithmetic Specification</a>.
+
+<p><h4><font face=helvetica color=#006644>double decimalNNToDouble(const decimalNN rhs) [decNNToDouble]</font></h4>
+Convert input decimalNN value <code>rhs</code> to binary floating point double representation. There will be lost precision and/or slight inaccuracy converting between these representations. Input <code>sNaN</code> is converted to <code>NaN</code>, because double value of <code>sNaN</code> is not portable.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFromDouble(const double) [decNNFromDouble]</font></h4>
+Convert binary floating point input double value to equivalent decimalNN format. 
+
+<p><h4><font face=helvetica color=#006644>uint8_t * decimalNNToPackedBCD(decimalNN rhs, uint8_t *bcdOut, int32_t bcdOutLen, int32_t *scale) [decNNToPackedBCD]</font></h4>
+Convert <code>rhs</code> in packed binary coded decimal (BCD) string. The <code>bcdOutLen</code> is length of the input array <code>bcdOut</code>. Then length must be at least 9 bytes (for <code>decimal64</code>) or 18 bytes (for <code>decimal128</code>), otherwise unchanged <code>bcdOut</code> is returned. The <code>scale</code> is output – scale of the <code>rhs</code>. The output array will be populated in right aligned order. That is, highest array index will hold least significant digit nibble and a sign nibble. Application must pre-allocated enough memory for the <code>bcdOut</code>, and clear the array content if necessary. Output sign is <code>C</code> (for +ve number) or <code>D</code> (for –ve number).
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFromPackedBCD(uint8_t *bcdIn, int32_t bcdInLen, int32_t scale) [decNNFromPackedBCD]</font></h4>
+Convert the input character array <code>bcdIn</code> into decimalNN number, return decimalNN. The <code>bcdInLen</code> is length of input array <code>bcdIn</code>. The length must be at least 9 bytes (for decimal64) or 18 bytes (for decimal128), or NaN is returned. The input <code>scale</code> is used to set exponent of the output number. The input <code>bcdIn</code> is assumed to be right aligned. That is, highest array index will hold least significant nibble and a sign nibble. Input sign nibble must be present, and it is assumed to be <code>C</code> (for +ve number) or <code>D</code> (for –ve number). When the input array in larger than 9 bytes (for decimal64) or 18 bytes (for decimal128), no more than 16 digits (for decimal64) or 34 digits (for decimal128) shall be present. Application can pre-process input array before passing it to the <code> decimalNNFromPackedBCD()</code> to ensure that above rules are observed. This rules are imposed to reconcile rounding effect between hardware and software implementations of the decimal floating point.
+
+
+<p><h4><font face=helvetica color=#006644>decimal32 decimal64ToDecimal32(const decimal64 rhs) [dec64ToDecimal32]</font></h4>
+Convert decimal64 input <code>rhs</code> into decimal32 format. In case of lost precision <code>INEXACT</code> exception is raised. <em>Note: this function is intended to be used for decimal32 arithmetic emulation. The <code>INVALID</code> exception is not raised on sNaN input to avoid any side effect.</em>
+
+
+<p><h4><font face=helvetica color=#006644>decimal64 decimal64FromDecimal32(const decimal32 rhs) [dec64FromDecimal32]</font></h4>
+Convert decimal32 input <code>rhs</code> into decimal64 format. No exceptions are possible. <em>Note: this function is intended to be used for decimal32 arithmetic emulation. The <code>INVALID</code> exception is not raised on sNaN input to avoid any side effect.</em>
+
+
+<p>
+
+
+<table cellpadding=10 align=center width=80% border=1 bgcolor=#DCDCDC><tr><td>
+
+<p><h4><font face=helvetica color=#006644>General integer conversion rules</font></h4>
+For conversion to integer, no <code>INEXACT</code> exception is raised even if there are lost digit(s). Conversion to integer is <em>not</em> performed with current rounding mode, rounding mode is always <em>truncate</em>. (Conversion to integer with desired rounding mode can be performed by using <code> decimalNNToIntegralValue()</code> function followed by either <code>decimalNNToIntXX()</code> or <code>decimalNNToUintXX()</code> conversion.).
+<br><br>
+For out of bound or Infinite input that cannot be represented in the destination format, an integer with largest magnitude in the direction of the sign with the same sign as source (input) is returned with <code>INVALID</code> exception raised. For example, converting decimalNN to 64-bit signed integer, an input of +Infinite (or say 1E+100) will return <code>9223372036854775807</code>, -Infinite (or say -1E+100) will return <code>-9223372036854775808</code>, The <code>INVALID</code> exception is raised in either case.
+<br><br>
+For +/-sNaN or +/-NaN input smallest possible integer is returned, regardless of the source (input) sign. For example, converting decimalNN value +NaN to 64-bit signed integer, return value is <code>-9223372036854775808</code> regardless of the input sign. The <code>INVALID</code> exception raised.
+<br><br>
+Negative source (input) is considered out of bound value for unsigned integer conversion, largest magnitude in the direction of the –ve sign is <code>0</code> for the unsigned integer. Similarly, smallest possible integer, which is <code>0</code> is returned for +/-NaN or +/-sNaN input with <code>INVALID</code> exception raised.
+<br><br>
+In case of conversion from integer to decimalNN, current rounding mode is used and <code>INEXACT</code> exception may be raised, especially when converting 64-bit integer to decimal64. Because maximum precision for decimal64 is 16 digits and integer may need up to 20 digits for exact representation. No other exceptions are possible.
+<br><br>
+</td></tr></table>
+
+<p>
+
+
+<p><h4><font face=helvetica color=#006644>int64_t decimalNNToInt64(const decimal64 rhs) [decNNToInt64]</font></h4>
+Convert input <code>rhs</code> to equivalent 64-bit signed integer value. The general integer conversion rules apply. The output 64-bit signed integer is in range <code>[-9223372036854775808, 9223372036854775807]</code>.
+
+
+<p><h4><font face=helvetica color=#006644>uint64_t decimalNNToUint64(const decimal64 rhs) [decNNToUint64]</font></h4>
+Convert input <code>rhs</code> to equivalent 64-bit unsigned integer value. The general integer conversion rules apply. The output 64-bit unsigned integer is in range <code>[0, 18446744073709551615]</code>.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNToInt32(const decimal64 rhs) [decNNToInt32]</font></h4>
+Convert input <code>rhs</code> to equivalent 32-bit signed integer value. The general integer conversion rules apply. The output 32-bit signed integer is in range <code>[-2147483648, 2147483647]</code>.
+
+
+<p><h4><font face=helvetica color=#006644>uint32_t decimalNNToUint32(const decimal64 rhs) [decNNToUint32]</font></h4>
+Convert input <code>rhs</code> to equivalent 32-bit unsigned integer value. The general integer conversion rules apply. The output 32-bit unsigned integer is in range <code>[0, 4294967295]</code>.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFromInt64(const int64_t rhs) [decNNFromInt64]</font></h4>
+Convert 64-bit signed integer input <code>rhs</code> to equivalent decimalNN format. The general integer conversion rules apply.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFromUint64(const uint64_t rhs) [decNNFromUint64]</font></h4>
+Convert 64-bit unsigned integer input <code>rhs</code> to equivalent decimalNN format. The general integer conversion rules apply.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFromInt32(const int32_t rhs) [decNNFromInt32]</font></h4>
+Convert 32-bit signed integer input <code>rhs</code> to equivalent decimalNN format. The general integer conversion rules apply. 
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFromUint32(const uint32_t rhs) [decNNFromUint32]</font></h4>
+Convert 32-bit unsigned integer input <code>rhs</code> to equivalent decimalNN format. The general integer conversion rules apply.
+
+<br><br><hr align=center width=30%><br><br>
+
+<p><p><h3><font face=helvetica color=#006644>Utility functions</font></h3>
+
+
+<p><h4><font face=helvetica color=#006644>uint32_t decNNSign(const decimalNN rhs) [decNNsign]</font></h4>
+Return sign of input <code>rhs</code>. Returns integer non-zero value (boolean 1) if <code>rhs</code> is –ve, 0 otherwise.
+
+<p><h4><font face=helvetica color=#006644>uint32_t decNNComb(const decimalNN rhs) [decNNComb]</font></h4>
+Return combination field of <code>rhs</code>.
+
+<p><h4><font face=helvetica color=#006644>uint32_t decNNExpCon(const decimalNN rhs) [decNNExpCon]</font></h4>
+Return exponent continuation filed of <code>rhs</code>.
+
+<p><h4><font face=helvetica color=#006644>uint8_t decimalNNIsInfinite(const decimalNN rhs) [decNNIsInfinite]</font></h4>
+Returns boolean value 1 if <code>rhs</code> is +/-Infinite, 0 otherwise.
+
+
+<p><h4><font face=helvetica color=#006644>uint8_t decimalNNIsNaN (const decimalNN rhs) [decNNIsNaN]</font></h4>
+Returns boolean value 1 if <code>rhs</code> is either +/-qNaN or +/-sNaN, 0 otherwise.
+
+
+<p><h4><font face=helvetica color=#006644>uint8_t decimalNNIsQNaN (const decimalNN rhs) [decNNIsQNaN]</font></h4>
+Returns boolean value 1 if <code>rhs</code> is +/-qNaN, 0 otherwise.
+
+<p><h4><font face=helvetica color=#006644>uint8_t decimalNNIsSNaN (const decimalNN rhs) [decNNIsSNaN]</font></h4>
+Returns boolean value 1 if <code>rhs</code> is +/-sNaN, 0 otherwise.
+
+<p><h4><font face=helvetica color=#006644>uint8_t decimalNNIsNegative (const decimalNN rhs) [decNNIsNegative]</font></h4>
+Returns boolean value 1 if <code>rhs</code> is –ve number, 0 otherwise. This function is similar to the <code>decNNSign()</code>.
+
+<p><h4><font face=helvetica color=#006644>uint8_t decimalNNIsZero (const decimalNN rhs) [decNNIsZero]</font></h4>
+Returns boolean value 1 if <code>rhs</code> numeric value is +/-0, 0 otherwise.
+
+<p><h4><font face=helvetica color=#006644>decimal64 decimalNNTrim(const decimalNN rhs) [decNNTrim]</font></h4>
+Remove insignificant trailing zeros from <code>rhs</code>. That is, if the number has any fractional trailing zeros they are removed by dividing the coefficient by the appropriate power of ten and adjusting the exponent accordingly. 
+
+<p><h4><font face=helvetica color=#006644>decimal64 decimalNNZero(void) [decNNZero]</font></h4>
+Returns decimalNN value 0 (no sign, coefficient=0, exponent=0), useful for initializing decimalNN to zero.
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNGetDigits(const decimalNN rhs) [decNNGetDigits]</font></h4>
+Return number of coefficient digits of <code>rhs</code>.
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNGetExponent(const decimalNN rhs) [decNNGetExponent]</font></h4>
+Return unbiased exponent of <code>rhs</code>.
+
+<br><br><hr align=center width=30%><br><br>
+
+<p><p><h3><font face=helvetica color=#006644>Arithmetic operations</font></h3>
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNAbs(const decimalNN rhs) [decNNAbs]</font></h4>
+The return value is absolute value of decimalNN input <code>rhs</code>. 
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNAdd(const decimalNN lhs, const decimalNN rhs) [decNNAdd]</font></h4>
+Add decimalNN inputs <code>lsh</code> and <code>rhs</code>, return result of the add operation.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNCompare(const decimalNN lhs, const decimalNN rhs) [decNNCompare]</font></h4>
+Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return decmimalNN –1 if <code>lsh</code> is less than <code>rhs</code>, decimalNN 0 if <code>lsh</code> is equal to <code>rhs</code>, and decmimalNN +1 if <code>lsh</code> is greater than <code>rhs</code>.
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareLT(const decimalNN lhs, const decimalNN rhs) [decNNCompareLT]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return boolean 1 if <code>lsh</code> is less than <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompare()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareLE(const decimalNN lhs, const decimalNN rhs) [decNNCompareLE]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return boolean 1 if <code>lsh</code> is less than or equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompare()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareEQ(const decimalNN lhs, const decimalNN rhs) [decNNCompareEQ]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return boolean 1 if <code>lsh</code> is equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompare()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareNE(const decimalNN lhs, const decimalNN rhs) [decNNCompareNE]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return boolean 1 if <code>lsh</code> is not equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompare()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareGT(const decimalNN lhs, const decimalNN rhs) [decNNCompareGT]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return boolean 1 if <code>lsh</code> is greater than <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompare()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareGE(const decimalNN lhs, const decimalNN rhs) [decNNCompareGE]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return boolean 1 if <code>lsh</code> is greater than or equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompare()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNN decimalNNCompareTotal(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotal]</font></h4>
+
+Compare decimalNN inputs <code>lsh</code> and <code>rhs</code>, return decmimalNN –1 if <code>lsh</code> is less than <code>rhs</code>, decimalNN 0 if <code>lsh</code> is equal to <code>rhs</code>, and decmimalNN +1 if <code>lsh</code> is greater than <code>rhs</code>. Unlike, regular compare, compare Total compares numbers using abstract representation. Refer to <a href=http://www2.hursley.ibm.com/decimal/damisc.html#refcotot>Decimal Arithmetic Specification</a> for more details.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareTotalLT(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotalLT]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code> using total order, return boolean 1 if <code>lsh</code> is less than <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompareTotal()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareTotalLE(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotalLE]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code> using total order, return boolean 1 if <code>lsh</code> is less than or equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompareTotal()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareTotalEQ(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotalEQ]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code> using total order, return boolean 1 if <code>lsh</code> is equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompareTotal()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareTotalNE(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotalNE]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code> using total order, return boolean 1 if <code>lsh</code> is not equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompareTotal()</code> for use in programming language conditional constructs such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareTotalGT(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotalGT]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code> using total order, return boolean 1 if <code>lsh</code> is greater than <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompareTotal()</code> for use in programming language conditional constructs such such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>int32_t decimalNNCompareTotalGE(const decimalNN lhs, const decimalNN rhs) [decNNCompareTotalGE]</font></h4>
+This is a macro. Compare decimalNN inputs <code>lsh</code> and <code>rhs</code> using total order, return boolean 1 if <code>lsh</code> is greater than or equal to <code>rhs</code>. This macro is convenient, fast and it is recommended over the <code>decimalNNCompareTotal()</code> for use in programming language conditional constructs such such as <code>if</code>, <code>for</code> or <code>while</code> statement.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNDivide(const decimalNN lhs, const decimalNN rhs) [decNNDivide]</font></h4>
+Divide <code>lsh</code> with <code>rhs</code>, return result.
+ 
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNDivideInteger(const decimalNN lhs, const decimalNN rhs) [decNNDivideInteger]</font></h4>
+Divide <code>lsh</code> with <code>rhs</code>, return integer part of the quotient.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNExp(const decimalNN rhs) [decNNExp]</font></h4>
+The return value is <em>e</em> raised to the power of <code>rhs</code>. Refer to <a href="http://www2.hursley.ibm.com/decimal/decnumber.html">decNumber module</a> for more information.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNLn(const decimalNN rhs) [decNNLn]</font></h4>
+The return value is natural logarithm (logarithm in base <em>e</em>) of <code>rhs</code>. Refer to <a href="http://www2.hursley.ibm.com/decimal/decnumber.html">decNumber module</a> for more information.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNLog10(const decimalNN rhs) [decNNLog10]</font></h4>
+The return value is logarithm in base ten of <code>rhs</code>. Refer to <a href="http://www2.hursley.ibm.com/decimal/decnumber.html">decNumber module</a> for more information.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNMax(const decimalNN lhs, const decimalNN rhs) [decNNMax]</font></h4>
+The return value is numeric maximum of <code>lsh</code> and <code>rhs</code>. Note that regular numeric comparison operation is used.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNMin(const decimalNN lhs, const decimalNN rhs) [decNNMin]</font></h4>
+The return value is numeric minimum of <code>lsh</code> and <code>rhs</code>. Note that regular numeric comparison operation is used.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNMinus(const decimalNN rhs) [decNNMinus]</font></h4>
+The return value is negated value of <code>rhs</code>. This can be used as unary negate operation.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNMultiply(const decimalNN lhs, const decimalNN rhs) [decNNMultiply]</font></h4>
+Multiply decimalNN inputs <code>lsh</code> and <code>rhs</code>, return result of the multiply operation.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNNormalize(const decimalNN rhs) [decNNNormalize]</font></h4>
+Return a number which is numerically same as <code>rhs</code>, derived from the <code>rhs</code> by removing trailing zeros in the coefficient. Zeros removed by dividing the coefficient by the appropriate power of ten and adjusting the exponent accordingly.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNPlus(const decimalNN rhs) [decNNPlus]</font></h4>
+The return value is plus sign prefix to <code>rhs</code>. This function essentially no-op, provided for identity with the <code>decimalNNMinus()</code>.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNPower(const decimalNN lhs, const decimalNN rhs) [decNNPower]</font></h4>
+The return value is the result of raising the <code>lhs</code> to the power of the <code>rhs</code>. Refer to <a href="http://www2.hursley.ibm.com/decimal/decnumber.html">decNumber module</a> for more information.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNPowerInt(const decimalNN lhs, const int32_t rhs) [decNNPowerInt]</font></h4>
+Same as the <code>decimalNNPower()</code>, however the second argument <code>rhs</code> is integer. Useful for square, or cube of the <code>lhs</code>.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNQuantize(const decimalNN lhs, const decimalNN rhs) [decNNQuantize]</font></h4>
+This function is used to modify the <code>lhs</code> so that its exponent has a specific value, equal to that of the <code>rhs</code>. The <code>decimalNNRescale()</code> function may also be used for this purpose, but requires the exponent to be given as a decimal number.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNRemainder(const decimalNN lhs, const decimalNN rhs) [decNNRemainder]</font></h4>
+The return value is the remainder when <code>lhs</code> is divided by the <code>rhs</code>.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNRemainderNear(const decimalNN lhs, const decimalNN rhs) [decNNRemainderNear]</font></h4>
+The return value is the remainder when <code>lhs</code> is divided by the rhs, using the rules defined in IEEE 854. This follows the same definition as <code> decimalNNRemainder()</code>, except that the nearest integer (or the nearest even integer if the remainder is equidistant from two) is used for the quotient instead of the result from <code>decimalNNDivideInteger()</code>.
+<br><br>
+For example, if <code>lhs</code> had the value 10 and <code>rhs</code> had the value 6 then the result would be -2 (instead of 4) because the nearest multiple of 6 is 12 (rather than 6).
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNRescale(const decimalNN lhs, const decimalNN rhs) [decNNRescale]</font></h4>
+This function is used to rescale a number so that its exponent has a specific value, given by the rhs. It is similar to the <code>decimalNNQuantize()</code>, however, the second argument <code>rhs</code> specifies new exponent. The <code>rhs</code> must be a whole number (before any rounding); that is, any digits in the fractional part of the number must be zero. <em><code>decimalNNQuantize()</code> is faster and it is recommended over <code>decimalNNRescale()</code>. This function may be removed from the future release.</em>
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNSameQuantum(const decimalNN lhs, const decimalNN rhs) [decNNSameQuantum]</font></h4>
+The return value is decimalNN 1 if the <code>lhs</code> and <code>rhs</code> have equal exponent. Return 0, otherwise.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNSquareRoot(const decimalNN rhs) [decNNSquareRoot]</font></h4>
+The return value is square root of the <code>rhs</code>.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNSubtract(const decimalNN lhs, const decimalNN rhs) [decNNSubtract]</font></h4>
+Subtract decimalNN inputs <code>lsh</code> and <code>rhs</code>, return result of the subtract operation.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNToIntegralValue(const decimalNN rhs) [decNNToIntegralValue]</font></h4>
+The return value is rhs, with any fractional part removed if necessary using the current rounding mode. No exceptions flags, not even Inexact, are set (unless the operand is sNaN). Unlike <code>decimalNNToInt...()</code>, the result may have a positive exponent.
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNCeil(const decimalNN rhs) [decNNCeil]</font></h4>
+The return value is ceiling value of the <code>rhs</code>. No exceptions, not even <code>INEXACT</code>, are raised (unless the operand is sNaN). The result may have a positive exponent.
+
+
+<p><h4><font face=helvetica color=#006644>decimalNN decimalNNFloor(const decimalNN rhs) [decNNFloor]</font></h4>
+The return value is floor value of the <code>rhs</code>. No exceptions, not even <code>INEXACT</code>, are raised (unless the operand is sNaN). The result may have a positive exponent.
+<p><hr><h2><font face=helvetica color=#006644>DFPAL Frequently Asked Questions</font></h2><br><br><b>Q:&nbsp;Are there any success stories with DFPAL?</b>
+<br><b>A:&nbsp;</b>Yes. There are quite a few IBM and non-IBM enterprise class applications and middlewares are using DFPAL today.
+
+
+<br><br><b>Q:&nbsp;What version of decNumber is compatible with DFPAL?</b>
+<br><b>A:&nbsp;</b>DFPAL has been compiled and tested with variety of decNumber versions. It is highly recommended to use decNumber included in the DFPAL package. Please read release notes carefully, many DFPAL versions require some minimum decNumber version.
+
+<br><br><b>Q:&nbsp;Is there any special tuning needed for decNumber</b>
+<br><b>A:&nbsp;</b>Yes. Check decNumber release notes. Most of the decNumber defaults are sufficient for the DFPAL, such as <code>DECDPUN</code> and <code>DECBUFFER</code>. However, beginning decNumber version 3.40, the <code>DECLITEND</code> must be set 1, if the target platform is <em>little-endian</em>, or 0, if the target platform is <em>big-endian</em>. Refer to <a href=compile.html>How to compile DFPAL?</a> for more information.
+	
+<br><br><b>Q:&nbsp;Does DFPAL allocate memory?</b>
+<br><b>A:&nbsp;</b>No. DFPAL does not allocate any memory to retain application memory management integrity. The memory needed by DFPAL is allocated by application on DFPAL's behalf, and passed to DFPAL using <code>dfpalInit()</code>.
+
+<br><br><b>Q:&nbsp;But I see some memory allocation by decNumber.</b>
+<br><b>A:&nbsp;</b>With <code>DECBUFFER</code> unchanged from its default value, decNumber should not allocate any memory either. Additionally, consider using decFloat based arithmetic, which is much faster and does not allocate any memory. Refer to <a href=compile.html>How to compile DFPAL?</a> for more information.
+
+<br><br><b>Q:&nbsp;Is DFPAL thread safe?</b>
+<br><b>A:&nbsp;</b>Yes. However DFPAL must be built with <code>DFPAL_THREAD_SAFE</code> compile time switch. Refer to <a href=compile.html>How to compile DFPAL?</a> for more details.
+
+<br><br><b>Q:&nbsp;Are results (numeric value and exception status) the same between hardware and software mode of DFPAL?</b>
+<br><b>A:&nbsp;</b>The results are the same (with very few exceptions).
+
+<br><br><b>Q:&nbsp;Can I force DFPAL to use a particular execution method?</b>
+<br><b>A:&nbsp;</b>Yes. Set environment variable <code>DFPAL_EXE_MODE</code> to either <code>DNSW</code> (decNumber software) or <code>PPCHW</code> (PowerPC hardware) to force DFPAL to use particular execution mode. The <code>DNSW</code> mode will work on all cases, however DFPAL initialization will fail when using <code>PPCHW</code> on architecture where it is not possible. Refer to <a href=dfpalmgmt.html>DFPAL management functions</a> for more information.
+
+<br><br><b>Q:&nbsp;How does DFPAL performance compare to say binary floating point and compiler native decimal floating point?</b>
+<br><b>A:&nbsp;</b>Performance depends on many factors, and many time it is not even possible to compare due to inherent differences. However, our internal performance exercise revealed following consistent order (fastest to slowest): binary floating point, compiler native decimal floating point, DFPAL hardware, DFPAL software.
+  
+<br><br><b>Q:&nbsp;Is there Linux on POWER hardware decimal floating point acceleration using DFPAL?</b>
+<br><b>A:&nbsp;</b>Yes. Linux on POWER support is similar to AIX. You can use either IBM XLC or GCC compiler on Linux on Power. Refer to <a href=compile.html>How to compile DFPAL?</a> for more information 
+
+<br><br><b>Q:&nbsp;Can I integrate DFPAL into my application code?</b>
+<br><b>A:&nbsp;</b>Yes. DFPAL has been designed to compiler as standalone library or integrated into application code.
+
+<br><br><b>Q:&nbsp;If I use DFPAL now, then in future how can I migrate my application to use compiler native decimal floating point when it is possible? Will it require a code change?</b>
+<br><b>A:&nbsp;</b>DFPAL provides roadmap to migrate application to use compiler native decimal floating point. Using <code>decNN...()</code> macros in association with <code>DFPAL_USE_COMPILER_DFP</code> compile time switch bypasses DFPAL and uses compiler native decimal floating point. Refer to <a href=compile.html>How to compile DFPAL?</a> for more information.
+
+
+<p><hr><h2><font face=helvetica color=#006644>DFPAL Release Notes</font></h2><p><p><h3><font face=helvetica color=#006644>Release notes for DFPAL version 2.20</font></h3>
+<ol>
+  <li>Support for decFloat is added to this release of DFPAL. decFloat is a new module, part of the decNumber, performs decimal arithmetic faster for software execution mode of DFPAL.
+  <li>The new compile time switch <code>DFPAL_USE_DECFLOAT</code> must be defined to activate decFloat at compile time.
+  <li>Check for correct endianness is performed in <code>dfpalInit()</code>. The <code>dfpalInit()</code> will fail if decNumber or decFloat is not compiled with correct endian settings.
+  <li>Linux on Power <em>hardware</em> decimal floating point support, using IBM XLC compiler has been added to this version of DFPAL. Now there is a choice of either GCC or XLC compiler on Linux on Power.
+  <li>The minimum required decNumber release is version 3.57.
+</ol>
+
+
+<br><br><hr align=center width=30%><br><br>
+
+
+<p><p><h3><font face=helvetica color=#006644>Release notes for DFPAL version 2.10</font></h3>
+<ol>
+  <li>Linux on Power <em>hardware</em> decimal floating point support, using GCC compiler has been added to this version of DFPAL. 
+  <li>New routine <code>dfpalClearAllStatusFlag()</code> is added to improve performance.
+  <li>There are some performance improvement by using registers for the operands, rather than processing in the memory, for hardware execution mode of DFPAL.
+  <li> <code>decimalNNFromPackedBCD()</code> has different semantics as compared to previous release.
+</ol>
+
+
+<br><br><hr align=center width=30%><br><br>
+
+
+<p><p><h3><font face=helvetica color=#006644>Release notes for DFPAL version 2.00</font></h3>
+<ol>
+  <li>Trap generated by DFPAL in hardware mode is not SIGFPE (it generates "Trace/BPT trap"). 
+  <li> There is no hardware instruction for 64-bit <em>unsigned</em> integer to decimal64 or decimal128 conversion. DFPAL does software conversion in either mode.
+  <li>For complex arithmetic operations such as ln, exp, log, square root, and power, DFPAL uses decNumber implementation in either case.
+  <li>decimal64 to/from double and decimal128 to/from double conversion uses <code>strtod()/snprintf()</code>. The <code>strtod()/snprintf()</code> behavior in terms of raising floating point exception is not consistent across platforms. Applications should not assume presence or absence of particular floating point exception after these conversions.
+  <li>For decimal64 to/from double and decimal128 to/from double conversion, current binary floating point rounding mode is used by <code>strtod()/snprintf()</code> (rounding mode is not shared by binary floating point and decimal floating point for POWER6 processor). Application's preference for particular rounding mode for the binary floating conversions [<code>strtod()/snprintf()</code>] can be implemented by using a wrapper around the <code>decimalNN{To|From}Double()</code> routines to set binary floating point rounding mode before calling the conversion routines.
+  <li>On Windows, for decimal64 to/from double and decimal128 to/from double conversion may return different results than the UNIX platforms. Because <code>strtod()/snprintf()</code> are implemented with slightly different semantics.
+  <li>Avoid using <code>decimalNNRescale()</code> function, it may be removed from the future release. Use <code>decimalNNQuantize()</code> instead. Due to exponent clamp in the hardware, results are not guaranteed when input number's exponent is close to <em>Emax</em> or <em>Emin</em>.
+</ol>
+
+
+
+<hr>
+<p>
+DFPAL is authored by <a href="mailto:punit@us.ibm.com">Punit Shah</a> (punit@us.ibm.com).
+<br>
+Please send any corrections, comments or questions to <a href="mailto:dfpal-l@austin.ibm.com?subject=DFPAL question">dfpal-l@austin.ibm.com</a>.
+
+<table cellpadding=3 width=100%>
+  <tr> 
+       <td align=right valign=top><font size=1>This page was updated on 21 Dec 2007.</font></td>
+  </tr>
+</table>
+
+</body>
+</html>
+
+

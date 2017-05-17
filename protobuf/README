@@ -1,0 +1,5 @@
+The proto file is compiled using protoc-c file at
+<comdb2_dir>/tools/protoc/src/protoc-c 
+
+example:
+<comdb2_dir>/db/protobuf $ <comdb2_dir>/tools/protoc/src/protoc-c  sqlquery.proto --c_out=<comdb2_dir>/db/protobuf

@@ -1,0 +1,6 @@
+set timezone UTC
+set datetime precision ms
+select cast(1 as datetime)
+select cast(cast(0.123456 as datetime) as text)
+set datetime precision us
+select cast(cast(1 as datetime) as text)

@@ -1,0 +1,4 @@
+schema
+{
+    blob data
+}

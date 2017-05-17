@@ -1,0 +1,285 @@
+/*
+   Copyright 2015 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+/*
+
+   $Id: os_namemangle.c 3290 2007-04-05 13:43:02Z sjervis $
+
+   this file overrides os_namemangle.o in the berkdb library with a version
+   that intercepts all the calls dealing file filenames to call to
+   bdb_trans().
+
+   the purpose of this is to provide name mangling that
+   allows us to   1) support clusters where databases live in different
+                     directories on different nodes in the cluster
+                  2) allow us to freely move databases from one directory
+                     to another using tools no more advanced than "mv."
+
+ */
+
+#include "db_config.h"
+
+#ifndef lint
+static const char revid[] =
+    "$Id: os_open.c,v 11.48 2003/09/10 00:27:29 bostic Exp $";
+#endif /* not lint */
+
+#ifndef NO_SYSTEM_INCLUDES
+#include <sys/types.h>
+
+#ifdef HAVE_SYS_FCNTL_H
+#include <sys/fcntl.h>
+#endif
+
+#include <fcntl.h>
+#include <string.h>
+#endif
+
+#include "db_int.h"
+
+#include <ctrace.h>
+
+char *bdb_trans(const char infile[], char outfile[]);
+
+/* This is very, very verbose even at level 1.  Default to level 0. */
+int gbl_namemangle_loglevel = 0;
+
+/* Log all file operations in ctrace file.  Filter out log file ops
+ * since we do soooo many of those.  Also temp table opens/closes. */
+static void logf(const char *fmt, ...)
+{
+    va_list args;
+    char line[1024];
+    if (gbl_namemangle_loglevel > 0) {
+        va_start(args, fmt);
+        vsnprintf(line, sizeof(line), fmt, args);
+        va_end(args);
+        if (gbl_namemangle_loglevel > 1 ||
+            (!strstr(line, "log.0") && !strstr(line, ".tmpdbs/"))) {
+            ctrace("%s", line);
+        }
+    }
+}
+
+char *___db_rpath(const char *path);
+char *__db_rpath(const char *path) { return ___db_rpath(path); }
+
+int ___os_abspath(const char *path);
+int __os_abspath(const char *path)
+{
+    int rc;
+    char buf[256];
+    const char *pbuf = bdb_trans(path, buf);
+    rc = ___os_abspath(pbuf);
+    if (gbl_namemangle_loglevel > 1)
+        logf("__os_abspath(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+
+int ___os_dirlist(DB_ENV *dbenv, const char *dir, char ***namesp, int *cntp);
+int __os_dirlist(DB_ENV *dbenv, const char *dir, char ***namesp, int *cntp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(dir, buf);
+    int rc = ___os_dirlist(dbenv, pbuf, namesp, cntp);
+    logf("___os_dirlist(%s:%s) = %d\n", dir, pbuf, rc);
+    return rc;
+}
+
+#if defined(BERKDB_4_2) || defined(BERKDB_4_3)
+int ___os_exists(const char *path, int *isdirp);
+int __os_exists(const char *path, int *isdirp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(path, buf);
+    int rc = ___os_exists(pbuf, isdirp);
+    if (gbl_namemangle_loglevel > 1)
+        logf("___os_exists(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+#endif
+
+#if defined(BERKDB_4_5) || defined(BERKDB_46)
+int ___os_exists(DB_ENV *dbenv, const char *path, int *isdirp);
+int __os_exists(DB_ENV *dbenv, const char *path, int *isdirp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(path, buf);
+    int rc = ___os_exists(dbenv, bdb_trans(path, buf), isdirp);
+    if (gbl_namemangle_loglevel > 1)
+        logf("___os_exists(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+#endif
+
+#ifdef BERKDB_46
+int ___os_open(DB_ENV *dbenv, const char *name, u_int32_t page_size,
+               u_int32_t flags, int mode, DB_FH **fhpp);
+int __os_open(DB_ENV *dbenv, const char *name, u_int32_t page_size,
+              u_int32_t flags, int mode, DB_FH **fhpp)
+{
+    char buf[256];
+    int rc;
+    const char *pbuf;
+
+    pbuf = bdb_trans(name, buf);
+    rc = ___os_open(dbenv, pbuf, page_size, flags, 0664, fhpp);
+    logf("___os_open(%s:%s) = %d\n", name, pbuf, rc);
+    return rc;
+}
+#else
+int ___os_open(DB_ENV *dbenv, const char *name, u_int32_t flags, int mode,
+               DB_FH **fhpp);
+int __os_open(DB_ENV *dbenv, const char *name, u_int32_t flags, int mode,
+              DB_FH **fhpp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(name, buf);
+    int rc = ___os_open(dbenv, pbuf, flags, 0664, fhpp);
+    logf("___os_open(%s:%s) = %d\n", name, pbuf, rc);
+    return rc;
+}
+#endif
+
+#if defined(BERKDB_4_2) || defined(BERKDB_4_3)
+int ___os_open_extend(DB_ENV *dbenv, const char *name, u_int32_t log_size,
+                      u_int32_t page_size, u_int32_t flags, int mode,
+                      DB_FH **fhpp);
+int __os_open_extend(DB_ENV *dbenv, const char *name, u_int32_t log_size,
+                     u_int32_t page_size, u_int32_t flags, int mode,
+                     DB_FH **fhpp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(name, buf);
+    int rc =
+        ___os_open_extend(dbenv, pbuf, log_size, page_size, flags, 0664, fhpp);
+    logf("___os_open_extend(%s:%s) = %d\n", name, pbuf, rc);
+    return rc;
+}
+#endif
+
+#ifdef BERKDB_4_5
+int ___os_open_extend(DB_ENV *dbenv, const char *name, u_int32_t page_size,
+                      u_int32_t flags, int mode, DB_FH **fhpp);
+int __os_open_extend(DB_ENV *dbenv, const char *name, u_int32_t page_size,
+                     u_int32_t flags, int mode, DB_FH **fhpp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(name, buf);
+    int rc = ___os_open_extend(dbenv, bdb_trans(name, buf), page_size, flags,
+                               0664, fhpp);
+    logf("___os_open_extend(%s:%s) = %d\n", name, pbuf, rc);
+    return rc;
+}
+#endif
+
+int ___os_openhandle(DB_ENV *dbenv, const char *name, int flags, int mode,
+                     DB_FH **fhpp);
+int __os_openhandle(DB_ENV *dbenv, const char *name, int flags, int mode,
+                    DB_FH **fhpp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(name, buf);
+    int rc = ___os_openhandle(dbenv, pbuf, flags, mode, fhpp);
+    logf("___os_openhandle(%s:%s) = %d\n", name, pbuf, rc);
+    return rc;
+}
+
+int ___os_fileid(DB_ENV *dbenv, const char *fname, int unique_okay,
+                 u_int8_t *fidp);
+int __os_fileid(DB_ENV *dbenv, const char *fname, int unique_okay,
+                u_int8_t *fidp)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(fname, buf);
+    int rc = ___os_fileid(dbenv, pbuf, unique_okay, fidp);
+    logf("___os_fileid(%s:%s) = %d (*fidp = %u)\n", fname, pbuf, rc,
+         (unsigned)*fidp);
+    return rc;
+}
+
+int ___os_rename(DB_ENV *dbenv, const char *old, const char *new,
+                 u_int32_t flags);
+int __os_rename(DB_ENV *dbenv, const char *old, const char *new,
+                u_int32_t flags)
+{
+    char old_path[256];
+    char new_path[256];
+    const char *pold = bdb_trans(old, old_path);
+    const char *pnew = bdb_trans(new, new_path);
+    int rc = ___os_rename(dbenv, pold, pnew, flags);
+    logf("___os_rename(%s:%s => %s:%s) = %d\n", old, pold, new, pnew, rc);
+    return rc;
+}
+
+int ___os_ioinfo(DB_ENV *dbenv, const char *path, DB_FH *fhp,
+                 u_int32_t *mbytesp, u_int32_t *bytesp, u_int32_t *iosizep);
+int __os_ioinfo(DB_ENV *dbenv, const char *path, DB_FH *fhp, u_int32_t *mbytesp,
+                u_int32_t *bytesp, u_int32_t *iosizep)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(path, buf);
+    int rc = ___os_ioinfo(dbenv, pbuf, fhp, mbytesp, bytesp, iosizep);
+    logf("___os_ioinfo(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+
+int ___os_region_unlink(DB_ENV *dbenv, const char *path);
+int __os_region_unlink(DB_ENV *dbenv, const char *path)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(path, buf);
+    int rc = ___os_region_unlink(dbenv, pbuf);
+    logf("___os_region_unlink(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+
+int ___os_unlink(DB_ENV *dbenv, const char *path);
+int __os_unlink(DB_ENV *dbenv, const char *path)
+{
+    char buf[256];
+    const char *pbuf = bdb_trans(path, buf);
+    int rc = ___os_unlink(dbenv, bdb_trans(path, buf));
+    logf("__os_unlink(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+
+int ___os_mapfile(DB_ENV *dbenv, char *path, DB_FH *fhp, size_t len,
+                  int is_rdonly, void **addrp);
+int __os_mapfile(DB_ENV *dbenv, char *path, DB_FH *fhp, size_t len,
+                 int is_rdonly, void **addrp)
+{
+    char buf[256];
+    char *pbuf = bdb_trans(path, buf);
+    int rc = ___os_mapfile(dbenv, pbuf, fhp, len, is_rdonly, addrp);
+    logf("__os_mapfile(%s:%s) = %d\n", path, pbuf, rc);
+    return rc;
+}
+
+#ifdef BERKDB_46
+
+int ___os_mkdir(DB_ENV *dbenv, const char *name, int mode);
+int __os_mkdir(DB_ENV *dbenv, const char *name, int mode)
+{
+    int rc;
+    char buf[256];
+    const char *pbuf = bdb_trans(name, buf);
+    rc = ___os_mkdir(dbenv, pbuf, mode);
+    logf("__os_mkdir(%s:%d) = %d\n", name, mode, rc);
+    return rc;
+}
+
+#endif

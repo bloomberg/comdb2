@@ -1,0 +1,3 @@
+init_with_compr crle
+init_with_compr_blobs crle
+setattr DEBUG_BDB_LOCK_STACK 0

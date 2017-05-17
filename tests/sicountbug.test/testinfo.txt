@@ -1,0 +1,2 @@
+testname: sicountbug
+version: r000012

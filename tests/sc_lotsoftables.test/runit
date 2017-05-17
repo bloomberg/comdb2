@@ -1,0 +1,175 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+
+dbnm=$1
+tblcnt=100
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertcnt 
+{
+    tbl=$1
+    target=$2
+    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    echo "count of $tbl is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+# Do schema changes
+function do_schema_changes
+{
+    typeset max=$1
+    typeset iter=0
+    typeset scnt=0
+
+    schema=t2.csc2
+
+    while [[ $scnt -lt $max ]]; do 
+
+        echo "$dbnm alter t1 $schema"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
+        if [[ $? != 0 ]]; then
+
+            echo "Error schema-changing on iteration $scnt"
+            return 1
+
+        fi
+
+        let scnt=scnt+1
+
+    done
+
+    return 0
+}
+
+# Update all records in the table
+function update_all_records
+{
+    typeset prmsg=$1
+    typeset iter=0
+
+    [[ "$debug" == 1 ]] && set -x
+
+    while :; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        let iter=iter+1
+
+        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
+
+            echo "Updated all of table t1 $iter times."
+
+        fi
+
+    done
+}
+
+function update_records
+{
+    j=0
+    echo "Updating $nrecs records."
+    echo "" > update.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a = $j" >> update.out 
+        let j=j+1
+    done
+}
+
+function insert_records
+{
+    tbl=$1
+    nstop=$2 # enter $2 items
+    j=1
+    let nins=nins+1
+    insfl=insert${tbl}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        echo "insert into $tbl(a,b,c,d,e) values ($((j+10000)),'test1$j',$j,$j,'abc$j')" 
+        let j=j+1
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
+}
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+
+function flushall 
+{
+    for node in $cluster; do
+        cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
+    done
+}
+
+
+
+
+echo "Test with insert, SC should not fail"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t0 { `cat t1_1.csc2 ` }"
+
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 500')"
+for i in `seq 1 $tblcnt`; do
+  echo "create t$i: "
+  time cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t$i  { `cat t1_1.csc2 ` }"
+  insert_records t$i $i
+  #echo truncate t0
+  #time cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t0"
+
+  flushall
+done
+
+for i in `seq 1 $tblcnt`; do
+    assertcnt t$i $i
+    #echo rebuild t1
+    #time cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+    #assertcnt t$i $i
+    #assertcnt t1 1
+    #flushall
+done
+
+
+#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS 1')"
+#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS_AGE 10')"
+#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr PRIVATE_BLKSEQ_MAXAGE 10')"
+#sleep 20
+
+#master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+#for i in `seq 0 $tblcnt`; do
+#    assertcnt t$i $i
+#    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('delfiles t$i ')"
+#done
+
+echo "Success"

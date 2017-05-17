@@ -1,0 +1,25 @@
+#!/bin/bash
+TESTID=$1
+if [ -z $TESTID ] ; then
+    echo "Need testid to kill all tests with this testid"
+    exit 1
+fi
+
+tests=
+first=1
+for test in *.test; do
+   t=`echo $test | sed 's/.test$//g; s/_//g'`${TESTID}
+   if [[ $first -eq 1 ]]; then
+       tests="$t"
+   else
+       tests="$tests|$t"
+   fi
+   first=0
+done
+
+ps -e -o pid,cmd | egrep "comdb2 $tests" | grep -v "egrep" | awk '{print $1}' | xargs kill -9
+if [[ -n "$CLUSTER" ]]; then
+    for node in $CLUSTER; do
+        ssh $node  "ps -e -o pid,cmd | egrep \"$tests\" | grep -v \"egrep\" | awk '{print $1}' | xargs kill -9"
+    done
+fi

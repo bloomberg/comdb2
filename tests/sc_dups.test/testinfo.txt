@@ -1,0 +1,2 @@
+testname: sc_dups
+version: r000029

@@ -1,0 +1,5 @@
+schema
+{
+    int      i
+    cstring  str[100]
+}

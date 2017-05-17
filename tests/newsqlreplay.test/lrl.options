@@ -1,0 +1,4 @@
+new_snapshot
+table t1 t1.csc2
+enable_new_snapshot
+update_delete_limit

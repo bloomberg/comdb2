@@ -1,0 +1,26 @@
+#!/bin/bash
+
+#set -x
+pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
+scripts=$pathbase/linearizable/scripts
+. $scripts/setvars
+
+pmux -l
+
+
+set -e
+
+DBDIR=/db/comdb2/comdb2db
+
+mkdir -p $DBDIR
+comdb2 --create --dir $DBDIR comdb2db 
+comdb2 --lrl $DBDIR/comdb2db.lrl comdb2db > $DBDIR/comdb2db.out 2>$DBDIR/comdb2db.err &
+sleep 5
+for table in machines clusters databases; do
+   cdb2sql comdb2db @localhost "create table $table {$(cat $pathbase/csc2files/$table.csc2)}"
+done
+
+sudo sh -c "echo 'comdb2db 0 localhost' > /opt/bb/etc/cdb2/config/comdb2db.cfg"
+sudo sh -c "chmod 777 /opt/bb/etc/cdb2/config/"
+sudo sh -c "chmod 777 /opt/bb/etc/cdb2/config/comdb2db.cfg"
+

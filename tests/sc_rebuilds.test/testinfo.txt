@@ -1,0 +1,2 @@
+testname: sc_rebuilds
+version: r000005

@@ -1,0 +1,8 @@
+schema
+{
+  intervalds a null=yes 
+}
+keys
+{
+dup "A"  =   a
+}

@@ -1,0 +1,1 @@
+select comdb2_rowid from t

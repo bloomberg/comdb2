@@ -1,0 +1,8 @@
+tag ondisk {
+    int dbnum  dbstore=0
+    cstring name[50]     // database name
+}
+
+keys {
+    "dbname" = name
+}

@@ -1,0 +1,111 @@
+Prerequisites
+    - AWS Command Line Interface
+      AWSCLI must be installed beforehand.
+      Please refer to http://docs.aws.amazon.com/cli/latest/userguide/installing.html for details.
+
+Installing Comdb2aws
+    You would run "make install". The scripts would be installed at /opt/bb/bin.
+    You could change the installation directory by overriding $PREFIX. You could verify
+    the installation by running "comdb2aws -h".
+
+Creating an AWS EC2 Comdb2 Cluster
+    You would use "comdb2aws create-cluster" to create a cluster.
+    For example, to create a cluster called COLDPLAY with 4 nodes, you would use:
+        comdb2aws create-cluster --cluster COLDPLAY --count 4
+
+    The command would launch an ssh-agent and import the ssh key of the cluster to
+    the agent, if no existing ssh-agent detected. However, the ssh-agent would not
+    be accessible from your login shell after finishing the command. To use the
+    ssh-agent in your login shell, you would use the following command instead:
+        source comdb2aws create-cluster --cluster COLDPLAY --count 4
+
+    The cluster would have its own dedicated security group. By default, The security
+    group would disallow non-SSH (22) traffic from outside the security group. If
+    your host is an EC2 instance but has reached security group limit, or it is not
+    an EC2 instance (e.g., your laptop), you would need to log on to a node from
+    the cluster to access pmux port and database ports.
+
+Listing the Nodes in the Cluster
+    You would use "comdb2aws which" to list all nodes in the cluster.
+    To list all COLDPLAY nodes, you would use:
+       comdb2aws which --cluster COLDPLAY 
+
+    You would get:
+       $ comdb2aws which --cluster COLDPLAY
+       Name                 ID           State        Public IP            Private DNS
+       COLDPLAY-1           i-12345678   running      123.45.67.89         ip-123-45-67-89.ec2.internal
+       COLDPLAY-2           i-12345678   running      123.45.67.89         ip-123-45-67-89.ec2.internal
+       COLDPLAY-3           i-12345678   running      123.45.67.89         ip-123-45-67-89.ec2.internal
+       COLDPLAY-4           i-12345678   running      123.45.67.89         ip-123-45-67-89.ec2.internal
+
+Deploying a Database
+    You would use "comdb2-aws deploy" to deploy a fresh database. To deploy a database
+    called yellowdb to COLDPLAY cluster, you would use:
+        comdb2aws deploy-database -d yellowdb -c COLDPLAY
+
+    The command would generate database configuration for you. Therefore,
+    to query the database, you would simply use:
+        cdb2sql yellowdb default "select now()"
+
+Taking a Backup 
+    You would use "comdb2-aws backup-database" to take a database backup.
+    To take a backup for yellowdb remotely, you would use:
+        comdb2aws backup-database -c COLDPLAY -d yellowdb
+
+    The command would take a backup on a random node of COLDPLAY cluster.
+
+    To take a backup for yellowdb locally, you would need --dl option:
+        comdb2aws backup-database -c COLDPLAY -d yellowdb --dl
+
+    The command would take a backup and save it under the current working directory.
+
+    To take a backup for yellowdb and save the backup in an S3 bucket,
+    you would use -b option to specify the S3 bucket. Note that you must create
+    the S3 bucket first. For example, to save a backup in an S3 bucket called
+    comdb2backups, you would use:
+        comdb2aws backup-database -c COLDPLAY -d yellowdb -b comdb2backups
+
+Listing the Backups in an S3 bucket
+    You would use "comdb2aws list-backups-in-s3". For example, to list all the
+    backups in comdb2backups bucket, you would use:
+        comdb2aws list-backups-in-s3 -b comdb2backups
+
+    You would get:
+        $ comdb2aws list-backups-in-s3 -b comdb2backups
+        2016-12-07 23:09:34 yellowdb/COLDPLAY/20161207T2309Z386
+
+    The string in the 3rd column (<db>/<cluster>/<time>) would be the backup ID.
+
+Restoring a Database from an S3 Backup
+    You would use "comdb2aws get-backup-from-s3". To restore yellowdb locally,
+    You would use:
+         comdb2aws get-backup-from-s3 -b comdb2backups -a yellowdb/COLDPLAY/20161207T2309Z386 -r localhost
+    and then bring up the database.
+
+    You could also restore yellowdb on a cluster. To restore yellowdb on COLDPLAY cluster,
+    first you would stop yellowdb on COLDPLAY by running:
+        comdb2aws stop-database -c COLDPLAY -d yellowdb
+
+    second you would restore it by running:
+        comdb2aws get-backup-from-s3 -b comdb2backups -a yellowdb/COLDPLAY/20161207T2309Z386 -r COLDPLAY
+
+    third you would start yellowdb by running:
+        comdb2aws start-database -c COLDPLAY -d yellowdb
+
+Creating Your Own Comdb2 Cluster AMI (Optional)
+    Your custom AMI must include the following software packages:
+    - Comdb2 binaries (comdb2, pmux, comdb2ar and etc)
+    - Coreutils
+    - NTP
+    - Curl
+
+    By default, Comdb2aws searches Comdb2 binaries under /opt/bb/. If the binaries are installed
+    somewhere else, you would run "PREFIX=<your_path> make install" to change the prefix.
+
+    To create a cluster using your AMI, you would use:
+        comdb2aws create-cluster --cluster <name> --count <#> --image-id <id>
+
+    The default SSH user may vary depending on the OS/Distro you choose to create your own AMI from.
+    You would need to export the correct SSH user of your AMI in order to make comdb2aws work with your
+    AMI. For example, to tell comdb2aws to use 'ec2-user' as the SSH username, you would run:
+        export SSHUSER='ec2-user'

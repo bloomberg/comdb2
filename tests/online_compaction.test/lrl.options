@@ -1,0 +1,12 @@
+dtastripe 1
+setattr MASTER_REJECT_REQUESTS 0
+page_compact_thresh_ff 34.6
+
+# The test creates a sparse table on the fly. Note that
+# we check page fill factor only when we bring in a page.
+# Hence a small cache size is necessary to easily page out
+# dirty and sparse pages (by doing a select * on a helper table)
+# and page in these pages again (by doing a select * on the
+# sparse table)
+cachekbmin 0
+cache 4 mb

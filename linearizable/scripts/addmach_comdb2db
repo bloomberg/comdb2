@@ -1,0 +1,33 @@
+#!/bin/bash
+
+#set -x
+
+if [[ -n "$1" ]]; then
+    db=$1
+    shift
+fi
+
+if [[ -z "$db" ]]; then
+    echo "the db variable is not set .. i cannot add to comdb2db"
+    exit 1
+fi
+
+pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
+scripts=$pathbase/linearizable/scripts
+. $scripts/setvars
+
+pmux -l
+
+set -e
+
+cdb2sql comdb2db @localhost - <<EOF
+insert into databases(name) values('$db');
+insert into clusters(name, cluster_name, cluster_machs) values('$db','dev','dev1');
+EOF
+
+for m in $machines ; do 
+    echo cdb2sql comdb2db @localhost  "insert into machines (cluster, room, name) values('dev1', 'NY', '$m');"
+    cdb2sql comdb2db @localhost - << EOF
+insert into machines (cluster, room, name) values('dev1', 'NY', '$m')
+EOF
+done

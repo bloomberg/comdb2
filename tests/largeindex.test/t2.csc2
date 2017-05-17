@@ -1,0 +1,16 @@
+schema
+{
+    int      a
+    cstring  b[934]
+    int      c
+    blob     d
+}
+
+keys
+{
+    "A" =  a
+    "C" =  c
+    "B" =  b
+    "ABC" = a + b + c
+    "BAC" = b + a + c
+}

@@ -1,0 +1,1 @@
+ cc  dum.c -I../dbinc/ -I.. -I../build_ibm/ db_stat.c ../build_ibm/.libs/libdb-4.2.a ../build_ibm/.libs/util_cache.o ../build_ibm/.libs/util_sig.o /bbsrc/system/bdb/os_namemangle.ibm.o -lthread

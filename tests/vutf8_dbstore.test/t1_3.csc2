@@ -1,0 +1,12 @@
+schema
+{
+   int      a null=yes
+   blob     b1 null=yes
+   vutf8    c[10] dbstore="123456789"
+}
+
+keys
+{
+    dup "A" = a
+}
+

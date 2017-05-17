@@ -1,0 +1,2 @@
+set timezone UTC
+select id, dt, ds from dtus order by id

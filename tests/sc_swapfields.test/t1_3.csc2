@@ -1,0 +1,16 @@
+schema
+{
+    int      a
+    int      c
+    int      d
+    cstring  b[32]
+}
+
+keys
+{
+    "A"  =  a
+    "B"  =  b
+    "AB" =  a+b
+    "BA" =  b+a
+    "C"  =  c
+}

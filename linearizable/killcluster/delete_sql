@@ -1,0 +1,4 @@
+set hasql on
+set transaction serializable
+select comdb2_host()
+delete from jepsen where 1 = 1

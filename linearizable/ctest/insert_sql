@@ -1,0 +1,3 @@
+set hasql on
+set transaction snapisol
+insert into t1(a) values (1)

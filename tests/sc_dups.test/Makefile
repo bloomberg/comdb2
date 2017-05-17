@@ -1,0 +1,1 @@
+include $(TESTSROOTDIR)/testcase.mk

@@ -1,0 +1,11 @@
+schema
+{
+   int         id
+   decimal32   d32
+}
+
+keys
+{
+   "ID"         = id
+   dup "D32"    = d32
+}

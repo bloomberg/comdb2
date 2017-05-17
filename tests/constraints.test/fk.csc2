@@ -1,0 +1,12 @@
+schema
+{
+	int i
+}
+keys
+{
+	"i" = i
+}
+constraints
+{
+	"i" -> <"pk":"i">
+}

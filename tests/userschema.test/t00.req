@@ -1,0 +1,3 @@
+put password 'mohit' for 'mohit'
+grant op to mohit
+put authentication on

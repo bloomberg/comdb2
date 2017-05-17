@@ -1,0 +1,2 @@
+testname: dropaddtable
+version: r000005

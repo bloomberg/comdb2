@@ -1,0 +1,6 @@
+schema
+{
+	int i
+	int j
+	cstring s[256]
+}

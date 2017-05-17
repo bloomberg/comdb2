@@ -1,0 +1,6 @@
+table t1 t1.csc2
+pageordertablescan
+setattr MIN_KEEP_LOGS 2
+setattr MIN_KEEP_LOGS_AGE 10
+setattr PRIVATE_BLKSEQ_MAXAGE 20
+

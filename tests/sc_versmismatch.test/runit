@@ -1,0 +1,308 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertcnt 
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+
+# Update all records in the table
+function update_all_records
+{
+    typeset prmsg=$1
+    typeset iter=0
+
+    [[ "$debug" == 1 ]] && set -x
+
+    while :; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        let iter=iter+1
+
+        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
+
+            echo "Updated all of table t1 $iter times."
+
+        fi
+
+    done
+}
+
+function update_records
+{
+    j=0
+    nrecs=$1
+    echo "Updating $nrecs records."
+    echo "" > update.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=c+10000 where a = $j" >> update.out 
+        let j=j+1
+    done
+}
+
+function insert_records_oneshot
+{
+    j=$1
+    nstop=$2
+    let nins=nins+1
+    insfl=insert${nins}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+         echo "insert into t1(a,b,c) values ($j,'test1$j',$j)"  
+        let j=j+1
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default - &> $insfl
+}
+
+INITCNT=1000
+
+function test1
+{
+    assertcnt $INITCNT
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 100')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 100000')"
+    echo "Alter table to t1_2 version while inserting records"
+    (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.scout; touch alter1.done) &
+
+    j=$INITCNT
+    while [ ! -f alter1.done ] ; do
+        j=$((j+1))
+        echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
+        read -t 1.9 -r -u ${COPROC[0]} out
+        rc=$?
+        if [ $rc -gt 0 ] ; then
+            failexit " timeout reading pipe output, j=$j, rc=$rc, out=$out"
+        fi
+        if [ "$out" != "(rows inserted=1)" ] ; then
+            failexit " error inserting $j, out=$out"
+        fi
+    done
+
+    echo assert count $j
+    assertcnt $j
+    if grep failed alter1.scout ; then
+        failexit "alter1: see alter1.scout"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > have.txt
+    for i in `seq 1 $j` ; do 
+        echo "(a=$i, b='test1$i', c=$i)" >> shouldhave.txt
+    done
+
+    if ! diff have.txt shouldhave.txt ; then
+        failexit "have.txt shouldhave.txt differ"
+    fi
+    
+    rm alter1.done have.txt shouldhave.txt
+
+
+    echo "Alter table to t1_1 version while updating records"
+    cnt=$j
+    (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"  &> alter2.scout; touch alter2.done) &
+    j=$((j+1))
+    while [[ ! -f alter2.done && $j -gt 0 ]] ; do
+        j=$((j-1))
+        echo "update t1 set c=c+100000 where a = $j" >&${COPROC[1]}
+        read -t 1.9 -ru ${COPROC[0]} out
+        if [ "$out" != "(rows updated=1)" ] ; then
+            failexit " error updating $j, out=$out"
+        fi
+    done
+
+    if grep failed alter2.scout ; then
+        failexit "alter2: see alter2.scout"
+    fi
+
+
+    echo "updated up to (and including) $j"
+    sequpto=$j
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > have.txt
+    for i in `seq 1 $((sequpto-1))` ; do 
+        echo "(a=$i, b='test1$i', c=$i)" >> shouldhave.txt
+    done
+    for i in `seq $sequpto $cnt` ; do 
+        echo "(a=$i, b='test1$i', c=$((i+100000)))" >> shouldhave.txt
+    done
+
+    if ! diff have.txt shouldhave.txt ; then
+        failexit "have.txt shouldhave.txt differ"
+    fi
+ 
+    rm alter2.done have.txt shouldhave.txt
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 0')"
+    echo "Insert few more records from $((cnt+1)) up"
+    j=$cnt
+    while [ $j -lt 6000 ] ; do 
+        j=$((j+1))
+        echo "insert into t1(a,b,c) values ($j,'test1$j',$((j+100000)))" >&${COPROC[1]}
+        read -t 1.9 -ru ${COPROC[0]} out
+        if [ "$out" != "(rows inserted=1)" ] ; then
+            failexit " error inserting $j, out=$out"
+        fi
+    done
+
+    
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 100000')"
+
+    echo "Alter table to t1_2 version while deleting records from $j down"
+    (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter3.scout; touch alter3.done) &
+
+    while [[ ! -f alter3.done && $j -gt $sequpto ]] ; do
+        echo "delete from t1 where c = $((j+100000))" >&${COPROC[1]}
+        read -t 1.9 -ru ${COPROC[0]} out
+        if [ "$out" != "(rows deleted=1)" ] ; then
+            failexit " error deleting $((j+100000)), out=$out"
+        fi
+
+        j=$((j-1))
+    done
+    cnt=$j
+
+    if grep failed alter3.scout ; then
+        failexit "alter3: see alter3.scout"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 0')"
+
+    echo "checking that after delete we have correct content"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > have.txt
+    for i in `seq 1 $((sequpto-1))` ; do 
+        echo "(a=$i, b='test1$i', c=$i)" >> shouldhave.txt
+    done
+    for i in `seq $sequpto $cnt` ; do 
+        echo "(a=$i, b='test1$i', c=$((i+100000)))" >> shouldhave.txt
+    done
+
+    if ! diff have.txt shouldhave.txt ; then
+        failexit "have.txt shouldhave.txt differ"
+    fi
+
+    rm alter3.done have.txt shouldhave.txt
+    echo "Resetting table to t1_1 version"
+    #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
+    do_verify
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" || failexit "alter to t1_1"
+    do_verify
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1" || failexit "truncate"
+}
+
+
+
+function test2
+{
+    #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 100')"
+    #to have begin, insert, insert, commit
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > pre.txt
+
+    j=300000
+    echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
+    read -t 1.9 -ru ${COPROC[0]} out
+    echo "out=$out"
+    j=$((j+1))
+    echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
+    read -t 1.9 -ru ${COPROC[0]} out
+    echo "out=$out"
+
+    echo "begin" >&${COPROC[1]}
+    echo "update t1 set c=c+100000 where a = 300000" >&${COPROC[1]}
+    echo "delete from t1 where c = $j" >&${COPROC[1]}
+
+    j=$((j+1))
+    echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
+
+    echo "Alter table to t1_2 version then doing commit"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
+
+    echo "commit" >&${COPROC[1]}
+    sleep 0.4
+
+    assertcnt $((INITCNT+2))
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > post.txt
+    echo "(a=300000, b='test1300000', c=400000)" >> pre.txt
+    echo "(a=300002, b='test1300002', c=300002)" >> pre.txt
+
+    if ! diff pre.txt post.txt ; then
+        failexit "pre and post differ"
+    fi
+    rm pre.txt post.txt
+    #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a > $INITCNT" || failexit "deleting extra"
+    echo "Resetting table to t1_1 version"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" || failexit "alter to t1_1"
+}
+
+echo "Test with insert, SC should not fail"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
+
+
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+for node in $cluster; do
+    cdb2sql ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('reql longsqlrequest 500')"
+done
+
+coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default -
+cppid=$!
+echo me: $$ COPROC $cppid fd in ${COPROC[0]} out ${COPROC[1]}
+
+master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
+
+for i in `seq 1 5`; do 
+    insert_records_oneshot 1 $INITCNT
+    echo "test1 $i"
+    test1
+done
+
+
+insert_records_oneshot 1 $INITCNT
+for i in `seq 1 1`; do 
+    echo "test2 $i"
+    test2
+done
+
+
+echo "Success"

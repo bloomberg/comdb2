@@ -1,0 +1,28 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Test case to verify libcdb2api.so.
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+ldd ./cdb2_client | grep "libcdb2api.so => not found" > /dev/null
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${SRCHOME}/cdb2api/
+ldd ./cdb2_client | grep "libcdb2api.so => not found" > /dev/null
+if [ $? -ne 1 ]; then
+  exit 1
+fi
+
+./cdb2_client $dbname
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+exit 0

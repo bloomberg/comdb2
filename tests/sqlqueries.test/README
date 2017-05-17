@@ -1,0 +1,31 @@
+This test case is a collection of queries reported in various DRQS tickets. As such each test case will have different tables and schemas. The driver will add/alter/drop tables as required. This is based on the presence of test.tablename.csc2 files. An attempt is made to drop 'tablename' before adding it. 
+
+t00:
+t01:
+t02:
+t03:
+t04:
+t05: setup for t06, load stat tables. sc at step 06 will load into sqlite
+t06:
+t07: setup for t08
+t08: esgprof db regression R5
+t09: setup for t10
+t10: hilodb regression R5
+t11: setup for t12
+t12: bbotwfdb regression R5
+t13: another bbotwfdb regression R5
+t14: and another bbotwfdb regression R5
+t15: setup for t16
+t16: tmsgdb regression R5
+t17: setup for t18
+t18: haltdb regression R5
+t19: setup for t20
+t20: tracqtdb regression R5
+t21: setup for t22
+t22: bprcdb regression R5
+t23: disable index ability, disable index (COMDB2_DISABLED_PRICINGTIME) 
+     from t22 schema and uses almost same query as t22 
+t24: enable index from t23
+t25: floating point issues with small float
+t26: issue with LIKE and ORDER BY -- string to blob conversion error
+t27: datetime precision testing 

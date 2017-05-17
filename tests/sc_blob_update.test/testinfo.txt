@@ -1,0 +1,2 @@
+testname: sc_blob_update
+version: r000001

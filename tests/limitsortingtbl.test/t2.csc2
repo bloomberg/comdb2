@@ -1,0 +1,12 @@
+schema
+{
+  int       j
+  int       l
+  int       m
+}
+
+keys
+{
+  "j"       = j
+}
+

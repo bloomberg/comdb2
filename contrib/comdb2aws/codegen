@@ -1,0 +1,54 @@
+#!/bin/sh
+
+PREFIX=$1
+SSHUSER=$2
+
+if [ "$PREFIX" = "" ]; then
+    PREFIX='/opt/bb'
+fi
+
+if [ "$SSHUSER" = "" ]; then
+    SSHUSER='admin'
+fi
+
+target='comdb2aws'
+
+echo '#!/bin/sh
+usage="$(basename "$0") [command]
+
+Available commands:' > ./$target
+
+for file in `ls *sh | grep -v codegen | grep -v $target`; do
+    subcmd=${file%.sh}
+    subcmd=${subcmd##*/}
+    echo $subcmd >>./$target
+done
+
+echo '"' >>./$target
+
+echo '
+if [ "$PREFIX" = "" ]; then
+    export PREFIX="/opt/bb"
+fi
+
+if [ "$SSHUSER" = "" ]; then
+    export SSHUSER="admin"
+fi
+' >>./$target
+
+echo 'case $1 in' >>./$target
+for file in `ls *sh`; do
+    subcmd=${file%.sh}
+    subcmd=${subcmd##*/}
+    echo "${subcmd})
+          shift
+          ${PREFIX}/bin/${file} \$*
+          ;;" >>./$target
+done
+echo '*)
+   echo "$usage" >&2
+   exit 1
+   ;;' >>./$target
+echo 'esac' >>./$target
+
+chmod +x ./$target

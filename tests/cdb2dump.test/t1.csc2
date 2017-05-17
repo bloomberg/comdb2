@@ -1,0 +1,6 @@
+schema
+{
+   int      a null=yes
+   cstring  b[1024] null=yes
+}
+

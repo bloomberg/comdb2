@@ -1,0 +1,4 @@
+#Queries from unknown users will fail
+set user user2
+set password password3
+select 'user3'

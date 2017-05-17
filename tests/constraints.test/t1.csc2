@@ -1,0 +1,14 @@
+schema
+{
+    int uuid
+    int value
+    int dup_value
+    int allowed_null_value null=yes
+}
+
+keys
+{
+    "UUID"      = uuid
+    "VALUE" = value
+dup "DUP_VALUE" = value
+}

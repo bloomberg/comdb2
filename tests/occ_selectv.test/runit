@@ -1,0 +1,29 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Grab my database name.
+dbnm=$1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate schedule"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate jobinstance"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate dbgopts"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('enable_selectv_range_check')"
+
+echo "Inserting records..."
+cdb2sql -f insert.sql ${CDB2_OPTIONS} $dbnm default > /dev/null
+
+# Run the executable
+exe=${TESTSROOTDIR}/tools/selectv
+
+echo "Testing selectv..."
+$exe -d $dbnm
+
+ret=$?
+
+if [[ $ret != 0 ]] ; then
+    echo "selectv failed, ret=$ret."
+    exit 1
+fi
+
+echo "selectv passed"

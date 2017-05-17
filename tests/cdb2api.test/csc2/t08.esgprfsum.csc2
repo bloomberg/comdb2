@@ -1,0 +1,515 @@
+constants {
+  ESG_ORG_NAME_LENGTH = 80,
+  ESG_CURR_ISO_ABBR_CD_LEN = 5
+}
+
+// This is the "ondisk" tag; it defines the data actually stored on disk
+schema
+{
+  int     bbid 
+  int     compen_fisc_yr_num
+
+  double  ceo_total_compen
+  double  ceo_salary
+  double  ceo_bonus
+  double  ceo_all_other_compen
+  double  ceo_stock_awards
+  double  ceo_option_awards
+  double  ceo_non_eqty_incntv
+  double  ceo_pension_nonqlfy
+  double  ceo_other_compen
+  double  ceo_severance_pymnts
+  double  ceo_signing_bonus
+  double  ceo_salary_bonus
+
+  double  cfo_total_compen
+  double  cfo_salary
+  double  cfo_bonus
+  double  cfo_all_other_compen
+  double  cfo_stock_awards
+  double  cfo_option_awards
+  double  cfo_non_eqty_incntv
+  double  cfo_pension_nonqlfy
+  double  cfo_other_compen
+  double  cfo_severance_pymnts
+  double  cfo_signing_bonus
+  double  cfo_salary_bonus
+
+  double  coo_total_compen
+  double  coo_salary
+  double  coo_bonus
+  double  coo_all_other_compen
+  double  coo_stock_awards
+  double  coo_option_awards
+  double  coo_non_eqty_incntv
+  double  coo_pension_nonqlfy
+  double  coo_other_compen
+  double  coo_severance_pymnts
+  double  coo_signing_bonus
+  double  coo_salary_bonus
+
+  double  cio_total_compen
+  double  cio_salary
+  double  cio_bonus
+  double  cio_all_other_compen
+  double  cio_stock_awards
+  double  cio_option_awards
+  double  cio_non_eqty_incntv
+  double  cio_pension_nonqlfy
+  double  cio_other_compen
+  double  cio_severance_pymnts
+  double  cio_signing_bonus
+  double  cio_salary_bonus
+
+  double  total_exec_total_compen
+  double  total_exec_salary
+  double  total_exec_bonus
+  double  total_exec_all_other_compen
+  double  total_exec_stock_awards
+  double  total_exec_option_awards
+  double  total_exec_non_eqty_incntv
+  double  total_exec_pension_nonqlfy
+  double  total_exec_other_compen
+  double  total_exec_severance_pymnts
+  double  total_exec_signing_bonus
+  double  total_exec_salary_bonus
+
+  int     num_of_ceo_change_during_fy
+  int     date_of_last_ceo_change
+  int     num_of_ceos_included_in_total
+  int     num_of_cfo_change_during_fy
+  int     date_of_last_cfo_change
+  int     num_of_cfos_included_in_total
+  int     num_of_coo_change_during_fy
+  int     date_of_last_coo_change
+  int     num_of_coos_included_in_total
+  int     num_of_cio_change_during_fy
+  int     date_of_last_cio_change
+  int     num_of_cios_included_in_total
+  int     num_of_exec_change_during_fy
+  int     date_of_last_exec_change
+  int     num_of_execs_included_in_total
+  
+  double  total_drct_total_compen
+  double  total_drct_fees_earned
+  double  total_drct_stock_awards
+
+  int     num_of_drct_change_during_fy
+  int     date_of_last_drct_change
+  int     num_of_drcts_included_in_total
+
+  double  ceo_tenure_as_of_fye
+  double  cfo_tenure_as_of_fye
+  double  coo_tenure_as_of_fye
+  double  cio_tenure_as_of_fye
+
+  double  top_1st_paid_total_compen
+  double  top_1st_paid_salary
+  double  top_1st_paid_bonus
+  double  top_1st_paid_all_other_compen
+  double  top_1st_paid_stock_awards
+  double  top_1st_paid_option_awards
+  double  top_1st_paid_non_eqty_incntv
+  double  top_1st_paid_pension_nonqlfy
+  double  top_1st_paid_other_compen
+  double  top_1st_paid_severance_pymnts
+  double  top_1st_paid_signing_bonus
+
+  double  top_2nd_paid_total_compen
+  double  top_2nd_paid_salary
+  double  top_2nd_paid_bonus
+  double  top_2nd_paid_all_other_compen
+  double  top_2nd_paid_stock_awards
+  double  top_2nd_paid_option_awards
+  double  top_2nd_paid_non_eqty_incntv
+  double  top_2nd_paid_pension_nonqlfy
+  double  top_2nd_paid_other_compen
+  double  top_2nd_paid_severance_pymnts
+  double  top_2nd_paid_signing_bonus
+
+  double  top_3rd_paid_total_compen
+  double  top_3rd_paid_salary
+  double  top_3rd_paid_bonus
+  double  top_3rd_paid_all_other_compen
+  double  top_3rd_paid_stock_awards
+  double  top_3rd_paid_option_awards
+  double  top_3rd_paid_non_eqty_incntv
+  double  top_3rd_paid_pension_nonqlfy
+  double  top_3rd_paid_other_compen
+  double  top_3rd_paid_severance_pymnts
+  double  top_3rd_paid_signing_bonus
+
+  double  top_4th_paid_total_compen
+  double  top_4th_paid_salary
+  double  top_4th_paid_bonus
+  double  top_4th_paid_all_other_compen
+  double  top_4th_paid_stock_awards
+  double  top_4th_paid_option_awards
+  double  top_4th_paid_non_eqty_incntv
+  double  top_4th_paid_pension_nonqlfy
+  double  top_4th_paid_other_compen
+  double  top_4th_paid_severance_pymnts
+  double  top_4th_paid_signing_bonus
+
+  double  top_5th_paid_total_compen
+  double  top_5th_paid_salary
+  double  top_5th_paid_bonus
+  double  top_5th_paid_all_other_compen
+  double  top_5th_paid_stock_awards
+  double  top_5th_paid_option_awards
+  double  top_5th_paid_non_eqty_incntv
+  double  top_5th_paid_pension_nonqlfy
+  double  top_5th_paid_other_compen
+  double  top_5th_paid_severance_pymnts
+  double  top_5th_paid_signing_bonus
+
+  double  total_top_3_total_compen
+  double  total_top_3_salary
+  double  total_top_3_bonus
+  double  total_top_3_all_other_compen
+  double  total_top_3_stock_awards
+  double  total_top_3_option_awards
+  double  total_top_3_non_eqty_incntv
+  double  total_top_3_pension_nonqlfy
+  double  total_top_3_other_compen
+  double  total_top_3_severance_pymnts
+  double  total_top_3_signing_bonus
+
+  double  total_top_5_total_compen
+  double  total_top_5_salary
+  double  total_top_5_bonus
+  double  total_top_5_all_other_compen
+  double  total_top_5_stock_awards
+  double  total_top_5_option_awards
+  double  total_top_5_non_eqty_incntv
+  double  total_top_5_pension_nonqlfy
+  double  total_top_5_other_compen
+  double  total_top_5_severance_pymnts
+  double  total_top_5_signing_bonus
+
+  int     last_ceo_id
+  int     last_cfo_id
+  int     last_coo_id
+  int     last_cio_id
+
+  int     top_1st_paid_exec_id
+  int     top_2nd_paid_exec_id
+  int     top_3rd_paid_exec_id
+  int     top_4th_paid_exec_id
+  int     top_5th_paid_exec_id
+
+  int     top_1st_salary_exec_id
+  int     top_2nd_salary_exec_id
+  int     top_3rd_salary_exec_id
+  int     top_4th_salary_exec_id
+  int     top_5th_salary_exec_id
+
+  int     top_1st_bonus_exec_id
+  int     top_2nd_bonus_exec_id
+  int     top_3rd_bonus_exec_id
+  int     top_4th_bonus_exec_id
+  int     top_5th_bonus_exec_id
+
+  int     top_1st_all_other_exec_id
+  int     top_2nd_all_other_exec_id
+  int     top_3rd_all_other_exec_id
+  int     top_4th_all_other_exec_id
+  int     top_5th_all_other_exec_id
+
+  int     top_1st_stock_exec_id
+  int     top_2nd_stock_exec_id
+  int     top_3rd_stock_exec_id
+  int     top_4th_stock_exec_id
+  int     top_5th_stock_exec_id
+
+  int     top_1st_option_exec_id
+  int     top_2nd_option_exec_id
+  int     top_3rd_option_exec_id
+  int     top_4th_option_exec_id
+  int     top_5th_option_exec_id
+
+  int     top_1st_non_equity_exec_id
+  int     top_2nd_non_equity_exec_id
+  int     top_3rd_non_equity_exec_id
+  int     top_4th_non_equity_exec_id
+  int     top_5th_non_equity_exec_id
+
+  int     top_1st_pension_exec_id
+  int     top_2nd_pension_exec_id
+  int     top_3rd_pension_exec_id
+  int     top_4th_pension_exec_id
+  int     top_5th_pension_exec_id
+
+  int     top_1st_other_exec_id
+  int     top_2nd_other_exec_id
+  int     top_3rd_other_exec_id
+  int     top_4th_other_exec_id
+  int     top_5th_other_exec_id
+
+  int     org_id
+  int     disp_scale_num
+  cstring curr_iso_abbr_cd [ESG_CURR_ISO_ABBR_CD_LEN] 
+  cstring org_nm           [ESG_ORG_NAME_LENGTH] 
+  int     hist_org_id                           dbstore=0
+  int     create_ts
+  int     update_ts
+}
+
+tag "esgprfsum" 
+{
+  int     bbid 
+  int     compen_fisc_yr_num
+
+  double  ceo_total_compen
+  double  ceo_salary
+  double  ceo_bonus
+  double  ceo_all_other_compen
+  double  ceo_stock_awards
+  double  ceo_option_awards
+  double  ceo_non_eqty_incntv
+  double  ceo_pension_nonqlfy
+  double  ceo_other_compen
+  double  ceo_severance_pymnts
+  double  ceo_signing_bonus
+  double  ceo_salary_bonus
+
+  double  cfo_total_compen
+  double  cfo_salary
+  double  cfo_bonus
+  double  cfo_all_other_compen
+  double  cfo_stock_awards
+  double  cfo_option_awards
+  double  cfo_non_eqty_incntv
+  double  cfo_pension_nonqlfy
+  double  cfo_other_compen
+  double  cfo_severance_pymnts
+  double  cfo_signing_bonus
+  double  cfo_salary_bonus
+
+  double  coo_total_compen
+  double  coo_salary
+  double  coo_bonus
+  double  coo_all_other_compen
+  double  coo_stock_awards
+  double  coo_option_awards
+  double  coo_non_eqty_incntv
+  double  coo_pension_nonqlfy
+  double  coo_other_compen
+  double  coo_severance_pymnts
+  double  coo_signing_bonus
+  double  coo_salary_bonus
+
+  double  cio_total_compen
+  double  cio_salary
+  double  cio_bonus
+  double  cio_all_other_compen
+  double  cio_stock_awards
+  double  cio_option_awards
+  double  cio_non_eqty_incntv
+  double  cio_pension_nonqlfy
+  double  cio_other_compen
+  double  cio_severance_pymnts
+  double  cio_signing_bonus
+  double  cio_salary_bonus
+
+  double  total_exec_total_compen
+  double  total_exec_salary
+  double  total_exec_bonus
+  double  total_exec_all_other_compen
+  double  total_exec_stock_awards
+  double  total_exec_option_awards
+  double  total_exec_non_eqty_incntv
+  double  total_exec_pension_nonqlfy
+  double  total_exec_other_compen
+  double  total_exec_severance_pymnts
+  double  total_exec_signing_bonus
+  double  total_exec_salary_bonus
+
+  int     num_of_ceo_change_during_fy
+  int     date_of_last_ceo_change
+  int     num_of_ceos_included_in_total
+  int     num_of_cfo_change_during_fy
+  int     date_of_last_cfo_change
+  int     num_of_cfos_included_in_total
+  int     num_of_coo_change_during_fy
+  int     date_of_last_coo_change
+  int     num_of_coos_included_in_total
+  int     num_of_cio_change_during_fy
+  int     date_of_last_cio_change
+  int     num_of_cios_included_in_total
+  int     num_of_exec_change_during_fy
+  int     date_of_last_exec_change
+  int     num_of_execs_included_in_total
+  
+  double  total_drct_total_compen
+  double  total_drct_fees_earned
+  double  total_drct_stock_awards
+
+  int     num_of_drct_change_during_fy
+  int     date_of_last_drct_change
+  int     num_of_drcts_included_in_total
+
+  double  ceo_tenure_as_of_fye
+  double  cfo_tenure_as_of_fye
+  double  coo_tenure_as_of_fye
+  double  cio_tenure_as_of_fye
+
+  double  top_1st_paid_total_compen
+  double  top_1st_paid_salary
+  double  top_1st_paid_bonus
+  double  top_1st_paid_all_other_compen
+  double  top_1st_paid_stock_awards
+  double  top_1st_paid_option_awards
+  double  top_1st_paid_non_eqty_incntv
+  double  top_1st_paid_pension_nonqlfy
+  double  top_1st_paid_other_compen
+  double  top_1st_paid_severance_pymnts
+  double  top_1st_paid_signing_bonus
+
+  double  top_2nd_paid_total_compen
+  double  top_2nd_paid_salary
+  double  top_2nd_paid_bonus
+  double  top_2nd_paid_all_other_compen
+  double  top_2nd_paid_stock_awards
+  double  top_2nd_paid_option_awards
+  double  top_2nd_paid_non_eqty_incntv
+  double  top_2nd_paid_pension_nonqlfy
+  double  top_2nd_paid_other_compen
+  double  top_2nd_paid_severance_pymnts
+  double  top_2nd_paid_signing_bonus
+
+  double  top_3rd_paid_total_compen
+  double  top_3rd_paid_salary
+  double  top_3rd_paid_bonus
+  double  top_3rd_paid_all_other_compen
+  double  top_3rd_paid_stock_awards
+  double  top_3rd_paid_option_awards
+  double  top_3rd_paid_non_eqty_incntv
+  double  top_3rd_paid_pension_nonqlfy
+  double  top_3rd_paid_other_compen
+  double  top_3rd_paid_severance_pymnts
+  double  top_3rd_paid_signing_bonus
+
+  double  top_4th_paid_total_compen
+  double  top_4th_paid_salary
+  double  top_4th_paid_bonus
+  double  top_4th_paid_all_other_compen
+  double  top_4th_paid_stock_awards
+  double  top_4th_paid_option_awards
+  double  top_4th_paid_non_eqty_incntv
+  double  top_4th_paid_pension_nonqlfy
+  double  top_4th_paid_other_compen
+  double  top_4th_paid_severance_pymnts
+  double  top_4th_paid_signing_bonus
+
+  double  top_5th_paid_total_compen
+  double  top_5th_paid_salary
+  double  top_5th_paid_bonus
+  double  top_5th_paid_all_other_compen
+  double  top_5th_paid_stock_awards
+  double  top_5th_paid_option_awards
+  double  top_5th_paid_non_eqty_incntv
+  double  top_5th_paid_pension_nonqlfy
+  double  top_5th_paid_other_compen
+  double  top_5th_paid_severance_pymnts
+  double  top_5th_paid_signing_bonus
+
+  double  total_top_3_total_compen
+  double  total_top_3_salary
+  double  total_top_3_bonus
+  double  total_top_3_all_other_compen
+  double  total_top_3_stock_awards
+  double  total_top_3_option_awards
+  double  total_top_3_non_eqty_incntv
+  double  total_top_3_pension_nonqlfy
+  double  total_top_3_other_compen
+  double  total_top_3_severance_pymnts
+  double  total_top_3_signing_bonus
+
+  double  total_top_5_total_compen
+  double  total_top_5_salary
+  double  total_top_5_bonus
+  double  total_top_5_all_other_compen
+  double  total_top_5_stock_awards
+  double  total_top_5_option_awards
+  double  total_top_5_non_eqty_incntv
+  double  total_top_5_pension_nonqlfy
+  double  total_top_5_other_compen
+  double  total_top_5_severance_pymnts
+  double  total_top_5_signing_bonus
+
+  int     last_ceo_id
+  int     last_cfo_id
+  int     last_coo_id
+  int     last_cio_id
+
+  int     top_1st_paid_exec_id
+  int     top_2nd_paid_exec_id
+  int     top_3rd_paid_exec_id
+  int     top_4th_paid_exec_id
+  int     top_5th_paid_exec_id
+
+  int     top_1st_salary_exec_id
+  int     top_2nd_salary_exec_id
+  int     top_3rd_salary_exec_id
+  int     top_4th_salary_exec_id
+  int     top_5th_salary_exec_id
+
+  int     top_1st_bonus_exec_id
+  int     top_2nd_bonus_exec_id
+  int     top_3rd_bonus_exec_id
+  int     top_4th_bonus_exec_id
+  int     top_5th_bonus_exec_id
+
+  int     top_1st_all_other_exec_id
+  int     top_2nd_all_other_exec_id
+  int     top_3rd_all_other_exec_id
+  int     top_4th_all_other_exec_id
+  int     top_5th_all_other_exec_id
+
+  int     top_1st_stock_exec_id
+  int     top_2nd_stock_exec_id
+  int     top_3rd_stock_exec_id
+  int     top_4th_stock_exec_id
+  int     top_5th_stock_exec_id
+
+  int     top_1st_option_exec_id
+  int     top_2nd_option_exec_id
+  int     top_3rd_option_exec_id
+  int     top_4th_option_exec_id
+  int     top_5th_option_exec_id
+
+  int     top_1st_non_equity_exec_id
+  int     top_2nd_non_equity_exec_id
+  int     top_3rd_non_equity_exec_id
+  int     top_4th_non_equity_exec_id
+  int     top_5th_non_equity_exec_id
+
+  int     top_1st_pension_exec_id
+  int     top_2nd_pension_exec_id
+  int     top_3rd_pension_exec_id
+  int     top_4th_pension_exec_id
+  int     top_5th_pension_exec_id
+
+  int     top_1st_other_exec_id
+  int     top_2nd_other_exec_id
+  int     top_3rd_other_exec_id
+  int     top_4th_other_exec_id
+  int     top_5th_other_exec_id
+
+  int     org_id
+  int     disp_scale_num
+  cstring curr_iso_abbr_cd [ESG_CURR_ISO_ABBR_CD_LEN] 
+  cstring org_nm           [ESG_ORG_NAME_LENGTH] 
+  int     hist_org_id                           dbstore=0
+  int     create_ts
+  int     update_ts
+}
+
+keys
+{
+    "SUMMARY_KEY" = bbid + <DESCEND>compen_fisc_yr_num
+dup "YEAR_BBID_KEY" = <DESCEND>compen_fisc_yr_num + bbid
+dup "UPDATE_KEY" = <DESCEND>update_ts + <DESCEND>create_ts
+}
+

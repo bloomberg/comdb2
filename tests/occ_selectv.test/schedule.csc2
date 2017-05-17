@@ -1,0 +1,19 @@
+// zjobdb table schedule
+// scheduled jobs
+
+schema
+{
+  longlong instid // job instance id
+  datetime start // scheduled start time of job
+  cstring tztag[128] null=yes // timezone tag to select hosts for this scheduling
+  int state // job state
+  int retried dbstore=0 // number of times job has been retried
+  int updatehost null=yes // the host id of the zjob which updated this record
+}
+
+keys
+{
+      "schdid" = instid + start + tztag
+  dup "state" = state + start
+}
+

@@ -1,0 +1,11 @@
+schema
+{
+    int i
+    byte b
+    cstring c[10]
+}
+
+keys
+{
+    "key" = <DESCEND> i + <DESCEND> b + <DESCEND> c
+}

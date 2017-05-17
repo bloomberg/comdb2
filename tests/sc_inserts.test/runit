@@ -1,0 +1,228 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+
+# Grab my database name.
+dbnm=$1
+
+tbl=t2
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of records I will add.
+nrecs=100
+
+# Max number of schema changes
+max_nusc=100
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertcnt 
+{
+    target=$1
+    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+
+    if cat verify.out | grep -i success > /dev/null ; then
+        failexit "failed verify"
+    fi
+}
+
+
+function do_rebuild_track_pid
+{
+    typeset loc_dbnm=$1
+    typeset loc_tbl=$2
+    typeset track_pid=$3
+    typeset scnt=0
+    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
+
+        echo "Running rebuild iteration $scnt"
+        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
+
+        if [[ $? != 0 ]]; then
+            echo "Error schema-changing on iteration $scnt"
+            echo "Testcase failed"
+            kill -9 $track_pid
+            exit 1
+        fi
+
+        do_verify $loc_dbnm $loc_tbl
+        let scnt=scnt+1
+    done
+
+    echo "Success!  Performed $scnt schema-changes."
+
+    return 0
+}
+
+
+
+
+function do_rebuild
+{
+    typeset max=$1
+    typeset scnt=0
+    while [[ $scnt -lt $max ]]; do 
+
+        echo "Running rebuild iteration $scnt"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
+
+        if [[ $? != 0 ]]; then
+            echo "Error schema-changing on iteration $scnt"
+            echo "Testcase failed"
+            return 1
+        fi
+        let scnt=scnt+1
+        do_verify
+        assertcnt $nrecs
+    done
+
+    return 0
+}
+
+# Update all records in the table
+function update_all_records
+{
+    typeset prmsg=$1
+    typeset iter=0
+
+    [[ "$debug" == 1 ]] && set -x
+
+    while :; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=x'1234' where b='test1'" >/dev/null 2>&1
+        let iter=iter+1
+
+        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
+
+            echo "Updated all of table $tbl $iter times."
+
+        fi
+
+    done
+}
+
+
+function update_same_record
+{
+    j=0
+    loc_recs=5000
+    echo "Updating same $nrecs records."
+
+    while [[ $j -lt $loc_recs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = 10" >> update.out 2>&1
+        assertcnt $nrecs
+        let j=j+1
+    done
+}
+
+
+function update_records
+{
+    j=0
+    t=0
+    echo "Updating $nrecs records."
+    echo "" > update.out
+
+    while [[ $t -lt 10 ]]; do 
+        while [[ $j -lt $nrecs ]]; do 
+            cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+10000 where a = $j" >> update.out 2>&1
+            let j=j+1
+            assertcnt $nrecs
+            #sleep 0.1
+        done
+        let t=t+1
+    done
+}
+
+function insert_records
+{
+    j=0
+    echo "Inserting $nrecs records."
+
+    while [[ $j -lt $nrecs ]]; do 
+        #insert next, if error continue to try again
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 2>&1
+        if [ $? -ne 0 ] ; then
+            continue
+        fi
+        let j=j+1
+        assertcnt $j
+        if [ $1 -gt 0 ] ; then
+            sleep 0.1
+        fi
+    done
+}
+
+
+
+
+function run_test
+{
+    typeset ipid=''
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
+
+    > insert.out
+    insert_records 0 &
+    typeset ipid=$!
+
+    do_rebuild_track_pid $dbnm $tbl $ipid
+    wait
+
+    assertcnt $nrecs
+    do_verify
+}
+
+
+
+
+echo "running test in machine $(hostname):${PWD}"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
+
+
+master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+function cleanup
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t1")'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t2")'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('flush')"
+}
+
+max=100
+t=0
+while [ $t -lt $max ] ; do
+    run_test
+    cleanup
+    sleep 2
+    let t=t+1
+done
+
+sleep 15
+
+echo "Success"

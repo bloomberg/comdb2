@@ -1,0 +1,21 @@
+schema 
+{
+        int a
+        int b
+        int c
+        int d
+}
+
+keys 
+{
+dup     "a" = a
+dup     "b" = b
+dup     "c" = c
+dup     "d" = d
+}
+
+
+
+
+
+

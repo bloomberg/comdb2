@@ -1,0 +1,318 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+
+# Grab my database name.
+dbnm=$1
+if [[ "x$dbnm" == "x" ]] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+rebuild=1
+if [[ "x$2" == "xnorebuild" ]] ; then
+    rebuild=0
+fi
+
+tbl=t2
+
+
+# Number of records I will add.
+nrecs=2000
+
+# Max number of schema changes
+max_nusc=1000
+t_ppid=$$
+upid=0
+
+
+function failexit
+{
+    echo "Failed: $1"
+    touch failexit
+    if [[ $$ -eq $upid ]] ; then
+        kill -9 $t_ppid
+    else
+        kill -9 $upid
+    fi
+    exit -1
+}
+
+function checkfailexit
+{
+    if [[ -f failexit ]] ; then
+        rm failexit
+        exit 1
+    fi
+}
+
+function assertcnt 
+{
+    target=$1
+    comment=$2
+    a=$RANDOM
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from $tbl" > select_$a.out
+    cnt=$(wc -l select_$a.out | awk '{print $1}')
+    if [[ $cnt != $target ]] ; then
+        failexit "$comment: count is $cnt but should be $target"
+    fi
+    rm select_$a.out
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+
+function do_rebuild_track_pid
+{
+    typeset loc_dbnm=$1
+    typeset loc_tbl=$2
+    typeset track_pid=$3
+    typeset scnt=0
+    typeset loc_sleeptm=`echo "scale=0;l($nrecs)/l(100)" | bc -l `
+    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
+
+        echo "Running rebuild iteration $scnt"
+        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
+
+        if [[ $? != 0 ]]; then
+            failexit "Error schema-changing on iteration $scnt. Testcase failed."
+        fi
+
+        checkfailexit
+        do_verify $loc_dbnm $loc_tbl
+        let scnt=scnt+1
+        sleep $loc_sleeptm
+    done
+    wait
+
+    echo "Performed $scnt schema-changes."
+
+    return 0
+}
+
+
+
+
+function update_same_record
+{
+    j=0
+    loc_recs=100
+    > update1.out
+    echo
+    echo "update_same_record: Updating same record in background (update1)"
+
+    while [[ $j -lt $loc_recs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = $nrecs" >> update1.out 2>&1
+        rc=$?
+        if [[ $rc -ne 0 ]] ; then
+            failexit "update_same_record: this update should succeed but error $rc was returned"
+        fi
+        assertcnt $nrecs "update_same_record"
+        let j=j+1
+    done
+    succ=`grep "rows updated=1" update1.out | wc -l`
+    if [[ $succ -ne $loc_recs ]] ; then
+	failexit "update_same_record: all $loc_recs should have resulted in successful update instead of $succ"
+    fi
+    echo "update_same_record: Done (update1)"
+}
+
+
+function update_same_record_fail
+{
+    j=0
+    loc_recs=100
+    > update3.out
+    echo
+    echo "update_same_record_fail: Updating same record resulting in failure for dups (update3)"
+
+    while [[ $j -lt $loc_recs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = 10" >> update3.out 2>&1
+        assertcnt $nrecs "update_same_record_fail"
+        let j=j+1
+    done
+    failed=`grep failed update3.out | wc -l`
+    if [[ $failed -ne $((loc_recs-1)) ]] ; then
+	failexit "update_same_record_fail: number failed is only $failed -ne $((loc_recs-1))"
+    fi
+    echo "update_same_record_fail: Done (update3)"
+}
+
+
+
+function update_records
+{
+    t=0
+    echo
+    echo "update_records: Updating $nrecs records (update2)"
+
+    #do this n times
+    nrepeat=2
+    while [[ $t -lt $nrepeat ]]; do 
+        j=1
+        > update2.out
+        while [[ $j -le $nrecs ]]; do 
+            cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+$nrecs where a = $j" >> update2.out 2>&1
+            rc=$?
+            if [[ $rc -ne 0 ]] ; then
+                failexit "update_records: this update should succeed but error $rc was returned"
+            fi
+            let j=j+1
+            assertcnt $nrecs "update_records"
+            #sleep 0.1
+        done
+        let t=t+1
+
+        succ=`grep "rows updated=1" update2.out | wc -l`
+        if [[ $succ -ne $nrecs ]] ; then
+            failexit "update_records: all $nrecs should have resulted in successful update instead of $succ"
+        fi
+    done
+    echo "update_records: Done (update2)"
+}
+
+
+function update_records_fail
+{
+    j=1
+    dist=10
+    echo
+    echo "update_records_fail: Updating $nrecs records will fail for dup (update4)"
+    > update4.out
+
+    while [[ $j -le $((nrecs-dist)) ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+$dist where a = $j" >> update4.out 2>&1
+        if [[ $? -eq 0 ]] ; then
+            echo "update_records_fail: update $tbl set d=d+1, e=e+10 where a = $j" 
+            failexit "update_records_fail: this update should not succeed"
+        fi
+        let j=j+1
+        assertcnt $nrecs "update_records_fail"
+        #sleep 0.1
+    done
+
+    failed=`grep failed update4.out | wc -l`
+    if [[ $failed -ne $((nrecs-dist)) ]] ; then
+	failexit "update_records_fail: number failed is only $failed -ne $((nrecs-dist))"
+    fi
+
+    echo "update_records_fail: Done (update4)"
+}
+
+
+
+
+function insert_records
+{
+    j=1
+    loc_tran=0
+    loc_transize=100
+    > insert.out
+    echo "Insert $nrecs records"
+
+    while [[ $j -le $nrecs ]] ; do
+        if [[ $loc_transize -gt 0 && $loc_tran -eq 0 ]] ; then
+            echo "BEGIN"
+        fi
+        echo "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  
+        let loc_tran=loc_tran+1
+        if [[ $loc_transize -gt 0 && $loc_tran -ge $loc_transize ]] ; then
+            echo "COMMIT"
+            loc_tran=0
+        fi
+	let j=j+1
+    done  | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> insert.out 2>&1
+}
+
+function run_test
+{
+    typeset upid=''
+    nrecs=$1
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
+
+    insert_records 0 
+    assertcnt $nrecs "run_test"
+    do_verify
+
+
+    update_same_record &
+    upid=$!
+
+    if [[ $rebuild -eq 1 ]] ; then
+        do_rebuild_track_pid $dbnm $tbl $upid
+    fi
+    wait
+
+    assertcnt $nrecs "run_test"
+
+
+
+    update_records &
+    upid=$!
+
+
+    if [[ $rebuild -eq 1 ]] ; then
+        do_rebuild_track_pid $dbnm $tbl $upid
+    fi
+    wait
+
+    assertcnt $nrecs "run_test"
+
+
+
+    update_same_record_fail &
+    upid=$!
+
+    if [[ $rebuild -eq 1 ]] ; then
+        do_rebuild_track_pid $dbnm $tbl $upid
+    fi
+    wait
+
+    assertcnt $nrecs "run_test"
+
+
+
+    update_records_fail &
+    upid=$!
+
+    if [[ $rebuild -eq 1 ]] ; then
+        do_rebuild_track_pid $dbnm $tbl $upid
+    fi
+    wait
+
+    assertcnt $nrecs "run_test"
+}
+
+function exiting {
+    rm -f failexit
+}
+
+trap exiting EXIT
+
+echo "running test in machine $(hostname):${PWD}"
+
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
+
+rm -f failexit
+
+g=100
+while [[ $g -le 400 ]] ; do 
+	echo "run_test $g"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl on')" >/dev/null 2>&1
+	run_test $g
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl off')" >/dev/null 2>&1
+	run_test $g
+    let g=g+g
+done
+

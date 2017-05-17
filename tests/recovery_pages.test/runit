@@ -1,0 +1,105 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -x
+
+# Dbname
+dbnm=$1
+
+# Db has exited flag
+exited=0
+
+# Is remote flag
+isremote=0
+
+# Database arch
+dbarch=""
+
+# Is archtask
+archtsk=0
+
+# Counter
+j=0
+
+# My arch
+arch=""
+
+# Remote mach
+mch=""
+
+# Debug flag
+debug=0
+
+# Insert a bunch of records
+echo "Inserting records"
+
+while [[ $j -lt 100 ]]; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id) values($j)" >/dev/null 2>&1
+    let j=j+1
+done
+
+echo "Tell database to do a partial write and exit"
+
+x=$(cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("badwrite_intvl 2")')
+
+
+if [[ "$x" == *"unknown command"* ]]; then
+    echo "Recovery pages not supported in this version of the database."
+    exit 1
+fi
+
+while [[ $? == 0 ]]; do
+    let j=j+1 
+    sleep 1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id) values($j)" >/dev/null 2>&1 &
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('flush')"
+done
+
+#TODO: for clustered which node are we checking if up or not; need to restart same
+
+sleep 5
+if [[ -z "$CLUSTER" ]]; then
+    pgrep comdb2 -a | grep "$dbnm" || exited=1
+else
+    #what to do?
+    pgrep comdb2 -a | grep "$dbnm" || exited=1
+fi
+echo exited $exited
+
+# If the master is still up, 
+if [[ $exited -eq 0 ]]; then
+    echo "Database $dbnm never exited!"
+    echo "Testcase failed."
+    exit 1
+fi
+
+echo "Bring up the database"
+
+if [[ -z "$CLUSTER" ]]; then
+    comdb2 ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.db.2 -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+else
+    comdb2 ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db.2 -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 &
+fi
+
+sleep 3
+
+echo "Wait for this to come up, or timeout (failure case)."
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("stat")'
+
+while [[ $? != 0 ]]; do
+    sleep 5
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("stat")'
+done
+
+echo "We are up!  Insert a few records as a final sanity check."
+while [[ $j -lt 100 ]]; do
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(id) values($j)" >/dev/null 2>&1
+
+    if [[ $? != 0 ]]; then
+        echo "Error inserting into database!"
+        exit 1
+    fi
+    let j=j+1
+done
+
+echo "Success"

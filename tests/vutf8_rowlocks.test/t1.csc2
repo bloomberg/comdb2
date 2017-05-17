@@ -1,0 +1,10 @@
+schema
+{
+   int      a
+   vutf8    b[8]
+}
+
+keys
+{
+dup "A"  =   a
+}

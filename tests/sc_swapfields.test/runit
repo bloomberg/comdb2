@@ -1,0 +1,209 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertcnt 
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+# Do schema changes
+function do_schema_changes
+{
+    typeset max=$1
+    typeset iter=0
+    typeset scnt=0
+
+    schema=t2.csc2
+
+    while [[ $scnt -lt $max ]]; do 
+
+        echo "$dbnm alter t1 $schema"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1 { `cat $schema ` }"
+        if [[ $? != 0 ]]; then
+
+            echo "Error schema-changing on iteration $scnt"
+            return 1
+
+        fi
+
+        let scnt=scnt+1
+
+    done
+
+    return 0
+}
+
+# Update all records in the table
+function update_all_records
+{
+    typeset prmsg=$1
+    typeset iter=0
+
+    [[ "$debug" == 1 ]] && set -x
+
+    while :; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        let iter=iter+1
+
+        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
+
+            echo "Updated all of table t1 $iter times."
+
+        fi
+
+    done
+}
+
+function update_records
+{
+    j=0
+    echo "Updating $nrecs records."
+    echo "" > update.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a = $j" >> update.out 
+        let j=j+1
+    done
+}
+
+function insert_records
+{
+    j=$1
+    nstop=$2
+    let nins=nins+1
+    insfl=insert${nins}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values ($j,'test1$j',$j,$j)"  &>> $insfl
+        let j=j+1
+    done
+}
+
+
+
+
+echo "Test with insert, SC should not fail"
+
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 500')"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
+
+insert_records 1 2000
+assertcnt 2000
+
+
+
+insert_records 2001 3000 &
+
+echo "Alter table to t1_2 version"
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
+
+ret=$?
+
+if [[ "$ret" != 0 ]]; then
+    failexit "Test Failed: Schemachange rc=$rc, but it should have succeeded"
+fi
+
+wait
+assertcnt 3000
+do_verify
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > select2.out
+#if ! diff select2.out select2.expected > /dev/null ; then
+#failexit "select2.out not expected"
+#fi
+
+
+
+insert_records 3001 4000 &
+
+echo "Alter table to t1_3 version"
+sleep 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_3.csc2 ` }"
+
+ret=$?
+
+if [[ "$ret" != 0 ]]; then
+    failexit "Test Failed: Schemachange rc=$rc, but it should have succeeded"
+fi
+
+wait
+assertcnt 4000
+do_verify
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > select3.out
+#if ! diff select3.out select3.expected > /dev/null ; then
+#failexit "select2.out not expected"
+#fi
+
+
+
+
+echo "Redoing it all--will insert non stop: Alter table to t1_1 version"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
+
+
+
+
+coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default -
+cppid=$!
+echo me: $$ COPROC $cppid fd in ${COPROC[0]} out ${COPROC[1]}
+
+echo "Alter table to t1_2 version"
+(cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" ; touch alter1.done) &
+
+j=4001
+while [ ! -f alter1.done ] ; do
+    echo "insert into t1(a,b,c,d) values ($j,'test1$j',$j,$j)" >&${COPROC[1]}
+    read -t 0.5 -ru ${COPROC[0]} out
+    if [ "$out" != "(rows inserted=1)" ] ; then
+        failexit " error inserting out=$out"
+    fi
+    j=$((j+1))
+done
+
+
+
+
+echo "Success"

@@ -1,0 +1,28 @@
+Copyright 2015, 2017, Bloomberg Finance L.P.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Portions of the code are licenced under different licences, 
+listed below:
+
+
+berkdb/   - 4.2.52 Sleepycat (berkdb/LICENSE)
+crc32c/   - snippets from Intel papers, source (BSD) crc32c/sb8.h
+            http://www.intel.com/content/dam/www/public/us/en/documents/white-papers/crc-iscsi-polynomial-crc32-instruction-paper.pdf
+            http://www.intel.com/content/dam/www/public/us/en/documents/white-papers/fast-crc-computation-paper.pdf
+datetime/ - public domain
+dfp/      - bsd-style ./decNumber/ICU-license.html ./dfpal/ICU-license.html (can use upstream with small diff)
+dlmalloc/ - public domain
+lua/      - 5.1.4 MIT lua/lua.h (lots of changes)
+sqlite/   - 3.8.9 + cherrypicked upstream + lots of local patches - public domain
+cson/     - public domain/MIT cson/cson_amalgamation_core.h

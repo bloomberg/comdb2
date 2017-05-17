@@ -1,0 +1,52 @@
+BDBBLOCKREQSFP
+
+  this is needed for coherency in timeouts.  when a replicant is
+  informed that he needs to recover, he will
+  call this routine from bdblib to ensure that new request are failed
+  immediately.  he then notifies the master of his intent to recover, which
+  gets the master to stop skipping him in replication.  he runs through
+  catch up, advertising maxlsn so that master doesnt hang on him.  he runs
+  through the final step of catchup, advertising real lsns.  when he's caught
+  up, he will call this routine again to let request come into the node.
+
+
+  when the master is in commit (comdb2 level) he gets a list of all
+  "bad nodes."  these are nodes that were either skipped or timed out.
+  when the bad node list is being formed, nodes that are in SKIP state
+  are not added to the list.  after getting the list, all nodes in the list
+  are set into SKIP state, and the info about the nodes in the list being
+  not coherent is tried to be conveyed via 1 or 2 (or both) methods.  
+
+  there are 2 cases of how the replicant can be informed that he is
+  not coherent and needs to recover.  case 1 is master notification.  when
+  case 1 fails (no connectivity from master to broken replicant?) then case
+  2 is used.  case 2 is master->proxy->replicant notification.
+
+  in case 1 the master sends a sync "net" message to the broken replicant.
+  if he gets the message, he calls blockreqs_rtn(1) to tell comdb2 to block
+  requests (fail all request immediately w/ 999).  he the replies "ok"
+  to the master.  the master puts him in a SKIP state, which makes it
+  so that he is both SKIPPED when waiting for acks, but NOT REPORTED (we
+  already know he's got a problem) as one of the "bad nodes" in the list
+  of bad nodes that is formed after every transaction.  the replicant, after
+  sending the "ok" to master begins recovery.  he sends a message to master
+  indicating he is recovering.  the master clears the SKIP state for this
+  node.  he will wait for acks from him.  but while the replicant is running
+  catch-up, he will be advertising MAXLSN to keep the master from hanging.
+  when the replicant finishes recovery, he's advertising real LSNs.  he then
+  records the seqnum as his recovery seqnum.  he then calls 
+  blockreqs_rtn(0) to tell comdb2 driver to let new request in.
+  
+  in case 2 the proxy sends a message to the replicant of the form 
+  "areyoucoherent <seqnum>?"  if the replicant's recovery seqnum 
+  is >= to the seqnum in the request it responds success, 
+  and the proxy takes him out of a broken state.  if the replicant's seqnum
+  is < the seqnum in the request, he begins catchup (with the intent of posting
+  the requested seqnum once he's finished).  he calls blockreqs_rtn(1) to
+  let comdb2 driver know that new requests must fail.  he sends a message to 
+  the master indicating he is recovering.  the master clears the SKIP state 
+  for this node.  he runs through catch-up, advertising MAXLSN to keep the 
+  master from hanging.  when he finishes recovery, he's advertising real LSNs.
+  he then records the seqnum as his recovery seqnum.  he then calls 
+  blockreqs_rtn(0) to tell comdb2 driver to let new request in.
+  

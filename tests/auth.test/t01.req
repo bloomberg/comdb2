@@ -1,0 +1,5 @@
+select 'user1'
+set user user1
+set password password1
+put authentication on
+select 'authentication turned on'

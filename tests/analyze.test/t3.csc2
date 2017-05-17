@@ -1,0 +1,19 @@
+schema 
+{
+        int a
+        int b
+        int c
+        int d
+}
+
+keys 
+{
+dup     "abc" = a + b + c
+dup     "bcd" = b + c + d
+}
+
+
+
+
+
+

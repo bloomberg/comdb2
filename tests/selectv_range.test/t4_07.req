@@ -1,0 +1,3 @@
+begin
+selectv id from t1 EXCEPT select id from t2
+commit

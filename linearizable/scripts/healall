@@ -1,0 +1,9 @@
+#!/bin/bash
+
+pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
+scripts=$pathbase/linearizable/scripts
+. $scripts/setvars
+
+for m in $machines; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
+
+

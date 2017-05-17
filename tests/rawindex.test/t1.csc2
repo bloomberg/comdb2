@@ -1,0 +1,11 @@
+schema
+{
+    int i
+    int j
+    int k
+}
+
+keys
+{
+    dup "i" = i+j+<DESCEND>k
+}

@@ -1,0 +1,20 @@
+(rows inserted=1)
+[insert into t1 values (1, 1234, 1234, null)] rc 0
+(rows inserted=1)
+[insert into t1 values (2, 4321, 1234, null)] rc 0
+(rows inserted=1)
+[insert into t4 values (1, 1121)] rc 0
+(rows inserted=1)
+[insert into t4 values (2, 2221)] rc 0
+[set transaction read committed] rc 0
+[begin] rc 0
+[update t1 set uuid = 3 where uuid = 1] rc 0
+[update t1 set uuid = 1 where uuid = 2] rc 0
+[update t1 set uuid = 2 where uuid = 3] rc 0
+[commit] rc 0
+(uuid=1, value=4321, dup_value=1234, allowed_null_value=NULL)
+(uuid=2, value=1234, dup_value=1234, allowed_null_value=NULL)
+[select * from t1 where uuid in (1,2,3)] rc 0
+(uuid=1, value=1121)
+(uuid=2, value=2221)
+[select * from t4 where uuid in (1,2,3)] rc 0

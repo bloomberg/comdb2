@@ -1,0 +1,55 @@
+FILE FORMATS
+------------
+
+data:
+                  key                              data  
+                  ---                              -----
+                  genid                            variable len user data
+
+data (odh):
+                  key                              data  
+                  ---                              -----
+                  genid (with updateid=0)          odh + variable len user data
+
+blob/vuft8:
+                  key                              data  
+                  ---                              -----
+                  genid                            variable len user data
+
+blob/vuft8 (odh):
+                  key                              data  
+                  ---                              -----
+                  genid (with updateid=0)          odh + variable len user data
+
+index:
+                  key                              data  
+                  ---                              -----
+dupes             var len key data + genid         genid
+nodupes           var len key data                 genid
+dupes (dtacopy)   var len key data + genid         genid + var len user data
+nodupes (dtacopy) var len key data                 genid + var len user data
+
+
+
+GENID (8 bytes)
+_____
+
+0x0000000000000000
+  ^^^^^^^^           32 bit epoch time
+          ^^^^       16 bit seed (dupe counter for current second)
+              ^^^    12 bit updateid can be split between update/participant id
+                 ^    4 bit stripe
+
+ODH (7 bytes)
+---
+0x00000000000000
+  ^^                  8 bit flags
+    ^^                8 bit csc2 version
+      ^^              8 high 8 bits of updateid
+        ^             4 bit low 4 bits of updateid
+         ^^^^^^^     28 bit length
+
+flags:
+1 - BDB_COMPRESS_ZLIB
+2 - BDB_COMPRESS_RLE8
+3 - BDB_COMPRESS_COMDB2_RLE

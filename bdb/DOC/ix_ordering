@@ -1,0 +1,60 @@
+in the block processor, the goal is to do be able to run n block processors 
+in paralell.  the paralelism stops when one thread aquires a lock that the 
+others need.  we dont want that do happen, and if it needs to happen, we want
+it to happen later rather than sooner (after we've done pieces that could
+have potentially been done in paralel, but now arent because we've stalled on
+a lock).  
+
+looking at the case of adding records in 2 threads at the same time -   we 
+add dta first (which is great cause dtastripe ensures no lock conflicts on
+dta between threads). then we add to indexes.  we use a "fixed schedule" that
+happens to be 0,1,2,3,4,5,6,7,8,9,10(etc) for our index operations.  imagine 
+a table with 5 indexes.  imagine a stall will occur on index 1 (the 2 requests
+update the same page in the index btree), but index 0, 2, 3, 4 could be done 
+in parallel.  wouldnt it be better to use a schedule of 0,2,3,4,1 here?  of
+course it would.  but determining the schedule is a function of 2 things. 
+1) static analysis of the index and 2) ongoing analysis of the last n
+incoming requests.
+
+note that key here is the notion of maintaining one schedule that everyone 
+uses (which can change adaptively) to avoid deadlock hell.  simply picking 
+the "best schedule" each time through the block processor will not work well.
+
+(1) static analysis of the index
+--------------------------------
+the static analysis (could be wedged into the sql "anaylize pass") takes a
+sweep through each index.  if the index contains n values, and we want to
+keep info on x values, we record the value every n/x items and store that in
+some stats table - per index.  so lets say we have 100 evenly distributed
+values per index stored in an aux table (brought into memory for quicker acess
+on startup probably). 
+
+(2) ongoing analysis of the last n incoming requests
+----------------------------------------------------
+when a request comes into the blockprocessor (lets talk about inline for 
+this conversation, in reality, this would all be farmed off to a thread that
+runs in paralel with the blockprocessors) (and lets look at "adds" only for
+now). we look at the values being written to each index.  we binary search 
+the stats to see where the value lies on a left to right scale, say 0 being
+leftmost, 100 being rightmost.  we have n parallel arrays of size m (lets say
+10, m being the last m reqs to use for the calculation, n is per index).  we
+add the "position guestimate" to the next slot in the array (circular).
+
+when we want to build a new schedule, we take a look at these n buckets and 
+run "fancy math" on them to rank them in terms of "similarness".  we sort 
+them to get a schedule of less similar to more similar and update the 
+schedule array.  (update schedule array under lock, block processors need 
+to copy out entire schedule array under lock).  the idea is to do the indexes
+that tend to have "less similarity in the current input load" first, as they
+are the most likely to parallelize cleanly.
+
+fancy math
+----------
+"fancy math" is probably as simple as counting the number of instances of the
+same number you find.  unless the index is absurdly small, 2 keys which 
+computed to 2 different "fuzzy positions" should not be on the same page
+(which is all we really care about)
+
+alternatively, sam proposed the "mean difference" - you take the difference
+between each number in the list, then take the average of these differences.
+lower numbers mean "more similarity," higher numbers mean "less simililarity."

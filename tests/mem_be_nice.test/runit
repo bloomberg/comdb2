@@ -1,0 +1,29 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+for i in `seq 1 8`; do
+  cdb2sql ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
+done
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat sqlite hr")'
+
+cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat sqlite hr")' | grep sqlite | grep -v main | grep -cv 'cmd:'`
+echo "# sqlite allocators: $cnt"
+
+if [[ $cnt -gt 4 ]]; then
+  echo "Failed."
+  exit 1
+fi
+
+wait
+
+cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat sqlite hr")' | grep sqlite | grep -v main | grep -cv 'cmd:'`
+echo "# sqlite allocators: $cnt"
+
+if [[ $cnt -gt 4 ]]; then
+  echo "Failed."
+  exit 1
+fi
+echo "Passed."

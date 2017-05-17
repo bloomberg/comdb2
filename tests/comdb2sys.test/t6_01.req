@@ -1,0 +1,6 @@
+select * from comdb2_tables order by tablename
+select * from comdb2_columns order by columnname
+select * from comdb2_keys order by keyname
+select * from comdb2_keycomponents order by tablename
+select * from comdb2_constraints order by tablename
+select * from comdb2_tablesizes order by tablename

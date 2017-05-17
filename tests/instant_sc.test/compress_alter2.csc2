@@ -1,0 +1,12 @@
+schema
+{
+	int a
+	blob bl null=yes
+	int b null=yes
+}
+
+keys
+{
+	"a" = a
+	"all" = a+b
+}

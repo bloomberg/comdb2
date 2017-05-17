@@ -1,0 +1,9 @@
+allowed-tags:
+  - intro
+  - code
+  - JDBC
+  - Java
+  - Security
+  - SSL
+  - TLS
+  - Encryption

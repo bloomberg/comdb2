@@ -1,0 +1,2 @@
+(selectid=0, order=0, from=0, detail='SEARCH TABLE HILODB_HISTORICAL AS h USING COVERING INDEX hilodb_historical_ix_1 (exchange=? AND dt>? AND dt<?) (26624 rows)')
+(selectid=0, order=1, from=1, detail='SEARCH TABLE HILODB_SECDATA AS s USING COVERING INDEX hilodb_secdata_ix_1 (objid3=? AND objid2=? AND objid1=? AND marketcap<?) (~1 row)')
