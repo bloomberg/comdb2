@@ -5,16 +5,3 @@ topnav:
   items:
     - title: Repository
       external_url: https://github.com/bloomberg/comdb2
-
-#Topnav dropdowns
-#topnav_dropdowns:
-#- title: Topnav dropdowns
-#  folders:
-#    - title: dropdown1
-#      folderitems:
-#        - title: Innovati
-#          external_url: https://bbgithub.dev.bloomberg.com/Innovati
-#    - title: dowpdown2
-#      folderitems:
-#        - title: TEAM pages
-#          external_url: https://cms.prod.bloomberg.com/team/display/synv/Magma

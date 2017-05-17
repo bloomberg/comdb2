@@ -44,27 +44,7 @@
                 </li>
                 {% endfor %}
                 {% endfor %}
-                <!--comment out this block if you want to hide search-->
-                <li>
-                    <!--start search-->
-                    <div id="search-demo-container">
-                        <input type="text" id="search-input" placeholder="search...">
-                        <ul id="results-container"></ul>
-                    </div>
-                    <script src="{{ "gh-resource/js/jekyll-search.js"}}" type="text/javascript"></script>
-                    <script type="text/javascript">
-                            SimpleJekyllSearch.init({
-                                searchInput: document.getElementById('search-input'),
-                                resultsContainer: document.getElementById('results-container'),
-                                dataSource: '{{ "gh-resource/search.json" }}',
-                                searchResultTemplate: '<li><a href="{url}" title="{{page.title | replace: "'", "\"}}">{title}</a></li>',
-                    noResultsText: 'No results found.',
-                            limit: 10,
-                            fuzzy: true,
-                    })
-                    </script>
-                    <!--end search-->
-                </li>
+                <li><a id="feedback-link" href="mailto:opencomdb2@bloomberg.net"><i class="fa fa-envelope-o"></i> Feedback</a></li>
             </ul>
         </div>
         </div>
