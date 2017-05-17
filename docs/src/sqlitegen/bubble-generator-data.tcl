@@ -77,6 +77,7 @@ set all_graphs {
   delete-stmt-limited {
     stack
         {line {opt with-clause} DELETE FROM qualified-table-name}
+        {optx FOR PORTION OF BUSINESS_TIME FROM expr TO expr}
         {optx WHERE expr}
         {optx
             {stack
@@ -152,6 +153,7 @@ set all_graphs {
               {line {or SELECT SELECTV} {or nil DISTINCT ALL}
                                              {loop result-column ,}}
               {optx FROM {or {loop table-or-subquery ,} join-clause}}
+              {optx FOR temporal-clause}
               {optx WHERE expr}
               {optx GROUP BY {loop expr ,} {optx HAVING expr}}
           }
@@ -173,6 +175,7 @@ set all_graphs {
             {line SELECT {or nil DISTINCT ALL}
                                            {loop result-column ,}}
             {optx FROM {or {loop table-or-subquery ,} join-clause}}
+            {optx FOR temporal-clause}
             {optx WHERE expr}
             {optx GROUP BY {loop expr ,} {optx HAVING expr}}
         }
@@ -250,6 +253,7 @@ set all_graphs {
   update-stmt-limited {
      stack
         {line {opt with-clause} UPDATE qualified-table-name}
+        {optx FOR PORTION OF BUSINESS_TIME FROM expr TO expr}
         {line SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
         {optx
             {stack
@@ -260,6 +264,18 @@ set all_graphs {
   }
   qualified-table-name {
      line {optx /database .} /table-name
+  }
+  temporal-clause {
+      loop {line {or SYSTEM_TIME
+                     BUSINESS_TIME
+                 }
+                 {or {line AS OF expr}
+                     {line FROM expr TO expr}
+                     {line BETWEEN expr AND expr}
+                     {line ALL}
+                 }
+           }
+           ,
   }
   comment-syntax {
     or
@@ -374,8 +390,16 @@ set all_graphs {
           {line REMOTE /database {or READ WRITE EXECUTE} HUH}
           {line GETCOST {or ON OFF}}
           {line MAXTRANSIZE /numeric-literal}
-          {line PLANNEREFFORT
-      }
+          {line PLANNEREFFORT}
+          {line TEMPORAL {or SYSTEM_TIME
+                             BUSINESS_TIME
+                         }
+                         {or {line AS OF /string-literal}
+                             {line FROM /string-literal TO /string-literal}
+                             {line BETWEEN /string-literal AND /string-literal}
+                             {line ALL}
+                             {line DISABLE}
+                         }}
     }
   }
   exec-procedure {
@@ -480,7 +504,24 @@ set all_graphs {
   }
 
   constraint-section {
-      loop {line /keyname -> /table-name : /keyname}
+      loop {line {opt {line /no_overlap}}
+                 /keyname ->
+                 {or {line /table-name : /keyname
+                           {opt {line on delete cascade}}
+                           {opt {line on update  cascade}}
+                     }
+                     {line /start : /end}
+                 }
+           }
+  }
+
+  period-section {
+      loop
+      {line {or {line SYSTEM}
+                {line BUSINESS}
+            }
+            {line ( start_column , end_column )}
+      }
   }
 
   table-event {

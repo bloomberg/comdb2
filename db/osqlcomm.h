@@ -104,13 +104,21 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
                     char *tablename, int type, SBUF2 *logsb);
 
 /**
+ * Send TIMESPEC op
+ * It handles remote/local connectivity
+ *
+ */
+int osql_send_timespec(char *tohost, unsigned long long rqid, uuid_t uuid,
+                       struct timespec *tstart, int type, SBUF2 *logsb);
+
+/**
  * Send INDEX op
  * It handles remote/local connectivity
  *
  */
 int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
-        unsigned long long genid, int isDelete, int ixnum,
-        char *pData, int nData, int type, SBUF2 *logsb);
+                    unsigned long long genid, int isDelete, int ixnum,
+                    char *pData, int nData, int type, SBUF2 *logsb);
 
 /**
  * Send QBLOB op

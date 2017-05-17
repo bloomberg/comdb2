@@ -1444,6 +1444,49 @@ case OP_SoftNull: {
   break;
 }
 
+/* COMDB2 MODIFICATION */
+int comdb2_temporal_systime_start(Mem *pMem);
+/* Opcode: SystemStart * P2 * * *
+** Synopsis:  r[P2]=SystemStart()
+**
+** Set register P2 to have the value of transaction start time
+*/
+case OP_SystimeStart: {
+  pOut = out2Prerelease(p, pOp);
+  comdb2_temporal_systime_start(pOut);
+  break;
+}
+
+/* COMDB2 MODIFICATION */
+int comdb2_temporal_systime_end(Mem *pMem);
+/* Opcode: SystemEnd * P2 * * *
+** Synopsis:  r[P2]=SystemEnd()
+**
+** Set register P2 to have the value of maximum datetime
+*/
+case OP_SystimeEnd: {
+  pOut = out2Prerelease(p, pOp);
+  comdb2_temporal_systime_end(pOut);
+  break;
+}
+
+/* COMDB2 MODIFICATION */
+int comdb2_temporal_systime_check(Vdbe *v, const char *dbname, Mem *pMem);
+/* Opcode: SystemCheck P1 * * P4 *
+** Synopsis:
+**
+** Check if register P1 greater than table P4 start time
+*/
+case OP_SystimeCheck: {
+  pIn1 = &aMem[pOp->p1];
+  rc = comdb2_temporal_systime_check(p, pOp->p4.z, pIn1);
+  if( rc!=SQLITE_OK ){
+      rc = SQLITE_ERROR;
+      goto abort_due_to_error;
+  }
+  break;
+}
+
 /* Opcode: Blob P1 P2 * P4 *
 ** Synopsis: r[P2]=P4 (len=P1)
 **
@@ -2227,6 +2270,33 @@ case OP_MustBeInt: {            /* jump, in1 */
     }
   }
   MemSetTypeFlag(pIn1, MEM_Int);
+  break;
+}
+
+/* Opcode: MustBeDatetime P1 P2 * * *
+**
+** Force the value in register P1 to be a datetime.  If the value
+** in P1 is not a datetime and cannot be converted into a datetime
+** then jump immediately to P2, or if P2==0
+** raise an SQLITE_MISMATCH exception.
+*/
+case OP_MustBeDatetime: {            /* jump, in1 */
+  pIn1 = &aMem[pOp->p1];
+  if( (pIn1->flags & MEM_Datetime)==0 ){
+    pIn1->tz = p->tzname;
+    pIn1->dtprec = p->dtprec;
+    applyAffinity(pIn1, SQLITE_AFF_DATETIME, encoding);
+    VdbeBranchTaken((pIn1->flags&MEM_Datetime)==0, 2);
+    if( (pIn1->flags & MEM_Datetime)==0 ){
+      if( pOp->p2==0 ){
+        rc = SQLITE_MISMATCH;
+        goto abort_due_to_error;
+      }else{
+        goto jump_to_p2;
+      }
+    }
+  }
+  MemSetTypeFlag(pIn1, MEM_Datetime);
   break;
 }
 

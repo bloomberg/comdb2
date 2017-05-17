@@ -782,6 +782,17 @@ static int convert_record(struct convert_record_data *data)
         p_buf_data_end = p_buf_data + dtalen;
     }
 
+    if (data->iq.usedb->overwrite_systime) {
+        int temporal_overwrite_systime(struct ireq * iq, uint8_t * rec,
+                                       int use_tstart);
+        rc = temporal_overwrite_systime(&(data->iq), p_buf_data, 0);
+        if (rc) {
+            sc_errf(data->s, "temporal_overwrite_systime table %s failed\n",
+                    data->iq.usedb->dbname);
+            return -2;
+        }
+    }
+
     unsigned long long dirty_keys = -1ULL;
     if (gbl_partial_indexes && data->to->ix_partial) {
         dirty_keys =
@@ -797,6 +808,15 @@ static int convert_record(struct convert_record_data *data)
                                   dirty_keys, data->wrblb, MAXBLOBS,
                                   ".NEW..ONDISK", rebuild, 0);
     if (rc) goto err;
+
+    int temporal_business_time_check(struct db * db, uint8_t * od_dta);
+    rc = temporal_business_time_check(data->to, p_buf_data);
+    if (rc) {
+        sc_errf(data->s, "Invalid parameter: business start time must be less "
+                         "than business end time\n");
+        return -2;
+        goto err;
+    }
 
     if (gbl_partial_indexes && data->to->ix_partial) {
         rc = verify_partial_rev_constraint(data->from, data->to, data->trans,

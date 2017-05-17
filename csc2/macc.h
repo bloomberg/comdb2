@@ -101,7 +101,21 @@ struct fieldopt {
     } value;
 };
 
-enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
+enum pd_flags { PERIOD_SYSTEM = 0, PERIOD_BUSINESS = 1, PERIOD_MAX = 2 };
+
+extern struct period {
+    int enable;
+    int start;
+    int end;
+} periods[PERIOD_MAX];
+
+extern int nperiods;
+
+enum ct_flags {
+    CT_UPD_CASCADE = 0x00000001,
+    CT_DEL_CASCADE = 0x00000002,
+    CT_NO_OVERLAP = 0x00000004
+};
 
 extern struct constraint {
     char *lclkey;
@@ -291,7 +305,9 @@ int numix();
 void resolve_case_names();
 void end_constraint_list(void);
 void set_constraint_mod(int start, int op, int type);
-void start_constraint_list(char *tblname);
+void start_constraint_list(char *keyname, int no_overlap);
+void start_periods_list(void);
+void add_period(char *name, char *start, char *end);
 void add_constraint(char *tbl, char *key);
 void add_constant(char *name, int value, short type);
 void add_fldopt(int opttype, int valtype, void *value);

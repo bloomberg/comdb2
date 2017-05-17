@@ -848,8 +848,9 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             rc = CLIENT_to_SERVER(&val, sizeof(unsigned long long), CLIENT_INT,
                                   0, NULL, NULL, out + f->offset, f->len,
                                   f->type, 0, &outsz, &outopts, NULL);
-        } else
+        } else {
             set_null(out + f->offset, f->len);
+        }
 
         goto done;
     }
@@ -1534,6 +1535,22 @@ static int create_sqlmaster_record(struct db *db, void *tran)
         return 0;
     }
 
+    /* fix history_db pointer here for replicants */
+    if (db->periods[PERIOD_SYSTEM].enable && db->history_db == NULL) {
+        char tmpname[MAXTABLELEN];
+        struct db *history_db = NULL;
+        snprintf(tmpname, sizeof(tmpname), "%s_history", db->dbname);
+        history_db = getdbbyname(tmpname);
+        if (history_db) {
+            db->history_db = history_db;
+            history_db->is_history_table = 1;
+            history_db->orig_db = db;
+            logmsg(LOGMSG_INFO,
+                   "'%s' is temporal table and history table is '%s'\n",
+                   db->dbname, history_db->dbname);
+        }
+    }
+
     strbuf_append(sql, "create table ");
     strbuf_append(sql, "\"");
     strbuf_append(sql, db->dbname);
@@ -1988,8 +2005,8 @@ static void *create_master_table(int eidx, const char *csc2_schema, int tblnum,
      * table.  None of the ops below should fail */
     offset = 0;
     CLIENT_CSTR_to_SERVER_BCSTR(etype, strlen(etype) + 1, 0, NULL /*convopts */,
-                                NULL /*blob */, e + offset, 6, &outdtsz,
-                                NULL /*convopts */, NULL /*blob */);
+                                NULL /*blob */, e + offset, strlen(etype) + 1,
+                                &outdtsz, NULL /*convopts */, NULL /*blob */);
     offset += field[0].len;
     CLIENT_CSTR_to_SERVER_BCSTR(name, strlen(name) + 1, 0, NULL /*convopts */,
                                 NULL /*blob */, e + offset, strlen(name) + 1,
@@ -4898,6 +4915,7 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
         currangearr_init(clnt->selectv_arr);
     }
     get_current_lsn(clnt);
+    clock_gettime(CLOCK_REALTIME, &(clnt->tstart));
 
     clnt->ddl_tables = hash_init_str(0);
     clnt->dml_tables = hash_init_str(0);
@@ -6212,6 +6230,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             if (*pRes == 0 && bias != OP_SeekGT) {
                 *pRes = pIdxKey->default_rc;
             }
+
             rc = SQLITE_OK;
             goto done;
         } else { /* ix_find_xxx || bdb_cursor_find */
@@ -8704,6 +8723,16 @@ int sqlite3BtreeInsert(
                 rc = SQLITE_ERROR;
                 goto done;
             }
+
+            int temporal_business_time_check(struct db * db, uint8_t * od_dta);
+            rc = temporal_business_time_check(pCur->db, pCur->ondisk_buf);
+            if (rc) {
+                sqlite3VdbeError(pCur->vdbe, "Invalid parameter: business "
+                                             "start time must be less than "
+                                             "business end time");
+                rc = SQLITE_ERROR;
+                goto done;
+            }
         }
 
         /* If it's a known invalid genid (see sqlite3BtreeNewRowid() for
@@ -10990,6 +11019,63 @@ int is_comdb2_index_blob(const char *dbname, int icol)
     return 0;
 }
 
+int is_comdb2_column_temporal(const char *dbname, const char *colname)
+{
+    struct db *db = getdbbyname(dbname);
+    struct schema *schema;
+    if (db == NULL) return 0;
+    schema = db->schema;
+    if (db->periods[PERIOD_SYSTEM].enable) {
+        if (strcmp(schema->member[db->periods[PERIOD_SYSTEM].start].name,
+                   colname) == 0)
+            return COLTIME_SYSSTART;
+        if (strcmp(schema->member[db->periods[PERIOD_SYSTEM].end].name,
+                   colname) == 0)
+            return COLTIME_SYSEND;
+    }
+    if (db->periods[PERIOD_BUSINESS].enable) {
+        if (strcmp(schema->member[db->periods[PERIOD_BUSINESS].start].name,
+                   colname) == 0)
+            return COLTIME_BUSSTART;
+        if (strcmp(schema->member[db->periods[PERIOD_BUSINESS].end].name,
+                   colname) == 0)
+            return COLTIME_BUSEND;
+    }
+    if (db->is_history_table) {
+        db = db->orig_db;
+        schema = db->schema;
+        /* end time of history record is same as start time of new record */
+        if (strcmp(schema->member[db->periods[PERIOD_SYSTEM].end].name,
+                   colname) == 0)
+            return COLTIME_SYSSTART;
+    }
+    return 0;
+}
+
+/* return true if table is temporal (current or history) */
+int is_comdb2_temporal_table(const char *tbl, char **start, char **end, int pd)
+{
+    struct db *db = getdbbyname(tbl);
+    struct schema *schema;
+    if (db == NULL) return 0;
+    assert(pd < PERIOD_MAX);
+    schema = db->schema;
+    if (db->periods[pd].enable) {
+        if (start) *start = schema->member[db->periods[pd].start].name;
+        if (end) *end = schema->member[db->periods[pd].end].name;
+        return 1;
+    }
+    return 0;
+}
+
+/* return true if table is a history table */
+int is_comdb2_history_table(const char *dbname)
+{
+    struct db *db = getdbbyname(dbname);
+    if (db == NULL) return 0;
+    return db->is_history_table;
+}
+
 void comdb2SetWriteFlag(int wrflag)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -12545,4 +12631,414 @@ uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
     return v->numTables;
+}
+
+void comdb2_get_temporal_opt(char **from, char **to, int *incl, int *all,
+                             int isBus, void *pCaller)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    if (isBus)
+        isBus = 1;
+    else
+        isBus = 0;
+
+    if (thd) {
+        if (clnt->pTemporalParser && clnt->pTemporalParser != pCaller) return;
+        *from = clnt->pTemporal[isBus].pFrom;
+        *to = clnt->pTemporal[isBus].pTo;
+        *incl = clnt->pTemporal[isBus].iIncl;
+        *all = clnt->pTemporal[isBus].iAll;
+        clnt->pTemporalParser = pCaller;
+    }
+}
+
+/* Write transaction start time to pMem */
+int comdb2_temporal_systime_start(Mem *pMem)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    dttz_t dt;
+    bzero(&dt, sizeof(dttz_t));
+    timespec_to_dttz(&(clnt->tstart), &dt, DTTZ_PREC_USEC);
+    bzero(pMem, sizeof(Mem));
+    sqlite3VdbeMemSetDatetime(pMem, &dt, NULL);
+    return SQLITE_OK;
+}
+
+/* Write NULL to pMem */
+int comdb2_temporal_systime_end(Mem *pMem)
+{
+    bzero(pMem, sizeof(Mem));
+    pMem->flags = MEM_Null;
+    return SQLITE_OK;
+}
+
+/* Check if pMem is greater than table's start time */
+int comdb2_temporal_systime_check(Vdbe *v, const char *dbname, Mem *pMem)
+{
+    dttz_t dt;
+    struct db *db = getdbbyname(dbname);
+    assert(db->periods[PERIOD_SYSTEM].enable);
+    bzero(&dt, sizeof(dttz_t));
+    timespec_to_dttz(&(db->history_db->tstart), &dt, DTTZ_PREC_USEC);
+    if (dt.dttz_sec > pMem->du.dt.dttz_sec ||
+        (dt.dttz_sec == pMem->du.dt.dttz_sec &&
+         dt.dttz_frac > pMem->du.dt.dttz_frac)) {
+        char timestr[64] = {0};
+        char timestr2[64] = {0};
+        int outdtsz;
+        dttz_to_str(&dt, timestr, 64, &outdtsz, pMem->tz);
+        dttz_to_str(&(pMem->du.dt), timestr2, 64, &outdtsz, pMem->tz);
+        sqlite3VdbeError(v, "Invalid parameter: table '%s' was not valid until "
+                            "'%s', given '%s'",
+                         dbname, timestr, timestr2);
+        return SQLITE_ERROR;
+    }
+    return SQLITE_OK;
+}
+
+/* Override the start time and end time of an ondisk record,
+ * use lower NULL or iq->tstart as the start time and
+ * use higer NULL as the end time
+*/
+int temporal_overwrite_systime(struct ireq *iq, uint8_t *rec, int use_tstart)
+{
+    struct schema *sc = iq->usedb->schema;
+    int fldidx;
+    struct field *f;
+
+    assert(iq->usedb->periods[PERIOD_SYSTEM].enable);
+
+    fldidx = iq->usedb->periods[PERIOD_SYSTEM].start;
+    f = &(sc->member[fldidx]);
+    if (!use_tstart) {
+        set_null(rec + f->offset, f->len);
+        memset(rec + f->offset, 0, f->len);
+        set_null_low(rec + f->offset, f->len);
+    } else {
+        int rc;
+        dttz_t dt;
+        Mem m;
+        int nblobs = 0;
+        struct field_conv_opts_tz convopts = {.flags = 0};
+        struct mem_info info;
+
+        timespec_to_dttz(&(iq->tstart), &dt, DTTZ_PREC_USEC);
+        bzero(&m, sizeof(Mem));
+        sqlite3VdbeMemSetDatetime(&m, &dt, NULL);
+
+        info.s = sc;
+        info.null = 0;
+        info.fail_reason = NULL;
+        info.tzname =
+            (iq->tzname && iq->tzname[0]) ? iq->tzname : "America/New_York";
+        info.m = &m;
+        info.nblobs = &nblobs;
+        info.convopts = &convopts;
+        info.outblob = NULL;
+        info.maxblobs = MAXBLOBS;
+        info.fldidx = fldidx;
+        rc = mem_to_ondisk(rec, f, &info, NULL);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to generate temporal history data\n", __func__);
+            return rc;
+        }
+    }
+
+    fldidx = iq->usedb->periods[PERIOD_SYSTEM].end;
+    f = &(sc->member[fldidx]);
+    memset(rec + f->offset, 0, f->len);
+    set_null_low(rec + f->offset, f->len);
+    set_null_high(rec + f->offset, f->len);
+
+#ifdef TEMPORAL_DEBUG
+    printf("%s: table %s\n", __func__, iq->usedb->dbname);
+    fsnapf(stdout, rec, getdatsize(iq->usedb));
+#endif
+
+    return 0;
+}
+
+int temporal_generate_history_data(struct ireq *iq, uint8_t *his_dta,
+                                   uint8_t *old_dta, uint8_t *od_dta,
+                                   size_t od_len)
+{
+    struct schema *sc = iq->usedb->schema;
+    struct field *fstart;
+    struct field *fend;
+    int rc;
+    dttz_t dt;
+    Mem m;
+    int nblobs = 0;
+    struct field_conv_opts_tz convopts = {.flags = 0};
+    struct mem_info info;
+
+    assert(iq->usedb->periods[PERIOD_SYSTEM].enable);
+    assert(old_dta);
+
+    memcpy(his_dta, old_dta, od_len);
+    if (od_dta) {
+        fstart = &(sc->member[iq->usedb->periods[PERIOD_SYSTEM].start]);
+        fend = &(sc->member[iq->usedb->periods[PERIOD_SYSTEM].end]);
+
+        memcpy(his_dta + fend->offset, od_dta + fstart->offset, fstart->len);
+    } else {
+        timespec_to_dttz(&(iq->tstart), &dt, DTTZ_PREC_USEC);
+        bzero(&m, sizeof(Mem));
+        sqlite3VdbeMemSetDatetime(&m, &dt, NULL);
+
+        info.s = sc;
+        info.null = 0;
+        info.fail_reason = NULL;
+        info.tzname =
+            (iq->tzname && iq->tzname[0]) ? iq->tzname : "America/New_York";
+        info.m = &m;
+        info.nblobs = &nblobs;
+        info.convopts = &convopts;
+        info.outblob = NULL;
+        info.maxblobs = MAXBLOBS;
+        info.fldidx = iq->usedb->periods[PERIOD_SYSTEM].end;
+        rc = mem_to_ondisk(his_dta, &(sc->member[info.fldidx]), &info, NULL);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to generate temporal history data\n", __func__);
+            return rc;
+        }
+    }
+
+    return 0;
+}
+
+int temporal_business_time_check(struct db *db, uint8_t *od_dta)
+{
+    struct schema *sc = db->schema;
+    struct field *fstart;
+    struct field *fend;
+    int rc;
+    if (!db->periods[PERIOD_BUSINESS].enable) return 0;
+    fstart = &(sc->member[db->periods[PERIOD_BUSINESS].start]);
+    fend = &(sc->member[db->periods[PERIOD_BUSINESS].end]);
+    rc = memcmp(od_dta + fstart->offset, od_dta + fend->offset, fstart->len);
+    if (rc >= 0) {
+        if (stype_is_null(od_dta + fend->offset)) return 0;
+        return 1;
+    }
+    return 0;
+}
+
+static inline void create_systime_trigger_query(strbuf *sql, struct db *db,
+                                                int is_update)
+{
+    struct schema *schema;
+    int field;
+    assert(db->periods[PERIOD_SYSTEM].enable);
+
+    strbuf_clear(sql);
+    schema = db->schema;
+
+    strbuf_append(sql, "create trigger \"");
+    strbuf_append(sql, db->dbname);
+    if (is_update)
+        strbuf_append(sql, "_systime_upd\" update on \"");
+    else
+        strbuf_append(sql, "_systime_del\" delete on \"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "\" begin ");
+    strbuf_append(sql, "insert into \"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "_history");
+    strbuf_append(sql, "\" (");
+    for (field = 0; field < schema->nmembers; field++) {
+        if (field == db->periods[PERIOD_SYSTEM].end) {
+            if (field != schema->nmembers - 1) strbuf_append(sql, ", ");
+            continue;
+        }
+        strbuf_append(sql, "\"");
+        strbuf_append(sql, schema->member[field].name);
+        strbuf_append(sql, "\"");
+        if (field != schema->nmembers - 1 &&
+            field + 1 != db->periods[PERIOD_SYSTEM].end)
+            strbuf_append(sql, ", ");
+    }
+    strbuf_append(sql, ") values (");
+    schema = db->schema;
+    for (field = 0; field < schema->nmembers; field++) {
+        if (field == db->periods[PERIOD_SYSTEM].end) {
+            if (field != schema->nmembers - 1) strbuf_append(sql, ", ");
+            continue;
+        }
+        strbuf_append(sql, "old.\"");
+        strbuf_append(sql, schema->member[field].name);
+        strbuf_append(sql, "\"");
+        if (field != schema->nmembers - 1 &&
+            field + 1 != db->periods[PERIOD_SYSTEM].end)
+            strbuf_append(sql, ", ");
+    }
+    strbuf_append(sql, "); end;");
+}
+
+static inline void create_systime_view_query(strbuf *sql, struct db *db)
+{
+    assert(db->periods[PERIOD_SYSTEM].enable);
+    strbuf_clear(sql);
+    strbuf_append(sql, "create view \"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "_systime\" as ");
+    strbuf_append(sql, "select * from ");
+    strbuf_append(sql, "\"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "\"");
+    strbuf_append(sql, " union all ");
+    strbuf_append(sql, "select * from ");
+    strbuf_append(sql, "\"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "_history");
+    strbuf_append(sql, "\"");
+    strbuf_append(sql, ";");
+}
+
+static inline void create_bustime_trigger_query(strbuf *sql, struct db *db)
+{
+    struct schema *schema;
+    int field;
+    int fstart, fend;
+    char *ret;
+    assert(db->periods[PERIOD_BUSINESS].enable);
+
+    fstart = db->periods[PERIOD_BUSINESS].start;
+    fend = db->periods[PERIOD_BUSINESS].end;
+
+    strbuf_clear(sql);
+    schema = db->schema;
+
+    strbuf_append(sql, "create trigger \"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "_bustime\" business_time on \"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "\" when ");
+    strbuf_append(sql, "(old.\"");
+    strbuf_append(sql, schema->member[fstart].name);
+    strbuf_append(sql, "\" < new.\"");
+    strbuf_append(sql, schema->member[fstart].name);
+    strbuf_append(sql, "\" or ");
+    strbuf_append(sql, "old.\"");
+    strbuf_append(sql, schema->member[fstart].name);
+    strbuf_append(sql, "\" is null) and ");
+    strbuf_append(sql, "(old.\"");
+    strbuf_append(sql, schema->member[fend].name);
+    strbuf_append(sql, "\" > new.\"");
+    strbuf_append(sql, schema->member[fend].name);
+    strbuf_append(sql, "\" or ");
+    strbuf_append(sql, "old.\"");
+    strbuf_append(sql, schema->member[fend].name);
+    strbuf_append(sql, "\" is null)");
+    strbuf_append(sql, " begin ");
+    strbuf_append(sql, "insert into \"");
+    strbuf_append(sql, db->dbname);
+    strbuf_append(sql, "\" values (");
+    schema = db->schema;
+    for (field = 0; field < schema->nmembers; field++) {
+        strbuf_append(sql, "old.\"");
+        strbuf_append(sql, schema->member[field].name);
+        strbuf_append(sql, "\"");
+        if (field != schema->nmembers - 1) strbuf_append(sql, ", ");
+    }
+    strbuf_append(sql, "); end;");
+}
+
+void temporal_sqlite_update(sqlite3 *sqldb)
+{
+    int rc = 0;
+    int i;
+    struct db *db;
+    char *errstr = NULL;
+    strbuf *sql;
+    extern pthread_rwlock_t thedb_lock;
+
+    sql = strbuf_new();
+    strbuf_clear(sql);
+
+    pthread_rwlock_rdlock(&thedb_lock);
+
+    for (i = 0; i < thedb->num_dbs; i++) {
+        db = thedb->dbs[i];
+        if (db->periods[PERIOD_SYSTEM].enable) {
+            strbuf_clear(sql);
+            strbuf_append(sql, "drop view if exists \"");
+            strbuf_append(sql, db->dbname);
+            strbuf_append(sql, "_systime\";");
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+
+            create_systime_view_query(sql, db);
+            rc = sqlite3_exec(sqldb, strbuf_buf(sql), NULL, NULL, &errstr);
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+
+            strbuf_clear(sql);
+            strbuf_append(sql, "drop trigger if exists \"");
+            strbuf_append(sql, db->dbname);
+            strbuf_append(sql, "_systime_upd\";");
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+
+            create_systime_trigger_query(sql, db, 1);
+            rc = sqlite3_exec(sqldb, strbuf_buf(sql), NULL, NULL, &errstr);
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+
+            strbuf_clear(sql);
+            strbuf_append(sql, "drop trigger if exists \"");
+            strbuf_append(sql, db->dbname);
+            strbuf_append(sql, "_systime_del\";");
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+
+            create_systime_trigger_query(sql, db, 0);
+            rc = sqlite3_exec(sqldb, strbuf_buf(sql), NULL, NULL, &errstr);
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+        }
+        if (db->periods[PERIOD_BUSINESS].enable) {
+            strbuf_clear(sql);
+            strbuf_append(sql, "drop trigger if exists \"");
+            strbuf_append(sql, db->dbname);
+            strbuf_append(sql, "_bustime\";");
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+
+            create_bustime_trigger_query(sql, db);
+            rc = sqlite3_exec(sqldb, strbuf_buf(sql), NULL, NULL, &errstr);
+            if (rc != SQLITE_OK) {
+                logmsg(LOGMSG_FATAL, "%s: temporal table error \"%s\"\n",
+                       __func__, errstr);
+                abort();
+            }
+        }
+    }
+
+    pthread_rwlock_unlock(&thedb_lock);
 }

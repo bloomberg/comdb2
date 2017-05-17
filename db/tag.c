@@ -1686,6 +1686,12 @@ int create_key_schema(struct db *db, struct schema *schema, int alt)
                 }
                 m->type = schema->member[m->idx].type;
                 m->len = schema->member[m->idx].len;
+                if (db->periods[PERIOD_SYSTEM].enable) {
+                    if (m->idx == db->periods[PERIOD_SYSTEM].start)
+                        m->flags |= SYSTEM_START;
+                    else if (m->idx == db->periods[PERIOD_SYSTEM].end)
+                        m->flags |= SYSTEM_END;
+                }
 
                 /* the dbstore default is still needed during schema change, so
                  * populate that */
@@ -4507,6 +4513,7 @@ static int default_cmp(int oldlen, const void *oldptr, int newlen,
  *   3. NULL attribute removed from field
  *   4. field size reduced
  *   5. field deleted
+ *   6. enable system versioning
  * SC_BAD_NEW_FIELD: New field missing dbstore or null
  * SC_COLUMN_ADDED: If new column is added
  * SC_DBSTORE_CHANGE: Only change is dbstore of an existing field */
@@ -4518,6 +4525,9 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     int change = SC_NO_CHANGE;
     int oidx, nidx;
 
+    if (!old->periods[PERIOD_SYSTEM].enable &&
+        new->periods[PERIOD_SYSTEM].enable)
+        return SC_TAG_CHANGE;
     /* Find changes to old fields */
     for (oidx = 0; oidx < old->nmembers; ++oidx) {
         char buf[256] = "";
@@ -4723,7 +4733,8 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                                  "too large forcing rebuild)\n",
                             old->tag, nidx, fnew->name);
                 }
-            } else if (fnew->in_default || allow_null) {
+            } else if (fnew->in_default || allow_null ||
+                       fnew->flags & MEMBER_PERIOD_MASK) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
                     logmsg(LOGMSG_USER, "tag %s has new field %d (named %s)\n",
@@ -5222,6 +5233,7 @@ static int add_cmacc_stmt_int(struct db *db, int alt, int side_effects)
     int piece, npieces;
     struct schema *schema;
     struct field *m;
+    int period, start, end;
     char buf[MAXCOLNAME + 1] = {0}; /* scratch space buffer */
     int offset;
     int ntags;
@@ -5462,6 +5474,53 @@ static int add_cmacc_stmt_int(struct db *db, int alt, int side_effects)
                 }
             }
         }
+        for (period = 0; period < PERIOD_MAX; period++) {
+            start = end = -1;
+            rc = dyns_get_period(period, &start, &end);
+            if (rc != 0) {
+                if (rtag) free(rtag);
+                return -1;
+            }
+            if (start >= 0 && end >= 0) {
+                if ((schema->member[start].flags & MEMBER_PERIOD_MASK) ||
+                    (schema->member[end].flags & MEMBER_PERIOD_MASK)) {
+                    if (db->iq)
+                        reqerrstr(db->iq, ERR_SC,
+                                  "period time already in use.");
+                    if (rtag) free(rtag);
+                    return -1;
+                }
+                if (schema->member[start].in_default ||
+                    schema->member[start].out_default ||
+                    schema->member[end].in_default ||
+                    schema->member[end].out_default) {
+                    if (db->iq)
+                        reqerrstr(
+                            db->iq, ERR_SC,
+                            "period time should not have default values.");
+                    if (rtag) free(rtag);
+                    return -1;
+                }
+                if (schema->member[start].flags & NO_NULL ||
+                    schema->member[end].flags & NO_NULL) {
+                    if (db->iq)
+                        reqerrstr(db->iq, ERR_SC,
+                                  "period time should be nullable.");
+                    if (rtag) free(rtag);
+                    return -1;
+                }
+                schema->member[start].flags |=
+                    (period == PERIOD_SYSTEM ? SYSTEM_START : BUSINESS_START);
+                schema->member[end].flags |=
+                    (period == PERIOD_SYSTEM ? SYSTEM_END : BUSINESS_END);
+                schema->periods[period].enable = 1;
+                schema->periods[period].start = start;
+                schema->periods[period].end = end;
+                db->periods[period].enable = 1;
+                db->periods[period].start = start;
+                db->periods[period].end = end;
+            }
+        }
         if (create_key_schema(db, schema, alt) > 0)
             return -1;
         if (is_disk_schema) {
@@ -5551,15 +5610,11 @@ void fix_lrl_ixlen_tran(tran_type *tran)
             db->ix_keylen[ix] = get_size_of_schema(s);
         }
 
-        if (db->csc2_schema) {
-            free(db->csc2_schema);
-            db->csc2_schema = NULL;
-        }
-
         if (bdb_have_llmeta()) {
             int ver;
             ver = get_csc2_version_tran(db->dbname, tran);
             if (ver > 0) {
+                if (db->csc2_schema) free(db->csc2_schema);
                 get_csc2_file_tran(db->dbname, ver, &db->csc2_schema,
                                    &db->csc2_schema_len, tran);
             }

@@ -86,7 +86,7 @@ void dyns_disallow_bools(void) { allow_bools = 0; }
 
 int dyns_used_bools(void) { return used_bools; }
 
-void start_constraint_list(char *tblname)
+void start_constraint_list(char *keyname, int no_overlap)
 {
     if (nconstraints >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY CONSTRAINTS SPECIFIED. MAX %d\n",
@@ -94,15 +94,22 @@ void start_constraint_list(char *tblname)
         any_errors++;
         return;
     }
-    constraints[nconstraints].flags = 0;
+    constraints[nconstraints].flags = no_overlap ? CT_NO_OVERLAP : 0;
     constraints[nconstraints].ncnstrts = 0;
-    constraints[nconstraints].lclkey = tblname;
+    constraints[nconstraints].lclkey = keyname;
     /*  fprintf(stderr, "constraints for key %s\n", tblname);*/
 }
 
 void set_constraint_mod(int start, int op, int type)
 {
     /*fprintf(stderr, "%d %d %d\n", start, op, type);*/
+    if (constraints[nconstraints].flags & CT_NO_OVERLAP) {
+        csc2_error("Error: No cascading allowed on no overlap constraints");
+        csc2_syntax_error(
+            "Error: No cascading allowed on no overlap constraints");
+        any_errors++;
+        return;
+    }
     if (type == 0)
         return;
     if (op == 0)
@@ -115,6 +122,111 @@ void end_constraint_list(void)
 {
     /*  fprintf(stderr, "constraint: end list\n");*/
     nconstraints++;
+}
+
+int dyns_get_period(int period, int *start, int *end)
+{
+    if (nperiods <= 0) return 0;
+    if (period >= PERIOD_MAX) return -1;
+    if (!periods[period].enable) return 0;
+    *start = periods[period].start;
+    *end = periods[period].end;
+    return 0;
+}
+
+void start_periods_list(void)
+{
+    int i;
+    for (i = 0; i < PERIOD_MAX; i++) {
+        periods[i].enable = 0;
+        periods[i].start = -1;
+        periods[i].end = -1;
+    }
+}
+
+int getsymbol(char *tabletag, char *nm, int *tblidx);
+void add_period(char *name, char *start, char *end)
+{
+    int period_type = PERIOD_MAX;
+    int i, tidx = 0;
+    char *tag;
+    if (strcasecmp(name, "SYSTEM") == 0)
+        period_type = PERIOD_SYSTEM;
+    else if (strcasecmp(name, "BUSINESS") == 0)
+        period_type = PERIOD_BUSINESS;
+    if (period_type < PERIOD_MAX) {
+        if (periods[period_type].enable) {
+            csc2_error("Error at line %3d: DUPLICATE PERIOD: %s.\n",
+                       current_line, name);
+            csc2_syntax_error("Error at line %3d: DUPLICATE PERIOD: %s.",
+                              current_line, name);
+            any_errors++;
+            return;
+        }
+
+        strlower(start, strlen(start));
+        tag = ONDISKTAG;
+        i = getsymbol(tag, start, &tidx);
+        if (i == -1) {
+            tag = (ntables > 1) ? ONDISKTAG : DEFAULTTAG;
+            i = getsymbol(tag, start, &tidx);
+        }
+        if (i == -1) {
+            csc2_error("Error at line %3d: SYMBOL NOT FOUND: %s.\n",
+                       current_line, start);
+            csc2_syntax_error("Error at line %3d: SYMBOL NOT FOUND: %s.",
+                              current_line, start);
+            csc2_error("IF IN MULTI-TABLE MODE MAKE SURE %s TAG IS DEFINED\n",
+                       ONDISKTAG);
+            any_errors++;
+            return;
+        } else if (tables[tidx].sym[i].type != T_DATETIMEUS) {
+            csc2_error("Error at line %3d: BAD PERIOD START: %s\n",
+                       current_line, start);
+            csc2_syntax_error("Error at line %3d: BAD PERIOD START: %s",
+                              current_line, start);
+            any_errors++;
+            return;
+        } else {
+            periods[period_type].start = i;
+        }
+
+        strlower(end, strlen(end));
+        tag = ONDISKTAG;
+        i = getsymbol(tag, end, &tidx);
+        if (i == -1) {
+            tag = (ntables > 1) ? ONDISKTAG : DEFAULTTAG;
+            i = getsymbol(tag, end, &tidx);
+        }
+        if (i == -1) {
+            csc2_error("Error at line %3d: SYMBOL NOT FOUND: %s.\n",
+                       current_line, end);
+            csc2_syntax_error("Error at line %3d: SYMBOL NOT FOUND: %s.",
+                              current_line, end);
+            csc2_error("IF IN MULTI-TABLE MODE MAKE SURE %s TAG IS DEFINED\n",
+                       ONDISKTAG);
+            any_errors++;
+            return;
+        } else if (tables[tidx].sym[i].type != T_DATETIMEUS) {
+            csc2_error("Error at line %3d: BAD PERIOD END: %s\n", current_line,
+                       end);
+            csc2_syntax_error("Error at line %3d: BAD PERIOD END: %s",
+                              current_line, end);
+            any_errors++;
+            return;
+        } else {
+            periods[period_type].end = i;
+        }
+        periods[period_type].enable = 1;
+        nperiods++;
+    } else {
+        csc2_error("Error at line %3d: UNKNOWN PERIOD: %s.\n", current_line,
+                   name);
+        csc2_syntax_error("Error at line %3d: UNKNOWN PERIOD: %s.",
+                          current_line, name);
+        any_errors++;
+        return;
+    }
 }
 
 void add_constraint(char *tbl, char *key)
@@ -361,9 +473,9 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
                 break;
             }
             if (numdim(tables[jj].sym[ii].dim) > 0) {
-                fprintf(stderr, "Record \"%s\" has ARRAY fields. SQL does not "
-                                "support this currently.\n",
-                        tables[jj].table_tag);
+                csc2_error("Record \"%s\" has ARRAY fields. SQL does not "
+                           "support this currently.\n",
+                           tables[jj].table_tag);
                 any_errors++;
                 break;
             }

@@ -95,6 +95,10 @@ entries:
       url: /timepart.html
       output: web
 
+    - title: Bi-Temporal Tables
+      url: /bitemporal.html
+      output: web
+
   - title: Configuring databases
     output: web
     folderitems:

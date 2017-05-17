@@ -171,3 +171,177 @@ int validate_ix_names(struct db *db)
     }
     return rc;
 }
+
+int init_history_sc(struct schema_change_type *s, struct db *db,
+                    struct schema_change_type *scopy)
+{
+    scopy->sb = s->sb;
+    scopy->must_close_sb = 0;
+    scopy->nothrevent = 1;
+    scopy->live = 1;
+    scopy->type = DBTYPE_TAGGED_TABLE;
+    scopy->finalize = 0;
+    if (strlen(db->dbname) + strlen("_history") + 1 > MAXTABLELEN) {
+        sc_errf(s, "History table name too long\n");
+        free_schema_change_type(scopy);
+        return SC_CSC2_ERROR;
+    }
+    snprintf(scopy->table, sizeof(scopy->table), "%s_history", db->dbname);
+    scopy->table[sizeof(scopy->table) - 1] = '\0';
+    if (scopy->newcsc2) free(scopy->newcsc2);
+    scopy->newcsc2 = NULL;
+    scopy->headers = s->headers;
+    scopy->compress = s->compress;
+    scopy->compress_blobs = s->compress_blobs;
+    scopy->ip_updates = s->ip_updates;
+    scopy->instant_sc = s->instant_sc;
+    scopy->force_rebuild = s->force_rebuild;
+    scopy->force_dta_rebuild = s->force_dta_rebuild;
+    scopy->force_blob_rebuild = s->force_blob_rebuild;
+    scopy->is_history = 1;
+    scopy->orig_db = db;
+    s->history_s = scopy;
+
+    return 0;
+}
+
+char *sql_field_default_trans(struct field *f, int is_out);
+char *generate_history_csc2(struct db *db)
+{
+    struct schema *schema;
+    int field;
+    strbuf *csc2;
+    int ixnum;
+    char buf[128];
+    char *outcsc2 = NULL;
+
+    schema = db->schema;
+    csc2 = strbuf_new();
+    strbuf_clear(csc2);
+
+    strbuf_append(csc2, "\n");
+    strbuf_append(csc2, "tag ondisk\n");
+    strbuf_append(csc2, "{\n");
+    for (field = 0; field < schema->nmembers; field++) {
+        strbuf_append(csc2, "\t");
+        strbuf_append(csc2, csc2type(&schema->member[field]));
+        strbuf_append(csc2, "\t");
+        strbuf_append(csc2, schema->member[field].name);
+        switch (schema->member[field].type) {
+        case SERVER_BYTEARRAY:
+            strbuf_append(csc2, "[");
+            snprintf(buf, 128, "%d", schema->member[field].len - 1);
+            strbuf_append(csc2, buf);
+            strbuf_append(csc2, "]");
+            break;
+        case SERVER_BCSTR:
+        case CLIENT_CSTR:
+        case CLIENT_PSTR2:
+        case CLIENT_PSTR:
+        case CLIENT_BYTEARRAY:
+            strbuf_append(csc2, "[");
+            snprintf(buf, 128, "%d", schema->member[field].len);
+            strbuf_append(csc2, buf);
+            strbuf_append(csc2, "]");
+            break;
+        case CLIENT_VUTF8:
+        case SERVER_VUTF8:
+            if (schema->member[field].len > 5) {
+                strbuf_append(csc2, "[");
+                snprintf(buf, 128, "%d", schema->member[field].len - 5);
+                strbuf_append(csc2, buf);
+                strbuf_append(csc2, "]");
+            }
+            break;
+        default: break;
+        }
+        if (!(schema->member[field].flags & NO_NULL))
+            strbuf_append(csc2, " null=yes");
+        if (schema->member[field].in_default) {
+            strbuf_append(csc2, " dbstore=");
+            strbuf_append(csc2,
+                          sql_field_default_trans(&(schema->member[field]), 0));
+        }
+        if (schema->member[field].out_default) {
+            strbuf_append(csc2, " dbload=");
+            strbuf_append(csc2,
+                          sql_field_default_trans(&(schema->member[field]), 1));
+        }
+        strbuf_append(csc2, "\n");
+    }
+    strbuf_append(csc2, "}\n");
+    if (db->nix > 0) {
+        strbuf_append(csc2, "keys\n");
+        strbuf_append(csc2, "{\n");
+        /* do the indices */
+        for (ixnum = 0; ixnum < db->nix; ixnum++) {
+            schema = db->ixschema[ixnum];
+            strbuf_append(csc2, "\t dup ");
+            if (schema->flags & SCHEMA_DATACOPY) {
+                strbuf_append(csc2, "datacopy ");
+            }
+            if (schema->flags & SCHEMA_RECNUM) {
+                strbuf_append(csc2, "recnum ");
+            }
+            strbuf_append(csc2, "\"");
+            if (strncasecmp(schema->csctag, ".NEW.", 5) == 0)
+                strbuf_append(csc2, schema->csctag + 5);
+            else
+                strbuf_append(csc2, schema->csctag);
+            strbuf_append(csc2, "\" = ");
+            for (field = 0; field < schema->nmembers; field++) {
+                if (field > 0) strbuf_append(csc2, " + ");
+                if (schema->member[field].flags & INDEX_DESCEND)
+                    strbuf_append(csc2, "<DESCEND> ");
+                if (schema->member[field].isExpr) {
+                    strbuf_append(csc2, "(");
+                    strbuf_append(csc2, csc2type(&schema->member[field]));
+                    switch (schema->member[field].type) {
+                    case SERVER_BYTEARRAY:
+                        strbuf_append(csc2, "[");
+                        snprintf(buf, 128, "%d", schema->member[field].len - 1);
+                        strbuf_append(csc2, buf);
+                        strbuf_append(csc2, "]");
+                        break;
+                    case SERVER_BCSTR:
+                    case CLIENT_CSTR:
+                    case CLIENT_PSTR2:
+                    case CLIENT_PSTR:
+                    case CLIENT_BYTEARRAY:
+                        strbuf_append(csc2, "[");
+                        snprintf(buf, 128, "%d", schema->member[field].len);
+                        strbuf_append(csc2, buf);
+                        strbuf_append(csc2, "]");
+                        break;
+                    case CLIENT_VUTF8:
+                    case SERVER_VUTF8:
+                        if (schema->member[field].len > 5) {
+                            strbuf_append(csc2, "[");
+                            snprintf(buf, 128, "%d",
+                                     schema->member[field].len - 5);
+                            strbuf_append(csc2, buf);
+                            strbuf_append(csc2, "]");
+                        }
+                        break;
+                    default: break;
+                    }
+                    strbuf_append(csc2, ")\"");
+                }
+                strbuf_append(csc2, schema->member[field].name);
+                if (schema->member[field].isExpr) {
+                    strbuf_append(csc2, "\"");
+                }
+            }
+            if (schema->where) {
+                strbuf_append(csc2, " {");
+                strbuf_append(csc2, schema->where);
+                strbuf_append(csc2, "}");
+            }
+            strbuf_append(csc2, "\n");
+        }
+        strbuf_append(csc2, "}\n");
+    }
+    outcsc2 = strdup(strbuf_buf(csc2));
+    strbuf_free(csc2);
+    return outcsc2;
+}

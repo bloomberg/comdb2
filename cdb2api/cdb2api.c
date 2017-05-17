@@ -3003,9 +3003,12 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
             char *dup_sql = strdup(sql+skip_len); 
             char *rest;
             char *set_tok = strtok_r(dup_sql, " ", &rest);
-            /* special case for spversion */
+            /* special case for spversion and temporal */
             if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
                 skip_len += 10;
+                set_tok = strtok_r(rest, " ", &rest);
+            } else if (set_tok && strcasecmp(set_tok, "temporal") == 0) {
+                skip_len += 9;
                 set_tok = strtok_r(rest, " ", &rest);
             }
             if (!set_tok) {

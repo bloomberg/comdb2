@@ -44,6 +44,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
+    sc->is_history = 0;
     if (pthread_mutex_init(&sc->mtx, NULL)) {
         free_schema_change_type(sc);
         return NULL;
@@ -58,6 +59,24 @@ struct schema_change_type *new_schemachange_type()
     if (sc != NULL) sc = init_schemachange_type(sc);
 
     return sc;
+}
+
+void deep_copy_schemachange_type(struct schema_change_type *des,
+                                 struct schema_change_type *src)
+{
+    struct dest *destent;
+    struct dest *d;
+    memcpy(des, src, sizeof(struct schema_change_type));
+    if (src->newcsc2) des->newcsc2 = strdup(src->newcsc2);
+    listc_init(&des->dests, offsetof(struct dest, lnk));
+    LISTC_FOR_EACH(&src->dests, destent, lnk)
+    {
+        struct dest *d = malloc(sizeof(struct dest));
+        d->dest = strdup(destent->dest);
+        listc_abl(&des->dests, d);
+    }
+    des->db = des->newdb = NULL;
+    des->timepart_dbs = des->timepart_newdbs = NULL;
 }
 
 void cleanup_strptr(char **schemabuf)
@@ -78,6 +97,9 @@ static void free_dests(struct schema_change_type *s)
 void free_schema_change_type(struct schema_change_type *s)
 {
     if (s) {
+        if (s->history_s) free_schema_change_type(s->history_s);
+        s->history_s = NULL;
+
         if (s->newcsc2) {
             free(s->newcsc2);
             s->newcsc2 = NULL;

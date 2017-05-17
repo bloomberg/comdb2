@@ -3235,35 +3235,6 @@ int bdb_fetch_nodta_genid_by_recnum(bdb_state_type *bdb_state, int ixnum,
     return outrc;
 }
 
-int bdb_fetch_next_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
-                         int ixlen, void *lastix, int lastrrn,
-                         unsigned long long lastgenid, void *dta, int dtalen,
-                         int *reqdtalen, void *ixfound, int *rrn,
-                         unsigned long long *genid, bdb_fetch_args_t *args,
-                         int *bdberr)
-{
-    int outrc;
-
-    *bdberr = BDBERR_NOERROR;
-
-    BDB_READLOCK("bdb_fetch_next_genid");
-
-    outrc =
-        bdb_fetch_int(1,              /* return data */
-                      FETCH_INT_NEXT, /* next */
-                      1,              /* lookahead */
-                      bdb_state, ix, ixnum, ixlen, lastix, lastrrn, lastgenid,
-                      dta, dtalen, reqdtalen, ixfound, rrn, NULL, /* recnum */
-                      genid, 0, NULL, NULL, NULL, NULL,           /* no blobs */
-                      0, NULL,                                    /* no txn */
-                      NULL, /* no cur_ser */
-                      args, bdberr);
-
-    BDB_RELLOCK();
-
-    return outrc;
-}
-
 int bdb_fetch_next_genid_nl_ser(bdb_state_type *bdb_state, void *ix, int ixnum,
                                 int ixlen, void *lastix, int lastrrn,
                                 unsigned long long lastgenid, void *dta,
@@ -3304,7 +3275,7 @@ int bdb_fetch_next_genid_tran(bdb_state_type *bdb_state, void *ix, int ixnum,
 
     *bdberr = BDBERR_NOERROR;
 
-    BDB_READLOCK("bdb_fetch_next_genid");
+    BDB_READLOCK("bdb_fetch_next_genid_tran");
 
     outrc =
         bdb_fetch_int(1,              /* return data */
@@ -3350,17 +3321,18 @@ int bdb_fetch_next_blobs_genid(
     return outrc;
 }
 
-int bdb_fetch_next_nodta_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
-                               int ixlen, void *lastix, int lastrrn,
-                               unsigned long long lastgenid, void *ixfound,
-                               int *rrn, unsigned long long *genid,
-                               bdb_fetch_args_t *args, int *bdberr)
+int bdb_fetch_next_nodta_genid_tran(bdb_state_type *bdb_state, void *ix,
+                                    int ixnum, int ixlen, void *lastix,
+                                    int lastrrn, unsigned long long lastgenid,
+                                    void *ixfound, int *rrn,
+                                    unsigned long long *genid, void *tran,
+                                    bdb_fetch_args_t *args, int *bdberr)
 {
     int outrc;
 
     *bdberr = BDBERR_NOERROR;
 
-    BDB_READLOCK("bdb_fetch_next_nodta_genid");
+    BDB_READLOCK("bdb_fetch_next_nodta_genid_tran");
 
     outrc = bdb_fetch_int(0,              /* return no data */
                           FETCH_INT_NEXT, /* next */
@@ -3369,8 +3341,7 @@ int bdb_fetch_next_nodta_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
                           lastgenid, NULL, 0, NULL, /* dta, dtalen, reqdtalen */
                           ixfound, rrn, NULL,       /* recnum */
                           genid, 0, NULL, NULL, NULL, NULL, /* no blobs */
-                          0, NULL,                          /* no txn */
-                          NULL,                             /* no cur_ser */
+                          0, tran, NULL,                    /* no cur_ser */
                           args, bdberr);
 
     BDB_RELLOCK();
@@ -3407,18 +3378,18 @@ int bdb_fetch_next_nodta_genid_nl_ser(bdb_state_type *bdb_state, void *ix,
     return outrc;
 }
 
-int bdb_fetch_prev_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
-                         int ixlen, void *lastix, int lastrrn,
-                         unsigned long long lastgenid, void *dta, int dtalen,
-                         int *reqdtalen, void *ixfound, int *rrn,
-                         unsigned long long *genid, bdb_fetch_args_t *args,
-                         int *bdberr)
+int bdb_fetch_prev_genid_tran(bdb_state_type *bdb_state, void *ix, int ixnum,
+                              int ixlen, void *lastix, int lastrrn,
+                              unsigned long long lastgenid, void *dta,
+                              int dtalen, int *reqdtalen, void *ixfound,
+                              int *rrn, unsigned long long *genid, void *tran,
+                              bdb_fetch_args_t *args, int *bdberr)
 {
     int outrc;
 
     *bdberr = BDBERR_NOERROR;
 
-    BDB_READLOCK("bdb_fetch_prev_genid");
+    BDB_READLOCK("bdb_fetch_prev_genid_tran");
 
     outrc =
         bdb_fetch_int(1,              /* return data */
@@ -3427,8 +3398,7 @@ int bdb_fetch_prev_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
                       bdb_state, ix, ixnum, ixlen, lastix, lastrrn, lastgenid,
                       dta, dtalen, reqdtalen, ixfound, rrn, NULL, /* recnum */
                       genid, 0, NULL, NULL, NULL, NULL,           /* no blobs */
-                      0, NULL,                                    /* no txn */
-                      NULL, /* no cur_ser */
+                      0, tran, NULL, /* no cur_ser */
                       args, bdberr);
 
     BDB_RELLOCK();
@@ -3494,17 +3464,18 @@ int bdb_fetch_prev_blobs_genid(
     return outrc;
 }
 
-int bdb_fetch_prev_nodta_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
-                               int ixlen, void *lastix, int lastrrn,
-                               unsigned long long lastgenid, void *ixfound,
-                               int *rrn, unsigned long long *genid,
-                               bdb_fetch_args_t *args, int *bdberr)
+int bdb_fetch_prev_nodta_genid_tran(bdb_state_type *bdb_state, void *ix,
+                                    int ixnum, int ixlen, void *lastix,
+                                    int lastrrn, unsigned long long lastgenid,
+                                    void *ixfound, int *rrn,
+                                    unsigned long long *genid, void *tran,
+                                    bdb_fetch_args_t *args, int *bdberr)
 {
     int outrc;
 
     *bdberr = BDBERR_NOERROR;
 
-    BDB_READLOCK("bdb_fetch_prev_nodta_genid");
+    BDB_READLOCK("bdb_fetch_prev_nodta_genid_tran");
 
     outrc = bdb_fetch_int(0,              /* return no data */
                           FETCH_INT_PREV, /* prev */
@@ -3513,8 +3484,7 @@ int bdb_fetch_prev_nodta_genid(bdb_state_type *bdb_state, void *ix, int ixnum,
                           lastgenid, NULL, 0, NULL, /* dta, dtalen, reqdtalen */
                           ixfound, rrn, NULL,       /* recnum */
                           genid, 0, NULL, NULL, NULL, NULL, /* no blobs */
-                          0, NULL,                          /* no txn */
-                          NULL,                             /* no cur_ser */
+                          0, tran, NULL,                    /* no cur_ser */
                           args, bdberr);
 
     BDB_RELLOCK();

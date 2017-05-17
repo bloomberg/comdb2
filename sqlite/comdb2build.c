@@ -873,6 +873,21 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     if (table && chkAndCopyTableTokens(v, pParse, tp->tablename, table, NULL, 1)) 
         goto err;
 
+    int is_comdb2_temporal_table(const char *tbl, char **start, char **end,
+                                 int pd);
+    int is_comdb2_history_table(const char *dbname);
+    if (is_comdb2_temporal_table(tp->tablename, NULL, NULL, 0 /*SYSTEM*/))
+    {
+        setError(pParse, SQLITE_ERROR,
+                 "time partition on temporal table is currently not supported");
+        goto clean_arg;
+    }
+    if (is_comdb2_history_table(tp->tablename))
+    {
+        setError(pParse, SQLITE_ERROR,
+                 "time partition on history table is currently not supported");
+        goto clean_arg;
+    }
 
     max_length = partition_name->n < MAXTABLELEN ? partition_name->n : MAXTABLELEN;
     tp->partition_name = (char*) malloc(MAXTABLELEN);

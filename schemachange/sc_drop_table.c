@@ -23,6 +23,7 @@
 #include "sc_schema.h"
 #include "sc_global.h"
 #include "sc_callbacks.h"
+#include "sc_util.h"
 
 static int delete_table(struct db *db, tran_type *tran)
 {
@@ -42,6 +43,40 @@ static int delete_table(struct db *db, tran_type *tran)
     return 0;
 }
 
+int do_drop_history(struct ireq *iq, tran_type *tran)
+{
+    struct schema_change_type *s = iq->sc;
+    struct db *db = s->db;
+    struct schema_change_type *scopy = new_schemachange_type();
+    if (init_history_sc(s, db, scopy)) {
+        reqerrstr(iq, ERR_SC, "History table name too long");
+        return SC_CSC2_ERROR;
+    }
+    scopy->same_schema = 1;
+    scopy->drop_table = 1;
+    scopy->fastinit = 1;
+    if (get_csc2_file(scopy->table, -1, &scopy->newcsc2, NULL)) {
+        reqerrstr(iq, ERR_SC, "History table %s schema not found",
+                  scopy->table);
+        sc_errf(s, "History table %s schema not found\n", scopy->table);
+        free_schema_change_type(scopy);
+        return SC_CSC2_ERROR;
+    }
+
+    iq->sc = scopy;
+    s->history_rc = do_drop_table(iq, tran);
+    iq->sc = s;
+    if (s->history_rc != SC_OK && s->history_rc != SC_COMMIT_PENDING) {
+        reqerrstr(iq, ERR_SC, "Failed to delete history table");
+        sc_errf(s, "error deleting history table\n");
+        logmsg(LOGMSG_ERROR, "%s failed with rc %d\n", __func__, s->history_rc);
+        return s->history_rc;
+    }
+
+    sc_printf(s, "Drop history table %s ok\n", scopy->table);
+    return SC_OK;
+}
+
 int do_drop_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
@@ -56,6 +91,22 @@ int do_drop_table(struct ireq *iq, tran_type *tran)
         sc_errf(s, "Can't drop tables with foreign constraints\n");
         reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
         return -1;
+    }
+    if (!s->drop_table && (db->is_history_table || db->history_db)) {
+        sc_errf(s, "Fastinit not supported for temporal tables\n");
+        reqerrstr(iq, ERR_SC, "Fastinit not supported for temporal tables");
+        return -1;
+    }
+    if (!s->is_history && db->is_history_table) {
+        sc_errf(s, "Temporal history tables must be dropped with base table\n");
+        reqerrstr(iq, ERR_SC,
+                  "Temporal history tables must be dropped with base tables");
+        return -1;
+    }
+
+    if (s->is_history == 0 && s->db && s->db->periods[PERIOD_SYSTEM].enable) {
+        s->drop_history = 1;
+        return do_drop_history(iq, tran);
     }
 
     return SC_OK;

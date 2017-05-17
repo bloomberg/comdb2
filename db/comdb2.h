@@ -369,7 +369,8 @@ enum OSQL_RPL_TYPE {
     OSQL_DELIDX = 24, /* new osql type to support indexes on expressions */
     OSQL_INSIDX = 25, /* new osql type to support indexes on expressions */
     OSQL_DBQ_CONSUME_UUID = 26,
-    MAX_OSQL_TYPES = 27
+    OSQL_TIMESPEC = 27,
+    MAX_OSQL_TYPES = 28
 };
 
 enum DEBUGREQ { DEBUG_METADB_PUT = 1 };
@@ -527,13 +528,15 @@ enum DB_METADATA {
     META_INSTANT_SCHEMA_CHANGE = -10,
     META_DATACOPY_ODH = -11,
     META_INPLACE_UPDATES = -12,
-    META_BTHASH = -13
+    META_BTHASH = -13,
+    META_START_TIME = -14
 };
 
 enum CONSTRAINT_FLAGS {
     CT_UPD_CASCADE = 0x00000001,
     CT_DEL_CASCADE = 0x00000002,
-    CT_BLD_SKIP = 0x00000004
+    CT_NO_OVERLAP = 0x00000004,
+    CT_BLD_SKIP = 0x00000008
 };
 
 enum {
@@ -685,6 +688,7 @@ struct dbstore {
 };
 
 typedef struct timepart_views timepart_views_t;
+
 /*
  * We now have different types of db (I overloaded this structure rather than
  * create a new structure because the ireq usedb concept is endemic anyway).
@@ -751,6 +755,14 @@ struct db {
     unsigned aa_counter_upd;   // counter which includes updates
     unsigned aa_counter_noupd; // does not include updates
 
+    /* temporal periods */
+    struct timespec tstart;
+    int is_history_table;
+    period_t periods[PERIOD_MAX];
+    struct db *history_db;
+    struct db *orig_db;
+    int overwrite_systime;
+
     /* This tables constraints */
     constraint_t constraints[MAXCONSTRAINTS];
     int n_constraints;
@@ -758,6 +770,7 @@ struct db {
     /* Pointers to other table constraints that are directed at this table. */
     constraint_t *rev_constraints[MAXCONSTRAINTS];
     int n_rev_constraints;
+    int n_rev_cascade_systime;
 
     /* One of the DBTYPE_ constants. */
     int dbtype;
@@ -1426,6 +1439,9 @@ struct ireq {
 
     /* osql prefault step index */
     int *osql_step_ix;
+
+    /* temporal table */
+    struct timespec tstart;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 
     unsigned char have_snap_info;
@@ -2095,6 +2111,11 @@ int ix_next(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
             int lastrrn, unsigned long long lastgenid, void *fndkey,
             int *fndrrn, unsigned long long *genid, void *fnddta, int *fndlen,
             int maxlen, unsigned long long context);
+int ix_next_trans(struct ireq *iq, void *trans, int ixnum, void *key,
+                  int keylen, void *last, int lastrrn,
+                  unsigned long long lastgenid, void *fndkey, int *fndrrn,
+                  unsigned long long *genid, void *fnddta, int *fndlen,
+                  int maxlen, unsigned long long context);
 int ix_next_nl_ser(struct ireq *iq, int ixnum, void *key, int keylen,
                    void *last, int lastrrn, unsigned long long lastgenid,
                    void *fndkey, int *fndrrn, unsigned long long *genid,
@@ -2128,16 +2149,16 @@ int ix_next_blobs_auxdb(int auxdb, int lookahead, struct ireq *iq, int ixnum,
                         int maxlen, int numblobs, int *blobnums,
                         size_t *blobsizes, size_t *bloboffs, void **blobptrs,
                         int *retries, unsigned long long context);
-int ix_next_trans(struct ireq *iq, void *trans, int ixnum, void *key,
-                  int keylen, void *last, int lastrrn,
-                  unsigned long long lastgenid, void *fndkey, int *fndrrn,
-                  unsigned long long *genid, void *fnddta, int *fndlen,
-                  int maxlen, unsigned long long context);
 
 int ix_prev(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
             int lastrrn, unsigned long long lastgenid, void *fndkey,
             int *fndrrn, unsigned long long *genid, void *fnddta, int *fndlen,
             int maxlen, unsigned long long context);
+int ix_prev_trans(struct ireq *iq, void *trans, int ixnum, void *key,
+                  int keylen, void *last, int lastrrn,
+                  unsigned long long lastgenid, void *fndkey, int *fndrrn,
+                  unsigned long long *genid, void *fnddta, int *fndlen,
+                  int maxlen, unsigned long long context);
 int ix_prev_nl_ser(struct ireq *iq, int ixnum, void *key, int keylen,
                    void *last, int lastrrn, unsigned long long lastgenid,
                    void *fndkey, int *fndrrn, unsigned long long *genid,
@@ -2388,6 +2409,8 @@ int put_db_instant_schema_change(struct db *db, tran_type *tran, int isc);
 int get_db_instant_schema_change(struct db *db, int *isc);
 int get_db_instant_schema_change_tran(struct db *, int *isc, tran_type *tran);
 
+int put_db_start_time(struct db *db, tran_type *tran);
+int get_db_start_time(struct db *db, struct timespec *ts, tran_type *tran);
 int set_meta_odh_flags(struct db *db, int odh, int compress, int compress_blobs,
                        int ipupates);
 int set_meta_odh_flags_tran(struct db *db, tran_type *tran, int odh,
@@ -2713,8 +2736,8 @@ enum {
     RECFLAGS_NO_CONSTRAINTS = 2,
     /* if the schema is not dynamic then bzero the nulls map */
     RECFLAGS_DYNSCHEMA_NULLS_ONLY = 4,
-    /* called from update cascade code, affects key operations */
-    UPDFLAGS_CASCADE = 8,
+    /* called from update/delete cascade code, affects key operations */
+    RECFLAGS_CASCADE = 8,
     /* use .NEW..ONDISK rather than .ONDISK */
     RECFLAGS_NEW_SCHEMA = 16,
     /* use input genid if in dtastripe mode */

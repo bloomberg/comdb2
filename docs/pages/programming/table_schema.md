@@ -324,6 +324,59 @@ Indexes on expressions are allowed in key constraints. However, if the local key
 of a constraint is an index on expressions, then cascading update is NOT
 supported on the constraint.
 
+### No Overlapping Constraints
+Optional `no_overlap` constraints can be defined for compound keys that contain more than one key fields.
+`no_overlap` constraints take two of the key fields of the specified index with `keyname`, forming a range
+starting from (and including) `start` upto (but no including) `end`. In other words, Comdb2 uses an
+inclusive-exclusive (close-open) approach for the range. The `start` and `end` columns must have identical
+[datatype](datatypes.html). `NULL` in the `start` column means "less than all" and `NULL` in `end` column means
+"greater than all". Comdb2 also generates implicit constraint to enforce that `start` is strictly less than `end`
+for every row in the table.
+
+`no_overlap` constraints can also be used together with indexes on expressions. Simply set `start` and `end` to be
+the one of the key fields defined in the key section of the schema.
+
+Here is an example:
+
+```
+[create table t1 {
+    schema {
+        int id
+        vutf8 json[128]
+    }
+    keys {
+        dup "PK" = id + (int)"json_extract(json, '$.a')" + (int)"json_extract(json, '$.b')"
+    }
+    constraints {
+       no_overlap "PK" -> "json_extract(json, '$.a')":"json_extract(json, '$.b')"
+    }
+}] rc 0
+(rows inserted=1)
+[insert into t1 values (1, '{"a":0,"b":5}')] rc 0
+[insert into t1 values (1, '{"a":4,"b":5}')] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint no_overlap(json_extract(json, '$.a') : json_extract(json, '$.b'))
+```
+
+Once a `no_overlap` constraint is defined on a key, Comdb2 enforces that there cannot be more than one rows
+with identical values in all key fields (other than `start` and `end`) in any interval range `[start, end)`.
+
+More precisely, if `PK` has `no_overlap` constraint on `start` and `end` and `PK` has the following schema:
+
+```
+PK = field1 [ + field2 ] [ + field3 ] ... [ + fieldN ] + start + end
+```
+
+then Comdb2 ensures that for a given value row `R`, there does not exist another row `X` (`R != X`)
+where
+
+```
+R.field1 = X.field1 AND R.field2 = X.field2 AND ... R.fieldN = X.fieldN
+```
+
+AND
+
+```
+(X.start < R.end OR X.start IS NULL or R.end IS NULL) AND (X.end > R.start OR R.start IS NULL OR X.end IS NULL)
+```
 
 ## User Schemas
 Comdb2 supports tables in user's namespace. This allows multiple users to have tables with same name.

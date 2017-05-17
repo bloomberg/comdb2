@@ -62,6 +62,7 @@ int gbl_master_retry_poll_ms = 100;
 
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype);
+static int osql_send_timespec_logic(struct sqlclntstate *clnt, int nettype);
 static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                   int nettype);
 static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
@@ -1019,11 +1020,36 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     return rc;
 }
 
+static int osql_send_timespec_logic_int(struct sqlclntstate *clnt, int nettype)
+{
+    osqlstate_t *osql = &clnt->osql;
+    int rc = 0;
+
+    if (memcmp(&(osql->tstart), &(clnt->tstart), sizeof(struct timespec)) == 0)
+        return SQLITE_OK;
+
+    rc = osql_send_timespec(osql->host, osql->rqid, osql->uuid, &(clnt->tstart),
+                            nettype, osql->logsb);
+    RESTART_SOCKSQL;
+
+    if (rc == SQLITE_OK) {
+        /* cache the sent tstart */
+        memcpy(&(osql->tstart), &(clnt->tstart), sizeof(struct timespec));
+    }
+
+    return rc;
+}
+
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype)
 {
     return osql_send_usedb_logic_int(pCur->db->dbname, thd->sqlclntstate,
                                      nettype);
+}
+
+static int osql_send_timespec_logic(struct sqlclntstate *clnt, int nettype)
+{
+    return osql_send_timespec_logic_int(clnt, nettype);
 }
 
 static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
@@ -1041,6 +1067,10 @@ static int osql_send_delrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     rc = osql_send_usedb_logic(pCur, thd, nettype);
+    if (rc) return rc;
+    if (pCur->db->periods[PERIOD_SYSTEM].enable ||
+        pCur->db->n_rev_cascade_systime > 0)
+        rc = osql_send_timespec_logic(clnt, nettype);
     if (rc == SQLITE_OK) {
 
         rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
@@ -1136,6 +1166,10 @@ static int osql_send_insrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     rc = osql_send_usedb_logic(pCur, thd, nettype);
+    if (rc) return rc;
+    if (pCur->db->periods[PERIOD_SYSTEM].enable ||
+        pCur->db->n_rev_cascade_systime > 0)
+        rc = osql_send_timespec_logic(clnt, nettype);
     if (rc == SQLITE_OK) {
 
         rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
@@ -1273,6 +1307,10 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     rc = osql_send_usedb_logic(pCur, thd, nettype);
+    if (rc) return rc;
+    if (pCur->db->periods[PERIOD_SYSTEM].enable ||
+        pCur->db->n_rev_cascade_systime > 0)
+        rc = osql_send_timespec_logic(clnt, nettype);
     if (rc == SQLITE_OK) {
 
         rc = osql_send_updrec(

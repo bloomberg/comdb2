@@ -73,6 +73,13 @@ int sqlite3IsReadOnly(Parse *pParse, Table *pTab, int viewOk){
     return 1;
   }
 
+  /* COMDB2 MODIFICATION */
+  if( pParse->eTriggerOp!=TK_UPDATE && pParse->eTriggerOp!=TK_DELETE &&
+      pTab->isHistory ){
+    sqlite3ErrorMsg(pParse, "cannot modify history table %s", pTab->zName);
+    return 1;
+  }
+
 #ifndef SQLITE_OMIT_VIEW
   if( !viewOk && pTab->pSelect ){
     sqlite3ErrorMsg(pParse,"cannot modify %s because it is a view",pTab->zName);
@@ -117,6 +124,139 @@ void sqlite3MaterializeView(
 }
 #endif /* !defined(SQLITE_OMIT_VIEW) && !defined(SQLITE_OMIT_TRIGGER) */
 
+/* COMDB2 MODIFICATION */
+int is_comdb2_temporal_table(const char *tbl, char **start, char **end, int pd);
+/*
+** Generate an expression tree to implement the FOR PORTION OF BUSINESS_TIME
+** portion of DELETE and UPDATE statements.
+**
+*/
+Expr *sqlite3BusTimeWhere(
+  Parse *pParse,               /* The parser context */
+  SrcList *pSrc,               /* the FROM clause -- which tables to scan */
+  ExprList *pChanges,          /* Things to be changed */
+  Expr *pWhere,                /* The WHERE clause.  May be null */
+  Temporal *pTemporal,         /* The BUSINESS_TIME clause.  May be null */
+  char *zStmtType              /* Either DELETE or UPDATE.  For err msgs. */
+){
+  sqlite3 *db = pParse->db;
+  struct SrcList_item *pItem;
+  Expr *pBusTimeFrom;
+  Expr *pBusTimeTo;
+  ExprList *pList = 0;
+  Expr *pLhs = 0;
+  Expr *pRhs = 0;
+  Expr *pStart= 0;
+  Expr *pEnd = 0;
+  char *start = 0;
+  char *end = 0;
+  Token tTable;
+  Token tStart;
+  Token tEnd;
+  int i;
+  if( pTemporal==0 )
+    return pWhere;
+  pBusTimeFrom = pTemporal->a[1].pFrom;
+  pBusTimeTo = pTemporal->a[1].pTo;
+  if( pBusTimeFrom==0 && pBusTimeTo==0 )
+    return pWhere;
+  assert( pSrc->nSrc==1 );
+  assert( pBusTimeFrom && pBusTimeTo );
+  pItem = pSrc->a;
+  if( !is_comdb2_temporal_table(pItem->zName, &start, &end, 1 /*BUSINESS*/) ){
+    sqlite3ErrorMsg(
+          pParse, "'%s' does not support temporal queries", pItem->zName
+    );
+    goto bustime_where_cleanup;
+  }
+  sqlite3TokenInit(&tTable, pItem->zAlias?pItem->zAlias:pItem->zName);
+  sqlite3TokenInit(&tStart, start);
+  sqlite3TokenInit(&tEnd, end);
+
+  /* pLhs = bustime_start < to */
+  pStart = sqlite3ExprAlloc(db, TK_ID, &tStart, 0);
+  pLhs = sqlite3PExpr(pParse, TK_LT,
+      pStart,
+      sqlite3ExprDup(db, pBusTimeTo, 0),
+      0);
+  /* pLhs = ... OR bustime_start is null */
+  pLhs = sqlite3PExpr(pParse, TK_OR, pLhs,
+      sqlite3PExpr(pParse, TK_ISNULL, sqlite3ExprDup(db, pStart, 0), 0, 0), 0);
+
+  /* pRhs = bustime_end > from */
+  pEnd = sqlite3ExprAlloc(db, TK_ID, &tEnd, 0);
+  pRhs = sqlite3PExpr(pParse, TK_GT,
+      pEnd,
+      sqlite3ExprDup(db, pBusTimeFrom, 0),
+      0);
+  /* pRhs = ... OR bustime_end is null */
+  pRhs = sqlite3PExpr(pParse, TK_OR, pRhs,
+      sqlite3PExpr(pParse, TK_ISNULL, sqlite3ExprDup(db, pEnd, 0), 0, 0), 0);
+
+  pWhere = sqlite3ExprAnd(db, sqlite3ExprAnd(db, pLhs, pRhs), pWhere);
+
+  /* updates */
+  if( pChanges ){
+    for(i=0; i<pChanges->nExpr; i++){
+      if( sqlite3StrICmp(start, pChanges->a[i].zName)==0
+       || sqlite3StrICmp(end, pChanges->a[i].zName)==0){
+        sqlite3ErrorMsg(
+              pParse, "cannot set column %s for portion of business time",
+              pChanges->a[i].zName
+        );
+        goto bustime_where_cleanup;
+      }
+    }
+    /* SET bustime_start = CASE */
+    pLhs = sqlite3PExpr(pParse, TK_CASE, 0, 0, 0);
+    /* bustime_start < from */
+    pRhs = sqlite3PExpr(pParse, TK_LT,
+        sqlite3ExprDup(db, pStart, 0),
+        sqlite3ExprDup(db, pBusTimeFrom, 0),
+        0);
+    /* OR bustime_start IS NULL */
+    pRhs = sqlite3PExpr(pParse, TK_OR, pRhs,
+        sqlite3PExpr(pParse, TK_ISNULL, sqlite3ExprDup(db, pStart, 0), 0, 0), 0);
+    pList = sqlite3ExprListAppend(pParse, 0, pRhs);
+    /* THEN from */
+    pRhs = sqlite3ExprDup(db, pBusTimeFrom, 0);
+    pList = sqlite3ExprListAppend(pParse, pList, pRhs);
+    /* ELSE bustime_start */
+    pRhs = sqlite3ExprDup(db, pStart, 0);
+    pList = sqlite3ExprListAppend(pParse, pList, pRhs);
+    pLhs->x.pList = pList;
+    pChanges = sqlite3ExprListAppend(pParse, pChanges, pLhs);
+    sqlite3ExprListSetName(pParse, pChanges, &tStart, 1);
+
+    /* SET bustime_end = CASE */
+    pLhs = sqlite3PExpr(pParse, TK_CASE, 0, 0, 0);
+    /* bustime_end > to */
+    pRhs = sqlite3PExpr(pParse, TK_GT,
+        sqlite3ExprDup(db, pEnd, 0),
+        sqlite3ExprDup(db, pBusTimeTo, 0),
+        0);
+    /* OR bustime_end IS NULL */
+    pRhs = sqlite3PExpr(pParse, TK_OR, pRhs,
+        sqlite3PExpr(pParse, TK_ISNULL, sqlite3ExprDup(db, pEnd, 0), 0, 0), 0);
+    pList = sqlite3ExprListAppend(pParse, 0, pRhs);
+    /* THEN to */
+    pRhs = sqlite3ExprDup(db, pBusTimeTo, 0);
+    pList = sqlite3ExprListAppend(pParse, pList, pRhs);
+    /* ELSE bustime_end */
+    pRhs = sqlite3ExprDup(db, pEnd, 0);
+    pList = sqlite3ExprListAppend(pParse, pList, pRhs);
+    pLhs->x.pList = pList;
+    pChanges = sqlite3ExprListAppend(pParse, pChanges, pLhs);
+    sqlite3ExprListSetName(pParse, pChanges, &tEnd, 1);
+  }
+
+  return pWhere;
+
+bustime_where_cleanup:
+  sqlite3ExprDelete(pParse->db, pWhere);
+  return 0;
+}
+
 #if defined(SQLITE_ENABLE_UPDATE_DELETE_LIMIT) && !defined(SQLITE_OMIT_SUBQUERY)
 /*
 ** Generate an expression tree to implement the WHERE, ORDER BY,
@@ -141,6 +281,11 @@ Expr *sqlite3LimitWhere(
   ExprList *pEList = NULL;     /* Expression list contaning only pSelectRowid */
   SrcList *pSelectSrc = NULL;  /* SELECT rowid FROM x ... (dup of pSrc) */
   Select *pSelect = NULL;      /* Complete SELECT tree */
+
+  /* COMDB2 MODIFICATION */
+  if( pParse->nErr ){
+    goto limit_where_cleanup;
+  }
 
   /* COMDB2 MODIFICATION */
   if (pLimit && gbl_update_delete_limit == 0) {
@@ -217,7 +362,9 @@ limit_where_cleanup:
 void sqlite3DeleteFrom(
   Parse *pParse,         /* The parser context */
   SrcList *pTabList,     /* The table from which we should delete things */
-  Expr *pWhere           /* The WHERE clause.  May be null */
+  Expr *pWhere,          /* The WHERE clause.  May be null */
+  /* COMDB2 MODIFICATION */
+  Temporal *pTemporal    /* The BUSINESS_TIME clause.  May be null */
 ){
   Vdbe *v;               /* The virtual database engine */
   Table *pTab;           /* The table from which records will be deleted */
@@ -255,6 +402,13 @@ void sqlite3DeleteFrom(
   Trigger *pTrigger;           /* List of table triggers, if required */
 #endif
 
+  Expr *pBusTimeFrom = 0;
+  Expr *pBusTimeTo = 0;
+  if( pTemporal ){
+    pBusTimeFrom = pTemporal->a[1].pFrom;
+    pBusTimeTo = pTemporal->a[1].pTo;
+  }
+
   memset(&sContext, 0, sizeof(sContext));
   db = pParse->db;
   if( pParse->nErr || db->mallocFailed ){
@@ -274,7 +428,11 @@ void sqlite3DeleteFrom(
   ** deleted from is a view
   */
 #ifndef SQLITE_OMIT_TRIGGER
-  pTrigger = sqlite3TriggersExist(pParse, pTab, TK_DELETE, 0, 0);
+  /* COMDB2 MODIFICATION */
+  if( pBusTimeFrom && pBusTimeTo )
+    pTrigger = sqlite3TriggersExist(pParse, pTab, TK_BUSINESS_TIME, 0, 0);
+  else
+    pTrigger = sqlite3TriggersExist(pParse, pTab, TK_DELETE, 0, 0);
   isView = pTab->pSelect!=0;
   bComplex = pTrigger || sqlite3FkRequired(pParse, pTab, 0, 0);
 #else
@@ -533,8 +691,10 @@ void sqlite3DeleteFrom(
       if( bComplex==0 && aiCurOnePass[1]!=iDataCur ){
         iIdxNoSeek = aiCurOnePass[1];
       }
+      /* COMDB2 MODIFICATION */
       sqlite3GenerateRowDelete(pParse, pTab, pTrigger, iDataCur, iIdxCur,
-          iKey, nKey, count, OE_Default, eOnePass, iIdxNoSeek);
+          iKey, nKey, count, OE_Default, eOnePass, iIdxNoSeek, pBusTimeFrom,
+          pBusTimeTo);
     }
   
     /* End of the loop over all rowids/primary-keys. */
@@ -580,6 +740,7 @@ delete_from_cleanup:
   sqlite3AuthContextPop(&sContext);
   sqlite3SrcListDelete(db, pTabList);
   sqlite3ExprDelete(db, pWhere);
+  if( pTemporal ) sqlite3TemporalDelete(db, pTemporal);
   sqlite3DbFree(db, aToOpen);
   return;
 }
@@ -643,7 +804,10 @@ void sqlite3GenerateRowDelete(
   u8 count,          /* If non-zero, increment the row change counter */
   u8 onconf,         /* Default ON CONFLICT policy for triggers */
   u8 eMode,          /* ONEPASS_OFF, _SINGLE or _MULTI. See above */
-  int iIdxNoSeek     /* Cursor number of cursor that does not need seeking */
+  int iIdxNoSeek,    /* Cursor number of cursor that does not need seeking */
+  /* COMDB2 MODIFICATION */
+  Expr *pBusTimeFrom,/* The BUSINESS_TIME FROM clause.  May be null */
+  Expr *pBusTimeTo   /* The BUSINESS_TIME TO clause.  May be null */
 ){
   Vdbe *v = pParse->pVdbe;        /* Vdbe */
   int iOld = 0;                   /* First register in OLD.* array */
@@ -698,6 +862,8 @@ void sqlite3GenerateRowDelete(
     sqlite3CodeRowTrigger(pParse, pTrigger, 
         TK_DELETE, 0, TRIGGER_BEFORE, pTab, iOld, onconf, iLabel
     );
+    sqlite3CodeBusTimeRowTrigger(pParse, 0, pTab, pBusTimeFrom, pBusTimeTo,
+                                 iOld, onconf, iLabel);
 
     /* If any BEFORE triggers were coded, then seek the cursor to the 
     ** row to be deleted again. It may be that the BEFORE triggers moved

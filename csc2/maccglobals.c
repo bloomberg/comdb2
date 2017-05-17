@@ -4,6 +4,8 @@
 #include <string.h>
 
 char VER[16];
+struct period periods[PERIOD_MAX];
+int nperiods = 0;
 struct constraint constraints[MAXCNSTRTS];
 struct symbol sym[MAX];
 struct table tables[MAXTBLS];
@@ -188,4 +190,6 @@ void init_globals()
     memset(opt_tblname, 0, sizeof(opt_tblname));
     memset(constraints, 0, sizeof(struct constraint) * MAXCNSTRTS);
     nconstraints = -1;
+    memset(periods, 0, sizeof(struct period) * PERIOD_MAX);
+    nperiods = 0;
 }
