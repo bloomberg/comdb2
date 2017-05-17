@@ -4,7 +4,7 @@ sidebar: mydoc_sidebar
 permalink: contrib.html
 ---
 
-Please submit a pull requests!  We welcome code and idea contributions.
+Please submit a pull request!  We welcome code and idea contributions.
 
 ## Code style
 
