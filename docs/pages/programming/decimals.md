@@ -7,7 +7,7 @@ permalink: decimals.html
 
 ## Decimal 32/64/128 datatype
 
-Comdb2 implements the decimal format for real numbers, as described in IEEE 754-2008 standard, published 
+Comdb2 implements the decimal format for real numbers, as described in [IEEE 754-2008 standard](https://standards.ieee.org/findstds/standard/754-2008.html), published 
 in August 2008.  The decimal format avoids the pitfall of floating point representation to provide error-less 
 arithmetics using real numbers.
 

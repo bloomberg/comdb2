@@ -177,7 +177,7 @@ For a fun experiment, you can try to create a table, add a record, and query it 
 If you installed Comdb2 as a package, or followed the install directions printed by `make install`, you can use the bundled supervisord instance to manage Comdb2.
 It comes with a `comdb2admin` script that can create databases, start/stop them, and destroy them.
 
-See [Setting up hosted services][hosted.html] for more information.
+See [Setting up hosted services](hosted.html) for more information.
 
 ### Using systemd
 

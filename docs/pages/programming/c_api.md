@@ -41,7 +41,7 @@ Parameters:
 |-|-|-|-|
 |*hndl*| input/output | pointer to a cdb2 handle | A handle is allocated and a pointer to it is written into *hndl*
 |*dbname*| input | database name  | The database name to be associated with the handle
-|*type*| input | cluster type | The 'stage' to connect to.  If it's set to "default" it will use the value given in ```comdb2_config:default_type``` in comdb2db config - see the section on (configuring clients)[/clients.html]. Use "local" if target db is running on same machine as the application.  In rarely needed cases, and explicit target can be set with, eg: "dev", "alpha", "beta", etc.  The stage must be registered in your [meta database](clients.html#comdb2db).  Alternatively you can pass a [list of machines](clients.html#passing-location-information).
+|*type*| input | cluster type | The 'stage' to connect to.  If it's set to "default" it will use the value given in ```comdb2_config:default_type``` in comdb2db config - see the section on [configuring clients](/clients.html). Use "local" if target db is running on same machine as the application.  In rarely needed cases, and explicit target can be set with, eg: "dev", "alpha", "beta", etc.  The stage must be registered in your [meta database](clients.html#comdb2db).  Alternatively you can pass a [list of machines](clients.html#passing-location-information).
 |*flag*| input | alloc flags | The flags to be used to allocate handle, the values allowed are 0, ```CDB2_READ_INTRANS_RESULTS```, ```CDB2_RANDOM```, ```CDB2_RANDOMROOM``` , ```CDB2_ROOM```and ```CDB2_DIRECT_CPU``` 
 
 

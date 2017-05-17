@@ -170,6 +170,20 @@ space to have the interval value parsed correctly).  In the C structures used to
 are unsigned (i.e. positive) values, the sign being determined by the sign field.  Example: -1msec will be 
 expressed by ```sign=-1, days=hours=mins=sec=0, msec=1```.
 
+## Local Time Values
+
+The datetime field permits introducing local time values (i.e. wall-clock) into the database.  The client 
+specifies implicitly or explicitly the timezone location, and Comdb2 determines the "absolute"
+time value and stores.  The same time value can be retrieved afterwards using the same timezone (in which 
+case the same value will be returned) or a different timezone (in which case the value will be adjusted for the 
+new timezone).
+
+Example:
+
+Let say somebody in NYC enters the time 01:00PM (as Eastern Standard Time). One second later someone in Seattle retrieves the same time (using Pacific Standard Time). The
+value retrieved is 10:01AM. This shows how the db handles automatically the timezone differences.
+Another client in Seattle could retrieve the data using NYC time (by specifying the EST timezone for that specific record) or any other zone.
+Two clients sharing same longitude coordinates, but obeying different daylight saving rules or different GMT offsets, are able to exchange time values in the same fashion (support for daylight savings and GMT offset anomalies).
 
 ## Timezone specification
 
@@ -310,19 +324,3 @@ cdb2sql> select * from t
 |----|---------------|-----------|----------------|
 |datetimeus|```YYYY-MM-DDThh:mm:ss[.ssssss] <timezone string>```|6 digits. Excess precision is silently discarded | 000000 - 999999 |
 |intervaldsus|```[- ]DAYS HH:MM:SS[.ssssss] <timezone string>```|6 digits. Excess precision is silently discarded | 000000 - 999999 |
-
-
-## Quick summary
-
-The datetime field permits introducing local time values (i.e. wall-clock) into the database.  The client 
-specifies implicitly or explicitly the timezone location, and Comdb2 determines the "absolute"
-time value and stores.  The same time value can be retrieved afterwards using the same timezone (in which 
-case the same value will be returned) or a different timezone (in which case the value will be adjusted for the 
-new timezone).
-
-Example:
-
-Let say somebody in NYC enters the time 01:00PM (as NY time). One second later someone in Seattle retrieves the same time (using the local time). The
-value retrieved is 10:01AM. This shows how the db handles automatically the timezone differences.
-Another client in Seattle could retrieve the data using NYC time  (by specifying the NYC timezone for that specific record) or any other zone.
-Two clients sharing same longitude coordinates, but obeying different daylight saving rules or different GMT offsets, are able to exchange time values in the same fashion (support for daylight savings and GMT offset anomalies).

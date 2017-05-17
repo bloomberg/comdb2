@@ -647,7 +647,7 @@ Parameters:
 |  *name*        |  name of the column        |
 |  *schema array*    |  schema as a Lua array |  array of arrays
 
-Eg:
+Example:
 
 ```
 local tt = db:table('tmpname', { {'id', 'integer'}, {'j', 'integer'}})
