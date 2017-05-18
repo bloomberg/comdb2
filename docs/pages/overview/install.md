@@ -15,7 +15,6 @@ You can pull the latest source from [GitHub](https://github.com/bloomberg/comdb2
 ```
 git clone https://github.com/bloomberg/comdb2
 cd comdb2
-git checkout stable
 ```
 
 Our development policy is to tag each release.  Major releases are branched.  Building
