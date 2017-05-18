@@ -12,7 +12,7 @@ The following are contributors to Comdb2 predating the project's move to GitHub.
  * Nirbhay Choubey
  * Rivers Zhang
 
-## Past
+## Past core team members
  * Alex Scotti
  * Chris Pick
  * Fabio Angius
