@@ -105,7 +105,6 @@ needed.
 
 7. On one machine, create a database - this example creates a database called _mikedb_ stored in _~/db_.
 
-   Note if still in the comdb2 repo root, the required cbd2sql binary is in place - the following commands assume this.
    ```
    comdb2 --create --dir ~/db mikedb
    ```
