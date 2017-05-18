@@ -25,7 +25,7 @@ The only dependency is the AWS command line tools.
 ### Installing Comdb2aws
 
 Run `sudo make install` in the `contrib/comdb2aws` directory. The scripts are installed in `/opt/bb/bin`.
-You can change the installation directory by seting `$PREFIX`. You can verify the installation by 
+You can change the installation directory by setting `$PREFIX`. You can verify the installation by 
 running `comdb2aws -h`.
 
 ### Creating an AWS EC2 Comdb2 Cluster
@@ -53,7 +53,7 @@ the cluster to access pmux port and database ports.
 
 Run `comdb2aws which` to list all nodes in the cluster.
 
-For texample, to list all COLDPLAY nodes, you would use:
+For example, to list all COLDPLAY nodes, you would use:
 
 `comdb2aws which --cluster COLDPLAY`
 

@@ -9,7 +9,7 @@ permalink: decimals.html
 
 Comdb2 implements the decimal format for real numbers, as described in [IEEE 754-2008 standard](https://standards.ieee.org/findstds/standard/754-2008.html), published 
 in August 2008.  The decimal format avoids the pitfall of floating point representation to provide error-less 
-arithmetics using real numbers.
+arithmetic using real numbers.
 
 Comdb2 provides three datatypes, ```decimal32```, ```decimal64```, and ```decimal128```, providing single, 
 double and quad precision, respectively.  Each number is represented as a triplet (sign, significant, exponent), 

@@ -11,7 +11,7 @@ Please submit a pull request!  We welcome code and idea contributions.
 ### Indentation, etc.
 
 Comdb2 contains code from multiple open source libraries.   If editing existing code for, for example, BerkeleyDB and
-SQLite, please stick to existing conventions for those codebases.  For Comdb2 code, it's highly recommended that
+SQLite, please stick to existing conventions for those code bases.  For Comdb2 code, it's highly recommended that
 before you creating a pull request, please format your code with `clang` via the following:
 
 ```

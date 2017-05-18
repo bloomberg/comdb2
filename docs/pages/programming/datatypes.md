@@ -28,9 +28,9 @@ These types are basic fixed size integer.  When queried via the [C api](c_api.ht
 |---|---|---|---|
 |```short```|```CDB2_INTEGER```| 2 byte signed integer|-32768 to 32767 | |
 |```u_short```|```CDB2_INTEGER```|2 byte unsigned integer|0 to 65535 | |
-|```int```|```CBD2_INTEGER```|4 byte signed integer|-2147483648 to 2147483647 | |
-|```u_int```|```CBD2_INTEGER```|4 byte unsigned integer|0 to 4294967295 | |
-|longlong|```CBD2_INTEGER```|8 byte signed integer|-9223372036854775808 to 9223372036854775807 | |
+|```int```|```CDB2_INTEGER```|4 byte signed integer|-2147483648 to 2147483647 | |
+|```u_int```|```CDB2_INTEGER```|4 byte unsigned integer|0 to 4294967295 | |
+|longlong|```CDB2_INTEGER```|8 byte signed integer|-9223372036854775808 to 9223372036854775807 | |
 
 ## Floating point types
 
@@ -38,12 +38,12 @@ These are floating point types.  They return ```CDB2_REAL``` values (```double``
 
 |Type|SQL Datatype|Description|Range|
 |---|---|---|---|
-|float|```CBD2_REAL```|4 byte signed IEEE Floating Point|-3.402823466E+38 to -1.175494351E-38 and 1.175494351E-38 to 3.402823466E+38 and NaN and +Inf and -Inf | |
-|double|```CBD2_REAL```|8 byte signed IEEE Floating Point| -1.7976931348623157E+308 to -2.2250738585072014E-308 and 2.2250738585072014E-308 to 1.7976931348623157E+308 and and NaN and +Inf and -Inf |  |
+|float|```CDB2_REAL```|4 byte signed IEEE Floating Point|-3.402823466E+38 to -1.175494351E-38 and 1.175494351E-38 to 3.402823466E+38 and NaN and +Inf and -Inf | |
+|double|```CDB2_REAL```|8 byte signed IEEE Floating Point| -1.7976931348623157E+308 to -2.2250738585072014E-308 and 2.2250738585072014E-308 to 1.7976931348623157E+308 and and NaN and +Inf and -Inf |  |
 
 ## Decimal types
 
-Decimal types are decimal representations for real numbers. They provides support for arithmetics without the loss of 
+Decimal types are decimal representations for real numbers. They provides support for arithmetic without the loss of 
 precision as long as the required number of digits can be accommodated by the format limitations of exponent and 
 significant. See the [decimal types](decimals.html) section for more details.  When queried, they return 
 ```CDB2_CSTRING``` (string) values to avoid losing precision.  
@@ -67,17 +67,17 @@ be used as a part of any key. ```BYTE``` fields can be used in keys.
 |Type|SQL Datatype|Description|Range|
 |---|---|---|---|
 |byte|```CDB2_BLOB```|Arbitrary binary data |Blobs may be 0 bytes to the maximum record size (16k)|
-|blob|```CDB2_BLOB```|Arbitary binary data | 0 bytes to 255MB
+|blob|```CDB2_BLOB```|Arbitrary binary data | 0 bytes to 255MB
 
 ## Text types
 
-There are 2 text types. ```CSTRING``` is a fixed-size field.  The size must be desclared in the table schema 
+There are 2 text types. ```CSTRING``` is a fixed-size field.  The size must be declared in the table schema 
 definition.  Values smaller than the declared size are allowed. Larger values are not.  No validation is done on the
 string value, except that it may not contain 0x00 bytes.
 
 ```VUTF8``` is a variable length field.  Like ```BLOB```, the field can be optionally declared with a size hint.
 Values smaller than that size are stored inline in the record.  Values larger (up to 255MB) are stored in a separate
-entity, with the associated access cost.  ```VUTF8``` fields may not be a part of a key.  ```VUTf8``` values must
+entity, with the associated access cost.  ```VUTF8``` fields may not be a part of a key.  ```Vutf8``` values must
 be valid UTF-8.  Strings that contain invalid characters are rejected.  ```VUTF8``` values may not contain 0x00 bytes.
 
 Both ```CSTRING``` and ```VUTF8``` types are returned to applications as CDB2_CSTRING types.  Both also return the
@@ -127,11 +127,11 @@ typedef struct cdb2_client_datetimeus {
 } cdb2_client_datetimeus_t;
 ```
 Datetime fields are represented into a compacted form on disk. Applications use either a ```cdb2_client_datetime_t``` structure, a ```cdb2_client_datetimeus_t```
-structure, or a string using a ISO 8601 modifed format.  An integer value converted to/from a datetime represents the number of seconds since the start of 
+structure, or a string using a ISO 8601 modified format.  An integer value converted to/from a datetime represents the number of seconds since the start of 
 the epoch.  A real value is seconds (integer portion) and milliseconds (fraction portion).  
 
 If the client specified a timezone, the datetime information is relative to this point local time.  The client can specify a timezone inline with the 
-value (eg: ```2016-10-09T19:22:23 America/New_York```), or set it per connection with [```SET TIMEZONE```](sql.html#set-timezone).  In the absense of 
+value (eg: ```2016-10-09T19:22:23 America/New_York```), or set it per connection with [```SET TIMEZONE```](sql.html#set-timezone).  In the absence of 
 both, the client will send the value of the ```$COMDB2_TZ``` environment variable,
 then the ```$TZ``` environment variable.  The final fallback value is ```America/New_York```.
   

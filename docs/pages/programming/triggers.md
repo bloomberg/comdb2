@@ -25,7 +25,7 @@ procedure would like to log when new i, j values are inserted, values of j, k ar
 
 `CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT OF i, j AND UPDATE OF j, k AND DELETE OF k, l)`
 
-If we were only insterested in insert for all columns, the statement would look like:
+If we were only interested in insert for all columns, the statement would look like:
 
 `CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT OF i, j, k, l)`
 
@@ -103,10 +103,10 @@ UPDATE t SET i = j WHERE j % 2 = 0
 DELETE FROM t WHERE i % 2 <> 0
 ```
 
-This should genereate 8 events and our sample stored procedure should have logged them in `audit_tbl`.
+This should generate 8 events and our sample stored procedure should have logged them in `audit_tbl`.
 
 ```
-cdb2sqlk> select * from audit_tbl order by logtime
+cdb2sql> select * from audit_tbl order by logtime
 (type='add', tbl='t', logtime="2016-04-05T144519.287 America/New_York", new='{"i":1,"j":1}', old=NULL)
 (type='add', tbl='t', logtime="2016-04-05T144519.289 America/New_York", new='{"i":1,"j":2}', old=NULL)
 (type='add', tbl='t', logtime="2016-04-05T144519.289 America/New_York", new='{"i":1,"j":3}', old=NULL)
@@ -171,13 +171,13 @@ end
 
 Example runs:
 ```sql
-cdb2sql akdb default "CREATE LUA CONSUMER watch_t ON (TABLE t FOR INSERT AND UPDATE AND DELETE)"
+cdb2sql testdb default "CREATE LUA CONSUMER watch_t ON (TABLE t FOR INSERT AND UPDATE AND DELETE)"
 ```
 
 Start two different cdb2sql sessions:
 
 ```
-cdb2sql akdb default -             cdb2sql akdb default -
+cdb2sql testdb default -             cdb2sql testdb default -
                                    cdb2sql> exec procedure watch_t()
 cdb2sql> insert into t values(1,1) (id=x'00000200ccd20657', name='t', new='{"i":1,"j":1}', old=NULL, type='add')
 (rows inserted='1')
@@ -193,7 +193,7 @@ The system provides a unique `id` for each event delivered to consumer. If clien
 
 The `dbconsumer:emit()` only returns when the client application requests the next event by calling `cdb2_next_record`. In the example above, `dbconsumer:consume()` starts a new transaction and consumes the last event.
 
-The consumer may want to log the change (like the sample in Lua trigger), emit the event and consume event atomically. This can be accomplised by wrapping these operations in an explicit transaction as shown below:
+The consumer may want to log the change (like the sample in Lua trigger), emit the event and consume event atomically. This can be accomplished by wrapping these operations in an explicit transaction as shown below:
 
 ```
 local function main()
@@ -213,7 +213,7 @@ local function main()
 end
 ```
 
-If several client application runs the same consumer stored procedure, the database will ensure that only one excutes. The rest of the stored procedures will block in the call to obtain `dbconsumer` handle (call to `db:consumer()` will block). When the executing application disconnects, the server will pick any one of the outstanding clients to run next.
+If several client application runs the same consumer stored procedure, the database will ensure that only one executes. The rest of the stored procedures will block in the call to obtain `dbconsumer` handle (call to `db:consumer()` will block). When the executing application disconnects, the server will pick any one of the outstanding clients to run next.
 
 The `DROP LUA CONSUMER` statement will stop execution of the store procedure and remove the queue associated with the consumer. To delete our example consumer, we will run the following statement:
 

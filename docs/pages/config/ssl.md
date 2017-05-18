@@ -8,9 +8,9 @@ permalink: ssl.html
 
 Comdb2 can be configured to secure network traffic with Transport Layer Security (TLS).
 TLS, which is the successor to SSL, offers stronger encryption than SSL. TLS also provides
-identity verficiation using X509 standard. Therefore Comdb2 uses TLS protocol only.
+identity verification using X509 standard. Therefore Comdb2 uses TLS protocol only.
 
-In order to configure SSL, OpenSSL runtimes are required on both clients and servers.
+In order to configure SSL, OpenSSL run-times are required on both clients and servers.
 
 
 ## Basic SSL Configuration
@@ -118,7 +118,7 @@ For maximum security, you could request host name validation by changing SSL mod
 ssl_client_mode VERIFY_HOSTNAME
 ```
 
-If the client host name mismatches the DNS records embeded in the client certificate,
+If the client host name mismatches the DNS records embedded in the client certificate,
 the connection will be rejected by the server as well.
 
 
@@ -126,7 +126,7 @@ the connection will be rejected by the server as well.
 
 If the database cluster is in an uncontrolled environment where intra-cluster
 network attacks may occur, you could encrypt the communication between
-the master and replicants by changing replicant SSL mode and boucing
+the master and replicants by changing replicant SSL mode and bouncing
 on all nodes:
 
 ```shell
@@ -144,7 +144,7 @@ The nodes will verify each other's certificate against their own trusted CA file
 
 For maximum security, you could request host name validation by changing
 the replicant SSL mode to `VERIFY_HOSTNAME` and bounce on all nodes.
-Nodes whose host names mismatch the DNS records embeded in their certificates
+Nodes whose host names mismatch the DNS records embedded in their certificates
 are refused to join the cluster.
 
 

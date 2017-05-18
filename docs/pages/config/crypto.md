@@ -12,7 +12,7 @@ All data files and transaction logs are encrypted before writing to disk. There 
 
 2. Comdb2 uses OpenSSL for encryption routines
 
-3. The encrypted data is checksumed using crc32c
+3. The encrypted data is checksummed using crc32c
 
 4. Initialization vector is generated using RAND_bytes()
 

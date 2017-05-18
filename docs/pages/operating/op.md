@@ -56,7 +56,7 @@ and querying the state of thread pools.  For example the SQL query threads pool 
 
 ### stat 
 
-Dispays threads pool status.
+Displays threads pool status.
 
 ```
 Thread pool [memptrickle] stats
@@ -134,7 +134,7 @@ as at least [mint](#mint) threads exist.
 
 ### downgrade
 
-Downgrade has no effect when run on a repicant.  When run on the master, it will downgrade itself to a replicant and hand off mastership
+Downgrade has no effect when run on a replicant.  When run on the master, it will downgrade itself to a replicant and hand off mastership
 to another node.  Note that there's no guarantee that the master will end up on a different node - the node that's furthest along
 in the log stream will be preferred.
 
@@ -160,8 +160,8 @@ Show the cluster status.  The output looks like this:
 
 ```
 db engine cluster status
-        njlxdev1:19134 MASTER c fd 13  lsn 1:726017 f 0 
-        nylxdev1:19019        l fd -1  lsn 1:726017 f 0 
+        machine1:19134 MASTER c fd 13  lsn 1:726017 f 0 
+        machine2:19019        l fd -1  lsn 1:726017 f 0 
 ```
 
 Each line starts with the machine name and database port.  'c' indicates that the current machine is connected.
@@ -174,7 +174,7 @@ is the lowest log file the machine is willing to delete.
 ### bdb add
 
 Takes a hostname as a required argument.  Adds the host to the cluster's "sanctioned" list.  Machines in the
-cluster will not delete logs when the sactioned list isn't intact (that is when machines from the sanctioned list
+cluster will not delete logs when the sanctioned list isn't intact (that is when machines from the sanctioned list
 are not connected and part of the cluster).  Note that this command is necessary only when a brand new node is being
 added to an active cluster.  Nodes configured in any database lrl file are always in the sanctioned list of all nodes.
 The `bdb add` message is replicated to all nodes on the cluster -- adding a machine to one node adds it on all 
@@ -197,7 +197,7 @@ They may still not be deleted for other reasons (eg: needed to recover other nod
 
 ### pushnext
 
-Force enough write traffic to have the database switch to a new log file.  Log files are 40mb by default.
+Force enough write traffic to have the database switch to a new log file.  Log files are 40MB by default.
 
 ### early
 
@@ -212,7 +212,7 @@ Disable early replication acks.  Replicants will ack a transaction only after al
 
 ### reallyearly
 
-Enables "really early" replication acknowledgements.  A replicant will ack a transaction immediately after receiving the commit log record.
+Enables "really early" replication acknowledgments.  A replicant will ack a transaction immediately after receiving the commit log record.
 Enabling this DOES affect read-after-write semantics. It's possible that a record written by a committed transaction may not yet
 be applied when an application tries to read it.  For applications where this doesn't matter, reallyearly offers lower transaction
 latency than the [early](#early) setting.
@@ -224,11 +224,11 @@ are applied against the data.
 
 ### repscon
 
-Like [scon](#scon-and-scof), turns on per-second reporting of replication/acknowledgement times to other nodes.
+Like [scon](#scon-and-scof), turns on per-second reporting of replication/acknowledgment times to other nodes.
 
 ### repscof
 
-Turns off replication/acknowledgement times.
+Turns off replication/acknowledgment times.
 
 
 ## SQL commands
@@ -244,7 +244,7 @@ The default setting is 25.
 
 ### sql hist
 
-Dumps the last set of SQL queries that completed.  The number it remembers can be adjusted with the [sql keep](#sql-keep) coimmand.
+Dumps the last set of SQL queries that completed.  The number it remembers can be adjusted with the [sql keep](#sql-keep) command.
 
 ### sql cancel
 
@@ -283,7 +283,7 @@ has a few features for setting up custom logging.  'reql help' will show full us
 
 ### diffstat
 
-Takes a time in seconds.  Sets the frequence at which we dump information to the [statreqs file](logs.html).
+Takes a time in seconds.  Sets the frequency at which we dump information to the [statreqs file](logs.html).
 
 ### longsqlrequest
 
@@ -311,7 +311,7 @@ and runtime errors.
 
 ### logmsg level
 
-Acceps a log level as an argument.  Sets the default database logging level to this.  The following levels are available.  Each level includes messages
+Accepts a log level as an argument.  Sets the default database logging level to this.  The following levels are available.  Each level includes messages
 of all lower (less strict) levels.
 
 | Level | Explanation
@@ -423,7 +423,7 @@ Allows changing source machines [permissions](config_files.html#allowdisallow-co
 
 ### dumoprecord
 
-Takes a tablename and a rowid.  Displays the associated record, and any index values.
+Takes a table name and a rowid.  Displays the associated record, and any index values.
 
 ### upgraderecord
 
@@ -438,11 +438,11 @@ Like upgraderecord, but takes a name of the table, and starts upgrading all the 
 
 ### chkpoint_alarm_time
 
-Takes a number of seconds as an argument. Warns when a checkpoint takes longer than this to run.  The default is 60 secods.
+Takes a number of seconds as an argument. Warns when a checkpoint takes longer than this to run.  The default is 60 seconds.
 
 ### incoherent_alarm_time
 
-Takes a number of seconds as an arugment.  If a node remauins incoherent for longer than this, alarm.  The default is 2 minutes.
+Takes a number of seconds as an argument.  If a node remains incoherent for longer than this, alarm.  The default is 2 minutes.
 
 ### max_incoherent_nodes
 
@@ -489,7 +489,7 @@ this percentage of pages to be empty will disable page-order scans for this tabl
 
 #### minnext
 
-Sets the minimum number of pages for which page-order table scan will be disbled if it hits the threshold above.
+Sets the minimum number of pages for which page-order table scan will be disabled if it hits the threshold above.
 
 ### tcp
 
@@ -631,7 +631,7 @@ normally deleted when the earliest log file that existed at the time is deleted.
 
 ### scon and scof
 
-SCore ON and SCore OFf.  Enables per-second trace fromt the database that shows events that occurred over the last
+Score ON and Score OFF.  Enables per-second trace from the database that shows events that occurred over the last
 second.  This will display the number of SQL requests, lock waits, cache hits, cache missed, etc.
 
 ### stax
@@ -689,10 +689,10 @@ num fstraps              0
   num incoherent reject 0
   num missed            0
 # Count of commits and aborts:
-# commit         - number of transactions commited (if master)
+# commit         - number of transactions committed (if master)
 # abort          - number of transactions aborted
 # repcommit      - number of transactions committed (if replicant)
-# retry          - number of transactions retried automaticaly on an abort
+# retry          - number of transactions retried automatically on an abort
 # verify retry   - number of transactions that are retried automatically because they were rejected due
 #                - to being out of date
 # rep retry      - number of transactions retried on the replicant due to deadlock with running SQL
@@ -709,7 +709,7 @@ sql ticks               14
 # state due to deadlock failed.
 sql deadlocks recover attempts 0 failures 0
 blocksql->socksql reqs  0
-# Are rowlocks enalbed
+# Are rowlocks enabled
 rowlocks is             disabled
 # Total number of client connections
 num appsock connections 18
@@ -848,7 +848,7 @@ Display status of toggl-eable on/off switches.
 
 ### stat clnt
 
-Dups client source information.  For every machine that contacted the database, display a count of requests.
+Dumps client source information.  For every machine that contacted the database, display a count of requests.
 
 ### stat ixstat
 
@@ -880,7 +880,7 @@ Display root page cache information.
 
 ### Other stats
 
-Varios other commands can also be run prepended with stat: [stax](#stax), [long](#long), [stal](#stal), [thr](#thr), [dmpl](#dmpl).
+Various other commands can also be run prepended with stat: [stax](#stax), [long](#long), [stal](#stal), [thr](#thr), [dmpl](#dmpl).
 
 ## Request logging
 
