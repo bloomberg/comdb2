@@ -924,7 +924,7 @@ Set the comdb2 datatype object to null.
 ## Managing Transactions
 
 By default, the entire stored procedure executes as one transaction. All changes performed by the procedure are 
-committed when `main` returns.  The stored procedure can be part of larger transfinite which executes other 
+committed when `main` returns.  The stored procedure can be part of larger transaction which executes other 
 SQL statements and other stored procedures. All changes will commit when the client program calls commit. This 
 would look something like the following pseudo code snippet --
 
