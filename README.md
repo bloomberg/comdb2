@@ -131,7 +131,7 @@ needed.
 1. On any node, start using the database.  You don't have any tables yet.  You can add them with *cdb2sql* 
    Example -
    ```sql
-   ./cdb2sql mikedb local 'CREATE TABLE t1 {
+   cdb2sql mikedb local 'CREATE TABLE t1 {
         schema {
             int a
         }
@@ -140,8 +140,8 @@ needed.
 
    Database can be queried/updated with cdb2sql:
    ```sql
-   ./cdb2sql mikedb local 'insert into t1(a) values(1)'
+   cdb2sql mikedb local 'insert into t1(a) values(1)'
    (rows inserted=1)
-   ./cdb2sql mikedb local 'select * from t1'
+   cdb2sql mikedb local 'select * from t1'
    (a=1)
    ```
