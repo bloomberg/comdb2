@@ -71,7 +71,7 @@ deb-current: clean deb-clean
 	rm -fr debian
 	cp -r deb debian
 	rm -f ../$(PACKAGE)_$(VERSION).orig.tar.gz
-	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz bb bbinc bdb berkdb cdb2api cdb2jdbc comdb2rle contrib crc32c csc2 csc2files cson datetime db debian deb rpmbuild dfp dlmalloc linearizable libs.mk LICENSE lua main.mk Makefile net protobuf README.md schemachange sqlite sockpool tools tests docs common.mk mem.mk NOTES TODO
+	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz bb bbinc bdb berkdb cdb2api cdb2jdbc comdb2rle contrib crc32c csc2 csc2files cson datetime db debian deb rpmbuild dfp dlmalloc linearizable libs.mk LICENSE lua main.mk Makefile net protobuf README.md schemachange sqlite sockpool tools tests docs common.mk mem.mk
 	dpkg-buildpackage -us -uc
 	@ls -l ../$(PACKAGE)_$(VERSION)*.deb
 	@rm -fr debian
