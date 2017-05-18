@@ -503,7 +503,7 @@ next word determines which option to set, and the following word determines its 
 |REP_WORKERS|16 (QUANTITY) | Size of worker pool for applying page changes on behalf of transactions (only has effect when `REP_PROCESSORS` is set
 |REP_LSN_CHAINING|0 (BOOLEAN) | If set, will force transactions on replicant to always release locks in LSN order.
 |REP_MEMSIZE|524288 (QUANTITY) | Maximum size for a local copy of log records for transaction processors on replicants.  Larger transactions will read from the log directly.
-|ELECT_DISABLE_NET SPLIT_PATCH|0 (BOOLEAN) | When false - on a net split, the side with the master keeps it instead of downgrading.  New masters still can't be elected without a quorum.
+|ELECT_DISABLE_NETSPLIT_PATCH|0 (BOOLEAN) | When false - on a net split, the side with the master keeps it instead of downgrading.  New masters still can't be elected without a quorum.
 |OSYNC|0 (BOOLEAN) | Enable O_SYNC on writes.  Reads will still use filesystem cache.
 |ALLOW_OFFLINE_UPGRADES|0 (BOOLEAN) | Allow machines marked offline to become master.
 |MAX_VLOG_LSNS|10000000 (QUANTITY) | Apply up to this many replication record trying to maintain a snapshot transaction.
@@ -628,8 +628,8 @@ lease if a node is either not responding or is significantly slower than the oth
 |TRACK_REPLICATION_TIMES|1 (BOOLEAN) | Track how long each replicant takes to ack all transactions.
 |WARN_SLOW_REPLICANTS|1 (BOOLEAN) | Warn if any replicant's average response times over the last 10 seconds are significantly worse than the second worst replicant's.
 |MAKE_SLOW_REPLICANTS_INCOHERENT|1 (BOOLEAN) | Make slow replicants incoherent.
-|SLOW REP_INCOHERENT_FACTOR|2 (QUANTITY) | Make replicants that are this many times worse than the second worst replicant incoherent.  This is the threshold for `WARN_SLOW_REPLICANTS` and `MAKE_SLOW_REPLICANTS_INCOHERENT`.
-|SLOW REP_INCOHERENT_MINTIME|2 (MSECS) | Ignore replicantion events faster than this.
+|SLOWREP_INCOHERENT_FACTOR|2 (QUANTITY) | Make replicants that are this many times worse than the second worst replicant incoherent.  This is the threshold for `WARN_SLOW_REPLICANTS` and `MAKE_SLOW_REPLICANTS_INCOHERENT`.
+|SLOWREP_INCOHERENT_MINTIME|2 (MSECS) | Ignore replicantion events faster than this.
 |SLOWREP_INACTIVE_TIMEOUT|5000 (SECS) | If a "slow" replicant hasn't responded in this long, mark him incoherent.
 |TRACK_REPLICATION_TIMES_MAX_LSNS|50 (QUANTITY) | Track replication times for up to this many transactions
 |REMOVE_COMMITDELAY_ON_COHERENT_CLUSTER | 1 | Stop delaying commits when the all the nodes in the cluster are coherent.
