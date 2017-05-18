@@ -71,7 +71,7 @@ deb-current: clean deb-clean
 	rm -fr debian
 	cp -r deb debian
 	rm -f ../$(PACKAGE)_$(VERSION).orig.tar.gz
-	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz bb bbinc bdb berkdb cdb2api cdb2jdbc comdb2rle contrib crc32c csc2 csc2files cson datetime db debian deb rpmbuild dfp dlmalloc linearizable libs.mk LICENSE lua main.mk Makefile net protobuf README.md schemachange sqlite sockpool tools tests docs common.mk mem.mk NOTES TODO
+	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz bb bbinc bdb berkdb cdb2api cdb2jdbc comdb2rle contrib crc32c csc2 csc2files cson datetime db debian deb rpmbuild dfp dlmalloc linearizable libs.mk LICENSE lua main.mk Makefile net protobuf README.md schemachange sqlite sockpool tools tests docs common.mk mem.mk
 	dpkg-buildpackage -us -uc
 	@ls -l ../$(PACKAGE)_$(VERSION)*.deb
 	@rm -fr debian
@@ -121,4 +121,4 @@ install: all
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
-	@[ -z "$(DESTDIR)" ] && . db/installinfo
+	[ -z "$(DESTDIR)" ] && . db/installinfo || true

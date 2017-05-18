@@ -15,7 +15,6 @@ You can pull the latest source from [GitHub](https://github.com/bloomberg/comdb2
 ```
 git clone https://github.com/bloomberg/comdb2
 cd comdb2
-git checkout stable
 ```
 
 Our development policy is to tag each release.  Major releases are branched.  Building
@@ -53,9 +52,7 @@ sudo systemctl start pmux
 
 ## Installing from a package
 
-We provide packages for Ubuntu and CentOS systems.  To use them, download [the package](http://example.com) and install with rpm or dpkg.
-
-The packages can be built from source as well with `make deb-current` on Debian-derived systems, or `make rpm-current` on Redhat-derived systems.
+Packages can be built from source with `make deb-current` on Debian-derived systems, or `make rpm-current` on Redhat-derived systems.
 
 Installing a package creates a comdb2 user and group and installs pmux and cdb2sockpool as systemd-managed services.  Log/data directories are set up with read/write permissions for the `comdb2` user.  Databases should be created and run as `comdb2`.  As a convenience, installing from a package also starts an instance of [supervisord](http://supervisord.org/) that can be used to manage running databases.  A simple script called `comdb2admin` is installed to make it easier to start/create databases through supervisord.
 

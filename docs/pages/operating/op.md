@@ -22,7 +22,7 @@ The 'exit' command will do a clean shutdown of a database process.  Namely, the 
 
 This command only effects the current node.  It can be run with the "@" target syntax to shut down a specific node, eg:
 
-    cdb2sql mikedb @host1 "exec procedure sys.cmd.send('exit')"
+    cdb2sql testdb @host1 "exec procedure sys.cmd.send('exit')"
 
 ## Toggling tunables
 

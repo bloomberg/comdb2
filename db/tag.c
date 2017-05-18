@@ -4679,16 +4679,18 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 
         if (change == SC_TAG_CHANGE) {
             if (out) {
-                logmsg(LOGMSG_ERROR, "tag %s field %d (named %s) has changed (%s)\n",
-                        old->tag, oidx, fold->name, buf);
+                logmsg(LOGMSG_USER,
+                       "tag %s field %d (named %s) has changed (%s)\n",
+                       old->tag, oidx, fold->name, buf);
             }
             return change;
         }
 
         if (change == SC_COLUMN_ADDED || change == SC_DBSTORE_CHANGE) {
             if (out) {
-                logmsg(LOGMSG_USER, "tag %s field %d (named %s) has changed (%s)\n",
-                        old->tag, oidx, fold->name, buf);
+                logmsg(LOGMSG_USER,
+                       "tag %s field %d (named %s) has changed (%s)\n",
+                       old->tag, oidx, fold->name, buf);
             }
             /* don't overwrite COLUMN_ADDED with DBSTORE */
             if (rc != SC_COLUMN_ADDED)
@@ -4776,13 +4778,13 @@ int has_index_changed(struct db *db, char *keynm, int ct_check, int newkey,
     }
     rc = getidxnumbyname(table, keynm, &ix);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "Cant find schema for key %s\n", keynm);
+        logmsg(LOGMSG_USER, "No index %s in old schema\n", keynm);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s", keynm);
     rc = getidxnumbyname(table, ixbuf, &fidx);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "Cant find new schema for key %s\n", keynm);
+        logmsg(LOGMSG_USER, "No index %s in new schema\n", keynm);
         return 1;
     }
     if (fidx != ix) {
@@ -4811,7 +4813,7 @@ int has_index_changed(struct db *db, char *keynm, int ct_check, int newkey,
                          for constraints */
     {
         if (out) {
-            logmsg(LOGMSG_ERROR, "index %d properties have changed\n", ix);
+            logmsg(LOGMSG_USER, "index %d properties have changed\n", ix);
         }
         return 1;
     }
