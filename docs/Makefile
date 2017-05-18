@@ -4,3 +4,7 @@ clean:
 
 spelings:
 	find pages -name "*.md" -exec aspell check {} \;
+
+
+aspell-dict:
+	 cp --backup aspell.en.pws ~/.aspell.en.pws
