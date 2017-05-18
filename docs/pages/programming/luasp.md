@@ -9,11 +9,11 @@ permalink: storedprocs.html
 
 The stored procedure language in Comdb2 is a heavily extended dialect of the
 Lua 5.1 programming language. Documentation for the base language can be found
-at [http://www.lua.org](http://www.lua.org).  Comdb2 exensions include additional base data types,
+at [http://www.lua.org](http://www.lua.org).  Comdb2 extensions include additional base data types,
 a strongly typed dynamic type system, a pthreads-like threading model, and
 more.
 
-Stored procedures run with implicity set [```SET VERIFYRETRY off```](sql.html#set-verifyretry)
+Stored procedures run with implicitly set [```SET VERIFYRETRY off```](sql.html#set-verifyretry)
 
 ## Stored procedure basics
 
@@ -55,7 +55,7 @@ $ cdb2sql testdb default "exec procedure ex1('mycol', 'myval')"
 ## Function argument types
 
 Function definitions can specify argument types. The system takes care of doing the necessary type conversions 
-when the function is called. The type can be any of the Comdb2 types. Failure to perform type convertion is a 
+when the function is called. The type can be any of the Comdb2 types. Failure to perform type conversion is a 
 runtime error and the SP execution is terminated.
 
 ```lua
@@ -425,8 +425,8 @@ Description:
 This method creates an anonymous dbtable backed by the SQL query specified.  The resulting dbtable
 is the same as dbtable referencing a base table, supporting all of the same methods.
 This method differs from db:exec in that the query plan of the specified query is automatically cached, 
-and replacable parameters are used with the <dbtable>:bind call.  The syntax of the SQL uses the *?* character
-as a placeholder for a replacable parameter. Maximum of 2048 parameters are allowed in a query.
+and replaceable parameters are used with the <dbtable>:bind call.  The syntax of the SQL uses the *?* character
+as a placeholder for a replaceable parameter. Maximum of 2048 parameters are allowed in a query.
 
 Return Values:
 
@@ -655,7 +655,7 @@ tt:insert({id=5, j=55})
 tt:emit()
 ```
 
-Running this yeilds:
+Running this yields:
 
 ```
 $ cdb2sql testdb default "exec procedure temp()"
@@ -924,7 +924,7 @@ Set the comdb2 datatype object to null.
 ## Managing Transactions
 
 By default, the entire stored procedure executes as one transaction. All changes performed by the procedure are 
-committed when `main` returns.  The stored procedure can be part of larger transaciont which executes other 
+committed when `main` returns.  The stored procedure can be part of larger transfinite which executes other 
 SQL statements and other stored procedures. All changes will commit when the client program calls commit. This 
 would look something like the following pseudo code snippet --
 
@@ -937,7 +937,7 @@ would look something like the following pseudo code snippet --
     cdb2_run_statement('commit')
 ```
 
-Couple of limitiatons when running inside a client transation (like the one shown above):
+Couple of limitations when running inside a client transaction (like the one shown above):
 
 1. Stored procedure cannot start threads.
 2. Stored procedure cannot explicitly control transactions (by calling `db:begin`, `db:commit` and `db:rollback`).
@@ -963,7 +963,7 @@ Return Values:
 |Name         |   Description             |Notes
 |-------------|---------------------------|-----
 |*intrans*  |   boolean     | True if in a transaction 
-|*isolation string*  |   string     | one of "BLOCKSQL", "READ COMMITED", "SNAPSHOT ISOLATION"  
+|*isolation string*  |   string     | one of "BLOCKSQL", "READ COMMITTED", "SNAPSHOT ISOLATION"  
  
 
 ### db:begin
@@ -974,7 +974,7 @@ rc = db:begin()
 
 Description:
 
-This method begins a transaction inside the stored procedure.  It runs in the isolation level inherrited
+This method begins a transaction inside the stored procedure.  It runs in the isolation level inherited
 by the invoking SQL session. It is an error to begin a transaction when the invoking SQL session
 has invoked the stored procedure inside of a transaction.
 
@@ -1007,7 +1007,7 @@ Compare `rc` with the following named values to determine why `db:commit` failed
 | Lua value            | Error |
 |----------------------|-------|
 |db.err_dup            | Unique key constraint violation (duplicate key)
-db.err_verify          | Verify failure - transaction tried to modify a record that was modified by another trasnaction
+db.err_verify          | Verify failure - transaction tried to modify a record that was modified by another transaction
 db.err_fkey            | Foreign key constraint violation
 db.err_null_constraint | Null constraint violation
 db.err_selectv         | Records touched by ```SELECTV``` modified by other transactions
@@ -1072,7 +1072,7 @@ db:column_type(type, index)
 
 Description:
 
-This method specifies the data type of a single column identified by numeric postion to be output to the calling SQL client when either the "emit" method is invoked, or a table is returned from the stored procedure.  The first position is 1. It is an optional method - The stored procedure will determine the datatypes of each column in the output stream at runtime if not given this information. Best practices suggest using this method to rigidly enforce the output format of a stored procedure. The type is specified as a string, being one of real, int, text, blob or date.
+This method specifies the data type of a single column identified by numeric position to be output to the calling SQL client when either the "emit" method is invoked, or a table is returned from the stored procedure.  The first position is 1. It is an optional method - The stored procedure will determine the datatypes of each column in the output stream at runtime if not given this information. Best practices suggest using this method to rigidly enforce the output format of a stored procedure. The type is specified as a string, being one of real, int, text, blob or date.
 
 Return Values:
 
@@ -1096,12 +1096,12 @@ rc = db:column_name(name, index)
 
 Description:
 
-This method specifies the name of a single column identified by numeric postion to be output to the calling SQL 
+This method specifies the name of a single column identified by numeric position to be output to the calling SQL 
 client when either the "emit" method is invoked, or a table is returned from the stored procedure.  The first position is 1.
 It is an optional method - The
 stored procedure will name the columns "column1" "column2" etc by default if this information is not given.
 Best practices suggest using this method to rigidly enforce the output format of a stored procedure.  Defining the name of
-a column explictly offers a level of decoupling from the underlying database.
+a column explicitly offers a level of decoupling from the underlying database.
 
 Return Values:
 
@@ -1325,7 +1325,7 @@ In all examples above, the resulting Lua array contain strings.
 json-string, rc = db:table_to_json(x, y)
     x: Lua table to convert to JSON string
     y: Optional Lua table to govern conversion
-   rc: 0 if conversion was succesful without truncation or hex-encoding of strings
+   rc: 0 if conversion was successful without truncation or hex-encoding of strings
        non-zero otherwise
 ```
 
@@ -1337,7 +1337,7 @@ y.type_annotate = true | false (default)
 
 `false`: All non-numeric types are converted to respective string forms
 
-Lua `string` and `cstring` may be not always be convertable into UTF-8 as they are simply null terminated byte arrays. To convert such input, use one of the following options:
+Lua `string` and `cstring` may be not always be convertible into UTF-8 as they are simply null terminated byte arrays. To convert such input, use one of the following options:
 ```
 y.invalid_utf8 = 'fail' | 'truncate' | 'hex' | nil (default)
 ```
@@ -1534,7 +1534,7 @@ named `step` and `final`. SQL engine will call `step` once per matching row and 
 all rows. `final` returns a single value which is the result of aggregate logic. Any return value from `step` is 
 ignored. Stored procedure doesn't need to have `main`. Stored procedure will need to maintain state during 
 calls to `step` and `final`. The sever will ensure that same Lua VM is provided during these calls so state 
-can be maintined. This is illustrated in the example below where we provide a simplistic implementation for `median`.
+can be maintained. This is illustrated in the example below where we provide a simplistic implementation for `median`.
 
 ```
 // Table definition

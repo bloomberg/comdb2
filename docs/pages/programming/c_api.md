@@ -122,7 +122,7 @@ int cdb2_next_record(cdb2_hndl_tp *hndl);
 
 Description:
 
-This routine retrieves one record from the set refered to by hndl.  Each call to this routine retrieves the next record in the set.  The data that is returned from this call must be extracted with the [cdb2_column_value](#cdb2columnvalue) call.
+This routine retrieves one record from the set referred to by hndl.  Each call to this routine retrieves the next record in the set.  The data that is returned from this call must be extracted with the [cdb2_column_value](#cdb2columnvalue) call.
 
 Parameters:
 
@@ -255,7 +255,7 @@ Parameters:
 
 |Name|Type|Description|Notes
 |-|-|-|-|
-|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already succesfully called [cdb2_next_record](#cdb2nextrecord)
+|*hndl*| input | cdb2 handle | This is a cdb2 handle that has already successfully called [cdb2_next_record](#cdb2nextrecord)
 |*col*| input | column number | This is the number of the column to be interrogated. The first column is number 0.
 
 ### cdb2_column_type
@@ -295,18 +295,18 @@ char *sql = "INSERT INTO t1(a, b) values(@a, @b)"
 char *a = "foo";
 int64_t b = "bar";
 
-/* return code checks omited for brevity */
+/* return code checks omitted for brevity */
 cdb2_bind_param(db, "a", CDB2_CSTRING, a, strlen(a));
 cdb2_bind_param(db, "b", CDB2_INTEGER, &b, sizeof(int64_t));
 cdb2_run_statement(db, sql);
 ```
 
-There's 2 very important things to remember about bound paramers:
+There's 2 very important things to remember about bound parameters:
 
   * We're passing addresses of variables.  The values are copied and sent to the database at [cdb2_run_statement](#cdb2runstatement) time - it's important that these values don't go out of scope between when the binding is established and when the values are fetched.
   * The bindings remain after the call is made.  You can populate the addresses with new values and call [cdb2_run_statement](#cdb2runstatement) again without redoing the bindings.  This is useful if you're running lots of identical statements with similar values in a loop.  Bindings should be cleared with [cdb2_clearbindings](#cdb2clearbindings) if you need to run a different statement.
 
-It's a good practice to have the names of bound parameters correspond to the columns they represent, but it't not required.
+It's a good practice to have the names of bound parameters correspond to the columns they represent, but it's not required.
 
 Parameters:
 

@@ -8,7 +8,7 @@ permalink: sql.html
 This section defines the syntax of SQL as accepted by Comdb2.  Anyone familiar with [SQLite](http://sqlite.org) 
 will find the syntax diagrams familiar. Comdb2 uses SQLite as the query parser and query planner.  The SQL dialects 
 in Comdb2 and SQLite are not identical however.  Some things have been taken away (DDL syntax is different, 
-```OR REPLACE``` clauses are gone), and some have been added (stored procedures, time partitionss).
+```OR REPLACE``` clauses are gone), and some have been added (stored procedures, time partitions).
 
 ## Transactions
 
@@ -38,7 +38,7 @@ also guarantees lack of phantoms. Before using snapshot isolation, you must add 
 to your lrl file.
 
 **NOTE**: if any SQL statements inside the transaction fail, excluding [```COMMIT```](#commit), the application 
-needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requets.  A 
+needs to run [```ROLLBACK```](#rollback) before it's able to reuse the same connection for other requests.  A 
 transaction that calls ```COMMIT``` or ```ROLLBACK``` is considered complete, regardless of any errors returned.
 The next statement that runs on the same connection will be in a new transaction.
 
@@ -60,7 +60,7 @@ where no transaction has been started with ```BEGIN```.
 
 ![ROLLBACK](images/rollback-stmt.gif)
 
-Rolls back (aka *aborts*) the current transaction.  Any effects of previous statements in the current tranaction are
+Rolls back (aka *aborts*) the current transaction.  Any effects of previous statements in the current transaction are
 undone.
 
 ## Changing data
@@ -113,8 +113,8 @@ See also:
 The ```DELETE``` command is used to remove records from a table. The command consists of the ```DELETE FROM``` 
 keywords followed by the name of the table from which records are to be removed.  
 
-If the ```WHERE``` clause is ommitted, all rows will be deleted.  Note that in this case, the ```DELETE``` statement
-will traverse all rows and remove them inidividually.  This makes it a less efficient option than the ```TRUNCATE```
+If the ```WHERE``` clause is omitted, all rows will be deleted.  Note that in this case, the ```DELETE``` statement
+will traverse all rows and remove them individually.  This makes it a less efficient option than the ```TRUNCATE```
 statement, but has the advantage that it will work on tables with foreign key constraints.
 
 See also:
@@ -172,7 +172,7 @@ expressions that are used as the key for the sort. The expressions do not have t
 a simple ```SELECT```, but in a compound ```SELECT``` each sort expression must exactly match one of the 
 result columns. Each sort expression may be optionally followed by a ```COLLATE``` keyword and the name of a 
 collating function used for ordering text and/or keywords ```ASC``` or ```DESC``` to specify the sort order. 
-Note that in the absense of an ```ORDER BY``` clause the order in which rows are returned is not defined.
+Note that in the absence of an ```ORDER BY``` clause the order in which rows are returned is not defined.
 
 Each term of an ```ORDER BY``` BY expression is processed as follows:
 
@@ -196,7 +196,7 @@ beginning of the result set. In a compound query, the ```LIMIT``` clause may onl
 statement. The limit is applied to the entire query not to the individual ```SELECT``` statement to which it is 
 attached. Note that if the ```OFFSET``` keyword is used in the ```LIMIT``` clause, then the limit is the first 
 number and the offset is the second number. If a comma is used instead of the ```OFFSET``` keyword, then the 
-offset is the first number and the limit is the second number. This seeming contradition is intentional - it 
+offset is the first number and the limit is the second number. This seeming contradiction is intentional - it 
 maximizes compatibility with legacy SQL database systems.
 
 A compound ```SELECT``` is formed from two or more simple ```SELECT``` statements connected by one of the 
@@ -272,7 +272,7 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 The ```CREATE TABLE``` statement creates a new table.  If the table already exists, the statement returns an error
 unless the ```IF NOT EXISTS``` clause is present.  
 
-Note that this the sytax of ```CREATE TABLE``` is different from other traditional database systems.  Table 
+Note that this the syntax of ```CREATE TABLE``` is different from other traditional database systems.  Table 
 declarations in comdb2 aren't incremental - there's no separate "CREATE INDEX" statement to add indices.  The 
 schema definition defines all keys and constraints.  The schema definition language deserves its 
 [own page](table_schema.html)
@@ -379,7 +379,7 @@ statement instead.
 
 ```GRANT``` lets the named user have read or write access to the given table. ```REVOKE``` takes away that access.
 Note that the access checks aren't enforced until authentication is enabled on the database as a whole with the
-[```PUT ATHENTICATION```](#put) statement.
+[```PUT AUTHENTICATION```](#put) statement.
 
 ```GRANT OP TO``` gives superuser privileges to a given user.  That user can create/drop tables and grant/revoke
 privileges to other users.
@@ -409,7 +409,7 @@ is enabled with ```PUT AUTHENTICATION ON```, only superusers can run ```PUT``` c
 
 The settings currently available to ```PUT``` are:
 
-  * ```ANALYZE COVERAGE``` and ```ANALYZE TRESHOLD``` - set tunables used to configure index statistics gathering,
+  * ```ANALYZE COVERAGE``` and ```ANALYZE THRESHOLD``` - set tunables used to configure index statistics gathering,
     see the [```ANALYZE```](#analyze) statement.
   * ```DEFAULT PROCEDURE``` - sets the default version for a given stored procedure.  Calls to the stored procedure
     without a ```SET SPDEFAULT``` statement will run this version.  See [stored procedures](storedprocs.html) for
@@ -502,7 +502,7 @@ are different, for example.  Consult the table below for a list.  New functions 
 
 ### Aggregate functions
 
-In any aggregate function that takes a single argument, that argument can be preceeded by the keyword DISTINCT. In such cases, duplicate elements are filtered before being passed into the aggregate function. For example, the function "count(distinct X)" will return the number of distinct values of column X instead of the total number of non-null values in column X.
+In any aggregate function that takes a single argument, that argument can be preceded by the keyword DISTINCT. In such cases, duplicate elements are filtered before being passed into the aggregate function. For example, the function "count(distinct X)" will return the number of distinct values of column X instead of the total number of non-null values in column X.
 
 |Function                                | Description                                                                 |
 |----------------------------------------|-----------------------------------------------------------------------------|
@@ -532,7 +532,7 @@ This sets the current connection's transaction level.  See
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone
-values received from the application without an explicit timezone specified are taked to be from this timezone.
+values received from the application without an explicit timezone specified are toked to be from this timezone.
 Please see [datetime types](datetime.html) for more information.
 
 ### SET DATETIME PRECISION

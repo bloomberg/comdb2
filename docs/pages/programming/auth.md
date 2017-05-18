@@ -47,7 +47,7 @@ select * from comdb2_users
 (username='foo_user', isOP='N')
 (username='op_user', isOP='Y')
 ```
-This info is part of database metadata, therefore copying the database will perserve it.
+This info is part of database metadata, therefore copying the database will preserve it.
 
 ## Turning on Authentication
 The following SQL statement will turn on authentication

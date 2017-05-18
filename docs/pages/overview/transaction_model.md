@@ -37,7 +37,7 @@ When a transaction consists of more than one statement, not much changes.  The r
 
 ## Transactions and the locking model
 
-SQL statements run on a replicant with short duration locks only.  Locks are always shared ("read locks") held on a page-level granularity.  A cursor that's positioned on a row has a lock on the physical page that holds the row.   If the statement is an ```INSERT```/```UPDATE```/```DELETE```, the replicant just forwards the operation to be applied to the master, and keeps running - no write locks are acquired. Replicants receive a stream of log records for transactions that have committed.  The only write locks acquired on replicants are taken by the replication system. To apply a transaction, replicants will acquire all the neccessary locks ahead of time.  If while acquiring locks, they deadlock with a running SQL statement, replication is always chosen as the deadlock victim.  Since replication does nothing until all the locks are acquired, there's nothign to undo - just release the locks, and try again.  Once it has all the locks, replication can't fail (or will fail catastrophically for things like I/O errors).  
+SQL statements run on a replicant with short duration locks only.  Locks are always shared ("read locks") held on a page-level granularity.  A cursor that's positioned on a row has a lock on the physical page that holds the row.   If the statement is an ```INSERT```/```UPDATE```/```DELETE```, the replicant just forwards the operation to be applied to the master, and keeps running - no write locks are acquired. Replicants receive a stream of log records for transactions that have committed.  The only write locks acquired on replicants are taken by the replication system. To apply a transaction, replicants will acquire all the necessary locks ahead of time.  If while acquiring locks, they deadlock with a running SQL statement, replication is always chosen as the deadlock victim.  Since replication does nothing until all the locks are acquired, there's nothing to undo - just release the locks, and try again.  Once it has all the locks, replication can't fail (or will fail catastrophically for things like I/O errors).  
 
 ## Optimistic concurrency control
 
@@ -52,13 +52,13 @@ Since ```UPDATE``` and ```DELETE``` statements run on replicants, and do not acq
 1. Fail the transaction and have the replicant return an error to the application. The application can decide that the transaction no longer applies, or it may re-run it (possibly with a different set of statements) 
 2. Fail the transaction and have the replicant retry.  The replicant re-runs all the statements that were part of the transaction, generates a new list of operations to execute, and re-submits it to the master.
 
-Neither solution is ideal.  The first places an additional burden on application developers for the case where the application doesn't care that the row no longer exists.  The second changes the semantics of the statement (consider silently replaying an update statement that gives an empoyee a raise or anything else that's not idempotent).  Having to choose between 2 evils, the default is option (2).  Applications can choose option (1) by running the SQL statement ```SET VERIFYRETRY OFF```.  Statements that aren't idempotent (eg: setting columns in a certain row to a fixed value) are always safe to replay.
+Neither solution is ideal.  The first places an additional burden on application developers for the case where the application doesn't care that the row no longer exists.  The second changes the semantics of the statement (consider silently replaying an update statement that gives an employee a raise or anything else that's not idempotent).  Having to choose between 2 evils, the default is option (2).  Applications can choose option (1) by running the SQL statement ```SET VERIFYRETRY OFF```.  Statements that aren't idempotent (eg: setting columns in a certain row to a fixed value) are always safe to replay.
 
 On the master, while executing record requests on behalf of the replicants, the transactions may deadlock.  This is handled transparently.  One of the transactions in the deadlock cycle is chosen as the deadlock victim and is aborted. The list of record requests is then tried again.  The master will prefer to choose transactions that have done the least work (that hold the least locks) as losers in a deadlock cycle to avoid starving larger transactions if interactions between transactions is very heavy.
 
-You may notice a trend in the last few sections that many isolation problems in Comdb2 are dealt with by a similar "just abort and retry" strategy.  This is what we mean when we say that the concurrency control is optimistic.  Transactions are allowed to run as if they are the only things in the system, and their interactions are reconciled at the end, when they are ready to commit.  In the overwhelmingly common case, transactions do not interact, and there's no conflicts to resolve.  Optimistically not locking allows for better efficiency for the common case.  The rare worst case happens where transactions interact heavily.  Consider for example an application that mistakingly runs the same nightly delete job on 2 machines to delete the same records, at the same time.  One of them is going to try to delete records already deleted by the other, and will be forced to retry.  
+You may notice a trend in the last few sections that many isolation problems in Comdb2 are dealt with by a similar "just abort and retry" strategy.  This is what we mean when we say that the concurrency control is optimistic.  Transactions are allowed to run as if they are the only things in the system, and their interactions are reconciled at the end, when they are ready to commit.  In the overwhelmingly common case, transactions do not interact, and there's no conflicts to resolve.  Optimistically not locking allows for better efficiency for the common case.  The rare worst case happens where transactions interact heavily.  Consider for example an application that mistakenly runs the same nightly delete job on 2 machines to delete the same records, at the same time.  One of them is going to try to delete records already deleted by the other, and will be forced to retry.  
 
-## Isolation levels and artifacts
+## Isolation levels and artefacts
 
 Comdb2 offers no dirty reads isolation level.  Transactions at all transaction levels will only see results of committed transactions.  The supported levels are listed below, from least to most strict.
 
@@ -74,7 +74,7 @@ Transaction [artifacts](#artifacts) seen at this level:
 
 ### Read committed isolation level.
 
-```READ COMMITED``` transactions offer a more familiar transactional model.  These allow transactions to see their own (uncommitted) updates.  They also avoid the "uncommitable transaction" surprise that sometimes happens in the [default isolation level](#default-isolation-level).  The level of isolation is otherwise the same.  Note that the master is still only involved at commit time.  Replicants keep a temporary table/index per transaction that contains any changes made by that transaction.  Any reads (```SELECT``` statements in the same transaction or reads done on behalf of a ```WHERE``` clause of a ```DELETE``` or ```UPDATE``` statement will merge real table/index data with the temporary (*"shadow"*) data.
+```READ COMMITTED``` transactions offer a more familiar transactional model.  These allow transactions to see their own (uncommitted) updates.  They also avoid the "uncommitable transaction" surprise that sometimes happens in the [default isolation level](#default-isolation-level).  The level of isolation is otherwise the same.  Note that the master is still only involved at commit time.  Replicants keep a temporary table/index per transaction that contains any changes made by that transaction.  Any reads (```SELECT``` statements in the same transaction or reads done on behalf of a ```WHERE``` clause of a ```DELETE``` or ```UPDATE``` statement will merge real table/index data with the temporary (*"shadow"*) data.
 
 Applications can run ```SET TRANSACTION READ COMMITTED``` before starting a transaction to enter this isolation level for the existing connection.
 
@@ -87,11 +87,11 @@ Transaction artifacts seen at this level:
 
 The ```SNAPSHOT``` isolation level presents to a transaction an illusion that time has stopped.  Transactions will not see any records that are newer then their ```BEGIN``` time.  Records that are deleted by other transactions will continue to exist for ```SNAPSHOT``` transactions.  Records that are updated by other transactions are seen with their old values.  This is implemented in a way that's similar to ```READ COMMITTED``` transactions.  The replication transactions, in addition to applying the replication stream also update temporary trees for every active ```SNAPSHOT``` transaction with the old values of updated/deleted records.  Using ```SNAPSHOT``` isolation requires adding an 'enable_snapshot_isolation' lrl option to enable extra logging that replication needs to recover record values from the replication stream.  Enabling ```SNAPSHOT``` transactions for your connection may be done with ```SET TRANSACTION SNAPSHOT```.
 
-Enabling the snapshot mode allows your application to see a view of a database at some time in the past as well with ```BEGIN TRANSACTION AS OF DATETIME ...```.  How far you can go back depends on your log deletion policy (see [config files](config_files.html)).  Whether looking at a current or past snapshot, when you attempt to update/delete records, at commit time the master is going to apply the changes to current rows (it has no idea of what transaction mode you were in).  That's still subject to optimistic concurrency control effects - rows you added may cause duplicate key contraint violations, rows you delete or update may no longer exist, etc.  The automatic replay of transactions with conflicts won't happen in ```SNAPSHOT``` isolation level.  Replaying won't change things since things can't change in a snapshot, so rerunning the transaction will result in at least the same conflicts.
+Enabling the snapshot mode allows your application to see a view of a database at some time in the past as well with ```BEGIN TRANSACTION AS OF DATETIME ...```.  How far you can go back depends on your log deletion policy (see [config files](config_files.html)).  Whether looking at a current or past snapshot, when you attempt to update/delete records, at commit time the master is going to apply the changes to current rows (it has no idea of what transaction mode you were in).  That's still subject to optimistic concurrency control effects - rows you added may cause duplicate key constraint violations, rows you delete or update may no longer exist, etc.  The automatic replay of transactions with conflicts won't happen in ```SNAPSHOT``` isolation level.  Replaying won't change things since things can't change in a snapshot, so rerunning the transaction will result in at least the same conflicts.
 
 Transaction artifacts seen at this level:
 
-  * Transactions are not serialiable
+  * Transactions are not serializable
 
 ### Serializable isolation level
 
@@ -99,7 +99,7 @@ Transaction artifacts seen at this level:
 
 ### Linearizable isolation level
 
-```LINEARIZABLE``` is stronger than ```SERIALIZABLE``` in that it imposes a strict, cluster-wide order in which transactions are committed and viewable by clients.  Under ```SERIALIZABLE``` transaction level, there are edge-cases where a read-only sql client can see either the old or new value of an outstanding write request.  Conversely, ```LINEARIZABLE``` isolation level imposes a cluster-wide point-in-time at which any given write request is viewable.  Additionally, ```LINEARIZABLE``` ensures that the written data will be intact in any future version of the cluster which is comprised of at least a majority of the cluster members.  This isolation level is tested for a subset of sql features.  To enable it, you must enable HASql, add ```setattr DURABLE_LSNS 1``` to your cluster's lrl file, and use the ```SERIALIZABLE``` isolation level (by adding ```enable_serial_isolation``` to your lrl file, and specifying ```SET TRANSACTION SERIALIZABLE``` in your sql session.  Like all other isolation levels, ```LINEARIZABLE``` utilizes coherency-leases, and requires that the cluster-machines clocks are synchronized and do not drift beyond a known boundry.  See [Durable LSNs](durable.html) for more information about the durable LSN scheme.
+```LINEARIZABLE``` is stronger than ```SERIALIZABLE``` in that it imposes a strict, cluster-wide order in which transactions are committed and viewable by clients.  Under ```SERIALIZABLE``` transaction level, there are edge-cases where a read-only sql client can see either the old or new value of an outstanding write request.  Conversely, ```LINEARIZABLE``` isolation level imposes a cluster-wide point-in-time at which any given write request is viewable.  Additionally, ```LINEARIZABLE``` ensures that the written data will be intact in any future version of the cluster which is comprised of at least a majority of the cluster members.  This isolation level is tested for a subset of sql features.  To enable it, you must enable HASql, add ```setattr DURABLE_LSNS 1``` to your cluster's lrl file, and use the ```SERIALIZABLE``` isolation level (by adding ```enable_serial_isolation``` to your lrl file, and specifying ```SET TRANSACTION SERIALIZABLE``` in your sql session.  Like all other isolation levels, ```LINEARIZABLE``` utilizes coherency-leases, and requires that the cluster-machines clocks are synchronized and do not drift beyond a known boundary.  See [Durable LSNs](durable.html) for more information about the durable LSN scheme.
 
 ## Constraints
 
@@ -138,7 +138,7 @@ cdb2sql> select * from q;
 (q=1)
 (q=1)
 [select * from q] rc 0
--- commiting the transaction will fail, there are constraint violations
+-- committing the transaction will fail, there are constraint violations
 cdb2sql> commit
 [commit] failed with rc 299 OP #3 BLOCK2_SEQV2(824): add key constraint duplicate key 'Q' on table 'q' index 0
 cdb2sql> begin
@@ -178,7 +178,7 @@ cdb2sql> select 1
 [select 1] failed with rc -3 near "here": syntax error
 ```
 
-Rules for what's deffered and what's immediate:
+Rules for what's deferred and what's immediate:
 
   * `SELECT`/`SELECTV` and `WITH` statements are always immediate. 
   * `SET` statements are always deferred.
@@ -188,7 +188,7 @@ Rules for what's deffered and what's immediate:
 
 ## Artifacts
 
-Above, when discussing various transaction levels, we refered to various 
+Above, when discussing various transaction levels, we referred to various 
 artifacts.  This section summarizes what they are.
 
 ### Read are not repeatable.

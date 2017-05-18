@@ -12,13 +12,13 @@ declarative rather than imperative.  The entire schema per table is presented to
 figure out which indices to add/remove/modify, which fields to grow, shrink, etc.  A table definition has a several sections: the 
 [constants](#constants-section), the [table definition](#schema-section), the [keys](#key-section), and the [constraints](#constraints-section). 
 
-Comments begin with ```//``` and go until the end of the line.  There's no multiline comments.
+Comments begin with ```//``` and go until the end of the line.  There's no multi-line comments.
 
 ## Constants section
 
 ![constants](images/constant-section.gif)
 
-Users can specify constant values in this section to use in the rest of the defition.  This is occasionally helpful when several fields should
+Users can specify constant values in this section to use in the rest of the definition.  This is occasionally helpful when several fields should
 be sized the same.  This practice is of limited utility.  The constants section consists of the  keyword ```constants``1 and a list of
 constants enclosed by braces.  Example:
 
@@ -76,7 +76,7 @@ The dbstore value must have the same datatype as the column they are attached to
 * Blob fields cannot have dbstore values.
 * For datetime fields you can specify a string such as "2017-03-08T235959.987 America/New_York" or "CURRENT_TIMESTAMP"
 for current database system timestamp.
-* For byte arrays you can specify dbstore=0 to indicate that it should be bzero'd be default.
+* For byte arrays you can specify dbstore=0 to indicate that it should be zeroed be default.
 
 The schema section is required - it's the only required section.
 
@@ -112,7 +112,7 @@ false for some rows of the table, then those rows are omitted from the index.
 
 The WHERE clause must be placed within a pair of curly braces. The
 [expr](sql.html#expr) could be any expressions used in SQL with some
-restrictions. The `<expr>` may not contain subqueries, references to other
+restrictions. The `<expr>` may not contain sub-queries, references to other
 tables, non-deterministic functions, or bound parameters. For more information
 on allowed expressions, please read
 [SQLite's Partial Indexes Documentation](https://sqlite.org/partialindex.html).
@@ -251,7 +251,7 @@ Similarly, here is a typical query that uses index "b":
 For the second and third keys in the example above, there's a great possibility of having duplicate key 
 entries. (>1 users can share the same paydate, and multiple users can have the same first and las names).
 
-Preceeding an key name with ```dup``` marks that key as allowing duplicate entries.
+Preceding an key name with ```dup``` marks that key as allowing duplicate entries.
 
 ```
 keys
@@ -266,7 +266,7 @@ keys
 ### Datacopy Keys.
 If the key definition is preceded by the ```datacopy``` keyword, then the backing index will maintain a copy of 
 the data record in the btree used for the index.  This copy is maintained transparently by the database.  
-This allows for large performance gains when reading sequential records from on a key.  The tradeoff is the 
+This allows for large performance gains when reading sequential records from on a key.  The trade-off is the 
 use of more disk space.
 
 ### Ascending and Descending Keys.
@@ -291,18 +291,18 @@ The syntax is ```"LOCAL_KEYNAME" -> "REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME
 ```LOCAL_KEYNAME``` is the name of the key in the current table  ```REFERENCED_TABLE_NAME``` is the name of the 
 table which contains the key which is being pointed at.  ```REFERENCED_KEY_NAME``` is the name of the key in 
 the foreign table.  The datatypes of the columns comprising these keys need not match, though the contents must 
-be convertable.  The local key can be a prefix of the foreign key, and the foreign key can be a prefix of the 
+be convertible.  The local key can be a prefix of the foreign key, and the foreign key can be a prefix of the 
 local key.
 
 A key can point at more than one key by specifying multiple ```"REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"``` 
-items on the same line delimited by whitespace.  A key can point to a key within it's own table by specifying 
+items on the same line delimited by white-space.  A key can point to a key within it's own table by specifying 
 it's own table name in ```REFERENCED_TABLE_NAME```.
 
 Cascading deletes are supported on a constraint by adding the text ```on delete cascade``` (all in lower case) to 
 the end of the constraint line.  Cascading updates are supported on a constraint by adding the text 
 ```on update cascade``` (all in lower case) to the end of the constraint line.
 
-For some more detailed notes on the behaviour of foreign key constrainst, please see the 
+For some more detailed notes on the behaviour of foreign key constraints, please see the 
 [constraints](constraints.html) section.
 
 ### Using Partial Indexes in Constraints
@@ -333,7 +333,7 @@ To enable it, this lrl option needs to be enabled
 allow_user_schema
 ```
 
-The following example will create multiple users and seperate table (with same name) for each user.
+The following example will create multiple users and separate table (with same name) for each user.
 Querying comdb2_tables from op user account will show all the tables.
 
 

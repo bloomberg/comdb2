@@ -137,7 +137,7 @@ The first type stores years and months (like 1 year and 10 months), while the la
 minutes, seconds and milliseconds/microseconds.  The interval types are mutually incompatible (can't tell 
 how many seconds are in a month).
 
-Interval values are more or less undistinguishable from a quantity value. For example, it would be easy to 
+Interval values are more or less indistinguishable from a quantity value. For example, it would be easy to 
 store a year-to-month interval value as an integer, representing 12*years+months.  The real advantage of storing 
 time intervals in their own type comes from the SQL support for time arithmetic and decomposition.
 
@@ -165,7 +165,7 @@ The intervals, both year-to-month and day-to-second, can be expressed in a sever
        * If a floating point, the number of seconds as integer part and milliseconds as the fractional part.
 
 The "-" prefix followed by a space denotes a negative time interval (like "3hours ahead").  The day-to-second 
-format allows shorter forms by ommiting the tail. You are required to have at least the days and the following 
+format allows shorter forms by omitting the tail. You are required to have at least the days and the following 
 space to have the interval value parsed correctly).  In the C structures used to bind values, the quantities 
 are unsigned (i.e. positive) values, the sign being determined by the sign field.  Example: -1msec will be 
 expressed by ```sign=-1, days=hours=mins=sec=0, msec=1```.
@@ -261,12 +261,12 @@ In addition, the following casting can be used to specify intervals (mostly used
 * ```CAST(number AS minutes)``` interprets "number" as number of minutes, generating a day-to-second interval
 * ```CAST(number AS seconds)``` interprets "number" as number of seconds, generating a day-to-second interval
 
-### SQL Arithmetics
+### SQL Arithmetic
 
 The following operations (or a combinations of) are valid:
 
 * interval values can be added and subtracted to/from a datetime value, generating a new datetime value
-* intervals values can be multiplied and divided by a numerica value, generating a new interval value (example, ```cast(1 as day) * 3  == cast(3 as day)```)
+* intervals values can be multiplied and divided by a numeric value, generating a new interval value (example, ```cast(1 as day) * 3  == cast(3 as day)```)
 * intervals of the same type can be added, generating a new interval value
 
 Examples:

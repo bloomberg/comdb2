@@ -27,7 +27,7 @@ Describes all the columns for all of the tables in the database.
 * `varinlinesize` - The size of the data stored in the column when inlined.
 * `defaultvalue` - The default value for this column.
 * `dbload` - The default value for this column loaded by the server.
-* `isnullable` - `Y` if this collumn can hold nulls.
+* `isnullable` - `Y` if this column can hold nulls.
 
 ## comdb2_keys
 

@@ -18,7 +18,7 @@ document instead.
 
 Before discussing clusters, we need to know how to copy databases.  Comdb2 comes with a script called 
 `copycomdb2` that should be used for all database copies.  `copycomdb2` in turn calls a lower-level 
-utility called `comdb2ar` whose job consistes of serializing/deserializing databases.  Databases can always
+utility called `comdb2ar` whose job consists of serializing/deserializing databases.  Databases can always
 be copied from a live source.  It's highly suggested that live databases are not copied with other utilities.
 
 ### Transport
@@ -29,7 +29,7 @@ the key for the current user.  Copying a database sets up a pipeline similar to 
     comdb2ar c /path/to/lrl | ssh remote comdb2ar x ...
 
 `comdb2ar`'s job is to serialize the database on the source machine and deserialize it on the destination 
-machine.  When copying a live database this involves a coupld of extra steps in addition to copying database
+machine.  When copying a live database this involves a couple of extra steps in addition to copying database
 files:
 
   * Database needs to hold logs necessary for recovery
@@ -137,7 +137,7 @@ A sample minimal lrl file looks something like this:
     dir   /opt/bb/var/cdb2/testdb
 
 Running `comdb2 --create ...` on this lrl file will initialize a database in the specified directory
-with the given options.  For a full explanation of avilable options, see [Configuration Files](config_files.html).
+with the given options.  For a full explanation of available options, see [Configuration Files](config_files.html).
 
 
 ### Adding cluster information
@@ -193,7 +193,7 @@ document has details how to break a database from the cluster in the [Cluster Co
 section.
 
 The database internally keeps 2 lists of machines.  The first list is the set of machines that are supposed to
-be part of the cluser, also known as the "sanctioned list".  The second is the set of machines connected or supposed
+be part of the cluster, also known as the "sanctioned list".  The second is the set of machines connected or supposed
 to be connected to the cluster (the "connected list").
 
 ### Sanctioned list
@@ -312,7 +312,7 @@ configuring applications.  As a quick summary:
 Regardless which method is chosen, the Comdb2 API will try all the given nodes until it finds one that's 
 accessible as ask it for cluster information.  It will then update it's state of what constitutes the cluster,
 and keep going (choose a node from the now-updated list of nodes, use it to connect to and answer queries).  If
-no nodes are available, it'll requery the cluster state (re-read the configuration file, re-query comdb2db).
+no nodes are available, it'll re-query the cluster state (re-read the configuration file, re-query comdb2db).
 
 For the three methods given above, the "update client configuration" step gets progressively easier.  If 
 cluster information is passed to the API directly, it's up to the caller to discovered that database location
@@ -320,8 +320,8 @@ has changed, and to call the API with new information.  That's fine if your orga
 service discovery framework.
 
 If using configuration files for the database location, they will need to be redeployed in the "update client
-configuration" step.  How that's done (some orchistration framework, copying to a hardcoded list of machines,
-etc.) remains the resposibility of the application.  Again, this option is perfectly workable if your 
+configuration" step.  How that's done (some orchestration framework, copying to a hard-coded list of machines,
+etc.) remains the responsibility of the application.  Again, this option is perfectly workable if your 
 organization has a reliable way of distributing/generating configuration files.
 
 If using comdb2db, the "update client configuration" step is reduced to "update comdb2db".  The API will query

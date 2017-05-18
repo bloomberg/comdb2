@@ -32,28 +32,28 @@ for this file in one of these locations, in this order:
 1. In the default database location, if the database directory isn't specified
 1. In the location specified with '--lrl /path/to/dbname.lrl` on command line
 
-Lines begining with '#' are treated as comments and skipped.  Other lines should consist of a directive and its value.
+Lines beginning with '#' are treated as comments and skipped.  Other lines should consist of a directive and its value.
 
 ## Database tunables.
 
 ### Cache size
 
-Cache size can be set with the the 'cache' tunable. It takes a cache size and a unit (kb, mb, gb).  For example
+Cache size can be set with the the 'cache' tunable. It takes a cache size and a unit (KB, MB, GB).  For example
 
-    cache 64 mb
+    cache 64 MB
 
 This gets you 64 megabytes of cache.  The database will print its cache size when starting up:
 
     Cache:64MB  Segments:1  Segment-size:64MB
 
-The default cache size is 64mb.  You can set policies on a machine by capping the min and max settings for cachesize (putting
-these in global comdb2.lrl or comdb2_local.lrl is a good idea.  For example to set the minimum cache size at 8mb, and restrict
-the maximum at 1gb (say, for a shared machine), one can have:
+The default cache size is 64MB.  You can set policies on a machine by capping the min and max settings for cachesize (putting
+these in global comdb2.lrl or comdb2_local.lrl is a good idea.  For example to set the minimum cache size at 8MB, and restrict
+the maximum at 1GB (say, for a shared machine), one can have:
 
     cachekbmin 8192
     cachekbmax 1048576
 
-Maximim and minimum values are given in KB.
+Maximum and minimum values are given in KB.
 
 ### Thread Pools
 
@@ -98,12 +98,12 @@ Network tunables for controlling heartbeat parameters, queue sizes, etc. are lis
 sections describe each network's uses.
 
 |Option              |Default              |Description
-|netbufsz | 1048576 (1 mb) | Size of the network buffer (per node) for the replication network
-|netbufsz_signal | 65536 | Sizeo fo the network buffer (per node) for the signal network
+|netbufsz | 1048576 (1 MB) | Size of the network buffer (per node) for the replication network
+|netbufsz_signal | 65536 | Size of the network buffer (per node) for the signal network
 |heartbeat_check_time | 10 (seconds) | Consider an error if no heartbeat for this many seconds
 |net_max_queue                    |25000       | Maximum number of items to keep on replication network queue before dropping (per replicant)
 |nax_max_mem                      |0 (not set) | Maximum size (in MB) of items keep on replication network queue before dropping (per replicant)
-|net_throttle_percent             |50          | Trottles write requests from replicants if the replication network queue is `net_throttle_percent` full
+|net_throttle_percent             |50          | Throttles write requests from replicants if the replication network queue is `net_throttle_percent` full
 |net_max_queue_signal             |100         | Maximum number of items to keep on the signal network queue before dropping (per replicant)
 |net_poll                         |100 ms      | Allow a connection to linger for this many ms before identifying itself. Connections that take longer are shut down.
 |osql_net_poll                    |100 ms      | Like `net_sql`, but for the offload network (used by write transactions on replicants to send work to the master)
@@ -128,7 +128,7 @@ sections describe each network's uses.
 #### Replication
 
 The replication network handles replication-specific traffic between database nodes.  This includes
-election messages, log messages (ie: normal replication), requests for retransmits, etc.  Steps 3 and 4
+election messages, log messages (ie: normal replication), requests for re-transmits, etc.  Steps 3 and 4
 in [Transaction Lifecycle](transaction_model.html#life-cycle-of-a-transaction) go over the replication network.
 
 #### Offload
@@ -283,7 +283,7 @@ rowlocks_deadlock_trace|off |Prints deadlock trace in phys.c
 
 #### `sqllogger` commands
 
-There's a detailed SQL logging system in place.  It allows finegrained data collection on queries.  This
+There's a detailed SQL logging system in place.  It allows fine-grained data collection on queries.  This
 can be controlled with the `sqllogger` commands.  Logs themselves are binary files that are dumped into
 the database directory with the name $DBNAME.sqllog.  When rolled, they before $DBNAME.sqllog.1,
 $DBNAME.sqllog.2, etc.
@@ -309,7 +309,7 @@ may choose to mark nodes ***incoherent***.  Incoherent nodes continue to operate
 There's 2 ways for a node to be marked incoherent.  The first catches outright broken nodes.  If any nodes
 have acknowledged a transaction, and any other node takes longer than a configured threshold to respond, it's
 considered broken and marked incoherent.  The second option captures nodes that are statistically slower than
-other nodes.  A node where the running average of acknoledgement times over the last minute twice as bad as 
+other nodes.  A node where the running average of acknowledgement times over the last minute twice as bad as 
 the second bad node (withing some minimum threshold) is considered slow, and will become incoherent.
 
 Incoherent nodes are self-healing.  If a node marked incoherent catches up to the master, the master will
@@ -341,7 +341,7 @@ BDB layer tunables (see [bdbattr tunables](#bdbattr-tunables))
 
 ### `sql_tranlevel_default` options
 
-These options allow you to set the default SQL transaction level accross the database.  Any setting here can
+These options allow you to set the default SQL transaction level across the database.  Any setting here can
 be overwritten by running 'SET TRANSACTION ...' after connecting to the database.  See [Isolation Levels](transaction_model.html#isolation-levels-and-artifacts) for available transaction levels. 
 
 |sql_tranlevel_default default|Set to `default` isolation level
@@ -361,7 +361,7 @@ a certain cost, or prevent it from running further.
 
 ### Decimal rounding options
 
-The rouding policy for rounding for columns of decimal types can be controlled with the `decimal_rounding` option. 
+The rounding policy for rounding for columns of decimal types can be controlled with the `decimal_rounding` option. 
 Available options are:
 
 decimal_rounding DEC_ROUND_NONE|Don't round
@@ -379,7 +379,7 @@ decimal_rounding DEC_ROUND_05UP|Round for reround
 
 There's a few low-level tunables that control options in BerkeleyDB subsystems present in Comdb2.
 
-All options below are preceeded with "berkattr" in the configuration file.
+All options below are preceded with "berkattr" in the configuration file.
 
 |option|Default|Description
 iomap_enabled| 1 |Map file that tells comdb2ar to pause while we fsync
@@ -417,7 +417,7 @@ btpf_wndw_max| 1000  |Maximum number of pages read ahead
 btpf_wndw_inc| 1 |Increment factor for the number of pages read ahead
 btpf_pg_gap| 0 |Min. number of records to the page limit before read ahead
 btpf_cu_gap| 5 |How close a cursor should be (pages) to the prefaulted limit before prefaulting again
-btpf_min_th| 1 |Preload pages only if the tree has heigth less than this parameter
+btpf_min_th| 1 |Preload pages only if the tree has height less than this parameter
 recovery_verify| 0 |After recovery, run a full pass to make sure everything is applied 
 recovery_verify_fatal| 0 |Abort if recovery_verify is set, and fails. 
 check_pwrites| 0 |Read page after direct pwrite, check that it matches 
@@ -456,7 +456,7 @@ next word determines which option to set, and the following word determines its 
 |Option          |Default (type)      |Description
 |REPTIMEOUT|20 (SECS) | Replication timeout.
 |CHECKPOINTTIME|60 (SECS) |  Write a checkpoint at this interval.
-|CHECKPOINTTIMEPOLL|100 (MSECS) | Poll a random amount of time < this before writing a checkpoint (attempting to prevent mulitple databases from checkpointing at the same exact time)
+|CHECKPOINTTIMEPOLL|100 (MSECS) | Poll a random amount of time < this before writing a checkpoint (attempting to prevent multiple databases from checkpointing at the same exact time)
 |NUMBERKDBCACHES|0 (QUANTITY) | Split the cache into this many segments.
 |FULLRECOVERY|0 (BOOLEAN) | Instead of recovering from the last checkpoint, run recover from the start of the available logs.
 |DTASTRIPE|8 (QUANTITY) | Partition each table's data into this many stripes.  Note that this is ONLY settable at database creation time.
@@ -497,13 +497,13 @@ next word determines which option to set, and the following word determines its 
 |LOG_DEBUG_CTRACE_THRESHOLD|20 (QUANTITY) | Limit trace about log file deletion to this many events
 |DISABLE_UPDATE_STRIPE_CHANGE|1 (BOOLEAN) | Enable to move records between stripes on an update.
 |PAGE_ORDER_TABLESCAN|1 (BOOLEAN) | Scan tables in order of pages, not in order of rowids (faster for non-sparse tables)
-|TABLESCAN_CACHE_UTILIZATION|20 (PERCENT) |  Attempt to keep no more than this percentage of the buffer pool fo table scans.
+|TABLESCAN_CACHE_UTILIZATION|20 (PERCENT) |  Attempt to keep no more than this percentage of the buffer pool of table scans.
 |INDEX_PRIORITY_BOOST|1 (BOOLEAN) | Treat index pages as higher priority in the buffer pool.
 |REP_PROCESSORS|4 (QUANTITY) | Try to apply this many transactions in parallel in the replication stream
 |REP_WORKERS|16 (QUANTITY) | Size of worker pool for applying page changes on behalf of transactions (only has effect when `REP_PROCESSORS` is set
-|REP_LSN_CHAINING|0 (BOOLEAN) | If set, will force trasnactions on replicant to always release locks in LSN order.
-|REP_MEMSIZE|524288 (QUANTITY) | Maximum size for a local copy of log records for transaciton processors on replicants.  Larger transactions will read from the log directly.
-|ELECT_DISABLE_NETSPLIT_PATCH|0 (BOOLEAN) | When false - on a net split, the side with the master keeps it instead of downgrading.  New masters stll can't be elected without a quorum.
+|REP_LSN_CHAINING|0 (BOOLEAN) | If set, will force transactions on replicant to always release locks in LSN order.
+|REP_MEMSIZE|524288 (QUANTITY) | Maximum size for a local copy of log records for transaction processors on replicants.  Larger transactions will read from the log directly.
+|ELECT_DISABLE_NET SPLIT_PATCH|0 (BOOLEAN) | When false - on a net split, the side with the master keeps it instead of downgrading.  New masters still can't be elected without a quorum.
 |OSYNC|0 (BOOLEAN) | Enable O_SYNC on writes.  Reads will still use filesystem cache.
 |ALLOW_OFFLINE_UPGRADES|0 (BOOLEAN) | Allow machines marked offline to become master.
 |MAX_VLOG_LSNS|10000000 (QUANTITY) | Apply up to this many replication record trying to maintain a snapshot transaction.
@@ -514,7 +514,7 @@ next word determines which option to set, and the following word determines its 
 |REP_DB_PAGESIZE|0 (QUANTITY) | Page size for BerkeleyDB's replication cache db.
 |PAGEDEADLOCK_RETRIES|500 (QUANTITY) | On a page deadlock, retry the page operation up to this many times.
 |PAGEDEADLOCK_MAXPOLL|5 (QUANTITY) | If retrying on deadlock (see `PAGEDEADLOCK_RETRIES`), poll up to this many ms on each retry.
-|ENABLE_TEMPTABLE_CLEAN_EXIT|0 (BOOLEAN) | On exit, clean up temptables (they are deleted on next startup regardless).
+|ENABLE_TEMPTABLE_CLEAN_EXIT|0 (BOOLEAN) | On exit, clean up temp tables (they are deleted on next startup regardless).
 |MAX_SQL_IDLE_TIME|3600 (QUANTITY) | Warn when an SQL connection remains idle for this long.
 |SEQNUM_WAIT_INTERVAL|500 (QUANTITY) | Wake up to check the state of the world this often while waiting for replication acks.
 |SOSQL_MAX_COMMIT_WAIT_SEC|600 (QUANTITY) | Wait for the master to commit a transaction for up to this long 
@@ -570,7 +570,7 @@ can be queried with the `stat autonalyze` command.
 
 #### UDP tunables
 
-|UDP_DROP_DELTA_THRESHOLD|10 (QUANTITY) | Warn if delta of dropped packets exceeds this treshold
+|UDP_DROP_DELTA_THRESHOLD|10 (QUANTITY) | Warn if delta of dropped packets exceeds this threshold
 |UDP_DROP_WARN_PERCENT|10 (PERCENT) | Warn only if percentage of dropped packets exceeds this
 |UDP_DROP_WARN_TIME|300 (SECS) | No more than one warning per `UDP_DROP_WARN_TIME` seconds
 |UDP_AVERAGE_OVER_EPOCHS|4 (QUANTITY) | Average over these many TCP epochs 
@@ -604,7 +604,7 @@ can be queried with the `stat autonalyze` command.
 #### Replay detection tunables
 
 Comdb2 databases allow the client APIs to replay a transaction if its outcome is uncertain (ie: client issues commit,
-but the database drops a connection, so uncertain whether it committed).  This system is internaly called "blkseq" (block
+but the database drops a connection, so uncertain whether it committed).  This system is internally called "blkseq" (block
 sequence).  Tunables to control it are below
 
 |PRIVATE_BLKSEQ_CACHESZ | 4194304 | Cache size of the blkseq table
@@ -628,8 +628,8 @@ lease if a node is either not responding or is significantly slower than the oth
 |TRACK_REPLICATION_TIMES|1 (BOOLEAN) | Track how long each replicant takes to ack all transactions.
 |WARN_SLOW_REPLICANTS|1 (BOOLEAN) | Warn if any replicant's average response times over the last 10 seconds are significantly worse than the second worst replicant's.
 |MAKE_SLOW_REPLICANTS_INCOHERENT|1 (BOOLEAN) | Make slow replicants incoherent.
-|SLOWREP_INCOHERENT_FACTOR|2 (QUANTITY) | Make replicants that are this many times worse than the second worst replicant incoherent.  This is the threshold for `WARN_SLOW_REPLICANTS` and `MAKE_SLOW_REPLICANTS_INCOHERENT`.
-|SLOWREP_INCOHERENT_MINTIME|2 (MSECS) | Ignore replicantion events faster than this.
+|SLOW REP_INCOHERENT_FACTOR|2 (QUANTITY) | Make replicants that are this many times worse than the second worst replicant incoherent.  This is the threshold for `WARN_SLOW_REPLICANTS` and `MAKE_SLOW_REPLICANTS_INCOHERENT`.
+|SLOW REP_INCOHERENT_MINTIME|2 (MSECS) | Ignore replicantion events faster than this.
 |SLOWREP_INACTIVE_TIMEOUT|5000 (SECS) | If a "slow" replicant hasn't responded in this long, mark him incoherent.
 |TRACK_REPLICATION_TIMES_MAX_LSNS|50 (QUANTITY) | Track replication times for up to this many transactions
 |REMOVE_COMMITDELAY_ON_COHERENT_CLUSTER | 1 | Stop delaying commits when the all the nodes in the cluster are coherent.
@@ -647,7 +647,7 @@ lease if a node is either not responding or is significantly slower than the oth
 |RLLIST_STEP | 10 | Reallocate rowlock lists in steps of this size.
 |GENID48_WARN_THRESHOLD | 500000000 | Print a warning when there are only a few genids remaining */
 |DISABLE_SELECTVONLY_TRAN_NOP | 0 | Disable verifying rows selected via SELECTV if there's no other actions done by the same transaction
-|SC_VIA_DDL_ONLY | 0 | If DDL_ONLY is set, we dont do checks needed for comdb2sc 
+|SC_VIA_DDL_ONLY | 0 | If DDL_ONLY is set, we don't do checks needed for comdb2sc 
 |ASOF_THREAD_POLL_INTERVAL_MS | 500 | For how long should the BEGIN TRANSACTION AS OF thread sleep after draining its work queue
 |ASOF_THREAD_DRAIN_LIMIT | 0 | How many entries at maximum should the BEGIN TRANSACTION AS OF thread drain per run
 |REP_VERIFY_MAX_TIME | 300 | Maximum amount of time we allow a replicant to roll back its logs in an attempt to sync up to the master.
@@ -670,7 +670,7 @@ prepopulated options to create the database
 |init_with_compr                  |On          | Turns out compression on table data.
 |init_with_compr_blobs            |On          | Turns out compression on blob/vutf8 columns.
 |init_with_bthash                 |0 (off)     | Turn on a root page lookaside cache for tables
-|dtastripe                        |1           | Stripe each table accross this many files (several physical files per table)
+|dtastripe                        |1           | Stripe each table across this many files (several physical files per table)
 |blobstripe                       |1           | Also stripe blob files (several physical files per blob field)
 |table                            |            | Multiple table options can be added to an lrl file to add tables at database init time.  Arguments are table name and path to .csc2 file.
 
@@ -703,7 +703,7 @@ These options are toggle-able at runtime.
 |enable_prefault_udp | not set |  Send lossy prefault requests to replicants 
 |disable_prefault_udp | | Disable `enable_prefault_udp`
 |sqlsortermem | 314572800 | maximum amount of memory to give the sqlite sorter
-|cache | 64 mb | Database cache size, see [cache size](#cache-size)
+|cache | 64 MB | Database cache size, see [cache size](#cache-size)
 |cachekb | | see [cache size](#cache-size)
 |cachekbmin | | see [cache size](#cache-size)
 |cachekbmax | | see [cache size](#cache-size)
@@ -732,7 +732,7 @@ These options are toggle-able at runtime.
 |allow_lua_print | 0 | Enable to allow stored procedures to print trace on DB's stdout
 |allow_user_schema | 0 | Enable to allow per-user schemas
 |resource | not set | Registers a file with the databases.  Can be referred to from stored procedures.
-|repchecksum | 0 | Enable to do additional checksumming of replication stream (log records in replication stream already have checksums)
+|repchecksum | 0 | Enable to do additional check-summing of replication stream (log records in replication stream already have checksums)
 |use_parallel_schema_change | 1 | Scan stripes for a table in parallel during schema change.
 |use_planned_schema_change | 1 | Only change entities that need to change on a schema change. Disable to always rebuild all data files and indices for the changing table.
 |enable_bulk_import | 0 | Enable API to quickly bring in tables from another database
@@ -760,7 +760,7 @@ These options are toggle-able at runtime.
 |reqltruncate | 1 | Disable to always log full SQL queries in request logs (they are truncated by default to save space)
 |appsockpool | | See [thread pools](#thread-pools)
 |sqlenginepool | | See [thread pools](#thread-pools)
-|round_robin_stripes | 0 | Alternate to which table stripe new records are written.  The default is to keep stripe affinity by writter.
+|round_robin_stripes | 0 | Alternate to which table stripe new records are written.  The default is to keep stripe affinity by writer.
 |no_round_robin_stripes | |
 |chkpoint_alarm_time | 60 (sec) | Warn if checkpoints are taking more than this many seconds.
 |report_deadlock_verbose | 0 | If set, dump the current thread's stack for every deadlock.
@@ -798,7 +798,7 @@ These options are toggle-able at runtime.
 |disable_inplace_blobs | | Disables enable_inplace_blobs (needs enable_inplace_blob_optimization, and enable_osql_blob_optimization also enabled - which they are by default)
 |enable_inplace_blob_optimization | | Enables inplace blob updates (blobs are updated in place in their b-tree when possible, not deleted/added)
 |disable_inplace_blob_optimization | | Disables enable_inplace_blob_optimization
-|enable_osql_blob_optimization | set | Replicant tracks which columns are modified in a transaction to allow blob updates to be ommitted if possible
+|enable_osql_blob_optimization | set | Replicant tracks which columns are modified in a transaction to allow blob updates to be omitted if possible
 |disable_osql_blob_optimization | | Disables disable_osql_blob_optimization
 |pagedeadlock_maxpoll | 5 (ms) | Randomly poll for this many ms and retry a deadlocked component of a rowlocks transaction
 |pagedeadlock_retries | 500 | Retry a deadlocked component of a rowlock transaction this many times before reporting deadlock for the transaction.
@@ -815,7 +815,7 @@ These options are toggle-able at runtime.
 |pageordertablescan | set | Table scans read the table in page order, not row order.
 |tablescan_cache_utilization | 20 | Percent of cache to allow to be used for table scans.
 |early | set | When set, replicants will ack a transaction as soon as they acquire locks - not that replication must succeed at that point, and reads on that node will either see the records or block.
-|noearly | |  Disables `early`.  With `noearly` replicant will wait to commit a transaction locally and release locks before acking.  The only advantage is that subsequent reads won't block on this tranaction's lock - the replication semantics don't change.
+|noearly | |  Disables `early`.  With `noearly` replicant will wait to commit a transaction locally and release locks before acking.  The only advantage is that subsequent reads won't block on this transaction's lock - the replication semantics don't change.
 |reallearly | not set | Ack as soon as a commit record is seen by the replicant (before it's applied).  This effectively makes replication asynchronous, so reads may not see the effects of a committed transaction yet.
 |noreallearly | | Disables `reallyearly`
 |ctrace_rollat | 0 | Roll database debug trace file (`$COMDB2_ROOT/var/log/cdb2/$dbname.trc.c`) at specified size.  Set to 0 to never roll.
@@ -836,10 +836,10 @@ These options are toggle-able at runtime.
 |location | | Sets up default file locations - see [file locations](#lrl-files)
 |include | | Include file given as argument.  Named file will be processed before continuing processing the current file.
 |temptable_limit | 8192 | Set the maximum number of temporary tables the database can create
-|disable_temptable_pool | | Disables the pool of temptables set by `temptable_limit`, temptables are created as needed.
+|disable_temptable_pool | | Disables the pool of temp tables set by `temptable_limit`, temp tables are created as needed.
 |enable_upgrade_ahead | not set | Occasionally update read records to the newest schema version (saves some processing when reading them later)
 |disable_upgrade_ahead | | Disables `enable_upgrade_ahead`
-|do | | At the end of processing config files, execute the rest of this line as an operational command, see [rperational Commands](commands.html)
+|do | | At the end of processing config files, execute the rest of this line as an operational command, see [operational Commands](commands.html)
 |memstat_autoreport_freq | 180 (sec) | Dump memory usage to trace files at this frequency
 |blob_mem_mb | not set | Blob allocator - sets the max memory limit to allow for blob values (in MB).
 |blobmem_sz_thresh_kb | not set | Sets the threshold (in kb) above which blobs are allocated by the blob allocator.

@@ -138,12 +138,12 @@ message CDB2_QUERY {
 |sql_query| The query to be executed
 | flag| The client options and their values to be sent to server
 |little_endian| This flag tells if the response column values should come in little endian or big endian format.
-| bindvars| This contains the name, the type and pointer to the value to be binded, a faster option of binding by index is also available.
+| bindvars| This contains the name, the type and pointer to the value to be bounded, a faster option of binding by index is also available.
 |tzname| Timezone of datetime fields in result set
 |set_flags | This contains all set commands e.g. "set transaction read committed", "set timezone GMT" etc. This needs to be attached to first query and  persist for the database connection.
 | types| The data type of result set, if present it should have data type of all the resulting columns.
 | mach_class| this option tells to which machine class does the client belongs.
-| cnonce | Client nonce, this is to prevent replays in high availabilty transactions
+| cnonce | Client nonce, this is to prevent replays in high availability transactions
 | snapshot_info| This is required when retry is done in HA transaction, the information comes from server at the start of HA transaction.
 | skip_rows| number of rows to be skipped in result set, -1 (skip all rows)
 | retry| tells if this query is retry by client (the cnonce number should be same), if begin retry < query retry then skip all the rows from server, if same then skip (skip_rows)
