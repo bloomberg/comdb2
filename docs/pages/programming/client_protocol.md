@@ -138,7 +138,7 @@ message CDB2_QUERY {
 |sql_query| The query to be executed
 | flag| The client options and their values to be sent to server
 |little_endian| This flag tells if the response column values should come in little endian or big endian format.
-| bindvars| This contains the name, the type and pointer to the value to be bounded, a faster option of binding by index is also available.
+| bindvars| This contains the name, the type and pointer to the value to be bound, a faster option of binding by index is also available.
 |tzname| Timezone of datetime fields in result set
 |set_flags | This contains all set commands e.g. "set transaction read committed", "set timezone GMT" etc. This needs to be attached to first query and  persist for the database connection.
 | types| The data type of result set, if present it should have data type of all the resulting columns.
