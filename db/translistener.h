@@ -31,7 +31,7 @@ enum {
      * the operation.  AFTER means just after the operation has been added
      * to the transaction (remember - the transaction may yet fail to commit).
      *
-     * For now we just support AFTER since that's all we need for TREQ 455077.
+     * For now we just support AFTER since that's all we need for now.
      * Probably never support BEFORE - no use case for it.
      *
      * The SAVE_BLOB_ flags specify whether or not to remember the blob values

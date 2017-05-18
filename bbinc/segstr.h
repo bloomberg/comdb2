@@ -14,13 +14,12 @@
    limitations under the License.
  */
 
-/* segstr.h - prototype for string seg stuff  paul x1552 */
+/* segstr.h - prototype for string seg stuff */
 
 #ifndef INCLUDED_SEGSTR_H
 #define INCLUDED_SEGSTR_H
 
-/* TREQ 1780578 -- this has moved to a new header in sysutil, please use it
- * directly. */
+/* this has moved to a new header in sysutil, please use it directly. */
 #include <segstring.h>
 
 #endif

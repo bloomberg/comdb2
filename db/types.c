@@ -923,7 +923,6 @@ TYPES_INLINE int pstrlenlim(const char *s, int lim)
  * byte; otherwise conversion error.
  * If the destination is larger than the source then it is padded if we have a
  * padding value; else conversion error.
- * TREQ 523417
  */
 static TYPES_INLINE int
 bytearray_copy(const void *in, int inlen, const struct field_conv_opts *inopts,

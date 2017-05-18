@@ -14,8 +14,7 @@
    limitations under the License.
  */
 
-/* is buffer from remote checks for prccom/bigsnd remote bit.
-    paul x1552 */
+/* is buffer from remote checks for prccom/bigsnd remote bit. */
 
 int is_buffer_from_remote(const void *buf)
 {

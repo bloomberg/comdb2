@@ -16,9 +16,7 @@
 
 #ifndef __QUANTIZE_H_INCLUDED__
 #define __QUANTIZE_H_INCLUDED__
-/* module to generate distribution and count reports
-   paul x1552
-*/
+/* module to generate distribution and count reports */
 
 /* DISTRIBUTION TABLE */
 

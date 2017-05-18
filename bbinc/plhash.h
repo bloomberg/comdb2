@@ -17,7 +17,7 @@
 #ifndef INCLUDED_PLHASH_H
 #define INCLUDED_PLHASH_H
 
-/* HASH  TABLE  paul x1552 10/08/01
+/* HASH  TABLE 10/08/01
 
    This is a generic hash table module.  It support generic key offset
    and length in a structure.  There are several wrappers for standard
@@ -70,7 +70,7 @@
         // now delete a record I found.
         hash_del(hash_table,rec);
 
-  paul x1552 02/19/2003
+  02/19/2003
  */
 
 #include <stdio.h>

@@ -15,7 +15,6 @@
  */
 
 /* comdb index front end */
-/* paul x1552            */
 
 #include "limit_fortify.h"
 #include <stdio.h>

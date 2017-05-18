@@ -27,7 +27,7 @@
 /* retried there.                                                           */
 /****************************************************************************/
 
-/* db block request, paul x1552 */
+/* db block request */
 #include <alloca.h>
 #include <poll.h>
 #include <stdio.h>

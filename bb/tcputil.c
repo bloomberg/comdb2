@@ -227,7 +227,7 @@ static void print_connect_error(const struct sockaddr *name, const char *func)
 static int lclconn(int s, const struct sockaddr *name, int namelen,
                    int timeoutms)
 {
-    /* connect with timeout paul x1552*/
+    /* connect with timeout */
     struct pollfd pfd;
     int flags, rc;
     int err;

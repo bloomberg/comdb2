@@ -399,7 +399,7 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
 static int lclconn(int s, const struct sockaddr *name, int namelen,
                    int timeoutms)
 {
-    /* connect with timeout paul x1552*/
+    /* connect with timeout */
     struct pollfd pfd;
     int flags, rc;
     int err;

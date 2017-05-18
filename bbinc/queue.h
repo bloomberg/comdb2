@@ -37,8 +37,6 @@
            process_whatever(w);   // process each one in FIFO order
    }
 
-
-   paul x1552 12/03
 */
 
 typedef struct {

@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-/* module to generate quanitze report, a la dtrace   paul x1552 */
+/* module to generate quanitze report, a la dtrace */
 /* 9/2007 */
 
 #include <stdio.h>

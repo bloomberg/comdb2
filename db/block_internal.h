@@ -17,7 +17,7 @@
 #ifndef __BLOCK_INTERNAL_H__
 #define __BLOCK_INTERNAL_H__
 
-/* db block request, paul x1552 */
+/* db block request */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

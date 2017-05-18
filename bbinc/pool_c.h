@@ -23,7 +23,7 @@
    a large chunk of memory and add/del from linked list.  This is proven
    to be much more efficient than malloc/free.  These routines need to
    be surround by lock for multithreaded programs.
-   paul x1552 2/19/03
+   2/19/03
 */
 
 #include <stdlib.h>
