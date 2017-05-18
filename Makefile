@@ -121,4 +121,4 @@ install: all
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
-	@[ -z "$(DESTDIR)" ] && . db/installinfo
+	[ -z "$(DESTDIR)" ] && . db/installinfo || true
