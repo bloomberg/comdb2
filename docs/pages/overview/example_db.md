@@ -24,7 +24,7 @@ $ cdb2sql testdb 'select 1+1 as "math"'
 
 ### The slightly longer version
 
-The ```comdb2``` program installed (by default) into /opt/bb/bin is the database server.  It's used to both create a database and to run a previously created database.  The only value you need to specify for creating a database are the database name.  You can also optionally specify the path where you want it to live.  The default is `/opt/bb/var/cdb2/mikedb`.  A database name should be unique per machine.  You can create several tiers of your database to have separate instances for dev, beta, production, etc. The [Setting up clusters](cluster.html) section will delve into more details. For now, let's just create a database to experiment with.
+The ```comdb2``` program installed (by default) into /opt/bb/bin is the database server.  It's used to both create a database and to run a previously created database.  The only value you need to specify for creating a database are the database name.  You can also optionally specify the path where you want it to live.  The default is `/opt/bb/var/cdb2`.  A database name should be unique per machine.  You can create several tiers of your database to have separate instances for dev, beta, production, etc. The [Setting up clusters](cluster.html) section will delve into more details. For now, let's just create a database to experiment with.
 
 Let's call our database 'testdb'. Creating a new database is as simple as:
 
@@ -44,7 +44,7 @@ looks like this:
 
 ```
 name    testdb
-dir     /opt/bb/var/cdb2/mikedb
+dir     /opt/bb/var/cdb2/testdb
 ```
 
 ## Bringing up the database
