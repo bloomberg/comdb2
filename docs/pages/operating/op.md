@@ -631,7 +631,7 @@ normally deleted when the earliest log file that existed at the time is deleted.
 
 ### scon and scof
 
-Score ON and Score Off.  Enables per-second trace from the database that shows events that occurred over the last
+Score ON and Score OFF.  Enables per-second trace from the database that shows events that occurred over the last
 second.  This will display the number of SQL requests, lock waits, cache hits, cache missed, etc.
 
 ### stax
