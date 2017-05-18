@@ -15,38 +15,6 @@ and for more information on usage please look in the [Docs](https://bloomberg.gi
 [![Build](http://comdb2.s3-website-us-east-1.amazonaws.com/master.svg)](http://comdb2.s3-website-us-east-1.amazonaws.com/tests/master/detail.txt)
 
 
-## Comdb2 Directory Contents
-
-| Directory | Description |
-| --- | --- |
-| bb/           | Useful generic modules |
-| bbinc/        | Header & Generic include files |
-| bdb/          | Table layer |
-| berkdb/       | Btrees layer |
-| cdb2api/      | Client code |
-| cdb2jdbc/     | JDBC driver |
-| comdb2rle/    | Run length encoding |
-| comdb2tests/  | Contains all the tests that will be run for this version |
-| config/       | lrl config files |
-| contrib/      | Misc useful programs that aren't part of core Comdb2 |
-| crc32c/       | Checksum component |
-| csc2/         | csc2 processing |
-| csc2files/    | csc2 config files |
-| cson/         | JSON library |
-| datetime/     | Datetime component |
-| db/           | Types layer and overall glue |
-| deb/          | Sample debian package config |
-| dfp/          | Decimal number component |
-| dlmalloc/     | Local malloc version |
-| docs/         | Documentation |
-| lua/          | All things pertaining to lua VM used for stored procedures |
-| net/          | Network component |
-| protobuf/     | API to communicate with the server |
-| schemachange  | Code for table create/alter/truncate/etc |
-| sqlite/       | Sqlite VM SQL engine  |
-| tests/        | Comdb2 test suite |
-| tools/        | Tools that are part of Comdb2 core |
-
 ## Documentation
 
 [Comdb2 documentation](http://bloomberg.github.io/comdb2) is included in the `docs` directory. 
@@ -77,7 +45,7 @@ needed.
    sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel   \
    protobuf-c-devel byacc flex openssl openssl-devel openssl-libs         \
    readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel    \
-   zlib lz4-devel gawk tcl epel-release lz4
+   zlib lz4-devel gawk tcl epel-release lz4 rpm-build
    ```
 
 3. Build Comdb2:
@@ -143,3 +111,35 @@ needed.
    cdb2sql mikedb local 'select * from t1'
    (a=1)
    ```
+
+## Comdb2 Directory Contents
+
+| Directory | Description |
+| --- | --- |
+| bb/           | Useful generic modules |
+| bbinc/        | Header & Generic include files |
+| bdb/          | Table layer |
+| berkdb/       | Btrees layer |
+| cdb2api/      | Client code |
+| cdb2jdbc/     | JDBC driver |
+| comdb2rle/    | Run length encoding |
+| comdb2tests/  | Contains all the tests that will be run for this version |
+| config/       | lrl config files |
+| contrib/      | Misc useful programs that aren't part of core Comdb2 |
+| crc32c/       | Checksum component |
+| csc2/         | csc2 processing |
+| csc2files/    | csc2 config files |
+| cson/         | JSON library |
+| datetime/     | Datetime component |
+| db/           | Types layer and overall glue |
+| deb/          | Sample debian package config |
+| dfp/          | Decimal number component |
+| dlmalloc/     | Local malloc version |
+| docs/         | Documentation |
+| lua/          | All things pertaining to lua VM used for stored procedures |
+| net/          | Network component |
+| protobuf/     | API to communicate with the server |
+| schemachange  | Code for table create/alter/truncate/etc |
+| sqlite/       | Sqlite VM SQL engine  |
+| tests/        | Comdb2 test suite |
+| tools/        | Tools that are part of Comdb2 core |
