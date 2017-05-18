@@ -10950,7 +10950,6 @@ int is_comdb2_index_blob(const char *dbname, int icol)
         case CLIENT_VUTF8:
         case SERVER_VUTF8:
             db->ix_blob = 1;
-            logmsg(LOGMSG_ERROR, "Blobs involved in indexes of table %s\n", dbname);
             return 1;
         default:
             return 0;
