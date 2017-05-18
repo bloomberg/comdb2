@@ -1,25 +1,42 @@
 #!/bin/bash
 
-set -x
+#set -x
+
+if [[ $1 = "--dir" ]] ; then 
+    shift
+    DBDIR=$1
+    shift
+fi
 
 DBNAME=$1
 shift
 CLUSTER=$@
-#creates db in current dir; use -d to have a different directory
 
-debug=0
+# use --dir to specify db directory otherwise creates db in current_dir/$DBNAME
+if [[ -z $DBDIR ]]; then
+    DBDIR=`pwd`/$DBNAME/
+fi
 
 failexit() {
     echo $1
     exit -1
 }
 
+usage() {
+    failexit "$0 --dir /path/to/dir dbname node1 node2 ..nodeN"
+}
+
+
+if [ "x$CLUSTER" = "x" ] ; then
+    usage
+fi
+
+debug=0
 while [[ $# -gt 0 && $1 = -* ]]; do
     [[ $1 = '-debug' ]] && debug=1
     shift
 done
 
-DBDIR=`pwd`
 TMPDIR=${TMPDIR:-/tmp}
 CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
@@ -94,7 +111,7 @@ dir     $DBDIR
 setattr MASTER_REJECT_REQUESTS 0
 EOPTIONS
 
-df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
+df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" > /dev/null && echo "setattr directio 0" >> ${LRL}
 
 myhostname=`hostname`
 # Do we have a cluster?
@@ -103,15 +120,12 @@ if [[ -n "$CLUSTER" ]]; then
     echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
     echo "cluster nodes $CLUSTER" >> $DBDIR/$DBNAME.lrl
 
-    set -e
-    for node in $CLUSTER; do
-        if [ $node == $myhostname ] ; then # skip copying to ourself
+    for node in $CLUSTER; do #verify we can ssh to nodes
+        if [ $node == $myhostname ] ; then
             continue
         fi
         ssh -o StrictHostKeyChecking=no $node "whoami"
     done
-    set +e
-
 else
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
 fi
@@ -243,15 +257,14 @@ else
     echo "!$DBNAME: waiting until ready"
     sleep 1
     for node in $CLUSTER; do
-        out=""
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         while  [[ "$out" != "1" ]]; do
-            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
             sleep 2
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         done
     done
     for node in $CLUSTER; do
-        cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
-        cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
+        cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")'
     done
 fi
 
