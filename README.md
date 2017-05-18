@@ -82,6 +82,11 @@ needed.
    comdb2 --create --dir ~/db testdb
    ```
    
+   Note: the `--dir PATH` parameter is optional, and if it is omitted comdb2 uses a default root of */opt/bb/var/cdb2/* for creating a database directory to contain the database files, which is named as per the database name parameter; hence in this case  */opt/bb/var/cdb2/testdb*.  
+   The default root will have to be created explicitly with the desired permissions before invoking `comdb2 --create` for a database.  
+   In this quick start, we use the home directory to avoid obfuscating the key steps of the process. 
+   
+   
 8. Configure the nodes in the cluster:
    ```
    vi ~/db/testdb.lrl
@@ -99,6 +104,13 @@ needed.
    comdb2 --lrl ~/db/testdb.lrl testdb
    ```
    All nodes will say 'I AM READY.' when ready.
+   
+   Note: the log dir comdb2 uses by default is */opt/bb/var/log/cdb2/* 
+   If this directory does not have permissions allowing the user to create file, there will be diagnostics output such as:  
+   > [ERROR] error opening '/opt/bb/var/log/cdb2/testdb.longreqs' for logging: 13 Permission denied  
+   
+   This condition will not impact operation of the database for the purposes of this quick start.  
+   
 
 1. On any node, start using the database.  You don't have any tables yet.  You can add them with *cdb2sql* 
    Example -
