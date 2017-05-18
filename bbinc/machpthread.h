@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-/* MACHINE INDEPENDENT PTHREAD MACROS paul x1552 */
+/* MACHINE INDEPENDENT PTHREAD MACROS */
 #ifndef __MACHPTHREAD_H__
 #define __MACHPTHREAD_H__
 

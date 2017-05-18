@@ -99,8 +99,7 @@ void bdb_cursor_error(bdb_state_type *bdb_state, DB_TXN *tid, int rc,
         break;
 
     case DB_LOCK_DEADLOCK:
-        /* This DOES happen on cursor open even though docs claim
-         * otherwise DRQS 8157838 */
+        /* This DOES happen on cursor open even though docs claim otherwise */
         *bdberr = BDBERR_DEADLOCK;
         break;
 

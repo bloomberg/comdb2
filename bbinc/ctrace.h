@@ -26,7 +26,6 @@
 extern "C" {
 #endif
 
-/* c trace. paul x1552 */
 /* use this to create /bb/data/taskname.trc.c and write printf
    comments.  ie, ctrace("big bug at line %d",__LINE__);
 

@@ -17,7 +17,7 @@
 #ifndef __BLOCK_INTERNAL_H__
 #define __BLOCK_INTERNAL_H__
 
-/* db block request, paul x1552 */
+/* db block request */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -666,7 +666,7 @@ typedef struct block_state {
 
     int modnum;
     tranid_t tid;
-    int longblock_single; /* DRQS 29818353: longblock in a single buffer */
+    int longblock_single; /* longblock in a single buffer */
 } block_state_t;
 
 /* Used to store info needed by the range delete key forming routine. */

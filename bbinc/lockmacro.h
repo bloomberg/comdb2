@@ -18,7 +18,6 @@
 #define INCLUDED_LOCKMACRO
 
 /*LOCK MACRO FOR PTHREAD_MUTEX_LOCK*/
-/*paul x1552 7/8/99*/
 #ifndef __LOCK_H__
 #define __LOCK_H__
 

@@ -765,8 +765,7 @@ int bdb_berkdb_next_real(bdb_berkdb_t *pberkdb, int *bdberr)
     if (berkdb->at_eof)
         return IX_NOTFND;
 
-    /* only enable bulk mode if we did some minimum number of nexts, DRQS
-     * 18538577 */
+    /* only enable bulk mode if we did some minimum number of nexts */
     berkdb->num_nexts++;
 
     if (!bt->use_bulk && bt->bulk.ulen > 0 &&

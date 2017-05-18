@@ -30,7 +30,7 @@ typedef struct {
 enum db_api_const {
     DB_MAX_KEYS = 28,
 
-    /* DRQS 8241665 - max key size multiplied by 2. - Johan Nystrom */
+    /* max key size multiplied by 2 */
     DB_MAX_SERVER_KEY_SIZE = 512,
     DB_MAX_CLIENT_KEY_SIZE = 256,
     DB_MAX_ASK_ARRAY = 1024,

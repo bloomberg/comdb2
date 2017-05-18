@@ -1,5 +1,3 @@
-See DRQS 79806413
-
 I found the issue with read committed [and beyond] stems from the way
 that we position the cursor in the real and shadow btree, and the way that the 
 planner is calling our sqlite3BtreeMovetoUnpacked() [calls find_dup() function 

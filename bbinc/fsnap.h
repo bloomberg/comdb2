@@ -17,7 +17,7 @@
 #ifndef INCLUDED_FSNAP
 #define INCLUDED_FSNAP
 
-/*FSNAP - hex dump funcs, paul x1552 */
+/*FSNAP - hex dump funcs */
 #ifndef __INCLUDED_FSNAP_H___
 #define __INCLUDED_FSNAP_H___
 

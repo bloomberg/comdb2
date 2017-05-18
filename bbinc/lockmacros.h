@@ -43,7 +43,7 @@
  * If you like, these provide the poor man's C equivalent of C++ scoped lock
  * guards.
  *
- * Paul x1552 was the original author of this file.
+ * Paul was the original author of this file.
  *
  *
  * April 2011 - Sam Jervis altered this module to use the assert_pthread_mutex_

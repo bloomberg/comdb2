@@ -29,7 +29,7 @@
    SIMILAR TO STRTOK EXCEPT DOES NOT WRITE NULL INTO BUFFER!
    ALSO TERMINATES AT \0 OR LDATA!
    ALSO returns null for end of buffer 09/18/2002
-   paul x1552 02/01/2000 */
+ */
 
 char *segline(char *data, int ldata, int *offp, int *len)
 {

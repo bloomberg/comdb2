@@ -57,8 +57,7 @@ long long gbl_sc_prev_nrecs; /* nrecs since last report */
 int gbl_sc_report_freq = 15; /* seconds between reports */
 int gbl_sc_abort = 0;
 int gbl_sc_resume_start = 0;
-/* see sc_del_unused_files() and sc_del_unused_files_check_progress()
- * TODO resolve drqs 15483800 and delete this nonsense */
+/* see sc_del_unused_files() and sc_del_unused_files_check_progress() */
 int sc_del_unused_files_start_ms = 0;
 int gbl_sc_del_unused_files_threshold_ms = 30000;
 

@@ -26,8 +26,6 @@ extern "C" {
 /* arena allocator.
    NOT THREADSAFE - users must lock externally if this is
    required.
-   Johan N 807x3046
-
 */
 
 /* constants for align_power */

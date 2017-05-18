@@ -19,7 +19,7 @@
 
 /* this plink timestamp module is generated at plink time.
    you can query the values at runtime with plink_constant() func.
-   paul x1552 07/19/02
+   07/19/02
 
 '"@(#)plink TIME: $(PLINK_DATE)",'\
 '"@(#)plink LOGNAME: $(PLINK_LOGNAME)", '\

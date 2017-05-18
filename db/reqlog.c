@@ -286,7 +286,6 @@ struct summary_nodestats {
 extern int gbl_time_fdb;
 
 /*
-** DRQS 35921414
 ** ugh - constants are variable
 ** comdb2 assumption #define MAXNODES 32768
 ** rtcpu.h - #define MAXMACHINES 2048

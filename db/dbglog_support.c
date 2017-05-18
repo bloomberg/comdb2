@@ -45,7 +45,7 @@
 #include <cdb2api.h>
 #include <logmsg.h>
 
-/* dbglog + //DBSTATS support  (TREQ 1468286).  We have lots of interaces to
+/* dbglog + //DBSTATS support.  We have lots of interaces to
  sql, so here's
    a quick summary.
 

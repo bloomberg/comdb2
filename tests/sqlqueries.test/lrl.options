@@ -1,7 +1,3 @@
-# This test case is a collection of queries reported in various 
-# DRQS tickets. As such each one will have different schemas.
-# The driver will just add/alter tables as required.
-
 table   dummy   dummy.csc2
 
 init_with_ondisk_header

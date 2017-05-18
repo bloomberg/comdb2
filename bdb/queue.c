@@ -32,7 +32,7 @@
  * consumed using a DB->get(DB_CONSUME) operation, which is the only way to
  * guarantee that the queue head is advanced (SR #14652).  I refer to these
  * dummy records as "goose" records since their purpose is to make sure
- * the queue head moves forwards and avoid silliness like DRQS 6997351.
+ * the queue head moves forwards. 
  */
 
 #include <errno.h>
@@ -60,7 +60,7 @@
 #include "bdb_queuedb.h"
 #include "logmsg.h"
 
-/* See DRQS 9153738 and Oracle support request #6353586.992.  It seems that non
+/* See also Oracle support request #6353586.992.  It seems that non
  * transactional reads against a queue (at least, the way I was doing them) is
  * prone to deadlock.  By making my cursor transactional I seem to get around
  * this.

@@ -1413,8 +1413,7 @@ void handle_explain(SBUF2 *sb, int trace, int all)
 
     rc = sqlite3_open_serial("db", &hndl, NULL);
     if (rc) {
-        sbuf2printf(sb, "Something just went wrong: sqlite3_open failed. DRQS "
-                        "BF GROUP 592.\n");
+        sbuf2printf(sb, "Something just went wrong: sqlite3_open failed.\n");
         goto done;
     }
 

@@ -79,7 +79,6 @@ static int get_somaxconn(void)
     return retval;
 }
 
-/* Vijay Mirchandani x2491 DRQS 4296391*/
 /* Closing the socket fd on failure to prevent
  * file descriptor leaks  */
 int tcplisten(int port)
@@ -228,7 +227,7 @@ static void print_connect_error(const struct sockaddr *name, const char *func)
 static int lclconn(int s, const struct sockaddr *name, int namelen,
                    int timeoutms)
 {
-    /* connect with timeout paul x1552*/
+    /* connect with timeout */
     struct pollfd pfd;
     int flags, rc;
     int err;

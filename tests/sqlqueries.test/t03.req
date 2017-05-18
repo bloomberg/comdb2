@@ -1,4 +1,3 @@
-#DRQS 49217915
 #distinct should return only one value by de-duping
 
 SET TRANSACTION READ COMMITTED;

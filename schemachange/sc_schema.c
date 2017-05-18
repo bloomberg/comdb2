@@ -341,7 +341,7 @@ static int verify_constraints_forward_changes(struct db *db, struct db *newdb)
         } /* else .. find_constraint() */
     }     /* for each new consraint */
 
-    /* see if we removed constraints (drqs 8479610) */
+    /* see if we removed constraints */
     for (i = 0; i < db->n_constraints; i++) {
         rc = find_constraint(newdb, &db->constraints[i]);
         /* as a kludge - for now verify.  technically, we don't need to */
@@ -484,7 +484,7 @@ struct db *create_db_from_schema(struct dbenv *thedb,
 
     newdb->dtastripe = gbl_dtastripe; // we have only one setting currently
     newdb->odh = s->headers;
-    /* drqs 30674690: don't lose precious flags like this */
+    /* don't lose precious flags like this */
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->version = version;

@@ -762,7 +762,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
     /* prevent this if the threads are stopped; initial intent is
        to prevent a bdb access while the db is closed during schema
-       change (which is crashing the db: drqs 14128020 */
+       change (which is crashing the db) */
     if (dbenv->stopped) {
         logmsg(LOGMSG_USER, "Threads are stopped, ignoring message trap.\n");
         return 0;

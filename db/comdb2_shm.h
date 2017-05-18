@@ -88,7 +88,7 @@ enum comdb2_shm_flags {
         0x00040000, /* db can understand dbglog stat requests */
     CMDB2_SHMFLG_GOODSQLCODES =
         0x00080000, /* server will send correct sql error codes */
-    CMDB2_SHMFLG_FKRCODE = 0x00100000, /* fk violation rcode. DRQS 20009927 */
+    CMDB2_SHMFLG_FKRCODE = 0x00100000, /* fk violation rcode. */
     CMDB2_SHMFLG_SOCK_FSTSND = 0x00200000, /* use sockets instead of fstsnd. */
     CMDB2_SHMFLG_READONLY = 0x00400000,    /* the proxy is read only. */
     CMDB2_SHMFLG_ALLOCV2_ENABLED =

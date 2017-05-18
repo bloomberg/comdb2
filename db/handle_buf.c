@@ -15,7 +15,6 @@
  */
 
 /* comdb index front end */
-/* paul x1552            */
 
 #include "limit_fortify.h"
 #include <stdio.h>
@@ -739,7 +738,7 @@ static int reterr_withfree(struct ireq *iq, int do_inline, int rc)
             abort();
             iq->errstat.errval = iq->sorese.rcout = rc;
             if (iq->sorese.rqid == 0)
-                abort(); /*drqs 19568861 */
+                abort();
             strncpy(iq->errstat.errstr, "master queue full",
                     sizeof(iq->errstat.errstr));
 

@@ -82,8 +82,7 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
                         break;
 
                     case DB_LOCK_DEADLOCK:
-                        /* This DOES happen even though docs claim otherwise
-                         * DRQS 8157838 */
+                        /* This DOES happen even though docs claim otherwise */
                         *bdberr = BDBERR_DEADLOCK;
                         break;
 
@@ -225,7 +224,7 @@ int bdb_count_int(bdb_state_type *bdb_state, int *bdberr)
             break;
 
         case DB_LOCK_DEADLOCK:
-            /* This DOES happen even though docs claim otherwise DRQS 8157838 */
+            /* This DOES happen even though docs claim otherwise */
             *bdberr = BDBERR_DEADLOCK;
             break;
 

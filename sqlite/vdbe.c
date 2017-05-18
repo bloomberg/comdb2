@@ -4380,7 +4380,7 @@ case OP_SeekGT: {       /* jump, in3 */
     r.pKeyInfo = pC->pKeyInfo;
     r.nField = (u16)nField;
 
-    /* DRQS 34065780: Reset cooked state that open cursor
+    /* Reset cooked state that open cursor
      * optimization for 'or' clause would have left us with */
 
     /* COMDB2 MODIFICATION */

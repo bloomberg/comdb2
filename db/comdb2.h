@@ -454,7 +454,7 @@ enum dbt_api_return_codes {
     DB_RC_TRN_OK = 0,
     DB_ERR_TRN_DUP = 1,             /* dup add 2 , returned with 220 before */
     DB_ERR_TRN_VERIFY = 2,          /* verify 4, returned with 220 before */
-    DB_ERR_TRN_FKEY = 3,            /* DRQS 20009927 */
+    DB_ERR_TRN_FKEY = 3,
     DB_ERR_TRN_NULL_CONSTRAINT = 4, /* 318 */
     DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
     DB_ERR_TRN_BUF_OVERFLOW = 201,  /* 106 */

@@ -327,7 +327,7 @@ static void *watchdog_thread(void *arg)
             }
 
             /* See if we can grab the berkeley log region lock.  If we block on
-               it, something is seriously wrong, eg: DRQS 22258351.  We can do
+               it, something is seriously wrong.  We can do
                this by trying to flush a log at a point where it's almost
                certainly already flushed, like 1:0 - the underlying code needs
                to check the lsn under the region lock, but then has nothing else

@@ -1,5 +1,3 @@
-See DRQS 66733480:
-
 This test case concerns the scenario where we insert and update records in a
 table in a way causing unique constraint violation in one of the indices, 
 meanwhile schemachange is running. 

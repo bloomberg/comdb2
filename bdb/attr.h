@@ -135,7 +135,7 @@ DEF_ATTR(REPLIMIT, replimit, BYTES, REPLIMIT_DEFAULT)
 
 /* set to true to enable queue scan mode optimisation - see queue.c
  * this optimisation appears to be very dangerous - I am disabling this
- * for now - DRQS 12925926 */
+ * for now */
 DEF_ATTR(QSCANMODE, qscanmode, BOOLEAN, 0)
 
 /* set to true to enable new queue deletion mode */

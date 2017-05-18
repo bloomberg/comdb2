@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-/* db block request, paul x1552 */
+/* db block request */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

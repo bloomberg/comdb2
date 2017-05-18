@@ -15,7 +15,7 @@
  */
 
 /*
- * OPEN TRACE LOG FOR C PROGRAMS. paul x1552
+ * OPEN TRACE LOG FOR C PROGRAMS.
  *
  * Note on dependencies:
  *

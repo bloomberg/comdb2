@@ -18,7 +18,6 @@
 #define INCLUDED_PORTMUXAPI
 
 /* register/get port through portmux
-   paul x1552
 
    example:
          app=comdb2

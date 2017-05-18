@@ -47,10 +47,10 @@
        // Now to automatically free up, in reverse order:
        release_marshal(marshaler);
 
-  paul x1552 2/19/2003
+  2/19/2003
 
   original version
-  paul x1552 09/25/2002
+  09/25/2002
 
 */
 #ifndef ___INCLUDED_MARSHAL_H___

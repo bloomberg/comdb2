@@ -99,10 +99,10 @@
 #include "logmsg.h"
 #include "ssl_bend.h"
 
-/* DRQS 24872300: ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
+/* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results
  *
- * DRQS 30934353: Ha! Dont need IX_EMPTY but do need IX_NOTFND and IX_PASTEOF.
+ * Ha! Dont need IX_EMPTY but do need IX_NOTFND and IX_PASTEOF.
  * Just use is_good_ix_find_rc() */
 #define VTAG(rc, db)                                                           \
     if (is_good_ix_find_rc((rc)))                                              \
@@ -299,7 +299,7 @@ int trans_start_int_int(struct ireq *iq, void *parent_trans, void **out_trans,
 
     iq->gluewhere = "bdb_tran_begin done";
     if (*out_trans == 0) {
-        /* DRQS 7415849 - dbenv->master can change between calling
+        /* dbenv->master can change between calling
          * bdb_tran_begin and checking it here - in fact, we may get
          * upgraded to master in between!  ERR_NOMASTER will make the
          * proxy retry next second, so that is the simplest fix here.

@@ -4809,7 +4809,7 @@ static void *connect_thread(void *arg)
         memcpy(&(host_node_ptr->addr), h->h_addr, h->h_length);
         host_node_ptr->addr_len = h->h_length;
 
-        /* DRQS 5283492 - *always* check portmux before connecting.  The
+        /* *always* check portmux before connecting.  The
          * correct port may have changed since last time. */
         if (!host_node_ptr->port) {
             if (netinfo_ptr->ischild) {
@@ -5202,7 +5202,7 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     Pthread_mutex_lock(&(host_node_ptr->lock));
 
     /*
-         DRQS 22751514 : scuusgdb was running with 2 masters (!).  The core
+         scuusgdb was running with 2 masters (!).  The core
          shows that the hostnode pointer for the actual master couldn't connect
          while the database was connected to a stale fd which it thought was
          active.  The heartbeat check thread had not been operating for several
@@ -6082,7 +6082,7 @@ static int is_ok(netinfo_type *netinfo_ptr, const char *host)
     for (host_node_ptr = netinfo_ptr->head; host_node_ptr != NULL;
          host_node_ptr = host_node_ptr->next) {
         if (host_node_ptr->host == host) {
-            /* To prevent race conditions like DRQS 7063311 we should check this
+            /* To prevent race conditions we should check this
              * stuff under lock. */
             int ok = 0;
             Pthread_mutex_lock(&(host_node_ptr->lock));

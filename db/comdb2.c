@@ -1235,8 +1235,7 @@ static void *purge_old_blkseq_thread(void *arg)
         process_nodestats();
 
         /* Claim is this is not needed in the new incoherency scheme
-         * if I am not coherent, make sure the master hasn't forgotten
-         * about me (DRQS 13143031)
+         * if I am not coherent, make sure the master hasn't forgotten about me
         if(!bdb_am_i_coherent(dbenv->bdb_env))
             send_forgetmenot();
          */
@@ -3631,7 +3630,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
          * This wasn't implemented too well and caused problems.  Explicit
          * two argument version is better:
          *   resource <name> <filepath>
-         * DRQS 7163800.
          */
         char *name = NULL;
         char *file = NULL;
@@ -6821,7 +6819,7 @@ static int init(int argc, char **argv)
      *  - create mode - since we will blat everything
      *  - recovery mode - since we won't network, may as well let this through
      * Also refuse to start up if we have no log files.
-     * Why do we do this?  because in DRQS 10270757 we discovered that a half
+     * Why do we do this?  because we discovered that a half
      * copied database can get the master into some whacked up state in which
      * it decides it needs to fixcomdb2 itself.  From itself.
      */
@@ -6977,7 +6975,7 @@ static int init(int argc, char **argv)
      * with the entire company asking me if this is a problem. -- SJ */
     berk_set_long_trace_func(myctrace);
 
-    /* DRQS 7964482 - disallow bools on test machines.  Prod will continue
+    /* disallow bools on test machines.  Prod will continue
      * to allow them because at least one prod database uses them.
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
@@ -7440,7 +7438,7 @@ static int init(int argc, char **argv)
 #endif
 
     /* some dbs have lots of tables and spew on startup.  this just wastes
-     * peoples time shunting spew drqss about. */
+     * peoples time shunting spew */
     /*showdbenv(thedb);*/
 
     if (gbl_net_max_queue) {
@@ -7606,7 +7604,7 @@ void create_old_blkseq_thread(struct dbenv *dbenv)
 static void adjust_ulimits(void) {}
 #else
 
-/* DRQS 11273235 - bump up ulimit for no. fds up to hard limit */
+/* bump up ulimit for no. fds up to hard limit */
 static void adjust_ulimits(void)
 {
     struct rlimit64 rlim;

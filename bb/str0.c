@@ -236,9 +236,6 @@ int vsnprintf0(char *buf, size_t bufsize, const char *fmt, va_list ap)
     return rc;
 }
 
-/* strnlen() created for DRQS 29466518; strnlen0() created in response
-   to DRQS 29931754. */
-
 #if NEED_STRNLEN_DEFN
 /** Safe version of strlen().
  *

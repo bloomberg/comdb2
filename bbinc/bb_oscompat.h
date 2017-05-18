@@ -66,7 +66,6 @@ typedef struct t_bb_oscompat_map_snapshot bb_oscompat_map_snapshot_t;
  * The silent vesions of the following functions take an additional int silent
  * parameter on input and if it is not 0, not trace is printed from these
  *routines.
- * This is done for DRQS 17203409
  **/
 
 /**

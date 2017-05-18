@@ -1117,7 +1117,7 @@ int main(int argc, char *argv[])
 
     /*
      * We hit a problem where there were enough sockpool clients
-     * to exhaust the soft limit for file descriptors, in DRQS 23641690.
+     * to exhaust the soft limit for file descriptors.
      *
      * To deal with this, we increase the soft limit to meet the hard
      * limit here.

@@ -37,8 +37,6 @@
  * AIX 5.3 provides <stdbool.h>
  */
 
-/* (This header may eventually be replaced by the outcome of DRQS 10506523) */
-
 #ifndef __cplusplus
 
 /* Solaris 10 provides <stdbool.h> only #if defined(_STDC_C99) */

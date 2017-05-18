@@ -839,7 +839,7 @@ static int __aix_get_pid_cputime(pid_t pid, struct timespec *utime,
         }
         return -1;
     } else if (procsinfo.pi_pid != pid) {
-        /* DRQS 37980426: returned PID may not be requested PID */
+        /* returned PID may not be requested PID */
         if (!silent) {
             logmsg(LOGMSG_ERROR, "__aix_get_pid_cputime: getprocs returned bad pid "
                             "%lld != %lld\n",
@@ -1037,7 +1037,7 @@ static int __aix_get_pid_ppid_args(pid_t pid, pid_t *ppid, char *args, int sz,
     struct procsinfo p;
     pid_t idx = pid;
     if (1 == getprocs(&p, sizeof(p), NULL, 0, &idx, 1)
-        /* DRQS 37980426: returned PID may not be requested PID */
+        /* returned PID may not be requested PID */
         &&
         pid == p.pi_pid) {
         int ln;
@@ -1265,7 +1265,7 @@ static int __aix_is_pid_stopped(pid_t pid)
     struct procsinfo p;
     rc = getprocs(&p, sizeof(p), NULL, 0, &lpid, 1);
     if (1 == rc && p.pi_pid == pid) {
-        /* DRQS 37980426: returned PID may not be requested PID */
+        /* returned PID may not be requested PID */
         return (p.pi_state == SSTOP);
     }
     return 0;
@@ -1349,7 +1349,7 @@ static int __aix_is_pid_traced(pid_t pid)
     struct procsinfo p;
     rc = getprocs(&p, sizeof(p), NULL, 0, &lpid, 1);
     if ((rc == 1) && (p.pi_pid == pid) && (p.pi_flags & STRC))
-        /* DRQS 37980426: returned PID may not be requested PID */
+        /* returned PID may not be requested PID */
         return 1;
     else
         return 0;
@@ -1422,7 +1422,7 @@ static ssize_t __aix_get_pid_vsz(pid_t pid, int silent)
     struct procsinfo p;
     rc = getprocs(&p, sizeof(p), NULL, 0, &lpid, 1);
     if ((rc == 1) && (p.pi_pid == pid))
-        /* DRQS 37980426: returned PID may not be requested PID */
+        /* returned PID may not be requested PID */
         return p.pi_size * getpagesize() / 1024;
     else
         return -1;
@@ -2266,8 +2266,8 @@ struct __compat_tmpnam_buffer {
     char data[L_tmpnam];
 };
 
-/* DRQS 30047023 -- 'PTHREAD_ONCE_INIT' initializer on AIX is missing
- *                  a set of braces which is making GCC compilation fail. */
+/* 'PTHREAD_ONCE_INIT' initializer on AIX is missing
+ * a set of braces which is making GCC compilation fail. */
 /* apparently no longer necessary */
 static pthread_once_t tmpnam_once = PTHREAD_ONCE_INIT;
 static pthread_key_t tmpnam_key;

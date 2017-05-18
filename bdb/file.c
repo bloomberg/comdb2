@@ -1845,7 +1845,7 @@ const uint8_t *bdb_lsn_cmp_type_get(lsn_cmp_type *p_lsn_cmp_type,
     return p_buf;
 }
 
-/* DRQS 6912660 - but don't be verbose unless something changes. */
+/* but don't be verbose unless something changes. */
 static int print_catchup_message(bdb_state_type *bdb_state, int phase,
                                  DB_LSN *our_lsn, DB_LSN *master_lsn,
                                  uint64_t *gap, uint64_t *prev_gap,
@@ -2036,7 +2036,7 @@ static void panic_func(DB_ENV *dbenv, int errval)
     mkfile = plink_constant(PLINK_MAKEFILE);
     logmsg(LOGMSG_FATAL, "Version: %s\n", mkfile ? mkfile : "unknown");
 
-    /* DRQS 15228327 - this code sometimes deadlocks.  install a timer - if it
+    /* this code sometimes deadlocks.  install a timer - if it
        fires, we
        abort.  We don't lose much since we are about to exit anyway. */
     signal(SIGALRM, SIG_DFL);
@@ -3197,7 +3197,6 @@ done2:
      * We always need to stop on a page. Otherwise we have a race condition
      * where we move off an index page and allow data to be deleted.  Then
      * we have an index entry in the bulk buffer with the wrong genid.
-     * DRQS 20130323
      */
     bdb_state->dbenv->set_bulk_stops_on_page(bdb_state->dbenv, 1);
 
@@ -5673,7 +5672,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         /* This bit needs to be exclusive.  We don't want replication messages
          * flipping us in/out of being master at this point, or we just end up
-         * in a confused state and DRQS 8827425 happens (parent bdb_state ended
+         * in a confused state (and parent bdb_state ended
          * up read_write==0, all child bdb_states had read_write=1).
          */
         BDB_WRITELOCK("bdb_open_int");

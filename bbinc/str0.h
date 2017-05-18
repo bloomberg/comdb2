@@ -19,9 +19,6 @@
 #ifndef INCLUDED_STR0_H
 #define INCLUDED_STR0_H
 
-/* strnlen() created for DRQS 29466518; strnlen0() created in response
-   to DRQS 29931754. */
-
 #if defined(__sun) || defined(__hpux)
 #define NEED_STRNLEN_DECL 1
 #define NEED_STRNLEN_DEFN 1

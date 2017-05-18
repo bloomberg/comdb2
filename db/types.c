@@ -841,7 +841,7 @@ TYPES_INLINE int validate_cstr(const char *s, int lim)
     /* No \0 - that's bad.  For a while this code was broken and we were
      * returning 0 here and therefore allowing the string to go through.
      * We'll fix it, but on a tunable in case anyone is relying on the
-     * broken behaviour now.  DRQS 11233310.
+     * broken behaviour now.
      * It turned out that prqssvc relied on this broken behaviour.  Quelle
      * surprise.  Enforce on alpha/beta for now and give me a way of catching
      * the offendors easily. */
@@ -923,7 +923,6 @@ TYPES_INLINE int pstrlenlim(const char *s, int lim)
  * byte; otherwise conversion error.
  * If the destination is larger than the source then it is padded if we have a
  * padding value; else conversion error.
- * TREQ 523417
  */
 static TYPES_INLINE int
 bytearray_copy(const void *in, int inlen, const struct field_conv_opts *inopts,
