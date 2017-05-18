@@ -123,7 +123,7 @@ needed.
    
 9. On other nodes, copy the database over:
    ```
-   copycomdb2 mptest-1.comdb2.example.com:~/db/mikedb.lrl
+   copycomdb2 mptest-1.comdb2.example.com:${HOME}/db/mikedb.lrl
    ```
    
 0. On all nodes, start the database.
