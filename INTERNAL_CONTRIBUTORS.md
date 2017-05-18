@@ -1,6 +1,6 @@
 The following are contributors to Comdb2 predating the project's move to GitHub.
 
-##Core team
+## Core team
  * Adi Zaimi
  * Akshat Sikarwar
  * Dorin Hogea
@@ -12,7 +12,7 @@ The following are contributors to Comdb2 predating the project's move to GitHub.
  * Nirbhay Choubey
  * Rivers Zhang
 
-##Past
+## Past
  * Alex Scotti
  * Chris Pick
  * Fabio Angius
@@ -20,7 +20,7 @@ The following are contributors to Comdb2 predating the project's move to GitHub.
  * Paul Lampert
  * Sam Jervis
 
-##Contributors
+## Contributors
  * Alexander Evdokimov
  * Andrew O'Brien
  * Chris Holloway
