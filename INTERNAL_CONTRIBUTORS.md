@@ -32,6 +32,7 @@ The following are contributors to Comdb2 predating the project's move to GitHub.
  * Johann Nystrom
  * Junmin Liu
  * Justin Erenkrantz
+ * Matt Hunt
  * Michael Thorpe
  * Rangan Prabhakaran
  * Sean Winard
