@@ -746,7 +746,7 @@ FULL CLUSTER CACHE COHERENCY
 LOG DELETE ENABLED
 LOG DELETE POLICY: delete all eligible log files
 # Database buffer pool size
-cachesize 64.000 MB
+cachesize 64.000 mb
 # Cache hits and misses, page read/write information
 hits        457
 misses      50

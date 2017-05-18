@@ -251,7 +251,7 @@ Similarly, here is a typical query that uses index "b":
 For the second and third keys in the example above, there's a great possibility of having duplicate key 
 entries. (>1 users can share the same paydate, and multiple users can have the same first and last names).
 
-Preceding an key name with ```dup``` marks that key as allowing duplicate entries.
+Preceding a key name with ```dup``` marks that key as allowing duplicate entries.
 
 ```
 keys

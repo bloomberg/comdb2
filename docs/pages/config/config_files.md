@@ -38,9 +38,9 @@ Lines beginning with '#' are treated as comments and skipped.  Other lines shoul
 
 ### Cache size
 
-Cache size can be set with the the 'cache' tunable. It takes a cache size and a unit (KB, MB, GB).  For example
+Cache size can be set with the the 'cache' tunable. It takes a cache size and a unit (kb, mb, gb).  For example
 
-    cache 64 MB
+    cache 64 mb
 
 This gets you 64 megabytes of cache.  The database will print its cache size when starting up:
 
@@ -703,7 +703,7 @@ These options are toggle-able at runtime.
 |enable_prefault_udp | not set |  Send lossy prefault requests to replicants 
 |disable_prefault_udp | | Disable `enable_prefault_udp`
 |sqlsortermem | 314572800 | maximum amount of memory to give the sqlite sorter
-|cache | 64 MB | Database cache size, see [cache size](#cache-size)
+|cache | 64 mb | Database cache size, see [cache size](#cache-size)
 |cachekb | | see [cache size](#cache-size)
 |cachekbmin | | see [cache size](#cache-size)
 |cachekbmax | | see [cache size](#cache-size)
