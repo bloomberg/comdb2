@@ -20,6 +20,10 @@ and for more information on usage please look in the [Docs](https://bloomberg.gi
 [Comdb2 documentation](http://bloomberg.github.io/comdb2) is included in the `docs` directory. 
 It can be hosted locally with jekyll by running `jekyll serve` from the `docs` directory.
 
+## Contributing
+
+Please refer to our [contribution guide](https://bloomberg.github.io/comdb2/contrib.html) for instructions. We welcome code and idea contributions.
+
 ## Quick Start
 
 On every machine in the cluster:
