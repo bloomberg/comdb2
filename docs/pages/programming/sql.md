@@ -532,7 +532,7 @@ This sets the current connection's transaction level.  See
 ### SET TIMEZONE
 
 Sets the timezone for the current connection.  All datetime values are returned in this timezone.  All timezone
-values received from the application without an explicit timezone specified are toked to be from this timezone.
+values received from the application without an explicit timezone specified are taken to be from this timezone.
 Please see [datetime types](datetime.html) for more information.
 
 ### SET DATETIME PRECISION
