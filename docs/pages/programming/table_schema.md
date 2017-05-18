@@ -89,7 +89,7 @@ is optional.
 
 Consider the previously defined record: Let's say we'd like to create 3 keys.  First one will be unique 
 and have one field ```userid```.  Second will store user's *last_name* and *first_name*.  Third will 
-store paydate.  Compound keys can be formed by simply adding fields together with a '+'.  Here's what the 
+store `paydate`.  Compound keys can be formed by simply adding fields together with a '+'.  Here's what the 
 key section would look like.
 
 ```
@@ -249,7 +249,7 @@ Similarly, here is a typical query that uses index "b":
 
 ### Duplicate Keys.
 For the second and third keys in the example above, there's a great possibility of having duplicate key 
-entries. (>1 users can share the same paydate, and multiple users can have the same first and las names).
+entries. (>1 users can share the same paydate, and multiple users can have the same first and last names).
 
 Preceding an key name with ```dup``` marks that key as allowing duplicate entries.
 
@@ -302,7 +302,7 @@ Cascading deletes are supported on a constraint by adding the text ```on delete 
 the end of the constraint line.  Cascading updates are supported on a constraint by adding the text 
 ```on update cascade``` (all in lower case) to the end of the constraint line.
 
-For some more detailed notes on the behaviour of foreign key constraints, please see the 
+For some more detailed notes on the behavior of foreign key constraints, please see the 
 [constraints](constraints.html) section.
 
 ### Using Partial Indexes in Constraints

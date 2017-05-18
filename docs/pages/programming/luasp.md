@@ -160,7 +160,7 @@ end
 We will see the following output if we execute the SP as:
 
 ```
-$ comdb2sql akdb "exec procedure foo('int', '3.14')"
+$ comdb2sql testdb "exec procedure foo('int', '3.14')"
 
 3.14    string
 3       int

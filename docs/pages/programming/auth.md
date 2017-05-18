@@ -94,20 +94,20 @@ select * from comdb2_tablepermissions
 ``` 
 
 ```
-mohitdb1> set user foo_user
+testdb> set user foo_user
 [set user foo_user] rc 0
-mohitdb1> set password foo_password
+testdb> set password foo_password
 [set password foo_password] rc 0
-mohitdb1> select * from comdb2_tablepermissions /* Can only see tables on which user has read access */
+testdb> select * from comdb2_tablepermissions /* Can only see tables on which user has read access */
 (tablename='t1', username='default', READ='N', WRITE='N', DDL='N')
 (tablename='t1', username='foo_user', READ='Y', WRITE='N', DDL='N')
 (tablename='t1', username='op_user', READ='Y', WRITE='Y', DDL='Y')
 [select * from comdb2_tablepermissions] rc 0
-mohitdb1> set user op_user
+testdb> set user op_user
 [set user op_user] rc 0
-mohitdb1> set password op_password
+testdb> set password op_password
 [set password op_password] rc 0
-mohitdb1> select * from comdb2_tablepermissions 
+testdb> select * from comdb2_tablepermissions 
 (tablename='sqlite_stat1', username='default', READ='N', WRITE='N', DDL='N')
 (tablename='sqlite_stat1', username='foo_user', READ='N', WRITE='N', DDL='N')
 (tablename='sqlite_stat1', username='op_user', READ='Y', WRITE='Y', DDL='Y')

@@ -160,8 +160,8 @@ Show the cluster status.  The output looks like this:
 
 ```
 db engine cluster status
-        njlxdev1:19134 MASTER c fd 13  lsn 1:726017 f 0 
-        nylxdev1:19019        l fd -1  lsn 1:726017 f 0 
+        machine1:19134 MASTER c fd 13  lsn 1:726017 f 0 
+        machine2:19019        l fd -1  lsn 1:726017 f 0 
 ```
 
 Each line starts with the machine name and database port.  'c' indicates that the current machine is connected.
@@ -212,7 +212,7 @@ Disable early replication acks.  Replicants will ack a transaction only after al
 
 ### reallyearly
 
-Enables "really early" replication acknowledgements.  A replicant will ack a transaction immediately after receiving the commit log record.
+Enables "really early" replication acknowledgments.  A replicant will ack a transaction immediately after receiving the commit log record.
 Enabling this DOES affect read-after-write semantics. It's possible that a record written by a committed transaction may not yet
 be applied when an application tries to read it.  For applications where this doesn't matter, reallyearly offers lower transaction
 latency than the [early](#early) setting.
@@ -224,11 +224,11 @@ are applied against the data.
 
 ### repscon
 
-Like [scon](#scon-and-scof), turns on per-second reporting of replication/acknowledgement times to other nodes.
+Like [scon](#scon-and-scof), turns on per-second reporting of replication/acknowledgment times to other nodes.
 
 ### repscof
 
-Turns off replication/acknowledgement times.
+Turns off replication/acknowledgment times.
 
 
 ## SQL commands
@@ -848,7 +848,7 @@ Display status of toggl-eable on/off switches.
 
 ### stat clnt
 
-Dups client source information.  For every machine that contacted the database, display a count of requests.
+Dumps client source information.  For every machine that contacted the database, display a count of requests.
 
 ### stat ixstat
 

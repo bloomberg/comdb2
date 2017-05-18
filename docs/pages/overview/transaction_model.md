@@ -29,8 +29,8 @@ Consider an application that updates a record.  This application is connected to
      1. Any writes to data/index btrees done by the master are written to the database log.
      1. Master commits the transaction locally.
 3. Master sends out log records up to the commit record to all replicants in parallel. 
-4. Replicants apply the log records locally and send an acknowledgement back to the master.
-5. Once the master receives acknowledgements from all nodes in the cluster, it replies to the original replicant that made the request for the transaction.
+4. Replicants apply the log records locally and send an acknowledgment back to the master.
+5. Once the master receives acknowledgments from all nodes in the cluster, it replies to the original replicant that made the request for the transaction.
 6. Replicant passes the return code (or an error message) back to the application.
 
 When a transaction consists of more than one statement, not much changes.  The replicant does not show statement boundaries to the master (consider the case where a record is added by one statement, and modified by another).  The master still gets a stream of record changes to apply.
@@ -58,7 +58,7 @@ On the master, while executing record requests on behalf of the replicants, the 
 
 You may notice a trend in the last few sections that many isolation problems in Comdb2 are dealt with by a similar "just abort and retry" strategy.  This is what we mean when we say that the concurrency control is optimistic.  Transactions are allowed to run as if they are the only things in the system, and their interactions are reconciled at the end, when they are ready to commit.  In the overwhelmingly common case, transactions do not interact, and there's no conflicts to resolve.  Optimistically not locking allows for better efficiency for the common case.  The rare worst case happens where transactions interact heavily.  Consider for example an application that mistakenly runs the same nightly delete job on 2 machines to delete the same records, at the same time.  One of them is going to try to delete records already deleted by the other, and will be forced to retry.  
 
-## Isolation levels and artefacts
+## Isolation levels and artifacts
 
 Comdb2 offers no dirty reads isolation level.  Transactions at all transaction levels will only see results of committed transactions.  The supported levels are listed below, from least to most strict.
 

@@ -7,7 +7,7 @@ permalink: constraints.html
 
 ## Comdb2 Constraints
 
-This page documents the behaviour of the Comdb2 constraints engine.
+This page documents the behavior of the Comdb2 constraints engine.
 
 ### Defining constraints
 

@@ -106,7 +106,7 @@ DELETE FROM t WHERE i % 2 <> 0
 This should generate 8 events and our sample stored procedure should have logged them in `audit_tbl`.
 
 ```
-cdb2sqlk> select * from audit_tbl order by logtime
+cdb2sql> select * from audit_tbl order by logtime
 (type='add', tbl='t', logtime="2016-04-05T144519.287 America/New_York", new='{"i":1,"j":1}', old=NULL)
 (type='add', tbl='t', logtime="2016-04-05T144519.289 America/New_York", new='{"i":1,"j":2}', old=NULL)
 (type='add', tbl='t', logtime="2016-04-05T144519.289 America/New_York", new='{"i":1,"j":3}', old=NULL)
@@ -171,13 +171,13 @@ end
 
 Example runs:
 ```sql
-cdb2sql akdb default "CREATE LUA CONSUMER watch_t ON (TABLE t FOR INSERT AND UPDATE AND DELETE)"
+cdb2sql testdb default "CREATE LUA CONSUMER watch_t ON (TABLE t FOR INSERT AND UPDATE AND DELETE)"
 ```
 
 Start two different cdb2sql sessions:
 
 ```
-cdb2sql akdb default -             cdb2sql akdb default -
+cdb2sql testdb default -             cdb2sql testdb default -
                                    cdb2sql> exec procedure watch_t()
 cdb2sql> insert into t values(1,1) (id=x'00000200ccd20657', name='t', new='{"i":1,"j":1}', old=NULL, type='add')
 (rows inserted='1')

@@ -129,12 +129,12 @@ sections describe each network's uses.
 
 The replication network handles replication-specific traffic between database nodes.  This includes
 election messages, log messages (ie: normal replication), requests for re-transmits, etc.  Steps 3 and 4
-in [Transaction Lifecycle](transaction_model.html#life-cycle-of-a-transaction) go over the replication network.
+in [Transaction Life cycle](transaction_model.html#life-cycle-of-a-transaction) go over the replication network.
 
 #### Offload
 
 The offload net is used by replicants to send work to the master to apply.  Replicants run SQL and assemble
-a set of record modifications to be applied.  Steps 2 and 5 in [Transaction Lifecycle](transaction_model.html#life-cycle-of-a-transaction) 
+a set of record modifications to be applied.  Steps 2 and 5 in [Transaction Life cycle](transaction_model.html#life-cycle-of-a-transaction) 
 go over the offload net.
 
 #### Signal
@@ -153,8 +153,8 @@ and to wait for all nodes to acknowledge a transaction before returning success.
 |full                |not set              |Logs are flushed on every commit
 |normal              |set                  |Logs are NOT flushed on every commit (ie: you can lose transactions if all the nodes in the cluster crash).  This is the default.  This option also implies fully synchronous replication - ie: wait for all nodes to ack before returning success.
 |rep_always_wait     |not set              |Wait for all nodes, including those that aren't connected (not recommended)
-|none                |not set              |Asynchronous replication, don't wait for any replication acknowledgements before returning success.
-|room                |not set              |Wait for acknowledgements only from nodes in the same availability zone/data center (see [room affinity](clients.html#room)). 
+|none                |not set              |Asynchronous replication, don't wait for any replication acknowledgments before returning success.
+|room                |not set              |Wait for acknowledgments only from nodes in the same availability zone/data center (see [room affinity](clients.html#room)). 
 |log-sync-time       |10 (seconds)         |Sets how often we flush the logs to disk.
 |log-delete-now      |set                  |Make all log files eligible for deletion when not needed
 |log-delete-before   |not set              |Make all log files older than current time are eligible for deletion when not needed
@@ -184,7 +184,7 @@ be enabled with the `on` option, and disabled with `off`.  Unless debugging/deve
 is generally not advised.
 
 |Option      |Default             |Description
-bad_lrl_fatal|  off |Unrecognised lrl options are fatal errors
+bad_lrl_fatal|  off |Unrecognized lrl options are fatal errors
 t2t|  off |New tag->tag conversion code
 fix_cstr|  on |Fix validation of cstrings
 warn_cstr|  on |Warn on validation of cstrings
@@ -198,7 +198,7 @@ dflt_livesc|  on |Use live schema change by default
 dflt_plansc|  on |Use planned schema change by default
 consumer_rtcpu|  on |Don't send update broadcasts to machines that are marked offline
 clnt_sql_stats|  on |Trace back fds to client machines
-sqlite3openserial|  on |Serialise calls to sqlite3_open to prevent excess CPU
+sqlite3openserial|  on |Serialize calls to sqlite3_open to prevent excess CPU
 thread_stats|  on |Berkeley DB will keep stats on what its threads are doing
 lock_timing|  on |Berkeley DB will keep stats on time spent waiting for locks
 qdump_atexit|  on |Dump queue stats at exit
@@ -304,12 +304,12 @@ may choose to mark nodes ***incoherent***.  Incoherent nodes continue to operate
 
    * They will no longer service any requests - any new queries/transactions that come in are rejected and
      will go to another node.
-   * The master will no longer wait for replication acknowledgements from incoherent nodes.
+   * The master will no longer wait for replication acknowledgments from incoherent nodes.
 
 There's 2 ways for a node to be marked incoherent.  The first catches outright broken nodes.  If any nodes
 have acknowledged a transaction, and any other node takes longer than a configured threshold to respond, it's
 considered broken and marked incoherent.  The second option captures nodes that are statistically slower than
-other nodes.  A node where the running average of acknowledgement times over the last minute twice as bad as 
+other nodes.  A node where the running average of acknowledgment times over the last minute twice as bad as 
 the second bad node (withing some minimum threshold) is considered slow, and will become incoherent.
 
 Incoherent nodes are self-healing.  If a node marked incoherent catches up to the master, the master will
@@ -658,7 +658,7 @@ lease if a node is either not responding or is significantly slower than the oth
 ### Init time options
 
 These options apply only at database creation time.  Use `-create -lrl /path/to/lrlfile.lrl` with the 
-prepopulated options to create the database
+pre-populated options to create the database
 
 |Option                           |Default     | Description
 |init_with_genid48                |Off         | Use incrementing numbers for rowids instead of timestamps

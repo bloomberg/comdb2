@@ -439,7 +439,7 @@ when rebuilding statistics after index/data changes to a single table.  Analyze 
      * The selectivity of each index
      * A histogram of values
 
-  Running ```ANALYZE``` on a large table is relatively expensive.  There are some cost/time tradeoffs that can
+  Running ```ANALYZE``` on a large table is relatively expensive.  There are some cost/time trade-offs that can
   be set.  For the most accurate data, set ```percent-coverage``` to 100 (default is 10). To speed up the process,
   increase the number threads.  ```OPTIONS THREAD``` configures how many tables to run in parallel (if ```ALL```) is
   specified.  ```OPTIONS SUMMARIZE``` configures how many threads to use for running the first stage described above.
