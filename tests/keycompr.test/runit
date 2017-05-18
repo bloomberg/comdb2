@@ -2,7 +2,7 @@
 bash -n "$0" | exit 1
 
 # This test case is a collection of queries reported in various 
-# DRQS tickets. As such each one will have different schemas.
+# tickets. As such each one will have different schemas.
 # The driver will just add/alter tables as required.
 
 dbname=$1

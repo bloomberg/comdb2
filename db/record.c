@@ -1289,8 +1289,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     od_dta_tail = NULL;
     od_olddta_tail = NULL;
 
-    // DRQS 66733480:if even one ix is done deferred, we want to do the
-    // post_update deferred
+    // if even one ix is done deferred, we want to do the post_update deferred
     int deferredAdd = 0;
     int same_genid_with_upd =
         bdb_inplace_cmp_genids(iq->usedb->handle, *genid, vgenid) == 0;

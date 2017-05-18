@@ -127,7 +127,7 @@ struct schema_change_type {
  * compatible with previous versions of comdb2 depending on which of
  * following flags are set */
 
-#define SC_CHK_PGSZ 0x00000001U // DRQS 44557362
+#define SC_CHK_PGSZ 0x00000001U
 #define SC_IDXRBLD 0x00000002U
 #define SC_MASK_FLG                                                            \
     0xfffffffcU /* Detect and fail if newer ver started sc.                    \

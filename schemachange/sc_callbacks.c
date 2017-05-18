@@ -421,8 +421,7 @@ int schema_change_abort_callback(void)
 
 /* Deletes all the files that are no longer needed after a schema change.  Also
  * sets a timer that the checkpoint thread checks by calling
- * sc_del_unused_files_check_progress()
- * TODO resolve drqs 15483800 and delete this nonsense */
+ * sc_del_unused_files_check_progress() */
 void sc_del_unused_files(struct db *db)
 {
     int bdberr;
@@ -447,8 +446,7 @@ void sc_del_unused_files(struct db *db)
 }
 
 /* Checks to see if a schema change has been trying to delete files for longer
- * then gbl_sc_del_unused_files_threshold_ms, if so it exits
- * TODO resolve drqs 15483800 and delete this nonsense */
+ * then gbl_sc_del_unused_files_threshold_ms, if so it exits */
 void sc_del_unused_files_check_progress(void)
 {
     int start_ms;

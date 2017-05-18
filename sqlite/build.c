@@ -4143,7 +4143,7 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList, int is_recording
       if( pItem->iCursor>=0 ) break;
       pItem->iCursor = pParse->nTab++;
       /* COMDB2 MODIFICATION */
-      /* for now, as a quick fix so we don't crash - DRQS 21796990 */
+      /* for now, as a quick fix so we don't crash */
       if (pItem->iCursor < (MAX_CURSOR_IDS/sizeof(int))) {
         /* COMDB2 MODIFICATION */
         if( is_recording ){

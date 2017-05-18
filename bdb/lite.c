@@ -274,7 +274,7 @@ int bdb_lite_fetch_partial(bdb_state_type *bdb_state, void *key_in, int klen_in,
         bdb_cursor_error(bdb_state, NULL, rc, bdberr, __func__);
         return -1;
     }
-    // dbt_key.data = key_in; /* DRQS 76869282 */
+    // dbt_key.data = key_in;
     dbt_key.data = fullkey = malloc(ixlen);
     memcpy(dbt_key.data, key_in, klen_in);
     dbt_key.size = klen_in;

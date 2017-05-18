@@ -124,8 +124,7 @@ static std::unique_ptr<fdostream> output_file(
             }
         }
 
-        // unlink the existing file (fix for DRQS 17836431 - unable to
-        // overwrite a readonly file)
+        // unlink the existing file (fix for unable to overwrite a readonly file)
         if(unlink(filename.c_str()) == -1 && errno != ENOENT) {
             std::cerr << "Cannot unlink " << filename << ": "
                     << errno << " " << strerror(errno) << std::endl;

@@ -394,7 +394,7 @@ retry_fastinit:
             bdb_handle_dbp_add_hash(db->handle, olddb_bthashsz);
         }
 
-        /* DRQS 60536595: losing flags during shenanigans above; set again */
+        /* losing flags during shenanigans above; set again */
         set_odh_options(db);
 
         got_new_handle = 1;

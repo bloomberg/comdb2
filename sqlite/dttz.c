@@ -138,7 +138,7 @@ int convDttz2ClientDatetime(dttz_t *dttz, const char *tzname, void *out, int sql
     mem.du.dt.dttz_prec = dttz->dttz_prec;
     mem.tz = tzname;
 
-    /* DRQS 98014563: We used to convert based on dttz_t precision only.
+    /* We used to convert based on dttz_t precision only.
        This was wrong - We must honor client types. */
     return (sqltype == SQLITE_DATETIMEUS)?
         _convMem2ClientDatetimeus(&mem, out, sizeof(cdb2_client_datetimeus_t), &outdtsz, 0):

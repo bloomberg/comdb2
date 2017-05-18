@@ -18,11 +18,10 @@
 #define INCLUDED_SBUF2
 
 /* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255
-** paul x1552 08/15/00 */
 
 /* WARNING - don't incude this in other header files that will be widely used
  * (e.g. comdb2_api.h) - the symbol sbuf2 conflicts with many fortran common
- * area names  - DRQS 10742650 */
+ * area names */
 
 /* Server sbuf2 uses dlmalloc. Client does not. The simplest approach
    to avoid adding dlmalloc dependency to client API is to compile

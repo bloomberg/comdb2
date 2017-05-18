@@ -6672,7 +6672,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
             p_buf = (uint8_t *)buf_get(&clnt->numblobs, sizeof(clnt->numblobs),
                                        p_buf, p_buf_end);
 
-            /* DRQS 41839112 - number of blobs shouldn't be fixed.
+            /* number of blobs shouldn't be fixed.
              * Try to keep 16 (the old limit) inline, allocate more
              * if the client has more.
              * */

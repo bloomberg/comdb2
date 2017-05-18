@@ -976,7 +976,7 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
           }
         */
 
-        /* Great - there was a bug!  Under DRQS 13062523 it was found
+        /* Great - there was a bug!  It was found
          * that when a blob got updated to be NULL the blob data wasn't
          * being removed from the blob file.  Use return code -2 to
          * signal this back to the caller.  Schema change can then ignore

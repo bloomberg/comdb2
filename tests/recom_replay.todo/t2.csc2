@@ -1,13 +1,13 @@
 schema
 {
-	u_int group_id         // DRQS group
+	u_int group_id         // group
 	u_short opt_type       // option type
 	short opt_value        // option value
 }
 
-tag "drqs_group_opt"
+tag "group_opt"
 {
-	u_int group_id         // DRQS group
+	u_int group_id         // group
 	u_short opt_type       // option type
 	short opt_value        // option value
 }

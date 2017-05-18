@@ -1204,8 +1204,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 free_cached_delayed_indexes(iq);
 
                 if (ERR_INTERNAL == rc) {
-                    /* DRQS 39717216:
-                     * Exit & have the cluster elect another master */
+                    /* Exit & have the cluster elect another master */
                     if (gbl_exit_on_internal_error) {
                         exit(1);
                     }

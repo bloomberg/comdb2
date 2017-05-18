@@ -1,6 +1,6 @@
 Test name:         sqlqueries
 Default version:   r000028
-Description:       Collection of queries from DRQS tickets
+Description:       Collection of queries from tickets
 Current max vers   28
 Original creator:  azaimi
 Timeout:           120

@@ -400,7 +400,7 @@ __ram_get_re_len(dbp, re_lenp)
 
 	DB_ILLEGAL_METHOD(dbp, DB_OK_QUEUE | DB_OK_RECNO);
 
-	/* for DRQS1751954 fix this routine to use the
+	/* fixed this routine to use the
 	 * q_internal struct for queues.   backported from 4.8.24 */
 	if (dbp->type == DB_QUEUE) {
 		q = dbp->q_internal;

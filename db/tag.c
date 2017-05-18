@@ -5973,7 +5973,6 @@ struct schema *new_dynamic_schema(struct db *db, const char *s, int len,
         goto backout;
 
     /*
-       DRQS 8365655
        size_of_schema always looks at the last field to determine
        schema size.  This works with static tags, but fields for
        dynamic tags are sometimes sent out of order.  Make the

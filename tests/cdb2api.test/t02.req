@@ -1,5 +1,3 @@
-#DRQS 28416221
-
 select * from t1 order by i
 insert into t1 values( 1)
 insert into t1 values( 2)

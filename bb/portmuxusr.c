@@ -257,7 +257,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
         return -1;
 
     /*
-     * DRQS 26574546 - some applications thrash portmux, and then DOS
+     * some applications thrash portmux, and then DOS
      * themselves and others by generating millions of TIME_WAIT state ports.
      * We prevent this by setting SO_LINGER with a timeout of 0 so that when
      * we call close() the socket is killed stone dead.
@@ -557,7 +557,7 @@ static int portmux_route_to(struct in_addr in, const char *app,
     char res[2];
     int rc, fd, len;
 
-    /*{DRQS 13792850<GO>} apparently the fd can get "lost" on
+    /* apparently the fd can get "lost" on
      * AIX when service is in core'ing state. pass_fd is
      * successful but fd will not get cleaned up by OS when
      * service is. Therefore put a timeout here. Not very keen

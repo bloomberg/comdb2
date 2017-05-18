@@ -79,7 +79,6 @@ static int get_somaxconn(void)
     return retval;
 }
 
-/* Vijay Mirchandani x2491 DRQS 4296391*/
 /* Closing the socket fd on failure to prevent
  * file descriptor leaks  */
 int tcplisten(int port)

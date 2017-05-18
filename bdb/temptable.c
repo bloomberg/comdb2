@@ -219,9 +219,7 @@ static int bdb_hash_table_copy_to_temp_db(bdb_state_type *bdb_state,
             goto done;
         }
 
-        /* DRQS 26285487
-        ** New cursor does not point to any data.
-        */
+        /* New cursor does not point to any data */
         cur->key = cur->data = NULL;
         cur->keylen = cur->datalen = 0;
     }

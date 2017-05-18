@@ -77,7 +77,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
     listc_init(&sc.dests, offsetof(struct dest, lnk));
 
     sc.finalize = 1;
-    /* DRQS 21247361 - don't allow schema change to run if kicked off from
+    /* don't allow schema change to run if kicked off from
        a machine from which we don't allow writes (eg dev to alpha) */
     if (gbl_check_schema_change_permissions && sc_request_disallowed(sb)) {
         sbuf2printf(sb, "!Schema change not allowed from this machine (writes "

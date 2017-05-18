@@ -159,7 +159,7 @@ static void adjust_version(int changed, struct scinfo *scinfo,
             s->instant_sc) /* bump version if enabled instant sc */
         ) {
         ++newdb->version;
-    } else if /* drqs 48842025 */ (
+    } else if (
         ondisk_changed == SC_NO_CHANGE /* nothing changed ondisk */
         && changed == SC_TAG_CHANGE    /* plan says it did change */
         && newdb->version == 0 && newdb->plan->dta_plan == -1 &&

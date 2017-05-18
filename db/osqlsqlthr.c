@@ -456,7 +456,7 @@ retry:
 
     osql->host = thedb->master;
 
-    /* drqs 19581694: protect against no master */
+    /* protect against no master */
     if (osql->host == NULL) {
         /* wait up to 50 seconds for a new master */
         if (retries < 100) {

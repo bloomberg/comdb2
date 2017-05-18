@@ -4,5 +4,3 @@ several times. Do this while schemachange is rebuilding in background
 continuously to detect any issues with schemachange.
 
 Test tries both with IPU (in place updates) enabled and disabled.
-
-See   DRQS 66733480 

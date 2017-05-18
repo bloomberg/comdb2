@@ -1,12 +1,7 @@
-This test case is a collection of queries reported in various DRQS tickets. As such each test case will have different tables and schemas. The driver will add/alter/drop tables as required. This is based on the presence of test.tablename.csc2 files. An attempt is made to drop 'tablename' before adding it. 
+This test case is a collection of queries reported in various tickets. As such each test case will have different tables and schemas. The driver will add/alter/drop tables as required. This is based on the presence of test.tablename.csc2 files. An attempt is made to drop 'tablename' before adding it. 
 
-t00:
-t01:
-t02:
-t03:
-t04:
-t05: setup for t06, load stat tables. sc at step 06 will load into sqlite
-t06:
+t05: setup for t06
+t06: load stat tables. sc will load into sqlite
 t07: setup for t08
 t08: esgprof db regression R5
 t09: setup for t10

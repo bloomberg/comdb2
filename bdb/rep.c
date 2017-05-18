@@ -1176,7 +1176,7 @@ static void *elect_thread(void *args)
 
     free(elect_thread_args);
 
-    /* Don't ctrace in the election codepath.  DRQS 59684112: because /bb/data
+    /* Don't ctrace in the election codepath.  because /bb/data
      * was filled, writes to it (the ctrace file) were taking between 600 and
      * 1400 ms.  This prevents election from completeing in a reasonable amount
      * of time.  */
@@ -1904,7 +1904,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     if (bdb_state->exiting)
         return 0;
 
-    /* DRQS 7428191 - wake up anyone who might be waiting for a seqnum so that
+    /* wake up anyone who might be waiting for a seqnum so that
      * they can stop waiting from this node - it ain't gonna happen! */
 
     pthread_mutex_lock(&bdb_state->pending_broadcast_lock);
@@ -2801,7 +2801,7 @@ again:
         }
         return 0;
     }
-    /* DRQS 7428191 - this node may have been decommissioned, in which case we
+    /* this node may have been decommissioned, in which case we
      * get woken up.  Check that this node still exists. */
     if (!bdb_state->attr->repalwayswait) {
         const char *nodes[REPMAX];

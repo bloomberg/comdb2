@@ -130,7 +130,7 @@ int main(int argc, char *argv[])
     runtestdir(".");
     runtestdir("inputs");
 
-    runtest("bigstr", no); /* DRQS 33513965 */
+    runtest("bigstr", no);
 
     printf("Total pass: %d\n", pass);
     printf("Total fail: %d\n", fail);

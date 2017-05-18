@@ -1636,7 +1636,6 @@ static int create_sqlmaster_record(struct db *db, void *tran)
         }
 
 #if 0
-      /* DRQS 24490946: keep lying */
       if (schema->flags & SCHEMA_DUP) {
          strbuf_append(sql, "create index \"");
       } else {
@@ -3015,7 +3014,7 @@ static int cursor_move_master(BtCursor *pCur, int *pRes, int how)
     int done = 0;
     int rc = SQLITE_OK;
 
-    /* DRQS 23770132: skip preprop. if we're called from sqlite3_open_serial
+    /* skip preprop. if we're called from sqlite3_open_serial
      * and if peer_dropped_connection is true, we'll get NO SQL ENGINE and
      * a wasted thread apparently.
      rc = cursor_move_preprop(pCur, pRes, how, &done, 0);

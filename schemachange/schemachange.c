@@ -597,7 +597,7 @@ static int add_table_for_recovery(struct schema_change_type *s)
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->odh = s->headers;
-    /* DRQS 30674690: Don't lose precious flags like this */
+    /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->version = get_csc2_version(newdb->dbname);

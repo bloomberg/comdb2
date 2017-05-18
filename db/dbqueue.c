@@ -142,8 +142,7 @@ int gbl_queue_sleeptime = 5; /* how many seconds to sleep for between
 int gbl_consumer_rtcpu_check = 1; /* don't send to rtcpu'd nodes.
                                      occasionally it is useful to disable this
                                      for a whee while. */
-int gbl_node1rtcpuable = 0;       /* no rtcpu check for node 1.
-                                     DRQS 11956521. */
+int gbl_node1rtcpuable = 0;       /* no rtcpu check for node 1 */
 
 int gbl_reset_queue_cursor = 1;
 
@@ -734,7 +733,7 @@ void dbqueue_admin(struct dbenv *dbenv)
     pthread_mutex_unlock(&dbenv->dbqueue_admin_lk);
 }
 
-/* Prevent silliness like DRQS 6997351 by consuming the head of the queue.
+/* Prevent silliness by consuming the head of the queue.
  * The "goose" concept is that we add dummy records specifically to be
  * consumed in this way, thus ensuring that the queue head advances and we
  * don't end up with millions of empty queue extents. */

@@ -906,7 +906,7 @@ static void genlockdesc(void)
     }
     fclose(urandom);
 }
-static void DRQS_56985015()
+static void test_56985015()
 {
     // printf("%s START\n", __func__);
     genlockdesc();
@@ -933,7 +933,7 @@ static void *locktest(void *f)
     TIME_IT(collisionC);
     // locks_per_sec();
     // mytester();
-    TIME_IT(DRQS_56985015);
+    TIME_IT(test_56985015);
     return NULL;
 }
 

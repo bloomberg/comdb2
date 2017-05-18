@@ -321,8 +321,7 @@ static void substrFunc(
   p0type = sqlite3_value_type(argv[0]);
   p1 = sqlite3_value_int(argv[1]);
 
-  /* COMDB2 MODIFICATION
-   * DRQS 22394086 */
+  /* COMDB2 MODIFICATION */
   if (p1 == 0) p1 = 1;
 
   if( p0type==SQLITE_BLOB ){
