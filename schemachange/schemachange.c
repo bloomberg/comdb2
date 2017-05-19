@@ -88,7 +88,7 @@ int start_schema_change(struct dbenv *dbenvin, struct schema_change_type *s,
     }
 
     if (thedb->master == gbl_mynode && !s->resume) {
-        logmsg(LOGMSG_DEBUG, "calling bdb_set_disable_plan_genid 0x%llx\n", sc_seed);
+        logmsg(LOGMSG_WARN, "Calling bdb_set_disable_plan_genid 0x%llx\n", sc_seed);
         int bdberr;
         int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed, &bdberr); 
         if (rc) {

@@ -1545,7 +1545,6 @@ extern int gbl_nonames;
 extern int gbl_abort_on_missing_session;
 extern int gbl_reject_osql_mismatch;
 extern int gbl_abort_on_clear_inuse_rqid;
-extern int gbl_db_started;
 
 extern int gbl_exit_on_pthread_create_fail;
 extern int gbl_exit_on_internal_error;

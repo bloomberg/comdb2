@@ -234,7 +234,6 @@ int gbl_blocksql_grace =
     10; /* how many seconds we wait for a blocksql during downgrade */
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
-int gbl_db_started;
 int gbl_watchdog_watch_threshold = 60;
 int gbl_watchdog_disable_at_start = 0; /* don't enable watchdog on start */
 int gbl_nonames = 1;
@@ -8704,8 +8703,6 @@ int main(int argc, char **argv)
         }
     }
 
-    gbl_db_started = 1;
-
     /* if not using the nowatch lrl option */
     if (!gbl_watchdog_disable_at_start)
         watchdog_enable();
@@ -8720,7 +8717,6 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    gbl_db_started = 1;
     if (strcmp(thedb->envname, "leddydb") == 0)
        logmsg(LOGMSG_WARN, "I AM LEDDY.\n");
     else
