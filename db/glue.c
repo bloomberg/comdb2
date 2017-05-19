@@ -2893,7 +2893,7 @@ static int new_master_callback(void *bdb_handle, char *host)
             gbl_master_changes++;
 
             /* if there is an active schema changes, resume it */
-            if (resume_schema_change()) {
+            if (gbl_ready && resume_schema_change()) {
                 logmsg(LOGMSG_ERROR, "failed trying to resume schema change, if "
                         "one was in progress it will have to be restarted\n");
             }

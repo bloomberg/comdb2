@@ -144,10 +144,6 @@ static void *trigger_start_int(void *name_)
     char name[strlen(name_) + 1];
     strcpy(name, name_);
     free(name_);
-    if (!gbl_db_started) {
-        printf("%s too soon - not running trigger:%s\n", __func__, name);
-        return NULL;
-    }
     trigger_reg_t *reg;
     trigger_reg_init(reg, name);
     printf("%s waiting for %s elect_cookie:%d trigger_cookie:0x%llx\n",
@@ -192,8 +188,7 @@ void trigger_start(const char *name)
     if (!gbl_ready) return;
     printf("%s master selected me to run: %s\n", __func__, name);
     pthread_t t;
-    pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int,
-                   strdup(name));
+    pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
 }
 
 // FIXME TODO XXX: KEEP TWO HASHES (1) by qname (2) by node num

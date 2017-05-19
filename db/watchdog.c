@@ -170,7 +170,7 @@ static void *watchdog_thread(void *arg)
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
 
-    while (!gbl_db_started) {
+    while (!gbl_ready) {
         sleep(10);
     }
 

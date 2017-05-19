@@ -9606,7 +9606,12 @@ void run_internal_sql(char *sql)
     clnt.sql = sql;
 
     dispatch_sql_query(&clnt);
-
+    if (clnt.query_rc || clnt.saved_errstr) {
+        logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql,
+               clnt.query_rc);
+        if (clnt.saved_errstr)
+            logmsg(LOGMSG_ERROR, "%s: Error: '%s' \n", __func__, clnt.saved_errstr);
+    }
     clnt_reset_cursor_hints(&clnt);
     osql_clean_sqlclntstate(&clnt);
 

@@ -261,10 +261,10 @@ else
     echo "!$TESTCASE: waiting until ready"
     sleep 1
     for node in $CLUSTER; do
-        out=""
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         while  [[ "$out" != "1" ]]; do
-            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
             sleep 2
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         done
     done
     for node in $CLUSTER; do

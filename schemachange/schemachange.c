@@ -46,8 +46,7 @@ int start_schema_change(struct dbenv *dbenvin, struct schema_change_type *s,
             free_schema_change_type(s);
             return rc;
         }
-        printf("fetched schema change seed %llx\n", seed);
-        logmsg(LOGMSG_WARN, "Resuming schema change: fetched seed %llx\n", seed);
+        logmsg(LOGMSG_INFO, "Resuming schema change: fetched seed 0x%llx\n", seed);
     }
     else {
         seed = get_genid(thedb->bdb_env, 0);
@@ -88,7 +87,7 @@ int start_schema_change(struct dbenv *dbenvin, struct schema_change_type *s,
     }
 
     if (thedb->master == gbl_mynode && !s->resume) {
-        logmsg(LOGMSG_DEBUG, "calling bdb_set_disable_plan_genid 0x%llx\n", sc_seed);
+        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n", sc_seed);
         int bdberr;
         int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed, &bdberr); 
         if (rc) {
