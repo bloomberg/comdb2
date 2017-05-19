@@ -225,7 +225,7 @@ argcombo:			fprintf(stderr,
 
 
     if (io_override_init())
-        goto err;
+        goto shutdown;
     io_override_set_std(stdout);
 
 
