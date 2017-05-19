@@ -1358,17 +1358,13 @@ int bdb_llmeta_set_tables(
                         "this should not happen",
                 __func__);
         *bdberr = BDBERR_MISC;
-        free(p_buf_start);
-        p_buf = NULL;
-        return -1;
+        goto cleanup;
     }
 
 retry:
     if (++retries >= 500 /*gbl_maxretries*/) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__, retries);
-        free(p_buf_start);
-        p_buf = NULL;
-        return -1;
+        goto cleanup;
     }
 
     /*if the user didn't give us a transaction, create our own*/
@@ -1381,9 +1377,7 @@ retry:
             logmsg(LOGMSG_ERROR, "%s: failed to get "
                             "transaction\n",
                     __func__);
-            free(p_buf_start);
-            p_buf = NULL;
-            return -1;
+            goto cleanup;
         }
     } else
         trans = input_trans;
@@ -1403,7 +1397,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            goto cleanup;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -1433,6 +1427,7 @@ backout:
 
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
+cleanup:
     free(p_buf_start);
     p_buf = NULL;
     return -1;
@@ -1690,7 +1685,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -1903,7 +1898,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -2078,7 +2073,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -2260,7 +2255,7 @@ retry:
     if (!input_tran) {
         if (bdb_tran_commit(llmeta_bdb_state, tran, bdberr) &&
             *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -2682,7 +2677,7 @@ retry:
         logmsg(LOGMSG_ERROR, "%s bdb_tran_commit rc: %d bdberr: %d\n", __func__, rc,
                 bdberr);
         tran = NULL;
-        goto fail;
+        return -1;
     }
     return 0;
 
@@ -2847,7 +2842,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -3420,7 +3415,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -3659,7 +3654,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -4632,7 +4627,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -4754,7 +4749,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -4880,7 +4875,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     /* invalidate any caches */
@@ -4978,7 +4973,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -5248,7 +5243,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     /* invalidate any caches */
@@ -5991,7 +5986,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -6274,7 +6269,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc & *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
         llmeta_bdb_state->dbenv->log_flush(llmeta_bdb_state->dbenv, NULL);
     }
 
@@ -6399,7 +6394,7 @@ retry:
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
         if (rc && *bdberr != BDBERR_NOERROR)
-            goto backout;
+            return -1;
     }
 
     *bdberr = BDBERR_NOERROR;
