@@ -5,7 +5,7 @@ permalink: auth.html
 ---
 
 ## Authenticating comdb2 session
-Comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password) statements, just after opening the connection.
+A comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password), just after opening the connection.
 
 ```sql
 set user 'foo_user'
@@ -13,9 +13,9 @@ set password 'foo_password'
 ``` 
 
 ## Adding/deleting users to database
-Users can be added and deleted by [put password](sql.html#put) statement. Once authentication is enabled only users with OP credentials can add or delete users.
+Users can be added and deleted through the [put password](sql.html#put) statement. Once authentication is enabled only users with OP credentials can add or delete users.
 
-To add new user or change password of existing user:
+To add a new user or update the password of an existing user:
 ```put password '<password>' for <user>```
 
 ```sql
@@ -23,19 +23,19 @@ put password 'foo_password' for 'foo_user'
 put password 'op_password' for 'op_user'
 ``` 
 
-To delete user:
+To delete a user:
 ```put password off for <user>```
 
 ```sql
 put password off for 'foo_user'
 ``` 
 
-Users can be granted OP credentials by [grant OP](sql.html#grant-and-revoke) statement.  Only OP users can run this statement after authentication is enabled.
+Users can be granted OP credentials using [grant OP](sql.html#grant-and-revoke).  Only OP users can run this statement after authentication is enabled.
 ```sql
 grant OP to 'op_user'
 ``` 
 
-Existing users can be seen by query on ```comdb2_users``` table, the resulting data will give usernames along with their OP credentials.
+Existing users can be seen by performing a query on the ```comdb2_users``` table, the result set will give user names along with their OP status.
 
 ```sql
 select * from comdb2_users
@@ -47,7 +47,7 @@ select * from comdb2_users
 (username='foo_user', isOP='N')
 (username='op_user', isOP='Y')
 ```
-This info is part of database metadata, therefore copying the database will preserve it.
+This information is part of the database's metadata, therefore copying the database will preserve it.
 
 ## Turning on Authentication
 The following SQL statement will turn on authentication
@@ -63,32 +63,32 @@ put authentication off
 ``` 
 Only users which have OP credentials can turn on/off authentication.
 
-Turning on authentication will add a new user with username 'default', if it doesn't already exist. This user will be used for every unauthenticated session.
-The newly created 'default' user doesn't have any permission, but can be granted any permission by an OP user.
+Turning on authentication will add a new user with the name 'default', if it doesn't already exist. This user will be used for every unauthenticated session.
+The newly created 'default' user doesn't have any privileges to any objects, but can be granted any privilege by an OP user.
 
-## Granting/Revoking table permissions to users
+## Granting/Revoking table privileges to users
 
-Comdb2 allows following permissions on table
+Comdb2 defines the following privileges on a table:
 
-|Permission|Description|
+|Privilege|Description|
 |---|---|
 |READ|Can read records of table|
 |WRITE|Can read/write records to table|
 |DDL|Can read/write records and alter schema of table|
 
-OP users can grant table permissions using [grant](sql.html#grant-and-revoke) statement
+OP users can grant table privileges using [grant](sql.html#grant-and-revoke)
 
 ```sql
 grant read on t1 to 'foo_user'
 ``` 
 
-permissions can be revoked using [revoke](sql.html#grant-and-revoke) statement
+privileges can be revoked using the [revoke](sql.html#grant-and-revoke) statement
 
 ```sql
 revoke read on t1 to 'foo_user'
 ``` 
 
-Existing permissions can be seen by query on ```comdb2_tablepermissions```
+Existing privileges can be seen by running a query on ```comdb2_tablepermissions```
 ```sql
 select * from comdb2_tablepermissions
 ``` 
