@@ -12,11 +12,11 @@ function kill_by_pidfile() {
     pidfile=$1
     if [[ -f $pidfile ]]; then
         local pid=$(cat $pidfile)
-        local pstr=$(ps -p $pid -o args)
+        local pstr=$(ps -p $pid -o args | grep comdb2)
         echo $pstr | grep -q "comdb2 ${DBNAME}"
-        if [[ $? -eq 0 ]]; then 
+        if [[ $? -eq 0 ]]; then
             echo "${TESTCASE}: killing $pid"
-            if [ "`echo $pstr | awk '{ print $1 }'`" -eq "comdb2" ] ; then
+            if [ "`echo $pstr | awk '{ print $1 }' | xargs basename`" = "comdb2" ] ; then
                 kill -9 $pid
             else
                 kill $pid
