@@ -6,6 +6,7 @@ include libs.mk
 export SRCHOME=.
 export DESTDIR
 export PREFIX
+BASEDIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 # Common CFLAGS
 CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
@@ -122,3 +123,15 @@ install: all
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	[ -z "$(DESTDIR)" ] && . db/installinfo || true
+
+jdbc-docker-build-container:
+	docker build -t jdbc-docker-builder:$(VERSION) -f docker/Dockerfile.jdbc.build docker
+
+jdbc-docker-build: jdbc-docker-build-container
+	docker run \
+		--env HOME=/tmp \
+		-v $(BASEDIR):/jdbc.build \
+		-w /jdbc.build \
+		jdbc-docker-builder:$(VERSION) \
+		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
+

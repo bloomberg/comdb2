@@ -1,0 +1,13 @@
+FROM openjdk:8
+
+# Download maven
+RUN \
+  wget http://apache.mirrors.tds.net/maven/maven-3/3.5.0/binaries/apache-maven-3.5.0-bin.tar.gz && \
+  tar -xvf apache-maven-3.5.0-bin.tar.gz -C /bin && \
+  mv /bin/apache-maven-3.5.0 bin/maven
+
+# Install protobuf 3.2
+RUN \
+  wget https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip && \
+  unzip protoc-3.2.0-linux-x86_64.zip -d protoc && \
+  mv protoc/bin/protoc /bin
