@@ -128,10 +128,12 @@ jdbc-docker-build-container:
 	docker build -t jdbc-docker-builder:$(VERSION) -f docker/Dockerfile.jdbc.build docker
 
 jdbc-docker-build: jdbc-docker-build-container
+	mkdir -p docker/home
 	docker run \
-		--env HOME=/tmp \
+		--user $(shell id -u):$(shell id -g) \
+		--env HOME=/jdbc.build/docker/home \
 		-v $(BASEDIR):/jdbc.build \
-		-w /jdbc.build \
+		-w /jdbc.build/docker/home \
 		jdbc-docker-builder:$(VERSION) \
 		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
 
