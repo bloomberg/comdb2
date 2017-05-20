@@ -157,9 +157,6 @@ copy_files_to_cluster()
         scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
         echo start pmux on $node if not running 
         ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' ${SRCHOME}/$pmux_cmd"
-        if [[ -z $SKIPSSL ]] ; then
-            scp -o StrictHostKeyChecking=no ${TESTDIR}/server.key ${TESTDIR}/server.crt $node:${TESTDIR}
-        fi
     done
 }
 

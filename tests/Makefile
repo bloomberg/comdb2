@@ -24,7 +24,7 @@ basicops:
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
-	$(shell TESTDIR="${TESTDIR}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
+	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
 
 TOTAL=$(words $(MAKECMDGOALS))
 ifeq ($(TOTAL),0)
