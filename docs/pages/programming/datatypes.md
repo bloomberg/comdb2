@@ -43,7 +43,7 @@ These are floating point types.  They return ```CDB2_REAL``` values (```double``
 
 ## Decimal types
 
-Decimal types are decimal representations for real numbers. They provides support for arithmetic without the loss of 
+Decimal types are decimal representations for real numbers. They provide support for arithmetic on decimal numbers without loss of 
 precision as long as the required number of digits can be accommodated by the format limitations of exponent and 
 significant. See the [decimal types](decimals.html) section for more details.  When queried, they return 
 ```CDB2_CSTRING``` (string) values to avoid losing precision.  
