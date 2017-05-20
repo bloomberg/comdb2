@@ -10,7 +10,6 @@ permalink: config_files.html
 Comdb2 configuration files have an .lrl extension for historic reasons.  No configuration file is required.  If no file is 
 specified, the database will pick reasonable defaults.  On startup, the database will look for the following files, and 
 read them, in order:
-
 1. `$COMDB2_ROOT/etc/cdb2/config/comdb2.lrl`
 1. `$COMDB2_ROOT/etc/cdb2/config/comdb2_local.lrl`
 1. `$COMDB2_ROOT/etc/cdb2/config.d/*.lrl` 
@@ -68,6 +67,7 @@ There are various threadpools in Comdb2 responsible for specific work.  They all
 The following options are available for configuring thread pool parameters:
 
 |Parameters             |Function
+|-----------------------|---------
 |mint                   |Minimum number of threads to keep around.  Threads above this value will exit after `linger` seconds.  Raise this if the thread pool reports lots of thread creates.
 |maxt                   |Maximum number of threads to keep around.  Lower this you don't get gains from additional concurrency for the specific subsystem.
 |linger                 |How long threads above `mint` will hang around (in seconds) before exiting.
@@ -98,6 +98,7 @@ Network tunables for controlling heartbeat parameters, queue sizes, etc. are lis
 sections describe each network's uses.
 
 |Option              |Default              |Description
+|--------------------|---------------------|------------
 |netbufsz | 1048576 (1 MB) | Size of the network buffer (per node) for the replication network
 |netbufsz_signal | 65536 | Size of the network buffer (per node) for the signal network
 |heartbeat_check_time | 10 (seconds) | Consider an error if no heartbeat for this many seconds
@@ -150,6 +151,7 @@ and to wait for all nodes to acknowledge a transaction before returning success.
 
 
 |Option              |Default              |Description
+|--------------------|---------------------|------------
 |full                |not set              |Logs are flushed on every commit
 |normal              |set                  |Logs are NOT flushed on every commit (ie: you can lose transactions if all the nodes in the cluster crash).  This is the default.  This option also implies fully synchronous replication - ie: wait for all nodes to ack before returning success.
 |rep_always_wait     |not set              |Wait for all nodes, including those that aren't connected (not recommended)
@@ -184,6 +186,7 @@ be enabled with the `on` option, and disabled with `off`.  Unless debugging/deve
 is generally not advised.
 
 |Option      |Default             |Description
+|------------|--------------------|------------
 bad_lrl_fatal|  off |Unrecognized lrl options are fatal errors
 t2t|  off |New tag->tag conversion code
 fix_cstr|  on |Fix validation of cstrings
@@ -288,6 +291,8 @@ can be controlled with the `sqllogger` commands.  Logs themselves are binary fil
 the database directory with the name $DBNAME.sqllog.  When rolled, they before $DBNAME.sqllog.1,
 $DBNAME.sqllog.2, etc.
 
+|sql logger command| description
+|------------------|-------------
 |sqllogger on||Enables sql logging
 |sqllogger rollat|not set|Automatically roll logs when they get to this size (in bytes)
 |sqllogger keep|2|Keep this many copies of rolled logs
@@ -323,6 +328,7 @@ incoherent
 DB layer tunables:
 
 |Option              | Default        | Description
+|--------------------|----------------|-------------
 |incoherent_msg_freq | 3600 (seconds) | Drop a warning file if a node is incoherent (see [incoherent nodes overview](#incoherent-nodes-overview)) for more information.
 |incoherent_alarm_time | 120 (seconds) | Warn about incoherent nodes this often.
 |max_incoherent_nodes | 1 | Number of incoherent nodes before an alarm triggers.
@@ -331,6 +337,7 @@ DB layer tunables:
 BDB layer tunables (see [bdbattr tunables](#bdbattr-tunables))
 
 |Option              | Default        | Description
+|--------------------|----------------|---------------
 |REPTIMEOUT_LAG | 50 (PERCENT) | Used in replication.  Once a node has received our update, we will wait REPTIMEOUT_LAG% of the time that took for all other nodes.  
 |REPTIMEOUT_MINMS | 10000 (MSECS) | Even if the first node comes back quickly, wait at least this many ms to replicate to other nodes.
 |REPTIMEOUT_MAXMS | 5 * 60 * 1000 (MSECS) | We should wait this long for one node to acknowledge replication.  If after this time we have failed to replicate anywhere then the entire cluster is incoherent!
@@ -344,6 +351,8 @@ BDB layer tunables (see [bdbattr tunables](#bdbattr-tunables))
 These options allow you to set the default SQL transaction level across the database.  Any setting here can
 be overwritten by running 'SET TRANSACTION ...' after connecting to the database.  See [Isolation Levels](transaction_model.html#isolation-levels-and-artifacts) for available transaction levels. 
 
+|sql_tranlevel option | description
+|---------------------|-------------
 |sql_tranlevel_default default|Set to `default` isolation level
 |sql_tranlevel_default recom|Set to `READ COMMITTED` isolation level
 |sql_tranlevel_default snapshot|Set to `SNAPSHOT` isolation level
@@ -354,6 +363,8 @@ be overwritten by running 'SET TRANSACTION ...' after connecting to the database
 Queries running in the database can be limited in cost.  The database can optionally warn when a query reaches
 a certain cost, or prevent it from running further.
 
+|querylimit option | description
+|---------------------|-------------
 |querylimit maxcost N|Set the maximum cost the database will allow for a query to N|
 |querylimit warn maxcost N|Warn if a query has a cost > N | 
 |querylimit maxcost off|Turn off returning errors for queries over a cost limit
@@ -364,6 +375,8 @@ a certain cost, or prevent it from running further.
 The rounding policy for rounding for columns of decimal types can be controlled with the `decimal_rounding` option. 
 Available options are:
 
+|decimal_rounding option | description
+|------------------------|-------------
 decimal_rounding DEC_ROUND_NONE|Don't round
 decimal_rounding DEC_ROUND_CEILING|Round towards +infinity 
 decimal_rounding DEC_ROUND_UP|Round away from 0               
@@ -382,6 +395,7 @@ There's a few low-level tunables that control options in BerkeleyDB subsystems p
 All options below are preceded with "berkattr" in the configuration file.
 
 |option|Default|Description
+|------|-------|-----------
 iomap_enabled| 1 |Map file that tells comdb2ar to pause while we fsync
 flush_scan_dbs_first| 0 |Don't hold bufpool mutex while opening files for flush
 skip_sync_if_direct| 1 |Don't fsync files if directio enabled
@@ -454,6 +468,7 @@ lower-level functions like replication, various timeouts, etc.  These are set wi
 next word determines which option to set, and the following word determines its value.
 
 |Option          |Default (type)      |Description
+|----------------|--------------------|-----------
 |REPTIMEOUT|20 (SECS) | Replication timeout.
 |CHECKPOINTTIME|60 (SECS) |  Write a checkpoint at this interval.
 |CHECKPOINTTIMEPOLL|100 (MSECS) | Poll a random amount of time < this before writing a checkpoint (attempting to prevent multiple databases from checkpointing at the same exact time)
@@ -540,6 +555,7 @@ will be run by the database when the database does some fixed count of inserts/d
 can be queried with the `stat autonalyze` command.
 
 |Option | Default (type) | Description
+|-------|----------------|------------
 |AUTOANALYZE|0 (BOOLEAN) | Set to enable auto-analyze
 |AA_COUNT_UPD|0 (BOOLEAN) | Also consider updates towards the count of operations
 |MIN_AA_OPS|100000 (QUANTITY) | Start analyze after this many operations
@@ -552,6 +568,7 @@ can be queried with the `stat autonalyze` command.
 #### SQL planner tunables
 
 |Option | Default (type) | Description
+|-------|----------------|--------------
 |PLANNER_EFFORT|1 (QUANTITY) | Planner effort (try harder) levels, default is 1
 |SHOW_COST_IN_LONGREQ|1 (BOOLEAN) | Show query cost in the database long requests log (see [logs.html#long-requests-log](logs.html))
 |PLANNER_SHOW_SCANSTATS|0 (BOOLEAN) | After each query, display statistics about index/data paths taken.
@@ -560,6 +577,7 @@ can be queried with the `stat autonalyze` command.
 #### Schema change tunables
 
 |Option | Default (type) | Description
+|-------|----------------|------------
 | SC_RESTART_SEC|60 (QUANTITY) | Delay restarting schema change for this many seconds after startup/new master election
 |INDEXREBUILD_SAVE_EVERY_N|10 (QUANTITY) | Save schema change state to every n-th row for index only rebuilds
 |SC_DECREASE_THRDS_ON_DEADLOCK|1 (BOOLEAN) | Decrease number of schema change threads on deadlock -- way to have schema change backoff
@@ -570,6 +588,8 @@ can be queried with the `stat autonalyze` command.
 
 #### UDP tunables
 
+|UDP option | description
+|-----------|-------------
 |UDP_DROP_DELTA_THRESHOLD|10 (QUANTITY) | Warn if delta of dropped packets exceeds this threshold
 |UDP_DROP_WARN_PERCENT|10 (PERCENT) | Warn only if percentage of dropped packets exceeds this
 |UDP_DROP_WARN_TIME|300 (SECS) | No more than one warning per `UDP_DROP_WARN_TIME` seconds
@@ -578,6 +598,8 @@ can be queried with the `stat autonalyze` command.
 
 #### Rowlock tunables
 
+|Rowlocks option | description
+|-----------|-------------
 |MAX_ROWLOCKS_REPOSITION |  10 | Release a physical cursor an re-establish
 |PHYSICAL_COMMIT_INTERVAL | 512 | Force a physical commit after this many physical operations
 |ROWLOCKS_MICRO_COMMIT |  1 | Commit on every btree operation
@@ -586,6 +608,8 @@ can be queried with the `stat autonalyze` command.
 
 #### Misc tunables
 
+|Misc option | description
+|------------|-------------
 |NET_INORDER_LOGPUTS | 1 | Attempt to order messages to ensure they go out in LSN order
 |RCACHE_COUNT | 257 | Number of entries in root page cache
 |RCACHE_PGSZ | 4096 | Size of pages in root page cache
@@ -593,6 +617,8 @@ can be queried with the `stat autonalyze` command.
 
 #### Log configuration
 
+|Log option | description
+|-----------|-------------
 |DEBUG_LOG_DELETION | 0 | Enable to see when/why database log files are being deleted
 |LOG_DELETE_LOW_HEADROOM_BREAKTIME | 10 | Try to delete logs this many times if the filesystem is getting full before giving up
 |MIN_KEEP_LOGS_AGE_HWM | 0 | ...
@@ -607,6 +633,8 @@ Comdb2 databases allow the client APIs to replay a transaction if its outcome is
 but the database drops a connection, so uncertain whether it committed).  This system is internally called "blkseq" (block
 sequence).  Tunables to control it are below
 
+|BLKSEQ option | description
+|--------------|-------------
 |PRIVATE_BLKSEQ_CACHESZ | 4194304 | Cache size of the blkseq table
 |PRIVATE_BLKSEQ_MAXAGE | 20 | Maximum time in seconds to let "old" transactions live
 |PRIVATE_BLKSEQ_STRIPES | 1 | Number of stripes for the blkseq table
@@ -623,6 +651,8 @@ replication will not wait for them acknowledge events.  Nodes stay incoherent un
 the cluster.  The master node will send replicants a coherency lease to allow them to stay coherent.  It'll withhold the
 lease if a node is either not responding or is significantly slower than the other nodes.
 
+|coherency option | description
+|-----------------|-------------
 |COMMITDELAYBEHINDTHRESH | 1048576 (BYTES) | Call for election again and ask the master to delay commits if we're further than this far behind on startup.
 |GOOSE_REPLICATION_FOR_INCOHERENT_NODES|0 (BOOLEAN) | Call for election for nodes affected by `COMMITDELAYBEHINDTHRESH`
 |TRACK_REPLICATION_TIMES|1 (BOOLEAN) | Track how long each replicant takes to ack all transactions.
@@ -644,6 +674,8 @@ lease if a node is either not responding or is significantly slower than the oth
 
 #### Misc. tunables
 
+|miscellaneous option | description
+|---------------------|-------------
 |RLLIST_STEP | 10 | Reallocate rowlock lists in steps of this size.
 |GENID48_WARN_THRESHOLD | 500000000 | Print a warning when there are only a few genids remaining */
 |DISABLE_SELECTVONLY_TRAN_NOP | 0 | Disable verifying rows selected via SELECTV if there's no other actions done by the same transaction
@@ -661,6 +693,7 @@ These options apply only at database creation time.  Use `-create -lrl /path/to/
 pre-populated options to create the database
 
 |Option                           |Default     | Description
+|---------------------------------|------------|------------
 |init_with_genid48                |Off         | Use incrementing numbers for rowids instead of timestamps
 |init_with_rowlocks               |Off         | Use rowlocks instead of pagelocks for short-term transaction locks
 |init_with_rowlocks_master_only   |Off         | Alternate rowlocks scheme that only requires short-term rowlocks on the master
@@ -679,6 +712,7 @@ pre-populated options to create the database
 These options are toggle-able at runtime.
 
 |Option                           |Default                                                | Description
+|---------------------------------|-------------------------------------------------------|------------
 |nullfkey                         | Constraints are enforced for all key values|Do not enforce foreign key constraints for null keys.
 |fullrecovery                     | Off, recovery runs from previous checkpoint | Attempt to run database recovery from the beginning of available logs
 |dir                              | `$COMDB2_ROOT/var/cdb2/$DBNAME` | Database directory

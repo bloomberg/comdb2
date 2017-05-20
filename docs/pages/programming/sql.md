@@ -714,6 +714,7 @@ Both simple and aggregate functions are supported. A simple function can be used
 Note that much of this documentation comes from SQLite.
 
 Function | Description
+---------|------------
 ltrim (X [, Y]) | The ltrim(X,Y) function returns a string formed by removing any and all characters that appear in Y from the left side of X. If the Y argument is omitted, ltrim(X) removes spaces from the left side of X.
 rtrim (X [, Y]) | The rtrim(X,Y) function returns a string formed by removing any and all characters that appear in Y from the right side of X. If the Y argument is omitted, rtrim(X) removes spaces from the right side of X.
 trim (X [, Y]) | The trim(X,Y) function returns a string formed by removing any and all characters that appear in Y from both ends of X. If the Y argument is omitted, trim(X) removes spaces from both ends of X.

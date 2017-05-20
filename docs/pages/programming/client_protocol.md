@@ -8,17 +8,15 @@ permalink: client_protocol.html
 ## Comdb2 Client Protocol
 
 Comdb2 client protocol is used between Comdb2 client and server. To start a connection the client needs to know server
-port which is managed by pmux. The queries and response is sent using google protobufs
+port which is managed by pmux. The queries and responses are sent using google protobufs
 [https://developers.google.com/protocol-buffers/](https://developers.google.com/protocol-buffers/).
 
 Getting database port number from pmux
 ---------------------------------------
-Each comdb2 database uses pmux to assign port to it, and this port number is
-persistent for multiple database runs. Clients ask pmux which port to connect to
-for specific database. The default pmux port is 5105. 
+Each comdb2 database uses pmux to assign port to it, and this port number is persistent for multiple database runs.  
+Clients ask pmux which port to connect to for specific database. The default pmux port is 5105. 
 
-To get port number of db with dbname as `<dbname>`, portmux accepts newline terminated string 
-in the format:
+To get port number of db with dbname as `<dbname>`, portmux accepts newline terminated string in the format:
 ```
 "get comdb2/replication/<dbname>\n"
 ```
@@ -43,9 +41,9 @@ def portmux_get(host, dbname):
 Starting the database connection
 --------------------------------
 
-Comdb2 server expects the first line of every new connection from client to be newline terminated "newsql". Once client
-sends this a new appsock thread is started at the server side, which waits for queries from the client. To view
-active appsock connections on server one can run stored procedure "exec procedure sys.cmd.send('stat thr')" using cdb2sql.
+Comdb2 server expects the first line of every new connection from client to be newline terminated "newsql".  
+Once the client sends this a new appsock thread is started at the server side, which waits for queries from the client.  
+To view active appsock connections on server one can run stored procedure "exec procedure sys.cmd.send('stat thr')" using cdb2sql.  
 This needs to be sent only once at the start of new connection.
 
 Example code in  python:
@@ -62,7 +60,8 @@ SQL Header
 ------
 The header is 16 byte message that is sent before every request/response after the connection is established.
 The first 4 bytes contains information about type of request/response and the last 4 bytes have info about size. 
-8 bytes in the middle are not used yet.  The values in header are stored in network byte order (big endian).
+8 bytes in the middle are not used yet.  
+The values in header are stored in network byte order (big endian).
 
 example code in python:
 
@@ -170,14 +169,15 @@ message CDB2_DBINFORESPONSE {
 }
 
 ```
-After connecting to database to get db cluster info the client has to send dbinfo request to server. For this 
-the client has to use dbinfo object in CDB2_QUERY protobuf object.  This object requires two required
-fields dbname and little_endian. The SQL header is sent to server with the type and size of the request and
-then dbinfo request is sent. 
+After connecting to database to get db cluster info the client has to send dbinfo request to server.  
+For this the client has to use the _dbinfo_ object in a _CDB2_QUERY_ protobuf object.  
+This object requires two required fields _dbname_ and _little_endian_.  
+The SQL header is sent to server with the type and size of the request and then the _dbinfo_ request is sent. 
 
-The server gives dbinfo reply along with the header. SQL header is read from server and the
-header type in this case is DBINFO_RESPONSE (1005). The response from database contains information about the master
-nodes and all the nodes (including master). The information that it contains about each node is in the table below.
+The server returns a _dbinfo_ reply along with the header.  
+SQL header is read from server and the header type in this case is _DBINFO_RESPONSE_ (1005).  
+The response from database contains information about the master nodes and all the nodes (including master).  
+The information that it contains about each node is in the table below.
 
 
 |Name|Description
@@ -210,10 +210,10 @@ response = sqlresponse_pb2.CDB2_DBINFORESPONSE()
 Sending SQL query request to server:
 ----------------------------
 
-After the connection is established with server, the client can fill the query information in CDB2_QUERY protobuf
-object. To send the sql query, the client should fill in the info in sqlquery object. Three required fields of this 
-object are sql_query, dbname and little_endian (all explained above). The client has to make this object and then
-send a sql header to server with type as CDB2QUERY and size as object size, followed by the CDB2_QUERY protobuf object.
+After the connection is established with server, the client can fill the query information in the _CDB2_QUERY_ protobuf
+object. To send the sql query, the client should fill in the info in the _sqlquery_ object.  
+Three required fields of this object are _sql_query_, _dbname_ and _little_endian_ (all explained above).  
+The client has to make this object and then send a sql header to server with type as _CDB2QUERY_ and _size_ as object size, followed by the _CDB2_QUERY_ protobuf object.
 
 
 Example SQL Query in python:
@@ -402,9 +402,9 @@ if (firstresponse.error_code != sqlresponse_pb2.OK):
     return
 ```
 
-The server response after the first response contains the column values. The response type for this response is COLUMN_VALUES.
-This happens until the last row, in which case the response type is LAST_ROW. If the table is empty then the response that comes
-after COLUMN_NAMES is LAST_ROW.
+The server response after the first response contains the column values. The response type for this response is _COLUMN_VALUES_.  
+This happens until the last row, in which case the response type is _LAST_ROW_. If the table is empty then the response that comes
+after _COLUMN_NAMES_ is _LAST_ROW_.
 
 Example in python:
 
@@ -571,7 +571,7 @@ while response.response_type == sqlresponse_pb2.COLUMN_VALUES:
 Resetting the connection:
 ----------------------------
 If your connection goes in an unknown transactional state, you can reuse the connection by sending 
-CDB2RequestType RESET in SQL header. This will reset the client state on server.
+_CDB2RequestType_ _RESET_ in SQL header. This will reset the client state on server.
 
 Example in python:
 
