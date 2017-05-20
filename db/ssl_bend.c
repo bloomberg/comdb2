@@ -27,6 +27,7 @@
 /* sys */
 #include <errno.h>
 #include <openssl/crypto.h>
+#include <string.h>
 
 /* bb */
 #include <util.h>
