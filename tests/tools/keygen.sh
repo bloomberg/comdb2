@@ -14,12 +14,13 @@ cp ${TESTDIR}/server.crt ${TESTDIR}/root.crt
 chmod 600 ${TESTDIR}/server.key
 cp ${TESTDIR}/server.crt ${TESTDIR}/client.crt
 cp ${TESTDIR}/server.key ${TESTDIR}/client.key
+myhostname=`hostname`
 
 # copy over SSL certificate and change permission on private key
 for node in $CLUSTER; do
-  if [ $node == $myhostname ] ; then
+  if [ "$node" = "$myhostname" ] ; then
     continue
   fi
-  scp -o StrictHostKeyChecking=no ${TESTDIR}/server.crt ${TESTDIR}/server.key $node:${TESTDIR}
-  ssh -o StrictHostKeyChecking=no $node "cp ${TESTDIR}/server.crt ${TESTDIR}/root.crt || chmod 600 ${TESTDIR}/server.key"
+  ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR"
+  scp -o StrictHostKeyChecking=no ${TESTDIR}/server.crt ${TESTDIR}/server.key ${TESTDIR}/root.crt $node:${TESTDIR}
 done
