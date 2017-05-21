@@ -4462,7 +4462,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
             if (strlen(hostname) >= sizeof(hndl->hosts[0]))
                 fprintf(stderr, "Hostname \"%s\" is too long, max %d\n",
                         hostname, sizeof(hndl->hosts[0]));
-            else if (port < -1 || port > SHRT_MAX)
+            else if (port < -1 || port > USHRT_MAX)
                 fprintf(stderr, "Hostname \"%s\" invalid port number %d\n",
                         hostname, port);
             else {
