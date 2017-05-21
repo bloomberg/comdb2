@@ -6,6 +6,10 @@ RUN \
   tar -xvf apache-maven-3.5.0-bin.tar.gz -C /bin && \
   mv /bin/apache-maven-3.5.0 bin/maven
 
+# Sets maven to use a useful settings.xml file
+COPY \
+  maven-settings.xml /bin/maven/conf/settings.xml
+
 # Install protobuf 3.2 and give all users exec access
 RUN \
   wget https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip && \
