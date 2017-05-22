@@ -381,10 +381,8 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
     }
     if ((inaddr = inet_addr(tok)) != (in_addr_t)-1) {
         /* it's dotted-decimal */
-        printf("it's an ip: %s\n", host);
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-        printf("it's a host: %s\n", host);
 #ifdef _LINUX_SOURCE
         gethostbyname_r(tok, &hostbuf, tmp, tmplen, &hp, &herr);
 #elif _SUN_SOURCE
@@ -804,7 +802,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 (*num_db_hosts)++;
                 *dbname_found = 1;
             }
-        } else if (strcasecmp("comdb2_config", tok) == 1) {
+        } else if (strcasecmp("comdb2_config", tok) == 0) {
             pthread_mutex_lock(&cdb2_sockpool_mutex);
             tok = strtok_r(NULL, " =:,", &last);
             if (tok && strcasecmp("default_type", tok) == 0) {
