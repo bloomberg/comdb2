@@ -152,14 +152,13 @@ are refused to join the cluster.
 
 | LRL Directive | Description | Default Value |
 |---------------|-------------|---------------|
-| `ssl_client_mode mode` | Can be one of `ALLOW`<sup>[1](#ssloptfootnote)</sup>, `REQUIRE`, `VERIFY_CA` and `VERIFY_HOSTNAME` | `ALLOW` |
+| `ssl_client_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA` and `VERIFY_HOSTNAME` | `ALLOW` |
 | `ssl_replicant_mode mode` | Can be one of `ALLOW`, `REQUIRE`, `VERIFY_CA` and `VERIFY_HOSTNAME` | `ALLOW` |
 | `ssl_cert_path path` | Directory containing the server certificate files. Comdb2 searches `server.crt`, `server.key` and `root.crt` for the server certificate, key and trusted CAs respectively | The data directory |
 | `ssl_cert file`| Path to the certificate | `<ssl_cert_path>/server.crt` |
 | `ssl_key file` | Path to the key | `<ssl_cert_path>/server.key` |
 | `ssl_ca file` | Path to the trusted CA certificates | `<ssl_cert_path>/root.crt` |
 
-<a name="ssloptfootnote">[1]</a>: If mode is `ALLOW`, the server will try to open the certificate file in the designated location and will fail to start if it can not be found. For the server configuration, an equivalent mode to `ALLOW` is `OPTIONAL` which behaves in exactly the same way except it will not fail to start the server if certificate file is not found at start time.
 
 ## Client SSL Configuration Summary
 
@@ -177,9 +176,9 @@ are refused to join the cluster.
 
 |  Mode  | Encryption  | MITM | Overhead  |
 |---|---|---|---|
-|  `ALLOW` | Maybe |  Yes |  SSL negotiation<sup>[2](#sslfootnote)</sup> + TLS protocol overhead if the server requires SSL. No overhead otherwise. |
-|  `REQUIRE` | Yes  | Yes  |  SSL negotiation<sup>[2](#sslfootnote)</sup> + TLS protocol overhead |
-| `VERIFY-CA` | Yes | Maybe if signed by 3rd party CA. No if self-signed or signed by a local CA. | SSL negotiation<sup>[2](#sslfootnote)</sup> + TLS protocol overhead + certificate verification |
-| `VERIFY-HOSTNAME` | Yes | No | SSL negotiation<sup>[2](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation |
+|  `ALLOW` | Maybe |  Yes |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead if the server requires SSL. No overhead otherwise. |
+|  `REQUIRE` | Yes  | Yes  |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead |
+| `VERIFY-CA` | Yes | Maybe if signed by 3rd party CA. No if self-signed or signed by a local CA. | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification |
+| `VERIFY-HOSTNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation |
 
-<a name="sslfootnote">[2]</a>: In order to establish an SSL connection to server, the client needs to negotiate with the server over the plaintext connection before upgrading to SSL. This happens only once for each connection establishment.
+<a name="sslfootnote">[1]</a>: In order to establish an SSL connection to server, the client needs to negotiate with the server over the plaintext connection before upgrading to SSL. This happens only once for each connection establishment.
