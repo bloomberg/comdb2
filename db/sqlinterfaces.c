@@ -1221,21 +1221,20 @@ void sqlite_init_end(void) { in_init = 0; }
 
 #endif // DEBUG_SQLITE_MEMORY
 
-#ifndef PER_THREAD_MALLOC
-
-extern int gbl_default_sql_mspace_kbsz;
-
 static __thread comdb2ma sql_mspace = NULL;
-
 int sql_mem_init(void *arg)
 {
     if (unlikely(sql_mspace)) {
         return 0;
     }
 
-    const size_t capacity = gbl_default_sql_mspace_kbsz * 1024;
-    sql_mspace = comdb2ma_create(capacity, COMDB2MA_UNLIMITED, "sql_mem",
-                                 COMDB2MA_MT_UNSAFE);
+    /* We used to start with 1MB - this isn't quite necessary
+       as comdb2_malloc pre-allocation is much smarter now.
+       We also name it "SQLITE" (uppercase) to differentiate it
+       from those implicitly created per-thread allocators
+       whose names are "sqlite" (lowercase). Those allocators
+       are used by other types of threads, e.g., appsock threads. */
+    sql_mspace = comdb2ma_create(0, 0, "SQLITE", COMDB2MA_MT_UNSAFE);
     if (sql_mspace == NULL) {
         logmsg(LOGMSG_FATAL, "%s: comdb2a_create failed\n", __func__);
         exit(1);
@@ -1258,12 +1257,8 @@ void sql_mem_shutdown(void *arg)
 
 static void *sql_mem_malloc(int size)
 {
-    if (unlikely(sql_mspace == NULL)) {
-        logmsg(LOGMSG_ERROR, "--- SQL EXECUTION FROM NON SQL THREAD---\n");
-        cheap_stack_trace();
-        /* FIXME TODO XXX: remove this after testing */
+    if (unlikely(sql_mspace == NULL))
         sql_mem_init(NULL);
-    }
 
     void *out = comdb2_malloc(sql_mspace, size);
 
@@ -1303,6 +1298,9 @@ static void sql_mem_free(void *mem)
 
 static void *sql_mem_realloc(void *mem, int size)
 {
+    if (unlikely(sql_mspace == NULL))
+        sql_mem_init(NULL);
+
     void *out = comdb2_realloc(sql_mspace, mem, size);
 
 #ifdef DEBUG_SQLITE_MEMORY
@@ -1347,8 +1345,6 @@ void sql_dlmalloc_init(void)
     m.pAppData = NULL;
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
-
-#endif // PER_THREAD_MALLOC
 
 static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,

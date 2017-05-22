@@ -3,27 +3,50 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
+set -e
+
+# Make sure that all queries go to the same node.
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
+echo "target machine is $mach"
+
 for i in `seq 1 8`; do
-  cdb2sql ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
+  cdb2sql --host $mach ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
 done
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat sqlite hr")'
+appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c sqlite`
+echo "# sqlite allocators: $appsockcnt"
+if [[ $appsockcnt -gt 5 ]]; then
+  echo "Expecting <= 5 (4 for per-thread and 1 for main thread) sqlite allocators."
+  echo "Failed."
+  exit 1
+fi
 
-cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat sqlite hr")' | grep sqlite | grep -v main | grep -cv 'cmd:'`
-echo "# sqlite allocators: $cnt"
+appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c lua`
+echo "# lua allocators: $appsockcnt"
+if [[ $appsockcnt -gt 5 ]]; then
+  echo "Expecting <= 5 (4 for per-thread and 1 for main thread) lua allocators."
+  echo "Failed."
+  exit 1
+fi
 
-if [[ $cnt -gt 4 ]]; then
+# Give the database a bit time to dispatch all queries.
+sleep 2
+
+sqlengcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c SQLITE`
+echo "# SQLITE allocators: $sqlengcnt"
+if [[ $sqlengcnt -lt 9 ]]; then
+  echo "Expecting >= 9 (8 open connections and myself) SQLITE allocators."
+  echo "Failed."
+  exit 1
+fi
+
+sqlengcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c LUA`
+echo "# LUA allocators: $sqlengcnt"
+if [[ $sqlengcnt -lt 9 ]]; then
+  echo "Expecting >= 9 (8 open connections and myself) LUA allocators."
   echo "Failed."
   exit 1
 fi
 
 wait
-
-cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat sqlite hr")' | grep sqlite | grep -v main | grep -cv 'cmd:'`
-echo "# sqlite allocators: $cnt"
-
-if [[ $cnt -gt 4 ]]; then
-  echo "Failed."
-  exit 1
-fi
 echo "Passed."
