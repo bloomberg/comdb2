@@ -6,7 +6,6 @@ include libs.mk
 export SRCHOME=.
 export DESTDIR
 export PREFIX
-BASEDIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 # Common CFLAGS
 CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
@@ -72,7 +71,7 @@ deb-current: clean deb-clean
 	rm -fr debian
 	cp -r deb debian
 	rm -f ../$(PACKAGE)_$(VERSION).orig.tar.gz
-	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz bb bbinc bdb berkdb cdb2api cdb2jdbc comdb2rle contrib crc32c csc2 csc2files cson datetime db debian deb rpmbuild dfp dlmalloc linearizable libs.mk LICENSE lua main.mk Makefile net protobuf README.md schemachange sqlite sockpool tools tests docs common.mk mem.mk INTERNAL_CONTRIBUTORS.md
+	tar acf ../$(PACKAGE)_$(VERSION).orig.tar.gz *
 	dpkg-buildpackage -us -uc
 	@ls -l ../$(PACKAGE)_$(VERSION)*.deb
 	@rm -fr debian
@@ -123,15 +122,3 @@ install: all
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	[ -z "$(DESTDIR)" ] && . db/installinfo || true
-
-jdbc-docker-build-container:
-	docker build -t jdbc-docker-builder:$(VERSION) -f docker/Dockerfile.jdbc.build docker
-
-jdbc-docker-build: jdbc-docker-build-container
-	docker run \
-		--env HOME=/tmp \
-		-v $(BASEDIR):/jdbc.build \
-		-w /jdbc.build \
-		jdbc-docker-builder:$(VERSION) \
-		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
-

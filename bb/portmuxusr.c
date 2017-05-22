@@ -1477,6 +1477,8 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
     int listenfd = -1;
     int port = 0;
 
+    printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> setup\n");
+
     if (!app || !service || !instance) {
         logmsg(LOGMSG_ERROR, "%s:%d invalid arguments\n", __func__, __LINE__);
         return NULL;
@@ -1495,6 +1497,7 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
         logmsg(LOGMSG_INFO, "PORTMUX route mode Enabled \n");
         listenfd =
             portmux_register_route(app, service, instance, &port, options);
+        logmsg(LOGMSG_INFO, "portmux listenfd %d port %d\n", listenfd, port);
         if (listenfd >= 0 && tcplistenfd < 0) {
             if (port > 0) {
                 tcplistenfd = tcplisten(port);

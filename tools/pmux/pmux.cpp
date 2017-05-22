@@ -61,6 +61,8 @@
 #include "sqlite_store.h"
 #include "no_store.h"
 
+#define VERBOSE
+
 static std::map<std::string, int> port_map;
 static std::map<std::string, int> fd_map;
 static std::mutex fdmap_mutex;
