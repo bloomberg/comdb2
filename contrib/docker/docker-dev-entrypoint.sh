@@ -8,7 +8,7 @@ done
 
 pmux -l
 
-host=$(/sbin/ip route|awk '/default/ { print $3 }')
+host=$(hostname -i)
 echo "hostname $host" > /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
 
 sleep 5
