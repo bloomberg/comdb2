@@ -159,7 +159,7 @@ are refused to join the cluster.
 | `ssl_key file` | Path to the key | `<ssl_cert_path>/server.key` |
 | `ssl_ca file` | Path to the trusted CA certificates | `<ssl_cert_path>/root.crt` |
 
-<a name="ssloptfootnote">[1]</a>: If mode is `ALLOW`, the server will try to open the certificate file in the designated location and will fail to start if it can not be found. For te server configuration, an equivalent mode to `ALLOW` is `OPTIONAL` which behaves in exactly the same way exept it will not fail to start the server if certificate file is not found at start time.
+<a name="ssloptfootnote">[1]</a>: If mode is `ALLOW`, the server will try to open the certificate file in the designated location and will fail to start if it can not be found. For the server configuration, an equivalent mode to `ALLOW` is `OPTIONAL` which behaves in exactly the same way except it will not fail to start the server if certificate file is not found at start time.
 
 ## Client SSL Configuration Summary
 
