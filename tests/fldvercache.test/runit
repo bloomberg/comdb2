@@ -29,7 +29,7 @@ loop=1
 
 while [[ $loop -le 100 ]]
 do
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "select col1 from large where col1 > 2000 order by col1" >output.actual
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select col1,col2 from large where col1 > 2000 order by col1" >output.actual
     diff output.actual output.expected >/dev/null
     if [[  $? -ne 0 ]]
     then
