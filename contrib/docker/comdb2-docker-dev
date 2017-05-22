@@ -7,25 +7,26 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-maxport=$((19000 + $#))
+firstdb=$1
 
 container=$(docker run -d --expose=5105 comdb2-dev $*)
 if [[ -z "$container" ]]; then
     exit 1
 fi
 
-LOG=${TMPDIR:-/tmp}/comdb2-dev-$$.cfg
-port=19000
 addr=$(docker inspect $container | jq -r ".[0].NetworkSettings.IPAddress")
+LOG=${TMPDIR:-/tmp}/comdb2-dev-$$.cfg
 (
-echo allow_pmux_route:true
+echo comdb2_config:allow_pmux_route:true
 for db in $*; do
-    localport=$(docker port $container | grep "^$port/" | cut -d: -f2)
     echo "$db:$addr"
-    port=$(($port+1))
 done 
+echo comdb2_config:default_type:docker
 ) > $LOG
 
 echo "Container is up. Run"
+echo
 echo "export CDB2_CONFIG_FILE=$LOG"
-echo "To address databases."
+echo
+echo "Databases can then be accessed, eg:"
+echo "cdb2sql $firstdb default 'select 1'"
