@@ -201,8 +201,7 @@ static void *_cron_runner(void *arg)
     cron_sched_t *sched = (cron_sched_t *)arg;
     cron_event_t *event;
     int secs_until_next_event;
-    int now;
-    struct timespec ts;
+    struct timespec ts, now;
     int rc;
     struct errstat xerr;
     int locked;
@@ -219,12 +218,12 @@ static void *_cron_runner(void *arg)
         pthread_mutex_lock(&sched->mtx);
         locked = 1;
 
-        now = time_epoch();
+        clock_gettime(CLOCK_REALTIME, &now);
         while (event = sched->events.top) {
             /* refresh now, since callback can take a long time!*/
-            now = time_epoch();
+            clock_gettime(CLOCK_REALTIME, &now);
 
-            if (event->epoch <= now) {
+            if (event->epoch <= now.tv_sec) {
                 bzero(&xerr, sizeof(xerr));
 
                 /* lets do it */
@@ -267,7 +266,7 @@ static void *_cron_runner(void *arg)
         if (event) {
             ts.tv_sec = event->epoch;
         } else {
-            ts.tv_sec = now + DEFAULT_SLEEP_IDLE_SCHEDULE;
+            ts.tv_sec = now.tv_sec + DEFAULT_SLEEP_IDLE_SCHEDULE;
         }
         ts.tv_nsec = 0;
 
