@@ -2677,7 +2677,7 @@ retry:
         logmsg(LOGMSG_ERROR, "%s bdb_tran_commit rc: %d bdberr: %d\n", __func__, rc,
                 bdberr);
         tran = NULL;
-        return -1;
+        goto fail;
     }
     return 0;
 
