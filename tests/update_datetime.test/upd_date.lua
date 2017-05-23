@@ -19,8 +19,9 @@ local function do_update(event)
     --bad local res, rc = db:exec( 'insert into t1_updates (a,dt) values(' .. anew .. ','.. dtnow .. ') ' )
     --return rc
 
-    return t1:update({dt='"'..dtnow..'"'}, {a='"'..anew..'"'})
-    --bad return db:exec( 'update t1 set dt = ' .. db:now() .. ' where a = ' .. anew)
+    return t1:update({dt=dtnow}, {a=anew})
+    --or use this db:exec( 'update t1 set dt = "' .. db:now() .. '" where a="' .. anew .. '"')
+    --return 0;
 end
 
 local function main(event)
