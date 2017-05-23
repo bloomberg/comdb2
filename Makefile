@@ -92,10 +92,7 @@ deb-clean:
 test: $(TASKS)
 	$(MAKE) -C tests
 
-install: install-internal
-	@[ -z "$(DESTDIR)" ] && . db/installinfo
-
-install-internal: all
+install: all
 	install -D comdb2 $(DESTDIR)$(PREFIX)/bin/comdb2
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
@@ -124,12 +121,19 @@ install-internal: all
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
-	[ -z "$(DESTDIR)" ] && . db/installinfo || true
+	-[ -z "$(DESTDIR)" ] && . db/installinfo || true
 
-build-container:
-	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build contrib/docker
+# Build a container for building the database
+build-build-container:
+	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build .
 
-docker-build: build-container
+contrib/docker/comdb2: docker-build
+
+docker-standalone: docker-build
+	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
+
+# Build the database in the build container
+docker-build: build-build-container
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
 	docker run --user $(shell id -u):$(shell id -g) \
 		--env HOME=/tmp \
@@ -137,29 +141,4 @@ docker-build: build-container
 		-v $(realpath $(SRCHOME)):/comdb2.build \
 		-w /comdb2.build \
 		comdb2-build:$(VERSION) \
-		make DESTDIR=/comdb2 PREFIX= install-internal
-
-docker: docker-build
-	docker build -t comdb2:$(VERSION) contrib/docker
-
-docker-build-jdbc-container:
-	docker build -t comdb2-jdbc:$(VERSION) -f docker/Dockerfile.jdbc.build docker
-
-docker-run-jdbc: jdbc-build-jdbc-container
-	docker run \
-		--env HOME=/tmp \
-		-v $(BASEDIR):/jdbc.build \
-		-w /jdbc.build \
-		comdb2-jdbc:$(VERSION) \
-		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
-
-docker-build-container: install
-	# TODO: Bail out for non-debian
-	@echo "Archiving comdb2 binaries under docker/comdb2/ .."
-	tar -czvf docker/comdb2/comdb2.tar.gz -C $(DESTDIR)$(PREFIX) .
-	@echo "Building comdb2 container .."
-	docker build -t comdb2:$(VERSION) -f docker/comdb2/Dockerfile docker/comdb2
-	@echo "Comdb2 container comdb2:$(VERSION) created!"
-
-docker-clean: clean
-	rm -f docker/comdb2/comdb2.tar.gz
+        make DESTDIR=/comdb2 -j3 install

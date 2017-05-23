@@ -19,7 +19,6 @@ RUN apt-get update && \
     protobuf-c-compiler \
     tcl \
     uuid-dev \
-
     libz1 \
     liblz4-tool \
     libprotobuf-c1 \
@@ -30,4 +29,4 @@ RUN apt-get update && \
     tzdata && \
   rm -rf /var/lib/apt/lists/*
 
-VOLUME /comdb2.build
+VOLUME /comdb2
