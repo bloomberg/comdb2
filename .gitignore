@@ -267,3 +267,5 @@ tests/pmux.sqlite
 docs/site/images/*.gif
 docs/sqlitegen/all.html
 docs/sqlitegen/syntax_linkage.tcl
+
+contrib/docker/build
