@@ -122,3 +122,16 @@ install: all
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	[ -z "$(DESTDIR)" ] && . db/installinfo || true
+
+jdbc-docker-build-container:
+	docker build -t jdbc-docker-builder:$(VERSION) -f docker/Dockerfile.jdbc.build docker
+
+jdbc-docker-build: jdbc-docker-build-container
+	docker run \
+		--user $(shell id -u):$(shell id -g) \
+		--env HOME=/tmp \
+		-v $(BASEDIR):/jdbc.build \
+		-v ${BASEDIR}/docker/maven.m2:/maven.m2 \
+		-w /jdbc.build/docker \
+		jdbc-docker-builder:$(VERSION) \
+		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
