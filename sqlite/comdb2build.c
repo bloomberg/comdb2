@@ -1577,11 +1577,11 @@ clean:
 void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName)
 {
    struct sql_thread *thd = pthread_getspecific(query_info_key);
-   if ((zDB && (!strcmp(zDB, "main") || !strcmp(zDB, "temp"))))
+   if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        sprintf(tableName, "%s", p->zName);
    } else if (thd->sqlclntstate && (thd->sqlclntstate->user[0] != '\0') && !strstr(p->zName, "@")
-          && strncmp(p->zName, "sqlite_", 7) && strncmp(p->zName, "comdb2", 6))
+          && strncasecmp(p->zName, "sqlite_", 7) && strncasecmp(p->zName, "comdb2", 6))
    {
        char userschema[MAXTABLELEN];
        int bdberr; 
