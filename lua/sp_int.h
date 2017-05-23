@@ -35,9 +35,7 @@ typedef struct tmptbl_info_t tmptbl_info_t;
 struct stored_proc {
     Lua lua;
     int lua_version;
-    #ifndef PER_THREAD_MALLOC
     comdb2ma mspace;
-    #endif
     char spname[MAX_SPNAME];
     struct spversion_t spversion;
     char *src;

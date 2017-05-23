@@ -224,7 +224,6 @@ int gbl_penaltyincpercent = 20;
 int gbl_maxwthreadpenalty;
 int gbl_spstrictassignments = 0;
 int gbl_delayed_ondisk_tempdbs = 0;
-int gbl_default_sql_mspace_kbsz = 1024;
 int gbl_lock_conflict_trace = 0;
 int gbl_move_deadlk_max_attempt = 500;
 
@@ -2276,10 +2275,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         gbl_init_single_meta = 1;
     } else if (tokcmp(tok, ltok, "delayed_ondisk_tempdbs") == 0) {
         gbl_delayed_ondisk_tempdbs = 1;
-    } else if (tokcmp(tok, ltok, "default_sql_mspace_kbsz") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        ii = toknum(tok, ltok);
-        gbl_default_sql_mspace_kbsz = ii;
     } else if (tokcmp(tok, ltok, "init_with_genid48") == 0) {
         logmsg(LOGMSG_INFO, "Genid48 will be enabled for this database\n");
         gbl_init_with_genid48 = 1;

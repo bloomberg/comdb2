@@ -628,18 +628,21 @@ int to_positive_index(Lua L, int idx)
     return idx;
 }
 
-#ifndef PER_THREAD_MALLOC
 static void* lua_mem_init()
 {
-    const size_t capacity = 1 * 1024 * 1024; /* 1MB */
-    void* mspace = comdb2ma_create(capacity, COMDB2MA_UNLIMITED, "lua", COMDB2MA_MT_UNSAFE);
+    /* We used to start with 1MB - this isn't quite necessary
+       as comdb2_malloc pre-allocation is much smarter now.
+       We also name it "LUA" (uppercase) to differentiate it
+       from those implicitly created per-thread allocators
+       whose names are "lua" (lowercase). Those allocators are
+       mainly used to bootstrap Lua environment. */
+    void* mspace = comdb2ma_create(0, 0, "LUA", COMDB2MA_MT_UNSAFE);
     if (mspace == NULL) {
         logmsg(LOGMSG_FATAL, "%s: comdb2ma_create failed\n", __func__);
         exit(1);
     }
     return mspace;
 }
-#endif
 
 static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 {
@@ -3060,13 +3063,9 @@ static void close_sp_int(SP sp, int freesp)
     if (!sp) return;
     reset_sp(sp);
     if (sp->lua) lua_close(sp->lua);
-    #ifndef PER_THREAD_MALLOC
     comdb2ma mspace = sp->mspace;
-    #endif
     free_spversion(sp);
-    #ifndef PER_THREAD_MALLOC
     comdb2ma_destroy(mspace);
-    #endif
 }
 
 static int db_create_thread_int(Lua lua, const char *funcname)
@@ -4336,12 +4335,8 @@ static int create_sp_int(SP sp, char **err)
 {
     Lua lua;
 
-#ifdef PER_THREAD_MALLOC
-    lua = lua_open();
-#else
     sp->mspace = lua_mem_init();
     lua = lua_newstate(lua_alloc, sp->mspace);
-#endif
 
     lua_setsp(lua, sp);
     luaL_openlibs(lua);

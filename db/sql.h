@@ -757,15 +757,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 void sql_get_query_id(struct sql_thread *thd);
 
-#ifdef PER_THREAD_MALLOC
-#define sql_dlmalloc_init()
-#define sql_mem_init(x)
-#define sql_mem_shutdown(x)
-#else
 void sql_dlmalloc_init(void);
 int sql_mem_init(void *dummy);
 void sql_mem_shutdown(void *dummy);
-#endif
 
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
 

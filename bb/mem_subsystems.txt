@@ -5,7 +5,7 @@ db            uncategorized        0                            0
 bdb           bdb                  0                            0
 berkdb        berkdb               0                            0
 net           net                  0                            0
-sqlite        sqlite               1024                         0
+sqlite        sqlite               0                            0
 bb            bb                   0                            0
 csc2          csc2                 0                            0
 datetime      datetime             0                            0
@@ -13,4 +13,4 @@ dfp/decNumber dfp_decNumber        0                            0
 protobuf      protobuf             0                            0
 comdb2rle     comdb2rle            0                            0
 schemachange  schemachange         0                            0
-lua           lua                  1024                         0
+lua           lua                  0                            0

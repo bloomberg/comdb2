@@ -1,3 +1,2 @@
-select 1
+exec procedure sys.cmd.send("stat")
 select sleep(5)
-select 1
