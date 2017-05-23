@@ -53,6 +53,7 @@ struct __db_cipher {
 #ifdef HAVE_CRYPTO
 
 #include <openssl/aes.h>
+#include <openssl/crypto.h>
 
 /*
  * Shared ciphering structure
