@@ -40,7 +40,7 @@ __crypto_compare(src, dst, len)
 	size_t it;
 
 	for(it = 0; it < len; ++it) {
-		result |= src[it] ^ dst[it];
+		result |= a[it] ^ b[it];
 	}
 
 	return result;
