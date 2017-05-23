@@ -300,6 +300,7 @@ static pthread_mutex_t nodestats_calc_lk = PTHREAD_MUTEX_INITIALIZER;
  * which takes some default action on long requests.  If you want anything
  * different then you add rules and you have to lock around the list. */
 static int long_request_ms = 2000;
+static int all_sql_requests = 0;
 static struct output *long_request_out = NULL;
 static struct output *sql_request_out = NULL;
 static struct output *bad_cstr_out = NULL;
@@ -845,6 +846,7 @@ static const char *help_text[] = {
     "Request logging framework commands",
     "reql longrequest #           - set long request threshold in msec",
     "reql longsqlrequest #        - set long SQL request threshold in msec",
+    "reql logallsql [on|off]      - log every sql request",
     "reql longreqfile <filename>  - set file to log long requests in",
     "reql diffstat #              - set diff stat threshold in sec",
     "reql truncate #              - set request truncation",
@@ -998,6 +1000,13 @@ void reqlog_process_message(char *line, int st, int lline)
         gbl_sql_time_threshold = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Long SQL request threshold now %d msec\n",
                gbl_sql_time_threshold);
+    } else if (tokcmp(tok, ltok, "logallsql") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (tokcmp(tok, ltok, "off") == 0) {
+            all_sql_requests = 0;
+        } else {
+            all_sql_requests = 1;
+        }
     } else if (tokcmp(tok, ltok, "longreqfile") == 0) {
         char filename[128];
         struct output *out;
@@ -1734,9 +1743,11 @@ void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
     }
     if (logger->stmt) {
         reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
-        dumpf(logger, sql_request_out, "sql_begin #%d: sql=%s\n",
-              logger->nsqlreqs,
-              logger->stmt);
+	if (all_sql_requests) {
+            dumpf(logger, sql_request_out, "sql_begin #%d: sql=%s\n",
+                  logger->nsqlreqs,
+                  logger->stmt);
+        }
     }
 }
 
@@ -2155,7 +2166,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     }
 
     /* check for sqlreqs */
-    if (logger->opcode == OP_SQL && !logger->iq) {
+    if (all_sql_requests && logger->opcode == OP_SQL && !logger->iq) {
         log_header(logger, sql_request_out, 0);
     }
 
