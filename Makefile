@@ -141,3 +141,14 @@ docker-build: build-container
 
 docker: docker-build
 	docker build -t comdb2:$(VERSION) contrib/docker
+
+docker-build-jdbc-container:
+	docker build -t comdb2-jdbc:$(VERSION) -f docker/Dockerfile.jdbc.build docker
+
+docker-run-jdbc: jdbc-build-jdbc-container
+	docker run \
+		--env HOME=/tmp \
+		-v $(BASEDIR):/jdbc.build \
+		-w /jdbc.build \
+		comdb2-jdbc:$(VERSION) \
+		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
