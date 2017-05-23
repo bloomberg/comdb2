@@ -2138,6 +2138,9 @@ static int luatable_emit(Lua L)
     return 1;
 }
 
+/* inserting into table via this syntax:
+ *    tab:insert({id="5",b="12"}) 
+ */
 static int dbtable_insert(Lua lua)
 {
     SP sp = getsp(lua);
@@ -2221,6 +2224,96 @@ out:sqlite3_finalize(stmt);
     lua_pushinteger(lua, rc); /* Success return code. */
     return 1;
 }
+
+
+/* updating table via this syntax:
+ *   tbl:update({b="123", c="345"}, {a="1", tp="blue"}) 
+ * which is equivalent to
+ *   update tbl set b = 123, c = 345 where a = 1 and tp = blue
+ */
+static int dbtable_update(Lua lua)
+{
+    SP sp = getsp(lua);
+    no_active_stmt(lua);
+
+    int rc,nargs, len;
+    strbuf *setparams, *whereparams, *sql;
+
+    nargs = lua_gettop(lua);
+    if (nargs != 3) {
+        return luabb_error(lua, NULL, "bad arguments to 'update'");
+    }
+
+    luaL_checkudata(lua, 1, dbtypes.dbtable);
+    dbtable_t *table = lua_touserdata(lua, 1);
+
+    setparams = strbuf_new();
+    whereparams = strbuf_new();
+
+    luaL_checktype(lua, 2, LUA_TTABLE);
+    // Iterate lua table to get set portion
+    lua_pushnil(lua);
+    while (lua_next(lua, 2)) {
+        const char *col = lua_tostring(lua, -2);
+        strbuf_append(setparams, col);
+        strbuf_append(setparams, "=");
+        const char *val = lua_tostring(lua, -1);
+        strbuf_append(setparams, val);
+        strbuf_appendf(setparams, ",");
+        lua_pop(lua, 1);
+    }
+    strbuf_del(setparams, 1);
+
+    luaL_checktype(lua, 3, LUA_TTABLE);
+    // Iterate lua table to get where portion
+    lua_pushnil(lua);
+    while (lua_next(lua, 3)) {
+        const char *col = lua_tostring(lua, -2);
+        strbuf_append(whereparams, col);
+        strbuf_append(whereparams, "=");
+        const char *val = lua_tostring(lua, -1);
+        strbuf_append(whereparams, val);
+        strbuf_appendf(whereparams, ",");
+        lua_pop(lua, 1);
+    }
+    strbuf_del(whereparams, 1);
+
+    char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
+    query_tbl_name(table->table_name, n1, separator, n2);
+    sql = strbuf_new();
+    strbuf_appendf(sql, "UPDATE %s%s\"%s\" SET %s WHERE %s",
+      n1, separator, n2, strbuf_buf(setparams), strbuf_buf(whereparams));
+    char *sqlstr = strbuf_disown(sql);
+
+    strbuf_free(sql);
+    strbuf_free(setparams);
+    strbuf_free(whereparams);
+
+
+    db_reset(lua);
+    sqlite3_stmt *stmt = NULL;
+    rc = lua_prepare_sql(lua, sp, sqlstr, &stmt);
+    free(sqlstr);
+    if (rc != 0) {
+        lua_pushinteger(lua, rc); /* Failure return code. */
+        return 1;
+    }
+
+    lua_pop(lua,1); /* Keep just dbtable on stack. */
+    lua_pop(lua,1); /* Keep just dbtable on stack. */
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+        ;
+
+
+    if (rc == SQLITE_DONE)
+        rc = 0;
+
+out:sqlite3_finalize(stmt);
+    lua_pushinteger(lua, rc); /* Success return code. */
+    return 1;
+}
+
 
 static int dbtable_copyfrom(Lua lua)
 {
@@ -4255,6 +4348,7 @@ static void init_db_funcs(Lua L)
 
 static const struct luaL_Reg dbtable_funcs[] = {
     { "insert", dbtable_insert },
+    { "update", dbtable_update },
     { "copyfrom", dbtable_copyfrom },
     { "name", dbtable_name },
     { "emit", dbtable_emit },

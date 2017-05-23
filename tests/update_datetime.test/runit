@@ -1,0 +1,138 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+set -x
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function assertcnt 
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "Verify"
+    fi
+}
+
+
+# Update all records in the table
+function update_all_records
+{
+    typeset prmsg=$1
+    typeset iter=0
+
+    [[ "$debug" == 1 ]] && set -x
+
+    while :; do 
+
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        let iter=iter+1
+
+        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
+
+            echo "Updated all of table t1 $iter times."
+
+        fi
+
+    done
+}
+
+function update_records
+{
+    j=0
+    nrecs=$1
+    echo "Updating $nrecs records."
+    echo "" > update.out
+
+    while [[ $j -lt $nrecs ]]; do 
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=c+10000 where a = $j" >> update.out 
+        let j=j+1
+    done
+}
+
+function insert_records
+{
+    j=$1
+    nstop=$2
+    let nins=nins+1
+    insfl=insert${nins}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        echo "insert into t1(a,b) values ($j,'test1$j')" 
+        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
+        let j=j+1
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
+}
+
+
+
+
+echo "Test with insert, SC should not fail"
+
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 800')"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1_updates  { schema { int a datetime dt} }"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create procedure upd_date {$(cat upd_date.lua)}"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create lua trigger upd_date on (table t1 for update)"
+
+insert_records 1 200
+assertcnt 200
+one=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,dt from t1 where a = 1")
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > allrows1.txt
+
+sleep 3
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "update t1 set b = 'blah' where a = 1"
+
+sleep 3
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > allrows2.txt
+two=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,dt from t1 where a = 1")
+three=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1_updates")
+
+if [ "$one" = "$two" ] ; then
+    failexit "dt should be updated on t1"
+fi
+
+if [ "x$three" = "x" ] ; then
+    failexit "dt should be inserted on t1_update"
+fi
+
+#check via select * from t1 | make sure that a == b == c == 'test'$
+echo "Success"
