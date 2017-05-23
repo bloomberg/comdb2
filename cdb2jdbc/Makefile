@@ -3,6 +3,7 @@ BASEDIR:=$(realpath ..)
 VERSION?=$(shell grep ^comdb2 ../deb/changelog  | sed 's/^comdb2 .//; s/-.*//g')
 
 .PHONY= jdbc
+MAVEN_VER := $(shell mvn -version 2>/dev/null)
 
 jdbc:
 ifdef MAVEN_VER
@@ -25,7 +26,6 @@ else
 	$(error "Could not find maven")
 endif
 
-MAVEN_VER := $(shell mvn -version 2>/dev/null)
 jdbc-docker-build-container:
 	docker build -t jdbc-docker-builder:$(VERSION) -f $(BASEDIR)/contrib/docker/Dockerfile.jdbc.build $(BASEDIR)/contrib/docker
 
