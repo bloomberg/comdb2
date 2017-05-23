@@ -2255,28 +2255,26 @@ static int dbtable_update(Lua lua)
     lua_pushnil(lua);
     while (lua_next(lua, 2)) {
         const char *col = lua_tostring(lua, -2);
-        strbuf_append(setparams, col);
-        strbuf_append(setparams, "=");
-        const char *val = lua_tostring(lua, -1);
-        strbuf_append(setparams, val);
-        strbuf_appendf(setparams, ",");
+        char *quoted_col = sqlite3_mprintf("\"%w\"=", col);
+        strbuf_append(setparams, quoted_col);
+        sqlite3_free(quoted_col);
+        strbuf_appendf(setparams, "?,");
         lua_pop(lua, 1);
     }
-    strbuf_del(setparams, 1);
+    strbuf_del(setparams, 1); //get rid of the final ','
 
     luaL_checktype(lua, 3, LUA_TTABLE);
     // Iterate lua table to get where portion
     lua_pushnil(lua);
     while (lua_next(lua, 3)) {
         const char *col = lua_tostring(lua, -2);
-        strbuf_append(whereparams, col);
-        strbuf_append(whereparams, "=");
-        const char *val = lua_tostring(lua, -1);
-        strbuf_append(whereparams, val);
-        strbuf_appendf(whereparams, ",");
+        char *quoted_col = sqlite3_mprintf("\"%w\"=", col);
+        strbuf_append(whereparams, quoted_col);
+        sqlite3_free(quoted_col);
+        strbuf_appendf(whereparams, "? AND");
         lua_pop(lua, 1);
     }
-    strbuf_del(whereparams, 1);
+    strbuf_del(whereparams, 3); //get rid of the final 'AND'
 
     char n1[MAXTABLELEN], separator[2], n2[MAXTABLELEN];
     query_tbl_name(table->table_name, n1, separator, n2);
@@ -2284,6 +2282,7 @@ static int dbtable_update(Lua lua)
     strbuf_appendf(sql, "UPDATE %s%s\"%s\" SET %s WHERE %s",
       n1, separator, n2, strbuf_buf(setparams), strbuf_buf(whereparams));
     char *sqlstr = strbuf_disown(sql);
+    printf("sanity check %s\n", sqlstr);
 
     strbuf_free(sql);
     strbuf_free(setparams);
@@ -2299,8 +2298,26 @@ static int dbtable_update(Lua lua)
         return 1;
     }
 
-    lua_pop(lua,1); /* Keep just dbtable on stack. */
-    lua_pop(lua,1); /* Keep just dbtable on stack. */
+    // Iterate lua table again to bind params to stmt, set part
+    lua_pushnil(lua);
+    int pos = 1;
+    while (lua_next(lua, 2)) {
+        lua_pushinteger(lua, pos++);
+        if ((rc = stmt_bind_int(lua, stmt, 6, 5)) != 0)
+            goto out;
+        lua_pop(lua, 2);
+    }    
+    
+    // Iterate lua table again to bind params to stmt, where part
+    lua_pushnil(lua);
+    pos = 1;
+    while (lua_next(lua, 3)) {
+        lua_pushinteger(lua, pos++);
+        if ((rc = stmt_bind_int(lua, stmt, 6, 5)) != 0)
+            goto out;
+        lua_pop(lua, 2);
+    }
+    lua_pop(lua,2); /* Keep just dbtables on stack. */
 
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;

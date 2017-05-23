@@ -134,5 +134,16 @@ if [ "x$three" = "x" ] ; then
     failexit "dt should be inserted on t1_update"
 fi
 
-#check via select * from t1 | make sure that a == b == c == 'test'$
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,b,d from t1 order by a" > allrows3.txt
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "update t1 set c = 'blah' where a >= 2 and a < 5"
+
+sleeep 3
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,b,d from t1 order by a" > allrows4.txt
+
+if ! diff allrows3.txt allrows4.txt ; then
+    failexit "allrows3.txt allrows4.txt should differ by $((5-2+1)) rows"
+fi
 echo "Success"
