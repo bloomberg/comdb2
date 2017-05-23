@@ -5,7 +5,7 @@ bash -n "$0" | exit 1
 set -x
 
 RESTART_DELAY=35
-NUMREC=500
+NUMREC=400
 
 # Debug variable
 debug=0

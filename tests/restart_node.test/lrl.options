@@ -1,2 +1,3 @@
 setattr SC_RESTART_SEC 30
+ssl_client_mode OPTIONAL
 sync full
