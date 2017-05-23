@@ -22,6 +22,36 @@ static const char revid[] = "$Id: crypto.c,v 1.23 2003/06/30 17:19:41 bostic Exp
 #include "dbinc/db_page.h"
 #include "dbinc/crypto.h"
 
+#ifndef HAVE_CRYPTO
+/**
+ * __crypto_compare --
+ * 	returns zero iff `len` bytes at `src` and `tgt` are equal. Time is independent
+ *	of the contents of `src` and `tgt`.
+*/
+int
+__crypto_compare(src, dst, len)
+	const void *src;
+	const void *dst;
+	size_t len;
+{
+	const unsigned char *a = (const unsigned char *)src;
+	const unsigned char *b = (const unsigned char *)dst;
+	unsigned char result = 0;
+	size_t it;
+
+	for(it = 0; it < len; ++it) {
+		result |= src[it] ^ dst[it];
+	}
+
+	return result;
+}
+#else
+/**'
+ * if we have openssl, use available CRYPTO_memcmp
+ */
+#define __crypto_compare CRYPTO_memcmp
+#endif
+
 /*
  * __crypto_region_init --
  *	Initialize crypto.
@@ -88,7 +118,7 @@ __crypto_region_init(dbenv)
 		cipher = R_ADDR(infop, renv->cipher_off);
 		sh_passwd = R_ADDR(infop, cipher->passwd);
 		if ((cipher->passwd_len != dbenv->passwd_len) ||
-		    memcmp(dbenv->passwd, sh_passwd, cipher->passwd_len) != 0) {
+		    __crypto_compare(dbenv->passwd, sh_passwd, cipher->passwd_len) != 0) {
 			__db_err(dbenv, "Invalid password");
 			ret = EPERM;
 			goto out;
