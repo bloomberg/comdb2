@@ -1593,6 +1593,9 @@ static int bdb_tran_commit_with_seqnum_int_int(
         if (bdb_osql_trn_repo_unlock())
             abort();
         if (rc != 0) {
+            logmsg(LOGMSG_ERROR, 
+                   "%s:%d failed commit_getlsn, rc %d\n", __func__,
+                   __LINE__, rc);
             *bdberr = BDBERR_MISC;
             outrc = -1;
             goto cleanup;

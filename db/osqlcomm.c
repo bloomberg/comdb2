@@ -3940,9 +3940,8 @@ void osql_decom_node(char *decom_node)
  */
 void osql_net_exiting(void)
 {
-    netinfo_type *netinfo_ptr;
-
-    netinfo_ptr = (netinfo_type *)comm->handle_sibling;
+    if(!comm) return;
+    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
 
     net_exiting(netinfo_ptr);
 }
