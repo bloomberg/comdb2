@@ -1280,6 +1280,7 @@ __db_c_put(dbc_arg, key, data, flags)
 	memset(&olddata, 0, sizeof(DBT));
 	F_SET(&olddata, DB_DBT_MALLOC);
 
+#ifndef COMDB2_VERSION
 	/*
 	 * Putting to secondary indices is forbidden;  when we need
 	 * to internally update one, we'll call this with a private
@@ -1288,9 +1289,11 @@ __db_c_put(dbc_arg, key, data, flags)
 	 */
 	if (flags == DB_UPDATE_SECONDARY)
 		flags = DB_KEYLAST;
+#endif
 
 	CDB_LOCKING_INIT(dbp, dbc_arg);
 
+#ifndef COMDB2_VERSION
 	/*
 	 * Check to see if we are a primary and have secondary indices.
 	 * If we are not, we save ourselves a good bit of trouble and
@@ -1727,6 +1730,7 @@ skipput:	FREE_IF_NEEDED(sdbp, &skey)
 	/* Secondary index updates are now done.  On to the "real" stuff. */
 
 skip_s_update:
+#endif
 	/*
 	 * If we have an off-page duplicates cursor, and the operation applies
 	 * to it, perform the operation.  Duplicate the cursor and call the

@@ -37,8 +37,14 @@ if [[ -n ${DEBUGGER} ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
+    callgrind)
+        DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
     perf)
-        DEBUG_PREFIX="perf record -o $TESTCASE.perfdata -g "
+        DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
         INTERACTIVE_DEBUG=0
         ;;    
     *)
