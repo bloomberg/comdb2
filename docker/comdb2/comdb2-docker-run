@@ -1,0 +1,32 @@
+#!/bin/bash
+
+set -e
+
+if [[ $# -lt 1 ]]; then
+    echo >&2 "Usage: $* dbname [dbname2 ...]"
+    exit 1
+fi
+
+FIRSTDB=$1
+
+CONTAINER=$(docker run -d comdb2 $*)
+if [[ -z "$CONTAINER" ]]; then
+    exit 1
+fi
+
+ADDR=$(docker inspect $CONTAINER | jq -r ".[0].NetworkSettings.IPAddress")
+LOG=${TMPDIR:-/tmp}/comdb2-dev-$$.cfg
+(
+echo comdb2_config:allow_pmux_route:true
+for DB in $*; do
+    echo "$DB:$ADDR"
+done
+echo comdb2_config:default_type:docker
+) > $LOG
+
+echo "Container is up. Run"
+echo
+echo "export CDB2_CONFIG_FILE=$LOG"
+echo
+echo "Databases can then be accessed, eg:"
+echo "cdb2sql $FIRSTDB default 'select 1'"

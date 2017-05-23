@@ -109,10 +109,10 @@ install-internal: all
 	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
 	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
 	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
-	install -D tools/pmux/pmux.service $(DESTDIR)/lib/systemd/system/pmux.service
-	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)/lib/systemd/system/cdb2sockpool.service
-	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)/lib/systemd/system/supervisor_cdb2.service
-	install -D cdb2api/cdb2api.pc $(DESTDIR)/usr/local/lib/pkgconfig/cdb2api.pc
+	install -D tools/pmux/pmux.service $(DESTDIR)$(PREFIX)/lib/systemd/system/pmux.service
+	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)$(PREFIX)/lib/systemd/system/cdb2sockpool.service
+	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)$(PREFIX)/lib/systemd/system/supervisor_cdb2.service
+	install -D cdb2api/cdb2api.pc $(DESTDIR)$(PREFIX)/usr/local/lib/pkgconfig/cdb2api.pc
 	install -D tools/pmux/pmux.service $(DESTDIR)$(PREFIX)/lib/systemd/system/pmux.service
 	install -D db/comdb2dumpcsc $(DESTDIR)$(PREFIX)/bin/comdb2dumpcsc
 	mkdir -p $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/  $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/ $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/
@@ -152,3 +152,14 @@ docker-run-jdbc: jdbc-build-jdbc-container
 		-w /jdbc.build \
 		comdb2-jdbc:$(VERSION) \
 		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
+
+docker-build-container: install
+	# TODO: Bail out for non-debian
+	@echo "Archiving comdb2 binaries under docker/comdb2/ .."
+	tar -czvf docker/comdb2/comdb2.tar.gz -C $(DESTDIR)$(PREFIX) .
+	@echo "Building comdb2 container .."
+	docker build -t comdb2:$(VERSION) -f docker/comdb2/Dockerfile docker/comdb2
+	@echo "Comdb2 container comdb2:$(VERSION) created!"
+
+docker-clean: clean
+	rm -f docker/comdb2/comdb2.tar.gz
