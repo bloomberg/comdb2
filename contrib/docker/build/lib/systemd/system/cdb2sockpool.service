@@ -1,0 +1,10 @@
+[Unit]
+Description=Socket pooler for Comdb2 connections
+
+[Service]
+ExecStart=/opt/bb/bin/cdb2sockpool
+Type=forking
+User=comdb2
+
+[Install]
+WantedBy=multi-user.target

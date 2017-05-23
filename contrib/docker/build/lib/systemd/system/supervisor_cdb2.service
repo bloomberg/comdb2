@@ -1,0 +1,17 @@
+[Unit]
+Description=Supervisor process control system for Comdb2
+Documentation=http://supervisord.org
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/supervisord -n -c /opt/bb/etc/supervisord_cdb2.conf
+ExecStop=/usr/bin/supervisorctl -c /opt/bb/etc/supervisord_cdb2.conf $OPTIONS shutdown
+ExecReload=/usr/bin/supervisorctl -c /opt/bb/etc/supervisord_cdb2.conf $OPTIONS reload
+KillMode=process
+Restart=on-failure
+RestartSec=50s
+User=comdb2
+
+[Install]
+WantedBy=multi-user.target
+Requires=pmux.service

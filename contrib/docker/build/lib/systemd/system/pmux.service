@@ -1,0 +1,10 @@
+[Unit]
+Description=Port allocator for Comdb2
+
+[Service]
+ExecStart=/opt/bb/bin/pmux -l
+Type=forking
+User=comdb2
+
+[Install]
+WantedBy=multi-user.target

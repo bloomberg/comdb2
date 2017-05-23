@@ -1,0 +1,120 @@
+#!/bin/bash
+
+function usage {
+    echo "Usage: comdb2admin task"
+    echo "       create dbname"
+    echo "       stop dbname"
+    echo "       start dbname"
+    echo "       drop dbname"
+    echo "       status dbname"
+    echo "       send dbname cmd..."
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+[[ -z "$USER" ]] && export USER=$(id -un)
+
+task=$1
+shift
+
+dbname=
+
+set -e
+
+config=/opt/bb/etc/supervisord_cdb2.conf
+
+function create {
+    if [[ $# -ne 1 ]]; then
+        echo "Usage: comdb2admin create dbname" >&2
+        exit 1
+    fi
+    dbname=$1
+    if [[ $dbname == "all" ]]; then
+        return 1
+    fi
+    if [[ -d "/opt/bb/var/cdb2/$dbname" ]]; then
+        echo >&2 "Database Already exists"
+        return 1
+    fi
+
+    comdb2 --create $dbname >/dev/null
+    cat >> /opt/bb/etc/cdb2_supervisor/conf.d/$dbname.conf <<EOF
+[program:$dbname]
+command=/opt/bb/bin/comdb2 $dbname
+autostart=true
+autorestart=true
+stopsignal=TERM
+stopwaitsecs=60
+redirect_stderr=true
+stdout_logfile=AUTO
+directory=/opt/bb/var/cdb2/$dbname
+EOF
+    supervisorctl -c $config reread >/dev/null
+    supervisorctl -c $config add $dbname
+}
+
+function start {
+    if [[ $# -ne 1 ]]; then
+        echo "Usage: comdb2admin start dbname" >&2
+        exit 1
+    fi
+    dbname=$1
+    supervisorctl -c $config start $dbname
+}
+
+function stop {
+    if [[ $# -ne 1 ]]; then
+        echo "Usage: comdb2admin stop dbname" >&2
+        exit 1
+    fi
+    dbname=$1
+    supervisorctl -c $config stop $dbname
+}
+
+function status {
+    supervisorctl -c $config status
+}
+
+function drop {
+    if [[ $# -ne 1 ]]; then
+        echo "Usage: comdb2admin stop dbname" >&2
+        exit 1
+    fi
+    dbname=$1
+    if [[ "$dbname" = all ]]; then
+        echo >&2 "Can't drop all databases - please drop individually"
+        return 1
+    fi
+    set +e
+    supervisorctl -c $config stop $dbname
+    set -e
+    supervisorctl -c $config remove $dbname
+    rm -fr /opt/bb/var/cdb2/$dbname
+    rm -fr /opt/bb/var/cdb2/$dbname
+    rm -f /opt/bb/etc/cdb2_supervisor/conf.d/$dbname.conf
+}
+
+function send {
+    if [[ $# -lt 2 ]]; then
+        echo "Usage: comdb2admin send dbname cmd..." >&2
+        exit 1
+    fi
+    dbname=$1
+    shift
+    cdb2sql -tabs $dbname "exec procedure sys.cmd.send('$*')"
+}
+
+case $task in
+    create|start|stop|drop|status|send)
+        $task $*
+    ;;
+
+    *)
+        usage
+    ;;
+esac
+
+exit 0
