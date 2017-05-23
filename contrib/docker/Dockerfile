@@ -1,4 +1,4 @@
-FROM artprod.dev.bloomberg.com/bfs/base-ubuntu:xenial
+FROM ubuntu:xenial
 
 RUN apt-get update && \
   apt-get install -y \

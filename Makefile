@@ -130,11 +130,11 @@ build-container:
 	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build contrib/docker
 
 docker-build: build-container
-	mkdir -p $(BASEDIR)/contrib/docker/build
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
 	docker run --user $(shell id -u):$(shell id -g) \
 		--env HOME=/tmp \
-		-v $(BASEDIR)/contrib/docker/build:/comdb2 \
-		-v $(BASEDIR):/comdb2.build \
+		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
+		-v $(realpath $(SRCHOME)):/comdb2.build \
 		-w /comdb2.build \
 		comdb2-build:$(VERSION) \
 		make DESTDIR=/comdb2 PREFIX= install-internal
