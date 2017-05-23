@@ -34,8 +34,8 @@ __crypto_compare(src, dst, len)
 	const void *dst;
 	size_t len;
 {
-	const unsigned char *a = (const unsigned char *)src;
-	const unsigned char *b = (const unsigned char *)dst;
+	const unsigned char *a = src;
+	const unsigned char *b = dst;
 	unsigned char result = 0;
 	size_t it;
 
