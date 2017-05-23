@@ -92,7 +92,10 @@ deb-clean:
 test: $(TASKS)
 	$(MAKE) -C tests
 
-install: all
+install: install-internal
+	@[ -z "$(DESTDIR)" ] && . db/installinfo
+
+install-internal: all
 	install -D comdb2 $(DESTDIR)$(PREFIX)/bin/comdb2
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
@@ -122,3 +125,19 @@ install: all
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	[ -z "$(DESTDIR)" ] && . db/installinfo || true
+
+build-container:
+	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build contrib/docker
+
+docker-build: build-container
+	mkdir -p $(BASEDIR)/contrib/docker/build
+	docker run --user $(shell id -u):$(shell id -g) \
+		--env HOME=/tmp \
+		-v $(BASEDIR)/contrib/docker/build:/comdb2 \
+		-v $(BASEDIR):/comdb2.build \
+		-w /comdb2.build \
+		comdb2-build:$(VERSION) \
+		make DESTDIR=/comdb2 PREFIX= install-internal
+
+docker: docker-build
+	docker build -t comdb2:$(VERSION) contrib/docker

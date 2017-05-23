@@ -10,4 +10,4 @@ setattr min_aa_time  20
 setattr aa_llmeta_save_freq  2
 
 noudp
-ssl_client_mode ALLOW
+ssl_client_mode OPTIONAL

@@ -51,6 +51,7 @@
 #define SSL_MODE_REQUIRE        "REQUIRE"
 #define SSL_MODE_VERIFY_CA      "VERIFY_CA"
 #define SSL_MODE_VERIFY_HOST    "VERIFY_HOSTNAME"
+#define SSL_MODE_OPTIONAL       "OPTIONAL"
 
 /* Default file names */
 #if SBUF2_SERVER

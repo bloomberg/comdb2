@@ -333,8 +333,13 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx,
     SSL_CTX_sess_set_cache_size(myctx, sess_sz);
 
 #if SBUF2_SERVER
-    /* Set up session id context. Pseudo-random bytes are good enough. */
-    RAND_pseudo_bytes(sid_ctx, sizeof(sid_ctx));
+    /* Set up session id context. */
+    if (RAND_bytes(sid_ctx, sizeof(sid_ctx)) != 1) {
+        ssl_sfliberrprint(err, n, my_ssl_eprintln,
+			  "Failed to get random bytes");
+	rc = ERR_get_error();
+	goto error;
+    }
     SSL_CTX_set_session_id_context(myctx, sid_ctx, sizeof(sid_ctx));
 #endif
 

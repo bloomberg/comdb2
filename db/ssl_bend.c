@@ -87,6 +87,8 @@ int ssl_process_lrl(char *line, size_t len)
             gbl_client_ssl_mode = SSL_VERIFY_CA;
         else if (tokcmp(tok, ltok, SSL_MODE_VERIFY_HOST) == 0)
             gbl_client_ssl_mode = SSL_VERIFY_HOSTNAME;
+        else if (tokcmp(tok, ltok, SSL_MODE_OPTIONAL) == 0)
+            gbl_client_ssl_mode = SSL_UNKNOWN;
         else {
             my_ssl_eprintln("Unrecognized SSL mode `%s`.", tok);
             return EINVAL;

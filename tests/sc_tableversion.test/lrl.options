@@ -3,4 +3,4 @@ init_with_instant_schema_change
 init_with_ondisk_header
 init_with_inplace_updates 
 round_robin_stripes
-ssl_client_mode ALLOW
+ssl_client_mode OPTIONAL
