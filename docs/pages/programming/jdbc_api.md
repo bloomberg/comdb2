@@ -178,7 +178,7 @@ The parameters are as follows:
 
     * _key_store_password_=String
 
-     Passphrase of the client keystore.
+      Passphrase of the client keystore.
       
     * _key_store_type_=String
 
@@ -254,7 +254,10 @@ The result would come back as a normal `ResultSet` object.
 
 ### Using SSL connections
 
-To configure the driver with SSL support, you would simply append `ssl=true` to the JDBC URL. If the server requires client certificates, you need to provide the driver with a Java KeyStore (JKS).
+The jdbc driver has built-in SSL support. It uses SSL if the server requires SSL. Otherwise it falls back to plaintext.
+The process is transparent to the application. To enforce SSL, you would add `ssl_mode=REQUIRE` to the JDBC URL.
+
+If the server requires client certificates, you need to provide the driver with a Java KeyStore (JKS).
 
 A JKS can be converted from an OpenSSL certificate. First, you would convert the certificate to `DER` format if it is in `PEM` format using OpenSSL:
 
@@ -273,7 +276,7 @@ $ keytool -import -file client.crt.der -keystore path/to/keystore -alias comdb2
 To load the JKS into the driver, the JDBC URL looks like this:
 
 ```
-jdbc:comdb2//<hostname>/<database>?ssl=true&key_store=<path/to/jks>&key_store_password=<passwd>
+jdbc:comdb2//<hostname>/<database>?key_store=<path/to/jks>&key_store_password=<passwd>
 ```
 
 A trusted CA keystore can be generated the same way.
@@ -281,7 +284,7 @@ A trusted CA keystore can be generated the same way.
 To load the trusted CA JKS into the driver, the JDBC URL looks like this:
 
 ```
-jdbc:comdb2//<hostname>/<database>?ssl=true&trust_store=<path/to/jks>&trust_store_password=<passwd>
+jdbc:comdb2//<hostname>/<database>?trust_store=<path/to/jks>&trust_store_password=<passwd>
 ```
 
 
