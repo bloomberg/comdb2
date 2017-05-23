@@ -93,10 +93,7 @@ deb-clean:
 test: $(TASKS)
 	$(MAKE) -C tests
 
-install: install-internal
-	@[ -z "$(DESTDIR)" ] && . db/installinfo
-
-install-internal: all
+install: all
 	install -D comdb2 $(DESTDIR)$(PREFIX)/bin/comdb2
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
@@ -150,7 +147,7 @@ docker-build: build-container
 		-v $(BASEDIR):/comdb2.build \
 		-w /comdb2.build \
 		comdb2-build:$(VERSION) \
-		make DESTDIR=/comdb2 PREFIX= install-internal
+		make DESTDIR=/comdb2 PREFIX= install
 
 docker: docker-build
 	docker build -t comdb2:$(VERSION) contrib/docker
