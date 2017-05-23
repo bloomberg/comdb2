@@ -27,15 +27,15 @@ else
 endif
 
 jdbc-docker-build-container:
-	docker build -t jdbc-docker-builder:$(VERSION) -f $(BASEDIR)/contrib/docker/Dockerfile.jdbc.build $(BASEDIR)/contrib/docker
+	docker build -t jdbc-docker-builder:$(VERSION) -f $(BASEDIR)/contrib/docker/Dockerfile.jdbc.build ..
 
 jdbc-docker-build: jdbc-docker-build-container
 	docker run \
+        --rm \
 		--user $(shell id -u):$(shell id -g) \
-  		--env HOME=/tmp \
- 		-v ${BASEDIR}/contrib/docker/maven.m2:/maven.m2 \
-	    -w /jdbc.build/docker \
 		--env HOME=/tmp \
-		-v $(BASEDIR):/jdbc.build -w /jdbc.build \
+		-v $(BASEDIR):/jdbc.build \
+		-v $(BASEDIR)/cdb2jdbc/maven.m2:/maven.m2 \
+		-w /jdbc.build \
 		jdbc-docker-builder:$(VERSION) \
 		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install

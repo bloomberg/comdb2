@@ -8,7 +8,7 @@ RUN \
 
 # Sets maven to use a useful settings.xml file
 COPY \
-  maven-settings.xml /bin/maven/conf/settings.xml
+  contrib/docker/maven-settings.xml /bin/maven/conf/settings.xml
 
 # Install protobuf 3.2 and give all users exec access
 RUN \

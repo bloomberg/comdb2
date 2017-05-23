@@ -240,6 +240,7 @@ debian
 # jdbc driver
 !cdb2jdbc/**
 cdb2jdbc/target/**
+cdb2jdbc/maven.m2/**
 
 # generated docs
 _site/
