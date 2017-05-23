@@ -23,7 +23,7 @@ failexit() {
 }
 
 usage() {
-    failexit "$0 --dir /path/to/dir dbname node1 node2 ..nodeN"
+    failexit "usage: $0 [--dir /path/to/dir] dbname node1 node2 [..nodeN]"
 }
 
 
