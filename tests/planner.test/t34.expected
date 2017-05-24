@@ -1,0 +1,1 @@
+(selectid=0, order=0, from=0, detail='SEARCH TABLE L2INFO USING INDEX $BLOT_KEY_FIRM_228E2636 (date=? AND broker=? AND appl=? AND seqno=?) (6 rows)')
