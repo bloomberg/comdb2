@@ -1,3 +1,0 @@
-[set timezone UTC] failed with rc -17 Can't run set query inside transaction.
-[select 1] failed with rc -17 Can't run set query inside transaction.
-(1=1)

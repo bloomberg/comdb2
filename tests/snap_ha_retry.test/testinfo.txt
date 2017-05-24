@@ -1,2 +1,0 @@
-testname: snap_ha_retry
-version: r000004

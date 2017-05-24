@@ -1,2 +1,0 @@
-testname: sirandtest
-version: r000002

@@ -1,2 +1,0 @@
-testname: tablelocks
-version: r000000

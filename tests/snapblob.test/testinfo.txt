@@ -1,2 +1,0 @@
-testname: snapblob
-version: r000000

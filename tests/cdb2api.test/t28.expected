@@ -1,4 +1,0 @@
-[set timezone UTC] failed with rc -17 Can't run set query inside transaction.
-[insert into t1 values(1)] failed with rc -17 Can't run set query inside transaction.
-[commit] failed with rc -17 Can't run set query inside transaction.
-(1=1)

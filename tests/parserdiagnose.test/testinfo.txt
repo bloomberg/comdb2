@@ -1,2 +1,0 @@
-testname: parserdiagnose
-version: r000003

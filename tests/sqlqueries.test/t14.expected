@@ -1,5 +1,0 @@
-(selectid=0, order=0, from=1, detail='SEARCH TABLE WorkItem AS i USING INDEX $FK_STATE_CDBB5048 (state_id=?) (7680 rows)')
-(selectid=0, order=1, from=2, detail='SEARCH TABLE Source AS s USING COVERING INDEX $AK_SOURCE_ID_5BDAA304 (source_id=? AND deleted_on=?) (~1 row)')
-(selectid=0, order=0, from=0, detail='EXECUTE LIST SUBQUERY 1')
-(selectid=0, order=2, from=0, detail='SEARCH TABLE WorkItemAnalyst AS a USING COVERING INDEX $AK_WORKITEM_D4C11780 (work_item_id=? AND date_finished=? AND analyst_id=?) (~1 row)')
-(selectid=0, order=0, from=0, detail='USE TEMP B-TREE FOR ORDER BY')

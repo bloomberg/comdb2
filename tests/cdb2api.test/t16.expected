@@ -1,8 +1,0 @@
-(selectid=0, order=0, from=0, detail='SEARCH TABLE trade_update AS tu USING INDEX $COST_SET_2471BEB9 (cost_set=?) (24 rows)')
-(selectid=0, order=0, from=0, detail='SEARCH TABLE trade_update AS tu USING INDEX $PSELL_COST_SET_432144CF (psell_cost_set=?) (6 rows)')
-(selectid=0, order=1, from=1, detail='SEARCH TABLE transaction_history AS th USING INDEX $TRANSACTION_HISTORY_ID_320E9E4C (transaction_history_id=?) (~1 row)')
-(selectid=0, order=2, from=2, detail='SEARCH TABLE rcv_recommendation AS rcvd USING INDEX $RCV_RECOMM_ID_CA448C03 (rcv_recomm_id=?) (~1 row)')
-(selectid=0, order=3, from=3, detail='SEARCH TABLE recommendation AS rec USING INDEX $RECOMMENDATION_ID_6F23C63D (recommendation_id=?) (~1 row)')
-(selectid=0, order=4, from=4, detail='SEARCH TABLE security AS sec USING INDEX $SECURITY_ID_CE276019 (security_id=?) (~1 row)')
-(selectid=0, order=5, from=5, detail='SEARCH TABLE security AS psell_sec USING INDEX $SECURITY_ID_CE276019 (security_id=?) (~1 row)')
-(selectid=0, order=0, from=0, detail='USE TEMP B-TREE FOR ORDER BY')

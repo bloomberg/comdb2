@@ -1,8 +1,0 @@
-begin
-select 1
-begin
-select 2
-rollback
-select 3
-rollback
-select 4

@@ -1,2 +1,0 @@
-testname: serialstep
-version: r000066

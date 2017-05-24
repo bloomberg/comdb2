@@ -1,2 +1,0 @@
-testname: logdelete
-version: r000025

@@ -1,2 +1,0 @@
-testname: str2intv
-version: r000006

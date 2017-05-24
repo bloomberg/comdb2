@@ -1,9 +1,0 @@
-(version='mk')
-6:end
-3:        db:trace('mnop')
-mnop
-4:        db:emit(unpack(arg))
-($0='abcdefgh')
-5:        db:trace('klmnop')
-klmnop
-6:end

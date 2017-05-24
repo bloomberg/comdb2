@@ -1,2 +1,0 @@
-testname: sicomplex2
-version: r000023

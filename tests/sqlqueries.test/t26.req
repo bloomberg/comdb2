@@ -1,6 +1,0 @@
-insert into t5 VALUES('i', 'a')
-
-SELECT * from t5
-
-SELECT str2 from t5 where str1='i' AND str2 like 'a%' ORDER BY str2 DESC
-SELECT str2 from t5 where str1='i' AND str2 like 'b%' ORDER BY str2 DESC
