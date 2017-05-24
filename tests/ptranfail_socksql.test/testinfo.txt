@@ -1,2 +1,0 @@
-testname: ptranfail_socksql
-version: r000024

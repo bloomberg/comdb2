@@ -1,2 +1,0 @@
-testname: sql_func
-version: r000021

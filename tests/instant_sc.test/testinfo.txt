@@ -1,2 +1,0 @@
-testname: instant_sc
-version: r000037

@@ -1,2 +1,0 @@
-testname: datetime
-version: r000022

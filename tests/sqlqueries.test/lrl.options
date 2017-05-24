@@ -1,7 +1,0 @@
-table   dummy   dummy.csc2
-
-init_with_ondisk_header
-instant_schema_change
-prefix_foreign_keys
-morecolumns
-update_delete_limit

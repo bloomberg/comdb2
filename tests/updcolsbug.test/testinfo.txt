@@ -1,2 +1,0 @@
-testname: updcolsbug
-version: r000011

@@ -1,2 +1,0 @@
-testname: selectv_recom
-version: r000023

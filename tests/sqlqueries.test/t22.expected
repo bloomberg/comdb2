@@ -1,3 +1,0 @@
-(selectid=0, order=0, from=0, detail='SEARCH TABLE validation AS v USING INDEX validation_ix_1 (pricing_time>? AND pricing_time<?) (262144 rows)')
-(selectid=0, order=1, from=1, detail='SEARCH TABLE deal_info USING INDEX deal_info_ix_0 (deal_id=?) (6 rows)')
-(selectid=0, order=2, from=2, detail='SEARCH TABLE user_info USING INDEX user_info_ix_0 (user_id=?) (~1 row)')

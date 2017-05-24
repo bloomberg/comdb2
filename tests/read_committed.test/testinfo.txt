@@ -1,2 +1,0 @@
-testname: read_committed
-version: r000009
