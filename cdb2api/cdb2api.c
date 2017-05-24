@@ -4768,7 +4768,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             *p = 0;
             hndl->ports[0] = atoi(p + 1);
         } else {
-            strcpy(hndl->hosts[0], type);
+            strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0])-1);
             if (!allow_pmux_route) {
                 hndl->ports[0] =
                     cdb2portmux_get(type, "comdb2", "replication", dbname);
