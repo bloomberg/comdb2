@@ -50,14 +50,14 @@
 #include <plbitlib.h>
 #include <lockmacro.h>
 #include <memory_sync.h>
-#include <sysarena.h>
 
 #include <epochlib.h>
 
 #include "comdb2.h"
 #include "sqloffload.h"
 #include "osqlblockproc.h"
-#include <cdb2_constants.h>
+#include "cdb2_constants.h"
+#include "comdb2_atomic.h"
 
 #include "nodemap.h"
 #include "intern_strings.h"
@@ -94,7 +94,7 @@ struct print_event {
     unsigned event_flag;
     int length; /* -ve if not known, in which case text must be \0
                    terminated */
-    const char *text;
+    char *text;
 };
 
 enum { MAX_PREFIXES = 16 };
@@ -113,9 +113,6 @@ struct tablelist {
 };
 
 struct reqlogger {
-    /* get all our memory for logevent structs from the arena */
-    struct arena *arena;
-
     char origin[128];
 
     /* Everything from here onwards is transient and can be reset
@@ -150,11 +147,12 @@ struct reqlogger {
     struct logevent *last_event;
 
     /* the sql statement */
-    const char *stmt;
+    char *stmt;
     char *tags;
     void *tagbuf;
     void *nullbits;
 
+    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
     double sqlcost;
 
@@ -302,7 +300,9 @@ static pthread_mutex_t nodestats_calc_lk = PTHREAD_MUTEX_INITIALIZER;
  * which takes some default action on long requests.  If you want anything
  * different then you add rules and you have to lock around the list. */
 static int long_request_ms = 2000;
+static int all_sql_requests = 0;
 static struct output *long_request_out = NULL;
+static struct output *sql_request_out = NULL;
 static struct output *bad_cstr_out = NULL;
 static pthread_mutex_t rules_mutex;
 static LISTC_T(struct logrule) rules;
@@ -327,7 +327,6 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-
 static int reqltruncate = 1;
 
 /* sometimes you have to debug the debugger */
@@ -834,6 +833,11 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
+    filename = comdb2_location("logs", "%s.sqlreqs", dbname);
+    sql_request_out = get_output_ll(filename);
+    free(filename);
+
+
     scanrules_ll();
     return 0;
 }
@@ -842,6 +846,7 @@ static const char *help_text[] = {
     "Request logging framework commands",
     "reql longrequest #           - set long request threshold in msec",
     "reql longsqlrequest #        - set long SQL request threshold in msec",
+    "reql logallsql [on|off]      - log every sql request",
     "reql longreqfile <filename>  - set file to log long requests in",
     "reql diffstat #              - set diff stat threshold in sec",
     "reql truncate #              - set request truncation",
@@ -995,6 +1000,13 @@ void reqlog_process_message(char *line, int st, int lline)
         gbl_sql_time_threshold = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Long SQL request threshold now %d msec\n",
                gbl_sql_time_threshold);
+    } else if (tokcmp(tok, ltok, "logallsql") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (tokcmp(tok, ltok, "off") == 0) {
+            all_sql_requests = 0;
+        } else {
+            all_sql_requests = 1;
+        }
     } else if (tokcmp(tok, ltok, "longreqfile") == 0) {
         char filename[128];
         struct output *out;
@@ -1165,16 +1177,6 @@ void reqlog_stat(void)
     logmsg(LOGMSG_USER, "request truncation     : %s\n",
            reqltruncate ? "enabled" : "disabled");
     logmsg(LOGMSG_USER, "SQL cost thresholds    :\n");
-    logmsg(LOGMSG_USER, "   trace               : ");
-    if (gbl_sql_cost_trace_threshold == -1)
-        logmsg(LOGMSG_USER, "not set\n");
-    else
-        logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_trace_threshold);
-    logmsg(LOGMSG_USER, "   warn                : ");
-    if (gbl_sql_cost_warn_threshold == -1)
-        logmsg(LOGMSG_USER, "not set\n");
-    else
-        logmsg(LOGMSG_USER, "%f\n", gbl_sql_cost_warn_threshold);
     logmsg(LOGMSG_USER, "   error               : ");
     if (gbl_sql_cost_error_threshold == -1)
         logmsg(LOGMSG_USER, "not set\n");
@@ -1198,28 +1200,44 @@ struct reqlogger *reqlog_alloc(void)
         return NULL;
     }
 
-    logger->arena = arena_new(malloc, free, 64 * 1024, 64 * 1024);
-    if (!logger->arena) {
-        logmsg(LOGMSG_ERROR, "%s: arena_new failed\n", __func__);
-        free(logger);
-        return NULL;
-    }
-
     return logger;
 }
 
-void reqlog_free(struct reqlogger *reqlogger)
+static void reqlog_free_all(struct reqlogger *logger)
 {
-    if (reqlogger) {
-        arena_destroy(reqlogger->arena);
-        free(reqlogger);
+    struct logevent *event;
+    struct print_event *pevent;
+    struct tablelist *table;
+
+    if (logger->stmt) free(logger->stmt);
+
+    while (event = logger->events) {
+        logger->events = event->next;
+        if (event->type == EVENT_PRINT) {
+            pevent = (struct print_event*)event;
+            free(pevent->text);
+        }
+        free(event);
+    }
+
+    while (table = logger->tables) {
+        logger->tables = table->next;
+        free(table);
+    }
+}
+
+void reqlog_free(struct reqlogger *logger)
+{
+    if (logger) {
+        reqlog_free_all(logger);
+        free(logger);
     }
 }
 
 void reqlog_reset_logger(struct reqlogger *logger)
 {
     if (logger) {
-        arena_free_all(logger->arena);
+        reqlog_free_all(logger);
         bzero(&logger->start_transient,
               sizeof(struct reqlogger) -
                   offsetof(struct reqlogger, start_transient));
@@ -1244,59 +1262,54 @@ static void reqlog_append_event(struct reqlogger *logger,
 /* push an output trace prefix */
 int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
 {
-    if (logger) {
-        char buf[256];
-        char *s = NULL;
-        int len;
-        va_list args_c;
+    char *s;
+    int len;
+    int nchars;
+    va_list args_c;
 
-        va_copy(args_c, args);
-        len = vsnprintf(buf, sizeof(buf), fmt, args);
+    if (logger == NULL)
+        return 0;
 
-        if (len >= sizeof(buf) && reqltruncate == 0) {
-            s = arena_alloc_align(logger->arena, len + 1,
-                                  SYSARENA_1_BYTE_ALIGN);
-            if (!s) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__,
-                        len + 1);
-                va_end(args_c);
-                return -1;
-            }
-            len = vsnprintf(s, len + 1, fmt, args_c);
-        } else if (len >= sizeof(buf)) {
-            len = sizeof(buf) - 1;
+    len = 256;
+    s = malloc(len);
+    if (!s) {
+        logmsg(LOGMSG_ERROR, "%s:malloc(%d) failed\n", __func__, len);
+        return -1;
+    }
+
+    va_copy(args_c, args);
+    nchars = vsnprintf(s, len, fmt, args);
+    if (nchars >= len && reqltruncate == 0) {
+        len = nchars + 1;
+        s = realloc(s, len);
+        if (!s) {
+            fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            return -1;
         }
-        va_end(args_c);
+        len = vsnprintf(s, len, fmt, args_c);
+    } else {
+        len = nchars;
+    }
+    va_end(args_c);
 
-        if (logger->dump_mask) {
-            flushdump(logger, NULL);
-            prefix_push(&logger->prefix, s ? s : buf, len);
+    if (logger->dump_mask) {
+        flushdump(logger, NULL);
+        prefix_push(&logger->prefix, s, len);
+    }
+
+    if (logger->event_mask) {
+        struct push_prefix_event *event;
+
+        event = malloc(sizeof(struct push_prefix_event));
+        if (!event) {
+            logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            return -1;
         }
-
-        if (logger->event_mask) {
-            struct push_prefix_event *event;
-
-            if (!s) {
-                s = arena_alloc_align(logger->arena, len + 1,
-                                      SYSARENA_1_BYTE_ALIGN);
-                if (!s) {
-                    logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__,
-                            len + 1);
-                    return -1;
-                }
-                memcpy(s, buf, len + 1);
-            }
-
-            event =
-                arena_alloc(logger->arena, sizeof(struct push_prefix_event));
-            if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
-                return -1;
-            }
-            event->length = len;
-            event->text = s;
-            reqlog_append_event(logger, EVENT_PUSH_PREFIX, event);
-        }
+        event->length = len;
+        event->text = s;
+        reqlog_append_event(logger, EVENT_PUSH_PREFIX, event);
+    } else {
+        free(s);
     }
     return 0;
 }
@@ -1323,9 +1336,9 @@ int reqlog_popprefix(struct reqlogger *logger)
 
         if (logger->event_mask) {
             struct pop_prefix_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct pop_prefix_event));
+            event = malloc(sizeof(struct pop_prefix_event));
             if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 return -1;
             }
             reqlog_append_event(logger, EVENT_POP_PREFIX, event);
@@ -1344,9 +1357,9 @@ int reqlog_popallprefixes(struct reqlogger *logger)
 
         if (logger->event_mask) {
             struct pop_prefix_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct pop_prefix_event));
+            event = malloc(sizeof(struct pop_prefix_event));
             if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 return -1;
             }
             reqlog_append_event(logger, EVENT_POP_PREFIX_ALL, event);
@@ -1358,53 +1371,54 @@ int reqlog_popallprefixes(struct reqlogger *logger)
 static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
                            const char *fmt, va_list args)
 {
-    char buf[256];
-    char *s = NULL;
+    char *s;
     int len;
+    int nchars;
     va_list args_c;
 
+    if (logger == NULL)
+        return 0;
+
+    len = 256;
+    s = malloc(len);
+    if (!s) {
+        fprintf(stderr, "%s:malloc(%d) failed\n", __func__, len);
+        return -1;
+    }
+
     va_copy(args_c, args);
-    len = vsnprintf(buf, sizeof(buf), fmt, args);
-    if (len >= sizeof(buf) && reqltruncate == 0) {
-        s = arena_alloc_align(logger->arena, len + 1, SYSARENA_1_BYTE_ALIGN);
+    nchars = vsnprintf(s, len, fmt, args);
+    if (nchars >= len && reqltruncate == 0) {
+        len = nchars + 1;
+        s = realloc(s, len);
         if (!s) {
-            logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__, len + 1);
-            va_end(args_c);
+            logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             return -1;
         }
-        len = vsnprintf(s, len + 1, fmt, args_c);
-    } else if (len >= sizeof(buf)) {
-        len = sizeof(buf) - 1;
+        len = vsnprintf(s, len, fmt, args_c);
+    } else {
+        len = nchars;
     }
     va_end(args_c);
 
     if (logger->dump_mask & event_flag) {
-        dump(logger, NULL, s ? s : buf, len);
+        dump(logger, NULL, s, len);
     }
 
     if (logger->event_mask & event_flag) {
         struct print_event *event;
 
-        if (!s) {
-            s = arena_alloc_align(logger->arena, len + 1,
-                                  SYSARENA_1_BYTE_ALIGN);
-            if (!s) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc(%d) failed\n", __func__,
-                        len + 1);
-                return -1;
-            }
-            memcpy(s, buf, len + 1);
-        }
-
-        event = arena_alloc(logger->arena, sizeof(struct print_event));
+        event = malloc(sizeof(struct print_event));
         if (!event) {
-            logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
             return -1;
         }
         event->event_flag = event_flag;
         event->length = len;
         event->text = s;
         reqlog_append_event(logger, EVENT_PRINT, event);
+    } else {
+        free(s);
     }
     return 0;
 }
@@ -1436,48 +1450,16 @@ int reqlog_logf(struct reqlogger *logger, unsigned event_flag, const char *fmt,
     return 0;
 }
 
-/* Log a string literal.  This avoids copying the string. */
+/* Log a string literal. Wrapper for logf */
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s)
 {
     if (logger && (logger->mask & event_flag)) {
-        if (logger->event_mask & event_flag) {
-            struct print_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct print_event));
-            if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
-                return -1;
-            }
-            event->event_flag = event_flag;
-            event->length = -1; /* to indicate length is unknown */
-            event->text = s;
-            reqlog_append_event(logger, EVENT_PRINT, event);
-        }
-        if (logger->dump_mask & event_flag) {
-            dump(logger, NULL, s, strlen(s));
-        }
-    }
-    return 0;
-}
-
-/* similar, but string length is supplied. */
-int reqlog_logll(struct reqlogger *logger, unsigned event_flag, const char *s,
-                 size_t len)
-{
-    if (logger && (logger->mask & event_flag)) {
-        if (logger->event_mask & event_flag) {
-            struct print_event *event;
-            event = arena_alloc(logger->arena, sizeof(struct print_event));
-            if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
-                return -1;
-            }
-            event->event_flag = event_flag;
-            event->length = len;
-            event->text = s;
-            reqlog_append_event(logger, EVENT_PRINT, event);
-        }
-        if (logger->dump_mask & event_flag) {
-            dump(logger, NULL, s, len);
+        if ((logger->dump_mask & event_flag) &&
+            ((logger->event_mask & event_flag) == 0)) {
+            /* Just dump, don't bother allocating */
+	  logmsg(LOGMSG_ERROR, NULL, s, strlen(s));
+        } else if (logger->event_mask & event_flag) {
+            reqlog_logf(logger, event_flag, s);
         }
     }
     return 0;
@@ -1494,17 +1476,16 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
         size_t ii;
         static const char *hexchars = "0123456789abcdef";
 
-        hexstr =
-            arena_alloc_align(logger->arena, len * 2, SYSARENA_1_BYTE_ALIGN);
+        hexstr = malloc(len * 2);
         if (!hexstr) {
-            logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
             return -1;
         }
 
         if (logger->event_mask & event_flag) {
-            event = arena_alloc(logger->arena, sizeof(struct print_event));
+            event = malloc(sizeof(struct print_event));
             if (!event) {
-                logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 return -1;
             }
 
@@ -1545,10 +1526,9 @@ void reqlog_usetable(struct reqlogger *logger, const char *tablename)
             }
         }
         len = strlen(tablename);
-        table = arena_alloc(logger->arena,
-                            offsetof(struct tablelist, name) + len + 1);
+        table = malloc(offsetof(struct tablelist, name) + len + 1);
         if (!table) {
-            logmsg(LOGMSG_ERROR, "%s: arena_alloc failed\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         } else {
             table->next = logger->tables;
             table->count = 1;
@@ -1744,13 +1724,8 @@ void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
             case CLIENT_BLOB:
             case CLIENT_BYTEARRAY: {
                 uint8_t *b = (uint8_t *)tagbuf + f->offset;
-                static const char *hexchars = "0123456789abcdef";
                 reqlog_logf(logger, REQL_INFO, " %s blob ", f->name);
-                for (int i = 0; i < f->len; i++) {
-                    reqlog_logf(logger, REQL_INFO, "%c%c",
-                                hexchars[(b[i] & 0xf0) >> 4],
-                                hexchars[b[i] & 0x0f]);
-                }
+                reqlog_loghex(logger, REQL_INFO, b, f->len);
                 break;
             }
             }
@@ -1760,36 +1735,37 @@ void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
     free_tag_schema(s);
 }
 
-void reqlog_new_sql_request(struct reqlogger *logger, const char *sqlstmt,
+void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
+{
+    if (sqlstmt) {
+        if (logger->stmt) free(logger->stmt);
+        logger->stmt = strdup(sqlstmt);
+    }
+    if (logger->stmt) {
+        reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
+	if (all_sql_requests) {
+            dumpf(logger, sql_request_out, "sql_begin #%d: sql=%s\n",
+                  logger->nsqlreqs,
+                  logger->stmt);
+        }
+    }
+}
+
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
                             char *tags, void *tagbuf, int tagbufsz,
                             void *nullbits, int numbits)
 {
     if (!logger) {
         return;
     }
-    logger->stmt = NULL;
-
     reqlog_reset_logger(logger);
-    logger->request_type = "sql request";
+    logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
-    if (sqlstmt) {
-        logger->stmt = arena_strdup(logger->arena, sqlstmt);
-    }
     logger->startms = time_epochms();
     reqlog_start_request(logger);
-    if (logger->stmt) {
-        reqlog_logl(logger, REQL_INFO, logger->stmt);
-    }
-}
 
-void reqlog_set_actual_sql(struct reqlogger *logger, char *sqlstmt)
-{
-    if (sqlstmt && logger->stmt == NULL) {
-        logger->stmt = arena_strdup(logger->arena, sqlstmt);
-    }
-    if (logger->stmt) {
-        reqlog_logl(logger, REQL_INFO, logger->stmt);
-    }
+    logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
+    reqlog_set_sql(logger, sqlstmt);
 }
 
 void reqlog_diffstat_init(struct reqlogger *logger)
@@ -1848,14 +1824,16 @@ static void print_client_query_stats(struct reqlogger *logger,
 }
 
 /* print the request header for the request. */
-static void log_header_ll(struct reqlogger *logger, struct output *out,
-                          int is_long)
+static void log_header_ll(struct reqlogger *logger, struct output *out)
 {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
     struct reqlog_print_callback_args args;
 
-    if (is_long) {
+    if (out == long_request_out) {
         dumpf(logger, out, "LONG REQUEST %d msec ", logger->durationms);
+    } else if (out == sql_request_out) {
+        dumpf(logger, out, "sql_end #%d: %d msec ", logger->nsqlreqs,
+              logger->durationms);
     } else {
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               logger->durationms);
@@ -1866,6 +1844,10 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
         struct ireq *iq = logger->iq;
         if (iq->reptimems > 0) {
             uint64_t rate = iq->txnsize / iq->reptimems;
+
+            if (out == sql_request_out)
+                dumpf(logger, out, "sql_end #%d:", logger->nsqlreqs);
+
             dumpf(logger, out,
                   "  Committed %llu log bytes in %d ms rep time (%llu "
                   "bytes/ms)\n",
@@ -1880,7 +1862,7 @@ static void log_header_ll(struct reqlogger *logger, struct output *out,
     args.out = out;
     bdb_print_stats(thread_stats, "  ", reqlog_print_callback, &args);
 
-    if (is_long &&
+    if (out == long_request_out &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SHOW_COST_IN_LONGREQ)) {
         struct client_query_stats *qstats = get_query_stats_from_thd();
         if (qstats)
@@ -1893,9 +1875,9 @@ static void log_header(struct reqlogger *logger, struct output *out,
                        int is_long)
 {
     pthread_mutex_lock(&rules_mutex);
-    pthread_mutex_lock(&long_request_out->mutex);
-    log_header_ll(logger, out, is_long);
-    pthread_mutex_unlock(&long_request_out->mutex);
+    pthread_mutex_lock(&out->mutex);
+    log_header_ll(logger, out);
+    pthread_mutex_unlock(&out->mutex);
     pthread_mutex_unlock(&rules_mutex);
 }
 
@@ -1916,7 +1898,10 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
                     flushdump(logger, out);
                 }
                 if (logger->dumplinepos == 0) {
-                    dump(logger, out, "  ", 2);
+                    if (out == sql_request_out)
+                        dumpf(logger, out, "sql_end #%d:  ", logger->nsqlreqs);
+                    else
+                        dump(logger, out, "  ", 2);
                 } else {
                     dump(logger, out, ", ", 2);
                 }
@@ -1934,7 +1919,7 @@ static void log(struct reqlogger *logger, struct output *out,
 
     pthread_mutex_lock(&out->mutex);
     prefix_init(&logger->prefix);
-    log_header_ll(logger, out, 0);
+    log_header_ll(logger, out);
     if (event_mask == 0) {
         pthread_mutex_unlock(&out->mutex);
         return;
@@ -2052,16 +2037,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
-
-    if (gbl_fingerprint_queries) {
-        static const char hex[] = "0123456789abcdef";
-        unsigned char fingerprint_str[33];
-        fingerprint_str[32] = 0;
-        for (int i = 0; i < 16; i++) {
-            fingerprint_str[i*2] = hex[(logger->fingerprint[i] & 0xf0) >> 4];
-            fingerprint_str[i*2+1] = hex[logger->fingerprint[i] & 0x0f];
-        }
-        reqlog_logf(logger, REQL_INFO, "fingerprint %s", fingerprint_str);
+    if (logger->fingerprint) {
+        reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
     }
 
     logger->in_request = 0;
@@ -2144,10 +2121,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
                 }
             }
             if (!use_rule) {
-                use_rule =
-                    arena_alloc(logger->arena, sizeof(struct logruleuse));
+                use_rule = malloc(sizeof(struct logruleuse));
                 if (!use_rule) {
-                    logmsg(LOGMSG_ERROR, "%s:arena_alloc failed\n", __func__);
+                    logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
                 } else {
                     use_rule->next = use_rules;
                     use_rule->event_mask = rule->event_mask;
@@ -2174,6 +2150,11 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
             log(logger, use_rule->out, use_rule->event_mask);
             deref_output_ll(use_rule->out);
         }
+        while (use_rule = use_rules) {
+            use_rules = use_rule->next;
+            free(use_rule);
+        }
+
         pthread_mutex_unlock(&rules_mutex);
     }
 
@@ -2182,6 +2163,11 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
         logmsg(LOGMSG_WARN, "WARNING: THIS DATABASE IS RECEIVING NON NUL "
                         "TERMINATED CSTRINGS\n");
         log_header(logger, default_out, 0);
+    }
+
+    /* check for sqlreqs */
+    if (all_sql_requests && logger->opcode == OP_SQL && !logger->iq) {
+        log_header(logger, sql_request_out, 0);
     }
 
     /* check for long requests */
@@ -2250,14 +2236,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     } else {
         norm_reqs++;
     }
-#if 0
-    if (logger->sqlcost > gbl_sql_cost_warn_threshold)
-        fprintf(stderr, "WARNING: expensive SQL query\n");
-    if (logger->sqlcost > gbl_sql_cost_trace_threshold || logger->sqlcost > gbl_sql_cost_warn_threshold) {
-        log_header(logger, default_out, 0);
-        dumpf(logger, default_out, "rows=%d cost=%f query: %s\n", logger->sqlrows, logger->sqlcost, logger->stmt);
-    }
-#endif
 
     if (logger->iq && logger->iq->blocksql_tran) {
         if (gbl_time_osql)

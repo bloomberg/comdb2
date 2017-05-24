@@ -1,0 +1,21 @@
+syntax = "proto2";
+import "sqlquery.proto";
+
+enum CDB2_EventType {
+    SQL = 1;
+}
+
+message CDB2_SQLEvent {
+    required CDB2_SQLQUERY query = 1;
+    required int64 cost = 2;
+    required int64 nrows = 3;
+    required int64 timems = 4;
+    required string tid = 5;
+    required string fingerprint = 6;
+}
+
+message CDB2_Event {
+    required int64 seconds = 1;
+    required int32 useconds = 2;
+    optional CDB2_SQLEvent sql = 3;
+}

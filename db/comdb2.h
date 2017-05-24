@@ -2881,8 +2881,6 @@ int reqlog_logv(struct reqlogger *logger, unsigned event_flag, const char *fmt,
 int reqlog_logf(struct reqlogger *logger, unsigned event_flag, const char *fmt,
                 ...);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
-int reqlog_logll(struct reqlogger *logger, unsigned event_flag, const char *s,
-                 size_t len);
 int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
                   size_t len);
 void reqlog_set_cost(struct reqlogger *logger, double cost);
@@ -2891,10 +2889,10 @@ void reqlog_usetable(struct reqlogger *logger, const char *tablename);
 void reqlog_setflag(struct reqlogger *logger, unsigned flag);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
-void reqlog_new_sql_request(struct reqlogger *logger, const char *sqlstmt,
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
                             char *tags, void *tagbuf, int tagbufsz,
                             void *nullbits, int numbits);
-void reqlog_set_actual_sql(struct reqlogger *logger, char *sqlstmt);
+void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt);
 int reqlog_current_ms(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
@@ -3083,8 +3081,6 @@ int blkseq_num_in_progress(void);
 extern int gbl_coordinator_parallel_transaction_threshold;
 extern int gbl_num_rr_rejected;
 extern int gbl_sql_time_threshold;
-extern double gbl_sql_cost_trace_threshold;
-extern double gbl_sql_cost_warn_threshold;
 extern double gbl_sql_cost_error_threshold;
 
 extern int gbl_allow_mismatched_tag_size;

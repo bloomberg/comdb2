@@ -34,12 +34,13 @@
 #include "roll_file.h"
 #include "util.h"
 #include "logmsg.h"
+#include "log.pb-c.h"
 
 static pthread_mutex_t sql_log_lk = PTHREAD_MUTEX_INITIALIZER;
 int gbl_log_all_sql = 0;
 static FILE *sqllog = NULL;
 
-static const int32_t sqllog_version = 3;
+static const int32_t sqllog_version = 5;
 static void sqllog_run_roll(int nkeep);
 static FILE *sqllog_open(int quiet);
 static off_t sqllog_rollat_size = 0;
@@ -240,7 +241,9 @@ again:
     }
     /* if it's not a new file, write version number */
     if (ftell(f) == 0) {
-        rc = fwrite(&sqllog_version, sizeof(int32_t), 1, f);
+        int32_t ver = htonl(sqllog_version);
+        printf("ver %d\n", sqllog_version);
+        rc = fwrite(&ver, sizeof(int32_t), 1, f);
         if (rc != 1) {
             logmsg(LOGMSG_ERROR, "Can't write version to SQL log file\n");
             fclose(f);
@@ -263,6 +266,7 @@ again:
                     errno, strerror(errno));
             return NULL;
         }
+        version = ntohl(version);
         if (version != sqllog_version) {
             struct stat st;
             logmsg(LOGMSG_INFO, "log version %d, my version %d, rolling log\n", version,
@@ -391,101 +395,32 @@ static int sqllog_roll(int nkeep)
 
 static int log_async(struct sqlclntstate *clnt, int cost, int nrows, int timems)
 {
-    uint8_t *buf, *p;
-    size_t sz = 0;
-    int sqllen;
-    int taglen;
-    struct timeval t;
-    int32_t ival;
-    int rc;
+    int32_t sz;
+    CDB2Event ev;
+    CDB2SQLEvent sql;
+    struct timeval tv;
+    uint8_t *buf;
+    uuidstr_t fingerprint;
 
-    /* figure out the size */
-    /* TODO: add the static part as a constant instead of accumulating? */
-    sqllen = strlen(clnt->sql) + 1;
-    rc = gettimeofday(&t, NULL);
-    if (rc)
-        return -1;
-    sz += sizeof(int32_t);     /* pthread id */
-    sz += 2 * sizeof(int32_t); /* timeval */
-    sz += sizeof(int32_t);     /* sqllen */
-    sz += sqllen;              /* sql */
-    sz += sizeof(int32_t);     /* tag name length */
-    if (clnt->tag) {
-        taglen = strlen(clnt->tag) + 1;
-        sz += taglen;            /* tag name */
-        sz += sizeof(int32_t);   /* tag buffer size */
-        sz += clnt->tagbufsz;    /* tag buffer */
-        sz += sizeof(int32_t);   /* numnullbits */
-        sz += clnt->numnullbits; /* null bits */
-        sz += sizeof(int32_t);   /* numblobs */
-        for (int i = 0; i < clnt->numblobs; i++) {
-            sz += sizeof(int32_t); /* blob length */
-            if (clnt->bloblens[i] > 0)
-                sz += clnt->bloblens[i]; /* blob */
-        }
-    }
-    sz += sizeof(int32_t);                  /* num type overrides */
-    sz += clnt->req.parm * sizeof(int32_t); /* type overrides */
-    sz += sizeof(int32_t);                  /* cost */
-    sz += sizeof(int32_t);                  /* nrows */
-    sz += sizeof(int32_t);                  /* timems */
-    sz += sizeof(int64_t);                  /* rqid */
-
+    cdb2__event__init(&ev);
+    cdb2__sqlevent__init(&sql);
+    gettimeofday(&tv, NULL);
+    ev.seconds = tv.tv_sec;
+    ev.useconds = tv.tv_usec;
+    ev.sql = &sql;
+    ev.sql->cost = cost;
+    ev.sql->nrows = nrows;
+    ev.sql->timems = timems;
+    ev.sql->query = clnt->sql_query;
+    comdb2uuidstr(clnt->fingerprint, fingerprint);
+    ev.sql->fingerprint = fingerprint;
+    sz = cdb2__event__get_packed_size(&ev) + sizeof(int32_t);
     buf = malloc(sz);
-    if (buf == NULL)
-        return -1;
-    p = buf;
-
-#define WRITE_INT(v)                                                           \
-    do {                                                                       \
-        ival = v;                                                              \
-        memcpy(p, &ival, sizeof(int32_t));                                     \
-        p += sizeof(int32_t);                                                  \
-    } while (0)
-
-    WRITE_INT((int32_t)pthread_self());
-    WRITE_INT(t.tv_sec);
-    WRITE_INT(t.tv_usec);
-    WRITE_INT(sqllen);
-    memcpy(p, clnt->sql, sqllen);
-    p += sqllen;
-    if (clnt->tag) {
-        WRITE_INT(strlen(clnt->tag) + 1);
-        memcpy(p, clnt->tag, taglen);
-        p += taglen;
-        WRITE_INT(clnt->tagbufsz);
-        memcpy(p, clnt->tagbuf, clnt->tagbufsz);
-        p += clnt->tagbufsz;
-        WRITE_INT(clnt->numnullbits);
-        if (clnt->numnullbits > 0) {
-            memcpy(p, clnt->nullbits, clnt->numnullbits);
-            p += clnt->numnullbits;
-        }
-        WRITE_INT(clnt->numblobs);
-        for (int i = 0; i < clnt->numblobs; i++) {
-            WRITE_INT(clnt->bloblens[i]);
-            if (clnt->bloblens[i] > 0) {
-                memcpy(p, clnt->blobs[i], clnt->bloblens[i]);
-                p += clnt->bloblens[i];
-            }
-        }
-    } else {
-        WRITE_INT(-1);
-    }
-    /* TODO: is this value valid at this point? */
-    WRITE_INT(clnt->req.parm);
-    if (clnt->req.parm > 0) {
-        memcpy(p, clnt->type_overrides, clnt->req.parm * sizeof(int));
-        p += clnt->req.parm * sizeof(int);
-    }
-    WRITE_INT(cost);
-    WRITE_INT(nrows);
-    WRITE_INT(timems);
-    memcpy(p, &clnt->osql.rqid, sizeof(int64_t));
-    p += sizeof(int64_t);
+    int32_t szf = htonl(sz - sizeof(int32_t));
+    memcpy(buf, &szf, sizeof(int32_t));
+    cdb2__event__pack(&ev, buf + sizeof(int32_t));
     async_enqueue(buf, sz);
     return 0;
-#undef WRITE_INT
 }
 
 void sqllog_log_statement(struct sqlclntstate *clnt, int cost, int nrows,
@@ -735,3 +670,7 @@ void sqllogger_process_message(char *line, int lline)
         return;
     }
 }
+
+void sqllog_save_event(struct sqlclntstate *clnt, char *p, int bytes) {
+}
+
