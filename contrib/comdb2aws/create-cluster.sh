@@ -259,6 +259,7 @@ echo "GatewayPorts yes" >>/etc/ssh/sshd_config
 su - '$SSHUSER' 
 echo "hostname `hostname -f`" >'$PREFIX'/etc/cdb2/config/comdb2.d/hostname.lrl
 systemctl start pmux
+mkdir ~/.ssh/ 2>/dev/null
 chmod 700 ~/.ssh/id_rsa 2>/dev/null
 echo '$PEM' >~/.ssh/id_rsa
 ssh-keygen -y -f ~/.ssh/${key_name}.pem >~/.ssh/authorized_keys

@@ -9,4 +9,4 @@ gencode: codegen *.sh
 install: gencode
 	install -d $(DESTDIR)$(PREFIX)/bin/comdb2awsinc
 	install comdb2aws $(DESTDIR)$(PREFIX)/bin/
-	install *.sh $(DESTDIR)$(PREFIX)/bin//comdb2awsinc
+	install *.sh $(DESTDIR)$(PREFIX)/bin/comdb2awsinc
