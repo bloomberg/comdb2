@@ -156,7 +156,9 @@ typedef enum {
     LLMETA_VERSIONED_SP = 42,
     LLMETA_DEFAULT_VERSIONED_SP = 43,
     LLMETA_TABLE_USER_SCHEMA    = 44,
-    LLMETA_USER_PASSWORD_HASH   = 45
+    LLMETA_USER_PASSWORD_HASH   = 45,
+    LLMETA_SEQUENCE_NAMES = 46, /* names of sequence objects */
+    LLMETA_SEQUENCE_ATTR = 47 /* sequence object attributes */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
