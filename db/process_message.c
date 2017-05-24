@@ -56,6 +56,9 @@ extern int __berkdb_fsync_alarm_ms;
 #include "verify.h"
 #include "switches.h"
 
+// REMOVE: TEST
+#include "sequences.h"
+
 #include "osqlrepository.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
@@ -1836,6 +1839,66 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok = segtok(line, lline, &st, &ltok);
         int thread_id = toknum(tok, ltok);
         gbl_break_lua = thread_id;
+
+
+// REMOVE: TEST Sequences
+    } else if (tokcmp(tok, ltok, "sequence") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+
+        if (tokcmp(tok, ltok, "add") == 0) {
+            char *name = "tst";
+            if (add_sequence(name, 0, 10, -1, true, 0, 100) > 0) {
+                logmsg(LOGMSG_USER, "Created sequence \"%s\"\n", name);
+            } else {
+                logmsg(LOGMSG_USER, "Failed to create sequence\n");
+            }
+        }
+
+        else if (tokcmp(tok, ltok, "next_val") == 0) {
+            long long *val = (long long *) malloc(sizeof(long long));
+
+            if (seq_next_val("tst", val) == 1) {
+                logmsg(LOGMSG_USER, "Value: %d\n", *val);
+            } else {
+                logmsg(LOGMSG_USER, "Failed to obtain next value");
+            }
+            
+        }
+
+        else if (tokcmp(tok, ltok, "prev_val") == 0) {
+            long long *val = (long long *) malloc(sizeof(long long));
+
+            if (seq_prev_val("tst", val) == 1) {
+                logmsg(LOGMSG_USER, "Value: %d\n", *val);
+            } else {
+                logmsg(LOGMSG_USER, "Failed to obtain prev value");
+            }
+            
+        }
+
+        else if (tokcmp(tok, ltok, "print") == 0) {
+            int idx;
+            for (idx = 0; idx < thedb->num_sequences; idx++) {
+                sequence_t *seq = thedb->sequences[idx];
+                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %d\nPrev Val: %d\nMin Val: %d\nMax Val: %d\nInc: %d\nCycle?: %s\nChunk Size: %d\n",
+                    idx,
+                    seq->name,
+                    seq->next_val,
+                    seq->prev_val,
+                    seq->min_val,
+                    seq->max_val,
+                    seq->increment,
+                    seq->cycle ? "true": "false",
+                    seq->chunk_size
+                );
+            }
+        }
+
+        else {
+            logmsg(LOGMSG_USER, "Try Again\n");
+            return -1;
+        }
+
     } else if (tokcmp(tok, ltok, "stat") == 0) {
         /* Sam J - allow us to get much more status from an op1 window by
          * forwarding commands to the bdb backend. */
