@@ -4763,7 +4763,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         char *p;
         p = strchr(type, ':');
         if (p) {
-            strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0]));
+            strncpy(hndl->hosts[0], type, sizeof(hndl->hosts[0])-1);
             p = strchr(hndl->hosts[0], ':');
             *p = 0;
             hndl->ports[0] = atoi(p + 1);
