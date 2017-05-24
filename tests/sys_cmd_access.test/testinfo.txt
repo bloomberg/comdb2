@@ -1,1 +1,0 @@
-testname: sys_cmd_access

@@ -1,2 +1,0 @@
-testname: misstable_remsql
-version: r000012

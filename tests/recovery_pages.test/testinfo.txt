@@ -1,2 +1,0 @@
-testname: recovery_pages
-version: r000005

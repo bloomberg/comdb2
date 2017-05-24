@@ -1,2 +1,0 @@
-testname: sc_newuniq
-version: r000003

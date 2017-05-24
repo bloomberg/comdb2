@@ -1,2 +1,0 @@
-testname: sc_vutf8_blob2
-version: r000012

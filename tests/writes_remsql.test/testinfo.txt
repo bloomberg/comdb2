@@ -1,2 +1,0 @@
-testname: writes_remsql
-version: r000019

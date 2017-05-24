@@ -1,2 +1,0 @@
-testname: vutf8_rowlocks
-version: r000007

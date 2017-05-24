@@ -1,8 +1,0 @@
-set explain on
-select count(*) from t1 where x = 3;
-set explain verbose
-select count(*) from t1 where x = 3;
-set explain on
-select count(*) from nonexistent where x = 3;
-set explain off
-select count(*) from t1 where x = 3;

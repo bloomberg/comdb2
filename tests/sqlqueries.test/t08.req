@@ -1,1 +1,0 @@
-explain query plan SELECT s.bbid, s.compen_fisc_yr_num, fys_date, fye_date, num_of_drct_change_during_fy  FROM esgprfsum s, esgfscdts f  WHERE   s.bbid=f.bbid  AND s.compen_fisc_yr_num=f.compen_fisc_yr_num  AND s.bbid=100801  AND f.fye_date >= 20061231  AND f.fye_date <= 20141231  ORDER BY s.compen_fisc_yr_num;

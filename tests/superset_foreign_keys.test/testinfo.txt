@@ -1,2 +1,0 @@
-testname: superset_foreign_keys
-version: r000002

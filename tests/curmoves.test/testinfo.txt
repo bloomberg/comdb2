@@ -1,2 +1,0 @@
-testname: curmoves
-version: r000022

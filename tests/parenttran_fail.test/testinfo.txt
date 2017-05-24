@@ -1,2 +1,0 @@
-testname: parenttran_fail
-version: r000022

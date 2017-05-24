@@ -1,2 +1,0 @@
-testname: rowlocks_blkseq
-version: r000003

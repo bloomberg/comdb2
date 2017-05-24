@@ -1,2 +1,0 @@
-testname: autoanalyze
-version: r000010

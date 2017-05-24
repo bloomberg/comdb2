@@ -1,2 +1,0 @@
-testname: truncstat
-version: r000002

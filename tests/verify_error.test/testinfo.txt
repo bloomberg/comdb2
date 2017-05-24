@@ -1,2 +1,0 @@
-testname: verify_error
-version: r000023

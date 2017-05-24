@@ -1,9 +1,0 @@
-schema { 
-        cstring str1[32]
-        cstring str2[128] 
-}
-
-keys { 
-        "pkey" = str1+str2
-}
-

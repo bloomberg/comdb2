@@ -1,2 +1,0 @@
-testname: sc_inserts
-version: r000009

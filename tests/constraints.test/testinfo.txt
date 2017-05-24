@@ -1,2 +1,0 @@
-testname: constraints
-version: r000026

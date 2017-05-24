@@ -1,2 +1,0 @@
-testname: newsqlreplay
-version: r000005

@@ -1,2 +1,0 @@
-testname: sorese_tran
-version: r000021
