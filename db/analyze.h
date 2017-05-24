@@ -17,8 +17,6 @@
 #ifndef INCLUDED_ANALYZE_H
 #define INCLUDED_ANALYZE_H
 
-#define DEFAULT_ANALYZE_PERCENT 20
-
 /**
  * Returns 1 if this is an analyze-thread which has a sampled (compressed) btree
  * for the

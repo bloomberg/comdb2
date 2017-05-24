@@ -1466,8 +1466,9 @@ void *message_trap_td(void *args)
     sb = sbuf2open(1, 0);
 
     /* analyze the database */
-    analyze_database(sb, DEFAULT_ANALYZE_PERCENT,
-                     0); // default coverage 20, override llmeta scale 0 (false)
+    analyze_database(sb, 
+         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT),
+         0); //override llmeta scale 0 (false)
 
     /* flush sbuf */
     sbuf2flush(sb);
@@ -1590,7 +1591,8 @@ int do_analyze(char *tbl, int percent)
     int overwrite_llmeta = 1;
     if (percent == 0) {
         overwrite_llmeta = 0;
-        percent = DEFAULT_ANALYZE_PERCENT;
+        percent = bdb_attr_get(thedb->bdb_attr, 
+                               BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
     }
 
     int rc;

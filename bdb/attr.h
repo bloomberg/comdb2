@@ -332,19 +332,19 @@ DEF_ATTR(KEEP_REFERENCED_FILES, keep_referenced_files, BOOLEAN, 1)
 DEF_ATTR(DISABLE_PGORDER_MIN_NEXTS, disable_pgorder_min_nexts, QUANTITY, 1000)
 DEF_ATTR(DISABLE_PGORDER_THRESHOLD, disable_pgorder_threshold, PERCENT, 60)
 
+DEF_ATTR(DEFAULT_ANALYZE_PERCENT, default_analyze_percent, PERCENT, 20)
 /* AA: AUTO ANALYZE */
 DEF_ATTR(AUTOANALYZE, autoanalyze, BOOLEAN, 0)
 DEF_ATTR(AA_COUNT_UPD, aa_count_upd, BOOLEAN, 0)
 DEF_ATTR(MIN_AA_OPS, min_aa_ops, QUANTITY, 100000) // threshold for auto analyze
 DEF_ATTR(CHK_AA_TIME, chk_aa_time, SECS, 3 * 60)   // check stats every 3 min
 DEF_ATTR(MIN_AA_TIME, min_aa_time, SECS, 2 * 60 * 60) // don't rerun within 2hrs
-DEF_ATTR(AA_LLMETA_SAVE_FREQ, aa_llmeta_save_freq, QUANTITY,
-         1) // write llmeta every N saves
-DEF_ATTR(AA_MIN_PERCENT, aa_min_percent, QUANTITY,
-         20) // min percent change to trigger analyze
-DEF_ATTR(AA_MIN_PERCENT_JITTER, aa_min_percent_jitter, QUANTITY,
-         300) // min operations used in conjunction with percent change to
-              // trigger analyze
+// write llmeta every N saves
+DEF_ATTR(AA_LLMETA_SAVE_FREQ, aa_llmeta_save_freq, QUANTITY, 1)
+// min percent change in a table to trigger analyze
+DEF_ATTR(AA_MIN_PERCENT, aa_min_percent, PERCENT, 20)
+// min operations used in conjunction with percent change to trigger analyze
+DEF_ATTR(AA_MIN_PERCENT_JITTER, aa_min_percent_jitter, QUANTITY, 300)
 
 DEF_ATTR(PLANNER_SHOW_SCANSTATS, planner_show_scanstats, BOOLEAN, 0)
 DEF_ATTR(PLANNER_WARN_ON_DISCREPANCY, planner_warn_on_discrepancy, BOOLEAN, 0)
