@@ -1,0 +1,4 @@
+setattr DEFAULT_ANALYZE_PERCENT 100
+analyze t1
+select * from sqlite_stat1
+select * from sqlite_stat4
