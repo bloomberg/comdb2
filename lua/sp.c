@@ -2310,7 +2310,6 @@ static int dbtable_update(Lua lua)
     
     // Iterate lua table again to bind params to stmt, where part
     lua_pushnil(lua);
-    pos = 1;
     while (lua_next(lua, 3)) {
         lua_pushinteger(lua, pos++);
         if ((rc = stmt_bind_int(lua, stmt, 6, 5)) != 0)

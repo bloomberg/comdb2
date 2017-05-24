@@ -136,14 +136,14 @@ fi
 
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,b,d from t1 order by a" > allrows3.txt
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "update t1 set c = 'blah' where a >= 2 and a < 5"
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,b,dt from t1 order by a" > allrows3.txt
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "update t1 set c = 7 where a >= 2 and a <= 5"
 
-sleeep 3
+sleep 3
 
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,b,d from t1 order by a" > allrows4.txt
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select a,b,dt from t1 order by a" > allrows4.txt
 
-if ! diff allrows3.txt allrows4.txt ; then
-    failexit "allrows3.txt allrows4.txt should differ by $((5-2+1)) rows"
+if diff -y allrows3.txt allrows4.txt ; then
+    failexit "allrows3.txt allrows4.txt should differ by $((5-2+1)) rows not $(diff -y allrows3.txt allrows4.txt | wc -l)"
 fi
 echo "Success"
