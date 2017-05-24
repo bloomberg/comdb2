@@ -1,6 +1,6 @@
 # Local defs
 tools_TASKS:=cdb2sql comdb2sc cdb2sockpool comdb2ar pmux cdb2_dump	\
-cdb2_stat cdb2_verify cdb2_printlog cdb2_sqlreqplay
+cdb2_stat cdb2_verify cdb2_printlog cdb2_sqlreplay
 lcl_TASKS:=$(foreach task,$(tools_TASKS),tools/$(task)/$(task))
 
 $(tools_TASKS): $(lcl_TASKS) 
@@ -126,7 +126,7 @@ tools/cdb2_printlog/cdb2_printlog: $(cdb2_printlog_OBJS)
 # Defined in the top level makefile
 TASKS+=$(lcl_TASKS) $(tools_TASKS)
 OBJS+=tools/cdb2sql/cdb2sql.o tools/comdb2sc/comdb2sc.o			\
-tools/cdb2_sqlreqplay/cdb2_sqlreqplay.o $(cdb2sockpool_OBJS)		\
+tools/cdb2_sqlreplay/cdb2_sqlreplay.o $(cdb2sockpool_OBJS)		\
 $(comdb2ar_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(cdb2_printlog_OBJS)
 
 # Build tools by default

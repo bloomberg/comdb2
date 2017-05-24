@@ -105,6 +105,7 @@ install: all
 	install -D cdb2_dump $(DESTDIR)$(PREFIX)/bin/cdb2_dump
 	install -D cdb2_stat $(DESTDIR)$(PREFIX)/bin/cdb2_stat
 	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
+	install -D cdb2_sqlreplay $(DESTDIR)$(PREFIX)/bin/sqlreplay
 	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
 	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
 	install -D tools/pmux/pmux.service $(DESTDIR)/lib/systemd/system/pmux.service
