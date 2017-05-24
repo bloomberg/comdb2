@@ -133,7 +133,7 @@ cdb2_printlog
 cdb2_verify
 cdb2_dump
 cdb2_stat
-cdb2_sqlreqplay
+cdb2_sqlreplay
 
 # fluff produced by various tools that tends to accumulate
 *.sw[op]
