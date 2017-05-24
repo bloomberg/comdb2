@@ -9,20 +9,35 @@ done
 pmux -l
 
 host=$(hostname -i)
-echo "hostname $host" > /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
 
-sleep 5
+if [[ -f /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl ]]; then
+    for dbname in /opt/bb/var/cdb2/*; do 
+        dbname=${dbname##*/}
+        comdb2 $dbname > /opt/bb/var/log/$dbname.out 2>&1 &
+    done
+else 
+    echo "hostname $host" > /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl
 
-port=19000
-for dbname in $*; do
-    comdb2 --create $dbname >/dev/null &
-    port=$(($port+1))
-done
-wait
+    for dbname in $*; do
+        comdb2 --create $dbname >/dev/null 2>&1 &
+    done
+    wait
 
-port=19000
-for dbname in $*; do
-#   echo "port localhost $port" >> /opt/bb/var/cdb2/$dbname/$dbname.lrl
-    comdb2 $dbname &
-done
+    for dbname in $*; do
+        comdb2 $dbname > /opt/bb/var/log/$dbname.out 2>&1 &
+    done
+fi
+
+(
+echo "#!/bin/bash"
+echo
+echo echo comdb2_config:allow_pmux_route:true
+for db in $*; do
+    echo "echo $db:$host"
+done 
+echo echo comdb2_config:default_type:docker
+) > /bin/cdb2config
+
+chmod +x /bin/cdb2config
+
 wait

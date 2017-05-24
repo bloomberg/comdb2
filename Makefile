@@ -127,7 +127,12 @@ install: all
 build-build-container:
 	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build .
 
-contrib/docker/comdb2: docker-build
+docker-clean:
+	rm -fr contrib/docker/build/*
+
+docker-dev: docker-standalone
+	docker build -t comdb2-dev:$(VERSION) -f contrib/docker/Dockerfile.dev .
+	docker tag comdb2-dev:$(VERSION) comdb2-dev:latest
 
 docker-standalone: docker-build
 	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
