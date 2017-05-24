@@ -1188,3 +1188,28 @@ exec procedure json_annotate()
 EOF
 
 wait
+
+cdb2sql $SP_OPTIONS - <<'EOF'
+create procedure sptest_update {
+local function main(test_no)
+ local tab = db:table('tmp',{{"id", 'integer'},{"i", 'integer'},{"j", 'integer'},{"k", 'integer'}})
+ tab:insert({id="1",i=1,j=11,k=111})
+ tab:insert({id="2",i=2,j=11,k=111})
+ tab:insert({id="3",i=1,j=11,k=222})
+ tab:insert({id="4",i=2,j=11,k=222})
+ local resultset, rc = db:exec('select * from '..tab:name())
+ db:emit(resultset)
+ tab:update({j=10,k=333}, {i=2, k=111})
+ resultset, rc = db:exec('select * from '..tab:name())
+ db:emit(resultset)
+ tab:update({j=20}, {i=1})
+ resultset, rc = db:exec('select * from '..tab:name())
+ db:emit(resultset)
+end
+}$$
+exec procedure sptest_update()
+EOF
+
+wait
+
+

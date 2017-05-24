@@ -16,15 +16,12 @@ local function do_update(event)
         return rc
     end
 
-    --bad local res, rc = db:exec( 'insert into t1_updates (a,dt) values(' .. anew .. ','.. dtnow .. ') ' )
-    --return rc
-
     return t1:update({dt=dtnow}, {a=anew})
-    --or use this db:exec( 'update t1 set dt = "' .. db:now() .. '" where a="' .. anew .. '"')
-    --return 0;
 end
 
 local function main(event)
+    --can be called manually via exec procedure upd_date('{"new":{"a":3}}')
+    --or via trigger which will pass equivalent object
     local obj = event
     if type(event) == "string" then
         obj = db:json_to_table(event)
