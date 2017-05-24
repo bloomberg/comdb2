@@ -17,8 +17,6 @@ Options:
 ec2='aws ec2 --output text'
 ec2vrfy='aws ec2 --dry-run'
 key_name=
-DEFAULT_distro='debian'
-DEFAULT_image_id=ami-8c12649a
 distro='debian'
 image_id=
 tier=
@@ -31,15 +29,6 @@ creat_tier=0
 creat_key=0
 has_opt=0
 ssh="ssh -o StrictHostKeyChecking=no -l $SSHUSER"
-
-bootstrap='#!/bin/sh
-mkdir -p /opt/bb/var 2>&1
-echo "hostname `hostname -f`" >'$PREFIX'/etc/cdb2/config/comdb2.d/hostname.lrl
-chmod -R 755 '$PREFIX'/etc
-mkdir -p '$PREFIX'/etc/cdb2/config.d/
-chown -R '$SSHUSER' '$PREFIX'/etc/cdb2/config.d/
-chmod -R 777 '$PREFIX'/var
-'$PREFIX'/bin/pmux -l &'
 
 _yn()
 {
@@ -199,9 +188,8 @@ _verify_opt()
         if [ "$image_id" != "" ]; then
             echo "Found pre-built $distro AMI: $image_id"
         else
-            echo "Could not find pre-built $distro AMI."
-            echo "Fall back to $DEFAULT_image_id ($DEFAULT_distro)."
-            image_id=$DEFAULT_image_id
+            echo "Could not find pre-built $distro AMI." >&2
+            exit 1
         fi
     fi
     $ec2 describe-images --image-ids $image_id \
@@ -213,14 +201,18 @@ _verify_opt()
 
     # Create-if-absent options
     tier_sgid=`$ec2 describe-security-groups \
-        --group-names $tier_sg --query 'SecurityGroups[*].GroupId'`
+        --group-names $tier_sg --query 'SecurityGroups[*].GroupId' >/dev/null 2>&1`
     if [ $? != 0 ]; then
         creat_tier=1
     fi
 
-    $ec2 describe-key-pairs --key-names $key_name
+    # Always require key presence on this machine to avoid complication.
+    $ec2 describe-key-pairs --key-names $key_name >/dev/null 2>&1
     if [ $? != 0 ]; then
         creat_key=1
+    elif [ ! -f ~/.ssh/${key_name}.pem ]; then
+        echo "~/.ssh/${key_name}.pem does not exist." >&2
+        exit 1
     fi
 
     echo "OK"
@@ -247,7 +239,7 @@ _creat()
     if [ $creat_key != 0 ]; then
         $ec2 create-key-pair \
             --key-name $key_name --query 'KeyMaterial' \
-            | sed 's/\\n/\n/g' - | tee ${key_name}.pem
+            | sed 's/\\n/\n/g' - >${key_name}.pem
         chmod 400 ${key_name}.pem
         if [ ! -d ~/.ssh ]; then
             mkdir ~/.ssh 2>/dev/null
@@ -256,6 +248,25 @@ _creat()
         echo "SSH key saved at ~/.ssh/${key_name}.pem"
     fi
 
+    # - create hostname.lrl
+    # - make directories for comdb2db.cfg and per-db config
+    # - bring up pmux (Occasionally pmux is not up in an EC instance bootstrapped from an AMI)
+    # - Distribute SSH key
+    PEM=`cat ~/.ssh/${key_name}.pem`
+    bootstrap='
+#!/bin/sh
+echo "GatewayPorts yes" >>/etc/ssh/sshd_config
+su - '$SSHUSER' 
+echo "hostname `hostname -f`" >'$PREFIX'/etc/cdb2/config/comdb2.d/hostname.lrl
+systemctl start pmux
+chmod 700 ~/.ssh/id_rsa 2>/dev/null
+echo '$PEM' >~/.ssh/id_rsa
+ssh-keygen -y -f ~/.ssh/${key_name}.pem >~/.ssh/authorized_keys
+cp ~/.ssh/authorized_keys ~/.ssh/id_rsa.pub
+chmod 400 ~/.ssh/id_rsa
+echo "Host *
+StrictHostKeyChecking no" >>~/.ssh/config
+'
     insts=`$ec2 run-instances --security-groups $tier_sg \
           --image-id $image_id --count $count \
           --instance-type $instance_type --key-name $key_name \
@@ -295,69 +306,27 @@ _creat()
         --tags Key=Cluster,Value=$cluster Key=Tier,Value=$tier
     set +e
 
-    if [ -f ~/.ssh/${key_name}.pem ]; then
-        echo "Found SSH key at ~/.ssh/${key_name}.pem"
-        pgrep ssh-agent
-        if [ $? != 0 ]; then
-            eval `ssh-agent -s`
-        fi
-        sleep 2
-        ssh-add ~/.ssh/${key_name}.pem
-        if [ $? != 0 ]; then
-            eval `ssh-agent -s`
-            sleep 2
-            ssh-add ~/.ssh/${key_name}.pem
-        fi
-
-        echo "Setting up SSH keys within the cluster"
-        addrs=`$ec2 describe-instances \
-              --instance-ids $insts --query \
-              'Reservations[*].Instances[*].[PublicIpAddress]'`
-        for addr in $addrs; do
-            for retry in `seq 1 10`; do
-                cat ~/.ssh/${key_name}.pem \
-                | $ssh $addr "chmod 700 ~/.ssh/id_rsa 2>/dev/null; cat > ~/.ssh/id_rsa; chmod 700 ~/.ssh/id_rsa"
-                if [ $? != 0 ]; then
-                    sleep 10;
-                    continue;
-                fi
-                ssh-keygen -y -f ~/.ssh/${key_name}.pem \
-                | $ssh $addr "cat >> ~/.ssh/authorized_keys"
-                if [ $? != 0 ]; then
-                    sleep 10;
-                    continue;
-                fi
-                ssh-keygen -y -f ~/.ssh/${key_name}.pem \
-                | $ssh $addr "cat > ~/.ssh/id_rsa.pub"
-                if [ $? != 0 ]; then
-                    sleep 10;
-                    continue;
-                fi
-
-                $ssh $addr "echo 'Host *
-                StrictHostKeyChecking no'>> ~/.ssh/config"
-                if [ $? != 0 ]; then
-                    sleep 10;
-                    continue;
-                fi
-
-                echo "PATH=\"$PATH:$PREFIX/bin\"" \
-                | $ssh $addr "cat > ~/.profile"
-                if [ $? != 0 ]; then
-                    sleep 10;
-                    continue;
-                fi
-                break;
-            done
+    echo "Testing connection to the cluster..."
+    addrs=`$ec2 describe-instances \
+          --instance-ids $insts --query \
+          'Reservations[*].Instances[*].[PublicIpAddress]'`
+    for addr in $addrs; do
+        for retry in `seq 19 -1 0`; do
+            $ssh -i ~/.ssh/${key_name}.pem $addr "echo 'Connected.'"
+            if [ $? != 0 ]; then
+                echo "$addr is not in SSH-ready state. Will retry in 10 seconds."
+                echo "Number of retries remaining: ${retry}."
+                sleep 10;
+                continue;
+            fi
+            break;
         done
-    fi
+    done
+
     echo "OK"
 
-    printf "please assign the instances to "
-    printf "\"$tier_sg\" security group to allow "
-    printf "access to Comdb2 $cluster cluster.\n"
     if [ $has_opt = 0 ]; then
-        which ec2metadata
+        which ec2metadata >/dev/null 2>&1
         if [ $? = 0 ]; then
             myinst=`ec2metadata | grep 'instance-id' | cut -d' ' -f2`
 
@@ -368,7 +337,7 @@ _creat()
                 # wc -l to suppress errors
                 ingrp=`echo $mygrps | grep $tier_sgid | wc -l`
                 if [ "$ingrp" = 0 ]; then
-                    echo "Assign this instance to $tier_sg..."
+                    echo "Assign this instance to ${tier_sg}?"
                     _yn
 
                     $ec2 modify-instance-attribute \

@@ -5,15 +5,14 @@ usage="$(basename "$0") -d <database> -c <cluster> [options] -- Start a database
 Options
 -h, --help                  Show this help information 
 -d, --database <database>   Database name
--c, --cluster <cluster>     Target cluster
---lrl <lrl>                 lrl location"
+-c, --cluster <cluster>     Target cluster"
 
 ec2='aws ec2 --output text'
 ssh="ssh -o StrictHostKeyChecking=no -l $SSHUSER"
+supervisorconfig=/opt/bb/etc/supervisord_cdb2.conf
 
 cluster=
 database=
-lrl=
 
 _set_opt()
 {
@@ -30,10 +29,6 @@ _set_opt()
         "-d" | "--database")
             shift
             database=$1
-            ;;
-        "-l" | "--lrl")
-            shift
-            lrl=$1
             ;;
         *)
             echo "$usage" >&2
@@ -62,18 +57,18 @@ if [ "$nodes" = "" ]; then
     exit 1
 fi
 
-# bring up db on each node
-for node in $nodes; do
-    if [ "$lrl" = "" ]; then
-        lrl=$PREFIX/var/${database}/${database}.lrl
-    fi
+set +e
 
-    # !!!HARDCODED PATHS
-    $ssh $node "HOSTNAME=$node $PREFIX/bin/comdb2 $database \
-        -lrl $lrl >/var/tmp/${database}.log.txt 2>&1 &"
+# bring up db on each node
+anode=`echo "$nodes" | head -1`
+for node in $nodes; do
+    if [ "$node" = "$anode" ]; then
+        supervisorctl -c $supervisorconfig start $database
+    else
+        $ssh $node "supervisorctl -c $supervisorconfig start $database"
+    fi
 done
 
-set +e
 nwaits=0
 prompt='Waiting for all nodes to come up...'
 while true; do

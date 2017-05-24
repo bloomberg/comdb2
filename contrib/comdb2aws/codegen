@@ -42,7 +42,7 @@ for file in `ls *sh`; do
     subcmd=${subcmd##*/}
     echo "${subcmd})
           shift
-          ${PREFIX}/bin/${file} \$*
+          ${PREFIX}/bin/comdb2awsinc/${file} \$*
           ;;" >>./$target
 done
 echo '*)

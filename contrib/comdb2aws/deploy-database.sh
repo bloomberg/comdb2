@@ -5,8 +5,7 @@ Options:
 -h, --help                  Show this help information 
 -d, --database <database>   Database name
 -c, --cluster <cluster>     Target cluster
---lrl <lrl>                 Path to the lrl file
---dir <datadir>             Data directory
+--directory   <directory>   Data directory
 --gen-conf                  Generate per-db configure on this instance. This is the default.
 --no-gen-conf               Do not generate per-db configure on this instance."
 
@@ -19,9 +18,8 @@ cluster=
 database=
 dbdir=
 genconf=1
-lrl=
-dir=
 ssh="ssh -o StrictHostKeyChecking=no -l $SSHUSER"
+supervisorconfig=/opt/bb/etc/supervisord_cdb2.conf
 
 _set_opt()
 {
@@ -38,23 +36,16 @@ _set_opt()
         "-d" | "--database")
             shift
             database=$1
-            if [ "$dbdir" = "" ]; then
-                dbdir="$PREFIX/var/$database"
-            fi
+            ;;
+        "--directory")
+            shift
+            dbdir=$1
             ;;
         "--gen-conf")
             genconf=1
             ;;
         "--no-gen-conf")
             genconf=0
-            ;;
-        "-l" | "--lrl")
-            shift
-            lrl=$1
-            ;;
-        "-i" | "--dir")
-            shift
-            dir=$1
             ;;
         *)
             echo "$usage" >&2
@@ -72,7 +63,11 @@ if [ "$cluster" = "" ] || [ "$database" = "" ]; then
     exit 1
 fi
 
-set -xe
+if [ "$dbdir" = "" ]; then
+    dbdir="$PREFIX/var/cdb2/$database"
+fi
+
+set -e
 # get nodes
 query='Reservations[*].Instances[*].[PrivateIpAddress]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
@@ -86,34 +81,60 @@ query='Reservations[*].Instances[*].[PrivateDnsName]'
 dnsnames=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 
+set +e
+
+dbsupervisorcfg="[program:$dbname]
+command=/opt/bb/bin/comdb2 $dbname
+autostart=true
+autorestart=true
+stopsignal=TERM
+stopwaitsecs=60
+redirect_stderr=true
+stdout_logfile=AUTO
+directory=/opt/bb/var/cdb2/$dbname"
+
 # init db locally on the 1st node
 anode=`echo "$nodes" | head -1`
-$ssh $anode "rm -rf $dbdir; \
-        $PREFIX/bin/comdb2 --create --dir $dbdir $database ; \
-        echo "cluster nodes " `echo $dnsnames` >>${dbdir}/${database}.lrl"
+if [ "$node" != "$anode" ]; then
+    if [ -d "$dbdir" ]; then
+        echo 'Database already exists.' >&2
+        exit 1
+    fi
+
+    $PREFIX/bin/comdb2 --create --dir $dbdir $database
+    cat $dbsupervisorcfg >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
+    supervisorctl -c $supervisorconfig reread >/dev/null
+    supervisorctl -c $supervisorconfig add $database
+    echo cluster nodes $dnsnames >>${dbdir}/${database}.lrl
+else
+    $ssh $anode 'if [ -d "'$dbdir'" ]; then
+        echo Database already exists. >&2
+        exit 1
+    fi
+    '$PREFIX'/bin/comdb2 --create --dir $dbdir '$database'
+    cat '$dbsupervisorcfg' >/opt/bb/etc/cdb2_supervisor/conf.d/'$database'.conf
+    supervisorctl -c '$supervisorconfig' reread >/dev/null
+    supervisorctl -c '$supervisorconfig' add '$database'
+    echo cluster nodes '$dnsnames' >>'${dbdir}'/'${database}'.lrl'
+fi
 
 # copy over
 for node in $nodes; do
     if [ "$node" != "$anode" ]; then
-        if [ "$dir" = "" ]; then
-            $ssh $anode "$PREFIX/bin/copycomdb2 ${dbdir}/${database}.lrl ${node}:${lrl}"
-        else
-            $ssh $anode "$PREFIX/bin/copycomdb2 ${dbdir}/${database}.lrl ${node}:${lrl} ${node}:${dir}"
-        fi
+        $ssh $anode "$PREFIX/bin/copycomdb2 ${dbdir}/${database}.lrl ${node}:${lrl}
+        supervisorctl -c $supervisorconfig reread >/dev/null
+        supervisorctl -c $supervisorconfig add $database"
     fi
 done
 
 # bring up db on each node
 for node in $nodes; do
-    if [ "$lrl" = "" ]; then
-        lrl=${dbdir}/${database}.lrl
+    if [ "$node" = "$anode" ]; then
+        supervisorctl -c $supervisorconfig start $database
+    else
+        $ssh $node "supervisorctl -c $supervisorconfig start $database"
     fi
-
-    # !!!HARDCODED PATHS
-    $ssh $node "HOSTNAME=$node $PREFIX/bin/comdb2 $database \
-        -lrl $lrl >/var/tmp/${database}.log.txt 2>&1 &"
 done
-set +xe
 
 # wait for all instances to come up
 nwaits=0
@@ -164,5 +185,3 @@ while true; do
     fi
     sleep 5
 done
-
-rm -rf $dbdir

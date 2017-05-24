@@ -9,6 +9,7 @@ Options
 
 ec2='aws ec2 --output text'
 ssh='ssh -o StrictHostKeyChecking=no'
+supervisorconfig=/opt/bb/etc/supervisord_cdb2.conf
 
 cluster=
 database=
@@ -58,8 +59,12 @@ fi
 set +e
 
 # bring down db on each node
+anode=`echo "$nodes" | head -1`
 for node in $nodes; do
-    $ssh $node $PREFIX'/bin/cdb2sql '$database' local "exec procedure sys.cmd.send(\"exit\")" && while true; do [ `pgrep -a comdb2 | grep -c '$database'` = 0 ] && break; sleep 5; done'
-    echo
+    if [ "$node" = "$anode" ]; then
+        supervisorctl -c $supervisorconfig stop $database
+    else
+        $ssh $node "supervisorctl -c $supervisorconfig stop $database"
+    fi
 done
 echo OK
