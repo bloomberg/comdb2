@@ -69,7 +69,7 @@ TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
     '-- 3
 Planner Effort 1
 ---- begin solver.  (nRowEst=0)
-New    0 cost=46 ,  0 order=0
+New    0 cost=46 ,  0, 46 order=0
 ---- after round 0 ----
  0 cost=46  nrow=0   order=0
 ---- Solution nRow=0
