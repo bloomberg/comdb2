@@ -102,8 +102,6 @@ if [ "`hostname -f`" = "$anode" ]; then
 
     $PREFIX/bin/comdb2 --create --dir $dbdir $database
     echo "$dbsupervisorcfg" >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
-    supervisorctl -c $supervisorconfig reread >/dev/null
-    supervisorctl -c $supervisorconfig add $database
     echo cluster nodes $dnsnames >>${dbdir}/${database}.lrl
 else
     $ssh $anode 'if [ -d "'$dbdir'" ]; then
@@ -112,8 +110,6 @@ else
     fi
     '$PREFIX'/bin/comdb2 --create --dir '$dbdir' '$database'
     echo "'"$dbsupervisorcfg"'" >/opt/bb/etc/cdb2_supervisor/conf.d/'$database'.conf
-    supervisorctl -c '$supervisorconfig' reread >/dev/null
-    supervisorctl -c '$supervisorconfig' add '$database'
     echo cluster nodes '$dnsnames' >>'${dbdir}'/'${database}'.lrl'
 fi
 
@@ -122,13 +118,21 @@ for node in $nodes; do
     if [ "$node" != "$anode" ]; then
         if [ "`hostname -f`" = "$node" ]; then
             $PREFIX/bin/copycomdb2 ${anode}:${dbdir}/${database}.lrl
-            supervisorctl -c $supervisorconfig reread >/dev/null
-            supervisorctl -c $supervisorconfig add $database
+            echo "$dbsupervisorcfg" >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
         else
             $ssh $node "$PREFIX/bin/copycomdb2 ${anode}:${dbdir}/${database}.lrl
-            supervisorctl -c $supervisorconfig reread >/dev/null
-            supervisorctl -c $supervisorconfig add $database"
+            echo "$dbsupervisorcfg" >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf"
         fi
+    fi
+done
+
+for node in $nodes; do
+    if [ "`hostname -f`" = "$node" ]; then
+        supervisorctl -c $supervisorconfig reread >/dev/null
+        supervisorctl -c $supervisorconfig add $database
+    else
+        $ssh $node "supervisorctl -c $supervisorconfig reread >/dev/null
+        supervisorctl -c $supervisorconfig add $database"
     fi
 done
 
@@ -141,7 +145,6 @@ while true; do
     printf "%s\r" "$prompt"
     for node in $nodes; do
         hide=`$PREFIX/bin/cdb2sql $database --host $node 'select 1' 2>&1`
-        echo $hide
         if [ $? = 0 ]; then
             echo
             echo "OK"
