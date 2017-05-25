@@ -63,6 +63,7 @@
 #include "intern_strings.h"
 #include "util.h"
 #include "logmsg.h"
+#include "comdb2uuid.h"
 
 enum logevent_type {
     EVENT_PUSH_PREFIX,
@@ -161,6 +162,7 @@ struct reqlogger {
     int vreplays;
     int queuetimems;
     char fingerprint[16];
+    char id[41];
 };
 
 /* a rage of values to look for */
@@ -2007,6 +2009,101 @@ int reqlog_current_ms(struct reqlogger *logger)
     return (time_epochms() - logger->startms);
 }
 
+static void logjson_string(char *in) {
+    char *s = in;
+    printf("\"");
+    if (in) {
+        while (*s) {
+            switch (*s) {
+                case '\"':
+                    printf("\\\"");
+                    break;
+                case '\n':
+                    printf("\\n");
+                    break;
+                case '\b':
+                    printf("\\b");
+                    break;
+                case '/':
+                    printf("\\/");
+                    break;
+                case '\f':
+                    printf("\\f");
+                    break;
+                case '\r':
+                    printf("\\r");
+                    break;
+                case '\t':
+                    printf("\\t");
+                    break;
+                default:
+                    putc(*s, stdout);
+                    break;
+            }
+            s++;
+        }
+    }
+    printf("\"");
+}
+
+void logjson_params(struct reqlogger *logger) {
+}
+
+void logjson_perfdata(struct reqlogger *logger) {
+    const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
+    printf( " \"lockwaits\" :  %d, "
+            " \"reads\" : %d, "
+            " \"writes\" : %d, "
+            " \"readtime\" : %d, "
+            " \"writetime\" : %d, "
+            " \"locktime\" : %d ",
+
+            thread_stats->n_lock_waits,
+            thread_stats->n_preads,
+            thread_stats->n_pwrites,
+            thread_stats->pread_time_ms,
+            thread_stats->pwrite_time_ms,
+            thread_stats->lock_wait_time_ms);
+
+}
+
+static void logjson(struct reqlogger *logger) {
+    static const char *hexchars = "0123456789abcdef";
+    printf("{  \"type\" : \"sql\",  \"query\" : ");
+
+    logjson_string(logger->stmt);
+
+    printf(", \"id\" : \"%s\"", logger->id);
+    printf(", \"cost\" : %f", logger->sqlcost);
+    printf(", \"rows\" : %d", logger->sqlrows);
+    printf(", \"replays\" : %d", logger->vreplays);
+    printf(", \"fingerprint\" : \"");
+    for (int i = 0; i < 15; i++) {
+        putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], stdout);
+        putc(hexchars[logger->fingerprint[i] & 0x0f], stdout);
+    }
+    printf("\"");
+    printf(", \"duration\" : %d", logger->durationms);
+    printf(", \"qtime\" : %d", logger->queuetimems);
+
+    logjson_params(logger);
+
+    printf(", \"perf\" : { ");
+    logjson_perfdata(logger);
+    printf("} ");
+
+
+    printf("}\n");
+}
+
+void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen) {
+    if (idlen == sizeof(uuid_t))
+        comdb2uuidstr(id, logger->id);
+    else
+        sprintf(logger->id, "%llx", *(unsigned long long*) id);
+}
+
+
 /* End of a request. */
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line)
 {
@@ -2049,6 +2146,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
 
     logger->durationms =
         (time_epochms() - logger->startms) + logger->queuetimems;
+
+    logjson(logger);
 
     /* now see if this matches any of our rules */
     if (rules.count != 0) {

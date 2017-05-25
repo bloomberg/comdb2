@@ -1463,6 +1463,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                    "[%s] warning: query created a temporary table: %s\n", addr,
                    clnt->sql);
         }
+        if (clnt->osql.rqid != 0 && clnt->osql.rqid != OSQL_RQID_USE_UUID)
+            reqlog_set_rqid(logger, &clnt->osql.rqid, sizeof(clnt->osql.rqid));
+        else
+            reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
     }
 
     listc_init(&lst, offsetof(struct sql_hist, lnk));
@@ -1492,22 +1496,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->conn = thd->sqlclntstate->conninfo;
     }
 
-    if (stmt_rc == 0 && gbl_log_all_sql) {
-        /* TODO: cost and timems should really be part of clnt... */
-        int rows;
-
-        if (clnt->iswrite) {
-            if (clnt->intrans)
-                rows = 0;
-            else
-                rows = clnt->log_effects.num_updated +
-                       clnt->log_effects.num_deleted +
-                       clnt->log_effects.num_inserted;
-        } else
-            rows = clnt->nrows;
-
-        sqllog_log_statement(clnt, cost, rows, timems);
-    }
+    reqlog_set_cost(logger, cost);
+    reqlog_set_rows(logger, clnt->nrows);
 
     pthread_mutex_lock(&gbl_sql_lock);
     {
@@ -1863,6 +1853,11 @@ static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
     reqlog_set_queue_time(logger, clnt->deque_time - clnt->enque_time);
 }
 
+static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
+    reqlog_set_cost(logger, cost);
+    reqlog_set_rows(logger, rows);
+}
+
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse)
@@ -2050,12 +2045,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
     log_queue_time(thd->logger, clnt);
 
-    /* log so we can group identify things by transaction */
-    if (gbl_log_all_sql)
-        sqllog_log_statement(clnt, 0, clnt->log_effects.num_updated +
-                                          clnt->log_effects.num_deleted +
-                                          clnt->log_effects.num_inserted,
-                             0);
+    int64_t rows = clnt->log_effects.num_updated +
+               clnt->log_effects.num_deleted +
+               clnt->log_effects.num_inserted;
+
+    reqlog_set_cost(thd->logger, 0);
+    reqlog_set_rows(thd->logger, rows);
+
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
@@ -7064,7 +7060,6 @@ CDB2QUERY *read_newsql_query(struct sqlclntstate *clnt, SBUF2 *sb)
     int rc;
     int pre_enabled = 0;
     int was_timeout = 0;
-    int do_log = gbl_log_all_sql;
     char ssl_able;
 
 retry_read:
