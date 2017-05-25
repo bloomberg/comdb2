@@ -120,8 +120,8 @@ for node in $nodes; do
             $PREFIX/bin/copycomdb2 ${anode}:${dbdir}/${database}.lrl
             echo "$dbsupervisorcfg" >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
         else
-            $ssh $node "$PREFIX/bin/copycomdb2 ${anode}:${dbdir}/${database}.lrl
-            echo "$dbsupervisorcfg" >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf"
+            $ssh $node $PREFIX'/bin/copycomdb2 '${anode}':'${dbdir}'/'${database}'.lrl
+            echo "'"$dbsupervisorcfg"'" >/opt/bb/etc/cdb2_supervisor/conf.d/'$database'.conf'
         fi
     fi
 done
