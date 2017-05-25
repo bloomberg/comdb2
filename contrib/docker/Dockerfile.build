@@ -1,0 +1,33 @@
+FROM artprod.dev.bloomberg.com/bfs/base-ubuntu:xenial
+
+RUN apt-get update && \
+  apt-get install -y \
+    bc \
+    bison \
+    build-essential \
+    flex \
+    gawk \
+    liblz4-dev \
+    libprotobuf-c-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libssl-dev \
+    libunwind-dev \
+    libz-dev \
+    make \
+    ncurses-dev \
+    protobuf-c-compiler \
+    tcl \
+    uuid-dev \
+
+    libz1 \
+    liblz4-tool \
+    libprotobuf-c1 \
+    libreadline6 \
+    libsqlite3-0 \
+    libuuid1 \
+    libz1 \
+    tzdata && \
+  rm -rf /var/lib/apt/lists/*
+
+VOLUME /comdb2.build

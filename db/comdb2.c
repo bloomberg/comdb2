@@ -2238,7 +2238,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         /* Copycomdb2 still wants this option, but it's useless for anything else.
            Ignore. */
     } else if (tokcmp(tok, ltok, "usenames") == 0) {
-        /* Also ignore - we treat this in pre_read_option */
+        /* This was preventing setting usenames at a global level
+           which prevented restoring and starting up from a backup file */
+        gbl_nonames = 0;
     } else if(tokcmp(tok, ltok, "enable_direct_writes") == 0) {
         dbenv->enable_direct_writes = 1;
     } else if (tokcmp(tok, ltok, "disable_direct_writes") == 0) {
