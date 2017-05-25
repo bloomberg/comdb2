@@ -62,6 +62,6 @@ LIBS_BIN=$(BDB_BIN) $(BERKDB_BIN) $(SQLITE_BIN) $(CMACC2_BIN)	\
 
 LIB_DEPS=dlmalloc net sqlite datetime lua comdb2rle crc32c lz4 dfpal csc2 bb bdb berkdb bblib cdb2api cson protobuf schemachange sockpool
 
-LCLLIBS=$(SCHEMA) $(BDB) $(BERKDB) $(SQLITE) $(CMACC2) $(DATETIME) $(LUA)	\
-     $(NET) $(CRC32C) $(COMDB2RLE) $(DFPAL) $(BBLIB) $(CDB2API)	\
-     $(DLMALLOC) $(PROTOBUF) $(CSON) $(SOCKPOOL)
+LCLLIBS=$(SCHEMA) $(BDB) $(BERKDB) $(SQLITE) $(CMACC2) $(DATETIME)	\
+     $(LUA) $(NET) $(CRC32C) $(COMDB2RLE) $(DFPAL) $(BBLIB)		\
+     $(CDB2API) $(DLMALLOC) $(PROTOBUF) $(CSON) $(SOCKPOOL)
