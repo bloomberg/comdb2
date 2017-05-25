@@ -1,6 +1,6 @@
 #!/bin/sh
 
-usage="$(basename "$0") -d <database> -c <cluster> [options] -- Start a database
+usage="$(basename "$0") -d <database> -c <cluster> [options] -- Completely drop a database
 
 Options
 -h, --help                  Show this help information 
@@ -49,8 +49,6 @@ fi
 set -e
 
 # get nodes
-# We needed private dns before to issue sys.cmd.send("exit")
-# Change it to public dns now as we execute a remote supervisorctl command via SSH.
 query='Reservations[*].Instances[*].[PublicDnsName]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
@@ -58,36 +56,22 @@ if [ "$nodes" = "" ]; then
     echo "Could not find cluster \"$cluster\""
     exit 1
 fi
-
 set +e
 
-# bring up db on each node
-anode=`echo "$nodes" | head -1`
+# bring down db on each node
 for node in $nodes; do
-    if [ "$node" = "$anode" ]; then
-        supervisorctl -c $supervisorconfig start $database
+    echo $node
+    if [ "$node" = "`hostname -f`" ]; then
+        supervisorctl -c $supervisorconfig stop $database
+        supervisorctl -c $supervisorconfig remove $database
+        rm -fr /opt/bb/var/cdb2/$database
+        rm -f /opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
     else
-        $ssh $node "supervisorctl -c $supervisorconfig start $database"
+        $ssh $node "supervisorctl -c $supervisorconfig stop $database
+        supervisorctl -c $supervisorconfig remove $database
+        rm -fr /opt/bb/var/cdb2/$database
+        rm -f /opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
+        "
     fi
 done
-
-nwaits=0
-prompt='Waiting for all nodes to come up...'
-while true; do
-    printf "%s\r" "$prompt"
-    for node in $nodes; do
-        hide=`$PREFIX/bin/cdb2sql $database --host $node 'select 1' 2>&1`
-        if [ $? = 0 ]; then
-            echo
-            echo "OK"
-            exit 0
-        fi
-    done
-    nwaits=$((nwaits + 1))
-    prompt="${prompt}..."
-    if [ "$nwaits" -gt "60" ]; then
-        echo "Took too long for the database to come up." >&2
-        exit 1
-    fi
-    sleep 5
-done
+echo OK

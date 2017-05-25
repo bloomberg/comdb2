@@ -152,11 +152,11 @@ _get_backup()
     else
         # set default values
         if [ "$lrldir" = "" ]; then
-            lrldir="$PREFIX/var/$database"
+            lrldir="$PREFIX/var/cdb2/$database"
         fi
 
         if [ "$dtadir" = "" ]; then
-            dtadir="$PREFIX/var/$database"
+            dtadir="$PREFIX/var/cdb2/$database"
         fi
 
         if [ $local = 1 ]; then

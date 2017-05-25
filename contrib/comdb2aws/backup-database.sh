@@ -86,7 +86,7 @@ _verify_opt()
     fi
 
     if [ "$lrl" = "" ]; then
-        lrl="$PREFIX/var/${database}/${database}.lrl"
+        lrl="$PREFIX/var/cdb2/${database}/${database}.lrl"
     fi
 }
 

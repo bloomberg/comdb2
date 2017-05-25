@@ -5,15 +5,14 @@ usage="$(basename "$0") -d <database> -c <cluster> [options] -- Turn a database
 Options
 -h, --help                  Show this help information 
 -d, --database <database>   Database name
--c, --cluster <cluster>     Target cluster
---lrl <lrl>                 lrl location"
+-c, --cluster <cluster>     Target cluster"
 
 ec2='aws ec2 --output text'
 ssh="ssh -o StrictHostKeyChecking=no -l $SSHUSER"
+supervisorconfig=/opt/bb/etc/supervisord_cdb2.conf
 
 cluster=
 database=
-lrl=
 
 _set_opt()
 {
@@ -30,10 +29,6 @@ _set_opt()
         "-d" | "--database")
             shift
             database=$1
-            ;;
-        "-l" | "--lrl")
-            shift
-            lrl=$1
             ;;
         *)
             echo "$usage" >&2
@@ -54,7 +49,7 @@ fi
 set -e
 
 # get nodes
-query='Reservations[*].Instances[*].[PrivateDnsName]'
+query='Reservations[*].Instances[*].[PublicDnsName]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 if [ "$nodes" = "" ]; then
@@ -65,21 +60,12 @@ set +e
 
 # bring up db on each node
 for node in $nodes; do
-    echo "Turning on $node"
-    if [ "$lrl" = "" ]; then
-        lrl=$PREFIX/var/${database}/${database}.lrl
+    echo $node
+    if [ "$node" = "`hostname -f`" ]; then
+        supervisorctl -c $supervisorconfig restart $database
+    else
+        $ssh $node "supervisorctl -c $supervisorconfig restart $database"
     fi
-
-    echo "Requesting exit"
-    $ssh $node $PREFIX'/bin/cdb2sql '$database' local "exec procedure sys.cmd.send(\"exit\")" && while true; do [ `pgrep -a comdb2 | grep -c '$database'` = 0 ] && break; sleep 5; done'
-
-    echo "Starting database"
-    $ssh $node "HOSTNAME=$node $PREFIX/bin/comdb2 $database \
-        -lrl $lrl >/var/tmp/${database}.log.txt 2>&1 &"
-
-    # Monitor the log file. Can' tell if ready or leddy.
-    $ssh $node 'while true; do [ -f /var/tmp/'$database'.log.txt ] && [ `grep -c "I AM *DY" /var/tmp/'$database'.log.txt` != 0 ] && break; sleep 5; done'
-    echo
 done
 
 echo OK

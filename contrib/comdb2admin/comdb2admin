@@ -36,7 +36,7 @@ function create {
         return 1
     fi
     if [[ -d "/opt/bb/var/cdb2/$dbname" ]]; then
-        echo >&2 "Database Already exists"
+        echo >&2 "Database already exists"
         return 1
     fi
 
@@ -92,7 +92,6 @@ function drop {
     supervisorctl -c $config stop $dbname
     set -e
     supervisorctl -c $config remove $dbname
-    rm -fr /opt/bb/var/cdb2/$dbname
     rm -fr /opt/bb/var/cdb2/$dbname
     rm -f /opt/bb/etc/cdb2_supervisor/conf.d/$dbname.conf
 }

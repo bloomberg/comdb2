@@ -16,6 +16,8 @@ The contrib/comdb2aws directory in the source distribution contains a set of scr
 stand up Comdb2 clusters on AWS.  Running `sudo make install` in that directory install the required scripts.
 The only dependency is the AWS command line tools.
 
+Comdb2aws uses [Supervisor](http://supervisord.org/) to manage databases.
+
 ### Prerequisites
 
 * AWS Command Line Interface
@@ -70,14 +72,33 @@ $ comdb2aws which --cluster COLDPLAY
 
 ### Deploying a Database
 
-Use "comdb2aws deploy" to deploy a new database. For example, to deploy a database called yellowdb to the 
-COLDPLAY cluster we created above, you would use:
+Use "comdb2aws deploy" to deploy a new database. The database will be registered under Supervisord.
+
+For example, to deploy a database called yellowdb to the COLDPLAY cluster we created above, you would use:
 
 `comdb2aws deploy-database -d yellowdb -c COLDPLAY`
 
 The command generates database configuration for you. Therefore, to query the database, you would simply use:
 
 `cdb2sql yellowdb default "select now()"`
+
+### Managing Databases using Supervisord Web Interface
+
+By default, Supervisord web server listens on port `9001` on localhost.
+To access the web interface from outside a cluster, you could do a local port forwarding from
+your host to the cluster.
+
+For example, to forward port 80 on localhost to port 9001 on the COLDPLAY cluster, you would use:
+
+```shell
+ssh -L 80:localhost:9001 comdb2@123.45.67.89
+```
+
+Now, Pointing your browser at `http://localhost` would forward you to `http://123.45.67.89:9001`
+via a secure connection. You would be able to see yellowdb we just created in the web interface:
+
+[supervisor-web-interface](images/supervisor-web-interface.gif)
+
 
 ### Taking backups
 
@@ -137,14 +158,15 @@ then start yellowdb by running:
 
 `comdb2aws start-database -c COLDPLAY -d yellowdb`
 
-### Creating Your Own Comdb2 Cluster AMI (Optional)
+### Creating Your Own Comdb2 Cluster AMI (Recommended)
 
 Your custom AMI must include the following software packages:
 
-- Comdb2 binaries (comdb2, pmux, comdb2ar and etc)
+- Comdb2
 - Coreutils
 - NTP
 - Curl
+- Cloud-utils
 
 By default, Comdb2aws searches Comdb2 binaries under /opt/bb/. If the binaries are installed
 somewhere else, you would run "PREFIX=<your_path> make install" to change the prefix.
@@ -153,11 +175,12 @@ To create a cluster using your AMI, you would use:
 
 `comdb2aws create-cluster --cluster <name> --count <#> --image-id <id>`
 
-The default SSH user may vary depending on the OS/Distro you choose to create your own AMI from.
-You would need to export the correct SSH user of your AMI in order to make comdb2aws work with your
-AMI. For example, to tell comdb2aws to use 'ec2-user' as the SSH username, you would run:
+Comdb2aws uses 'comdb2' role by default. If you had changed the database user,
+you would need to export the correct SSH user before running comdb2aws.
 
-`export SSHUSER='ec2-user'`
+For example, to tell comdb2aws to use 'bob' as the SSH username, you would run:
+
+`export SSHUSER='bob'`
 
 ## Comdb2 on your machines
 

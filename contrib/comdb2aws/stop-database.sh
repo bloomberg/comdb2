@@ -8,7 +8,8 @@ Options
 -c, --cluster <cluster>     Target cluster"
 
 ec2='aws ec2 --output text'
-ssh='ssh -o StrictHostKeyChecking=no'
+ssh="ssh -o StrictHostKeyChecking=no -l $SSHUSER"
+supervisorconfig=/opt/bb/etc/supervisord_cdb2.conf
 
 cluster=
 database=
@@ -48,7 +49,7 @@ fi
 set -e
 
 # get nodes
-query='Reservations[*].Instances[*].[PrivateDnsName]'
+query='Reservations[*].Instances[*].[PublicDnsName]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 if [ "$nodes" = "" ]; then
@@ -59,7 +60,11 @@ set +e
 
 # bring down db on each node
 for node in $nodes; do
-    $ssh $node $PREFIX'/bin/cdb2sql '$database' local "exec procedure sys.cmd.send(\"exit\")" && while true; do [ `pgrep -a comdb2 | grep -c '$database'` = 0 ] && break; sleep 5; done'
-    echo
+    echo $node
+    if [ "$node" = "`hostname -f`" ]; then
+        supervisorctl -c $supervisorconfig stop $database
+    else
+        $ssh $node "supervisorctl -c $supervisorconfig stop $database"
+    fi
 done
 echo OK
