@@ -29,6 +29,7 @@ cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
 cdb2sql: tools/cdb2sql/cdb2sql.o
 comdb2sc: tools/comdb2sc/comdb2sc.o
 cdb2_sqlreplay: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
+cdb2sql comdb2sc cdb2_sqlreplay:
 	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
 
 # Cdb2sockpool - Use base rules, multiple object files
@@ -105,6 +106,7 @@ $(cdb2_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 cdb2_dump: tools/cdb2_dump/cdb2_dump.o
 cdb2_stat: tools/cdb2_stat/cdb2_stat.o
 cdb2_verify: tools/cdb2_verify/cdb2_verify.o
+cdb2_dump cdb2_stat cdb2_verify:
 	$(CC) $(tools_LDFLAGS) $< $(BERKDB) $(SCHEMA) $(tools_LDLIBS) -o $@
 
 # Cdb2_printlog
