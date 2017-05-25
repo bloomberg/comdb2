@@ -72,15 +72,6 @@ stop:
 kill:
 	@./dokillall
 
-testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
-	rm -f logs/*
-	rm -f *.test/*.res
-	rm -f *.test/comdb2db.cfg
-	rm -f .*.failed
-	rm -fr dbs
-	rm -f $(TMPDIR)/cdb2test*
-	$(MAKE) -C tools clean
-
 
 clean: testclean
 
