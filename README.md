@@ -45,7 +45,7 @@ On every machine in the cluster:
    sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel   \
    protobuf-c-devel byacc flex openssl openssl-devel openssl-libs         \
    readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel    \
-   zlib lz4-devel gawk tcl epel-release lz4 rpm-build
+   zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
    ```
 
 3. Build Comdb2:
