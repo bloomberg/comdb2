@@ -158,7 +158,7 @@ then start yellowdb by running:
 
 `comdb2aws start-database -c COLDPLAY -d yellowdb`
 
-### Creating Your Own Comdb2 Cluster AMI (Optional)
+### Creating Your Own Comdb2 Cluster AMI (Recommended)
 
 Your custom AMI must include the following software packages:
 
