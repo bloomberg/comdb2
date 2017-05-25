@@ -146,7 +146,7 @@ static int db_comdb_analyze(Lua L) {
             if(percent >= 0 && percent <= 100) ovr_percent = 1;
             else percent = 0;
         }
-        else percent = DEFAULT_ANALYZE_PERCENT;
+        else percent = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
     }
 
     lua_settop(L, 0);
@@ -168,7 +168,9 @@ static int db_comdb_analyze(Lua L) {
     }
     else {
         logmsg(LOGMSG_DEBUG, "db_comdb_analyze: analyze database\n");
-        analyze_database(sb, DEFAULT_ANALYZE_PERCENT, 0);
+        analyze_database(sb, 
+                         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEFAULT_ANALYZE_PERCENT),
+                         0);
     }
     sbuf2close(sb);
 

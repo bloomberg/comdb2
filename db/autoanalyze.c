@@ -96,8 +96,10 @@ void *auto_analyze_table(void *arg)
     printf("%s: STARTING %s\n", __func__, tblname);
     SBUF2 *sb = sbuf2open(fileno(stdout), 0);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    int percent = bdb_attr_get(thedb->bdb_attr, 
+                               BDB_ATTR_DEFAULT_ANALYZE_PERCENT);
 
-    if ((rc = analyze_table(tblname, sb, 20, 0)) == 0) {
+    if ((rc = analyze_table(tblname, sb, percent, 0)) == 0) {
         reset_aa_counter(tblname);
 
     } else {
