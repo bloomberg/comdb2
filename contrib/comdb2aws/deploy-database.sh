@@ -121,12 +121,11 @@ fi
 for node in $nodes; do
     if [ "$node" != "$anode" ]; then
         if [ "`hostname -f`" = "$node" ]; then
-            # myself, pull from the 1st node
-            $PREFIX/bin/copycomdb2 ${node}:${dbdir}/${database}.lrl
+            $PREFIX/bin/copycomdb2 ${anode}:${dbdir}/${database}.lrl
             supervisorctl -c $supervisorconfig reread >/dev/null
             supervisorctl -c $supervisorconfig add $database
         else
-            $ssh $anode "$PREFIX/bin/copycomdb2 ${dbdir}/${database}.lrl ${node}:
+            $ssh $node "$PREFIX/bin/copycomdb2 ${anode}:${dbdir}/${database}.lrl
             supervisorctl -c $supervisorconfig reread >/dev/null
             supervisorctl -c $supervisorconfig add $database"
         fi
