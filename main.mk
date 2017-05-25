@@ -8,7 +8,6 @@ export $(arch)
 TAGS?=ctags
 CFLAGS_INC=-I$(SRCHOME)/bbinc -Ibb -I$(SRCHOME) -DCOMDB2_ROOT=$(COMDB2_ROOT)
 CFLAGS_64=-DBB64BIT
-OPTBBINCLUDE?=-I/opt/bb/include
 
 ifeq ($(arch),Linux)
   #CFLAGS_STRICT=-Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label
