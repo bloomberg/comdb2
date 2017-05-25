@@ -182,7 +182,7 @@ _verify_opt()
         exit 1
     fi
 
-    image_id='ami-2cde9f3a'
+    image_id='ami-1f165409'
     if [ "$image_id" = "" ]; then
         image_id=`curl -s --fail \
                  https://raw.githubusercontent.com/bloomberg/comdb2/master/contrib/comdb2aws/${distro}.ami | head -1`

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-usage="$(basename "$0") -d <database> -c <cluster> [options] -- Stop a database
+usage="$(basename "$0") -d <database> -c <cluster> [options] -- Completely drop a database
 
 Options
 -h, --help                  Show this help information 
@@ -63,8 +63,15 @@ for node in $nodes; do
     echo $node
     if [ "$node" = "`hostname -f`" ]; then
         supervisorctl -c $supervisorconfig stop $database
+        supervisorctl -c $supervisorconfig remove $database
+        rm -fr /opt/bb/var/cdb2/$database
+        rm -f /opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
     else
-        $ssh $node "supervisorctl -c $supervisorconfig stop $database"
+        $ssh $node "supervisorctl -c $supervisorconfig stop $database
+        supervisorctl -c $supervisorconfig remove $database
+        rm -fr /opt/bb/var/cdb2/$database
+        rm -f /opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
+        "
     fi
 done
 echo OK

@@ -94,10 +94,11 @@ Restoring a Database from an S3 Backup
 
 Creating Your Own Comdb2 Cluster AMI (Optional)
     Your custom AMI must include the following software packages:
-    - Comdb2 binaries (comdb2, pmux, comdb2ar and etc)
+    - Comdb2
     - Coreutils
     - NTP
     - Curl
+    - cloud-utils
 
     By default, Comdb2aws searches Comdb2 binaries under /opt/bb/. If the binaries are installed
     somewhere else, you would run "PREFIX=<your_path> make install" to change the prefix.
@@ -105,7 +106,7 @@ Creating Your Own Comdb2 Cluster AMI (Optional)
     To create a cluster using your AMI, you would use:
         comdb2aws create-cluster --cluster <name> --count <#> --image-id <id>
 
-    The default SSH user may vary depending on the OS/Distro you choose to create your own AMI from.
-    You would need to export the correct SSH user of your AMI in order to make comdb2aws work with your
-    AMI. For example, to tell comdb2aws to use 'ec2-user' as the SSH username, you would run:
-        export SSHUSER='ec2-user'
+    Comdb2aws uses 'comdb2' role by default. If you had changed the database user,
+    you would need to export the correct SSH user before running comdb2aws.
+    For example, to tell comdb2aws to use 'bob' as the SSH username, you would run:
+        export SSHUSER='bob'
