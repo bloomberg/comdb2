@@ -6,7 +6,6 @@ include libs.mk
 export SRCHOME=.
 export DESTDIR
 export PREFIX
-BASEDIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
 # Common CFLAGS
 CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
@@ -123,16 +122,29 @@ install: all
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
-	[ -z "$(DESTDIR)" ] && . db/installinfo || true
+	-[ -z "$(DESTDIR)" ] && . db/installinfo || true
 
-jdbc-docker-build-container:
-	docker build -t jdbc-docker-builder:$(VERSION) -f docker/Dockerfile.jdbc.build docker
+# Build a container for building the database
+build-build-container:
+	docker build -t comdb2-build:$(VERSION) -f contrib/docker/Dockerfile.build .
 
-jdbc-docker-build: jdbc-docker-build-container
-	docker run \
+docker-clean:
+	rm -fr contrib/docker/build/*
+
+docker-dev: docker-standalone
+	docker build -t comdb2-dev:$(VERSION) -f contrib/docker/Dockerfile.dev .
+	docker tag comdb2-dev:$(VERSION) comdb2-dev:latest
+
+docker-standalone: docker-build
+	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
+
+# Build the database in the build container
+docker-build: build-build-container
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
+	docker run --user $(shell id -u):$(shell id -g) \
 		--env HOME=/tmp \
-		-v $(BASEDIR):/jdbc.build \
-		-w /jdbc.build \
-		jdbc-docker-builder:$(VERSION) \
-		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
-
+		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
+		-v $(realpath $(SRCHOME)):/comdb2.build \
+		-w /comdb2.build \
+		comdb2-build:$(VERSION) \
+        make DESTDIR=/comdb2 -j3 install

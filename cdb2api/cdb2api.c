@@ -96,6 +96,11 @@ static void do_init_once(void)
     char *do_log = getenv("CDB2_LOG_CALLS");
     if (do_log)
         log_calls = 1;
+    char *config = getenv("CDB2_CONFIG_FILE");
+    if (config) {
+        /* can't call back cdb2_set_comdb2db_config from do_init_once */
+        strncpy(CDB2DBCONFIG_NOBBENV, config, 511);
+    }
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -4462,7 +4467,7 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
             if (strlen(hostname) >= sizeof(hndl->hosts[0]))
                 fprintf(stderr, "Hostname \"%s\" is too long, max %d\n",
                         hostname, sizeof(hndl->hosts[0]));
-            else if (port < -1 || port > SHRT_MAX)
+            else if (port < -1 || port > USHRT_MAX)
                 fprintf(stderr, "Hostname \"%s\" invalid port number %d\n",
                         hostname, port);
             else {

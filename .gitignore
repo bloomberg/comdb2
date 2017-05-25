@@ -243,6 +243,7 @@ debian
 # jdbc driver
 !cdb2jdbc/**
 cdb2jdbc/target/**
+cdb2jdbc/maven.m2/**
 
 # generated docs
 _site/
@@ -270,3 +271,5 @@ tests/pmux.sqlite
 docs/site/images/*.gif
 docs/sqlitegen/all.html
 docs/sqlitegen/syntax_linkage.tcl
+docker/maven.m2/
+contrib/docker/build
