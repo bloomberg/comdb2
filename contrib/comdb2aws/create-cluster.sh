@@ -182,6 +182,7 @@ _verify_opt()
         exit 1
     fi
 
+    image_id='ami-2cde9f3a'
     if [ "$image_id" = "" ]; then
         image_id=`curl -s --fail \
                  https://raw.githubusercontent.com/bloomberg/comdb2/master/contrib/comdb2aws/${distro}.ami | head -1`
@@ -192,8 +193,10 @@ _verify_opt()
             exit 1
         fi
     fi
+
+    echo "Using the following AMI to bootstrap $cluster cluster:"
     $ec2 describe-images --image-ids $image_id \
-        --query 'Images[*][ImageId, Description]'
+        --query 'Images[*][ImageId, Name]'
     if [ $? != 0 ]; then
         echo "Image $image_id not found." >&2
         exit 1
@@ -201,7 +204,7 @@ _verify_opt()
 
     # Create-if-absent options
     tier_sgid=`$ec2 describe-security-groups \
-        --group-names $tier_sg --query 'SecurityGroups[*].GroupId' >/dev/null 2>&1`
+        --group-names $tier_sg --query 'SecurityGroups[*].GroupId' 2>/dev/null`
     if [ $? != 0 ]; then
         creat_tier=1
     fi
@@ -248,26 +251,41 @@ _creat()
         echo "SSH key saved at ~/.ssh/${key_name}.pem"
     fi
 
+    # We're root here, so be careful with permissions.
     # - create hostname.lrl
     # - make directories for comdb2db.cfg and per-db config
     # - bring up pmux (Occasionally pmux is not up in an EC instance bootstrapped from an AMI)
     # - Distribute SSH key
     PEM=`cat ~/.ssh/${key_name}.pem`
-    bootstrap='
-#!/bin/sh
-echo "GatewayPorts yes" >>/etc/ssh/sshd_config
-su - '$SSHUSER' 
+    bootstrap='#!/bin/sh
+echo BEGIN >/var/log/user-data.log
+echo Switching user >>/var/log/user-data.log
+chmod 777 /var/log/user-data.log
+whoami >>/var/log/user-data.log
 echo "hostname `hostname -f`" >'$PREFIX'/etc/cdb2/config/comdb2.d/hostname.lrl
-systemctl start pmux
-mkdir ~/.ssh/ 2>/dev/null
-chmod 700 ~/.ssh/id_rsa 2>/dev/null
-echo '$PEM' >~/.ssh/id_rsa
-ssh-keygen -y -f ~/.ssh/${key_name}.pem >~/.ssh/authorized_keys
-cp ~/.ssh/authorized_keys ~/.ssh/id_rsa.pub
-chmod 400 ~/.ssh/id_rsa
+echo hostname.lrl generated >>/var/log/user-data.log
+service pmux start
+echo pmux started >>/var/log/user-data.log
+mkdir -p /home/'$SSHUSER' >/dev/null 2>&1
+cd /home/'$SSHUSER'
+pwd >>/var/log/user-data.log
+mkdir .ssh/ 2>>/var/log/user-data.log
+chmod 700 .ssh/id_rsa 2>>/var/log/user-data.log
+echo "'$PEM'" >.ssh/id_rsa
+chmod 400 .ssh/id_rsa
+ssh-keygen -y -f .ssh/id_rsa >.ssh/id_rsa.pub 2>>/var/log/user-data.log
+cat .ssh/id_rsa.pub >>.ssh/authorized_keys
 echo "Host *
-StrictHostKeyChecking no" >>~/.ssh/config
+StrictHostKeyChecking no" >>.ssh/config
+echo "
+GatewayPorts yes" >>/etc/ssh/sshd_config
+echo Boucing sshd >>/var/log/user-data.log
+service sshd restart >>/var/log/user-data.log 2>&1
+service ssh restart >>/var/log/user-data.log 2>&1
+chown -R '$SSHUSER':'$SSHUSER' .ssh
+echo SSH setup is done >>/var/log/user-data.log
 '
+#service sshd reload >>/var/log/user-data.log 2>&1
     insts=`$ec2 run-instances --security-groups $tier_sg \
           --image-id $image_id --count $count \
           --instance-type $instance_type --key-name $key_name \
@@ -304,7 +322,7 @@ StrictHostKeyChecking no" >>~/.ssh/config
     done
 
     aws ec2 create-tags --resources $insts \
-        --tags Key=Cluster,Value=$cluster Key=Tier,Value=$tier
+        --tags Key=Cluster,Value=$cluster Key=Tier,Value=$tier >/dev/null
     set +e
 
     echo "Testing connection to the cluster..."
@@ -312,7 +330,7 @@ StrictHostKeyChecking no" >>~/.ssh/config
           --instance-ids $insts --query \
           'Reservations[*].Instances[*].[PublicIpAddress]'`
     for addr in $addrs; do
-        for retry in `seq 19 -1 0`; do
+        for retry in `seq 59 -1 0`; do
             $ssh -i ~/.ssh/${key_name}.pem $addr "echo 'Connected.'"
             if [ $? != 0 ]; then
                 echo "$addr is not in SSH-ready state. Will retry in 10 seconds."
@@ -322,9 +340,12 @@ StrictHostKeyChecking no" >>~/.ssh/config
             fi
             break;
         done
+        if [ "$retry" = "0" ]; then
+            echo "Connection to $addr timed out. Proceeding to next instance..."
+        fi
     done
 
-    echo "OK"
+    echo OK
 
     if [ $has_opt = 0 ]; then
         which ec2metadata >/dev/null 2>&1
@@ -349,7 +370,8 @@ StrictHostKeyChecking no" >>~/.ssh/config
     fi
 
     echo 'Please use the following commands to import the ssh key:'
-    echo "eval \`ssh-agent -s\`; ssh-add ~/.ssh/${key_name}.pem"
+    echo "eval \`ssh-agent -s\` \\"
+    echo "ssh-add ~/.ssh/${key_name}.pem"
 }
 
 if [ $# = 0 ]; then

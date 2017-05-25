@@ -49,7 +49,9 @@ fi
 set -e
 
 # get nodes
-query='Reservations[*].Instances[*].[PrivateDnsName]'
+# We needed private dns before to issue sys.cmd.send("exit")
+# Change it to public dns now as we execute a remote supervisorctl command via SSH.
+query='Reservations[*].Instances[*].[PublicDnsName]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 if [ "$nodes" = "" ]; then

@@ -49,7 +49,7 @@ fi
 set -e
 
 # get nodes
-query='Reservations[*].Instances[*].[PrivateDnsName]'
+query='Reservations[*].Instances[*].[PublicDnsName]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 if [ "$nodes" = "" ]; then
@@ -59,9 +59,9 @@ fi
 set +e
 
 # bring down db on each node
-anode=`echo "$nodes" | head -1`
 for node in $nodes; do
-    if [ "$node" = "$anode" ]; then
+    echo $node
+    if [ "$node" = "`hostname -f`" ]; then
         supervisorctl -c $supervisorconfig stop $database
     else
         $ssh $node "supervisorctl -c $supervisorconfig stop $database"

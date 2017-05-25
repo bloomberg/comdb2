@@ -69,7 +69,7 @@ fi
 
 set -e
 # get nodes
-query='Reservations[*].Instances[*].[PrivateIpAddress]'
+query='Reservations[*].Instances[*].[PrivateDnsName]'
 nodes=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 if [ "$nodes" = "" ]; then
@@ -81,28 +81,27 @@ query='Reservations[*].Instances[*].[PrivateDnsName]'
 dnsnames=`$ec2 describe-instances --filters "Name=tag:Cluster,Values=$cluster" \
         --query $query`
 
-set +e
-
-dbsupervisorcfg="[program:$dbname]
-command=/opt/bb/bin/comdb2 $dbname
+dbsupervisorcfg="[program:$database]
+command=/opt/bb/bin/comdb2 $database
 autostart=true
 autorestart=true
 stopsignal=TERM
 stopwaitsecs=60
 redirect_stderr=true
 stdout_logfile=AUTO
-directory=/opt/bb/var/cdb2/$dbname"
+directory=/opt/bb/var/cdb2/$database"
 
 # init db locally on the 1st node
 anode=`echo "$nodes" | head -1`
-if [ "$node" != "$anode" ]; then
+if [ "`hostname -f`" = "$anode" ]; then
+    # first node is myself
     if [ -d "$dbdir" ]; then
         echo 'Database already exists.' >&2
         exit 1
     fi
 
     $PREFIX/bin/comdb2 --create --dir $dbdir $database
-    cat $dbsupervisorcfg >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
+    echo "$dbsupervisorcfg" >/opt/bb/etc/cdb2_supervisor/conf.d/$database.conf
     supervisorctl -c $supervisorconfig reread >/dev/null
     supervisorctl -c $supervisorconfig add $database
     echo cluster nodes $dnsnames >>${dbdir}/${database}.lrl
@@ -111,8 +110,8 @@ else
         echo Database already exists. >&2
         exit 1
     fi
-    '$PREFIX'/bin/comdb2 --create --dir $dbdir '$database'
-    cat '$dbsupervisorcfg' >/opt/bb/etc/cdb2_supervisor/conf.d/'$database'.conf
+    '$PREFIX'/bin/comdb2 --create --dir '$dbdir' '$database'
+    echo "'"$dbsupervisorcfg"'" >/opt/bb/etc/cdb2_supervisor/conf.d/'$database'.conf
     supervisorctl -c '$supervisorconfig' reread >/dev/null
     supervisorctl -c '$supervisorconfig' add '$database'
     echo cluster nodes '$dnsnames' >>'${dbdir}'/'${database}'.lrl'
@@ -121,20 +120,20 @@ fi
 # copy over
 for node in $nodes; do
     if [ "$node" != "$anode" ]; then
-        $ssh $anode "$PREFIX/bin/copycomdb2 ${dbdir}/${database}.lrl ${node}:${lrl}
-        supervisorctl -c $supervisorconfig reread >/dev/null
-        supervisorctl -c $supervisorconfig add $database"
+        if [ "`hostname -f`" = "$node" ]; then
+            # myself, pull from the 1st node
+            $PREFIX/bin/copycomdb2 ${node}:${dbdir}/${database}.lrl
+            supervisorctl -c $supervisorconfig reread >/dev/null
+            supervisorctl -c $supervisorconfig add $database
+        else
+            $ssh $anode "$PREFIX/bin/copycomdb2 ${dbdir}/${database}.lrl ${node}:
+            supervisorctl -c $supervisorconfig reread >/dev/null
+            supervisorctl -c $supervisorconfig add $database"
+        fi
     fi
 done
 
-# bring up db on each node
-for node in $nodes; do
-    if [ "$node" = "$anode" ]; then
-        supervisorctl -c $supervisorconfig start $database
-    else
-        $ssh $node "supervisorctl -c $supervisorconfig start $database"
-    fi
-done
+set +e
 
 # wait for all instances to come up
 nwaits=0
@@ -143,6 +142,7 @@ while true; do
     printf "%s\r" "$prompt"
     for node in $nodes; do
         hide=`$PREFIX/bin/cdb2sql $database --host $node 'select 1' 2>&1`
+        echo $hide
         if [ $? = 0 ]; then
             echo
             echo "OK"

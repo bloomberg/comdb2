@@ -8,7 +8,7 @@ if [ "$PREFIX" = "" ]; then
 fi
 
 if [ "$SSHUSER" = "" ]; then
-    SSHUSER='admin'
+    SSHUSER='comdb2'
 fi
 
 target='comdb2aws'
@@ -32,7 +32,7 @@ if [ "$PREFIX" = "" ]; then
 fi
 
 if [ "$SSHUSER" = "" ]; then
-    export SSHUSER="admin"
+    export SSHUSER="comdb2"
 fi
 ' >>./$target
 
