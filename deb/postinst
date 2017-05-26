@@ -43,7 +43,7 @@ case "$1" in
             systemctl stop cdb2sockpool
             systemctl start cdb2sockpool
             set +e
-            dpkg -l | grep -q "ii supervisor"
+            dpkg -l "supervisor" >/dev/null
             rc=$?
             set -e
             if [ $rc -eq 0 ]; then
