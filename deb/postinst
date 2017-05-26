@@ -36,13 +36,21 @@ case "$1" in
         echo 'PATH=$PATH:/opt/bb/bin' >> /home/comdb2/.profile
         chmod +x /home/comdb2/.profile
         chown comdb2:comdb2 /home/comdb2/.profile
-        systemctl daemon-reload
-        systemctl stop pmux
-        systemctl start pmux
-        systemctl stop cdb2sockpool
-        systemctl start cdb2sockpool
-        systemctl enable supervisor_cdb2
-        systemctl start supervisor_cdb2
+        if [ ! -e /.dockerenv ]; then
+            systemctl daemon-reload
+            systemctl stop pmux
+            systemctl start pmux
+            systemctl stop cdb2sockpool
+            systemctl start cdb2sockpool
+            set +e
+            dpkg -l | grep -q "ii supervisor"
+            rc=$?
+            set -e
+            if [ $rc -eq 0 ]; then
+                systemctl enable supervisor_cdb2
+                systemctl start supervisor_cdb2
+            fi
+        fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)
