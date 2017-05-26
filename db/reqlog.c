@@ -163,6 +163,8 @@ struct reqlogger {
     int queuetimems;
     char fingerprint[16];
     char id[41];
+
+    CDB2SQLQUERY *request;
 };
 
 /* a rage of values to look for */
@@ -2047,6 +2049,38 @@ static void logjson_string(char *in) {
 }
 
 void logjson_params(struct reqlogger *logger) {
+    if (logger->request && logger->request->n_bindvars > 0) {
+        printf(", \"le\" : %s", logger->request->little_endian ? "true" : "false");
+        printf(", \"bindings\" : [ ");
+        for (int i = 0; i < logger->request->n_bindvars; i++) {
+            printf(" { ");
+            CDB2SQLQUERY__Bindvalue *val = logger->request->bindvars[i];
+            if (val->varname)
+                printf("\"name\" : \"%s\", ", val->varname); 
+            else
+                printf("\"index\" : %d,  ", val->index); 
+            if (!val->has_isnull && val->isnull) {
+                /* null, omit value */
+                printf("\"value\" : null ");
+            }
+            else {
+                printf("\"type\" : %d, ", val->type);
+                printf("\"len\" : %d, ", val->value.len);
+                printf("\"value\" : \"");
+                for (int i = 0; i < val->value.len; i++) {
+                    static const char *hexchars = "0123456789abcdef";
+
+                    putc(hexchars[((val->value.data[i] & 0xf0) >> 4)], stdout);
+                    putc(hexchars[val->value.data[i] & 0x0f], stdout);
+                }
+                printf("\"");
+            }
+            printf(" } ");
+            if (i != logger->request->n_bindvars-1)
+                printf(", ");
+        }
+        printf(" ]");
+    }
 }
 
 void logjson_perfdata(struct reqlogger *logger) {
@@ -2719,4 +2753,8 @@ void reqlog_set_queue_time(struct reqlogger *logger, int timems)
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]) {
     if (logger)
         memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));
+}
+
+void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request) {
+    logger->request = request;
 }

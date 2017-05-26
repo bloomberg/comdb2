@@ -3533,6 +3533,9 @@ void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (gbl_dump_sql_dispatched)
         logmsg(LOGMSG_USER, "SQL mode=%d [%s]\n", clnt->dbtran.mode, clnt->sql);
+
+    if (clnt->sql_query)
+        reqlog_set_request(thd->logger, clnt->sql_query);
 }
 
 #define HINT_LEN 127
@@ -5665,6 +5668,7 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
         sqlengine_prepare_engine(thd, clnt);
         unlock_schema_lk();
     }
+
 
     if (unlikely(!thd->sqldb)) {
         /* unplausable, but anyway */
