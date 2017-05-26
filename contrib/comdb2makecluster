@@ -43,8 +43,8 @@ CDB2_CONFIG=$DBDIR/comdb2db.cfg
 CDB2_OPTIONS="--cdb2cfg ${CDB2_CONFIG}"
 comdb2task=comdb2
 
-which $comdb2task || failexit "$comdb2task not in path"
-which copycomdb2 || failexit "copycomdb2 not in path"
+which $comdb2task > /dev/null || failexit "$comdb2task not in path"
+which copycomdb2  > /dev/null || failexit "copycomdb2 not in path"
 
 set -e
 
@@ -94,7 +94,7 @@ fi
 mkdir -p $DBDIR $TMPDIR
 
 # setup files:
-echo "creating"
+echo "$DBNAME: creating"
 LRL="$DBDIR/$DBNAME.lrl"
 > ${LRL}
 
@@ -162,7 +162,7 @@ keygen() {
     openssl req -x509 -newkey rsa:4096 -keyout ${DBDIR}/server.key \
         -out ${DBDIR}/server.crt \
         -days 365 -nodes -subj \
-        "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com"
+        "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=*.bloomberg.com" &>> $DBDIR/setup.log
     cp ${DBDIR}/server.crt ${DBDIR}/root.crt
     chmod 600 ${DBDIR}/server.key
     cp ${DBDIR}/server.crt ${DBDIR}/client.crt
@@ -180,9 +180,9 @@ copy_files_to_cluster()
         fi
 
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $DBDIR/logs/ $DBDIR/var/log/cdb2 $DBDIR/tmp/cdb2"
-        ssh -o StrictHostKeyChecking=no $node "$pmux_cmd"
+        ssh -o StrictHostKeyChecking=no $node "$pmux_cmd" &>> $DBDIR/setup.log
         if [[ -z $SKIPSSL ]] ; then
-            scp -o StrictHostKeyChecking=no ${DBDIR}/server.key ${DBDIR}/server.crt $node:${DBDIR} &> /dev/null
+            scp -o StrictHostKeyChecking=no ${DBDIR}/server.key ${DBDIR}/server.crt $node:${DBDIR} &>> $DBDIR/setup.log
             ssh -o StrictHostKeyChecking=no $node "cp ${DBDIR}/server.crt ${DBDIR}/root.crt || chmod 600 ${DBDIR}/server.key"
         fi
     done
@@ -218,11 +218,10 @@ if [[ $rc -ne 0 ]]; then
 fi
 
 # start it
-cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
-    echo "!$DBNAME: starting single node"
+    echo "$DBNAME: starting single node"
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "!$DBNAME: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+        echo -e "$DBNAME: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
     else
         ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$DBDIR/logs/${DBNAME}.db &
     fi
@@ -230,13 +229,13 @@ if [[ -z "$CLUSTER" ]]; then
     set +e
     out=
     # wait until we can query it
-    echo "!$DBNAME: waiting until ready"
+    echo "$DBNAME: waiting until ready"
     while [[ "$out" != "1" ]]; do
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2>/dev/null)
         sleep 1
     done
 else
-    echo "copying to cluster"
+    echo "$DBNAME: copying to cluster"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # skip copying to ourself
             continue
@@ -252,11 +251,11 @@ else
     echo "export COMDB2_ROOT=$DBDIR" >> ${DBDIR}/replicant_vars
     echo "export PATH=$PATH" >> ${DBDIR}/replicant_vars
     CMD="source ${DBDIR}/replicant_vars ; $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl"
-    echo "starting"
+    echo "$DBNAME: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                echo -e "Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                echo -e "$DBNAME: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
                 ${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$DBDIR/logs/${DBNAME}.${node}.db 2>&1 &
             fi
@@ -264,9 +263,9 @@ else
         fi
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-            echo -e "Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} ${CMD}${NOCOLOR}"
+            echo -e "$DBNAME: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} ${CMD}${NOCOLOR}"
         else
-            scp -o StrictHostKeyChecking=no ${DBDIR}/replicant_vars $node:${DBDIR}/replicant_vars &> /dev/null
+            scp -o StrictHostKeyChecking=no ${DBDIR}/replicant_vars $node:${DBDIR}/replicant_vars &>> $DBDIR/setup.log
             # redirect output from CMD to a subshell which runs awk to prepend time
             ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' > $DBDIR/logs/${DBNAME}.${node}.db)  &
             # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
@@ -275,7 +274,7 @@ else
     done
 
     set +e
-    echo "waiting until ready"
+    echo "$DBNAME: waiting until ready"
     sleep 1
     for node in $CLUSTER; do
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
@@ -284,9 +283,9 @@ else
             out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         done
     done
-    n=$(cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep ":" | wc -l)
-    echo "Cluster is running with $n nodes. You can query it with:"
-    echo "cdb2sql $DBNAME 'select 1'"
+    n=$(cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep "lsn" | wc -l)
+    echo "$DBNAME: Cluster is running with $n nodes. You can query it with:"
+    echo "   cdb2sql $DBNAME 'select 1'"
 fi
 
 exit 0
