@@ -40,7 +40,8 @@
 #define COMDB2DB_NUM 32432
 
 static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
-static char CDB2DBCONFIG_NOBBENV_PATH[64] = "/opt/bb/etc/cdb2/config.d/";
+/* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
+static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/";
 
 static char CDB2DBCONFIG_TEMP_BB_BIN[512] = "/bb/bin/comdb2db.cfg";
 
