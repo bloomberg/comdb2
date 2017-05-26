@@ -64,6 +64,7 @@
 #include "util.h"
 #include "logmsg.h"
 #include "comdb2uuid.h"
+#include "strbuf.h"
 
 enum logevent_type {
     EVENT_PUSH_PREFIX,
@@ -2011,32 +2012,34 @@ int reqlog_current_ms(struct reqlogger *logger)
     return (time_epochms() - logger->startms);
 }
 
-static void logjson_string(char *in) {
+
+
+static void logjson_string(FILE *log, char *in) {
     char *s = in;
-    printf("\"");
+    fprintf(log, "\"");
     if (in) {
         while (*s) {
             switch (*s) {
                 case '\"':
-                    printf("\\\"");
+                    fprintf(log, "\\\"");
                     break;
                 case '\n':
-                    printf("\\n");
+                    fprintf(log, "\\n");
                     break;
                 case '\b':
-                    printf("\\b");
+                    fprintf(log, "\\b");
                     break;
                 case '/':
-                    printf("\\/");
+                    fprintf(log, "\\/");
                     break;
                 case '\f':
-                    printf("\\f");
+                    fprintf(log, "\\f");
                     break;
                 case '\r':
-                    printf("\\r");
+                    fprintf(log, "\\r");
                     break;
                 case '\t':
-                    printf("\\t");
+                    fprintf(log, "\\t");
                     break;
                 default:
                     putc(*s, stdout);
@@ -2045,47 +2048,47 @@ static void logjson_string(char *in) {
             s++;
         }
     }
-    printf("\"");
+    fprintf(log, "\"");
 }
 
-void logjson_params(struct reqlogger *logger) {
+void logjson_params(FILE *log, struct reqlogger *logger) {
     if (logger->request && logger->request->n_bindvars > 0) {
-        printf(", \"le\" : %s", logger->request->little_endian ? "true" : "false");
-        printf(", \"bindings\" : [ ");
+        fprintf(log, ", \"le\" : %s", logger->request->little_endian ? "true" : "false");
+        fprintf(log, ", \"bindings\" : [ ");
         for (int i = 0; i < logger->request->n_bindvars; i++) {
-            printf(" { ");
+            fprintf(log, " { ");
             CDB2SQLQUERY__Bindvalue *val = logger->request->bindvars[i];
             if (val->varname)
-                printf("\"name\" : \"%s\", ", val->varname); 
+                fprintf(log, "\"name\" : \"%s\", ", val->varname); 
             else
-                printf("\"index\" : %d,  ", val->index); 
+                fprintf(log, "\"index\" : %d,  ", val->index); 
             if (!val->has_isnull && val->isnull) {
                 /* null, omit value */
-                printf("\"value\" : null ");
+                fprintf(log, "\"value\" : null ");
             }
             else {
-                printf("\"type\" : %d, ", val->type);
-                printf("\"len\" : %d, ", val->value.len);
-                printf("\"value\" : \"");
+                fprintf(log, "\"type\" : %d, ", val->type);
+                fprintf(log, "\"len\" : %d, ", val->value.len);
+                fprintf(log, "\"value\" : \"");
                 for (int i = 0; i < val->value.len; i++) {
                     static const char *hexchars = "0123456789abcdef";
 
                     putc(hexchars[((val->value.data[i] & 0xf0) >> 4)], stdout);
                     putc(hexchars[val->value.data[i] & 0x0f], stdout);
                 }
-                printf("\"");
+                fprintf(log, "\"");
             }
-            printf(" } ");
+            fprintf(log, " } ");
             if (i != logger->request->n_bindvars-1)
-                printf(", ");
+                fprintf(log, ", ");
         }
-        printf(" ]");
+        fprintf(log, " ]");
     }
 }
 
-void logjson_perfdata(struct reqlogger *logger) {
+void logjson_perfdata(FILE *log, struct reqlogger *logger) {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
-    printf( " \"lockwaits\" :  %d, "
+    fprintf(log,  " \"lockwaits\" :  %d, "
             " \"reads\" : %d, "
             " \"writes\" : %d, "
             " \"readtime\" : %d, "
@@ -2101,33 +2104,33 @@ void logjson_perfdata(struct reqlogger *logger) {
 
 }
 
-static void logjson(struct reqlogger *logger) {
+static void logjson(FILE *log, struct reqlogger *logger) {
     static const char *hexchars = "0123456789abcdef";
-    printf("{  \"type\" : \"sql\",  \"query\" : ");
+    fprintf(log, "{  \"type\" : \"sql\",  \"query\" : ");
 
-    logjson_string(logger->stmt);
+    logjson_string(log, logger->stmt);
 
-    printf(", \"id\" : \"%s\"", logger->id);
-    printf(", \"cost\" : %f", logger->sqlcost);
-    printf(", \"rows\" : %d", logger->sqlrows);
-    printf(", \"replays\" : %d", logger->vreplays);
-    printf(", \"fingerprint\" : \"");
+    fprintf(log, ", \"id\" : \"%s\"", logger->id);
+    fprintf(log, ", \"cost\" : %f", logger->sqlcost);
+    fprintf(log, ", \"rows\" : %d", logger->sqlrows);
+    fprintf(log, ", \"replays\" : %d", logger->vreplays);
+    fprintf(log, ", \"fingerprint\" : \"");
     for (int i = 0; i < 15; i++) {
         putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], stdout);
         putc(hexchars[logger->fingerprint[i] & 0x0f], stdout);
     }
-    printf("\"");
-    printf(", \"duration\" : %d", logger->durationms);
-    printf(", \"qtime\" : %d", logger->queuetimems);
+    fprintf(log, "\"");
+    fprintf(log, ", \"duration\" : %d", logger->durationms);
+    fprintf(log, ", \"qtime\" : %d", logger->queuetimems);
 
-    logjson_params(logger);
+    logjson_params(log, logger);
 
-    printf(", \"perf\" : { ");
-    logjson_perfdata(logger);
-    printf("} ");
+    fprintf(log, ", \"perf\" : { ");
+    logjson_perfdata(log, logger);
+    fprintf(log, "} ");
 
 
-    printf("}\n");
+    fprintf(log, "}\n");
 }
 
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen) {
@@ -2181,7 +2184,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     logger->durationms =
         (time_epochms() - logger->startms) + logger->queuetimems;
 
-    logjson(logger);
+    logjson(stdout, logger);
 
     /* now see if this matches any of our rules */
     if (rules.count != 0) {
