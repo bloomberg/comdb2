@@ -29,7 +29,7 @@ cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
 cdb2sql: tools/cdb2sql/cdb2sql.o
 comdb2sc: tools/comdb2sc/comdb2sc.o
 cdb2_sqlreplay: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
-cdb2sql comdb2sc cdb2_sqlreplay:
+cdb2sql comdb2sc cdb2_sqlreplay cdb2sockpool:
 	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
 
 # Cdb2sockpool - Use base rules, multiple object files
