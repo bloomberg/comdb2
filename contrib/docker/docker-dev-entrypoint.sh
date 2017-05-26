@@ -10,6 +10,8 @@ pmux -l
 
 host=$(hostname -i)
 
+mkdir -p /var/cdb2
+
 if [[ -f /opt/bb/etc/cdb2/config/comdb2.d/hostname.lrl ]]; then
     for dbname in /opt/bb/var/cdb2/*; do 
         dbname=${dbname##*/}
