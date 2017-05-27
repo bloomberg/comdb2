@@ -741,14 +741,9 @@ void *handle_exit_thd(void *arg)
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     flush_db();
+    clean_exit();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
-    int num_fastq = 1;
-    if (gbl_use_bbipc) {
-        num_fastq = N_BBIPC;
-    }
-
-    timer(1, TMEV_EXIT);
     return NULL;
 }
 
@@ -793,7 +788,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
-
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 

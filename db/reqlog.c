@@ -65,228 +65,11 @@
 #include "logmsg.h"
 #include "comdb2uuid.h"
 #include "strbuf.h"
+#include "roll_file.h"
 
-enum logevent_type {
-    EVENT_PUSH_PREFIX,
-    EVENT_POP_PREFIX,
-    EVENT_POP_PREFIX_ALL,
-    EVENT_PRINT
-};
+#include "eventlog.h"
+#include "reqlog_int.h"
 
-enum { MAXSTMT = 31, NUMSTMTS = 16 };
-
-struct logevent {
-    struct logevent *next;
-    enum logevent_type type;
-};
-
-struct push_prefix_event {
-    struct logevent hdr;
-    int length; /* -ve if not known, in which case text must be \0
-                   terminated */
-    const char *text;
-};
-
-struct pop_prefix_event {
-    struct logevent hdr;
-};
-
-struct print_event {
-    struct logevent hdr;
-    unsigned event_flag;
-    int length; /* -ve if not known, in which case text must be \0
-                   terminated */
-    char *text;
-};
-
-enum { MAX_PREFIXES = 16 };
-
-struct prefix_type {
-    char prefix[256];
-    int pos;
-    int stack[MAX_PREFIXES];
-    int stack_pos;
-};
-
-struct tablelist {
-    struct tablelist *next;
-    int count;
-    char name[1];
-};
-
-struct reqlogger {
-    char origin[128];
-
-    /* Everything from here onwards is transient and can be reset
-     * with a bzero. */
-    int start_transient;
-
-    /* flags that can be set as we progress */
-    unsigned reqflags;
-
-    int in_request;
-    const char *request_type;
-    unsigned event_mask;
-    unsigned dump_mask;
-    unsigned mask; /* bitwise or of the above two masks */
-    int startms;
-
-    struct prefix_type prefix;
-    char dumpline[1024];
-    int dumplinepos;
-
-    /* list of tables touched by this request */
-    int tracking_tables;
-    struct tablelist *tables;
-
-    /* our opcode - OP_SQL for sql */
-    int opcode;
-
-    struct ireq *iq;
-
-    /* singly linked list of all the stuff we've logged */
-    struct logevent *events;
-    struct logevent *last_event;
-
-    /* the sql statement */
-    char *stmt;
-    char *tags;
-    void *tagbuf;
-    void *nullbits;
-
-    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
-    int sqlrows;
-    double sqlcost;
-
-    int rc;
-    int durationms;
-    int vreplays;
-    int queuetimems;
-    char fingerprint[16];
-    char id[41];
-
-    CDB2SQLQUERY *request;
-};
-
-/* a rage of values to look for */
-struct range {
-    int from;
-    int to;
-};
-
-struct dblrange {
-    double from;
-    double to;
-};
-
-/* a list of integers to look for (or exclude) */
-enum { LIST_MAX = 32 };
-struct list {
-    unsigned num;
-    unsigned inv; /* flag - if set allow values not in list */
-    int list[LIST_MAX];
-};
-
-struct output {
-    LINKC_T(struct output) linkv;
-
-    int refcount;
-    int fd;
-
-    int use_time_prefix;
-    int lasttime;
-    char timeprefix[17]; /* "dd/mm hh:mm:ss: " */
-
-    /* serialise output so that we don't get */
-    pthread_mutex_t mutex;
-
-    char filename[1];
-};
-
-/* A set of conditions that must be met to log a request, what we want to
- * log and where we should log it. */
-struct logrule {
-
-    /* A name for this rule */
-    char name[32];
-
-    int active;
-
-    /* Part 1: conditions.  These are all and conditions (all must be met) */
-
-    int count; /* how many to log.  delete rule after this many */
-
-    struct range duration;
-    struct range retries;
-    struct range vreplays;
-    struct dblrange sql_cost;
-    struct range sql_rows;
-
-    struct list rc_list;
-    struct list opcode_list;
-
-    char tablename[MAXTABLELEN + 1];
-
-    char stmt[MAXSTMT + 1];
-
-    /* Part 2: what to log */
-
-    unsigned event_mask;
-
-    /* Part 3: where to log it */
-
-    struct output *out;
-
-    /* Keep the rules in a linked list */
-    LINKC_T(struct logrule) linkv;
-};
-
-/* per client request stats */
-
-/* we normalise our request rate report to this period - we have a bucket for
- * each second. */
-enum { NUM_BUCKETS = 10 };
-struct nodestats {
-    struct nodestats *next;
-
-    char *host;
-
-    /* raw counters, totals (updated locklessly by multiple threads) */
-    struct rawnodestats rawtotals;
-
-    /* previous totals for last time quanta */
-    struct rawnodestats prevtotals;
-
-    /* keep a diff of reqs/second for th last few seconds so we can
-     * caculate a smoothis reqs/second.  this may not get updated regularaly
-     * so we record epochms times. */
-    unsigned cur_bucket;
-    struct rawnodestats raw_buckets[NUM_BUCKETS];
-    int bucket_spanms[NUM_BUCKETS];
-};
-
-struct summary_nodestats {
-    char *host;
-
-    unsigned finds;
-    unsigned rngexts;
-    unsigned writes;
-    unsigned other_fstsnds;
-
-    unsigned adds;
-    unsigned upds;
-    unsigned dels;
-    unsigned bsql;     /* block sql */
-    unsigned recom;    /* recom sql */
-    unsigned snapisol; /* snapisol sql */
-    unsigned serial;   /* serial sql */
-
-    unsigned sql_queries;
-    unsigned sql_steps;
-    unsigned sql_rows;
-};
-
-extern int gbl_time_fdb;
 
 /*
 ** ugh - constants are variable
@@ -305,10 +88,7 @@ static pthread_mutex_t nodestats_calc_lk = PTHREAD_MUTEX_INITIALIZER;
  * which takes some default action on long requests.  If you want anything
  * different then you add rules and you have to lock around the list. */
 static int long_request_ms = 2000;
-static int all_sql_requests = 0;
 static struct output *long_request_out = NULL;
-static struct output *sql_request_out = NULL;
-static struct output *bad_cstr_out = NULL;
 static pthread_mutex_t rules_mutex;
 static LISTC_T(struct logrule) rules;
 static LISTC_T(struct output) outputs;
@@ -838,10 +618,7 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
-    filename = comdb2_location("logs", "%s.sqlreqs", dbname);
-    sql_request_out = get_output_ll(filename);
-    free(filename);
-
+    eventlog_init(dbname);
 
     scanrules_ll();
     return 0;
@@ -1005,13 +782,6 @@ void reqlog_process_message(char *line, int st, int lline)
         gbl_sql_time_threshold = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Long SQL request threshold now %d msec\n",
                gbl_sql_time_threshold);
-    } else if (tokcmp(tok, ltok, "logallsql") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (tokcmp(tok, ltok, "off") == 0) {
-            all_sql_requests = 0;
-        } else {
-            all_sql_requests = 1;
-        }
     } else if (tokcmp(tok, ltok, "longreqfile") == 0) {
         char filename[128];
         struct output *out;
@@ -1156,7 +926,10 @@ void reqlog_process_message(char *line, int st, int lline)
                 rule->event_mask |= REQL_TRACE;
             } else if (tokcmp(tok, ltok, "results") == 0) {
                 rule->event_mask |= REQL_RESULTS;
-            } else {
+            } else if (tokcmp(tok, ltok, "events") == 0) {
+                eventlog_process_message(line, lline, &st);
+            }
+            else {
                 logmsg(LOGMSG_ERROR, "unknown rule command <%*.*s>\n", ltok, ltok,
                         tok);
             }
@@ -1746,14 +1519,8 @@ void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
         if (logger->stmt) free(logger->stmt);
         logger->stmt = strdup(sqlstmt);
     }
-    if (logger->stmt) {
+    if (logger->stmt)
         reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
-	if (all_sql_requests) {
-            dumpf(logger, sql_request_out, "sql_begin #%d: sql=%s\n",
-                  logger->nsqlreqs,
-                  logger->stmt);
-        }
-    }
 }
 
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
@@ -1836,9 +1603,6 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
 
     if (out == long_request_out) {
         dumpf(logger, out, "LONG REQUEST %d msec ", logger->durationms);
-    } else if (out == sql_request_out) {
-        dumpf(logger, out, "sql_end #%d: %d msec ", logger->nsqlreqs,
-              logger->durationms);
     } else {
         dumpf(logger, out, "%s %d msec ", logger->request_type,
               logger->durationms);
@@ -1849,9 +1613,6 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
         struct ireq *iq = logger->iq;
         if (iq->reptimems > 0) {
             uint64_t rate = iq->txnsize / iq->reptimems;
-
-            if (out == sql_request_out)
-                dumpf(logger, out, "sql_end #%d:", logger->nsqlreqs);
 
             dumpf(logger, out,
                   "  Committed %llu log bytes in %d ms rep time (%llu "
@@ -1903,10 +1664,7 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
                     flushdump(logger, out);
                 }
                 if (logger->dumplinepos == 0) {
-                    if (out == sql_request_out)
-                        dumpf(logger, out, "sql_end #%d:  ", logger->nsqlreqs);
-                    else
-                        dump(logger, out, "  ", 2);
+                    dump(logger, out, "  ", 2);
                 } else {
                     dump(logger, out, ", ", 2);
                 }
@@ -2012,127 +1770,6 @@ int reqlog_current_ms(struct reqlogger *logger)
     return (time_epochms() - logger->startms);
 }
 
-
-
-static void logjson_string(FILE *log, char *in) {
-    char *s = in;
-    fprintf(log, "\"");
-    if (in) {
-        while (*s) {
-            switch (*s) {
-                case '\"':
-                    fprintf(log, "\\\"");
-                    break;
-                case '\n':
-                    fprintf(log, "\\n");
-                    break;
-                case '\b':
-                    fprintf(log, "\\b");
-                    break;
-                case '/':
-                    fprintf(log, "\\/");
-                    break;
-                case '\f':
-                    fprintf(log, "\\f");
-                    break;
-                case '\r':
-                    fprintf(log, "\\r");
-                    break;
-                case '\t':
-                    fprintf(log, "\\t");
-                    break;
-                default:
-                    putc(*s, stdout);
-                    break;
-            }
-            s++;
-        }
-    }
-    fprintf(log, "\"");
-}
-
-void logjson_params(FILE *log, struct reqlogger *logger) {
-    if (logger->request && logger->request->n_bindvars > 0) {
-        fprintf(log, ", \"le\" : %s", logger->request->little_endian ? "true" : "false");
-        fprintf(log, ", \"bindings\" : [ ");
-        for (int i = 0; i < logger->request->n_bindvars; i++) {
-            fprintf(log, " { ");
-            CDB2SQLQUERY__Bindvalue *val = logger->request->bindvars[i];
-            if (val->varname)
-                fprintf(log, "\"name\" : \"%s\", ", val->varname); 
-            else
-                fprintf(log, "\"index\" : %d,  ", val->index); 
-            if (!val->has_isnull && val->isnull) {
-                /* null, omit value */
-                fprintf(log, "\"value\" : null ");
-            }
-            else {
-                fprintf(log, "\"type\" : %d, ", val->type);
-                fprintf(log, "\"len\" : %d, ", val->value.len);
-                fprintf(log, "\"value\" : \"");
-                for (int i = 0; i < val->value.len; i++) {
-                    static const char *hexchars = "0123456789abcdef";
-
-                    putc(hexchars[((val->value.data[i] & 0xf0) >> 4)], stdout);
-                    putc(hexchars[val->value.data[i] & 0x0f], stdout);
-                }
-                fprintf(log, "\"");
-            }
-            fprintf(log, " } ");
-            if (i != logger->request->n_bindvars-1)
-                fprintf(log, ", ");
-        }
-        fprintf(log, " ]");
-    }
-}
-
-void logjson_perfdata(FILE *log, struct reqlogger *logger) {
-    const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
-    fprintf(log,  " \"lockwaits\" :  %d, "
-            " \"reads\" : %d, "
-            " \"writes\" : %d, "
-            " \"readtime\" : %d, "
-            " \"writetime\" : %d, "
-            " \"locktime\" : %d ",
-
-            thread_stats->n_lock_waits,
-            thread_stats->n_preads,
-            thread_stats->n_pwrites,
-            thread_stats->pread_time_ms,
-            thread_stats->pwrite_time_ms,
-            thread_stats->lock_wait_time_ms);
-
-}
-
-static void logjson(FILE *log, struct reqlogger *logger) {
-    static const char *hexchars = "0123456789abcdef";
-    fprintf(log, "{  \"type\" : \"sql\",  \"query\" : ");
-
-    logjson_string(log, logger->stmt);
-
-    fprintf(log, ", \"id\" : \"%s\"", logger->id);
-    fprintf(log, ", \"cost\" : %f", logger->sqlcost);
-    fprintf(log, ", \"rows\" : %d", logger->sqlrows);
-    fprintf(log, ", \"replays\" : %d", logger->vreplays);
-    fprintf(log, ", \"fingerprint\" : \"");
-    for (int i = 0; i < 15; i++) {
-        putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], stdout);
-        putc(hexchars[logger->fingerprint[i] & 0x0f], stdout);
-    }
-    fprintf(log, "\"");
-    fprintf(log, ", \"duration\" : %d", logger->durationms);
-    fprintf(log, ", \"qtime\" : %d", logger->queuetimems);
-
-    logjson_params(log, logger);
-
-    fprintf(log, ", \"perf\" : { ");
-    logjson_perfdata(log, logger);
-    fprintf(log, "} ");
-
-
-    fprintf(log, "}\n");
-}
-
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen) {
     if (idlen == sizeof(uuid_t))
         comdb2uuidstr(id, logger->id);
@@ -2184,7 +1821,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     logger->durationms =
         (time_epochms() - logger->startms) + logger->queuetimems;
 
-    logjson(stdout, logger);
+    eventlog_add(logger);
 
     /* now see if this matches any of our rules */
     if (rules.count != 0) {
@@ -2299,11 +1936,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
         logmsg(LOGMSG_WARN, "WARNING: THIS DATABASE IS RECEIVING NON NUL "
                         "TERMINATED CSTRINGS\n");
         log_header(logger, default_out, 0);
-    }
-
-    /* check for sqlreqs */
-    if (all_sql_requests && logger->opcode == OP_SQL && !logger->iq) {
-        log_header(logger, sql_request_out, 0);
     }
 
     /* check for long requests */
