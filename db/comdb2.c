@@ -126,7 +126,8 @@ void berk_memp_sync_alarm_ms(int);
 #include "plugin.h"
 
 #include "debug_switches.h"
-#include <machine.h>
+#include "machine.h"
+#include "eventlog.h"
 
 #define COMDB2_ERRSTAT_ENABLED() 1
 #define COMDB2_DIFFSTAT_REPORT() 1
@@ -1451,6 +1452,7 @@ void clean_exit(void)
     rc = backend_close(thedb);
     if (rc != 0)
        logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
+
     logmsg(LOGMSG_WARN, "goodbye\n");
 
     if (COMDB2_SOCK_FSTSND_ENABLED()) {
@@ -1472,6 +1474,8 @@ void clean_exit(void)
             free(indicator_file);
         }
     }
+
+    eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
     fd = creat(indicator_file, 0666);
