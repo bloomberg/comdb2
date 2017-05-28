@@ -33,19 +33,13 @@ On every machine in the cluster:
    ** Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL) **
         
    ```
-   sudo apt-get install -y build-essential bison flex libprotobuf-c-dev   \
-   libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev \
-   make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev          \
-   libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
+   sudo apt-get install -y build-essential bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
    ```
 
    ** CentOS 7 **
 
    ```
-   sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel   \
-   protobuf-c-devel byacc flex openssl openssl-devel openssl-libs         \
-   readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel    \
-   zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
+   sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
    ```
 
 3. Build Comdb2:
