@@ -107,7 +107,10 @@ struct reqlogger {
     int vreplays;
     int queuetimems;
     char fingerprint[16];
+    int have_fingerprint;
     char id[41];
+    int have_id;
+    const char *event_type;
 
     CDB2SQLQUERY *request;
 };
