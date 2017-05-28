@@ -172,7 +172,7 @@ void eventlog_perfdata(gzFile log, const struct reqlogger *logger, int *sz) {
     }
 }
 
-static void eventlog_locked(gzFile log, const struct reqlogger *logger, int *sz) {
+static void eventlog_add_locked(gzFile log, const struct reqlogger *logger, int *sz) {
     static const char *hexchars = "0123456789abcdef";
 
     int detailed = eventlog_detailed;
@@ -246,7 +246,7 @@ void eventlog_add(const struct reqlogger *logger) {
         pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-    eventlog_locked(eventlog, logger, &sz);
+    eventlog_add_locked(eventlog, logger, &sz);
     if (sz > eventlog_rollat) {
         eventlog_close();
         char *fname = eventlog_fname(thedb->envname);
