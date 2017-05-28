@@ -816,6 +816,8 @@ void reqlog_process_message(char *line, int st, int lline)
         verbose = 0;
     } else if (ltok == 0) {
         logmsg(LOGMSG_ERROR, "huh?\n");
+    } else if (tokcmp(tok, ltok, "events") == 0) {
+                eventlog_process_message(line, lline, &st);
     } else {
         char rulename[32];
         struct logrule *rule;
@@ -926,10 +928,7 @@ void reqlog_process_message(char *line, int st, int lline)
                 rule->event_mask |= REQL_TRACE;
             } else if (tokcmp(tok, ltok, "results") == 0) {
                 rule->event_mask |= REQL_RESULTS;
-            } else if (tokcmp(tok, ltok, "events") == 0) {
-                eventlog_process_message(line, lline, &st);
-            }
-            else {
+            } else {
                 logmsg(LOGMSG_ERROR, "unknown rule command <%*.*s>\n", ltok, ltok,
                         tok);
             }
@@ -1775,6 +1774,7 @@ void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen) {
         comdb2uuidstr(id, logger->id);
     else
         sprintf(logger->id, "%llx", *(unsigned long long*) id);
+    logger->have_id = 1;
 }
 
 
@@ -2014,6 +2014,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     logger->tags = NULL;
     logger->tagbuf = NULL;
     logger->nullbits = NULL;
+    logger->have_id = 0;
+    logger->have_fingerprint = 0;
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2386,10 +2388,16 @@ void reqlog_set_queue_time(struct reqlogger *logger, int timems)
 }
 
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]) {
-    if (logger)
+    if (logger) {
         memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));
+        logger->have_fingerprint = 1;
+    }
 }
 
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request) {
     logger->request = request;
+}
+
+void reqlog_set_event(struct reqlogger *logger, const char *evtype) {
+    logger->event_type = evtype;
 }

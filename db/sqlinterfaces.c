@@ -1465,8 +1465,11 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         }
         if (clnt->osql.rqid != 0 && clnt->osql.rqid != OSQL_RQID_USE_UUID)
             reqlog_set_rqid(logger, &clnt->osql.rqid, sizeof(clnt->osql.rqid));
-        else
-            reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+        else {
+            /* have an "id_set" instead? */
+            if (!comdb2uuid_is_zero(clnt->osql.uuid))
+                reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+        }
     }
 
     listc_init(&lst, offsetof(struct sql_hist, lnk));
@@ -5126,6 +5129,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int postponed_write = 0;
     int rc;
 
+    reqlog_set_event(thd->logger, "sql");
     run_stmt_setup(clnt, rec);
 
     new_row_data_type = is_new_row_data(clnt);
@@ -5337,6 +5341,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct errstat err;
     char *errstr;
     int rc;
+
+    reqlog_set_event(thd->logger, "sp");
 
     rc = get_prepared_bound_param(thd, clnt, &rec, &err);
     if (rc) {

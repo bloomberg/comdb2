@@ -2908,7 +2908,7 @@ void reqlog_set_queue_time(struct reqlogger *logger, int timems);
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
-
+void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);

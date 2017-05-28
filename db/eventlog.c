@@ -9,11 +9,13 @@
 #include "eventlog.h"
 #include "roll_file.h"
 #include "util.h"
+#include "plhash.h"
 
 static char* eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 16*1024*1024;
 static int eventlog_enabled = 1;
+static int eventlog_detailed = 0;
 
 static FILE *eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -131,47 +133,67 @@ void eventlog_params(FILE *log, const struct reqlogger *logger, int *sz) {
 
 void eventlog_perfdata(FILE *log, const struct reqlogger *logger, int *sz) {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
-    *sz += fprintf(log, ", \"perf\" : { ");
-    *sz += fprintf(log,  " \"lockwaits\" :  %d, "
-            " \"reads\" : %d, "
-            " \"writes\" : %d, "
-            " \"readtime\" : %d, "
-            " \"writetime\" : %d, "
-            " \"locktime\" : %d ",
+    int first = 1;
 
-            thread_stats->n_lock_waits,
-            thread_stats->n_preads,
-            thread_stats->n_pwrites,
-            thread_stats->pread_time_ms,
-            thread_stats->pwrite_time_ms,
-            thread_stats->lock_wait_time_ms);
-    *sz += fprintf(log, "} ");
+    if (thread_stats->n_lock_waits || thread_stats->n_preads || thread_stats->n_pwrites || thread_stats->pread_time_ms || thread_stats->pwrite_time_ms || thread_stats->lock_wait_time_ms) {
+        *sz += fprintf(log, ", \"perf\" : { ");
+
+        if (thread_stats->n_lock_waits) {
+            *sz += fprintf(log,  "%c \"lockwaits\" :  %d", first ? ' ': ',', thread_stats->n_lock_waits);
+            *sz += fprintf(log,  ", \"lockwaittime\" :  %d", first ? ' ': ',', thread_stats->lock_wait_time_ms);
+            first = 0;
+        }
+        if (thread_stats->n_preads) {
+            *sz += fprintf(log,  "%c \"reads\" :  %d", first ? ' ': ',', thread_stats->n_preads);
+            *sz += fprintf(log,  ", \"readtime\" :  %d", first ? ' ': ',', thread_stats->pread_time_ms);
+            first = 0;
+        }
+        if (thread_stats->n_pwrites) {
+            *sz += fprintf(log,  "%c \"reads\" :  %d", first ? ' ': ',', thread_stats->n_pwrites);
+            *sz += fprintf(log,  ", \"readtime\" :  %d", first ? ' ': ',', thread_stats->pwrite_time_ms);
+            first = 0;
+        }
+
+        *sz += fprintf(log, "} ");
+    }
 }
 
 static void eventlog_locked(FILE *log, const struct reqlogger *logger, int *sz) {
     static const char *hexchars = "0123456789abcdef";
-    *sz += fprintf(log, "{  \"type\" : \"sql\",  \"query\" : ");
 
-    eventlog_string(log, logger->stmt, sz);
+    int detailed = eventlog_detailed;
+    *sz += fprintf(log, "{  \"type\" : \"%s\" ", logger->event_type);
 
-    *sz += fprintf(log, ", \"id\" : \"%s\"", logger->id);
-    *sz += fprintf(log, ", \"cost\" : %f", logger->sqlcost);
-    *sz += fprintf(log, ", \"rows\" : %d", logger->sqlrows);
-    *sz += fprintf(log, ", \"replays\" : %d", logger->vreplays);
-    *sz += fprintf(log, ", \"fingerprint\" : \"");
-    for (int i = 0; i < 15; i++) {
-        putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], log);
-        putc(hexchars[logger->fingerprint[i] & 0x0f], log);
+    if (logger->stmt && detailed) {
+        *sz += fprintf(log, ", \"sql\" : ");
+        eventlog_string(log, logger->stmt, sz);
+    }
+
+    if (logger->have_id)
+        *sz += fprintf(log, ", \"id\" : \"%s\"", logger->id);
+    if (logger->sqlcost)
+        *sz += fprintf(log, ", \"cost\" : %f", logger->sqlcost);
+    if (logger->sqlrows)
+        *sz += fprintf(log, ", \"rows\" : %d", logger->sqlrows);
+    if (logger->vreplays)
+        *sz += fprintf(log, ", \"replays\" : %d", logger->vreplays);
+    if (logger->have_fingerprint) {
+        *sz += fprintf(log, ", \"fingerprint\" : \"");
+        for (int i = 0; i < 15; i++) {
+            putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], log);
+            putc(hexchars[logger->fingerprint[i] & 0x0f], log);
+        }
+        fprintf(log, "\"");
     }
     *sz += 32;
-    *sz += fprintf(log, "\"");
     *sz += fprintf(log, ", \"duration\" : %d", logger->durationms);
-    *sz += fprintf(log, ", \"qtime\" : %d", logger->queuetimems);
+    if (logger->queuetimems)
+        *sz += fprintf(log, ", \"qtime\" : %d", logger->queuetimems);
 
-    eventlog_params(log, logger, sz);
+    if (detailed)
+        eventlog_params(log, logger, sz);
 
     eventlog_perfdata(log, logger, sz);
-
 
     *sz += fprintf(log, "}, \n");
 }
@@ -186,6 +208,7 @@ void eventlog_add(const struct reqlogger *logger) {
         return;
 
     pthread_mutex_lock(&eventlog_lk);
+
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
         pthread_mutex_unlock(&eventlog_lk);
@@ -259,6 +282,12 @@ void eventlog_process_message(char *line, int lline, int *toff) {
         }
         eventlog_nkeep = nfiles;
         logmsg(LOGMSG_USER, "Keeping %d logs\n", eventlog_nkeep);
+    } else if (tokcmp(tok, ltok, "detailed") == 0) {
+        tok = segtok(line, lline, toff, &ltok);
+        if (tokcmp(tok, ltok, "on") == 0)
+            eventlog_detailed = 1;
+        else if (tokcmp(tok, ltok, "off") == 0)
+            eventlog_detailed = 0;
     } else if (tokcmp(tok, ltok, "rollat") == 0) {
         off_t rollat;
         char *s;
