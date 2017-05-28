@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <stddef.h>
 
+#include <zlib.h>
+
 #include "reqlog_int.h"
 #include "eventlog.h"
 #include "roll_file.h"
@@ -17,9 +19,9 @@ static int eventlog_rollat = 16*1024*1024;
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 
-static FILE *eventlog = NULL;
+static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static FILE *eventlog_open(const char *fname);
+static gzFile eventlog_open(const char *fname);
 int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
@@ -37,27 +39,31 @@ void eventlog_init(const char *dbname) {
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
 }
 
-static FILE *eventlog_open(const char *fname) {
-    FILE *f = fopen(fname, "a");
-    off_t sz;
-    if (f == NULL)
-        return NULL;
-    sz = ftello(f);
-    if (sz != 0) {
-        fclose(f);
-        roll_file(fname, eventlog_nkeep);
+static gzFile eventlog_open(const char *fname) {
+    FILE *checkf = fopen(fname, "r");
+    if (checkf != NULL) {
+        fseeko(checkf, 0, SEEK_END);
+        off_t sz = ftello(checkf);
+        fclose(checkf);
+        if (sz != 0)
+            roll_file(fname, eventlog_nkeep);
     }
-    f = fopen(fname, "a");
-    fprintf(f, "[\n");
+
+    gzFile f = gzopen(fname, "a");
+    if (f == NULL) {
+        eventlog_enabled = 0;
+        return NULL;
+    }
+    f = gzopen(fname, "a");
+    gzprintf(f, "[\n");
     return f;
 }
 
 static void eventlog_close(void) {
     if (eventlog == NULL)
         return;
-    fprintf(eventlog, "{ \"type\" : \"end\" }\n]\n");
-    fflush(eventlog);
-    fclose(eventlog);
+    gzprintf(eventlog, "{ \"type\" : \"end\" }\n]\n");
+    gzclose(eventlog);
     eventlog = NULL;
 }
 
@@ -65,108 +71,108 @@ static char* eventlog_fname(const char *dbname) {
     return comdb2_location("logs", "%s.events", dbname);
 }
 
-static void eventlog_string(FILE *log, char *in, int *sz) {
+static void eventlog_string(gzFile log, char *in, int *sz) {
     char *s = in;
-    *sz += fprintf(log, "\"");
+    *sz += gzprintf(log, "\"");
     if (in) {
         while (*s) {
             switch (*s) {
                 case '\"':
-                    *sz += fprintf(log, "\\\"");
+                    *sz += gzprintf(log, "\\\"");
                     break;
                 case '\n':
-                    *sz += fprintf(log, "\\n");
+                    *sz += gzprintf(log, "\\n");
                     break;
                 case '\b':
-                    *sz += fprintf(log, "\\b");
+                    *sz += gzprintf(log, "\\b");
                     break;
                 case '/':
-                    *sz += fprintf(log, "\\/");
+                    *sz += gzprintf(log, "\\/");
                     break;
                 case '\f':
-                    *sz += fprintf(log, "\\f");
+                    *sz += gzprintf(log, "\\f");
                     break;
                 case '\r':
-                    *sz += fprintf(log, "\\r");
+                    *sz += gzprintf(log, "\\r");
                     break;
                 case '\t':
-                    *sz += fprintf(log, "\\t");
+                    *sz += gzprintf(log, "\\t");
                     break;
                 default:
-                    putc(*s, log);
+                    gzputc(log, *s);
                     *sz += 1;
                     break;
             }
             s++;
         }
     }
-    *sz += fprintf(log, "\"");
+    *sz += gzprintf(log, "\"");
 }
 
-void eventlog_params(FILE *log, const struct reqlogger *logger, int *sz) {
+void eventlog_params(gzFile log, const struct reqlogger *logger, int *sz) {
     if (logger->request && logger->request->n_bindvars > 0) {
-        *sz += fprintf(log, ", \"le\" : %s", logger->request->little_endian ? "true" : "false");
-        *sz += fprintf(log, ", \"bindings\" : [ ");
+        *sz += gzprintf(log, ", \"le\" : %s", logger->request->little_endian ? "true" : "false");
+        *sz += gzprintf(log, ", \"bindings\" : [ ");
         for (int i = 0; i < logger->request->n_bindvars; i++) {
-            *sz += fprintf(log, " { ");
+            *sz += gzprintf(log, " { ");
             CDB2SQLQUERY__Bindvalue *val = logger->request->bindvars[i];
             if (val->varname)
-                *sz += fprintf(log, "\"name\" : \"%s\", ", val->varname); 
+                *sz += gzprintf(log, "\"name\" : \"%s\", ", val->varname); 
             else
-                *sz += fprintf(log, "\"index\" : %d,  ", val->index); 
+                *sz += gzprintf(log, "\"index\" : %d,  ", val->index); 
             if (!val->has_isnull && val->isnull) {
                 /* null, omit value */
-                *sz += fprintf(log, "\"value\" : null ");
+                *sz += gzprintf(log, "\"value\" : null ");
             }
             else {
-                *sz += fprintf(log, "\"type\" : %d, ", val->type);
-                *sz += fprintf(log, "\"len\" : %d, ", val->value.len);
-                *sz += fprintf(log, "\"value\" : \"");
+                *sz += gzprintf(log, "\"type\" : %d, ", val->type);
+                *sz += gzprintf(log, "\"len\" : %d, ", val->value.len);
+                *sz += gzprintf(log, "\"value\" : \"");
                 for (int i = 0; i < val->value.len; i++) {
                     static const char *hexchars = "0123456789abcdef";
 
-                    putc(hexchars[((val->value.data[i] & 0xf0) >> 4)], log);
-                    putc(hexchars[val->value.data[i] & 0x0f], log);
+                    gzputc(log, hexchars[((val->value.data[i] & 0xf0) >> 4)]);
+                    gzputc(log, hexchars[val->value.data[i] & 0x0f]);
                 }
                 *sz += val->value.len * 2;
-                *sz += fprintf(log, "\"");
+                *sz += gzprintf(log, "\"");
             }
-            *sz += fprintf(log, " } ");
+            *sz += gzprintf(log, " } ");
             if (i != logger->request->n_bindvars-1)
-                *sz += fprintf(log, ", ");
+                *sz += gzprintf(log, ", ");
         }
-        *sz += fprintf(log, " ]");
+        *sz += gzprintf(log, " ]");
     }
 }
 
-void eventlog_perfdata(FILE *log, const struct reqlogger *logger, int *sz) {
+void eventlog_perfdata(gzFile log, const struct reqlogger *logger, int *sz) {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
     int first = 1;
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads || thread_stats->n_pwrites || thread_stats->pread_time_ms || thread_stats->pwrite_time_ms || thread_stats->lock_wait_time_ms) {
-        *sz += fprintf(log, ", \"perf\" : { ");
+        *sz += gzprintf(log, ", \"perf\" : { ");
 
         if (thread_stats->n_lock_waits) {
-            *sz += fprintf(log,  "%c \"lockwaits\" :  %d", first ? ' ': ',', thread_stats->n_lock_waits);
-            *sz += fprintf(log,  ", \"lockwaittime\" :  %d", first ? ' ': ',', thread_stats->lock_wait_time_ms);
+            *sz += gzprintf(log,  "%c \"lockwaits\" :  %d", first ? ' ': ',', thread_stats->n_lock_waits);
+            *sz += gzprintf(log,  ", \"lockwaittime\" :  %d", first ? ' ': ',', thread_stats->lock_wait_time_ms);
             first = 0;
         }
         if (thread_stats->n_preads) {
-            *sz += fprintf(log,  "%c \"reads\" :  %d", first ? ' ': ',', thread_stats->n_preads);
-            *sz += fprintf(log,  ", \"readtime\" :  %d", first ? ' ': ',', thread_stats->pread_time_ms);
+            *sz += gzprintf(log,  "%c \"reads\" :  %d", first ? ' ': ',', thread_stats->n_preads);
+            *sz += gzprintf(log,  ", \"readtime\" :  %d", first ? ' ': ',', thread_stats->pread_time_ms);
             first = 0;
         }
         if (thread_stats->n_pwrites) {
-            *sz += fprintf(log,  "%c \"reads\" :  %d", first ? ' ': ',', thread_stats->n_pwrites);
-            *sz += fprintf(log,  ", \"readtime\" :  %d", first ? ' ': ',', thread_stats->pwrite_time_ms);
+            *sz += gzprintf(log,  "%c \"reads\" :  %d", first ? ' ': ',', thread_stats->n_pwrites);
+            *sz += gzprintf(log,  ", \"readtime\" :  %d", first ? ' ': ',', thread_stats->pwrite_time_ms);
             first = 0;
         }
 
-        *sz += fprintf(log, "} ");
+        *sz += gzprintf(log, "} ");
     }
 }
 
-static void eventlog_locked(FILE *log, const struct reqlogger *logger, int *sz) {
+static void eventlog_locked(gzFile log, const struct reqlogger *logger, int *sz) {
     static const char *hexchars = "0123456789abcdef";
 
     int detailed = eventlog_detailed;
@@ -177,51 +183,51 @@ static void eventlog_locked(FILE *log, const struct reqlogger *logger, int *sz) 
         memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
         st->sql = strdup(logger->stmt);
         hash_add(seen_sql, st);
-        *sz += fprintf(log, "{ \"type\" : \"newsql\", \"sql\" : ");
+        *sz += gzprintf(log, "{ \"type\" : \"newsql\", \"sql\" : ");
         eventlog_string(log, logger->stmt, sz);
-        *sz += fprintf(log, ", \"fingerprint\" : \"");
+        *sz += gzprintf(log, ", \"fingerprint\" : \"");
         for (int i = 0; i < 15; i++) {
-            putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], log);
-            putc(hexchars[logger->fingerprint[i] & 0x0f], log);
+            gzputc(log, hexchars[((logger->fingerprint[i] & 0xf0) >> 4)]);
+            gzputc(log, hexchars[logger->fingerprint[i] & 0x0f]);
         }
         *sz += 16;
-        *sz += fprintf(log, "\"},\n");
+        *sz += gzprintf(log, "\"},\n");
     }
 
-    *sz += fprintf(log, "{ \"type\" : \"%s\" ", logger->event_type);
+    *sz += gzprintf(log, "{ \"type\" : \"%s\" ", logger->event_type);
 
     if (logger->stmt && detailed) {
-        *sz += fprintf(log, ", \"sql\" : ");
+        *sz += gzprintf(log, ", \"sql\" : ");
         eventlog_string(log, logger->stmt, sz);
     }
 
     if (logger->have_id)
-        *sz += fprintf(log, ", \"id\" : \"%s\"", logger->id);
+        *sz += gzprintf(log, ", \"id\" : \"%s\"", logger->id);
     if (logger->sqlcost)
-        *sz += fprintf(log, ", \"cost\" : %f", logger->sqlcost);
+        *sz += gzprintf(log, ", \"cost\" : %f", logger->sqlcost);
     if (logger->sqlrows)
-        *sz += fprintf(log, ", \"rows\" : %d", logger->sqlrows);
+        *sz += gzprintf(log, ", \"rows\" : %d", logger->sqlrows);
     if (logger->vreplays)
-        *sz += fprintf(log, ", \"replays\" : %d", logger->vreplays);
+        *sz += gzprintf(log, ", \"replays\" : %d", logger->vreplays);
     if (logger->have_fingerprint) {
-        *sz += fprintf(log, ", \"fingerprint\" : \"");
+        *sz += gzprintf(log, ", \"fingerprint\" : \"");
         for (int i = 0; i < 15; i++) {
-            putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], log);
-            putc(hexchars[logger->fingerprint[i] & 0x0f], log);
+            gzputc(log, hexchars[((logger->fingerprint[i] & 0xf0) >> 4)]);
+            gzputc(log, hexchars[logger->fingerprint[i] & 0x0f]);
         }
-        fprintf(log, "\"");
+        gzprintf(log, "\"");
     }
     *sz += 32;
-    *sz += fprintf(log, ", \"duration\" : %d", logger->durationms);
+    *sz += gzprintf(log, ", \"duration\" : %d", logger->durationms);
     if (logger->queuetimems)
-        *sz += fprintf(log, ", \"qtime\" : %d", logger->queuetimems);
+        *sz += gzprintf(log, ", \"qtime\" : %d", logger->queuetimems);
 
     if (detailed)
         eventlog_params(log, logger, sz);
 
     eventlog_perfdata(log, logger, sz);
 
-    *sz += fprintf(log, "}, \n");
+    *sz += gzprintf(log, "}, \n");
 }
 
 void eventlog_add(const struct reqlogger *logger) {
