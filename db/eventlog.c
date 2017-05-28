@@ -23,10 +23,18 @@ static FILE *eventlog_open(const char *fname);
 int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
+struct sqltrack {
+    char fingerprint[16];
+    char *sql;
+};
+
+static hash_t *seen_sql;
+
 void eventlog_init(const char *dbname) {
     char *filename = eventlog_fname(dbname);
     eventlog = eventlog_open(filename);
     free(filename);
+    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
 }
 
 static FILE *eventlog_open(const char *fname) {
@@ -162,6 +170,24 @@ static void eventlog_locked(FILE *log, const struct reqlogger *logger, int *sz) 
     static const char *hexchars = "0123456789abcdef";
 
     int detailed = eventlog_detailed;
+
+    if (!hash_find(seen_sql, logger->fingerprint)) {
+        struct sqltrack *st;
+        st = malloc(sizeof(struct sqltrack));
+        memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
+        st->sql = strdup(logger->stmt);
+        hash_add(seen_sql, st);
+        *sz += fprintf(log, "{ \"type\" : \"newsql\", \"sql\" : ");
+        eventlog_string(log, logger->stmt, sz);
+        *sz += fprintf(log, " \"fingerprint\" : \"");
+        for (int i = 0; i < 15; i++) {
+            putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], log);
+            putc(hexchars[logger->fingerprint[i] & 0x0f], log);
+        }
+        *sz += 16;
+        *sz += fprintf(log, "\"}\n");
+    }
+
     *sz += fprintf(log, "{  \"type\" : \"%s\" ", logger->event_type);
 
     if (logger->stmt && detailed) {
