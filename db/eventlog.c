@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stddef.h>
+#include <sys/time.h>
 
 #include <zlib.h>
 
@@ -174,16 +175,23 @@ void eventlog_perfdata(gzFile log, const struct reqlogger *logger, int *sz) {
 
 static void eventlog_add_locked(gzFile log, const struct reqlogger *logger, int *sz) {
     static const char *hexchars = "0123456789abcdef";
+    struct timeval tv;
+    int64_t t;
+    if (gettimeofday(&tv, NULL)) {
+        logmsg(LOGMSG_ERROR, "gettimeofday rc %d %s\n", errno, strerror(errno));
+        return;
+    }
+    t = tv.tv_sec * 1000000 + tv.tv_usec;
 
     int detailed = eventlog_detailed;
 
-    if (!hash_find(seen_sql, logger->fingerprint)) {
+    if (logger->event_type && strcmp(logger->event_type, "sql") == 0 && !hash_find(seen_sql, logger->fingerprint)) {
         struct sqltrack *st;
         st = malloc(sizeof(struct sqltrack));
         memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
         st->sql = strdup(logger->stmt);
         hash_add(seen_sql, st);
-        *sz += gzprintf(log, "{ \"type\" : \"newsql\", \"sql\" : ");
+        *sz += gzprintf(log, "{ \"time\" : %lld, \"type\" : \"newsql\", \"sql\" : ", t);
         eventlog_string(log, logger->stmt, sz);
         *sz += gzprintf(log, ", \"fingerprint\" : \"");
         for (int i = 0; i < 15; i++) {
@@ -194,7 +202,7 @@ static void eventlog_add_locked(gzFile log, const struct reqlogger *logger, int 
         *sz += gzprintf(log, "\"},\n");
     }
 
-    *sz += gzprintf(log, "{ \"type\" : \"%s\" ", logger->event_type);
+    *sz += gzprintf(log, "{ \"time\" : %lld, \"type\" : \"%s\" ", t, logger->event_type);
 
     if (logger->stmt && detailed) {
         *sz += gzprintf(log, ", \"sql\" : ");
