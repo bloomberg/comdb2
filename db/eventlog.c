@@ -179,16 +179,16 @@ static void eventlog_locked(FILE *log, const struct reqlogger *logger, int *sz) 
         hash_add(seen_sql, st);
         *sz += fprintf(log, "{ \"type\" : \"newsql\", \"sql\" : ");
         eventlog_string(log, logger->stmt, sz);
-        *sz += fprintf(log, " \"fingerprint\" : \"");
+        *sz += fprintf(log, ", \"fingerprint\" : \"");
         for (int i = 0; i < 15; i++) {
             putc(hexchars[((logger->fingerprint[i] & 0xf0) >> 4)], log);
             putc(hexchars[logger->fingerprint[i] & 0x0f], log);
         }
         *sz += 16;
-        *sz += fprintf(log, "\"}\n");
+        *sz += fprintf(log, "\"},\n");
     }
 
-    *sz += fprintf(log, "{  \"type\" : \"%s\" ", logger->event_type);
+    *sz += fprintf(log, "{ \"type\" : \"%s\" ", logger->event_type);
 
     if (logger->stmt && detailed) {
         *sz += fprintf(log, ", \"sql\" : ");
@@ -252,33 +252,27 @@ void eventlog_add(const struct reqlogger *logger) {
 
 static void eventlog_roll(void) {
     char *fname = eventlog_fname(thedb->envname);
-    pthread_mutex_lock(&eventlog_lk);
     eventlog_close();
     eventlog = eventlog_open(fname);
-    pthread_mutex_unlock(&eventlog_lk);
     free(fname);
 }
 
 static void eventlog_enable(void) {
-    pthread_mutex_lock(&eventlog_lk);
     eventlog_enabled = 1;
     eventlog_roll();
-    pthread_mutex_unlock(&eventlog_lk);
 }
 
 static void eventlog_disable(void) {
-    pthread_mutex_lock(&eventlog_lk);
     eventlog_enabled = 0;
     eventlog_close();
     eventlog = NULL;
-    pthread_mutex_unlock(&eventlog_lk);
 }
 
 void eventlog_stop(void) {
     eventlog_disable();
 }
 
-void eventlog_process_message(char *line, int lline, int *toff) {
+void eventlog_process_message_locked(char *line, int lline, int *toff) {
     char *tok;
     int ltok;
 
@@ -359,3 +353,9 @@ void eventlog_process_message(char *line, int lline, int *toff) {
         return;
     }
 } 
+
+void eventlog_process_message(char *line, int lline, int *toff) {
+    pthread_mutex_lock(&eventlog_lk);
+    eventlog_process_message_locked(line, lline, toff);
+    pthread_mutex_unlock(&eventlog_lk);
+}
