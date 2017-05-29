@@ -1,6 +1,6 @@
 # Local defs
 
-tools_TASKS:=libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a libcomdb2ar.a	\
+tools_LIBS:=libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a libcomdb2ar.a	\
 libpmux.a libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
@@ -119,14 +119,10 @@ cdb2_printlog_OBJS:=$(patsubst %.c,tools/cdb2_printlog/%.o,$(cdb2_printlog_SOURC
 $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 
 # Defined in the top level makefile
-TASKS+=$(lcl_TASKS) $(tools_TASKS)
+TASKS+=$(lcl_TASKS) $(tools_LIBS)
 OBJS+=tools/cdb2sql/cdb2sql.o tools/comdb2sc/comdb2sc.o			\
 tools/cdb2_sqlreplay/cdb2_sqlreplay.o $(cdb2sockpool_OBJS)		\
 $(comdb2ar_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(cdb2_printlog_OBJS)
 
 # Build tools by default
-all: $(tools_TASKS)
-
-.PHONY: tools_ALL
-
-tools_ALL: all
+all: $(tools_LIBS)

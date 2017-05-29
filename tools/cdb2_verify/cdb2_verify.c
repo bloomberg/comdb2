@@ -33,7 +33,7 @@ int version_check __P((const char *));
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
 int
-main(argc, argv)
+tool_cdb2_verify_main(argc, argv)
 	int argc;
 	char *argv[];
 {

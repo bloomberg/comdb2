@@ -46,7 +46,7 @@ extern int io_override_set_std(FILE *f);
 pthread_key_t comdb2_open_key;
 
 int
-main(argc, argv)
+tool_cdb2_dump_main(argc, argv)
 	int argc;
 	char *argv[];
 {

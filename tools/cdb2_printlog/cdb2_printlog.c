@@ -74,7 +74,7 @@ void remove_tempdir()
 	}
 }
 
-int main(argc, argv)
+int tool_cdb2_printlog_main(argc, argv)
 	int argc;
 	char *argv[];
 {

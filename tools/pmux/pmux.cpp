@@ -803,7 +803,7 @@ static int usage(int rc)
 #include <netdb.h>
 #endif
 
-int main(int argc, char **argv)
+int tool_pmux_main(int argc, char **argv)
 {
 	sigignore(SIGPIPE);
 #   ifndef LOG_PERROR

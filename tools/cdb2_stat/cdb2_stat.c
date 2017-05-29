@@ -71,7 +71,7 @@ extern int io_override_set_std(FILE *f);
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
 int
-main(argc, argv)
+tool_cdb2_stat_main(argc, argv)
 	int argc;
 	char *argv[];
 {
