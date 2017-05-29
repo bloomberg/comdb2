@@ -28,8 +28,10 @@ include mem.mk
 include sqlite/sqlite_common.defines
 
 modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
-lua db tools sockpool
+lua tools sockpool
 include $(addsuffix /module.mk,$(modules))
+
+include db/module.mk
 
 # The following object files make into cdb2api static (libcdb2api.a) as
 # well as dynamic (libcdb2api.so) libraries and thus, need an additional

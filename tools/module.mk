@@ -1,6 +1,7 @@
 # Local defs
-tools_TASKS:=cdb2sql comdb2sc cdb2_sqlreplay cdb2sockpool comdb2ar	\
-pmux cdb2_dump cdb2_stat cdb2_verify cdb2_printlog
+
+tools_TASKS:=libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a libcomdb2ar.a	\
+libpmux.a libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/cdb2api -I$(SRCHOME)/berkdb -I$(SRCHOME)/berkdb/build	\
@@ -22,22 +23,21 @@ tools/%.o: tools/%.cpp tools/%.d $(LIBS_BIN)
 	$(CXX11) $(DEPFLAGS_CXX11) $(tools_CPPFLAGS) $(CXX11FLAGS) -c -o $@ $<
 	$(POSTCOMPILE)
 
-# Cdb2sql and Comdb2sc - These only have .c file each, though they do
-# depend on some of the auto-generated .h from other moodules
-# Cdb2sql and comdb2sc
-cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
-cdb2sql: tools/cdb2sql/cdb2sql.o
-comdb2sc: tools/comdb2sc/comdb2sc.o
-cdb2_sqlreplay: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
-cdb2sql comdb2sc cdb2_sqlreplay cdb2sockpool:
-	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
+# Cdb2sql - This only have .c file each, though they do
+# depend on some of the auto-generated .h from other modules
+libcdb2sql.a: tools_LDLIBS+=$(LIBREADLINE)
+libcdb2sql.a: tools/cdb2sql/cdb2sql.o
+
+libcdb2_sqlreplay.a: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
+libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a:
+	$(AR) $(ARFLAGS) $@ $^
 
 # Cdb2sockpool - Use base rules, multiple object files
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c
 cdb2sockpool_OBJS:=$(patsubst %.c,tools/cdb2sockpool/%.o,$(cdb2sockpool_SOURCES))
 cdb2sockpool_LDLIBS=-lbb -lsockpool
 
-cdb2sockpool: $(cdb2sockpool_OBJS)
+libcdb2sockpool.a: $(cdb2sockpool_OBJS)
 
 # Comdb2ar - Use base rules
 comdb2ar_SOURCES:=appsock.cpp comdb2ar.cpp db_wrap.cpp		\
@@ -56,8 +56,9 @@ comdb2ar_OBJS:=$(patsubst %.cpp,tools/comdb2ar/%.o,		\
 comdb2ar_LDLIBS+= $(BBSTATIC) $(BBLIB) $(DLMALLOC)		\
 		  $(BBDYN) -lpthread -lm -lssl -lcrypto -ldl -lrt -lz $(ARCHLIBS)
 
-comdb2ar: $(comdb2ar_OBJS)
-	$(CXX11) $(tools_LDFLAGS) $^ $(comdb2ar_LDLIBS) -o $@
+libcomdb2ar.a: $(comdb2ar_OBJS)
+	$(AR) $(ARFLAGS) $@ $^
+
 
 # Files that include db.h require COMDB2AR to be defined
 db_wrap_FLAGS=$(CFLAGS_ARCHFLAGS) -DCOMDB2AR -I$(SRCHOME)/mem	\
@@ -82,8 +83,9 @@ endif
 pmux_SOURCES:=tools/pmux/pmux.cpp
 pmux_OBJS:=$(patsubst %.cpp,%.o,$(pmux_SOURCES))
 
-pmux: $(pmux_OBJS)
-	$(CXX11) $(pmux_LDFLAGS) $< $(pmux_LDLIBS) -o $@
+libpmux.a: $(pmux_OBJS)
+	$(AR) $(ARFLAGS) $@ $^
+	
 
 $(pmux_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(CXX11FLAGS) -c $< -o $@
@@ -103,22 +105,18 @@ $(cdb2_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 
 # Since there are circular dependencies -ldb and -lschemachange must
 # go first.
-cdb2_dump: tools/cdb2_dump/cdb2_dump.o
+libcdb2_dump.a: tools/cdb2_dump/cdb2_dump.o
 cdb2_stat: tools/cdb2_stat/cdb2_stat.o
 cdb2_verify: tools/cdb2_verify/cdb2_verify.o
-cdb2_dump cdb2_stat cdb2_verify:
-	$(CC) $(tools_LDFLAGS) $< $(BERKDB) $(SCHEMA) $(tools_LDLIBS) -o $@
+
+libcdb2util.a: $(cdb2_OBJS)
+	$(AR) $(ARFLAGS) $@ $^
 
 # Cdb2_printlog
 cdb2_printlog_SOURCES:=comdb2_dbprintlog.c cdb2_printlog.c
 cdb2_printlog_OBJS:=$(patsubst %.c,tools/cdb2_printlog/%.o,$(cdb2_printlog_SOURCES))
 
 $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
-
-# Since there are circular dependencies -ldb and -lschemachange must
-# go first.
-cdb2_printlog: $(cdb2_printlog_OBJS)
-	$(CC) $(tools_LDFLAGS) $^ $(BERKDB) $(SCHEMA) $(tools_LDLIBS) -o $@
 
 # Defined in the top level makefile
 TASKS+=$(lcl_TASKS) $(tools_TASKS)
@@ -128,3 +126,7 @@ $(comdb2ar_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(cdb2_printlog_OBJS)
 
 # Build tools by default
 all: $(tools_TASKS)
+
+.PHONY: tools_ALL
+
+tools_ALL: all
