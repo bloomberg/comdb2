@@ -6,7 +6,8 @@ Build-Depends:  build-essential, make, libprotobuf-c0-dev, protobuf-c-compiler, 
 Standards-Version: 3.9.4
 
 Package: comdb2
-Depends: libz1, libuuid1, tzdata, liblz4-tool, libreadline6, libsqlite3-0, libprotobuf-c1, libssl1.0.0, supervisor
+Depends: libz1, libuuid1, tzdata, liblz4-tool, libreadline6, libsqlite3-0, libprotobuf-c1, libssl1.0.0
+Recommends: supervisor
 Architecture: any 
 Description: Comdb2 RDBMS
  Comdb2 RDBMS

@@ -8,7 +8,7 @@ URL:            http://github.com/bloomberg/comdb2
 Source0:        comdb2-VVEERRSSIIOONN.tar.gz
 
 BuildRequires:  gcc gcc-c++ protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl
-Requires:       protobuf-c libunwind openssl openssl-libs readline sqlite libuuid zlib lz4 supervisor
+Requires:       protobuf-c libunwind openssl openssl-libs readline sqlite libuuid zlib lz4
 
 %description
 Comdb2 is a distributed relational database.
@@ -31,6 +31,7 @@ rm -rf $RPM_BUILD_ROOT
 /opt/bb/bin/cdb2_printlog
 /opt/bb/bin/cdb2_stat
 /opt/bb/bin/cdb2_verify
+/opt/bb/bin/cdb2_sqlreplay
 /opt/bb/bin/cdb2sql
 /opt/bb/bin/comdb2
 /opt/bb/bin/comdb2ar
@@ -72,11 +73,19 @@ chown comdb2:comdb2 /home/comdb2/.bashrc
 # This is ubuntu specific: maybe switch here for other systems?
 cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
 systemctl daemon-reload
-systemctl stop pmux
-systemctl start pmux
-systemctl enable supervisor_cdb2
-systemctl start supervisor_cdb2
-systemctl enable cdb2sockpool
-systemctl start cdb2sockpool
+if [ ! -e /.dockerenv ]; then
+    systemctl stop pmux
+    systemctl start pmux
+    systemctl enable supervisor_cdb2
+    systemctl start supervisor_cdb2
+    set +e
+    rpm -qa | grep -q "^supervisor"
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
+        systemctl enable cdb2sockpool
+        systemctl start cdb2sockpool
+    fi
+fi
 
 %changelog
