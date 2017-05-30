@@ -8386,7 +8386,7 @@ int bdb_user_password_check(char *user, char *passwd, int  *valid_user)
         PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), stored->u.p0.salt,
                                sizeof(stored->u.p0.salt), ITERATIONS,
                                sizeof(computed.u.p0.hash), computed.u.p0.hash);
-        rc = memcmp(computed.u.p0.hash, stored->u.p0.hash,
+        rc = CRYPTO_memcmp(computed.u.p0.hash, stored->u.p0.hash,
                     sizeof(stored->u.p0.hash));
         goto out;
     } else {
