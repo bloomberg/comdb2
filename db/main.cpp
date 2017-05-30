@@ -68,8 +68,10 @@ int main(int argc, char *argv[]) {
 #ifdef _LINUX_SOURCE
     char fname[PATH_MAX];
     rc = readlink("/proc/self/exe", fname, sizeof(fname));
-    if (rc > 0)
-       exe = last_path_component(fname);
+    if (rc > 0 && rc < sizeof(fname)) {
+        fname[rc] = 0;
+        exe = last_path_component(fname);
+    }
 #endif
     if (exe == NULL) {
        /* more portable */
