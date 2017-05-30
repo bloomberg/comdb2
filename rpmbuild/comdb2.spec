@@ -27,16 +27,7 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %files
-/opt/bb/bin/cdb2_dump
-/opt/bb/bin/cdb2_printlog
-/opt/bb/bin/cdb2_stat
-/opt/bb/bin/cdb2_verify
-/opt/bb/bin/cdb2_sqlreplay
-/opt/bb/bin/cdb2sql
 /opt/bb/bin/comdb2
-/opt/bb/bin/comdb2ar
-/opt/bb/bin/comdb2dumpcsc
-/opt/bb/bin/comdb2sc
 /opt/bb/bin/copycomdb2
 /opt/bb/bin/pmux
 /opt/bb/etc/cdb2/config/comdb2.d
@@ -48,7 +39,6 @@ rm -rf $RPM_BUILD_ROOT
 /lib/systemd/system/cdb2sockpool.service
 /lib/systemd/system/supervisor_cdb2.service
 /usr/local/lib/pkgconfig/cdb2api.pc
-/opt/bb/bin/cdb2sockpool
 /opt/bb/bin/comdb2admin
 /opt/bb/etc/supervisord_cdb2.conf
 /opt/bb/lib/libcdb2api.so
