@@ -3344,6 +3344,7 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
 int query_limit_cmd(char *line, int llen, int toff);
 
 int is_valid_tablename(char *tbl);
+int is_valid_dbname(const char *dbname);
 
 /* defined in toproxy.c */
 void reload_proxy_lrl_lines(char *lrlfile);

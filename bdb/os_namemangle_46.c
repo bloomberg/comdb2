@@ -52,7 +52,7 @@ static const char revid[] =
 
 #include <ctrace.h>
 
-char *bdb_trans(const char infile[], char outfile[]);
+char *bdb_trans(const char infile[], char outfile[], size_t len);
 
 /* This is very, very verbose even at level 1.  Default to level 0. */
 int gbl_namemangle_loglevel = 0;

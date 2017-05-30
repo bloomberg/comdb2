@@ -8852,6 +8852,38 @@ int check_current_schemas(void)
     return 0;
 }
 
+/**
+ * -- is_valid_dbname
+ * decides whether a given `dbname` is valid database name.
+ */
+int is_valid_dbname(const char *dbname) {
+	// cannot be null.
+	if(dbname == NULL) {
+		logmsg(LOGMSG_ERROR, "DATABASE NAME CANNOT BE EMPTY\n");
+		return -1;
+
+	}
+
+	// cannot be larger than `MAX_DBNAME_LENGTH`
+	size_t len;
+	len = strlen(dbname);
+	if (len >= MAX_DBNAME_LENGTH) {
+		logmsg(LOGMSG_ERROR, "INVALID DATABASE NAME, MUST BE < %d CHARACTERS\n", MAX_DBNAME_LENGTH);
+		return -1;
+	}
+	
+	// alphanumeric and _ are allowed.
+	const char *p = dbname;
+	while (*p++) {
+		if(!isalnum(*p) && *p != '_') {
+			logmsg(LOGMSG_ERROR, "DATABASE NAME CAN ONLY CONTAIN ALPHA NUMERIC CHARACTERS\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 void log_delete_add_state(struct dbenv *dbenv, struct log_delete_state *state)
 {
     pthread_mutex_lock(&dbenv->log_delete_counter_mutex);

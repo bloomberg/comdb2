@@ -35,7 +35,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 
 #include <logmsg.h>
 
-char *bdb_trans(const char infile[], char outfile[]);
+char *bdb_trans(const char infile[], char outfile[], size_t len);
 extern int gbl_test_badwrite_intvl;
 
 static int __memp_pgwrite
@@ -570,9 +570,9 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	DIR *d;
 	int filenum = 0;
 	struct dirent *ent;
-	char dir[512];
+	char dir[PATH_MAX];
 
-	bdb_trans(dbenv->db_home, dir);
+	bdb_trans(dbenv->db_home, dir, sizeof(dir));
 
 	pthread_mutex_lock(&verifylk);
 	d = opendir(dir);

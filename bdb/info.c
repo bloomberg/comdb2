@@ -1112,8 +1112,8 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 {
     int stripe, blobno, ix;
     int fd = -1;
-    char fname[512];
-    char tmpname[512];
+    char fname[PATH_MAX];
+    char tmpname[PATH_MAX];
     int numstripes, numblobs;
     int bdberr;
     unsigned int npages;
@@ -1126,7 +1126,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
             if (bdb_state->dbp_data[blobno][stripe]) {
                 if (bdb_get_data_filename(bdb_state, stripe, blobno, tmpname,
                                           sizeof(tmpname), &bdberr) == 0) {
-                    bdb_trans(tmpname, fname);
+                    bdb_trans(tmpname, fname, sizeof(fname));
                     fd = open(fname, O_RDONLY);
                     if (fd == -1) {
                         logmsg(LOGMSG_ERROR, "open(\"%s\") => %d %s\n", fname, errno,
@@ -1152,7 +1152,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
     for (ix = 0; ix < bdb_state->numix; ix++) {
         if (bdb_get_index_filename(bdb_state, ix, tmpname, sizeof(tmpname),
                                    &bdberr) == 0) {
-            bdb_trans(tmpname, fname);
+            bdb_trans(tmpname, fname, sizeof(fname));
             fd = open(fname, O_RDONLY);
             if (fd == -1) {
                 logmsg(LOGMSG_ERROR, "open(\"%s\") => %d %s\n", fname, errno,
@@ -1941,12 +1941,12 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
     char **names;
     int rc;
     int i;
-    char qname[4096];
+    char qname[PATH_MAX];
     char tran_name[128];
 
     snprintf(tran_name, sizeof(tran_name), "XXX.%s.queue", name);
 
-    bdb_trans(tran_name, qname);
+    bdb_trans(tran_name, qname, sizeof(qname));
 
     rc = __qam_extent_names(bdb_state->dbenv, qname, &names);
     if (rc) {
