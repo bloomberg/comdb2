@@ -14,6 +14,8 @@
 #include "util.h"
 #include "plhash.h"
 
+#include "cson_amalgamation_core.h"
+
 static char* eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 16*1024*1024;
@@ -72,43 +74,7 @@ static char* eventlog_fname(const char *dbname) {
     return comdb2_location("logs", "%s.events", dbname);
 }
 
-static void eventlog_string(gzFile log, char *in, int *sz) {
-    char *s = in;
-    *sz += gzprintf(log, "\"");
-    if (in) {
-        while (*s) {
-            switch (*s) {
-                case '\"':
-                    *sz += gzprintf(log, "\\\"");
-                    break;
-                case '\n':
-                    *sz += gzprintf(log, "\\n");
-                    break;
-                case '\b':
-                    *sz += gzprintf(log, "\\b");
-                    break;
-                case '/':
-                    *sz += gzprintf(log, "\\/");
-                    break;
-                case '\f':
-                    *sz += gzprintf(log, "\\f");
-                    break;
-                case '\r':
-                    *sz += gzprintf(log, "\\r");
-                    break;
-                case '\t':
-                    *sz += gzprintf(log, "\\t");
-                    break;
-                default:
-                    gzputc(log, *s);
-                    *sz += 1;
-                    break;
-            }
-            s++;
-        }
-    }
-    *sz += gzprintf(log, "\"");
-}
+static cson_output_opt opt = { .indentation = 0, .maxDepth = 4096, .addNewline = 1, .addSpaceAfterColon = 0, .indentSingleMemberValues = 0, .escapeForwardSlashes = 1};
 
 void eventlog_params(gzFile log, const struct reqlogger *logger, int *sz) {
     if (logger->request && logger->request->n_bindvars > 0) {
@@ -173,10 +139,11 @@ void eventlog_perfdata(gzFile log, const struct reqlogger *logger, int *sz) {
     }
 }
 
-static void eventlog_add_locked(gzFile log, const struct reqlogger *logger, int *sz) {
+static void eventlog_add_locked(cson_object *obj, const struct reqlogger *logger, int *sz) {
     static const char *hexchars = "0123456789abcdef";
     struct timeval tv;
     int64_t t;
+
     if (gettimeofday(&tv, NULL)) {
         logmsg(LOGMSG_ERROR, "gettimeofday rc %d %s\n", errno, strerror(errno));
         return;
@@ -191,70 +158,85 @@ static void eventlog_add_locked(gzFile log, const struct reqlogger *logger, int 
         memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
         st->sql = strdup(logger->stmt);
         hash_add(seen_sql, st);
-        *sz += gzprintf(log, "{ \"time\" : %lld, \"type\" : \"newsql\", \"sql\" : ", t);
-        eventlog_string(log, logger->stmt, sz);
-        *sz += gzprintf(log, ", \"fingerprint\" : \"");
+
+        cson_value *newval;
+        cson_object *newobj;
+        newval = cson_value_new_object();
+        newobj = cson_value_get_object(newval);
+
+        cson_object_set(newobj, "time", cson_new_int(t));
+        cson_object_set(newobj, "type", cson_value_new_string("newsql", sizeof("newsql")));
+        cson_object_set(newobj, "sql", cson_value_new_string(logger->stmt, strlen(logger->stmt)));
+        cson_output_FILE(newval, stdout, &opt);
+
+        char fingerprint[16];
         for (int i = 0; i < 15; i++) {
-            gzputc(log, hexchars[((logger->fingerprint[i] & 0xf0) >> 4)]);
-            gzputc(log, hexchars[logger->fingerprint[i] & 0x0f]);
+             fingerprint[i*2] = hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
+             fingerprint[i*2+1] =hexchars[logger->fingerprint[i] & 0x0f];
         }
-        *sz += 16;
-        *sz += gzprintf(log, "\"},\n");
+        cson_object_set(newobj, "fingerprint", cson_value_new_string(fingerprint, sizeof(fingerprint)));
+        cson_value_free(newval);
     }
 
-    *sz += gzprintf(log, "{ \"time\" : %lld, \"type\" : \"%s\" ", t, logger->event_type);
+    cson_object_set(obj, "time", cson_new_int(t));
+    cson_object_set(obj, "type", cson_value_new_string(logger->event_type, strlen(logger->event_type)));
 
-    if (logger->stmt && detailed) {
-        *sz += gzprintf(log, ", \"sql\" : ");
-        eventlog_string(log, logger->stmt, sz);
-    }
+
+    if (logger->stmt && detailed)
+        cson_object_set(obj, "sql", cson_value_new_string(logger->stmt, strlen(logger->stmt)));
 
     if (logger->have_id)
-        *sz += gzprintf(log, ", \"id\" : \"%s\"", logger->id);
+        cson_object_set(obj, "id", cson_value_new_string(logger->id, sizeof(logger->id)));
     if (logger->sqlcost)
-        *sz += gzprintf(log, ", \"cost\" : %f", logger->sqlcost);
+        cson_object_set(obj, "cost", cson_new_double(logger->sqlcost));
     if (logger->sqlrows)
-        *sz += gzprintf(log, ", \"rows\" : %d", logger->sqlrows);
+        cson_object_set(obj, "rows", cson_new_int(logger->sqlrows));
     if (logger->vreplays)
-        *sz += gzprintf(log, ", \"replays\" : %d", logger->vreplays);
+        cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
     if (logger->have_fingerprint) {
-        *sz += gzprintf(log, ", \"fingerprint\" : \"");
+        uint8_t fingerprint[32];
         for (int i = 0; i < 15; i++) {
-            gzputc(log, hexchars[((logger->fingerprint[i] & 0xf0) >> 4)]);
-            gzputc(log, hexchars[logger->fingerprint[i] & 0x0f]);
+            fingerprint[i*2] = hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
+            fingerprint[i*2+1] =  hexchars[logger->fingerprint[i] & 0x0f];
         }
-        gzprintf(log, "\"");
+        cson_object_set(obj, "fingerprint", cson_value_new_string(fingerprint, 32));
     }
-    *sz += 32;
-    *sz += gzprintf(log, ", \"duration\" : %d", logger->durationms);
-    if (logger->queuetimems)
-        *sz += gzprintf(log, ", \"qtime\" : %d", logger->queuetimems);
 
+    cson_object_set(obj, "duration", cson_new_int(logger->durationms));
+    if (logger->queuetimems)
+        cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
+
+#if 0
     if (detailed)
         eventlog_params(log, logger, sz);
+#endif
 
-    eventlog_perfdata(log, logger, sz);
-
-    *sz += gzprintf(log, "}, \n");
+    // eventlog_perfdata(log, logger, sz);
 }
+
 
 void eventlog_add(const struct reqlogger *logger) {
     int sz = 0;
     char *fname;
+    cson_value *val;
+    cson_object *obj;
 
     if (eventlog == NULL)
         return;
     if (!eventlog_enabled)
         return;
 
-    pthread_mutex_lock(&eventlog_lk);
+    val = cson_value_new_object();
+    obj = cson_value_get_object(val);
+    eventlog_add_locked(obj, logger, &sz);
+    cson_output_FILE(val, stdout, &opt);
 
+    pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
         pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-    eventlog_add_locked(eventlog, logger, &sz);
     if (sz > eventlog_rollat) {
         eventlog_close();
         char *fname = eventlog_fname(thedb->envname);
@@ -262,6 +244,7 @@ void eventlog_add(const struct reqlogger *logger) {
         free(fname);
     }
     pthread_mutex_unlock(&eventlog_lk);
+    cson_value_free(val);
 }
 
 static void eventlog_roll(void) {
