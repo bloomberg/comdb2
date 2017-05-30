@@ -25,7 +25,7 @@ these for you, but installing from source requires a bit of manual work.
 * SUGGESTED: running supervisord
   Supervisord is a process manager than can manage running database instances.
   Using it is not required, but will allow you to use comdb2admin for easy
-  database maintenance.  Supervisord will run without elevated priviledges,
+  database maintenance.  Supervisord will run without elevated privileges,
   and the install will not interfere with other installs of supervisord on 
   your machine.  A sample config file is provided in
 
