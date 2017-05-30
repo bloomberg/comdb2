@@ -4203,6 +4203,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    /*ctrace("berkdb_receive_msg: from %s, ut=%d", from_host, usertype);*/
     switch (usertype) {
     case USER_TYPE_YOUARENOTCOHERENT:
         /* This version of comdb2 shouldn't be getting these messages */
