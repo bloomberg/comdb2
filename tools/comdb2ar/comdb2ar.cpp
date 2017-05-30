@@ -71,11 +71,9 @@ void errexit(int code)
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
-extern "C" {
-int tool_comdb2ar_main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     comdb2ma_init(0, 0);
-    crc32c_init(0);
 
     extern char *optarg;
     extern int optind, optopt;
@@ -290,5 +288,4 @@ int tool_comdb2ar_main(int argc, char *argv[])
     }
 
     return 0;
-}
 }

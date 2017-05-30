@@ -1,6 +1,6 @@
 # Local defs
 
-tools_LIBS:=libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a libcomdb2ar.a	\
+tools_LIBS:=libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a \
 libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
@@ -60,10 +60,12 @@ comdb2ar_OBJS:=$(patsubst %.cpp,tools/comdb2ar/%.o,		\
 	$(filter %.cpp,$(comdb2ar_SOURCES)))			\
 	$(patsubst %.c,tools/comdb2ar/%.o,			\
 	$(filter %.c,$(comdb2ar_SOURCES)))
-comdb2ar_LDLIBS+= $(BBSTATIC) $(BBLIB) $(DLMALLOC)		\
+comdb2ar_LDLIBS+= $(BBSTATIC) $(BBLIB) $(CRC32C) -ldlmalloc $(DLMALLOC)		\
 		  $(BBDYN) -lpthread -lm -lssl -lcrypto -ldl -lrt -lz $(ARCHLIBS)
-libcomdb2ar.a: $(comdb2ar_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
+
+comdb2ar: $(comdb2ar_OBJS)
+	$(CXX11) $(tools_LDFLAGS) $^ $(comdb2ar_LDLIBS) -o $@
+
 
 # Files that include db.h require COMDB2AR to be defined
 db_wrap_FLAGS=$(CFLAGS_ARCHFLAGS) -DCOMDB2AR -I$(SRCHOME)/mem	\
@@ -90,6 +92,7 @@ pmux_OBJS:=$(patsubst %.cpp,%.o,$(pmux_SOURCES))
 
 pmux: $(pmux_OBJS)
 	$(CXX11) $(pmux_LDFLAGS) $< $(pmux_LDLIBS) -o $@
+
 
 $(pmux_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(CXX11FLAGS) -c $< -o $@
@@ -121,4 +124,4 @@ TASKS+=$(lcl_TASKS) $(tools_LIBS) pmux
 OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2sql_OBJS) $(cdb2replay_OBJS)
 
 # Build tools by default
-all: $(tools_LIBS) pmux
+all: $(tools_LIBS) pmux comdb2ar

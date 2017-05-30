@@ -126,6 +126,7 @@ sqlite/lemon
 comdb2
 pmux
 cdb2sql
+comdb2ar
 
 # built tool libraries
 libcomdb2ar.a

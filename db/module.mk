@@ -25,7 +25,7 @@ db_SOURCES:=db/comdb2.c db/endian.c db/handle_buf.c db/sltdbt.c		\
     db/printlog.c db/autoanalyze.c db/marshal.c db/sqllog.c		\
     db/llops.c db/rowlocks_bench.c db/plugin.c db/views.c		\
     db/views_cron.c db/views_persist.c db/trigger.c db/bpfunc.c     \
-    db/ssl_bend.c db/main.o
+    db/ssl_bend.c
 db_OBJS:=$(db_SOURCES:.c=.o)
 
 # Defined in the top level makefile
@@ -47,7 +47,6 @@ $(SQLITE_FLAGS) -I$(SRCHOME)/berkdb/build -I$(SRCHOME)/berkdb/dbinc	\
 -I$(SRCHOME)/bb -I$(SRCHOME)/sockpool -I.
 
 VERSION?=$(shell dpkg-parsechangelog | grep Version | cut -d' ' -f2 | sed 's/-.*//')
-
 
 SYSLIBS=$(BBSTATIC) -lssl -lcrypto -lz -llz4 -luuid -lprotobuf-c \
    $(BBDYN) -lpthread -lrt -lm -ldl
