@@ -122,13 +122,13 @@ berkdb/qam/qam_auto.c
 sqlite/mkkeywordhash
 sqlite/lemon
 
-# the database
+# binaries
 comdb2
+pmux
 
-# built toollibraries
+# built tool libraries
 libcomdb2ar.a
 libcdb2sql.a
-libpmux.a
 libcdb2sockpool.a
 libcdb2util.a
 libcdb2_sqlreplay.a

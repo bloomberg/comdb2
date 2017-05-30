@@ -126,7 +126,7 @@ static const char *usage_text =
     "--strblobs         Display blobs as strings\n"                           \
     "-f filename        reads queries from the specified file\n";
 
-void usage(int exit_val)
+void cdb2sql_usage(int exit_val)
 {
     fprintf((exit_val == EXIT_SUCCESS) ? stdout : stderr, usage_text);
     exit(exit_val);
@@ -923,7 +923,7 @@ int tool_cdb2sql_main(int argc, char *argv[])
         case 0:
             break;
         case 'h':
-            usage(EXIT_SUCCESS);
+            cdb2sql_usage(EXIT_SUCCESS);
             break;
         case 's':
             scriptmode = 1;
@@ -951,7 +951,7 @@ int tool_cdb2sql_main(int argc, char *argv[])
             dbhostname = optarg;
             break;
         case '?':
-            usage(EXIT_FAILURE);
+            cdb2sql_usage(EXIT_FAILURE);
             break;
         }
     }
@@ -977,7 +977,7 @@ int tool_cdb2sql_main(int argc, char *argv[])
     }
 
     if (argc - optind < 1) {
-        usage(EXIT_FAILURE);
+        cdb2sql_usage(EXIT_FAILURE);
     }
     if (strlen(argv[optind]) >= MAX_DBNAME_LENGTH) {
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
@@ -1016,7 +1016,7 @@ int tool_cdb2sql_main(int argc, char *argv[])
             return EXIT_FAILURE;
         }
     } else if (sql == NULL || *sql != '-') {
-        usage(EXIT_FAILURE);
+        cdb2sql_usage(EXIT_FAILURE);
     }
 
     istty = isatty(0);

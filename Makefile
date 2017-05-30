@@ -97,16 +97,15 @@ install: all
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
 	rm -f db/copycomdb2.q
-	install -D comdb2ar $(DESTDIR)$(PREFIX)/bin/comdb2ar
-	install -D comdb2sc $(DESTDIR)$(PREFIX)/bin/comdb2sc
-	install -D cdb2_printlog $(DESTDIR)$(PREFIX)/bin/cdb2_printlog
-	install -D cdb2_verify $(DESTDIR)$(PREFIX)/bin/cdb2_verify
-	install -D cdb2_dump $(DESTDIR)$(PREFIX)/bin/cdb2_dump
-	install -D cdb2_stat $(DESTDIR)$(PREFIX)/bin/cdb2_stat
-	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
-	install -D cdb2_sqlreplay $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/comdb2ar && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/comdb2ar || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2sql && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2sql || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2sockpool && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2sockpool || true
 	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
-	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
 	install -D tools/pmux/pmux.service $(DESTDIR)/lib/systemd/system/pmux.service
 	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)/lib/systemd/system/cdb2sockpool.service
 	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)/lib/systemd/system/supervisor_cdb2.service

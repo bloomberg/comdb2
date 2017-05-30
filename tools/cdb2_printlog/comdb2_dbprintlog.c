@@ -20,7 +20,6 @@
 #include "dbinc_auto/dbreg_auto.h"
 #include "dbinc_auto/btree_auto.h"
 #include "dbinc_auto/db_auto.h"
-#include "dbinc/db_stub.h"
 
 /* Include a reference to the start hook. */
 printlog_start_t *printlog_start_hook;

@@ -25,7 +25,7 @@ db_SOURCES:=db/comdb2.c db/endian.c db/handle_buf.c db/sltdbt.c		\
     db/printlog.c db/autoanalyze.c db/marshal.c db/sqllog.c		\
     db/llops.c db/rowlocks_bench.c db/plugin.c db/views.c		\
     db/views_cron.c db/views_persist.c db/trigger.c db/bpfunc.c     \
-    db/ssl_bend.c
+    db/ssl_bend.c db/main.o
 db_OBJS:=$(db_SOURCES:.c=.o)
 
 # Defined in the top level makefile
@@ -56,7 +56,7 @@ SYSLIBS=$(BBSTATIC) -lssl -lcrypto -lz -llz4 -luuid -lprotobuf-c \
 $(SRCHOME)/comdb2: CPPFLAGS=$(db_CPPFLAGS)
 
 $(SRCHOME)/comdb2: $(LIBS_BIN) $(db_OBJS) $(tools_LIBS)
-	$(CC) -o $(SRCHOME)/comdb2 $(LCLFLAGS) $(LDFLAGS) $(db_OBJS) $(LCLLIBS) $(SYSLIBS) $(ARCHLIBS) $(tools_LIBS)
+	$(CXX) -o $(SRCHOME)/comdb2 $(LCLFLAGS) $(LDFLAGS) $(db_OBJS) $(LCLLIBS) $(SYSLIBS) $(ARCHLIBS) $(tools_LIBS) $(LIBREADLINE)
 
 $(db_OBJS): $(db_MEMGEN)
 

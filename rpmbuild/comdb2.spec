@@ -71,6 +71,16 @@ echo 'PATH=$PATH:/opt/bb/bin' >> /home/comdb2/.bashrc
 chmod +x /home/comdb2/.bashrc
 chown comdb2:comdb2 /home/comdb2/.bashrc
 # This is ubuntu specific: maybe switch here for other systems?
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_dump
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_printlog
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sql
+ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2ar
+ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2dumpcsc
+ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2sc
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sockpool
+
 cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
 systemctl daemon-reload
 if [ ! -e /.dockerenv ]; then

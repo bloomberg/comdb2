@@ -52,8 +52,8 @@ __bam_init_print(DB_ENV *dbenv, int (***dtabp) (DB_ENV *, DBT *, DB_LSN *,
 #include "util.h"
 
 int main __P((int, char *[]));
-int usage __P((void));
-int version_check __P((const char *));
+int cdb2_printlog_usage __P((void));
+int cdb2_print_version_check __P((const char *));
 int open_rep_db __P((DB_ENV *, DB **, DBC **));
 extern int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 extern char printlog_endline;
@@ -104,7 +104,7 @@ int tool_cdb2_printlog_main(argc, argv)
 	pthread_key_create(&comdb2_open_key, NULL);
 	pthread_key_create(&DBG_FREE_CURSOR, NULL);
 
-	if ((ret = version_check(progname)) != 0)
+	if ((ret = cdb2_print_version_check(progname)) != 0)
 		return (ret);
 
 	dbenv = NULL;
@@ -198,13 +198,13 @@ int tool_cdb2_printlog_main(argc, argv)
 		}
 		case '?':
 		default:
-			return (usage());
+			return (cdb2_printlog_usage());
 		}
 	argc -= optind;
 	argv += optind;
 
 	if (argc > 0)
-		return (usage());
+		return (cdb2_printlog_usage());
 
 	/* Handle possible interruptions. */
 	/* __db_util_siginit(); */
@@ -386,7 +386,7 @@ shutdown:	exitval = 1;
 }
 
 int
-usage()
+cdb2_printlog_usage()
 {
 	fprintf(stderr, "%s\n",
 	    "usage: cdb2_printlog [-NrgcV] [-l range ] [-h home] [-P /path/to/passwd]");
@@ -406,7 +406,7 @@ usage()
 }
 
 int
-version_check(progname)
+cdb2_print_version_check(progname)
 	const char *progname;
 {
 	int v_major, v_minor, v_patch;

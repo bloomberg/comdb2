@@ -8560,13 +8560,13 @@ static void getmyid(void)
     gbl_mypid = getpid();
 }
 
-#ifndef SKIP_COMDB2_MAIN
-
-int main(int argc, char **argv)
+int comdb2_main(int argc, char **argv)
 {
     char *marker_file;
     int ii;
     int rc;
+
+    char *exe = NULL;
 
     /* clean left over transactions every 5 minutes */
     int clean_mins = 5 * 60 * 1000;
@@ -8578,8 +8578,6 @@ int main(int argc, char **argv)
 
     if (isatty(fileno(stdout)))
        logmsg_set_time(0);
-
-    comdb2ma_init(0, 0);
 
     /* what is my local hostname */
     getmyid();
@@ -8746,7 +8744,6 @@ int main(int argc, char **argv)
 
     return 0;
 }
-#endif
 
 void delete_db(char *db_name)
 {
