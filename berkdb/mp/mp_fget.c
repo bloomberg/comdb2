@@ -1178,8 +1178,8 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 		&& (pthread_getspecific(no_pgcompact) != (void*)1)
 		&& LF_ISSET(DB_MPOOL_COMPACT);
 
-	if (prefault_dbp == NULL || prefault_dbp->log_filename == NULL
-		|| (!send_prefault_udp && !pgcomp_enabled)) {
+	if (!send_prefault_udp || prefault_dbp == NULL 
+        || prefault_dbp->log_filename == NULL) {
 		ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, NULL);
 	} else {
 		ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
@@ -1193,7 +1193,7 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 							(u_int32_t)*pgnoaddr);
 				}
 
-				if (pgcomp_enabled) {
+				if (send_prefault_udp && pgcomp_enabled) {
 					/* Memory pool knows the pages. This is why we choose to
 					   initiate page compact requests here. When a fresh page
 					   is fetched, fget() examines its free space, add the page
