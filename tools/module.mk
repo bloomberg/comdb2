@@ -118,10 +118,11 @@ cdb2_printlog_OBJS:=$(patsubst %.c,tools/cdb2_printlog/%.o,$(cdb2_printlog_SOURC
 
 $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 
+lcl_TASKS=pmux comdb2ar
 # Defined in the top level makefile
-TASKS+=$(lcl_TASKS) $(tools_LIBS) pmux
+TASKS+=$(lcl_TASKS) $(tools_LIBS)
 
 OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2sql_OBJS) $(cdb2replay_OBJS)
 
 # Build tools by default
-all: $(tools_LIBS) pmux comdb2ar
+all: $(tools_LIBS) $(lcl_TASKS)
