@@ -63,6 +63,7 @@
 #include <logmsg.h>
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
+extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
 extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
@@ -812,30 +813,24 @@ static void setup_cinfo_from_sqlite(SP sp, sqlite3_stmt *stmt, int nargs,
                                     int *types)
 {
     SP parent = sp->parent;
-    sp->sqlname = malloc(nargs * sizeof(sp->sqlname[0]));
-    sp->sqltype = malloc(nargs * sizeof(sp->sqltype[0]));
     for (int col = 0; col < nargs; ++col) {
-        sp->sqlname[col] = (char *)sqlite3_column_name(stmt, col);
+        char *colname = (char *)sqlite3_column_name(stmt, col);
         if (parent->clntname[col] == NULL) {
-            if (sp->sqlname[col]) {
-                parent->clntname[col] = strdup(sp->sqlname[col]);
-            } else {
-                parent->clntname[col] = malloc(16);
-                sprintf(parent->clntname[col], "$%d", col);
+            if (colname) {
+                parent->clntname[col] = strdup(colname);
             }
         }
         int sql_type = sqlite3_column_type(stmt, col);
         if (sql_type == SQLITE_NULL) {
             sql_type = sqlite_str_to_type(sqlite3_column_decltype(stmt, col));
         }
-        sp->sqltype[col] = sql_type;
         if (types) {
             parent->clnttype[col] = types[col];
         } else if (parent->clnt->req.parm) {
             parent->clnttype[col] = parent->clnt->type_overrides[col];
         } else if (parent->clnttype[col] == -1) {
             parent->clnttype[col] =
-                sqlite_type_to_client_type(sp->sqltype[col]);
+                sqlite_type_to_client_type(sql_type);
         }
     }
 }
@@ -940,7 +935,6 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
          }
          column[i].value.len = strlen(colname) + 1;
          column[i].value.data = (char *)colname;
-         extern int gbl_return_long_column_names;
          if (!gbl_return_long_column_names && column[i].value.len > 31) {
              column[i].value.data[31] = '\0';
              column[i].value.len = 32;
@@ -3020,10 +3014,6 @@ static void reset_sp(SP sp)
         lua_gc(sp->lua, LUA_GCCOLLECT, 0);
         drop_temp_tables(sp);
     }
-    free(sp->sqlname);
-    sp->sqlname = NULL;
-    free(sp->sqltype);
-    sp->sqltype = NULL;
     sp->in_parent_trans = 0;
     sp->make_parent_trans = 0;
     if (sp->parent == sp) {
