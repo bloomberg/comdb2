@@ -1176,11 +1176,11 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 
 	ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
     if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
-        return ret;
+        goto out;
 
     h = *(PAGE **)addrp;
     if (TYPE(h) != P_LBTREE) 
-        return ret;
+        goto out;
 
     if(send_prefault_udp) {
         udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
@@ -1188,36 +1188,37 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
                 (u_int32_t)*pgnoaddr);
     }
 
-    int pgcomp_enabled = (gbl_pg_compact_thresh > 0)
-        && (pthread_getspecific(no_pgcompact) != (void*)1)
-        && LF_ISSET(DB_MPOOL_COMPACT);
+	int pgcomp_enabled = (gbl_pg_compact_thresh > 0)
+		&& (pthread_getspecific(no_pgcompact) != (void*)1)
+		&& LF_ISSET(DB_MPOOL_COMPACT);
 
-    if (pgcomp_enabled) {
-        /* Memory pool knows the pages. This is why we choose to
-           initiate page compact requests here. When a fresh page
-           is fetched, fget() examines its free space, add the page
-           to a fixed size array sorted by page free space if the page
-           is considered less full.  A dedicated thread, picks up
-           entries from the list, does a comprehensive page check,
-           and sends compact requests for qulified pages.
+	if (pgcomp_enabled) {
+		/* Memory pool knows the pages. This is why we choose to
+		   initiate page compact requests here. When a fresh page
+		   is fetched, fget() examines its free space, add the page
+		   to a fixed size array sorted by page free space if the page
+		   is considered less full.  A dedicated thread, picks up
+		   entries from the list, does a comprehensive page check,
+		   and sends compact requests for qulified pages.
 
-           The 1st check only looks at page fill ratio.
-           We tend to keep 1st check as simple as possible because
-           we don't want to block the caller too long. A complete
-           check is asynchronously done in the dedicated send thread. */
+		   The 1st check only looks at page fill ratio.
+		   We tend to keep 1st check as simple as possible because
+		   we don't want to block the caller too long. A complete
+		   check is asynchronously done in the dedicated send thread. */
 
-        fullsz = prefault_dbp->pgsize - SIZEOF_PAGE;
-        sparseness = P_FREESPACE(prefault_dbp, h) / fullsz;
-        if (sparseness >= (1 - gbl_pg_compact_thresh)) {
-            /* We have a pre-qualified page that might need to have data relocated
-               to it. Add the page. */
-            __memp_add_sparse_page(dbmfp->dbenv,
-                    prefault_dbp->log_filename->id,
-                    prefault_dbp->fileid,
-                    *pgnoaddr, sparseness);
-        }
-    }
-    prefault_dbp = NULL; /* set to NULL, we are done with this page */
+		fullsz = prefault_dbp->pgsize - SIZEOF_PAGE;
+		sparseness = P_FREESPACE(prefault_dbp, h) / fullsz;
+		if (sparseness >= (1 - gbl_pg_compact_thresh)) {
+			/* We have a pre-qualified page that might need to have data relocated
+			   to it. Add the page. */
+			__memp_add_sparse_page(dbmfp->dbenv,
+					prefault_dbp->log_filename->id,
+					prefault_dbp->fileid,
+					*pgnoaddr, sparseness);
+		}
+	}
+out:
+	prefault_dbp = NULL; /* set to NULL, we are done with this page */
 
 	return ret;
 }
