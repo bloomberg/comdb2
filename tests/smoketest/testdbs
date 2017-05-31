@@ -12,7 +12,7 @@ while [[ $try -lt 30 ]] ; do
             export CDB2_CONFIG_FILE=db.conf
             for db in $(seq 1 5); do
                 echo "Trying db${db}"
-                dbn=$(cdb2sql -tabs db${db} default 'select comdb2_dbname()' 2>/dev/null)
+                dbn=$(cdb2sql -tabs db${db} default 'select comdb2_dbname()')
                 while [[ "$dbn" != "db$db" ]]; do
                     if [[ $try -eq 30 ]]; then
                         echo "Timed out!"
