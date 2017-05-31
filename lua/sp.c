@@ -910,7 +910,7 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
             parent->clntname[i] = malloc(16);
             sprintf(parent->clntname[i], "$%d", i);
         }
-        strcpy(info[i].column_name, parent->clntname[i]);
+        strncpy0(info[i].column_name, parent->clntname[i], sizeof(info[i].column_name));
     }
 
     /* write columns */
@@ -928,16 +928,12 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
          column[i].has_type = 1;
          column[i].type = parent->clnttype[i];
          const char *colname = NULL;
-         if (stmt) {
-            colname = sqlite3_column_name(stmt, i);
+         if (gbl_return_long_column_names) {
+             column[i].value.len = strlen(parent->clntname[i]) + 1;
+             column[i].value.data =  parent->clntname[i];
          } else {
-             colname = (uint8_t *)info[i].column_name;
-         }
-         column[i].value.len = strlen(colname) + 1;
-         column[i].value.data = (char *)colname;
-         if (!gbl_return_long_column_names && column[i].value.len > 31) {
-             column[i].value.data[31] = '\0';
              column[i].value.len = 32;
+             column[i].value.data =  info[i].column_name;
          }
 
       }
