@@ -101,6 +101,7 @@ GENH+=$(dfp_MEMGEN)
 # cson Module
 cson_SOURCES:=cson/cson_amalgamation_core.c
 cson_OBJS:=$(patsubst %.c,%.o,$(cson_SOURCES))
+$(cson_OBJS): CFLAGS+=-O2
 
 cson/libcson.a: $(cson_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
