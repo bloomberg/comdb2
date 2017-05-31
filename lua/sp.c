@@ -933,7 +933,7 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
              column[i].value.data =  parent->clntname[i];
          } else {
              column[i].value.len = 32;
-             column[i].value.data =  info[i].column_name;
+             column[i].value.data =  (uint8_t *)info[i].column_name;
          }
 
       }
