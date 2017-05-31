@@ -8569,7 +8569,6 @@ static void getmyid(void)
 #define TOOLS           \
    TOOL(cdb2_dump)      \
    TOOL(cdb2_printlog)  \
-   TOOL(cdb2_sqlreplay) \
    TOOL(cdb2_stat)      \
    TOOL(cdb2_verify)    \
    TOOL(cdb2sockpool)   \

@@ -17,7 +17,6 @@
 /*
  * Comdb2 sql tool to replay sql logs
  *
- * $Id: cdb2_sqlreplay.c 88379 2017-03-27 20:11:12Z jmleddy $
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -27,7 +26,7 @@
 #include <unistd.h>
 
 #include "cdb2api.h"
-#include "cdb2_constants.h"
+#include "cson_amalgamation_core.h"
 
 static cdb2_hndl_tp *cdb2h = NULL;
 
@@ -67,7 +66,7 @@ int timeval_subtract (struct timeval *result,
     return x->tv_sec < y->tv_sec;
 }
 
-int tool_cdb2_sqlreplay_main(int argc, char **argv) {
+int main(int argc, char **argv) {
     FILE *infile;
     size_t line_alloc;
     char *line;
@@ -80,7 +79,8 @@ int tool_cdb2_sqlreplay_main(int argc, char **argv) {
     struct timeval diff;
     int stmt_no;
     int wait_sec;
-    int lineone;
+    int linenum;
+    int linelen;
 
     if (argc < 2) {
         usage();
@@ -93,43 +93,35 @@ int tool_cdb2_sqlreplay_main(int argc, char **argv) {
     } else {
         infile = stdin;
     }
+    /* TODO: tier should be an option */
+#if 0
     if (cdb2_open(&cdb2h, argv[1], "local", 0)) {
         fprintf(stderr,
                 "cdb2_open() failed %s\n", cdb2_errstr(cdb2h));
         cdb2_close(cdb2h);
         exit(EXIT_FAILURE);
     }
+#endif
 
     gettimeofday(&prgm_start, NULL);
 
     line = NULL;
     line_alloc = 0;
-    lineone = 1;
-    while ((getline(&line, &line_alloc, infile)) != -1) {
+    linenum = 1;
+    while ((linelen = getline(&line, &line_alloc, infile)) != -1) {
+        int rc;
+        cson_value *obj;
+        cson_parse_info pinfo = cson_parse_info_empty_m;
+
+        rc = cson_parse_string(&obj, line, linelen, &cson_parse_opt_empty, &pinfo);
+        if (rc) {
+            fprintf(stderr, "Malformed input on line %d\n", linenum);
+        }
+
         memset(&stmt_tm, 0, sizeof(stmt_tm));
-        if ((post_prefix = strptime(line, "%m/%d %T: ", &stmt_tm)) == NULL) {
-            fprintf(stderr, "Input is not in sqlreqs format\n");
-            exit(EXIT_FAILURE);
-        }
-        if (lineone) {
+
+        if (linenum == 1)
             memcpy(&init_tm, &stmt_tm, sizeof(stmt_tm));
-            lineone = 0;
-        }
-
-        /* Only use sql_begin statments */
-        if (strncmp(post_prefix, "sql_begin #", 11) != 0)
-            continue;
-
-        /* Advance to statement number */
-        post_prefix+=11;
-        stmt_no = strtol(post_prefix, &stmt, 0);
-
-        /* Skip ':' */
-        stmt++;
-        /* Get to the good part */
-        while (strncmp(stmt, "sql=", 4) != 0)
-            stmt++;
-        stmt+=4;
 
         /* We have our statement, wait until we need to use it */
         gettimeofday(&now, NULL);
@@ -139,7 +131,11 @@ int tool_cdb2_sqlreplay_main(int argc, char **argv) {
         if (wait_sec > 0)
             sleep(wait_sec);
 
-        cdb2_run_statement(cdb2h, stmt);
+        // cdb2_run_statement(cdb2h, stmt);
+
+        cson_free_value(obj);
+        linenum++;
     }
+    // cdb2_close(cdb2h);
     return 0;
 }

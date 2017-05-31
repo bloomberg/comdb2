@@ -127,6 +127,7 @@ comdb2
 pmux
 cdb2sql
 comdb2ar
+cdb2_sqlreplay
 
 # built tool libraries
 libcomdb2ar.a
@@ -147,6 +148,7 @@ debian/comdb2.binary-stamp
 debian/comdb2.install-stamp
 tags
 dbsize
+callgrind.*
 
 # Bloomberg-specific
 *.tsk
