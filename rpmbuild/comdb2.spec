@@ -30,6 +30,7 @@ rm -rf $RPM_BUILD_ROOT
 /opt/bb/bin/comdb2
 /opt/bb/bin/copycomdb2
 /opt/bb/bin/pmux
+/opt/bb/bin/comdb2ar
 /opt/bb/etc/cdb2/config/comdb2.d
 /opt/bb/include
 /opt/bb/include/cdb2api.h
