@@ -29,6 +29,8 @@ RUN apt-get update && \
     tzdata && \
   rm -rf /var/lib/apt/lists/*
 
+EXPOSE 5105
+
 COPY . /build/
 
 WORKDIR /build
