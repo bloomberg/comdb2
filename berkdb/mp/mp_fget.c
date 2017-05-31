@@ -1175,18 +1175,18 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 	}
 
 	ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
-    if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
-        goto out;
+	if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
+		goto out;
 
-    h = *(PAGE **)addrp;
-    if (TYPE(h) != P_LBTREE) 
-        goto out;
+	h = *(PAGE **)addrp;
+	if (TYPE(h) != P_LBTREE) 
+		goto out;
 
-    if(send_prefault_udp) {
-        udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
-                (u_int32_t)prefault_dbp->log_filename->id,
-                (u_int32_t)*pgnoaddr);
-    }
+	if(send_prefault_udp) {
+		udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
+				(u_int32_t)prefault_dbp->log_filename->id,
+				(u_int32_t)*pgnoaddr);
+	}
 
 	int pgcomp_enabled = (gbl_pg_compact_thresh > 0)
 		&& (pthread_getspecific(no_pgcompact) != (void*)1)
