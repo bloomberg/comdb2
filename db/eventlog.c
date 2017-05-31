@@ -5,12 +5,12 @@
 #include <unistd.h>
 #include <stddef.h>
 #include <sys/time.h>
+#include <inttypes.h>
 
 #include <zlib.h>
 
 #include "reqlog_int.h"
 #include "eventlog.h"
-#include "roll_file.h"
 #include "util.h"
 #include "plhash.h"
 
@@ -29,10 +29,15 @@ static gzFile eventlog_open(const char *fname);
 int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
+static void eventlog_roll(void);
+
 struct sqltrack {
     char fingerprint[16];
     char *sql;
+    LINKC_T(struct sqltrack) lnk;
 };
+
+LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
 
@@ -41,15 +46,15 @@ void eventlog_init(const char *dbname) {
     eventlog = eventlog_open(filename);
     free(filename);
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
+    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
 }
 
 static gzFile eventlog_open(const char *fname) {
-    gzFile f = gzopen(fname, "a");
+    gzFile f = gzopen(fname, "2w");
     if (f == NULL) {
         eventlog_enabled = 0;
         return NULL;
     }
-    f = gzopen(fname, "a");
     return f;
 }
 
@@ -58,6 +63,14 @@ static void eventlog_close(void) {
         return;
     gzclose(eventlog);
     eventlog = NULL;
+    bytes_written = 0;
+    struct sqltrack *t = listc_rtl(&sql_statements);
+    while (t) {
+        hash_del(seen_sql, t);
+        free(t->sql);
+        free(t);
+        t = listc_rtl(&sql_statements);
+    }
 }
 
 static char* eventlog_fname(const char *dbname) {
@@ -148,12 +161,14 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
 
     int detailed = eventlog_detailed;
 
+    pthread_mutex_lock(&eventlog_lk);
     if (logger->event_type && strcmp(logger->event_type, "sql") == 0 && !hash_find(seen_sql, logger->fingerprint)) {
         struct sqltrack *st;
         st = malloc(sizeof(struct sqltrack));
         memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
         st->sql = strdup(logger->stmt);
         hash_add(seen_sql, st);
+        listc_abl(&sql_statements, st);
 
         cson_value *newval;
         cson_object *newobj;
@@ -166,9 +181,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
 
         /* yes, this can spill the file to beyond the configured size - we need this
            event to be in the same file as the event its being logged for */
-        pthread_mutex_lock(&eventlog_lk);
         cson_output(newval, write_json, eventlog, &opt);
-        pthread_mutex_unlock(&eventlog_lk);
 
         char fingerprint[16];
         for (int i = 0; i < 15; i++) {
@@ -178,6 +191,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         cson_object_set(newobj, "fingerprint", cson_value_new_string(fingerprint, sizeof(fingerprint)));
         cson_value_free(newval);
     }
+    pthread_mutex_unlock(&eventlog_lk);
 
     cson_object_set(obj, "time", cson_new_int(logger->startus));
     if (logger->event_type)
@@ -231,11 +245,8 @@ void eventlog_add(const struct reqlogger *logger) {
         pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-    if (sz > eventlog_rollat) {
-        eventlog_close();
-        char *fname = eventlog_fname(thedb->envname);
-        eventlog = eventlog_open(fname);
-        free(fname);
+    if (bytes_written > eventlog_rollat) {
+        eventlog_roll();
     }
     pthread_mutex_unlock(&eventlog_lk);
 
@@ -266,6 +277,7 @@ static void eventlog_disable(void) {
     eventlog_enabled = 0;
     eventlog_close();
     eventlog = NULL;
+    bytes_written = 0;
 }
 
 void eventlog_stop(void) {
