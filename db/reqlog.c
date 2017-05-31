@@ -1394,6 +1394,7 @@ void reqlog_new_request(struct ireq *iq)
 
     reqlog_reset_logger(logger);
     logger->startms = iq->nowms;
+    logger->startus = time_epochus();
     logger->iq = iq;
     logger->opcode = iq->opcode;
     if (iq->is_fromsocket) {
@@ -1533,6 +1534,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startms = time_epochms();
+    logger->startus = time_epochus();
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);

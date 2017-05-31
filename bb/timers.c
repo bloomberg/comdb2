@@ -58,6 +58,18 @@ void timer_init(void (*func)(struct timer_parm *))
 
 int time_epoch(void) { return time(NULL); }
 
+int64_t time_epochus(void)
+{
+    struct timeval tv;
+    int rc;
+    rc = gettimeofday(&tv, NULL);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d\n", rc);
+        abort();
+    }
+    return (tv.tv_sec * 1000000 + tv.tv_usec);
+}
+
 int time_epochms(void)
 {
     struct timeval tv;
