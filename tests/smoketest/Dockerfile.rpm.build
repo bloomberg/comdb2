@@ -7,6 +7,8 @@ RUN \
    readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel    \
    zlib lz4-devel gawk tcl lz4 rpm-build which
 
+EXPOSE 5105
+
 COPY . /build/
 
 WORKDIR /build

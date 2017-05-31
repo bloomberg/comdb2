@@ -67,7 +67,7 @@ int timeval_subtract (struct timeval *result,
     return x->tv_sec < y->tv_sec;
 }
 
-int main(int argc, char **argv) {
+int tool_cdb2_sqlreplay_main(int argc, char **argv) {
     FILE *infile;
     size_t line_alloc;
     char *line;

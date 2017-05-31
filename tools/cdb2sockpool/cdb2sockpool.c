@@ -1077,7 +1077,7 @@ static int cdb2_waitft()
     }
 }
 
-int main(int argc, char *argv[])
+int tool_cdb2sockpool_main(int argc, char *argv[])
 {
     extern char *optarg;
     extern int optind, optopt;

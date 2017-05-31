@@ -27,18 +27,10 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %files
-/opt/bb/bin/cdb2_dump
-/opt/bb/bin/cdb2_printlog
-/opt/bb/bin/cdb2_stat
-/opt/bb/bin/cdb2_verify
-/opt/bb/bin/cdb2_sqlreplay
-/opt/bb/bin/cdb2sql
 /opt/bb/bin/comdb2
-/opt/bb/bin/comdb2ar
-/opt/bb/bin/comdb2dumpcsc
-/opt/bb/bin/comdb2sc
 /opt/bb/bin/copycomdb2
 /opt/bb/bin/pmux
+/opt/bb/bin/comdb2ar
 /opt/bb/etc/cdb2/config/comdb2.d
 /opt/bb/include
 /opt/bb/include/cdb2api.h
@@ -48,11 +40,11 @@ rm -rf $RPM_BUILD_ROOT
 /lib/systemd/system/cdb2sockpool.service
 /lib/systemd/system/supervisor_cdb2.service
 /usr/local/lib/pkgconfig/cdb2api.pc
-/opt/bb/bin/cdb2sockpool
 /opt/bb/bin/comdb2admin
 /opt/bb/etc/supervisord_cdb2.conf
 /opt/bb/lib/libcdb2api.so
 /opt/bb/lib/systemd/system/pmux.service
+/opt/bb/bin/comdb2dumpcsc
 
 %doc
 
@@ -70,7 +62,15 @@ chmod 755 /opt/bb/var /opt/bb/var/log
 echo 'PATH=$PATH:/opt/bb/bin' >> /home/comdb2/.bashrc
 chmod +x /home/comdb2/.bashrc
 chown comdb2:comdb2 /home/comdb2/.bashrc
-# This is ubuntu specific: maybe switch here for other systems?
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_dump
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_printlog
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sql
+ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2ar
+ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2sc
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sockpool
+
 cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
 systemctl daemon-reload
 if [ ! -e /.dockerenv ]; then

@@ -122,18 +122,18 @@ berkdb/qam/qam_auto.c
 sqlite/mkkeywordhash
 sqlite/lemon
 
-# built binaries
+# binaries
 comdb2
-comdb2sc
-comdb2ar
-cdb2sql
 pmux
-cdb2sockpool
-cdb2_printlog
-cdb2_verify
-cdb2_dump
-cdb2_stat
-cdb2_sqlreplay
+cdb2sql
+comdb2ar
+
+# built tool libraries
+libcomdb2ar.a
+libcdb2sql.a
+libcdb2sockpool.a
+libcdb2util.a
+libcdb2_sqlreplay.a
 
 # fluff produced by various tools that tends to accumulate
 *.sw[op]

@@ -25,15 +25,14 @@ static const char revid[] =
 
 #include "db_int.h"
 #include <crc32c.h>
-#include "dbinc/db_stub.h"
 
 int main __P((int, char *[]));
-int usage __P((void));
-int version_check __P((const char *));
+static int cdb2_verify_usage __P((void));
+static int cdb2_verify_version_check __P((const char *));
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
 int
-main(argc, argv)
+tool_cdb2_verify_main(argc, argv)
 	int argc;
 	char *argv[];
 {
@@ -50,7 +49,7 @@ main(argc, argv)
 	FILE *crypto;
 
     comdb2ma_init(0, 0);
-	if ((ret = version_check(progname)) != 0)
+	if ((ret = cdb2_verify_version_check(progname)) != 0)
 		return (ret);
 
 	dbenv = NULL;
@@ -93,13 +92,13 @@ main(argc, argv)
 			return (EXIT_SUCCESS);
 		case '?':
 		default:
-			return (usage());
+			return (cdb2_verify_usage());
 		}
 	argc -= optind;
 	argv += optind;
 
 	if (argc <= 0)
-		return (usage());
+		return (cdb2_verify_usage());
 
 	/* Handle possible interruptions. */
 	__db_util_siginit();
@@ -239,8 +238,8 @@ shutdown:	exitval = 1;
 	return (exitval == 0 ? EXIT_SUCCESS : EXIT_FAILURE);
 }
 
-int
-usage()
+static int
+cdb2_verify_usage()
 {
 	fprintf(stderr, "%s\n",
 	    "usage: cdb2_verify [-NoqV] [-h home] [-P /path/to/password] db_file ...");
@@ -248,7 +247,7 @@ usage()
 }
 
 int
-version_check(progname)
+cdb2_verify_version_check(progname)
 	const char *progname;
 {
 	int v_major, v_minor, v_patch;

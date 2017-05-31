@@ -38,7 +38,6 @@ static const char revid[] =
 #include "dbinc/db_page.h"
 #include "dbinc/txn.h"
 #include <crc32c.h>
-#include "dbinc/db_stub.h"
 
 #define	PCT(f, t, pgsize)						\
     ((t) == 0 ? 0 :							\
@@ -49,7 +48,7 @@ typedef enum { T_NOTSET,
 
 int	 argcheck __P((char *, const char *));
 int	 btree_stats __P((DB_ENV *, DB *, DB_BTREE_STAT *, u_int32_t));
-int	 db_init __P((DB_ENV *, char *, test_t, u_int32_t, int *));
+int	 cdb2_stat_db_init __P((DB_ENV *, char *, test_t, u_int32_t, int *));
 void	 dl __P((const char *, u_long));
 void	 dl_bytes __P((const char *, u_long, u_long, u_long));
 int	 env_stats __P((DB_ENV *, u_int32_t));
@@ -64,14 +63,14 @@ int	 rep_stats __P((DB_ENV *, u_int32_t));
 int	 txn_compare __P((const void *, const void *));
 int	 txn_stats __P((DB_ENV *, u_int32_t));
 void	 txn_xid_stats __P((DB_TXN_ACTIVE *));
-int	 usage __P((void));
-int	 version_check __P((const char *));
+int	 cdb2_stat_usage __P((void));
+int	 cdb2_stat_version_check __P((const char *));
 extern int io_override_init(void);
 extern int io_override_set_std(FILE *f);
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
 int
-main(argc, argv)
+tool_cdb2_stat_main(argc, argv)
 	int argc;
 	char *argv[];
 {
@@ -91,7 +90,7 @@ main(argc, argv)
 	crc32c_init(0);
 	comdb2ma_init(0, 0);
 
-	if ((ret = version_check(progname)) != 0)
+	if ((ret = cdb2_stat_version_check(progname)) != 0)
 		return (ret);
 
 	dbenv = NULL;
@@ -110,7 +109,7 @@ main(argc, argv)
 				goto argcombo;
 			ttype = T_LOCK;
 			if (!argcheck(internal = optarg, "Aclmop"))
-				return (usage());
+				return (cdb2_stat_usage());
 			break;
 		case 'c':
 			if (ttype != T_NOTSET)
@@ -144,7 +143,7 @@ main(argc, argv)
 				goto argcombo;
 			ttype = T_MPOOL;
 			if (!argcheck(internal = optarg, "Ahm"))
-				return (usage());
+				return (cdb2_stat_usage());
 			break;
 		case 'm':
 			if (ttype != T_NOTSET)
@@ -196,7 +195,7 @@ argcombo:			fprintf(stderr,
 			break;
 		case '?':
 		default:
-			return (usage());
+			return (cdb2_stat_usage());
 		}
 	argc -= optind;
 	argv += optind;
@@ -204,10 +203,10 @@ argcombo:			fprintf(stderr,
 	switch (ttype) {
 	case T_DB:
 		if (db == NULL)
-			return (usage());
+			return (cdb2_stat_usage());
 		break;
 	case T_NOTSET:
-		return (usage());
+		return (cdb2_stat_usage());
 		/* NOTREACHED */
 	case T_ENV:
 	case T_LOCK:
@@ -216,7 +215,7 @@ argcombo:			fprintf(stderr,
 	case T_REP:
 	case T_TXN:
 		if (fast != 0)
-			return (usage());
+			return (cdb2_stat_usage());
 		break;
 	}
 
@@ -260,14 +259,14 @@ retry:	if ((ret = db_env_create(&dbenv, env_flags)) != 0) {
 	}
 
 	/* Initialize the environment. */
-	if (db_init(dbenv, home, ttype, cache, &private) != 0)
+	if (cdb2_stat_db_init(dbenv, home, ttype, cache, &private) != 0)
 		goto shutdown;
 
 	switch (ttype) {
 	case T_DB:
 		/* Create the DB object and open the file. */
 		if (flags != 0)
-			return (usage());
+			return (cdb2_stat_usage());
 		if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
 			dbenv->err(dbenv, ret, "db_create");
 			goto shutdown;
@@ -1265,7 +1264,7 @@ prflags(dbp, flags, fnp)
  *	Initialize the environment.
  */
 int
-db_init(dbenv, home, ttype, cache, is_private)
+cdb2_stat_db_init(dbenv, home, ttype, cache, is_private)
 	DB_ENV *dbenv;
 	char *home;
 	test_t ttype;
@@ -1341,7 +1340,7 @@ argcheck(arg, ok_args)
 }
 
 int
-usage()
+cdb2_stat_usage()
 {
 	fprintf(stderr, "%s\n\t%s\n",
 	    "usage: cdb2_stat [-celmNrtVZ] [-C Aclmop]",
@@ -1350,7 +1349,7 @@ usage()
 }
 
 int
-version_check(progname)
+cdb2_stat_version_check(progname)
 	const char *progname;
 {
 	int v_major, v_minor, v_patch;

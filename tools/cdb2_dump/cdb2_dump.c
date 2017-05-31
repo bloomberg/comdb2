@@ -26,7 +26,6 @@ static const char revid[] =
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
-#include "dbinc/db_stub.h"
 
 #include <crc32c.h>
 #include <syslog.h>
@@ -38,7 +37,7 @@ int dump_sub __P((DB_ENV *, DB *, char *, int, int));
 int is_sub __P((DB *, int *));
 int main __P((int, char *[]));
 int show_subs __P((DB *));
-int usage __P((void));
+static int cdb2_dump_usage __P((void));
 int version_check __P((const char *));
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 extern int io_override_init(void);
@@ -46,7 +45,7 @@ extern int io_override_set_std(FILE *f);
 pthread_key_t comdb2_open_key;
 
 int
-main(argc, argv)
+tool_cdb2_dump_main(argc, argv)
 	int argc;
 	char *argv[];
 {
@@ -133,13 +132,13 @@ main(argc, argv)
 			return (EXIT_SUCCESS);
 		case '?':
 		default:
-			return (usage());
+			return (cdb2_dump_usage());
 		}
 	argc -= optind;
 	argv += optind;
 
 	if (argc != 1)
-		return (usage());
+		return (cdb2_dump_usage());
 
 	if (dopt != NULL && pflag) {
 		fprintf(stderr,
@@ -610,8 +609,8 @@ err:	if (data.data != NULL)
  * usage --
  *	Display the usage message.
  */
-int
-usage()
+static int
+cdb2_dump_usage()
 {
 	(void)fprintf(stderr, "%s\n\t%s\n",
 	    "usage: cdb2_dump [-klNprRV]",

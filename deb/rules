@@ -18,6 +18,8 @@ debian/comdb2.binary-stamp: debian/comdb2.install-stamp
 	mkdir -p debian/comdb2/DEBIAN
 	dpkg-gencontrol -pcomdb2 -Pdebian/comdb2
 	cp debian/postinst debian/comdb2/DEBIAN/
+	cp debian/prerm debian/comdb2/DEBIAN/
+	cp debian/postrm debian/comdb2/DEBIAN/
 	dpkg-deb -b debian/comdb2 ../
 	touch debian/comdb2.binary-stamp
 
