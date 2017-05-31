@@ -1175,17 +1175,15 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 	}
 
 	ret = __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, &did_io);
-    if (ret || did_io == 0)
+    if (ret || !did_io || !prefault_dbp || !prefault_dbp->log_filename)
         return ret;
 
     h = *(PAGE **)addrp;
     if (TYPE(h) != P_LBTREE) 
         return ret;
 
-    if(send_prefault_udp && prefault_dbp != NULL 
-       && prefault_dbp->log_filename != NULL) {
-        udp_prefault_all((bdb_state_type *) dbmfp->dbenv->
-                app_private,
+    if(send_prefault_udp) {
+        udp_prefault_all((bdb_state_type *) dbmfp->dbenv->app_private,
                 (u_int32_t)prefault_dbp->log_filename->id,
                 (u_int32_t)*pgnoaddr);
     }
