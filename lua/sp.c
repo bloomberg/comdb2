@@ -932,8 +932,20 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
          cdb2__sqlresponse__column__init(&column[i]);
          column[i].has_type = 1;
          column[i].type = parent->clnttype[i];
-         column[i].value.len = 32;
-         column[i].value.data = (uint8_t *)info[i].column_name;
+         const char *colname = NULL;
+         if (stmt) {
+            colname = sqlite3_column_name(stmt, i);
+         } else {
+             colname = (uint8_t *)info[i].column_name;
+         }
+         column[i].value.len = strlen(colname) + 1;
+         column[i].value.data = (char *)colname;
+         extern int gbl_return_long_column_names;
+         if (!gbl_return_long_column_names && column[i].value.len > 31) {
+             column[i].value.data[31] = '\0';
+             column[i].value.len = 32;
+         }
+
       }
       sql_response.value = column_ptr;
       sql_response.error_code = 0;
