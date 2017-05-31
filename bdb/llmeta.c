@@ -17,6 +17,7 @@
 #include <string.h>
 #include <strings.h>
 #include <limits.h>
+#include <int_overflow.h>
 #include <compile_time_assert.h>
 #include <flibc.h>
 #include "bdb_int.h"
@@ -157,8 +158,7 @@ typedef enum {
     LLMETA_DEFAULT_VERSIONED_SP = 43,
     LLMETA_TABLE_USER_SCHEMA    = 44,
     LLMETA_USER_PASSWORD_HASH   = 45,
-    LLMETA_SEQUENCE_NAMES = 46, /* names of sequence objects */
-    LLMETA_SEQUENCE_ATTR = 47 /* sequence object attributes */
+    LLMETA_SEQUENCE_ATTR = 46 /* sequence object attributes */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -7934,6 +7934,390 @@ done:
         queue_data_destroy(qd);
     return rc;
 }
+
+// *******************************************************************************************************************************************************
+//
+// ------------------------------------------------------------------- REMOVE: SEQUENCES -----------------------------------------------------------------
+//
+// *******************************************************************************************************************************************************
+struct seq_key {
+    int file_type;
+    char name[LLMETA_TBLLEN + 1];
+};
+
+/* SEQUENCE object attributes */
+struct seq_data {
+    int version; /* Sequence attr struct version */
+
+    /* Basic Attributes */
+    long long min_val; /* Values dispensed must be greater than or equal to min_val */
+    long long max_val; /* Values dispensed must be less than or equal to max_val */
+    long long increment; /* Normal difference between two consecutively dispensed values */
+    bool cycle; /* If cycling values is permitted */
+
+    /* Synchronization with llmeta */
+    long long start_val; /* Next value to be dispensed from llmeta into memory */
+    long long chunk_size; /* Number of values to allocate from llmeta */
+};
+
+static uint8_t *llmeta_sequence_key_put(struct seq_key *key, char *p_buf,
+                                     char *p_buf_end) {
+    if (p_buf_end - p_buf < sizeof(struct seq_key))
+        return NULL;
+    p_buf = buf_put(&key->file_type, sizeof(key->file_type), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(&key->name, sizeof(key->name), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static uint8_t *llmeta_sequence_key_get(struct seq_key *key, char *p_buf,
+                                     char *p_buf_end) {
+    if (p_buf_end - p_buf < sizeof(struct seq_key))
+        return NULL;
+    p_buf = (uint8_t *)buf_get(&key->file_type, sizeof(key->file_type), p_buf,
+                               p_buf_end);
+    p_buf = (uint8_t *)buf_no_net_get(&key->name, sizeof(key->name), p_buf,
+                                      p_buf_end);
+    return p_buf;
+}
+
+
+static uint8_t *llmeta_sequence_data_put(struct seq_data *data, char *p_buf,
+                                      char *p_buf_end) {
+    if (p_buf_end - p_buf < sizeof(struct seq_data)){
+        // Not enough space in buffer
+        return NULL;
+    }
+
+    // Put data into p_buf
+    p_buf = buf_put(&data->version, sizeof(int), p_buf, p_buf_end);
+    p_buf = buf_put(&data->min_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&data->max_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&data->increment, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&data->cycle, sizeof(bool), p_buf, p_buf_end);
+    p_buf = buf_put(&data->start_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&data->chunk_size, sizeof(long long), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+
+static struct seq_data *llmeta_sequence_data_get(char *p_buf, char *p_buf_end) {
+    struct seq_data *data = NULL;
+
+    data = calloc(1, sizeof(struct seq_data));
+    if (data == NULL)
+        goto bad_alloc;
+
+    // Place data in sd
+    p_buf = (uint8_t *)buf_get(&data->version, sizeof(int), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->min_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->max_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->increment, sizeof(long long), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->cycle, sizeof(bool), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->start_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->chunk_size, sizeof(long long), p_buf, p_buf_end);
+
+    if (p_buf == NULL)
+        goto bad_alloc;
+
+    return data;
+
+bad_alloc:
+    if (data)
+        free(data);
+    return NULL;
+}
+
+// TODO: Modify for sequences
+int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long long max_val,
+                         long long increment, bool cycle, long long start_val, long long chunk_size,
+                         int *bdberr) {
+    char key[LLMETA_IXLEN] = {0};
+    int dtalen;
+    uint8_t *p_buf, *p_buf_end;
+    struct seq_data sd = {0};
+    struct seq_key sk = {0};
+    int rc;
+
+    p_buf = key;
+    p_buf_end = p_buf + LLMETA_IXLEN;
+
+    sk.file_type = LLMETA_SEQUENCE_ATTR;
+    /* TODO: range check? assume sanitized at this point? */
+    strcpy(sk.name, name);
+
+    // Create new llmeta record and add sequence's llmeta key
+    p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
+    if (p_buf == NULL) {
+        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta key\n", __func__);
+        return -1;
+    }
+
+    // Load data into seq_data struct
+    sd.min_val = min_val;
+    sd.max_val = max_val;
+    sd.increment = increment;
+    sd.cycle = cycle;
+    sd.chunk_size = chunk_size;
+    sd.start_val = start_val;
+    
+    dtalen = sizeof(struct seq_data);
+    
+    p_buf = malloc(dtalen);
+    p_buf_end = p_buf + dtalen;
+    
+    // Encode data
+    if (llmeta_sequence_data_put(&sd, p_buf, p_buf_end) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta data\n", __func__);
+        free(p_buf);
+        return -1;
+    }
+
+    // Add to encoded data to llmeta
+    rc = bdb_lite_add(llmeta_bdb_state, tran, p_buf, dtalen, key, bdberr);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s: failed to add llmeta sequence entry for %s: %d\n",
+                __func__, name, bdberr);
+    free(p_buf);
+
+    return rc;
+}
+
+int bdb_llmeta_alter_sequence( tran_type *tran, char* name, long long min_val, long long max_val,
+                           long long increment, bool cycle, long long start_val, long long chunk_size,
+                           int *bdberr) {
+    int rc;
+
+    /* delete and add */
+    rc = bdb_llmeta_drop_sequence(tran, name, bdberr);
+    if (rc)
+        goto done;
+    rc = bdb_llmeta_add_sequence(tran, name, min_val, max_val, 
+                                increment, cycle, start_val, chunk_size,
+                                bdberr);
+    if (rc)
+        goto done;
+
+done:
+    return rc;
+}
+
+int bdb_llmeta_drop_sequence(tran_type *tran, char *name, int *bdberr) {
+    char key[LLMETA_IXLEN] = {0};
+    uint8_t *p_buf, *p_buf_end;
+    struct seq_key sk = {0};
+    int rc;
+
+    *bdberr = BDBERR_NOERROR;
+
+    p_buf = key;
+    p_buf_end = p_buf + LLMETA_IXLEN;
+    sk.file_type = LLMETA_SEQUENCE_ATTR;
+    strcpy(sk.name, name);
+
+    p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
+    if (p_buf == NULL) {
+        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta key\n", __func__);
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
+    if (rc)
+        goto done;
+
+done:
+    return rc;
+}
+
+/** 
+ * TODO: Finish Rewrite, deal with cycles
+ * Get a new chunk of values from a specified sequence. Returns -1 in error
+ * 
+ * @param tran_type *tran Current transaction
+ * @param char *name Name of sequence to grab a sequence from
+ * @param long long min_val Sequence minimum value
+ * @param long long max_val Sequence maximum value
+ * @param long long increment Sequence increment
+ * @param bool cycle Whether the sequence has cyclic behaviour
+ * @param long long chunk_size Size of the chunk of values to preallocate from llmeta
+ * @param long long last_avail_val Previous last avaliable value
+ * @param long long *new_last New last avaliable value
+ * @param int *bdberr BDB error
+ */
+int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val, long long max_val,
+                           long long increment, bool cycle, long long chunk_size, long long last_avail_val,
+                           long long *new_last, int *bdberr) {
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t *p_buf, *p_buf_end;
+    void *dta = NULL;
+    struct seq_key sk = {0};
+    long long new_start_val;
+    int foundlen;
+    int rc;
+
+    sk.file_type = LLMETA_SEQUENCE_ATTR;
+    strcpy(sk.name, name);
+
+    p_buf = key;
+    p_buf_end = p_buf + LLMETA_IXLEN;
+    p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
+    if (p_buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: can't encode key for sequence %s\n", __func__, name);
+        *bdberr = BDBERR_MISC;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_lite_exact_fetch_alloc(llmeta_bdb_state, key, &dta, &foundlen,
+                                    bdberr);
+    if (rc) {
+        *bdberr == BDBERR_FETCH_DTA;
+        goto done;
+    }
+    p_buf = dta;
+    p_buf_end = p_buf + foundlen;
+    
+    // Calculate new start_val for llmeta record
+    if (!check_overflow_ll_mul(chunk_size, increment)) {
+        rc = -1;
+        goto done;
+    }
+    long long tmp = chunk_size*increment;
+
+    if (!check_overflow_ll_add(last_avail_val, tmp)) {
+        rc = -1;
+        goto done;
+    }
+
+    new_start_val = last_avail_val + tmp;
+
+    // TODO: Add all the checks
+
+    // Shift p_buf up to start_val member
+    p_buf += sizeof(int) + sizeof(long long) * 3 + sizeof(bool);
+    
+    // Write new start value to llmeta
+    p_buf = buf_put(&new_start_val, sizeof(long long), p_buf, p_buf_end);
+
+    // TODO: Return new last_avail_value (start_val - increment) 
+    *new_last = new_start_val - increment; // FIXME: Doesn't work for cycle when start_val loops back to min_val
+
+done:
+    if (dta)
+        free(dta);
+    return rc;
+}
+
+// TODO: modify to use queue style records
+int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
+                          int *num_sequences, int *bdberr) {
+    int rc;
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t nextkey[LLMETA_IXLEN];
+    struct seq_key sk = {0}; // Need to use this struct for bdb lite
+    uint8_t *p_buf, *p_buf_end;
+    int num_seqs = 0;
+    int fnd;
+
+    sk.file_type = htonl(LLMETA_SEQUENCE_ATTR);
+
+    rc = bdb_lite_fetch_partial(llmeta_bdb_state, &sk.file_type, sizeof(int),
+                                key, &fnd, bdberr);
+    while (rc == 0 && fnd == 1) {
+        p_buf = key;
+        p_buf_end = p_buf + LLMETA_IXLEN;
+        p_buf = llmeta_sequence_key_get(&sk, p_buf, p_buf_end);
+        if (p_buf == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to decode sequence key\n", __func__);
+            fsnapf(stdout, key, LLMETA_IXLEN);
+            return -1;
+        }
+        if (sk.file_type != LLMETA_SEQUENCE_ATTR)
+            break;
+        if (num_seqs >= max_seqs)
+            break;
+        logmsg(LOGMSG_USER, ">> sequence: %s\n", sk.name);
+        sequence_names[num_seqs] = strdup(sk.name);
+        num_seqs++;
+        if ((rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, key, nextkey, 1,
+                                          &fnd, bdberr)) != 0)
+            return rc;
+        memcpy(key, nextkey, LLMETA_IXLEN);
+    }
+    *num_sequences = num_seqs;
+
+    return rc;
+}
+
+// TODO: Modify for sequences
+int bdb_llmeta_get_sequence(char* name, long long *min_val, long long *max_val, 
+                        long long *increment, bool *cycle, long long *start_val, long long *chunk_size,
+                        int *bdberr) {
+    struct seq_key sk = {0};
+    struct seq_data *sd = NULL;
+    uint8_t key[LLMETA_IXLEN] = {0};
+    uint8_t *p_buf, *p_buf_end;
+    int rc;
+    void *dta = NULL;
+    int foundlen;
+
+    *bdberr = BDBERR_NOERROR;
+
+    sk.file_type = LLMETA_SEQUENCE_ATTR;
+    strcpy(sk.name, name);
+
+    p_buf = key;
+    p_buf_end = p_buf + LLMETA_IXLEN;
+    p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
+    if (p_buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: can't encode key for sequence %s\n", __func__, name);
+        *bdberr = BDBERR_MISC;
+        rc = -1;
+        goto done;
+    }
+
+    rc = bdb_lite_exact_fetch_alloc(llmeta_bdb_state, key, &dta, &foundlen,
+                                    bdberr);
+    if (rc) {
+        *bdberr == BDBERR_FETCH_DTA;
+        goto done;
+    }
+    p_buf = dta;
+    p_buf_end = p_buf + foundlen;
+    sd = llmeta_sequence_data_get(p_buf, p_buf_end);
+    if (sd == NULL) {
+        *bdberr = BDBERR_MISC;
+        rc = -1;
+        goto done;
+    }
+
+    // Load data into pointer locations given
+    *min_val = sd->min_val ;
+    *max_val = sd->max_val ;
+    *increment = sd->increment ;
+    *cycle = sd->cycle ;
+    *chunk_size = sd->chunk_size ;
+    *start_val = sd->start_val ;
+
+    free(sd);
+    sd = NULL;
+done:
+    if (dta)
+        free(dta);
+    if (sd)
+        free(sd);
+    return rc;
+}
+
+// *******************************************************************************************************************************************************
+//
+// --------------------------------------------------------------- REMOVE: END SEQUENCES -----------------------------------------------------------------
+//
+// *******************************************************************************************************************************************************
+
 
 /*
 ** kv_funcs() - operate on arbitrary key-value pairs

@@ -1844,36 +1844,40 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 // REMOVE: TEST Sequences
     } else if (tokcmp(tok, ltok, "sequence") == 0) {
         tok = segtok(line, lline, &st, &ltok);
+        char *name = "tst";
 
-        if (tokcmp(tok, ltok, "add") == 0) {
-            char *name = "tst";
-            if (add_sequence(name, 0, 10, -1, true, 0, 100) > 0) {
+        if (tokcmp(tok, ltok, "new") == 0) {
+            if (!add_sequence(name, 0, 10, -1, true, 0, 100)) {
                 logmsg(LOGMSG_USER, "Created sequence \"%s\"\n", name);
             } else {
                 logmsg(LOGMSG_USER, "Failed to create sequence\n");
             }
         }
 
+        // TODO: ADD DELETE
+
         else if (tokcmp(tok, ltok, "next_val") == 0) {
             long long *val = (long long *) malloc(sizeof(long long));
 
-            if (seq_next_val("tst", val) == 1) {
+            if (seq_next_val(name, val) == 0) {
                 logmsg(LOGMSG_USER, "Value: %d\n", *val);
             } else {
                 logmsg(LOGMSG_USER, "Failed to obtain next value");
             }
             
+            free(val);
         }
 
         else if (tokcmp(tok, ltok, "prev_val") == 0) {
             long long *val = (long long *) malloc(sizeof(long long));
 
-            if (seq_prev_val("tst", val) == 1) {
+            if (seq_prev_val(name, val) == 0) {
                 logmsg(LOGMSG_USER, "Value: %d\n", *val);
             } else {
                 logmsg(LOGMSG_USER, "Failed to obtain prev value");
             }
             
+            free(val);
         }
 
         else if (tokcmp(tok, ltok, "print") == 0) {

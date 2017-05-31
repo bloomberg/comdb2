@@ -1501,6 +1501,48 @@ static int lrllinecmp(char *lrlline, char *cmpto)
     return 0;
 }
 
+/*
+ * Creates a sequence_t object from parameters passed to this function
+ *
+ * @param name char*
+ * @param min_val long long
+ * @param max_val long long
+ * @param increment long long
+ * @param cycle bool
+ * @param start_val long long
+ * @param chunk_size long long
+ * @param last_avail_val long long
+ */
+sequence_t *new_sequence (char* name, long long min_val, long long max_val, 
+   long long increment, bool cycle, long long start_val, long long chunk_size, 
+   long long last_avail_val)
+{
+    sequence_t *new_seq = malloc(sizeof(sequence_t));
+    if (new_seq == NULL) {
+        logmsg(LOGMSG_ERROR, "can't allocate memory for new sequence\n");
+        return NULL;
+    }
+
+    new_seq->name = name;
+    new_seq->min_val = min_val;
+    new_seq->max_val = max_val;
+    new_seq->increment = increment;
+    new_seq->cycle = cycle;
+    new_seq->prev_val = start_val;
+    new_seq->next_val = start_val;
+    new_seq->chunk_size = chunk_size;
+    new_seq->last_avail_val = last_avail_val;
+
+    int rc = pthread_rwlock_init(&new_seq->seq_lk, NULL);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Failed to initialize lock for sequence\n");
+        return NULL;
+    }
+
+    return new_seq;
+}
+
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb)
 {
@@ -2119,6 +2161,80 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
 
     return 0; /* success */
 }
+
+
+/*
+ *  Create sequence objects in memory from definitions in llmeta
+ */
+static int llmeta_load_sequences (struct dbenv *dbenv) {
+    char *seq_names[MAX_NUM_SEQUENCES];
+    int num_found_sequences;
+    int rc;
+    int bdberr;
+
+    // get names (and count) from llmeta
+    bdberr = bdb_llmeta_get_sequence_names(seq_names, MAX_NUM_SEQUENCES, &num_found_sequences, &bdberr);
+    if (bdberr) {
+        logmsg(LOGMSG_ERROR, "bdb_llmeta_get_sequence_names bdberr %d\n", bdberr);
+        return rc;
+    };
+
+    if (num_found_sequences == 0) {
+        // Init number of sequences in memory
+        dbenv->num_sequences = 0;
+
+        return 0;
+    }
+    
+    // TODO: Check this number. Do we want to preallocate some more space so we don't have to realloc each time we create
+    dbenv->sequences = realloc(dbenv->sequences, (dbenv->num_sequences + num_found_sequences) * sizeof(sequence_t));
+
+    if (dbenv->sequences == NULL) {
+        logmsg(LOGMSG_ERROR, "can't allocate memory for sequences list\n");
+        return -1;
+    }
+
+    for (int i = 0; i < num_found_sequences; i++) {
+        sequence_t *seq;
+        char* name = seq_names[i];
+        long long min_val;
+        long long max_val;
+        long long increment;
+        bool cycle;
+        long long start_val;
+        long long new_start_val;
+        long long last_avail_val;
+        long long chunk_size;
+
+        // Get sequence configuration from llmeta
+        rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment, &cycle, &start_val, &chunk_size, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "can't get information for sequence \"%s\"\n", name);
+            return -1;
+        }
+        
+        // Update llmeta with value + chunk_size
+        new_start_val = start_val + (chunk_size * (increment + 1));
+        last_avail_val = start_val + (chunk_size * increment);
+
+        rc = bdb_llmeta_alter_sequence(NULL,name, min_val, max_val, increment, cycle, new_start_val, chunk_size, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "can't update information for sequence \"%s\"\n", name);
+            return -1;
+        }
+        
+        // Create new Sequence in memory
+        seq = new_sequence(name, min_val, max_val, increment, cycle, start_val, chunk_size, last_avail_val);
+        if (seq == NULL) {
+            logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", seq_names[i]);
+            return -1;
+        }
+        dbenv->sequences[dbenv->num_sequences++] = seq;
+    }
+
+    return 0;
+}
+
 
 /* prints out a file (datadir/dbname_file_vers_map) that provides a mapping of
  * all the file types and numbers to version numbers, for example,
@@ -3585,6 +3701,12 @@ static int init(int argc, char **argv)
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
+                            "table\n");
+            return -1;
+        }
+
+        if (llmeta_load_sequences(thedb)) {
+            logmsg(LOGMSG_FATAL, "could not load sequences from the low level meta "
                             "table\n");
             return -1;
         }
