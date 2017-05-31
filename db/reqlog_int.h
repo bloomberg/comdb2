@@ -73,7 +73,9 @@ struct reqlogger {
     unsigned event_mask;
     unsigned dump_mask;
     unsigned mask; /* bitwise or of the above two masks */
+
     int startms;
+    int64_t startus;
 
     struct prefix_type prefix;
     char dumpline[1024];
