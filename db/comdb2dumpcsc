@@ -1,10 +1,5 @@
 #!/bin/bash
-#
-# $URL: svn+ssh://devsvn/system/comdb2/trunk/tools/comdb2dumpcsc $
-# $Id: comdb2dumpcsc 99703 2014-11-19 18:41:08Z dhogea $
-#
-# dumps out csc2 for llmeta dbs
-#
+# List tables or table schemas
 
 usage()
 {

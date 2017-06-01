@@ -106,11 +106,10 @@ install: all
 	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2sockpool && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2sockpool || true
 	install -D comdb2ar $(DESTDIR)$(PREFIX)/bin/comdb2ar
 	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
-	install -D tools/pmux/pmux.service $(DESTDIR)/lib/systemd/system/pmux.service
-	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)/lib/systemd/system/cdb2sockpool.service
-	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)/lib/systemd/system/supervisor_cdb2.service
-	install -D cdb2api/cdb2api.pc $(DESTDIR)/usr/local/lib/pkgconfig/cdb2api.pc
-	install -D tools/pmux/pmux.service $(DESTDIR)$(PREFIX)/lib/systemd/system/pmux.service
+	-install -D tools/pmux/pmux.service $(DESTDIR)/lib/systemd/system/pmux.service
+	-install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)/lib/systemd/system/cdb2sockpool.service
+	-install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)/lib/systemd/system/supervisor_cdb2.service
+	-install -D cdb2api/cdb2api.pc $(DESTDIR)/usr/local/lib/pkgconfig/cdb2api.pc
 	install -D db/comdb2dumpcsc $(DESTDIR)$(PREFIX)/bin/comdb2dumpcsc
 	mkdir -p $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/  $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/ $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/
 	[ -z "$(DESTDIR)" ] && chown $(USER):$(GROUP) $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/ $(DESTDIR)$(PREFIX)/etc/cdb2/config/ $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/  $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/ || true  
