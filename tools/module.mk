@@ -33,17 +33,18 @@ cdb2sql_OBJS:=$(patsubst %.c,tools/cdb2sql/%.o,$(cdb2sql_SRC))
 libcdb2sql.a: $(cdb2sql_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
-cdb2replay_SRC=cdb2_sqlreplay.c
-cdb2replay_OBJS=$(patsubst %.c,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
+cdb2replay_SRC=cdb2_sqlreplay.cpp
+cdb2replay_OBJS:=$(patsubst %.cpp,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
 cdb2replay_CFLAGS=-Icson
 cdb2replay_LDLIBS=-Lcson -lcson -Lcdb2api -l:libcdb2api.a -Lprotobuf   \
                   -lcdb2protobuf -lprotobuf-c -lssl -lcrypto -lz       \
                   -lpthread
 
-tools/cdb2_sqlreplay/cdb2_sqlreplay.o: CFLAGS+=$(cdb2replay_CFLAGS)
+$(cdb2replay_OBJS): $(patsubst %.cpp,tools/cdb2_sqlreplay/%.cpp,$(cdb2replay_SRC))
+	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(cdb2replay_CFLAGS) $(CXX11FLAGS) -c $< -o $@
 
 cdb2_sqlreplay: $(cdb2replay_OBJS)
-	$(CC) $(LDFLAGS) $< $(cdb2replay_LDLIBS) -o $@
+	$(CXX11) $(tools_CPPFLAGS) $(LDFLAGS) $< $(cdb2replay_LDLIBS) -o $@
 
 # Cdb2sockpool - Use base rules, multiple object files
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c
@@ -121,6 +122,8 @@ cdb2_printlog_SOURCES:=comdb2_dbprintlog.c cdb2_printlog.c
 cdb2_printlog_OBJS:=$(patsubst %.c,tools/cdb2_printlog/%.o,$(cdb2_printlog_SOURCES))
 
 $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
+
+cdb2_sqlreplay: $(CDB2API_BIN) $(PROTOBUF_BIN)
 
 lcl_TASKS=pmux comdb2ar cdb2_sqlreplay
 # Defined in the top level makefile
