@@ -18,7 +18,7 @@
 
 static char* eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
-static int eventlog_rollat = 16*1024*1024;
+static int eventlog_rollat = 1024*1024*1024;
 static int eventlog_enabled = 0;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
@@ -42,9 +42,6 @@ LISTC_T(struct sqltrack) sql_statements;
 static hash_t *seen_sql;
 
 void eventlog_init(const char *dbname) {
-    char *filename = eventlog_fname(dbname);
-    eventlog = eventlog_open(filename);
-    free(filename);
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
 }
@@ -179,16 +176,16 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         cson_object_set(newobj, "type", cson_value_new_string("newsql", sizeof("newsql")));
         cson_object_set(newobj, "sql", cson_value_new_string(logger->stmt, strlen(logger->stmt)));
 
+        char fingerprint[32];
+        for (int i = 0; i < 15; i++) {
+             fingerprint[i*2] = hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
+             fingerprint[i*2+1] = hexchars[logger->fingerprint[i] & 0x0f];
+        }
+        cson_object_set(newobj, "fingerprint", cson_value_new_string(fingerprint, sizeof(fingerprint)));
+
         /* yes, this can spill the file to beyond the configured size - we need this
            event to be in the same file as the event its being logged for */
         cson_output(newval, write_json, eventlog, &opt);
-
-        char fingerprint[16];
-        for (int i = 0; i < 15; i++) {
-             fingerprint[i*2] = hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
-             fingerprint[i*2+1] =hexchars[logger->fingerprint[i] & 0x0f];
-        }
-        cson_object_set(newobj, "fingerprint", cson_value_new_string(fingerprint, sizeof(fingerprint)));
         cson_value_free(newval);
     }
     pthread_mutex_unlock(&eventlog_lk);
@@ -274,9 +271,9 @@ static void eventlog_enable(void) {
 }
 
 static void eventlog_disable(void) {
-    eventlog_enabled = 0;
     eventlog_close();
     eventlog = NULL;
+    eventlog_enabled = 0;
     bytes_written = 0;
 }
 
