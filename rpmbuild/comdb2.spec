@@ -43,7 +43,6 @@ rm -rf $RPM_BUILD_ROOT
 /opt/bb/bin/comdb2admin
 /opt/bb/etc/supervisord_cdb2.conf
 /opt/bb/lib/libcdb2api.so
-/opt/bb/lib/systemd/system/pmux.service
 /opt/bb/bin/comdb2dumpcsc
 
 %doc
