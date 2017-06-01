@@ -256,7 +256,7 @@ static void read_odh(const void *buf, struct odh *odh)
 }
 
 void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
-              size_t reclen, int dtanum)
+              size_t reclen, int is_blob)
 {
     odh->length = reclen;
     odh->updateid = 0;
@@ -266,7 +266,7 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
         odh->csc2vers = 0;
     odh->flags = 0;
     odh->recptr = rec;
-    if (dtanum > 0) {
+    if (is_blob) {
         odh->flags |= (bdb_state->compress_blobs & ODH_FLAG_COMPR_MASK);
     } else {
         odh->flags |= (bdb_state->compress & ODH_FLAG_COMPR_MASK);
