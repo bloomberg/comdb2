@@ -50,12 +50,15 @@ tools:
 $(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): basicops tools $(SRCHOME)/cdb2sql $(SRCHOME)/cdb2_dump $(SRCHOME)/cdb2_stat
 
 $(SRCHOME)/cdb2sql: $(SRCHOME)/comdb2
+	-rm $(SRCHOME)/cdb2sql
 	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2sql
 
 $(SRCHOME)/cdb2_dump:  $(SRCHOME)/comdb2
+	-rm $(SRCHOME)/cdb2_dump
 	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2_dump
 
 $(SRCHOME)/cdb2_stat:  $(SRCHOME)/comdb2
+	-rm $(SRCHOME)/cdb2_stat
 	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2_stat
 
 crle: basicops_nokey tools

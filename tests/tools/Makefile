@@ -1,4 +1,5 @@
-all: hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle
+ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle
+all:$(ALL)
 
 include ../../main.mk
 
@@ -40,7 +41,7 @@ ptrantest: ptrantest.o
 crle:CFLAGS+=-I../../comdb2rle
 
 clean:
-	@rm -f selectv selectv.o overflow_blobtest overflow_blobtest.o recom recom.o stepper stepper.o stepper_client.o serial.o serial ptrantest.o ptrantest bound.o bound hatest.o hatest localrep.o localrep
+	@rm -f *.o $(ALL)
 
 %.o: %.c
 	$(CC) -o $@ -c $< $(CFLAGS) -I../../cdb2api -I../../bbinc

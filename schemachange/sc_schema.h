@@ -56,9 +56,6 @@ int create_schema_change_plan(struct schema_change_type *s, struct db *olddb,
 
 void transfer_db_settings(struct db *olddb, struct db *newdb);
 
-void set_bdb_option_flags(void *handle, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh);
-
 int set_odh_options_tran(struct db *db, void *trans, int *bdber);
 void set_odh_options(struct db *db);
 
