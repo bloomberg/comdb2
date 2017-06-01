@@ -1218,7 +1218,6 @@ __memp_fget(dbmfp, pgnoaddr, flags, addrp)
 		}
 	}
 out:
-	prefault_dbp = NULL; /* set to NULL, we are done with this page */
 
 	return ret;
 }
