@@ -120,6 +120,7 @@ install: all
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
+	install -D contrib/comdb2makecluster $(DESTDIR)$(PREFIX)/bin/comdb2makecluster
 	-[ -z "$(DESTDIR)" ] && . db/installinfo || true
 
 # Build a container for building the database
