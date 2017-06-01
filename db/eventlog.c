@@ -177,7 +177,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         cson_object_set(newobj, "sql", cson_value_new_string(logger->stmt, strlen(logger->stmt)));
 
         char fingerprint[32];
-        for (int i = 0; i < 15; i++) {
+        for (int i = 0; i < 16; i++) {
              fingerprint[i*2] = hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
              fingerprint[i*2+1] = hexchars[logger->fingerprint[i] & 0x0f];
         }
