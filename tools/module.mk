@@ -1,7 +1,6 @@
 # Local defs
 
-tools_LIBS:=libcdb2sql.a libcdb2_sqlreplay.a libcdb2sockpool.a \
-libcdb2util.a
+tools_LIBS:=libcdb2_sqlreplay.a libcdb2sockpool.a libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/cdb2api -I$(SRCHOME)/berkdb -I$(SRCHOME)/berkdb/build	\
@@ -25,14 +24,13 @@ tools/%.o: tools/%.cpp tools/%.d $(LIBS_BIN)
 
 # Cdb2sql - This only have .c file each, though they do
 # depend on some of the auto-generated .h from other modules
-libcdb2sql.a: tools_LDLIBS+=$(LIBREADLINE)
-libcdb2sql.a: $(cdb2sql_OBJS)
 cdb2sql_SRC+=cdb2sql.c
-cdb2sql_OBJS:=$(patsubst %.c,tools/cdb2sql/%.o,$(cdb2sql_SRC))
+cdb2sql_OBJS:=tools/cdb2sql/cdb2sql.o
+cdb2sql_LDLIBS=$(tools_LDLIBS) $(LIBREADLINE)
+cdb2sql: $(cdb2sql_OBJS)
+	$(CC) $(tools_LDFLAGS) $^ $(cdb2sql_LDLIBS) -o $@
 
 libcdb2_sqlreplay.a: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
-libcdb2sql.a: $(cdb2sql_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
 
 cdb2replay_SRC=cdb2_sqlreplay.c
 cdb2replay_OBJS=$(patsubst %.c,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
@@ -121,7 +119,7 @@ $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 # Defined in the top level makefile
 TASKS+=$(lcl_TASKS) $(tools_LIBS) pmux
 
-OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2sql_OBJS) $(cdb2replay_OBJS)
+OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2replay_OBJS)
 
 # Build tools by default
-all: $(tools_LIBS) pmux comdb2ar
+all: $(tools_LIBS) pmux comdb2ar cdb2sql
