@@ -53,6 +53,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <poll.h>
 #include <pwd.h>
 #include <getopt.h>
+#include <libgen.h>
 
 #include <mem_uncategorized.h>
 
@@ -8593,15 +8594,6 @@ struct tool tool_callbacks[] = {
    NULL
 };
 
-static char* last_path_component(char *argv0) {
-   char *s;
-   s = strrchr(argv0, '/');
-   if (s)
-      return strdup(s+1);
-   else
-      return strdup(argv0);
-}
-
 int main(int argc, char **argv)
 {
     char *marker_file;
@@ -8623,12 +8615,13 @@ int main(int argc, char **argv)
     rc = readlink("/proc/self/exe", fname, sizeof(fname));
     if (rc > 0 && rc < sizeof(fname)) {
         fname[rc] = 0;
-        exe = last_path_component(fname);
+        exe = basename(fname);
     }
 #endif
     if (exe == NULL) {
        /* more portable */
-       exe = last_path_component(argv[0]);
+       char *arg = strdup(argv[0]);
+       exe = basename(arg);
     }
 
     for (int i = 0; tool_callbacks[i].tool; i++) {
