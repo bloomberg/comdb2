@@ -76,8 +76,10 @@ static char* eventlog_fname(const char *dbname) {
 
 static cson_output_opt opt = { .indentation = 0, .maxDepth = 4096, .addNewline = 1, .addSpaceAfterColon = 1, .indentSingleMemberValues = 0, .escapeForwardSlashes = 1};
 
-void eventlog_params(cson_object *obj, const struct reqlogger *logger) {
-    if (logger->request && logger->request->n_bindvars > 0) {
+void eventlog_params(cson_object *obj, const struct reqlogger *logger, int detailed) {
+    if (!logger->request)
+        return;
+    if (logger->request && logger->request->n_bindvars > 0 && detailed) {
         cson_object_set(obj, "le", cson_value_new_bool(logger->request->little_endian));
         cson_value *bindings = cson_value_new_array();
         cson_array *arr = cson_value_get_array(bindings);
@@ -115,6 +117,9 @@ void eventlog_params(cson_object *obj, const struct reqlogger *logger) {
         }
 
         cson_object_set(obj, "bindings", bindings);
+    }
+    else if (logger->request->n_bindvars) {
+        cson_object_set(obj, "nbindings", cson_new_int(logger->request->n_bindvars));
     }
 }
 
@@ -205,9 +210,10 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         cson_object_set(obj, "rows", cson_new_int(logger->sqlrows));
     if (logger->vreplays)
         cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
+
     if (logger->have_fingerprint) {
-        uint8_t fingerprint[32];
-        for (int i = 0; i < 15; i++) {
+        char fingerprint[32];
+        for (int i = 0; i < 16; i++) {
             fingerprint[i*2] = hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
             fingerprint[i*2+1] = hexchars[logger->fingerprint[i] & 0x0f];
         }
@@ -218,8 +224,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     if (logger->queuetimems)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
 
-    if (detailed)
-        eventlog_params(obj, logger);
+    eventlog_params(obj, logger, detailed);
 
     eventlog_perfdata(obj, logger);
 }
