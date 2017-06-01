@@ -13,23 +13,24 @@ local function do_update(event)
     olda = event.old.a
     newa = event.new.a
 
-    local changed = 0
-
+    local change = ''
     if (olda ~= newa) then
-        changed=1
-    else if (event.old.b ~= event.new.b) then
-        changed=1
-    else if (event.new.c ~= nil and (event.old.c == nil or event.old.c ~= event.new.c)) then
-        changed=1
+        change = change .. " a="..olda.."->"..newa 
+    end
+    if (event.old.b ~= event.new.b) then
+        change = change .. " b="..event.old.b.."->"..event.new.b
+    end
+    if (event.new.c ~= nil and (event.old.c == nil or event.old.c ~= event.new.c)) then
+        change = change .. " c="..event.old.c.."->"..event.new.c
     end
     local dtnow = db:now()
 
     --avoid acting on updates done by this trigger
-    if (changed == 0) then
+    if (change == '') then
         return 0
     end
 
-    local rc = t1_updates:insert({dt=dtnow,a=newa,delta=db:table_to_json(event)} ) 
+    local rc = t1_updates:insert({dt=dtnow,a=newa,delta=change} ) 
     if rc ~= 0 then
         return rc
     end

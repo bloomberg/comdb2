@@ -105,7 +105,7 @@ echo "Test with insert, SC should not fail"
 
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 800')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_2.csc2 ` }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1_updates  { schema { int a datetime dt cstring delta[256]} }"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create procedure upd_date {$(cat upd_date.lua)}"
@@ -119,6 +119,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > allrows1.t
 echo "update row a=1 and check that dt col has changed"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set b = 'blah' where a = 1"
 
+echo 'waiting for trigger to run'
 sleep 3
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by a" > allrows2.txt
@@ -135,7 +136,6 @@ if [ "x$three" == "x" ] ; then
 fi
 
 
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,dt from t1 order by a" > allrows3.txt
 cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = 7 where a >= 2 and a <= 5"
 
