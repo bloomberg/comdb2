@@ -70,7 +70,7 @@ ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2ar
 ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2sc
 ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sockpool
 
-cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
+cp /lib/systemd/system/pmux.service /etc/systemd/system
 systemctl daemon-reload
 if [ ! -e /.dockerenv ]; then
     systemctl stop pmux
