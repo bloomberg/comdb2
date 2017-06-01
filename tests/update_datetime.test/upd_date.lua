@@ -2,21 +2,43 @@ local function do_update(event)
     local t1_updates = db:table('t1_updates')
     local t1 = db:table('t1')
     local tp = event.type
-    local anew, iold
+    local newa, olda
     if tp == 'add' then
         return
     end
     if tp == 'del' then
         return
     end
-    anew = event.new.a
+    --its an update
+    olda = event.old.a
+    newa = event.new.a
+
+    local changed = 0
+
+    if (olda ~= newa) then
+        changed=1
+    else if (event.old.b ~= event.new.b) then
+        changed=1
+    else if (event.new.c ~= nil and (event.old.c == nil or event.old.c ~= event.new.c)) then
+        changed=1
+    end
     local dtnow = db:now()
-    local rc = t1_updates:insert({dt=dtnow, a=anew} ) 
+
+    --avoid acting on updates done by this trigger
+    if (changed == 0) then
+        return 0
+    end
+
+    local rc = t1_updates:insert({dt=dtnow,a=newa,delta=db:table_to_json(event)} ) 
     if rc ~= 0 then
         return rc
     end
 
-    return t1:update({dt=dtnow}, {a=anew})
+    local stmt, rc = db:exec("update t1 set dt='"..dtnow.."' where a="..newa)
+    if rc ~= 0 then
+        db:emit(stmt)  
+    end
+    return rc
 end
 
 local function main(event)
