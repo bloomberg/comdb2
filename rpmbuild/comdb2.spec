@@ -36,10 +36,10 @@ rm -rf $RPM_BUILD_ROOT
 /opt/bb/include/cdb2api.h
 /opt/bb/lib/libcdb2api.a
 /opt/bb/lib/libcdb2protobuf.a
-/lib/systemd/system/pmux.service
-/lib/systemd/system/cdb2sockpool.service
-/lib/systemd/system/supervisor_cdb2.service
-/usr/local/lib/pkgconfig/cdb2api.pc
+/opt/bb/lib/systemd/system/pmux.service
+/opt/bb/lib/systemd/system/cdb2sockpool.service
+/opt/bb/lib/systemd/system/supervisor_cdb2.service
+/opt/bb/usr/local/lib/pkgconfig/cdb2api.pc
 /opt/bb/bin/comdb2admin
 /opt/bb/etc/supervisord_cdb2.conf
 /opt/bb/lib/libcdb2api.so
@@ -70,7 +70,8 @@ ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2ar
 ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2sc
 ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sockpool
 
-cp /lib/systemd/system/pmux.service /etc/systemd/system
+cp /opt/bb/usr/local/lib/pkgconfig/cdb2api.pc /usr/local/lib/pkgconfig/cdb2api.pc
+cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
 systemctl daemon-reload
 if [ ! -e /.dockerenv ]; then
     systemctl stop pmux
