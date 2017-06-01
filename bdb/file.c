@@ -89,9 +89,9 @@
 #include <bb_oscompat.h>
 
 extern int gbl_keycompr;
-
 extern int gbl_early;
 extern int gbl_fullrecovery;
+extern char *gbl_mynode;
 
 #define FILENAMELEN 100
 
@@ -3132,8 +3132,8 @@ done2:
 
     /* send our real seqnum to the master now.  */
     
-    const char *hostlist[REPMAX];
-    if(net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist) > 0) {
+    if (bdb_state->repinfo->master_host != gbl_mynode
+        && net_count_nodes(bdb_state->repinfo->netinfo) > 1) {
         rc = send_myseqnum_to_master(bdb_state, 1);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "error sending seqnum to master\n");
@@ -5084,8 +5084,6 @@ void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state)
 
 int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
-extern char *gbl_mynode;
-
 int create_master_lease_thread(bdb_state_type *bdb_state)
 {
 	pthread_t tid;
@@ -5096,8 +5094,6 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     return 0;
 }
-
-extern char *gbl_mynode;
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
 {
@@ -5500,7 +5496,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bzero(bdb_state->repinfo, sizeof(repinfo_type));
 
         /* record who we are */
-        extern char *gbl_mynode;
         bdb_state->repinfo->myhost = gbl_mynode;
 
         /* we dont know who the master is yet */
