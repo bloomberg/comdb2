@@ -9,7 +9,7 @@ export PREFIX
 
 # Common CFLAGS
 CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
-CFLAGS+=$(OPT_CFLAGS)
+#CFLAGS+=$(OPT_CFLAGS)
 
 # Variables that will be modified by included files
 ARS:=
