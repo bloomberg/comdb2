@@ -1188,3 +1188,4 @@ exec procedure json_annotate()
 EOF
 
 wait
+

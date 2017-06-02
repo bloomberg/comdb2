@@ -1,0 +1,2 @@
+This test exercises two features, one to have default datetime upon insert
+and two to have trigger update the value of that field upon update.
