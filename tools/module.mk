@@ -22,13 +22,12 @@ tools/%.o: tools/%.cpp tools/%.d $(LIBS_BIN)
 	$(CXX11) $(DEPFLAGS_CXX11) $(tools_CPPFLAGS) $(CXX11FLAGS) -c -o $@ $<
 	$(POSTCOMPILE)
 
-# Cdb2sql - This only have .c file each, though they do
+# Cdb2sql - This only has .c file , though it does
 # depend on some of the auto-generated .h from other modules
-cdb2sql_SRC+=cdb2sql.c
 cdb2sql_OBJS:=tools/cdb2sql/cdb2sql.o
-cdb2sql_LDLIBS=$(tools_LDLIBS) $(LIBREADLINE)
+cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
 cdb2sql: $(cdb2sql_OBJS)
-	$(CC) $(tools_LDFLAGS) $^ $(cdb2sql_LDLIBS) -o $@
+	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
 
 libcdb2_sqlreplay.a: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
 
@@ -118,7 +117,7 @@ tools_TASKS:=pmux cdb2sql comdb2ar cdb2sockpool
 # Defined in the top level makefile
 TASKS+=$(tools_TASKS) $(tools_LIBS)
 
-OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2replay_OBJS)
+OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2sql_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2replay_OBJS)
 
 # Build tools by default
 all: $(tools_LIBS) $(tools_TASKS)
