@@ -41,7 +41,7 @@ libcdb2_sqlreplay.a: $(cdb2replay_OBJS)
 # Cdb2sockpool - Use base rules, multiple object files
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c
 cdb2sockpool_OBJS:=$(patsubst %.c,tools/cdb2sockpool/%.o,$(cdb2sockpool_SOURCES))
-cdb2sockpool_LDLIBS=-lbb -lsockpool
+cdb2sockpool_LDLIBS=$(tools_LDLIBS) -lbb -lsockpool
 cdb2sockpool: $(cdb2sockpool_OBJS)
 	$(CC) $(tools_LDFLAGS) $^ $(cdb2sockpool_LDLIBS) -o $@
 
@@ -116,7 +116,7 @@ $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 
 tools_TASKS:=pmux cdb2sql comdb2ar cdb2sockpool
 # Defined in the top level makefile
-TASKS+=$(lcl_TASKS) $(tools_LIBS)
+TASKS+=$(tools_TASKS) $(tools_LIBS)
 
 OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2replay_OBJS)
 
