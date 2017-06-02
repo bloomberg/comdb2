@@ -681,7 +681,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
     }
 }
 
-void cdb2_set_comdb2db_config(char *cfg_file)
+void cdb2_set_comdb2db_config(const char *cfg_file)
 {
     pthread_once(&init_once, do_init_once);
     if (log_calls)
