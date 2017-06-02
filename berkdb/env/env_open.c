@@ -943,7 +943,7 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 		 */
 		{
 			if (F_ISSET(dbenv, DB_ENV_PRIVATE) &&
-			    (t_ret = __memp_sync(dbenv, NULL, NULL)) != 0 && ret == 0)
+			    (t_ret = __memp_sync(dbenv, NULL)) != 0 && ret == 0)
 				ret = t_ret;
 
 			if ((t_ret = __memp_dbenv_refresh(dbenv)) != 0 &&

@@ -5573,5 +5573,3 @@ static void create_service_file(const char *lrlname)
 }
 
 #undef QUOTE
-
-/* vim: set sw=4 ts=4 et: */
