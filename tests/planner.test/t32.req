@@ -1,0 +1,1 @@
+explain query plan select distinct columns.fieldid from columns,description where (columns.view_id=description.view_id and description.pxnum=4160)

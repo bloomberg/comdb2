@@ -1,0 +1,61 @@
+tag ondisk                      
+{                               
+    byte     key[8]                             // dcrtrsvc fastseed key 
+    byte     pkey[8]                            // pkey                  
+    int      broker                             // from blotkey          
+    int      date                               // from blotkey          
+    int      seqno                              // from blotkey          
+    int      appl                               // from blotkey          
+    int      state                              // from blotkey          
+    int      platform                           // platform              
+    int      firm                               // firm                  
+    int      cust                               // cust                  
+    int      uuid                               // uuid                  
+    int      event_date                         // date queued to dcrouter
+    int      event_time                         // time queued to dcrouter
+    int      recv_date                          // date received          
+    int      recv_time                          // time received          
+    int      proc_date                          // date processed
+    int      proc_time                          // time processed
+    int      instance                           // processing instance
+    int      destination                        // destination
+    cstring  fit_key[33]                        // fitkey
+    byte     blotdb_buf[656] null=yes           // blotdb_buf
+    byte     faxext_buf[936] null=yes           // faxext_buf
+    cstring  client_order_id[65] null=yes       // client_order_id
+    cstring  fix_session[35] null=yes           // fix_session
+    cstring  fix_msg_type[9] null=yes           // fix_msg_type
+    int      version_tag null=yes dbstore=0 dbload=0 // faxmdb version; dbVersion, ...
+    int      trade_source dbstore=0 // DCRTRSVC::TradeSource enum values.
+    int      client_px_num  null=no dbstore=0   // clientPricingNum -- YZ
+    int      dealer_px_num  null=no dbstore=0   // dealerPricingNum -- YZ
+    int      ts_ticket_num  null=no dbstore=0   // tsTicketNum -- YZ
+    short    is_aim  null=no dbstore=0          // isPOMS -- YZ
+    vutf8    fitdna_trade[32] null=yes          // fitdna Master Trade Key (deprecated, store new values in fitdna_mtk)
+    blob     cl_upd_info_buf null=yes           // clearingUpdateInfo
+    blob     mgd_acct_info_buf null=yes         // managedAcctInfo
+    blob     bas_trade_data_buf null=yes        // basTradeData
+    int      tsox_order_number null=yes         // TSOX Order # override
+    int      fix_status null=yes dbstore=0      // enum values in dcuisvc.xsd
+    int      fitdna_trade_index null=yes dbstore=-1 dbload=-1   // fitdna trade index, or -1 to ignore
+    int      fitdna_counterparty_index null=yes dbstore=-1 dbload=-1   // fitdna counterparty index, or -1 to ignore
+    int      fitdna_leg_index null=yes dbstore=-1 dbload=-1   // fitdna leg index, or -1 to ignore
+    int      was_processed null=yes dbstore=1 dbload=1  // true if this leg was sent to stpdcsvc for processing
+    int      is_dual_blot_fitdna null=yes dbstore=0 dbload=0 // true if this a dual-mode fitdna trade
+    int      proc_machine null=yes dbstore=0 dbload=0        // machine that processed this drop copy
+    cstring  fitdna_mtk[32] null=yes dbstore="" dbload=""    // fitdna master trade key (replaces fitdna_trade)
+}
+keys
+{
+        "SEED" = key
+dup     "L1KEY" = pkey+date
+dup     "BLOT_KEY_FIRM" = date+broker+appl+seqno+firm+fix_session
+dup     "DATE_FIRM" = date+firm+fix_session
+dup     "DATE_SESSION" = date+fix_session
+dup     "DATE_EVENT_FIXST" = date+event_time+fix_status
+dup     "EVENT_TIME_FIXST" = event_date+event_time+fix_status
+dup     "DATE_STATE" = date+state
+dup     "DATE_FIXST" = date+fix_status
+dup     "EVENT_FIXST" = event_date+fix_status
+dup "FITDNA_KEY" = fitdna_mtk + fitdna_trade_index + fitdna_counterparty_index + fitdna_leg_index
+}

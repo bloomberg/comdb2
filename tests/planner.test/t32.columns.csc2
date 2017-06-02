@@ -1,0 +1,49 @@
+tag ondisk                                         
+{                                                  
+    u_longlong view_id                // view id   
+    cstring    name[100]              // column name
+    cstring    desc[250]              // column description
+    cstring    fieldId[6]             // field id          
+    int        fg_color               // foreground color  
+    int        bg_color               // background color  
+    int        totalCalc              // total calculation 
+    int        averageCalc            // average calculation
+    int        fieldLength            // field length       
+    int        numDecPlaces           // number of decimal places
+    int        crDataType             // data type               
+    int        nameLabelNumber        // name label number       
+    int        descLabelNumber        // desc label number       
+    cstring    equation[30]           // equation                
+    int        isEquationColumn       // is this an equation column
+    int        totalCalcSelectable    // is total calculation selectable
+    int        avgCalcSelectable      // is average calculation seelctable
+    int        allowsColorSelection   // allow color selection            
+    int        isMandatory            // is mandatory                     
+    int        isCharField            // is character field               
+    int        isInAcq                // is in acquisition                
+    int        defaultIndex           // default index                    
+    int        rownum                 // row number                       
+    int        useNameNotNameLabel dbstore = 1 // use name field not nameLabelNumber
+    u_longlong equation_id         dbstore = 0 // eq id                             
+    int        seqnum              dbstore = -1 // sequence number                  
+    int        useCustomColumnName dbstore = 1  // use name field not nameLabelNumber
+    int        multiplyFactor             dbstore = 0 // for multiplying factor      
+    int        isMultiplyFactorSelectable dbstore = 0 // selectable or not           
+    cstring    fieldIdLong[31]     dbstore = ""      // long calcrt field ID         
+    int        fgcolorsub          dbstore = 0   // foreground color for subthreshold data points
+    int        fgcolorsupra        dbstore = 0   // foreground color for suprathreshold data points
+    int        bgcolorsub          dbstore = 0   // background color for subthreshold data points  
+    int        bgcolorsupra        dbstore = 0   // background color for suprathreshold data points
+    double     clrlowerbound       dbstore = 0.0 // lower threshold for column data points         
+    double     clrupperbound       dbstore = 0.0 // upper threshold for column data points         
+    cstring    fieldidlbound[6]    dbstore = ""  // column ID to use for comparison to lower bound 
+    cstring    fieldidubound[6]    dbstore = ""  // column ID to use for comparison to upper bound 
+    u_int      gridType            dbstore = 1   // parent grids as a bit field, default is the Fund Tab
+    int        prevseqnum          dbstore = -1  //sorts Orders Tab columns; seqnum sorts Fund Tab columns
+}
+keys
+{
+        "VIEW_FIELD_ID" = view_id + fieldId
+    dup "VIEW_ID"       = view_id
+    dup "EQ_ID"         = equation_id
+}

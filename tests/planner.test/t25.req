@@ -1,0 +1,105 @@
+INSERT INTO t4 (a, b, c) VALUES ( 0, 0.2, 0.2);
+INSERT INTO t4 (a, b, c) VALUES ( 1, 1.2, 1.2);
+INSERT INTO t4 (a, b, c) VALUES ( 2, 2.0, 2.0);
+INSERT INTO t4 (a, b, c) VALUES ( 3, 3.2, 3.2);
+INSERT INTO t4 (a, b, c) VALUES ( 4, 4.0, 4.0);
+INSERT INTO t4 (a, b, c) VALUES ( 5, 5.3, 5.3);
+INSERT INTO t4 (a, b, c) VALUES ( 6, 6.5, 6.5);
+
+SELECT count(*) FROM t4 WHERE a == 3;
+SELECT count(*) FROM t4 WHERE b == 3;
+SELECT count(*) FROM t4 WHERE b == 3.0;
+SELECT count(*) FROM t4 WHERE b == 3.2;
+SELECT count(*) FROM t4 WHERE c == 3;
+SELECT count(*) FROM t4 WHERE c == 3.0;
+SELECT count(*) FROM t4 WHERE c == 3.2;
+
+SELECT * FROM t4 WHERE a == 3 ORDER BY a;
+SELECT * FROM t4 WHERE b == 3 ORDER BY a;
+SELECT * FROM t4 WHERE b == 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE b == 3.2 ORDER BY a;
+SELECT * FROM t4 WHERE c == 3 ORDER BY a;
+SELECT * FROM t4 WHERE c == 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE c == 3.2 ORDER BY a;
+
+SELECT count(*) FROM t4 WHERE a <= 3;
+SELECT count(*) FROM t4 WHERE b <= 3;
+SELECT count(*) FROM t4 WHERE b <= 3.0;
+SELECT count(*) FROM t4 WHERE b <= 3.2;
+SELECT count(*) FROM t4 WHERE c <= 3;
+SELECT count(*) FROM t4 WHERE c <= 3.0;
+SELECT count(*) FROM t4 WHERE c <= 3.2;
+
+SELECT * FROM t4 WHERE a <= 3 ORDER BY a;
+SELECT * FROM t4 WHERE b <= 3 ORDER BY a;
+SELECT * FROM t4 WHERE b <= 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE b <= 3.2 ORDER BY a;
+SELECT * FROM t4 WHERE c <= 3 ORDER BY a;
+SELECT * FROM t4 WHERE c <= 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE c <= 3.2 ORDER BY a;
+
+SELECT count(*) FROM t4 WHERE a < 3;
+SELECT count(*) FROM t4 WHERE b < 3;
+SELECT count(*) FROM t4 WHERE b < 3.0;
+SELECT count(*) FROM t4 WHERE b < 3.2;
+SELECT count(*) FROM t4 WHERE c < 3;
+SELECT count(*) FROM t4 WHERE c < 3.0;
+SELECT count(*) FROM t4 WHERE c < 3.2;
+
+SELECT * FROM t4 WHERE a < 3 ORDER BY a;
+SELECT * FROM t4 WHERE b < 3 ORDER BY a;
+SELECT * FROM t4 WHERE b < 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE b < 3.2 ORDER BY a;
+SELECT * FROM t4 WHERE c < 3 ORDER BY a;
+SELECT * FROM t4 WHERE c < 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE c < 3.2 ORDER BY a;
+
+
+SELECT count(*) FROM t4 WHERE a >= 3;
+SELECT count(*) FROM t4 WHERE b >= 3;
+SELECT count(*) FROM t4 WHERE b >= 3.0;
+SELECT count(*) FROM t4 WHERE b >= 3.2;
+SELECT count(*) FROM t4 WHERE c >= 3;
+SELECT count(*) FROM t4 WHERE c >= 3.0;
+SELECT count(*) FROM t4 WHERE c >= 3.2;
+
+SELECT * FROM t4 WHERE a >= 3 ORDER BY a;
+SELECT * FROM t4 WHERE b >= 3 ORDER BY a;
+SELECT * FROM t4 WHERE b >= 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE b >= 3.2 ORDER BY a;
+SELECT * FROM t4 WHERE c >= 3 ORDER BY a;
+SELECT * FROM t4 WHERE c >= 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE c >= 3.2 ORDER BY a;
+
+SELECT count(*) FROM t4 WHERE a > 3;
+SELECT count(*) FROM t4 WHERE b > 3;
+SELECT count(*) FROM t4 WHERE b > 3.0;
+SELECT count(*) FROM t4 WHERE b > 3.2;
+SELECT count(*) FROM t4 WHERE c > 3;
+SELECT count(*) FROM t4 WHERE c > 3.0;
+SELECT count(*) FROM t4 WHERE c > 3.2;
+
+SELECT * FROM t4 WHERE a > 3 ORDER BY a;
+SELECT * FROM t4 WHERE b > 3 ORDER BY a;
+SELECT * FROM t4 WHERE b > 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE b > 3.2 ORDER BY a;
+SELECT * FROM t4 WHERE c > 3 ORDER BY a;
+SELECT * FROM t4 WHERE c > 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE c > 3.2 ORDER BY a;
+
+SELECT count(*) FROM t4 WHERE a != 3;
+SELECT count(*) FROM t4 WHERE b != 3;
+SELECT count(*) FROM t4 WHERE b != 3.0;
+SELECT count(*) FROM t4 WHERE b != 3.2;
+SELECT count(*) FROM t4 WHERE c != 3;
+SELECT count(*) FROM t4 WHERE c != 3.0;
+SELECT count(*) FROM t4 WHERE c != 3.2;
+
+SELECT * FROM t4 WHERE a != 3 ORDER BY a;
+SELECT * FROM t4 WHERE b != 3 ORDER BY a;
+SELECT * FROM t4 WHERE b != 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE b != 3.2 ORDER BY a;
+SELECT * FROM t4 WHERE c != 3 ORDER BY a;
+SELECT * FROM t4 WHERE c != 3.0 ORDER BY a;
+SELECT * FROM t4 WHERE c != 3.2 ORDER BY a;
+

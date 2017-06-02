@@ -1,0 +1,32 @@
+drop table if exists multiselect_t1
+create table multiselect_t1{
+    schema {
+        int id
+        blob b1 null=yes
+    }
+
+    keys {
+        "ID" = id
+    }
+}$$
+insert into multiselect_t1(id, b1) values (1, x'aa')
+insert into multiselect_t1(id, b1) values (2, NULL)
+
+drop table if exists multiselect_t2
+create table multiselect_t2 {
+    schema {
+        int id
+        blob b1 null=yes
+    }
+
+    keys {
+        "ID" = id
+    }
+}$$
+insert into multiselect_t2(id, b1) values (1, NULL)
+insert into multiselect_t2(id, b1) values (2, x'bb')
+
+select * from multiselect_t1 order by id
+select * from multiselect_t2 order by id
+select * from multiselect_t1 UNION ALL select * from multiselect_t2 order by id, b1
+select * from multiselect_t1 UNION ALL select * from multiselect_t2 order by b1, id

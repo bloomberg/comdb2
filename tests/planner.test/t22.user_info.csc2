@@ -1,0 +1,77 @@
+constants
+{
+    PORTFO_LEN = 30,
+    CLIENT_PORTFO_LEN = 30,
+    BUSINESS_CDR_LEN = 3
+}
+
+schema
+{
+    int       user_id                                     // unique user ID of user
+    int       firm                                        // firm number of user
+    int       uuid                                        // user id of user
+    int       account_num                                 // account number of user
+    int       cust_num                                    // customer number of user
+    int       numerix_id                                  // numerix id of user
+    cstring   portfolio[PORTFO_LEN]                       // portfolio name of portfolio
+    cstring   client_portfolio[CLIENT_PORTFO_LEN]         // client chosen portfolio name
+    int       portfo_privilege  dbstore=0                 // portfolio privilege, user or firm
+    int       charge_fee dbstore=0		                  // fee to be charged or not
+    int       price_bidask dbstore=0                      // price bid/ask or not
+    cstring   business_cdr[BUSINESS_CDR_LEN] dbstore="PC" // portfolio level cdr
+    int       price_krr_fields dbstore=0                  // price slow KRR fields
+    int       dl_include_unwind dbstore=0                 // include unwound deals in DL portfolio macro
+    int       intraday_pricing dbstore=0                  // is intraday pricing enabled
+    int       sale_rep_uuid           null=yes            // uuid of the DL sale rep
+    int       acct_mgr_uuid           null=yes            // uuid of the account manager
+    int       back_up_uuid            null=yes            // uuid of the backup
+    int       priv_mars      dbstore=0                    // whether the portfolio is privileged in MARS
+                                                          // by default is it not
+    int       is_qc          dbstore=0                    // whether the portfolio is for qc purpose
+    int       num_deals_stress dbstore=0                  // number of deals for stress test
+    int       deleted      dbstore=0                      // whether the portfolio is deleted
+    int       num_deals_krr    dbstore=1                  // number of deals for krr
+}
+
+tag "alldata"
+{
+    int       user_id
+    int       firm
+    int       uuid
+    int       account_num
+    int       cust_num
+    int       numerix_id
+    cstring   portfolio[PORTFO_LEN]
+    cstring   client_portfolio[CLIENT_PORTFO_LEN]
+    int       portfo_privilege
+    int       charge_fee
+}
+
+tag "alldata1"
+{
+    int       user_id
+    int       firm
+    int       uuid
+    int       account_num
+    int       cust_num
+    int       numerix_id
+    cstring   portfolio[PORTFO_LEN]
+    cstring   client_portfolio[CLIENT_PORTFO_LEN]
+    int       portfo_privilege
+    int       charge_fee
+    int       price_bidask
+    cstring   business_cdr[BUSINESS_CDR_LEN] 
+}
+
+keys
+{
+    "USERID" = user_id
+    dup "FIRM" = firm
+    dup "UUID" = uuid
+    dup "ACCOUNTNUM" = account_num
+    dup "CLIENTPORTFO" = client_portfolio
+    dup "PRTUPORTFO" = portfolio
+    dup "IS_QC"=is_qc
+}
+
+

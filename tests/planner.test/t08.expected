@@ -1,0 +1,2 @@
+(selectid=0, order=0, from=0, detail='SEARCH TABLE esgprfsum AS s USING INDEX $SUMMARY_KEY_88111298 (bbid=?) (5 rows)')
+(selectid=0, order=1, from=1, detail='SEARCH TABLE esgfscdts AS f USING INDEX $PRIMARY_KEY_4AB7B50A (bbid=? AND compen_fisc_yr_num=?) (~1 row)')

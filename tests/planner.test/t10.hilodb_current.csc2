@@ -1,0 +1,49 @@
+//tbl_name='hilodb_current'
+
+schema
+{
+  int objid1           // bytes 1-4 of objid
+  int objid2           // bytes 5-8 of objid
+  int objid3           // bytes 9-12 of objid
+  cstring name[29]     // Security's name
+  cstring parseKey[20] // Security's parse key
+  u_short exchange     // the security's exchange
+  datetime highDate    // the date & time of this security's 52 week high
+  double highPrice     // the price of this security's 52 week high
+  datetime lowDate     // the date & time of this security's 52 week high
+  double lowPrice      // the price of this security's 52 week high
+  
+  // Flags are same as those used for historical table.  It would be a
+  // bit more memory efficient to pack both 1 byte flags into 1 short,
+  // but then we would have to do a read before any update.
+  u_short highFlags    // flags for high
+  u_short lowFlags     // flags for low
+}
+
+tag "STANDARD"
+{
+  int objid1           
+  int objid2           
+  int objid3           
+  cstring name[29]     
+  cstring parseKey[20] 
+  u_short exchange     
+  datetime highDate 
+  double highPrice     
+  datetime lowDate  
+  double lowPrice      
+  u_short highFlags    
+  u_short lowFlags     
+}
+
+keys
+{
+  "KEY_OBJID" = objid3+objid2+objid1
+  "KEY_HIGHDATE_OBJID" = highDate + objid3+objid2+objid1
+  "KEY_LOWDATE_OBJID" = lowDate + objid3+objid2+objid1
+  dup "KEY_EXCHANGE_DATE_HIGH" = exchange + <DESCEND>highDate
+  dup "KEY_EXCHANGE_DATE_LOW" = exchange + <DESCEND>lowDate
+  dup "KEY_DATE_EXCHANGE_HIGH" = <DESCEND>highDate + exchange
+  dup "KEY_DATE_EXCHANGE_LOW" = <DESCEND>lowDate + exchange
+}
+

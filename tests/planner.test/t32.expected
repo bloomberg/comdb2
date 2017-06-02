@@ -1,0 +1,3 @@
+(selectid=0, order=0, from=1, detail='SEARCH TABLE description USING INDEX $OWNER_99A1DBA (pxnum=?) (2560 rows)')
+(selectid=0, order=1, from=0, detail='SEARCH TABLE columns USING COVERING INDEX $VIEW_FIELD_ID_851A5EA2 (view_id=?) (52 rows)')
+(selectid=0, order=0, from=0, detail='USE TEMP B-TREE FOR DISTINCT')

@@ -1,0 +1,1 @@
+explain query plan SELECT count(*) FROM HILODB_HISTORICAL h INNER JOIN HILODB_SECDATA s ON h.objid1 = s.objid1 AND h.objid2 = s.objid2 AND h.objid3 = s.objid3 WHERE marketcap <= 1e+40 AND subflag = 1 AND  (exchange=8261 AND isHigh=0 AND (dt BETWEEN cast('20140918T00:00:00.000 US/Eastern' as datetime) AND cast('20140918T23:59:59.999 US/Eastern' as datetime)));

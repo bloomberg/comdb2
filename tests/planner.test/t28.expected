@@ -1,0 +1,84 @@
+(Plan='  0 [       Init]: Start at 15  ')
+(Plan='  1 [       Null]: R1 = NULL')
+(Plan='  2 [   OpenRead]: Open read cursor [1] on index "KEY" of table "t1" (covering index) (cmnt:$KEY_343AE722)')
+(Plan='  3 [ColumnsUsed]: Cursor [1] using column mask 1000000000000000000000000000000000000000000000000000000000000000')
+(Plan='  4 [    Explain]: No-op (168)')
+(Plan='  5 [    Integer]: R2 = 3')
+(Plan='  6 [     SeekGE]: Move cursor [1] to smallest entry >= R2. If no such records exist, go to 10')
+(Plan='  7 [      IdxGT]:     Jump to 10 if cursor [1] > R2')
+(Plan='  8 [   AggStep0]:     R1 = count()')
+(Plan='  9 [       Next]: Move cursor [1] to next entry. If entry exists, go to 7')
+(Plan=' 10 [      Close]: Close cursor [1]')
+(Plan=' 11 [   AggFinal]: R1 = count() finalizer')
+(Plan=' 12 [       Copy]: R3 = R1 (deep copy)')
+(Plan=' 13 [  ResultRow]: Row available at R3')
+(Plan=' 14 [       Halt]: Stop')
+(Plan=' 15 [Transaction]: Start a readonly transaction (cmnt:usesStmtJournal=0)')
+(Plan=' 16 [       Goto]: Go to 1')
+(Plan='  0 [       Init]: Start at 15  ')
+(Plan='  1 [       Null]: R1 = NULL')
+(Plan='  2 [   OpenRead]: Open read cursor [1] on index "KEY" of table "t1" (covering index) (cmnt:$KEY_343AE722)')
+(Plan='  3 [ColumnsUsed]: Cursor [1] using column mask 1000000000000000000000000000000000000000000000000000000000000000')
+(Plan='  4 [    Explain]: No-op (168)')
+(Plan='  5 [    Integer]: R2 = 3')
+(Plan='  6 [     SeekGE]: Move cursor [1] to smallest entry >= R2. If no such records exist, go to 10')
+(Plan='  7 [      IdxGT]:     Jump to 10 if cursor [1] > R2')
+(Plan='  8 [   AggStep0]:     R1 = count()')
+(Plan='  9 [       Next]: Move cursor [1] to next entry. If entry exists, go to 7')
+(Plan=' 10 [      Close]: Close cursor [1]')
+(Plan=' 11 [   AggFinal]: R1 = count() finalizer')
+(Plan=' 12 [       Copy]: R3 = R1 (deep copy)')
+(Plan=' 13 [  ResultRow]: Row available at R3')
+(Plan=' 14 [       Halt]: Stop')
+(Plan=' 15 [Transaction]: Start a readonly transaction (cmnt:usesStmtJournal=0)')
+(Plan=' 16 [       Goto]: Go to 1')
+(Plan='*** Optimizer Start *** (wctrlFlags: 0x0)
+TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
+'-- EQ  flags=0x4
+    |-- {0:0}  flags=0x800004
+    '-- 3
+    add:            t1                     f 04000 N 1 cost 271,53,43
+TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
+'-- EQ  flags=0x4
+    |-- {0:0}  flags=0x800004
+    '-- 3
+    add:            t1                     f 00100 N 0 cost 0,216,180
+BEGIN addBtreeIdx((null)), nEq=0
+END addBtreeIdx((null)), nEq=0, rc=0
+replace:            t1                     f 00100 N 0 cost 0,216,180
+    add:            t1.$KEY_343AE722     0 f 00240 N 0 cost 0,211,180
+BEGIN addBtreeIdx($KEY_343AE722), nEq=0
+replace:            t1                     f 04000 N 1 cost 271,53,43
+TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
+'-- EQ  flags=0x4
+    |-- {0:0}  flags=0x800004
+    '-- 3
+    add:            t1.$KEY_343AE722     1 f 10241 N 1 cost 0,44,0
+TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
+'-- EQ  flags=0x4
+    |-- {0:0}  flags=0x800004
+    '-- 3
+ delete:            t1.$KEY_343AE722     0 f 00240 N 0 cost 0,211,180
+BEGIN addBtreeIdx($KEY_343AE722), nEq=1
+END addBtreeIdx($KEY_343AE722), nEq=1, rc=0
+END addBtreeIdx($KEY_343AE722), nEq=0, rc=0
+0 0.01.00           t1.$KEY_343AE722     1 f 10241 N 1 cost 0,44,0
+TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
+'-- EQ  flags=0x4
+    |-- {0:0}  flags=0x800004
+    '-- 3
+Planner Effort 1
+---- begin solver.  (nRowEst=0)
+New    0 cost=46 ,  0, 46 order=0
+---- after round 0 ----
+ 0 cost=46  nrow=0   order=0
+---- Solution nRow=0
+0 0.01.00           t1.$KEY_343AE722     1 f 10241 N 1 cost 0,44,0
+TERM-0 ... left={0:0}   prob=1   op=0x002 wtFlags=0x0000
+'-- EQ  flags=0x4
+    |-- {0:0}  flags=0x800004
+    '-- 3
+*** Optimizer Finished ***
+')
+[select count(*) from nonexistent where x = 3] failed with rc -3 no such table: nonexistent
+(count(*)=0)

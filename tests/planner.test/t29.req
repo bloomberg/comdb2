@@ -1,0 +1,15 @@
+/* comment should print error */
+
+truncate nonexisttbl
+
+drop table nonexisttbl
+
+alter table nonexisttbl {
+    schema {
+        int a
+    }
+
+    keys {
+        dup "a" = a
+    }
+}$$
