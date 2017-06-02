@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -x
 dbnm=$1
 dbdir=${DBDIR}
 bindir="${SRCHOME}"
@@ -22,6 +23,19 @@ cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "SELECT comdb2_host()"
 
 echo "I AM $mynode"
 echo "MASTER is $master"
+
+
+#ln cdb2_stat
+myhostname=`hostname`
+if [ "$master" != "$myhostname" ] ; then
+    ssh -o StrictHostKeyChecking=no $master "rm -f ${SRCHOME}/cdb2_stat"
+    ssh -o StrictHostKeyChecking=no $master "ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_stat"
+else
+    rm -f ${SRCHOME}/cdb2_stat; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_stat
+fi
+
+
+
 
 ### create a helper table to flush cache
 cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "drop table dum"

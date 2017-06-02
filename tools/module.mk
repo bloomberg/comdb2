@@ -1,6 +1,6 @@
 # Local defs
 
-tools_LIBS:=libcdb2_sqlreplay.a libcdb2sockpool.a libcdb2util.a
+tools_LIBS:=libcdb2_sqlreplay.a libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/cdb2api -I$(SRCHOME)/berkdb -I$(SRCHOME)/berkdb/build	\
@@ -42,10 +42,8 @@ libcdb2_sqlreplay.a: $(cdb2replay_OBJS)
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c
 cdb2sockpool_OBJS:=$(patsubst %.c,tools/cdb2sockpool/%.o,$(cdb2sockpool_SOURCES))
 cdb2sockpool_LDLIBS=-lbb -lsockpool
-
-libcdb2sockpool.a: $(cdb2sockpool_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
-
+cdb2sockpool: $(cdb2sockpool_OBJS)
+	$(CC) $(tools_LDFLAGS) $^ $(cdb2sockpool_LDLIBS) -o $@
 
 # Comdb2ar - Use base rules
 comdb2ar_SOURCES:=appsock.cpp comdb2ar.cpp db_wrap.cpp		\
@@ -116,10 +114,11 @@ cdb2_printlog_OBJS:=$(patsubst %.c,tools/cdb2_printlog/%.o,$(cdb2_printlog_SOURC
 
 $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 
+tools_TASKS:=pmux cdb2sql comdb2ar cdb2sockpool
 # Defined in the top level makefile
-TASKS+=$(lcl_TASKS) $(tools_LIBS) pmux
+TASKS+=$(lcl_TASKS) $(tools_LIBS)
 
 OBJS+=$(comdb2ar_OBJS) $(cdb2sockpool_OBJS) $(pmux_OBJS) $(cdb2_OBJS) $(BERKOBJS) $(cdb2replay_OBJS)
 
 # Build tools by default
-all: $(tools_LIBS) pmux comdb2ar cdb2sql
+all: $(tools_LIBS) $(tools_TASKS)

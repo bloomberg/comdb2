@@ -8567,8 +8567,7 @@ static void getmyid(void)
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_sqlreplay) \
    TOOL(cdb2_stat)      \
-   TOOL(cdb2_verify)    \
-   TOOL(cdb2sockpool)
+   TOOL(cdb2_verify)
 
 #undef TOOL
 #define TOOL(x) int tool_ ##x ##_main(int argc, char *argv[]);

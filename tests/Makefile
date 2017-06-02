@@ -47,15 +47,7 @@ showparams:
 tools:
 	@$(MAKE) -sC tools
 
-$(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): basicops tools $(SRCHOME)/cdb2_dump $(SRCHOME)/cdb2_stat
-
-$(SRCHOME)/cdb2_dump:  $(SRCHOME)/comdb2
-	-rm $(SRCHOME)/cdb2_dump
-	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2_dump
-
-$(SRCHOME)/cdb2_stat:  $(SRCHOME)/comdb2
-	-rm $(SRCHOME)/cdb2_stat
-	ln $(SRCHOME)/comdb2 $(SRCHOME)/cdb2_stat
+$(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): basicops tools
 
 crle: basicops_nokey tools
 	@$(MAKE) -sC crle.test

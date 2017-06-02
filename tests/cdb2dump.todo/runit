@@ -31,10 +31,11 @@ out=$TMPDIR/t1_dump.txt
 
 myhostname=`hostname`
 if [ "$master" != "$myhostname" ] ; then
-    scp -o StrictHostKeyChecking=no ${SRCHOME}/cdb2_dump $master:${SRCHOME}/
+    ssh -o StrictHostKeyChecking=no $master "rm -f ${SRCHOME}/cdb2_dump; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_dump"
     ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump -f $out"
     scp -o StrictHostKeyChecking=no $master:$out $out 
 else
+    rm -f ${SRCHOME}/cdb2_dump; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_dump
     find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump -f $out
 fi
 
