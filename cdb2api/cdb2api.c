@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
+#include <time.h>
 #include <sys/time.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
@@ -1948,6 +1949,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     sqlquery.types = types;
 
     char *env_tz = getenv("COMDB2TZ");
+    char *local_tz = NULL;
     char *host = "NOT-CONNECTED";
     if (hndl && hndl->connected_host >= 0)
         host = hndl->hosts[hndl->connected_host];
@@ -1965,9 +1967,15 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
 
     if (env_tz == NULL) {
         env_tz = DB_TZNAME_DEFAULT;
-    }
+    } else if (strcmp(env_tz, "localtime") == 0) {
+        tzset();
+        int tzlen = strlen(tzname[0]) + strlen(tzname[1]) + 4;
+        int offset = timezone / (60 * 60);
 
-    sqlquery.tzname = env_tz;
+        local_tz = malloc(tzlen);
+        snprintf(local_tz, tzlen, "%s%d%s", tzname[0], offset, tzname[1]);
+    }
+    sqlquery.tzname = local_tz ? local_tz : env_tz;
 
     sqlquery.mach_class = cdb2_default_cluster;
 
@@ -2034,6 +2042,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     unsigned char *buf = malloc(len + 1);
 
     cdb2__query__pack(&query, buf);
+
+    free(local_tz);
 
     struct newsqlheader hdr;
 
