@@ -187,7 +187,7 @@ typedef struct cdb2_effects_type effects_tp;
 #endif
 
 void cdb2_set_comdb2db_config(const char *cfg_file);
-void cdb2_set_comdb2db_info(char *cfg_info);
+void cdb2_set_comdb2db_info(const char *cfg_info);
 
 int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type,
               int flags);

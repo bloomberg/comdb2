@@ -690,7 +690,7 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
     strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
 }
 
-void cdb2_set_comdb2db_info(char *cfg_info)
+void cdb2_set_comdb2db_info(const char *cfg_info)
 {
     int len = strlen(cfg_info) + 1;
     if (CDB2DBCONFIG_BUF != NULL)
