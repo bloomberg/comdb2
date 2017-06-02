@@ -383,8 +383,8 @@ int gbl_init_with_genid48 = 1;
 int gbl_init_with_odh = 1;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
-int gbl_init_with_compr = 0;
-int gbl_init_with_compr_blobs = 0;
+int gbl_init_with_compr = BDB_COMPRESS_CRLE;
+int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;
 
 unsigned int gbl_nsql;
@@ -701,7 +701,7 @@ int gbl_use_blkseq = 1;
 char *gbl_recovery_options = NULL;
 
 #include <stdbool.h>
-bool gbl_rcache = false;
+bool gbl_rcache = true;
 
 int gbl_noenv_messages = 1;
 
@@ -769,7 +769,7 @@ int gbl_check_page_in_recovery = 0;
 int gbl_cmptxn_inherit_locks = 1;
 int gbl_rep_printlock = 0;
 
-int gbl_keycompr = 0;
+int gbl_keycompr = 1;
 int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;

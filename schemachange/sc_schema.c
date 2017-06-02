@@ -980,17 +980,6 @@ void transfer_db_settings(struct db *olddb, struct db *newdb)
     newdb->aa_lastepoch = olddb->aa_lastepoch;
 }
 
-void set_bdb_option_flags(void *handle, int odh, int ipu, int isc, int ver,
-                          int compr, int blob_compr, int datacopy_odh)
-{
-    bdb_set_odh_options(handle, odh, compr, blob_compr);
-    bdb_set_inplace_updates(handle, ipu);
-    bdb_set_instant_schema_change(handle, isc);
-    bdb_set_csc2_version(handle, ver);
-    bdb_set_datacopy_odh(handle, datacopy_odh);
-    bdb_set_key_compression(handle);
-}
-
 /* use callers transaction if any, need to do I/O */
 int set_odh_options_tran(struct db *db, void *trans, int *bdberr)
 {
@@ -1006,7 +995,7 @@ int set_odh_options_tran(struct db *db, void *trans, int *bdberr)
     get_db_compress_blobs(db, &blob_compr);
     db->version = get_csc2_version_tran(trans, db->dbname, bdberr);
 
-    set_bdb_option_flags(db->handle, db->odh, db->inplace_updates,
+    set_bdb_option_flags(db, db->odh, db->inplace_updates,
                          db->instant_schema_change, db->version, compr,
                          blob_compr, datacopy_odh);
 

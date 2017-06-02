@@ -1,5 +1,4 @@
 #!/bin/bash
-
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-1m}
 
@@ -12,11 +11,13 @@ echo Starting $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
 mkdir -p ${TESTDIR}/logs/
 
 function call_unsetup {
+    [[ $TESTCASE == "crle" ]] && return
     ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
 }
 
 
 function call_setup {
+    [[ "$TESTCASE" == "crle" ]] && return
     timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
     rc=$?
     glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`
@@ -24,18 +25,16 @@ function call_setup {
         kill -9 $glist
     fi
     sleep 0.1
-    return $rc
+    if [[ $rc -ne 0 ]]; then
+        echo "!$TESTCASE: setup failed" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed see ${TESTDIR}/logs/${DBNAME}.setup"
+        call_unsetup
+        sleep 0.1
+        exit 1
+    fi
 }
 
 call_setup
-rc=$?
-if [[ $rc -ne 0 ]]; then
-    echo "!$TESTCASE: setup failed" >> ${TESTDIR}/test.log
-    echo "!$TESTCASE: setup failed see ${TESTDIR}/logs/${DBNAME}.setup"
-    call_unsetup
-    sleep 0.1
-    exit 1
-fi
 echo "!$TESTCASE: running"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
@@ -53,9 +52,7 @@ else
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log
 fi
 
-
 call_unsetup
-
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log

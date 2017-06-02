@@ -1938,4 +1938,6 @@ struct bias_info {
     UnpackedRecord *unpacked;
 };
 
+void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+
 #endif

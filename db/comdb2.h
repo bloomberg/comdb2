@@ -725,7 +725,8 @@ struct db {
     int nsqlix;
 
     /*backend db engine handle*/
-    void *handle;
+    bdb_state_type *handle;
+
     /* meta-data.  this may be a lite db.  it may be NULL, because older
      * comdb2s didn't have meta dbs.  also it may be NULL if the dbenv
      * meta handle is non-NULL - the new approach is one meta table per
@@ -3516,7 +3517,7 @@ extern int gbl_check_wrong_db;
 
 extern int gbl_debug_sql_opcodes;
 
-void set_bdb_option_flags(void *bdb_handle, int odh, int ipu, int isc, int ver,
+void set_bdb_option_flags(struct db*, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh);
 
 extern int gbl_debug_temptables;
