@@ -4,21 +4,28 @@
 #include <sqliteInt.h>
 #include <schemachange.h>
 
-#define ODH_OFF 1
-#define IPU_OFF 2
-#define ISC_OFF 4
+#define SQLITE_OPEN_READWRITE        0x00000002  /* Ok for sqlite3_open_v2() */
+#define SQLITE_OPEN_CREATE           0x00000004  /* Ok for sqlite3_open_v2() */
+#define SQLITE_OPEN_DELETEONCLOSE    0x00000008  /* VFS only */
+#define SQLITE_OPEN_EXCLUSIVE        0x00000010
 
-#define BLOB_RLE  8
-#define BLOB_CRLE 16
-#define BLOB_ZLIB 32
-#define BLOB_LZ4  64
+#define ODH_OFF 0x0001
+#define IPU_OFF 0x0002
+#define ISC_OFF 0x0004
 
-#define REC_RLE   128
-#define REC_CRLE  256
-#define REC_ZLIB  512
-#define REC_LZ4   1024
+#define BLOB_NONE     0x0008
+#define BLOB_RLE      0x0010
+#define BLOB_CRLE     0x0020
+#define BLOB_ZLIB     0x0040
+#define BLOB_LZ4      0x0080
 
-#define FORCE_REBUILD 2048
+#define REC_NONE      0x0100
+#define REC_RLE       0x0200
+#define REC_CRLE      0x0400
+#define REC_ZLIB      0x0800
+#define REC_LZ4       0x1000
+
+#define FORCE_REBUILD 0x2000
 
 #define REBUILD_ALL     1
 #define REBUILD_DATA    2
