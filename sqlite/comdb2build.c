@@ -215,7 +215,9 @@ void fillTableOption(struct schema_change_type* sc, int opt)
         sc->instant_sc = 1;
 
     sc->compress_blobs = -1;
-    if (OPT_ON(opt, BLOB_RLE))
+    if (OPT_ON(opt, BLOB_NONE))
+        sc->compress_blobs = BDB_COMPRESS_NONE;
+    else if (OPT_ON(opt, BLOB_RLE))
         sc->compress_blobs = BDB_COMPRESS_RLE8;
     else if (OPT_ON(opt, BLOB_ZLIB))
         sc->compress_blobs = BDB_COMPRESS_ZLIB;
@@ -223,7 +225,9 @@ void fillTableOption(struct schema_change_type* sc, int opt)
         sc->compress_blobs = BDB_COMPRESS_LZ4;
 
     sc->compress = -1;
-    if (OPT_ON(opt, REC_RLE))
+    if (OPT_ON(opt, REC_NONE))
+        sc->compress = BDB_COMPRESS_NONE;
+    else if (OPT_ON(opt, REC_RLE))
         sc->compress = BDB_COMPRESS_RLE8;
     else if (OPT_ON(opt, REC_CRLE))
         sc->compress = BDB_COMPRESS_CRLE;

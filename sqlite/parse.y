@@ -409,6 +409,7 @@ isc(A) ::= ISC OFF. {A = ISC_OFF;}
 compress_blob(A) ::= BLOBFIELD blob_compress_type(T). { A = T;}
 
 %type blob_compress_type {int}
+blob_compress_type(A) ::= NONE. {A = BLOB_NONE;}
 blob_compress_type(A) ::= RLE. {A = BLOB_RLE;}
 //blob_compress_type(A) ::= CRLE. {A = BLOB_CRLE;}
 blob_compress_type(A) ::= ZLIB. {A = BLOB_ZLIB;}
@@ -418,6 +419,7 @@ blob_compress_type(A) ::= LZ4. {A = BLOB_LZ4;}
 compress_rec(A) ::= REC rle_compress_type(T). {A = T;}
 
 %type rle_compress_type {int}
+rle_compress_type(A) ::= NONE. {A = REC_NONE;}
 rle_compress_type(A) ::= RLE. {A = REC_RLE;}
 rle_compress_type(A) ::= CRLE. {A = REC_CRLE;}
 rle_compress_type(A) ::= ZLIB. {A = REC_ZLIB;}
@@ -524,7 +526,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   REINDEX RENAME CTIME_KW IF
 // COMDB2 KEYWORDS  
   AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT COMMITSLEEP CONSUMER 
-  CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DISABLE ENABLE FOR FUNCTION GET GRANT IPU 
+  CONVERTSLEEP COVERAGE NONE CRLE DATA DATABLOB DISABLE ENABLE FOR FUNCTION GET GRANT IPU 
   ISC KW LUA LZ4 ODH OFF OP OPTIONS PARTITION PASSWORD PERIOD 
   PROCEDURE PUT REBUILD READ REC RESERVED RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE START SUMMARIZE THREADS THRESHOLD TIME 
