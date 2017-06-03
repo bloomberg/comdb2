@@ -875,7 +875,7 @@ static void replace_args(int argc, char *argv[])
     }
 }
 
-int tool_cdb2sql_main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
     static char *filename = NULL;
     static int precision = 0;
