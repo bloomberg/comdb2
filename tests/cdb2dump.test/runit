@@ -27,18 +27,25 @@ function failexit
 
 
 master=`getmaster`
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('flush')"
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+for node in $cluster ; do
+    cdb2sql ${CDB2_OPTIONS} --host $node $dbnm "exec procedure sys.cmd.send('flush')"
+done
 
 out=$TMPDIR/t1_dump.txt
 
 myhostname=`hostname`
 if [ "$master" != "$myhostname" ] ; then
     ssh -o StrictHostKeyChecking=no $master "rm -f ${SRCHOME}/cdb2_dump; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_dump"
-    ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump -f $out"
-    scp -o StrictHostKeyChecking=no $master:$out $out 
+    ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump " > $out
 else
     rm -f ${SRCHOME}/cdb2_dump; ln ${SRCHOME}/comdb2 ${SRCHOME}/cdb2_dump
     find $DBDIR | grep '/t1_.*.datas0' | xargs ${SRCHOME}/cdb2_dump -f $out
+fi
+
+lc=$(wc $out | awk '{print $1,$2,$3}')
+if [ "$lc" != "207 207 209284" ] ; then
+    failexit "wc is not correct for $out: $lc"
 fi
 
 
