@@ -1,7 +1,7 @@
 # Local defs
 db_MEMGEN:=$(SRCHOME)/db/mem_uncategorized.h
 db_SOURCES:=db/comdb2.c db/endian.c db/handle_buf.c db/sltdbt.c		\
-    db/toblock.c 							\
+    db/toblock.c db/eventlog.c 							\
     db/toblob.c db/reqdebug.c						\
     db/rmtpolicy.c db/process_message.c db/appsock_handler.c		\
     db/glue.c db/tag.c db/record.c db/sigutil.c db/debug.c		\

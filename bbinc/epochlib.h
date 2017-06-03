@@ -28,29 +28,14 @@ extern "C" {
 void time_epoch_(int32_t *epoch);
 int time_epoch(void);
 
-/* RETURNS # MILLISECONDS SINCE TIM.TSK STARTED */
+
+
+/* RETURNS # MILLISECONDS SINCE STARTUP */
 void time_epochms_(int32_t *epochms);
 int time_epochms(void);
 
-/* REPLACES ICLOCK ROUTINE
-   *parm 0, arr[]= hour,min,sec
-   *parm 1  arr[]= "hh:mm:ss\0"
-   *parm 2  arr[]= hr*3600+min*60+sec
-*/
-void eclock_(int *parm, int arr[3]);
-
-/* RETURN LOCAL TIME/DATE/DAY GIVEN EPOCH, OR NOW IF EPOCH IS 0 */
-void elcltmdt_(int *epoch, int time[3], int date[3], int *day);
-
-/* USES SAME TIME FORMAT STRING AS STRFTIME */
-void time_string_(char *output, char *format, int olen, int flen);
-
-/* USES SAME TIME FORMAT STRING AS STRFTIME */
-void time_stringt_(int *nowp, char *output, char *format, int olen, int flen);
-
-/* REPLACES DATE ROUTINE */
-void edate_(int arr[]); /* return date as 3i4 yy dd mm */
-void hdate_(int arr[]); /* return date as 3i4 yyyy dd mm */
+/* Microseconds since start of epoch */
+int64_t time_epochus(void);
 
 #ifdef __cplusplus
 }
