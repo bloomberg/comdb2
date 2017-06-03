@@ -287,8 +287,10 @@ void init_handlers(void) {
 
 void handle(cdb2_hndl_tp *db, const char *event, cson_value *val) {
     auto h = handlers.find(event);
-    if (h == handlers.end())
+    if (h == handlers.end()) {
+        cson_free_value(val);
         return;
+    }
     else
         h->second(db, val);
 }
