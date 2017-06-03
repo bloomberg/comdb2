@@ -7,6 +7,8 @@ dbnm=$1
 set -e
 set -x
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 options rec none { `cat t1.csc2 ` }"
+
 while [ $i -lt $CNT ] ; do
  let i=i+1
  echo "insert into t1(a, b) values (1, '0123456789')"
