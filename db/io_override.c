@@ -26,7 +26,7 @@
    get mtrap text to go over a socket without changing every printf
    in the database*/
 
-static pthread_key_t iokey;
+extern pthread_key_t iokey;
 
 #ifdef NOINTERLEAVE
 static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
@@ -101,7 +101,7 @@ int printf(const char *fmt, ...)
     return rc;
 }
 
-int io_override_init(void) { return pthread_key_create(&iokey, NULL); }
+//int io_override_init(void) { return pthread_key_create(&iokey, NULL); }
 
 int io_override_set_std(FILE *f)
 {

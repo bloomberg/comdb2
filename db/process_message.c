@@ -5033,8 +5033,17 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (max >= 0) {
                 gbl_testcompr_max = max;
             }
+        } else if (tokcmp(tok, ltok, "table") == 0) {
+            char table[128];
+            tok = segtok(line, lline, &st, &ltok);
+            tokcpy0(tok, ltok, table, sizeof(table));
+            FILE *f = io_override_get_std();
+            SBUF2 *sb = sbuf2open(fileno((f?f:stdout)), 0);
+            handle_testcompr(sb, table);
         } else {
-            logmsg(LOGMSG_USER, "testcompr percent <number> - Default 10%%\n"
+            logmsg(LOGMSG_USER, 
+                   "testcompr table <tbl> - Test compression for table tbl\n"
+                   "testcompr percent <number> - Default 10%%\n"
                    "testcompr max <number> - Set to 0 to process all records; "
                    "Default 300,000\n");
         }

@@ -261,7 +261,7 @@ static void print_compr_stat(CompStruct *comp, const char *prefix, SizeEst *est)
     snprintf(buf, sizeof(buf) - 1, "Using %s: Data: %.2f%% Blobs %.2f%%\n",
              prefix, sav_dta, sav_blob);
     logmsg(LOGMSG_USER, "%s", buf);
-    sbuf2printf(comp->sb, ">%s", buf);
+    sbuf2printf(comp->sb, "%s", buf);
 }
 
 static void compr_stat(CompStruct *comp)
@@ -270,7 +270,7 @@ static void compr_stat(CompStruct *comp)
     snprintf(buf, sizeof(buf) - 1, "Percentage of original size for: %s\n",
              comp->db->dbname);
     logmsg(LOGMSG_USER, "%s", buf);
-    sbuf2printf(comp->sb, ">%s", buf);
+    sbuf2printf(comp->sb, "%s", buf);
 
     print_compr_stat(comp, "CRLE", &comp->crle);
     if (comp->just_crle)
@@ -399,6 +399,7 @@ static void *handle_comptest_thd(void *_arg)
         }
         compr_stat(&comp);
     }
+    sbuf2flush(arg->sb);
     backend_thread_event(thedb, BDBTHR_EVENT_DONE_RDONLY);
     return NULL;
 }
