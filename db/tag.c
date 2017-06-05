@@ -6663,6 +6663,31 @@ static struct field *get_field_position(struct schema *s, const char *name,
     return NULL;
 }
 
+static void update_fld_hints(struct db *db)
+{
+    struct schema *ondisk = db->schema;
+    int n = ondisk->nmembers;
+    uint16_t *hints = malloc(sizeof(*hints) * (n + 1));
+    for (int i = 0; i < n; ++i) {
+        hints[i] = ondisk->member[i].len;
+    }
+    hints[n] = 0;
+    bdb_set_fld_hints(db->handle, hints);
+}
+
+void set_bdb_option_flags(struct db *db, int odh, int ipu, int isc, int ver,
+                          int compr, int blob_compr, int datacopy_odh)
+{
+    update_fld_hints(db);
+    bdb_state_type *handle = db->handle;
+    bdb_set_odh_options(handle, odh, compr, blob_compr);
+    bdb_set_inplace_updates(handle, ipu);
+    bdb_set_instant_schema_change(handle, isc);
+    bdb_set_csc2_version(handle, ver);
+    bdb_set_datacopy_odh(handle, datacopy_odh);
+    bdb_set_key_compression(handle);
+}
+
 /* Compute map of dbstores used in vtag_to_ondisk */
 void update_dbstore(struct db *db)
 {

@@ -385,8 +385,8 @@ int gbl_init_with_genid48 = 1;
 int gbl_init_with_odh = 1;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
-int gbl_init_with_compr = 0;
-int gbl_init_with_compr_blobs = 0;
+int gbl_init_with_compr = BDB_COMPRESS_CRLE;
+int gbl_init_with_compr_blobs = BDB_COMPRESS_LZ4;
 int gbl_init_with_bthash = 0;
 
 unsigned int gbl_nsql;
@@ -703,7 +703,7 @@ int gbl_use_blkseq = 1;
 char *gbl_recovery_options = NULL;
 
 #include <stdbool.h>
-bool gbl_rcache = false;
+bool gbl_rcache = true;
 
 int gbl_noenv_messages = 1;
 
@@ -771,7 +771,7 @@ int gbl_check_page_in_recovery = 0;
 int gbl_cmptxn_inherit_locks = 1;
 int gbl_rep_printlock = 0;
 
-int gbl_keycompr = 0;
+int gbl_keycompr = 1;
 int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
@@ -5004,11 +5004,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         if (rc != 0)
             return -1;
     } else if (tokcmp(line, ltok, "perfect_ckp") == 0) {
-        tok = segtok(line, sizeof(line), &st, &ltok);
+        tok = segtok(line, len, &st, &ltok);
         gbl_use_perfect_ckp = (ltok <= 0) ? 1 : toknum(tok, ltok);
     } else if (tokcmp(line, ltok, "memnice") == 0) {
         int nicerc;
-        tok = segtok(line, sizeof(line), &st, &ltok);
+        tok = segtok(line, len, &st, &ltok);
         nicerc = comdb2ma_nice((ltok <= 0) ? 1 : toknum(tok, ltok));
         if (nicerc != 0) {
             logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d.\n",
@@ -5016,7 +5016,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return -1;
         }
     } else if (tokcmp(line, ltok, "upd_null_cstr_return_conv_err") == 0) {
-        tok = segtok(line, sizeof(line), &st, &ltok);
+        tok = segtok(line, len, &st, &ltok);
         gbl_upd_null_cstr_return_conv_err = (tok <= 0) ? 1 : toknum(tok, ltok);
     } 
     else {
@@ -8572,9 +8572,7 @@ static void getmyid(void)
    TOOL(cdb2_printlog)  \
    TOOL(cdb2_sqlreplay) \
    TOOL(cdb2_stat)      \
-   TOOL(cdb2_verify)    \
-   TOOL(cdb2sockpool)   \
-   TOOL(cdb2sql)
+   TOOL(cdb2_verify)
 
 #undef TOOL
 #define TOOL(x) int tool_ ##x ##_main(int argc, char *argv[]);

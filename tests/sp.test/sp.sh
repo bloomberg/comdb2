@@ -47,6 +47,16 @@ put default procedure test 'sptest'
 exec procedure test('1', 'select 1, 2')
 exec procedure test('1', 'select 1 as lua, 2 as test')
 
+create table LongColumnNamesTable {
+schema
+{
+    int ColumnNameWithMoreThanThirtyTwoCharacters
+    int AnotherColumnNameWithMoreThanThirtyTwoCharacters
+}}$$
+
+insert into LongColumnNamesTable values(1,2)
+
+exec procedure test('6', 'select * from LongColumnNamesTable')
 
 create procedure test1 version 'sptest1' {
 local function main(t)
@@ -1188,3 +1198,4 @@ exec procedure json_annotate()
 EOF
 
 wait
+

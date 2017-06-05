@@ -284,6 +284,7 @@ static Keyword aKeywordTable[] = {
   { "CONSUMER",         "TK_CONSUMER",      ALWAYS,                 0},
   { "CONVERTSLEEP",     "TK_CONVERTSLEEP",  ALWAYS,                 1},
   { "COVERAGE",         "TK_COVERAGE",      ALWAYS,                 0},
+  { "NONE",             "TK_NONE",          ALWAYS,                 0},
   { "CRLE",             "TK_CRLE",          ALWAYS,                 0},
   { "DATA",             "TK_DATA",          ALWAYS,                 0},
   { "DRYRUN",           "TK_DRYRUN",        ALWAYS,                 1},

@@ -1397,6 +1397,7 @@ __bam_c_close(dbc, root_pgno, rmroot)
 	cp_opd = (dbc_opd = cp->opd) == NULL ?
 	    NULL : (BTREE_CURSOR *)dbc_opd->internal;
 	cdb_lock = ret = 0;
+	prefault_dbp = dbp;
 
 	/*
 	 * There are 3 ways this function is called:
@@ -1666,6 +1667,7 @@ done:	/*
 	if (cdb_lock)
 		(void)__lock_downgrade(
 		    dbp->dbenv, &dbc->mylock, DB_LOCK_IWRITE, 0);
+	prefault_dbp = NULL;
 
 	return (ret);
 }
@@ -1795,11 +1797,12 @@ __bam_c_del(dbc)
 	mpf = dbp->mpf;
 	cp = (BTREE_CURSOR *)dbc->internal;
 	ret = 0;
-	prefault_dbp = dbp;
 
 	/* If the item was already deleted, return failure. */
 	if (F_ISSET(cp, C_DELETED))
 		return (DB_KEYEMPTY);
+
+	prefault_dbp = dbp;
 
 	/*
 	 * This code is always called with a page lock but no page.
@@ -1860,6 +1863,7 @@ err:	/*
 	/* Update the cursors last, after all chance of failure is past. */
 	if (ret == 0)
 		(void)__bam_ca_delete(dbp, cp->pgno, cp->indx, 1);
+	prefault_dbp = NULL;
 
 	return (ret);
 }
@@ -2131,6 +2135,7 @@ err:	/*
 	if (F_ISSET(cp, C_DELETED) &&
 	    (cp->pgno != orig_pgno || cp->indx != orig_indx))
 		F_CLR(cp, C_DELETED);
+	prefault_dbp = NULL;
 
 	return (ret);
 }
@@ -3207,6 +3212,7 @@ done:	/*
 		cp = (BTREE_CURSOR *)cp->opd->internal;
 		F_CLR(cp, C_DELETED);
 	}
+	prefault_dbp = NULL;
 
 	return (ret);
 }

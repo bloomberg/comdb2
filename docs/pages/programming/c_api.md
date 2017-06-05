@@ -322,8 +322,8 @@ Parameters:
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
 |*name*| input | The name of replaceable param, max 31 characters | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
 |*type*| input | The type of replaceable param | |
-|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
-|*length*| input | The length of replaceable param | |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
+|*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
 
 ### cdb2_get_effects

@@ -526,7 +526,7 @@ int do_alter_table_int(struct schema_change_type *s, struct ireq *iniq)
        for full operation they also need to be set in the meta tables.
        however the new db gets its meta table assigned further down,
        so we can't set meta options until we're there. */
-    set_bdb_option_flags(newdb->handle, s->headers, s->ip_updates,
+    set_bdb_option_flags(newdb, s->headers, s->ip_updates,
                          newdb->instant_schema_change, newdb->version,
                          s->compress, s->compress_blobs, datacopy_odh);
 

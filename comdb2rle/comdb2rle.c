@@ -14,59 +14,22 @@
    limitations under the License.
  */
 
-#include "comdb2rle.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <assert.h>
-#include <limits.h>
-#include <alloca.h>
-
-#ifndef CRLE_TOOLS
-#include "mem_comdb2rle.h"
-#include "mem_override.h"
-#endif
-
 #include <arpa/nameser_compat.h>
-#ifndef BYTE_ORDER
-#error "BYTE_ORDER not defined"
-#endif
+#include "comdb2rle.h"
 
-void *mymemset(void *s, int c, size_t n_)
-{
-#ifdef _SUN_SOURCE
-    typedef uint8_t mymemset_t;
-#else
-    typedef uint64_t mymemset_t;
+#ifndef BYTE_ORDER
+#   error "BYTE_ORDER not defined"
 #endif
-    const int min = sizeof(mymemset_t) * 3;
-    size_t r = n_ % min;
-    size_t n = (n_ - r);
-    if (n > min - 1) {
-        mymemset_t *s0 = (mymemset_t *)((uint8_t *)s + n * 0 / 3);
-        mymemset_t *s1 = (mymemset_t *)((uint8_t *)s + n * 1 / 3);
-        mymemset_t *s2 = (mymemset_t *)((uint8_t *)s + n * 2 / 3);
-        mymemset_t *e2 = (mymemset_t *)((uint8_t *)s + n * 3 / 3);
-        mymemset_t qw;
-        memset(&qw, c, sizeof(mymemset_t));
-        while (s2 < e2) {
-            *s0++ = qw;
-            *s1++ = qw;
-            *s2++ = qw;
-        }
-        memset(s2, c, n_ - n);
-        return s;
-    }
-    return memset(s, c, n_);
-}
 
 static void print_hex(uint8_t *b, unsigned l)
 {
     static char map[] = "0123456789abcdef";
-    int i;
-    for (i = 0; i < l; ++i) {
+    for (unsigned i = 0; i < l; ++i) {
         fprintf(stderr, "%c%c", map[b[i] >> 4], map[b[i] & 0x0f]);
     }
     fprintf(stderr, "\n");
@@ -110,9 +73,9 @@ static uint8_t pa[] = {0x08, 0x40, 0x7f, 0xff, 0xff}; // float
 /* Misc */
 static uint8_t pb[] = {0x00}; // null
 static uint8_t pc[] = {0x30}; // ascii 0
-//	       pd MAXPAT
-//	       pe ONEBYTE
-//	       pf RESERVED
+//	           pd MAXPAT
+//	           pe ONEBYTE
+//	           pf RESERVED
 
 #define PATTERNS                                                               \
     XMACRO_PATTERNS(p0, sizeof(p0), "p0")                                      \
@@ -197,16 +160,11 @@ static uint8_t varint_need(uint32_t i)
     do {                                                                       \
         uint8_t need = varint_need(i);                                         \
         switch (need) {                                                        \
-        case 5:                                                                \
-            o[need - 5] = 0x80 | (i >> 28);                                    \
-        case 4:                                                                \
-            o[need - 4] = 0x80 | (i >> 21);                                    \
-        case 3:                                                                \
-            o[need - 3] = 0x80 | (i >> 14);                                    \
-        case 2:                                                                \
-            o[need - 2] = 0x80 | (i >> 7);                                     \
-        case 1:                                                                \
-            o[need - 1] = 0x7f & i;                                            \
+        case 5: o[need - 5] = 0x80 | (i >> 28);                                \
+        case 4: o[need - 4] = 0x80 | (i >> 21);                                \
+        case 3: o[need - 3] = 0x80 | (i >> 14);                                \
+        case 2: o[need - 2] = 0x80 | (i >> 7);                                 \
+        case 1: o[need - 1] = 0x7f & i;                                        \
         }                                                                      \
         o += need;                                                             \
     } while (0)
@@ -341,8 +299,7 @@ static uint32_t repeats(Data in, uint32_t sz, uint32_t *r_)
 static int well_known(uint8_t *d, uint32_t s, uint32_t *w)
 {
     *w = MAXPAT;
-    int i;
-    for (i = 0; i < MAXPAT; ++i) {
+    for (uint32_t i = 0; i < MAXPAT; ++i) {
         if (s == psizes[i])
             if (memcmp(d, patterns[i], psizes[i]) == 0) {
                 *w = i;
@@ -373,7 +330,7 @@ static uint8_t *encode_header(Data *output, uint32_t w, uint32_t r)
     return out;
 }
 
-static int encode_prev(Data *output, Data *input, uint32_t *prev)
+static int encode_prev(Data *output, const Data *input, uint32_t *prev)
 {
     UHeader h;
     uint32_t p = *prev;
@@ -457,6 +414,27 @@ static int encode_repeat(Data *output, Data *input, uint32_t r, uint32_t s)
     return 0;
 }
 
+static int verify(Comdb2RLE *c)
+{
+#ifdef VERIFY_CRLE
+    uint8_t bad = 0;
+    uint8_t buf[c->insz];
+    Comdb2RLE d = { .in = c->out, .insz = c->outsz, .out = buf, .outsz = c->insz};
+    if (decompressComdb2RLE(&d) != 0) {
+        fprintf(stderr, "Comdb2RLE decompress error size:%d data:0x", c->insz);
+        print_hex(c->in, c->insz);
+        bad = 1;
+    } else if (memcmp(c->in, buf, c->insz) != 0) {
+        fprintf(stderr, "Comdb2RLE memcmp error - Input size:%d data:0x", c->insz);
+        print_hex(c->in, c->insz);
+        bad = 1;
+    }
+    return bad;
+#else
+    return 0;
+#endif
+}
+
 /*
 ** compressComdb2RLE returns =>
 **   0: Success
@@ -464,8 +442,6 @@ static int encode_repeat(Data *output, Data *input, uint32_t r, uint32_t s)
 */
 int compressComdb2RLE(Comdb2RLE *c)
 {
-    if (c->insz < 2)
-        return 1;
     Data input = {.dt = c->in, .sz = c->insz};
     Data output = {.dt = c->out, .sz = c->outsz};
     uint32_t prev = 0;
@@ -540,29 +516,7 @@ next:
     if (prev && encode_prev(&output, &input, &prev))
         return 1;
     c->outsz = output.dt - c->out;
-#ifdef VERIFY_CRLE
-#define RLE_MALLOC_SZ 4096
-    uint8_t bad = 0;
-    void *temp = c->insz > RLE_MALLOC_SZ ? malloc(c->insz) : alloca(c->insz);
-    Comdb2RLE d = {
-        .in = c->out, .insz = c->outsz, .out = temp, .outsz = c->insz};
-    if (decompressComdb2RLE(&d) != 0) {
-        fprintf(stderr, "Comdb2RLE decompress error - Input size:%d data:0x",
-                c->insz);
-        print_hex(c->in, c->insz);
-        bad = 1;
-    } else if (memcmp(c->in, temp, c->insz) != 0) {
-        fprintf(stderr, "Comdb2RLE memcmp error - Input size:%d data:0x",
-                c->insz);
-        print_hex(c->in, c->insz);
-        bad = 1;
-    }
-    if (c->insz > RLE_MALLOC_SZ)
-        free(temp);
-    if (bad)
-        return 1;
-#endif
-    return 0;
+    return verify(c);
 }
 
 int decompressComdb2RLE(Comdb2RLE *d)
@@ -573,7 +527,6 @@ int decompressComdb2RLE(Comdb2RLE *d)
     output.dt = d->out;
     output.sz = d->outsz;
     while (input.sz) {
-        int i;
         uint8_t *p;
         uint32_t reqd, s, r;
         if ((reqd = decode(&input, &p, &s, &r)) > output.sz)
@@ -584,7 +537,7 @@ int decompressComdb2RLE(Comdb2RLE *d)
             output.dt += r;
             output.sz -= r;
         } else
-            for (i = 0; i <= r; ++i) {
+            for (uint32_t i = 0; i <= r; ++i) {
                 switch (s) {
                 case 9:
                     output.dt[8] = p[8];
@@ -613,3 +566,137 @@ int decompressComdb2RLE(Comdb2RLE *d)
     return 0;
 }
 
+/* input: start of field
+ * sz: of current field
+ * r: output param */
+static int repeats_rev(const Data *input, uint32_t sz, uint32_t *r)
+{
+    uint8_t *first = input->dt - 1; //sentinal -- one before first
+    uint8_t *last = first + sz;
+    uint8_t b = *last--;
+    uint32_t dups = 0;
+    while (last != first && b == *last--) {
+        ++dups;
+    }
+    *r = dups;
+    return dups;
+}
+
+static int encode_repeat_rev(Data *output, Data *input, uint32_t r, uint32_t sz, uint32_t *prev)
+{
+    uint32_t pfx = sz - r - 1;
+    *prev += pfx;
+    input->dt += pfx;
+    input->sz -= pfx;
+    if (*prev && encode_prev(output, input, prev)) {
+        return 1;
+    }
+    uint32_t w;
+    if (well_known(input->dt, 1, &w)) {
+        if (encode_wellknown(output, input, w, r)) {
+            return 1;
+        }
+    } else if (encode_repeat(output, input, r, 1)) {
+        return 1;
+    }
+    *prev = 0;
+    return 0;
+}
+
+static int encode_prev_rev(Data *output, const Data *input, uint32_t *prev)
+{
+    Data tmp = *input;
+    uint32_t sz = *prev;
+    tmp.dt -= sz;
+    tmp.sz += sz;
+    uint32_t r;
+    if (repeats_rev(&tmp, sz, &r)) {
+        *prev = 0;
+        if (encode_repeat_rev(output, &tmp, r, sz, prev)) {
+            return 1;
+        }
+    } else if (encode_prev(output, input, prev)) {
+        return 1;
+    }
+    return 0;
+}
+
+int compressComdb2RLE_hints(Comdb2RLE *c, uint16_t *fld_hints)
+{
+    Data input = {.dt = c->in, .sz = c->insz};
+    Data output = {.dt = c->out, .sz = c->outsz};
+    uint32_t prev = 0;
+    uint16_t sz;
+    while ((sz = *fld_hints) != 0) {
+        uint32_t w = 0; // wellknown pattern of bytes?
+        uint32_t r = 0; // pattern repeats
+        uint32_t which = 0;
+        if (repeats(input, sz, &r)) {
+            which = 'r';
+        }
+        uint32_t tmp_r;
+        switch (sz) {
+        case 1: case 2: case 3: case 5: case 9:
+            if (well_known(input.dt, sz, &w)) {
+                which = 'w';
+                break;
+            }
+            // fall through
+        default:
+            if (repeats_rev(&input, sz, &tmp_r)) {
+                if (r == 0) {
+                    r = tmp_r;
+                    which = 'v';
+                    break;
+                }
+                uint32_t need, tmp_prev, tmp_need;
+                need = space_reqd(r, sz); //total space to encode 'r'
+                tmp_prev = sz - (tmp_r + 1); //bytes which don't repeat
+                tmp_need = space_reqd(0, tmp_prev) + space_reqd(tmp_r, 1);
+                tmp_need *= (r + 1); // total space to encode 'v'
+                if (tmp_need < need) {
+                    r = tmp_r;
+                    which = 'v';
+                }
+            }
+        }
+        if (which) {
+            if (which == 'v' && encode_repeat_rev(&output, &input, r, sz, &prev)) {
+                return 1;
+            } else if (prev && encode_prev_rev(&output, &input, &prev)) {
+                return 1;
+            }
+            if (which == 'w' && encode_wellknown(&output, &input, w, r)) {
+                return 1;
+            } else if (which == 'r' && encode_repeat(&output, &input, r, sz)) {
+                return 1;
+            }
+            if (which == 'v') {
+                ++fld_hints;
+            } else {
+                // landed in the middle of a field?
+                uint32_t consumed = (r + 1) * sz;
+                uint32_t next = 0;
+                while (next < consumed) {
+                    next += *fld_hints;
+                    ++fld_hints;
+                }
+                // adjust to point at next field
+                uint32_t adj = next - consumed;
+                prev += adj;
+                input.dt += adj;
+                input.sz -= adj;
+            }
+        } else {
+            prev += sz;
+            input.dt += sz;
+            input.sz -= sz;
+            ++fld_hints;
+        }
+    }
+    if (prev && encode_prev_rev(&output, &input, &prev)) {
+        return 1;
+    }
+    c->outsz = output.dt - c->out;
+    return verify(c);
+}

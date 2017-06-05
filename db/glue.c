@@ -4235,7 +4235,7 @@ int backend_open(struct dbenv *dbenv)
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
-        set_bdb_option_flags(d->handle, d->odh, d->inplace_updates,
+        set_bdb_option_flags(d, d->odh, d->inplace_updates,
                              d->instant_schema_change, d->version, compress,
                              compress_blobs, datacopy_odh);
 
