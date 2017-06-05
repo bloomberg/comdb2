@@ -603,8 +603,6 @@ static char *fsql_respcode_str(int rsp)
 char *tranlevel_tostr(int lvl)
 {
     switch (lvl) {
-    case TRANLEVEL_OSQL:
-        return "TRANLEVEL_OSQL";
     case TRANLEVEL_SOSQL:
         return "TRANLEVEL_SOSQL";
     case TRANLEVEL_RECOM:
@@ -6196,9 +6194,6 @@ static void sqlengine_thd_end(struct thdpool *pool, void *thddata)
 static inline int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
-    case SQL_TDEF_BLOCK:
-        return TRANLEVEL_OSQL;
-
     case SQL_TDEF_SOCK:
         return TRANLEVEL_SOSQL;
 

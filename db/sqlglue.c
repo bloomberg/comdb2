@@ -557,9 +557,7 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
     }
 
     if (gbl_epoch_time) {
-        /* this does not make sense for blocksql */
-        if (!(clnt->dbtran.mode == TRANLEVEL_OSQL && clnt->osql.rqid) &&
-            (gbl_epoch_time - clnt->last_check_time) > 5) {
+        if (gbl_epoch_time - clnt->last_check_time > 5) {
             clnt->last_check_time = gbl_epoch_time;
             if (!gbl_notimeouts) {
                 if (peer_dropped_connection(clnt)) {
@@ -4678,8 +4676,6 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     int rc = SQLITE_OK;
     struct ireq iq;
     int bdberr;
-    int ignore_newer_updates =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SQL_QUERY_IGNORE_NEWER_UPDATES);
     int error = 0;
     int snapshot_file = 0;
     int snapshot_offset = 0;
@@ -4755,7 +4751,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         /* create our special bdb transaction
          * (i.e. w/out berkdb transaction */
         clnt->dbtran.shadow_tran = trans_start_readcommitted(
-            &iq, ignore_newer_updates, clnt->bdb_osql_trak);
+            &iq, clnt->bdb_osql_trak);
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_readcommitted error\n", __func__);
@@ -4770,7 +4766,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         /* this is the first update of the transaction, open a
          * block processor on the master */
         clnt->dbtran.shadow_tran =
-            trans_start_socksql(&iq, ignore_newer_updates, clnt->bdb_osql_trak);
+            trans_start_socksql(&iq, clnt->bdb_osql_trak);
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_socksql error\n", __func__);
@@ -4783,19 +4779,6 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
             osql_query_dbglog(thd, clnt->queryid);
         break;
 
-    case TRANLEVEL_OSQL:
-        if (ignore_newer_updates) {
-            clnt->dbtran.shadow_tran =
-                trans_start_queryisolation(&iq, clnt->bdb_osql_trak);
-
-            if (!clnt->dbtran.shadow_tran) {
-                logmsg(LOGMSG_ERROR, "%s: trans_start_queryisolation error\n",
-                        __func__);
-                rc = SQLITE_INTERNAL;
-                goto done;
-            }
-        }
-        break;
     }
 
 done:
@@ -4836,8 +4819,6 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
     int bdberr;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
-    int ignore_newer_updates =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SQL_QUERY_IGNORE_NEWER_UPDATES);
     char rqidinfo[40];
 
 #ifdef DEBUG
@@ -4921,7 +4902,7 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
          */
         assert(clnt->sql);
 
-        if (!strncasecmp(clnt->sql, "select", 6) && !ignore_newer_updates &&
+        if (!strncasecmp(clnt->sql, "select", 6) &&
             !(toupper(clnt->sql[6]) == 'V' &&
               clnt->ctrl_sqlengine == SQLENG_STRT_STATE)) {
             rc = SQLITE_OK;
@@ -5137,17 +5118,6 @@ int sqlite3BtreeCommit(Btree *pBt)
         }
         break;
 
-    case TRANLEVEL_OSQL:
-        if (clnt->dbtran.shadow_tran) {
-            // assert(tran_type)clnt->dbtran.shadow_tran->ignore_newer_updates);
-            int irc =
-                trans_commit_queryisolation(clnt->dbtran.shadow_tran, &bdberr);
-            if (irc)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: trans_commit_queryisolation rc=%d bdberr=%d\n",
-                        __func__, irc, bdberr);
-        }
-        break;
     }
 
     clnt->ins_keys = 0ULL;
@@ -5263,18 +5233,6 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
         rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
         break;
 
-    case TRANLEVEL_OSQL:
-        if (clnt->dbtran.shadow_tran) {
-            /*assert(clnt->dbtran.shadow_tran.ignore_newer_updates);*/
-            int irc =
-                trans_abort_queryisolation(clnt->dbtran.shadow_tran, &bdberr);
-            if (irc)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: trans_commit_queryisolation rc=%d bdberr=%d\n",
-                        __func__, irc, bdberr);
-            clnt->dbtran.shadow_tran = NULL;
-        }
-        break;
     }
 
     clnt->ins_keys = 0ULL;
@@ -6592,8 +6550,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
             goto done;
         }
 
-        if (clnt->dbtran.mode == TRANLEVEL_OSQL ||
-            clnt->dbtran.mode == TRANLEVEL_SOSQL ||
+        if (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
             clnt->dbtran.mode == TRANLEVEL_RECOM ||
             clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
             clnt->dbtran.mode == TRANLEVEL_SERIAL) {
@@ -10045,18 +10002,15 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
 /* these transaction modes can perform sql writes */
 static int is_sql_update_mode(int mode)
 {
-    if (mode == TRANLEVEL_OSQL)
+    switch (mode) {
+    case TRANLEVEL_SOSQL:
+    case TRANLEVEL_RECOM:
+    case TRANLEVEL_SNAPISOL:
+    case TRANLEVEL_SERIAL:
         return 1;
-    if (mode == TRANLEVEL_SOSQL)
-        return 1;
-    if (mode == TRANLEVEL_RECOM)
-        return 1;
-    if (mode == TRANLEVEL_SNAPISOL)
-        return 1;
-    if (mode == TRANLEVEL_SERIAL)
-        return 1;
-
-    return 0;
+    default:
+        return 0;
+    }
 }
 
 int sqlglue_release_genid(unsigned long long genid, int *bdberr)
@@ -10506,12 +10460,6 @@ int sqlite3BtreeSetRecording(BtCursor *pCur, int flag)
     assert(pCur);
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
-
-    /* BLOCKSQL is not supported, not yet */
-    if (flag && clnt->dbtran.mode == TRANLEVEL_OSQL) {
-        logmsg(LOGMSG_ERROR, "SELECTV is not supported for blocksql mode! Disabling.\n");
-        pCur->is_recording = 0;
-    }
 
     pCur->is_recording = flag;
 

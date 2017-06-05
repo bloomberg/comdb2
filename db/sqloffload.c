@@ -65,9 +65,6 @@ int g_osql_ready = 0;
 int tran2netreq(int dbtran)
 {
     switch (dbtran) {
-    case TRANLEVEL_OSQL:
-        return NET_OSQL_BLOCK_REQ;
-
     case TRANLEVEL_SOSQL:
         return NET_OSQL_SOCK_REQ;
 
@@ -96,9 +93,6 @@ int tran2netreq(int dbtran)
 int tran2netrpl(int dbtran)
 {
     switch (dbtran) {
-    case TRANLEVEL_OSQL:
-        return NET_OSQL_BLOCK_RPL;
-
     case TRANLEVEL_SOSQL:
         return NET_OSQL_SOCK_RPL;
 
@@ -588,9 +582,6 @@ int req2netrpl(int reqtype)
 int tran2req(int dbtran)
 {
     switch (dbtran) {
-    case TRANLEVEL_OSQL:
-        return OSQL_BLOCK_REQ;
-
     case TRANLEVEL_SOSQL:
         return OSQL_SOCK_REQ;
 

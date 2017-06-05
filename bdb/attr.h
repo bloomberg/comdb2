@@ -279,9 +279,6 @@ DEF_ATTR(DEBUGBERKDBCURSOR, dbgberkdbcursor, BOOLEAN, 0, NULL)
 DEF_ATTR(BULK_SQL_THRESHOLD, bulk_sql_threshold, QUANTITY, 2, NULL)
 DEF_ATTR(DEBUG_BDB_LOCK_STACK, debug_bdb_lock_stack, BOOLEAN, 0, NULL)
 DEF_ATTR(LLMETA, llmeta, BOOLEAN, 1, NULL)
-DEF_ATTR(SQL_QUERY_IGNORE_NEWER_UPDATES, sql_query_ignore_newer_updates,
-         BOOLEAN, 0, "In transaction modes below SNAPSHOT, skip records "
-                     "updated after the current transaction started.")
 DEF_ATTR(SQL_OPTIMIZE_SHADOWS, sql_optimize_shadows, BOOLEAN, 0, NULL)
 DEF_ATTR(CHECK_LOCKER_LOCKS, check_locker_locks, BOOLEAN, 0,
          "Sanity check locks at end of transaction.")
