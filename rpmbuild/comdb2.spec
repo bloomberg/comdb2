@@ -28,6 +28,8 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 /opt/bb/bin/comdb2
+/opt/bb/bin/cdb2sql
+/opt/bb/bin/cdb2sockpool
 /opt/bb/bin/copycomdb2
 /opt/bb/bin/pmux
 /opt/bb/bin/comdb2ar
