@@ -1,6 +1,5 @@
 #!/bin/bash
 
-set -x
 dbnm=$1
 dbdir=${DBDIR}
 bindir="${SRCHOME}"
