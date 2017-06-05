@@ -34,7 +34,6 @@
 #include "roll_file.h"
 #include "util.h"
 #include "logmsg.h"
-#include "log.pb-c.h"
 
 static pthread_mutex_t sql_log_lk = PTHREAD_MUTEX_INITIALIZER;
 int gbl_log_all_sql = 0;
@@ -395,31 +394,7 @@ static int sqllog_roll(int nkeep)
 
 static int log_async(struct sqlclntstate *clnt, int cost, int nrows, int timems)
 {
-    int32_t sz;
-    CDB2Event ev;
-    CDB2SQLEvent sql;
-    struct timeval tv;
-    uint8_t *buf;
-    uuidstr_t fingerprint;
-
-    cdb2__event__init(&ev);
-    cdb2__sqlevent__init(&sql);
-    gettimeofday(&tv, NULL);
-    ev.seconds = tv.tv_sec;
-    ev.useconds = tv.tv_usec;
-    ev.sql = &sql;
-    ev.sql->cost = cost;
-    ev.sql->nrows = nrows;
-    ev.sql->timems = timems;
-    ev.sql->query = clnt->sql_query;
-    comdb2uuidstr(clnt->fingerprint, fingerprint);
-    ev.sql->fingerprint = fingerprint;
-    sz = cdb2__event__get_packed_size(&ev) + sizeof(int32_t);
-    buf = malloc(sz);
-    int32_t szf = htonl(sz - sizeof(int32_t));
-    memcpy(buf, &szf, sizeof(int32_t));
-    cdb2__event__pack(&ev, buf + sizeof(int32_t));
-    async_enqueue(buf, sz);
+    /* HERE */
     return 0;
 }
 
@@ -431,120 +406,7 @@ void sqllog_log_statement(struct sqlclntstate *clnt, int cost, int nrows,
     int sqllen;
     int rc;
 
-/* For each statement, log the following:
- *
- * int threadid
- * int tv_sec
- * int tv_usec
- * int sqllen
- * char sql[sqllen]
- * int tagstrlen
- * char tag[tagstrlen]
- * int tagbuflen
- * char tagbuf[tagbuflen]
- * int nullbits
- * char [nullbits]
- * int numblobs
- * int bloblens[numblobs]
- * int noverrides
- * int overrides[noverrides]
- * int cost
- * int time
- * int64_t tranid (v2)
- */
-#define WRITE_INT(v)                                                           \
-    do {                                                                       \
-        ival = v;                                                              \
-        rc = fwrite(&ival, sizeof(int32_t), 1, sqllog);                        \
-        if (rc != 1)                                                           \
-            goto log_err;                                                      \
-    } while (0)
-
-    /* TODO: why isn't this being set? */
-    sqllen = strlen(clnt->sql) + 1;
-
-    if (sqllog_use_async) {
-        log_async(clnt, cost, nrows, timems);
-        return;
-    }
-
-    rc = gettimeofday(&t, NULL);
-    if (rc)
-        goto log_err;
-
-    pthread_mutex_lock(&sql_log_lk);
-    if (sqllog_every_n) {
-        sqllog_every_counter++;
-        if (sqllog_every_counter >= sqllog_every_n)
-            sqllog_every_counter = 0;
-        else {
-            pthread_mutex_unlock(&sql_log_lk);
-            return;
-        }
-    }
-    if (sqllog == NULL || gbl_log_all_sql == 0) {
-        pthread_mutex_unlock(&sql_log_lk);
-        return;
-    }
-
-    WRITE_INT((int32_t)pthread_self());
-    WRITE_INT(t.tv_sec);
-    WRITE_INT(t.tv_usec);
-    WRITE_INT(sqllen);
-    rc = fwrite(clnt->sql, sqllen, 1, sqllog);
-    if (rc != 1)
-        goto log_err;
-    if (clnt->tag) {
-        WRITE_INT(strlen(clnt->tag) + 1);
-        rc = fwrite(clnt->tag, strlen(clnt->tag) + 1, 1, sqllog);
-        if (rc != 1)
-            goto log_err;
-        WRITE_INT(clnt->tagbufsz);
-        rc = fwrite(clnt->tagbuf, clnt->tagbufsz, 1, sqllog);
-        if (rc != 1)
-            goto log_err;
-        WRITE_INT(clnt->numnullbits);
-        if (clnt->numnullbits > 0) {
-            rc = fwrite(clnt->nullbits, clnt->numnullbits, 1, sqllog);
-            if (rc != 1)
-                goto log_err;
-        }
-        WRITE_INT(clnt->numblobs);
-        for (int i = 0; i < clnt->numblobs; i++) {
-            WRITE_INT(clnt->bloblens[i]);
-            if (clnt->bloblens[i] > 0) {
-                rc = fwrite(clnt->blobs[i], clnt->bloblens[i], 1, sqllog);
-                if (rc != 1)
-                    goto log_err;
-            }
-        }
-    } else {
-        WRITE_INT(-1);
-    }
-    /* TODO: is this value valid at this point? */
-    WRITE_INT(clnt->req.parm);
-    if (clnt->req.parm > 0) {
-        rc = fwrite(clnt->type_overrides, sizeof(int), clnt->req.parm, sqllog);
-        if (rc != clnt->req.parm)
-            goto log_err;
-    }
-    WRITE_INT(cost);
-    WRITE_INT(nrows);
-    WRITE_INT(timems);
-    rc = fwrite(&clnt->osql.rqid, sizeof(unsigned long long), 1, sqllog);
-    if (rc != 1)
-        goto log_err;
-
-    if (0) {
-    log_err:
-        logmsg(LOGMSG_ERROR, "Had an error logging an SQL statement?\n");
-    }
-
-    if (sqllog_rollat_size && ftell(sqllog) > sqllog_rollat_size)
-        sqllog_roll_locked(sqllog_keep_files, 1);
-
-    pthread_mutex_unlock(&sql_log_lk);
-#undef WRITE_INT
+    /* HERE */
 }
 
 void sqllogger_process_message(char *line, int lline)

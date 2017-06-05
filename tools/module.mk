@@ -4,7 +4,8 @@ tools_LIBS:=libcdb2_sqlreplay.a libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/cdb2api -I$(SRCHOME)/berkdb -I$(SRCHOME)/berkdb/build	\
--I$(SRCHOME)/dlmalloc -I$(SRCHOME)/sockpool $(OPTBBINCLUDE)
+-I$(SRCHOME)/dlmalloc -I$(SRCHOME)/sockpool -I$(SRCHOME)/cson		\
+$(OPTBBINCLUDE)
 
 tools_SYSLIBS=$(BBSTATIC) -lprotobuf-c -lssl -lcrypto -llz4 $(BBDYN)	\
 -lpthread -lrt -lm -lz $(ARCHLIBS)
@@ -31,11 +32,8 @@ cdb2sql: $(cdb2sql_OBJS)
 
 libcdb2_sqlreplay.a: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
 
-cdb2replay_SRC=cdb2_sqlreplay.c
-cdb2replay_OBJS=$(patsubst %.c,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
-
-libcdb2_sqlreplay.a: $(cdb2replay_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
+cdb2replay_SRC=cdb2_sqlreplay.cpp
+cdb2replay_OBJS=$(patsubst %.cpp,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
 
 # Cdb2sockpool - Use base rules, multiple object files
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c

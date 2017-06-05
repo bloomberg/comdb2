@@ -6443,7 +6443,10 @@ static int exec_procedure_int(const char *s, char **err,
     int rc, args, new_vm;
     *err = NULL;
 
-    if ((rc = get_spname(clnt, &s, spname, err)) != 0) return rc;
+    reqlog_set_event(thd->logger, "sp");
+
+    if ((rc = get_spname(clnt, &s, spname, err)) != 0)
+        return rc;
 
     if (strcmp(spname, "debug") == 0) return debug_sp(clnt);
 

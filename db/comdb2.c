@@ -53,6 +53,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <poll.h>
 #include <pwd.h>
 #include <getopt.h>
+#include <libgen.h>
 
 #include <mem_uncategorized.h>
 
@@ -126,7 +127,8 @@ void berk_memp_sync_alarm_ms(int);
 #include "plugin.h"
 
 #include "debug_switches.h"
-#include <machine.h>
+#include "machine.h"
+#include "eventlog.h"
 
 #define COMDB2_ERRSTAT_ENABLED() 1
 #define COMDB2_DIFFSTAT_REPORT() 1
@@ -773,7 +775,7 @@ int gbl_keycompr = 1;
 int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
-int gbl_fingerprint_queries = 0;
+int gbl_fingerprint_queries = 1;
 
 char *gbl_dbdir = NULL;
 
@@ -1451,6 +1453,7 @@ void clean_exit(void)
     rc = backend_close(thedb);
     if (rc != 0)
        logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
+
     logmsg(LOGMSG_WARN, "goodbye\n");
 
     if (COMDB2_SOCK_FSTSND_ENABLED()) {
@@ -1472,6 +1475,8 @@ void clean_exit(void)
             free(indicator_file);
         }
     }
+
+    eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
     fd = creat(indicator_file, 0666);
@@ -8587,15 +8592,6 @@ struct tool tool_callbacks[] = {
    NULL
 };
 
-static char* last_path_component(char *argv0) {
-   char *s;
-   s = strrchr(argv0, '/');
-   if (s)
-      return strdup(s+1);
-   else
-      return strdup(argv0);
-}
-
 int main(int argc, char **argv)
 {
     char *marker_file;
@@ -8617,12 +8613,13 @@ int main(int argc, char **argv)
     rc = readlink("/proc/self/exe", fname, sizeof(fname));
     if (rc > 0 && rc < sizeof(fname)) {
         fname[rc] = 0;
-        exe = last_path_component(fname);
+        exe = basename(fname);
     }
 #endif
     if (exe == NULL) {
        /* more portable */
-       exe = last_path_component(argv[0]);
+       char *arg = strdup(argv[0]);
+       exe = basename(arg);
     }
 
     for (int i = 0; tool_callbacks[i].tool; i++) {
