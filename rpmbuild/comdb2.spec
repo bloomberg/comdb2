@@ -28,6 +28,8 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 /opt/bb/bin/comdb2
+/opt/bb/bin/cdb2sql
+/opt/bb/bin/cdb2_sockpool
 /opt/bb/bin/copycomdb2
 /opt/bb/bin/pmux
 /opt/bb/bin/comdb2ar
@@ -65,10 +67,8 @@ ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_dump
 ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_printlog
 ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
 ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
-ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sql
 ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2ar
 ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2sc
-ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2sockpool
 
 cp /opt/bb/usr/local/lib/pkgconfig/cdb2api.pc /usr/local/lib/pkgconfig/cdb2api.pc
 cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
