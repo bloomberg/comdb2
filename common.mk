@@ -49,7 +49,7 @@ $(tz_OBJS): CFLAGS+=-DSTD_INSPIRED
 
 # protobuf Module
 pbuf_MEMGEN:=protobuf/mem_protobuf.h
-pbuf_SOURCES:=sqlquery.pb-c.c sqlresponse.pb-c.c bpfunc.pb-c.c log.pb-c.c
+pbuf_SOURCES:=sqlquery.pb-c.c sqlresponse.pb-c.c bpfunc.pb-c.c
 pbuf_abs_SOURCES:=$(foreach src,$(pbuf_SOURCES),protobuf/$(src))
 pbuf_OBJS:=$(patsubst %.c,%.o,$(pbuf_abs_SOURCES))
 
