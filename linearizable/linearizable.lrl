@@ -45,7 +45,7 @@ setattr REP_WORKERS 0
 setattr STARTUP_SYNC_ATTEMPTS -1
 
 # Perfect checkpoints is also causing crashes.  Disable for now.
-no_perfect_ckp
+perfect_ckp 0
 
 # Don't run the watchdog thread
 nowatch

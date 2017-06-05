@@ -4999,11 +4999,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         if (rc != 0)
             return -1;
     } else if (tokcmp(line, ltok, "perfect_ckp") == 0) {
-        tok = segtok(line, sizeof(line), &st, &ltok);
+        tok = segtok(line, len, &st, &ltok);
         gbl_use_perfect_ckp = (ltok <= 0) ? 1 : toknum(tok, ltok);
     } else if (tokcmp(line, ltok, "memnice") == 0) {
         int nicerc;
-        tok = segtok(line, sizeof(line), &st, &ltok);
+        tok = segtok(line, len, &st, &ltok);
         nicerc = comdb2ma_nice((ltok <= 0) ? 1 : toknum(tok, ltok));
         if (nicerc != 0) {
             logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d.\n",
@@ -5011,7 +5011,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return -1;
         }
     } else if (tokcmp(line, ltok, "upd_null_cstr_return_conv_err") == 0) {
-        tok = segtok(line, sizeof(line), &st, &ltok);
+        tok = segtok(line, len, &st, &ltok);
         gbl_upd_null_cstr_return_conv_err = (tok <= 0) ? 1 : toknum(tok, ltok);
     } 
     else {
