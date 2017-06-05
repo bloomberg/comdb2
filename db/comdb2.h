@@ -2009,32 +2009,22 @@ int trans_start_logical_sc(struct ireq *, tran_type **out);
 int is_rowlocks_transaction(tran_type *);
 int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
-tran_type *trans_start_readcommitted(struct ireq *, int ignore_newer_updates,
-                                     int trak);
+tran_type *trans_start_readcommitted(struct ireq *, int trak);
 tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
                                     int file, int offset, int *error);
 tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file,
                                 int offset, int *error);
-tran_type *trans_start_queryisolation(struct ireq *, int trak);
-tran_type *trans_start_socksql(struct ireq *, int ignore_newer_updates,
-                               int trak);
-
+tran_type *trans_start_socksql(struct ireq *, int trak);
 int trans_commit(struct ireq *iq, void *trans, char *source_host);
 int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum);
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host);
-
 int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
                          int timeoutms, int adaptive, void *blkseq, int blklen,
                          void *blkkey, int blkkeylen);
-
-int trans_commit_queryisolation(void *trans, int *bdberr);
-
 int trans_abort(struct ireq *iq, void *trans);
 int trans_abort_priority(struct ireq *iq, void *trans, int *priority);
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *blkkey, int blkkeylen);
-int trans_abort_queryisolation(void *trans, int *bdberr);
-
 int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
                           db_seqnum_type *ss);
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host);

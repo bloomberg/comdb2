@@ -104,8 +104,6 @@ struct odh {
                      decompressed record data. */
 };
 
-/* XXX TODO.  look into replacing these macros with something provided by
-   BDE team */
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
@@ -130,11 +128,10 @@ typedef enum {
     TRANCLASS_PHYSICAL = 3,
     TRANCLASS_READCOMMITTED = 4,
     TRANCLASS_SERIALIZABLE = 5,
-    TRANCLASS_QUERYISOLATION = 6,     /* used for blocksql/socksql */
+    /* TRANCLASS_QUERYISOLATION = 6, */
     TRANCLASS_LOGICAL_NOROWLOCKS = 7, /* used in fetch.c for table locks */
-    TRANCLASS_SOSQL = 8, /* unfortunatelly I need this to cache a transaction */
-    TRANCLASS_SNAPISOL =
-        9 /* unfortunatelly I need this to cache a transaction */
+    TRANCLASS_SOSQL = 8,
+    TRANCLASS_SNAPISOL = 9
 } tranclass_type;
 
 #define PAGE_KEY                                                               \
@@ -410,9 +407,6 @@ struct tran_tag {
 
     /* log support */
     signed char trak; /* set this to enable tracking */
-
-    /* query isolation support, a property of a session */
-    signed char ignore_newer_updates;
 
     signed char is_rowlocks_trans;
 

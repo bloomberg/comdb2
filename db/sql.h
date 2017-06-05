@@ -44,8 +44,7 @@ TYPEDEF(Vdbe)
 enum transaction_level {
     TRANLEVEL_INVALID = -1,
 
-    /* deprecated */
-    TRANLEVEL_OSQL = 7,
+    /* TRANLEVEL_OSQL = 7, */
 
     /* block sql over socket */
     TRANLEVEL_SOSQL = 9,

@@ -1991,9 +1991,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         extern int gbl_epoch_time;
 
         if (gbl_epoch_time) {
-            /* this does not make sense for blocksql */
-            if (!(sp->clnt->dbtran.mode == TRANLEVEL_OSQL) &&
-                (gbl_epoch_time - sp->clnt->last_check_time) > 5) {
+            if ((gbl_epoch_time - sp->clnt->last_check_time) > 5) {
                 sp->clnt->last_check_time = gbl_epoch_time;
                 if (!gbl_notimeouts) {
                     if (peer_dropped_connection(sp->clnt)) {
