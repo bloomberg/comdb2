@@ -3676,8 +3676,8 @@ void sqlite3CreateIndex(
     if( db->init.iDb > 1 ){
       extern int gbl_fdb_track;
       if (gbl_fdb_track)
-        fprintf(stderr, "XXX: no skip-scan for remote index %s:%s\n", 
-                pIndex->pTable->zName, pIndex->zName);
+        logmsg(LOGMSG_DEBUG, "XXX: no skip-scan for remote index %s:%s\n", 
+               pIndex->pTable->zName, pIndex->zName);
       pIndex->noSkipScan  = 1;
     } else {
       pIndex->noSkipScan = 0;
