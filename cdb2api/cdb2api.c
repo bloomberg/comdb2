@@ -1231,7 +1231,7 @@ static int send_reset(SBUF2 *sb)
 }
 
 #if WITH_SSL
-static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
+static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 {
     /*
      *                   |<---------------- CLIENT ---------------->|
@@ -1298,6 +1298,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
 
     if ((rc = cdb2_init_ssl(1, 1)) != 0) {
         hndl->sslerr = 1;
+        printf("sbuf2fwrite: rc %d \n", rc);
         return rc;
     }
 
@@ -1307,10 +1308,14 @@ static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
     hdr.compression = 0;
     hdr.length = 0;
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
-    if (rc != 1)
+    if (rc != 1) {
+        printf("sbuf2fwrite: rc %d \n", rc);
         return -1;
-    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0)
+    }
+    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
+        printf("sbuf2flus: rc %d \n", rc);
         return rc;
+    }
 
     /* The node does not agree with dbinfo. This usually happens
        during the downgrade from SSL to non-SSL. */
@@ -1330,6 +1335,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
                      hndl->num_hosts, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
+        printf("ssl_new_ctx: rc %d \n", rc);
         return -1;
     }
 
@@ -1344,6 +1350,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sess = NULL;
+        printf("SSL_CTX_free: rc %d \n", rc);
         return -1;
     }
 
@@ -1444,6 +1451,11 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
 static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                           int timeoutms, int indx)
 {
+
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d newsql_connect\n", (uint32_t)
+                pthread_self(), __func__, __LINE__);
+    }
     int fd = -1;
     SBUF2 *sb = NULL;
     snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
@@ -1483,7 +1495,7 @@ retry_newsql_connect:
     }
 
 #if WITH_SSL
-    if (try_ssl(hndl, fd, sb, indx) != 0) {
+    if (try_ssl(hndl, sb, indx) != 0) {
         sbuf2close(sb);
         return -1;
     }
@@ -1580,6 +1592,11 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
     int requery_done = 0;
 
 retry_connect:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d cdb2_connect_sqlhost\n", 
+                (uint32_t) pthread_self(), __func__, __LINE__);
+    }
+
     if ((hndl->flags & CDB2_RANDOM) && (hndl->node_seq == 0)) {
         hndl->node_seq = random() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
@@ -2543,7 +2560,10 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     if (!hndl->retry_all)
         return 0;
-
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d in retry_queries()\n", (uint32_t)
+                pthread_self(), __func__, __LINE__);
+    }
     int rc = 0;
     char *host = "NOT-CONNECTED";
     if (hndl->connected_host >= 0)
@@ -3062,6 +3082,11 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     int run_last = 1;
 
 retry_queries:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d retry_queries, hndl->host %d (%s)\n", (uint32_t)
+                pthread_self(), __func__, __LINE__, hndl->connected_host, (hndl->connected_host>=0?hndl->hosts[hndl->connected_host]:""));
+    }
+
 
     hndl->first_record_read = 0;
 
@@ -3251,36 +3276,70 @@ read_record:
         if (hndl && hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u reading response from %s line %d rc=%d\n", 
-                    (uint32_t) pthread_self(), host, __LINE__, rc, type);
+            fprintf(stderr, "td %u reading response from %d (%s) line %d rc=%d\n", 
+                    (uint32_t) pthread_self(), hndl->connected_host, 
+                    host, __LINE__, rc, type);
         }
     }
 
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
-        /* The master sent info about nodes that might be coherent. */
-        newsql_disconnect(hndl, hndl->sb, __LINE__);
-        CDB2DBINFORESPONSE *dbinfo_response = NULL;
-        dbinfo_response =
-            cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
+        /* We got back info about nodes that might be coherent. */
+        CDB2DBINFORESPONSE *dbinfo_resp = NULL;
+        char (*hosts)[MAX_NODES][64] = &hndl->hosts;
+#if WITH_SSL
+        char lochosts[MAX_NODES][64];
+        int oldsslmode = hndl->s_sslmode;
+        char lcl_conn_host[64];
+        strcpy(lcl_conn_host, hndl->hosts[hndl->connected_host]);
+        if (hndl->flags & CDB2_DIRECT_CPU) { 
+            //if direct cpu don't want hostlist in hndl->hosts
+            hosts = &lochosts;
+        }
+#endif
+        dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
+        parse_dbresponse(dbinfo_resp, *hosts, hndl->ports,
                          &hndl->master, &hndl->num_hosts,
                          &hndl->num_hosts_sameroom
 #if WITH_SSL
                          , &hndl->s_sslmode
 #endif
                          );
-        cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
-        hndl->retry_all = 1;
-        hndl->connected_host = -1;
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
-                    pthread_self(), __func__, __LINE__);
+        cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
+#if WITH_SSL
+        if(oldsslmode == hndl->s_sslmode) {
+#endif
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            hndl->connected_host = -1;
+        } else {
+#if WITH_SSL
+            /* server wants us to use ssl so turn ssl on in same connection */
+            int resp=try_ssl(hndl, hndl->sb, hndl->connected_host);
+            if (resp != 0) {
+                newsql_disconnect(hndl, hndl->sb, __LINE__);
+                hndl->connected_host = -1;
+            }
+            else if(!(hndl->flags & CDB2_DIRECT_CPU) ) {
+#endif
+                /* remap new hosts to connected_host */
+                for(int i = 0; i < hndl->num_hosts; i++) {
+                    if(strcmp(lcl_conn_host, hndl->hosts[i]) == 0) {
+                        hndl->connected_host = i;
+                        hndl->hosts_connected[i] = 1;
+                    } else {
+                        hndl->hosts_connected[i] = 0;
+                    }
+                }
+#if WITH_SSL
+            }
+#endif
         }
+
+        hndl->retry_all = 1;
 
 #if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
-        if (hndl->sess_list != NULL) {
+        if ( !(hndl->flags & CDB2_DIRECT_CPU) && hndl->sess_list != NULL) {
             cdb2_ssl_sess_list *sl = hndl->sess_list;
             for (int i = 0; i != sl->n; ++i)
                 SSL_SESSION_free(sl->list[i].sess);
@@ -3288,6 +3347,12 @@ read_record:
             sl->list = NULL;
         }
 #endif
+
+
+        if (hndl->debug_trace) {
+            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
+                    pthread_self(), __func__, __LINE__);
+        }
 
         goto retry_queries;
     }

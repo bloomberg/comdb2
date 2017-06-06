@@ -7268,8 +7268,10 @@ retry_read:
             }
         }
 
-        if (client_supports_ssl)
+        if (client_supports_ssl) {
             send_dbinforesponse(sb);
+            goto retry_read;
+        }
         else {
             char *err = "The database requires SSL connections.";
             struct fsqlresp resp;
