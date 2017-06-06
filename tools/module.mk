@@ -1,6 +1,6 @@
 # Local defs
 
-tools_LIBS:=libcdb2_sqlreplay.a libcdb2util.a
+tools_LIBS:=libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/cdb2api -I$(SRCHOME)/berkdb -I$(SRCHOME)/berkdb/build	\
@@ -29,9 +29,6 @@ cdb2sql_OBJS:=tools/cdb2sql/cdb2sql.o
 cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
 cdb2sql: $(cdb2sql_OBJS)
 	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
-
-libcdb2_sqlreplay.a: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
-	$(AR) $(ARFLAGS) $@ $^
 
 cdb2replay_SRC=cdb2_sqlreplay.cpp
 cdb2replay_OBJS=$(patsubst %.cpp,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
