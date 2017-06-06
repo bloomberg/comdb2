@@ -8294,7 +8294,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
 
             if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
                 clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-                pthread_mutex_lock(&clnt->dtran_mtx);
+                pthread_mutex_unlock(&clnt->dtran_mtx);
             }
 
             if (ret != SQLITE_ROW) {
