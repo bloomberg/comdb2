@@ -1635,7 +1635,8 @@ static void decodeIntArray(
 #endif
   {
     pIndex->bUnordered = 0;
-    pIndex->noSkipScan = 0;
+    /* COMDB2 MODIFICATION */
+    /* pIndex->noSkipScan = 0; */
     if( strcmp(z, "unordered")==0 ){
       pIndex->bUnordered = 1;
     }else if( sqlite3_strglob("sz=[0-9]*", z)==0 ){
@@ -1698,12 +1699,16 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
     pIndex->bUnordered = 0;
     decodeIntArray((char*)z, nCol, aiRowEst, pIndex->aiRowLogEst, pIndex);
     if( pIndex->pPartIdxWhere==0 ) pTable->nRowLogEst = pIndex->aiRowLogEst[0];
-    /* COMDB2 MODIFICATION: assign noskipscan parameter */ 
-    pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName, pIndex->zName);
+    /* COMDB2 MODIFICATION: assign noskipscan parameter, only if not disabled 
+    ** already.  */ 
+    if( !pIndex->noSkipScan ){
+      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName, 
+                                                           pIndex->zName);
 #ifdef DEBUG
-    if(pIndex->noSkipScan)
+      if(pIndex->noSkipScan)
         printf("SET INDEX %s.%s noskipscan\n", pTable->zName, pIndex->zName);
 #endif
+    }
 
 #ifndef SQLITE_BUILDING_FOR_COMDB2
   /* COMDB2 MODIFICATION
