@@ -3670,6 +3670,19 @@ void sqlite3CreateIndex(
     Index *p;
     assert( !IN_DECLARE_VTAB );
     assert( sqlite3SchemaMutexHeld(db, 0, pIndex->pSchema) );
+    
+    /* COMDB2 MODIFICATION */
+    /* remote indexes don't use skip-scan indexes */
+    if( db->init.iDb > 1 ){
+      extern int gbl_fdb_track;
+      if (gbl_fdb_track)
+        logmsg(LOGMSG_DEBUG, "XXX: no skip-scan for remote index %s:%s\n", 
+               pIndex->pTable->zName, pIndex->zName);
+      pIndex->noSkipScan  = 1;
+    } else {
+      pIndex->noSkipScan = 0;
+    }
+
     p = sqlite3HashInsert(&pIndex->pSchema->idxHash, 
                           pIndex->zName, pIndex);
     if( p ){
