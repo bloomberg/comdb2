@@ -75,8 +75,8 @@ public class Comdb2Statement implements Statement {
         }
 
         if (!conn.isInTxn()) {
-            if (timeout >= 0) {
-                if ( (rc = hndl.runStatement("set timeout " + timeout)) != 0 )
+            if (timeout > 0) {
+                if ( (rc = hndl.runStatement("set maxquerytime " + timeout)) != 0 )
                     throw Comdb2Connection.createSQLException(
                             hndl.errorString(), rc, sql, hndl.getLastThrowable());
             }
@@ -181,12 +181,12 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public int getQueryTimeout() throws SQLException {
-        return timeout / 1000;
+        return timeout;
     }
 
     @Override
     public void setQueryTimeout(int seconds) throws SQLException {
-        this.timeout = seconds * 1000;
+        this.timeout = seconds;
     }
 
     @Override
