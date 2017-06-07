@@ -1999,7 +1999,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         features[n_features] = CDB2_CLIENT_FEATURES__SSL;
         n_features++;
 #endif
-        if (retries_done && hndl->master == hndl->connected_host) {
+        if ((hndl->flags & CDB2_DIRECT_CPU) || (retries_done && hndl->master == hndl->connected_host)) {
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
             n_features++;
         }
