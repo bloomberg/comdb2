@@ -33,12 +33,10 @@ case "$1" in
             chown comdb2:comdb2 $dir
             chmod 775 $dir
         done
-        rm -f /opt/bb/bin/comdb2ar && ln /opt/bb/bin/comdb2 /opt/bb/bin/comdb2ar
         rm -f /opt/bb/bin/cdb2_printlog && ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_printlog
         rm -f /opt/bb/bin/cdb2_verify && ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
         rm -f /opt/bb/bin/cdb2_dump && ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_dump
         rm -f /opt/bb/bin/cdb2_stat && ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
-        rm -f /opt/bb/bin/cdb2_sqlreplay && ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_sqlreplay
 
         echo 'PATH=$PATH:/opt/bb/bin' >> /home/comdb2/.profile
         chmod +x /home/comdb2/.profile
