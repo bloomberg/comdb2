@@ -21,6 +21,7 @@ import java.sql.Statement;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.*;
 
 /**
  * @author Rivers Zhang
@@ -66,6 +67,10 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public ResultSet executeQuery(String sql) throws SQLException {
+        return executeQuery(sql, null);
+    }
+
+    public ResultSet executeQuery(String sql, List<Integer> types) throws SQLException {
         int rc;
         String locase = sql.toLowerCase().trim();
 
@@ -118,7 +123,14 @@ public class Comdb2Statement implements Statement {
             }
         }
 
-        if ( (rc = hndl.runStatement(sql)) != 0 )
+        List<Integer> cdb2types = null;
+        if (types != null) {
+            cdb2types = new ArrayList<Integer>();
+            for (Integer elem : types)
+                cdb2types.add(Comdb2MetaData.sqlToComdb2(elem));
+        }
+
+        if ( (rc = hndl.runStatement(sql, cdb2types)) != 0 )
             throw Comdb2Connection.createSQLException(
                     hndl.errorString(), rc, sql, hndl.getLastThrowable());
 
