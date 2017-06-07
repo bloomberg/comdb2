@@ -135,4 +135,5 @@ message CDB2_SQLRESPONSE {
     repeated CDB2ServerFeatures  features = 9; // This can tell client about features enabled in comdb2
     optional string info_string = 10;
     optional int32 enable_disable_ssl = 11; //let client know to turn on/off ssl
+    optional int32 other = 12;
 }

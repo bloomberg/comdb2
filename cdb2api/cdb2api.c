@@ -3490,14 +3490,17 @@ read_record:
     }
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d response_type=%d enable_disable_ssl=%d\n", 
+        fprintf(stderr, "td %u %s line %d response_type=%d, other=%d, info_string=%s, enable_disable_ssl=%d\n", 
                 (uint32_t) pthread_self(), __func__, __LINE__, 
-                hndl->firstresponse->response_type, 
+                hndl->firstresponse->response_type,
+                hndl->firstresponse->other,
+                hndl->firstresponse->info_string,
                 hndl->firstresponse->enable_disable_ssl);
     }
 
     if(hndl->firstresponse->response_type == 7) { //server_said_turn_on_ssl()) {
 #if WITH_SSL
+        hndl->s_sslmode = PEER_SSL_REQUIRE;
         /* server wants us to use ssl so turn ssl on in same connection */
         int resp=try_ssl(hndl, hndl->sb, hndl->connected_host);
         if (resp != 0) {

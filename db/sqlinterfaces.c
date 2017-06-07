@@ -7038,8 +7038,10 @@ static void send_turnonsslresponse(struct sqlclntstate *clnt, SBUF2 *sb, int val
 
     sql_response.response_type = RESPONSE_TYPE__SSL_INFO;
     sql_response.n_value = 0;
+    sql_response.enable_disable_ssl = 0xffffffff;
+    sql_response.other = 0xffffffff;
     sql_response.error_code = 0;
-    sql_response.enable_disable_ssl = 1;
+    sql_response.info_string = "turn_ssl_on";
 
     newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE,
             &sql_response, 1 /*flush*/, malloc, __func__,
