@@ -1257,6 +1257,11 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     cdb2_ssl_sess_list *store;
     SSL_SESSION *sess;
 
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d turning on ssl\n", 
+                (uint32_t) pthread_self(), __func__, __LINE__);
+    }
+
     if (hndl->c_sslmode >= SSL_REQUIRE) {
         switch (hndl->s_sslmode) {
         case PEER_SSL_UNSUPPORTED:
@@ -3489,20 +3494,14 @@ read_record:
         PRINT_RETURN(-1);
     }
 
-    if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d response_type=%d, other=%d, info_string=%s, enable_disable_ssl=%d\n", 
-                (uint32_t) pthread_self(), __func__, __LINE__, 
-                hndl->firstresponse->response_type,
-                hndl->firstresponse->other,
-                hndl->firstresponse->info_string,
-                hndl->firstresponse->enable_disable_ssl);
-    }
 
-    if(hndl->firstresponse->response_type == 7) { //server_said_turn_on_ssl()) {
+    if(hndl->firstresponse->response_type == RESPONSE_TYPE__SSL_INFO 
+        && strcmp(hndl->firstresponse->info_string, "SSL_REQUIRE" ) == 0) {
 #if WITH_SSL
+        
         hndl->s_sslmode = PEER_SSL_REQUIRE;
         /* server wants us to use ssl so turn ssl on in same connection */
-        int resp=try_ssl(hndl, hndl->sb, hndl->connected_host);
+        int resp = try_ssl(hndl, hndl->sb, hndl->connected_host);
         if (resp != 0) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             hndl->connected_host = -1;

@@ -7031,17 +7031,15 @@ done:
     return rc;
 }
 
-static void send_turnonsslresponse(struct sqlclntstate *clnt, SBUF2 *sb, int val)
+static void send_sslrequire_response(struct sqlclntstate *clnt, SBUF2 *sb)
 {
     struct newsqlheader hdr;
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
 
     sql_response.response_type = RESPONSE_TYPE__SSL_INFO;
     sql_response.n_value = 0;
-    sql_response.enable_disable_ssl = 0xffffffff;
-    sql_response.other = 0xffffffff;
     sql_response.error_code = 0;
-    sql_response.info_string = "turn_ssl_on";
+    sql_response.info_string = "SSL_REQUIRE";
 
     newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE,
             &sql_response, 1 /*flush*/, malloc, __func__,
@@ -7284,7 +7282,7 @@ retry_read:
         }
 
         if (client_supports_ssl) {
-            send_turnonsslresponse(clnt, sb, 1);
+            send_sslrequire_response(clnt, sb);
             goto retry_read;
         }
         else {
