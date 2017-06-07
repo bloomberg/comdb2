@@ -2885,6 +2885,16 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->snapshot_offset = 0;
 }
 
+
+#define RETRY_QUERIES() do { \
+        if (hndl->debug_trace) { \
+            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t) \
+                    pthread_self(), __func__, __LINE__); \
+        } \
+        goto retry_queries; \
+    } while(0);
+
+
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
@@ -3282,23 +3292,21 @@ read_record:
         }
     }
 
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d type=%d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, type);
+    }
+
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
+        if (hndl->flags & CDB2_DIRECT_CPU) { 
+            /* direct cpu should not do anything with dbinfo */
+            RETRY_QUERIES();
+        }
         /* We got back info about nodes that might be coherent. */
         CDB2DBINFORESPONSE *dbinfo_resp = NULL;
-        char (*hosts)[MAX_NODES][64] = &hndl->hosts;
-#if WITH_SSL
-        char lochosts[MAX_NODES][64];
-        int oldsslmode = hndl->s_sslmode;
-        char lcl_conn_host[64];
-        strcpy(lcl_conn_host, hndl->hosts[hndl->connected_host]);
-        if (hndl->flags & CDB2_DIRECT_CPU) { 
-            //if direct cpu don't want hostlist in hndl->hosts
-            hosts = &lochosts;
-        }
-#endif
         dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_resp, *hosts, hndl->ports,
+        parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports,
                          &hndl->master, &hndl->num_hosts,
                          &hndl->num_hosts_sameroom
 #if WITH_SSL
@@ -3306,35 +3314,9 @@ read_record:
 #endif
                          );
         cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
-#if WITH_SSL
-        if(oldsslmode == hndl->s_sslmode) {
-#endif
-            newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->connected_host = -1;
-        } else {
-#if WITH_SSL
-            /* server wants us to use ssl so turn ssl on in same connection */
-            int resp=try_ssl(hndl, hndl->sb, hndl->connected_host);
-            if (resp != 0) {
-                newsql_disconnect(hndl, hndl->sb, __LINE__);
-                hndl->connected_host = -1;
-            }
-            else if(!(hndl->flags & CDB2_DIRECT_CPU) ) {
-#endif
-                /* remap new hosts to connected_host */
-                for(int i = 0; i < hndl->num_hosts; i++) {
-                    if(strcmp(lcl_conn_host, hndl->hosts[i]) == 0) {
-                        hndl->connected_host = i;
-                        hndl->hosts_connected[i] = 1;
-                    } else {
-                        hndl->hosts_connected[i] = 0;
-                    }
-                }
-#if WITH_SSL
-            }
-#endif
-        }
 
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
+        hndl->connected_host = -1;
         hndl->retry_all = 1;
 
 #if WITH_SSL
@@ -3348,14 +3330,8 @@ read_record:
         }
 #endif
 
-
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
-                    pthread_self(), __func__, __LINE__);
-        }
-
-        goto retry_queries;
-    }
+        RETRY_QUERIES();
+    } 
 
     if (rc) {
         if (err_val) {
@@ -3511,6 +3487,26 @@ read_record:
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
         PRINT_RETURN(-1);
+    }
+
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d response_type=%d enable_disable_ssl=%d\n", 
+                (uint32_t) pthread_self(), __func__, __LINE__, 
+                hndl->firstresponse->response_type, 
+                hndl->firstresponse->enable_disable_ssl);
+    }
+
+    if(hndl->firstresponse->response_type == 7) { //server_said_turn_on_ssl()) {
+#if WITH_SSL
+        /* server wants us to use ssl so turn ssl on in same connection */
+        int resp=try_ssl(hndl, hndl->sb, hndl->connected_host);
+        if (resp != 0) {
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            hndl->connected_host = -1;
+        }
+        RETRY_QUERIES();
+#endif
+
     }
 
     if (using_hint) {

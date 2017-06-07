@@ -7031,12 +7031,25 @@ done:
     return rc;
 }
 
-static void send_dbinforesponse(SBUF2 *sb)
+static void send_turnonsslresponse(struct sqlclntstate *clnt, SBUF2 *sb, int val)
 {
     struct newsqlheader hdr;
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-    CDB2DBINFORESPONSE *dbinfo_response;
-    dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
+
+    sql_response.response_type = RESPONSE_TYPE__SSL_INFO;
+    sql_response.n_value = 0;
+    sql_response.error_code = 0;
+    sql_response.enable_disable_ssl = 1;
+
+    newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE,
+            &sql_response, 1 /*flush*/, malloc, __func__,
+            __LINE__);
+}
+
+static void send_dbinforesponse(SBUF2 *sb)
+{
+    struct newsqlheader hdr;
+    CDB2DBINFORESPONSE *dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
     cdb2__dbinforesponse__init(dbinfo_response);
 
     fill_dbinfo(dbinfo_response, thedb->bdb_env);
@@ -7269,7 +7282,7 @@ retry_read:
         }
 
         if (client_supports_ssl) {
-            send_dbinforesponse(sb);
+            send_turnonsslresponse(clnt, sb, 1);
             goto retry_read;
         }
         else {
