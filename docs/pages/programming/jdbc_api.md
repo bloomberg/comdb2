@@ -288,6 +288,48 @@ jdbc:comdb2//<hostname>/<database>?trust_store=<path/to/jks>&trust_store_passwor
 ```
 
 
+## Comdb2 Extensions to the JDBC API
+
+### Executing Typed Queries
+
+A typed query gives applications more control over return types.
+The database will coerce the types of the resulting columns to the types specified by the application.
+If the types aren’t compatible, an exception will be thrown.
+
+To access the extension, you would need to cast the `java.sql.Statement` object to `com.bloomberg.comdb2.jdbc.Comdb2Statement`.
+For example:
+
+```java
+conn = DriverManager.getConnection("jdbc:comdb2:/localhost/testdb");
+stmt = conn.createStatement();
+comdb2stmt = (Comdb2Statement)stmt;
+String sql = "select now()";
+rset = comdb2stmt.executeQuery(sql, Arrays.asList(java.sql.Types.VARCHAR));
+```
+
+In the example above, the row will come back as a `java.lang.String` instead of a `java.sql.TIMESTAMP`.
+
+
+### Using Intervals
+
+JDBC standard does not define data types for intervals. You could work it around using Comdb2 interval types.
+For example, to bind an INTERVALDS (interval day to second) value, you would use:
+
+```
+// Load driver, get connection and create a parepared statement...
+// bind an interval year-month (+3 mon)
+stmt.setObject(1, new Cdb2Types.IntervalYearMonth(1, 0, 3));
+```
+
+### Using Named Parameters for PreparedStatement
+
+Comdb2 has built-in support for named parameters. You would simply use `@param_name` instead of `?` in your queries:
+
+```
+PreparedStatement stmt = conn.prepareStatement("insert into employee values (@id, @firstname, @lastname)");
+```
+
+
 ## Java and Comdb2 Types
 
 The table below shows the conversions between Java and Comdb2 types.
