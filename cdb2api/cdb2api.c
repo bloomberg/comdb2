@@ -1231,7 +1231,7 @@ static int send_reset(SBUF2 *sb)
 }
 
 #if WITH_SSL
-static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
+static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 {
     /*
      *                   |<---------------- CLIENT ---------------->|
@@ -1483,7 +1483,7 @@ retry_newsql_connect:
     }
 
 #if WITH_SSL
-    if (try_ssl(hndl, fd, sb, indx) != 0) {
+    if (try_ssl(hndl, sb, indx) != 0) {
         sbuf2close(sb);
         return -1;
     }
@@ -1727,6 +1727,15 @@ retry:
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
     hndl->ack = (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_PING);
+
+    /* Server requires SSL. Return the header type in `type'.
+       We may reach here under DIRECT_CPU mode where we skip DBINFO lookup. */
+    if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+        if (type == NULL)
+            return -1;
+        *type = hdr.type;
+        return 0;
+    }
 
     if (hdr.length == 0)
         goto retry;
@@ -3254,6 +3263,14 @@ read_record:
             fprintf(stderr, "td %u reading response from %s line %d rc=%d\n", 
                     (uint32_t) pthread_self(), host, __LINE__, rc, type);
         }
+    }
+
+    if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+        hndl->s_sslmode = PEER_SSL_REQUIRE;
+        try_ssl(hndl, hndl->sb, hndl->connected_host);
+        /* Decrement retry counter: It is not a real retry. */
+        --retries_done;
+        goto retry_queries;
     }
 
     /* Dbinfo .. go to new node */
