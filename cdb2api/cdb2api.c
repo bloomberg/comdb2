@@ -1303,7 +1303,6 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 
     if ((rc = cdb2_init_ssl(1, 1)) != 0) {
         hndl->sslerr = 1;
-        printf("sbuf2fwrite: rc %d \n", rc);
         return rc;
     }
 
@@ -1314,11 +1313,9 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     hdr.length = 0;
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
     if (rc != 1) {
-        printf("sbuf2fwrite: rc %d \n", rc);
         return -1;
     }
     if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
-        printf("sbuf2flus: rc %d \n", rc);
         return rc;
     }
 
@@ -1340,7 +1337,6 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
                      hndl->num_hosts, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
-        printf("ssl_new_ctx: rc %d \n", rc);
         return -1;
     }
 
@@ -1355,7 +1351,6 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sess = NULL;
-        printf("SSL_CTX_free: rc %d \n", rc);
         return -1;
     }
 
@@ -3326,7 +3321,7 @@ read_record:
 
 #if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
-        if ( !(hndl->flags & CDB2_DIRECT_CPU) && hndl->sess_list != NULL) {
+        if (hndl->sess_list != NULL) {
             cdb2_ssl_sess_list *sl = hndl->sess_list;
             for (int i = 0; i != sl->n; ++i)
                 SSL_SESSION_free(sl->list[i].sess);
