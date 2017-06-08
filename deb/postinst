@@ -42,6 +42,9 @@ case "$1" in
         chmod +x /home/comdb2/.profile
         chown comdb2:comdb2 /home/comdb2/.profile
         if [ ! -e /.dockerenv ]; then
+            cp /opt/bb/lib/systemd/system/pmux.service /lib/systemd/system/
+            cp /opt/bb/lib/systemd/system/cdb2sockpool.service /lib/systemd/system/
+            cp /opt/bb/lib/systemd/system/supervisor_cdb2.service /lib/systemd/system/
             systemctl daemon-reload
             systemctl stop pmux
             systemctl start pmux

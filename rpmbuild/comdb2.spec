@@ -70,9 +70,13 @@ ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
 ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
 
 cp /opt/bb/usr/local/lib/pkgconfig/cdb2api.pc /usr/local/lib/pkgconfig/cdb2api.pc
-cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
+cp /opt/bb/lib/systemd/system/pmux.service /lib/systemd/system/
+cp /opt/bb/lib/systemd/system/cdb2sockpool.service /lib/systemd/system/
+cp /opt/bb/lib/systemd/system/supervisor_cdb2.service /lib/systemd/system/
+
 systemctl daemon-reload
 if [ ! -e /.dockerenv ]; then
+
     systemctl stop pmux
     systemctl start pmux
     systemctl enable supervisor_cdb2

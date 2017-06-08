@@ -30,13 +30,14 @@ cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
 cdb2sql: $(cdb2sql_OBJS)
 	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
 
-cdb2replay_SRC=cdb2_sqlreplay.cpp
-cdb2replay_OBJS:=$(patsubst %.cpp,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
+cdb2replay_OBJS:=tools/cdb2_sqlreplay/cdb2_sqlreplay.o
 cdb2replay_CFLAGS=-Icson
 cdb2replay_LDLIBS=-Lcson -lcson -Lcdb2api -l:libcdb2api.a -Lprotobuf   \
                   -lssl -lcrypto -lz -lpthread
-$(cdb2replay_OBJS): $(patsubst %.cpp,tools/cdb2_sqlreplay/%.cpp,$(cdb2replay_SRC))
+
+$(cdb2replay_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(cdb2replay_CFLAGS) $(CXX11FLAGS) -c $< -o $@
+
 cdb2_sqlreplay: $(cdb2replay_OBJS)
 	$(CXX11) $(tools_CPPFLAGS) $(LDFLAGS) $< $(cdb2replay_LDLIBS) -o $@
 
