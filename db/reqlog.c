@@ -1240,7 +1240,7 @@ int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s)
             }
             event->event_flag = event_flag;
             event->length = -1; /* to indicate length is unknown */
-            strcpy(event->text, s);
+            event->text = strdup(s);
             reqlog_append_event(logger, EVENT_PRINT, event);
         }
         if (logger->dump_mask & event_flag) {
