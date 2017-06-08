@@ -12,12 +12,13 @@ these for you, but installing from source requires a bit of manual work.
   Comdb2 as an experiment, you can run it now as 'pmux -l'.  If you'd like it
   to run persistently, we provided a service file in 
 
-  /lib/systemd/system/pmux.service
+  /opt/bb/lib/systemd/system/pmux.service
 
   You'll need to edit the User= line to reflect the user that you'll want to
   use for running databases.  pmux can be installed to start automatically 
   with:
 
+  sudo cp /opt/bb/lib/systemd/system/pmux.service /lib/systemd/system/pmux.service
   sudo systemctl daemon-reload
   sudo systemctl enable pmux
   sudo systemctl start pmux
@@ -29,11 +30,12 @@ these for you, but installing from source requires a bit of manual work.
   and the install will not interfere with other installs of supervisord on 
   your machine.  A sample config file is provided in
 
-  /lib/systemd/system/supervisor_cdb2.service
+  /opt/bb/lib/systemd/system/supervisor_cdb2.service
 
   Please edit the 'User=' line to set the user that'll be running databases. 
   You can configure it to start automatically with:
 
+  sudo cp /opt/bb/lib/systemd/system/supervisor_cdb2.service /lib/systemd/system/supervisor_cdb2.service
   sudo systemctl daemon-reload
   sudo systemctl enable supervisor_cdb2
   sudo systemctl start supervisor_cdb2

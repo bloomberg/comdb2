@@ -101,7 +101,7 @@ install: all
 	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
 	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
 	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay || true
+	install -D cdb2_sqlreplay $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay
 	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
 	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
 	install -D comdb2ar $(DESTDIR)$(PREFIX)/bin/comdb2ar
