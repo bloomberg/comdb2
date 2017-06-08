@@ -1,5 +1,6 @@
 all: basicops $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh))
 
+basictests: basicops $(patsubst %.basictest,%,$(shell ls -1d *.basictest))
 
 export TESTSROOTDIR:=$(shell pwd)
 
@@ -49,6 +50,8 @@ tools:
 
 $(patsubst %.test,%,$(shell ls -d *.test | grep -v crle)): basicops tools
 
+$(patsubst %.basictest,%,$(shell ls -d *.basictest | grep -v crle)): basicops tools
+
 crle: basicops_nokey tools
 	@$(MAKE) -sC crle.test
 
@@ -56,6 +59,12 @@ crle: basicops_nokey tools
 	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
+
+%: %.basictest
+	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running $< $$N/${TOTAL}
+	@cp -r $< $(TESTDIR)/
+	@$(MAKE) -skC $(TESTDIR)/$<
+
 
 %.clean: %.test
 	+$(MAKE) -C $(patsubst %.clean,%,$<) clean
