@@ -237,6 +237,20 @@ void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
     MD5Final(db->fingerprint, &c);
 }
 
+void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError) {
+    MD5Context c;
+
+    if (!db->should_fingerprint)
+        return;
+
+    MD5Init(&c);
+    fingerprintSrcList(db, &c, pTabList);
+    fingerprintExprList(db, &c, pChanges);
+    fingerprintExpr(db, &c, pWhere);
+    MD5Update(&c, (u8*) &onError, sizeof(int));
+    MD5Final(db->fingerprint, &c);
+}
+
 
 /*
 ** Delete all the content of a Select structure.  Deallocate the structure

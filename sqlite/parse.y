@@ -1101,6 +1101,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "UPDATE");
   sqlite3Update(pParse,X,Y,W,R);
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -1110,6 +1111,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   sqlite3Update(pParse,X,Y,W,R);
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
 }
 %endif
 
