@@ -141,8 +141,8 @@ docker-build: build-build-container
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
 	docker run --user $(shell id -u):$(shell id -g) \
 		--env HOME=/tmp \
-		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
-		-v $(realpath $(SRCHOME)):/comdb2.build \
+		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2:Z \
+		-v $(realpath $(SRCHOME)):/comdb2.build:Z \
 		-w /comdb2.build \
 		comdb2-build:$(VERSION) \
         make DESTDIR=/comdb2 -j3 install
