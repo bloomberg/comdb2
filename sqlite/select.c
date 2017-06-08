@@ -65,6 +65,7 @@ struct SortCtx {
 static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p);
 static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p);
 static void fingerprintExprList(sqlite3 *db, MD5Context *c, ExprList *l);
+static void fingerprintWith(sqlite3 *db, MD5Context *c, With *pWith);
 
 static void fingerprintExprList(sqlite3 *db, MD5Context *c, ExprList *l) {
   int i;
@@ -87,27 +88,78 @@ static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
     if (p == NULL)
         return;
 
-  // printf("op %d flags %x iTable %d iColumn %d op2 %d\n", (int) p->op, p->flags, p->iTable, p->iColumn, (int) p->op2);
-  MD5Update(c, (const unsigned char*) &p->op, sizeof(u8));
-  MD5Update(c, (const unsigned char*) &p->flags, sizeof(u32));
-  MD5Update(c, (const unsigned char*) &p->iTable, sizeof(int));
-  MD5Update(c, (const unsigned char*) &p->iColumn, sizeof(ynVar));
-  MD5Update(c, (const unsigned char*) &p->iAgg, sizeof(i16));
-  MD5Update(c, (const unsigned char*) &p->iRightJoinTable, sizeof(i16));
-  MD5Update(c, (const unsigned char*) &p->op2, sizeof(u8));
-  fingerprintTable(db, c, p->pTab);
+    // printf("op %d flags %x iTable %d iColumn %d op2 %d\n", (int) p->op, p->flags, p->iTable, p->iColumn, (int) p->op2);
+    MD5Update(c, (const unsigned char*) &p->op, sizeof(u8));
+    MD5Update(c, (const unsigned char*) &p->flags, sizeof(u32));
+    MD5Update(c, (const unsigned char*) &p->iTable, sizeof(int));
+    MD5Update(c, (const unsigned char*) &p->iColumn, sizeof(ynVar));
+    MD5Update(c, (const unsigned char*) &p->iAgg, sizeof(i16));
+    MD5Update(c, (const unsigned char*) &p->iRightJoinTable, sizeof(i16));
+    MD5Update(c, (const unsigned char*) &p->op2, sizeof(u8));
+    fingerprintTable(db, c, p->pTab);
 
-  if (p == NULL)
-    return;
-  if( !ExprHasProperty(p, (EP_TokenOnly)) ){
-    if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
-    fingerprintExpr(db, c, p->pRight);
-    if( ExprHasProperty(p, EP_xIsSelect) ){
-      fingerprintSelectInt(db, c, p->x.pSelect);
-    }else{
-      fingerprintExprList(db, c, p->x.pList);
+    if( !ExprHasProperty(p, (EP_TokenOnly)) ){
+        if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
+        fingerprintExpr(db, c, p->pRight);
+        if( ExprHasProperty(p, EP_xIsSelect) ){
+            fingerprintSelectInt(db, c, p->x.pSelect);
+        }else{
+            fingerprintExprList(db, c, p->x.pList);
+        }
     }
-  }
+}
+
+static void fingerprintBitmask(sqlite3 *db, MD5Context *c, Bitmask b) {
+#ifdef SQLITE_BITMASK_TYPE
+    MD5Update(c, (u8*) &b, sizeof(SQLITE_BITMASK_TYPE));
+#else
+    MD5Update(c, (u8*) &b, sizeof(u64));
+#endif
+}
+
+static void fingerprintIdList(sqlite3 *db, MD5Context *c, IdList *l) {
+    int i;
+
+    if (l == NULL)
+        return;
+
+    for (i = 0; i < l->nId; i++) {
+        if (l->a[i].zName)
+            MD5Update(c, l->a[i].zName, strlen(l->a[i].zName));
+        MD5Update(c, (u8*) &l->a[i].idx, sizeof(int));
+    }
+}
+
+static void fingerprintSrcListItem(sqlite3 *db, MD5Context *c, struct SrcList_item *src) {
+    /* TODO: src->Schema - select ... from a.tbl,   select .. from tbl   are different */
+    if (src->zDatabase)
+        MD5Update(c, src->zDatabase, strlen(src->zDatabase));
+    if (src->zName)
+        MD5Update(c, src->zName, strlen(src->zName));
+    /* alias part - skip?  select a as b   same as select ? */
+    if (src->pSelect)
+        fingerprintSelectInt(db, c, src->pSelect);
+    MD5Update(c, (u8*) &src->addrFillSub, sizeof(int));
+    MD5Update(c, (u8*) &src->regReturn, sizeof(int));
+    MD5Update(c, (u8*) &src->regResult, sizeof(int));
+    MD5Update(c, (u8*) &src->fg, sizeof(src->fg));
+    MD5Update(c, (u8*) &src->iCursor, sizeof(src->iCursor));
+    fingerprintExpr(db, c, src->pOn);
+    fingerprintIdList(db, c, src->pUsing);
+    fingerprintBitmask(db, c, src->colUsed);
+    if (src->fg.isIndexedBy)
+        MD5Update(c, src->u1.zIndexedBy, strlen(src->u1.zIndexedBy));
+    else if (src->fg.isTabFunc)
+        fingerprintExprList(db, c, src->u1.pFuncArg);
+}
+
+static void fingerprintSrcList(sqlite3 *db, MD5Context *c, SrcList *src) {
+    int i;
+    if (src == NULL)
+        return;
+    for (i = 0; i < src->nSrc; i++) {
+        fingerprintSrcListItem(db, c, &src->a[i]);
+    }
 }
 
 static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
@@ -115,12 +167,14 @@ static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
         return;
     fingerprintExprList(db, c, p->pEList);
     fingerprintExpr(db, c, p->pWhere);
+    fingerprintSrcList(db, c, p->pSrc);
     fingerprintExprList(db, c, p->pGroupBy);
     fingerprintExpr(db, c, p->pHaving);
     fingerprintExprList(db, c, p->pOrderBy);
     fingerprintSelectInt(db, c, p->pNext);
     fingerprintExpr(db, c, p->pLimit);
     fingerprintExpr(db, c, p->pOffset);
+    fingerprintWith(db, c, p->pWith);
 }
 
 /* This is just like clearSelect, except we recursively checksum all
@@ -128,12 +182,45 @@ static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
 void sqlite3FingerprintSelect(sqlite3 *db, Select *p) {
     MD5Context c;
 
+    if (!db->should_fingerprint)
+        return;
+
     MD5Init(&c);
     fingerprintSelectInt(db, &c, p);
     MD5Final(db->fingerprint, &c);
 }
 
+static void fingerprintWith(sqlite3 *db, MD5Context *c, With *pWith) {
+    int i;
+    if (pWith == NULL)
+        return;
+    for (i = 0; i < pWith->nCte; i++) {
+        MD5Update(c, pWith->a[i].zName, strlen(pWith->a[i].zName));
+        fingerprintExprList(db, c, pWith->a[i].pCols);
+        /* we don't do pWith->a[i].pSelect - we expect fingerprintSelectInt to
+           be called on the corresponding select which will point back to us */
+    }
+}
 
+static void fingerprintInsertInt(sqlite3 *db, MD5Context *c, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {
+    fingerprintSrcList(db,c, pTabList);
+    fingerprintSelectInt(db, c, pSelect);
+    fingerprintIdList(db, c, pColumn);
+    fingerprintWith(db, c, pWith);
+}
+
+/* Why isn't this in insert.c?  Because Insert doesn't introduce any new structures 
+   that aren't already processed here */
+void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {
+    MD5Context c;
+
+    if (!db->should_fingerprint)
+        return;
+
+    MD5Init(&c);
+    fingerprintInsertInt(db, &c, pTabList, pSelect, pColumn, pWith);
+    MD5Final(db->fingerprint, &c);
+}
 
 /*
 ** Delete all the content of a Select structure.  Deallocate the structure

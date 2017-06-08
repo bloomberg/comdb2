@@ -715,8 +715,7 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
   sqlite3Select(pParse, X, &dest);
-  if (pParse->db->should_fingerprint)
-      sqlite3FingerprintSelect(pParse->db, X);
+  sqlite3FingerprintSelect(pParse->db, X);
   sqlite3SelectDelete(pParse->db, X);
 }
 
@@ -1134,12 +1133,14 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S). {
   sqlite3WithPush(pParse, W, 1);
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
   sqlite3Insert(pParse, X, S, F, R);
 }
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3WithPush(pParse, W, 1);
-  sqlite3Insert(pParse, X, 0, F, R);
+  sqlite3FingerprintInsert(pParse->db, X, NULL, F, W);
+  sqlite3Insert(pParse, X, NULL, F, R);
 }
 
 %type insert_cmd {int}

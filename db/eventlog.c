@@ -19,13 +19,13 @@
 static char* eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 1024*1024*1024;
-static int eventlog_enabled = 0;
+static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static gzFile eventlog_open(const char *fname);
+static gzFile eventlog_open(void);
 int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
@@ -44,10 +44,14 @@ static hash_t *seen_sql;
 void eventlog_init(const char *dbname) {
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
+    if (eventlog_enabled)
+        eventlog = eventlog_open();
 }
 
-static gzFile eventlog_open(const char *fname) {
+static gzFile eventlog_open() {
+    char *fname = eventlog_fname(thedb->envname);
     gzFile f = gzopen(fname, "2w");
+    free(fname);
     if (f == NULL) {
         eventlog_enabled = 0;
         return NULL;
@@ -264,10 +268,8 @@ void eventlog_add(const struct reqlogger *logger) {
 }
 
 static void eventlog_roll(void) {
-    char *fname = eventlog_fname(thedb->envname);
     eventlog_close();
-    eventlog = eventlog_open(fname);
-    free(fname);
+    eventlog = eventlog_open();
 }
 
 static void eventlog_enable(void) {
