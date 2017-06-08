@@ -1227,16 +1227,24 @@ int reqlog_logf(struct reqlogger *logger, unsigned event_flag, const char *fmt,
     return 0;
 }
 
-/* Log a string literal. Wrapper for logf */
+/* Log a string literal. */
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s)
 {
     if (logger && (logger->mask & event_flag)) {
-        if ((logger->dump_mask & event_flag) &&
-            ((logger->event_mask & event_flag) == 0)) {
-            /* Just dump, don't bother allocating */
-	  logmsg(LOGMSG_ERROR, NULL, s, strlen(s));
-        } else if (logger->event_mask & event_flag) {
-            reqlog_logf(logger, event_flag, s);
+        if (logger->event_mask & event_flag) {
+            struct print_event *event;
+            event = malloc(sizeof(struct print_event));
+            if (!event) {
+                logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+                return -1;
+            }
+            event->event_flag = event_flag;
+            event->length = -1; /* to indicate length is unknown */
+            strcpy(event->text, s);
+            reqlog_append_event(logger, EVENT_PRINT, event);
+        }
+        if (logger->dump_mask & event_flag) {
+            dump(logger, NULL, s, strlen(s));
         }
     }
     return 0;
