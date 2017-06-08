@@ -118,10 +118,8 @@ public class Comdb2MetaData implements ResultSetMetaData {
         return "";
     }
 
-    @Override
-    public int getColumnType(int column) throws SQLException {
-        --column; /* zero-based */
-        switch (hndl.columnType(column)) {
+    public static int comdb2ToSql(int type) {
+        switch (type) {
             case Types.CDB2_INTEGER:
                 return java.sql.Types.BIGINT;
             case Types.CDB2_REAL:
@@ -133,9 +131,69 @@ public class Comdb2MetaData implements ResultSetMetaData {
                 return java.sql.Types.TIMESTAMP;
             case Types.CDB2_BLOB:
                 return java.sql.Types.BLOB;
-            default:
-                return java.sql.Types.OTHER;
         }
+        return java.sql.Types.OTHER;
+    }
+
+    public static int sqlToComdb2(int type) {
+        switch (type) {
+            case java.sql.Types.BIGINT:
+            case java.sql.Types.BOOLEAN:
+            case java.sql.Types.INTEGER:
+            case java.sql.Types.SMALLINT:
+            case java.sql.Types.TINYINT:
+                return Types.CDB2_INTEGER;
+
+            case java.sql.Types.DOUBLE:
+            case java.sql.Types.FLOAT:
+            case java.sql.Types.REAL:
+                return Types.CDB2_REAL;
+
+            case java.sql.Types.ARRAY:
+            case java.sql.Types.BINARY:
+            case java.sql.Types.BIT:
+            case java.sql.Types.BLOB:
+            case java.sql.Types.CLOB:
+            case java.sql.Types.DATALINK:
+            case java.sql.Types.JAVA_OBJECT:
+            case java.sql.Types.LONGVARBINARY:
+            case java.sql.Types.NCLOB:
+            case java.sql.Types.VARBINARY:
+                return Types.CDB2_BLOB;
+
+            case java.sql.Types.DATE:
+            case java.sql.Types.TIME:
+                /* Date and Time are millisecond precision. */
+                return Types.CDB2_DATETIME;
+            case java.sql.Types.TIMESTAMP:
+                /* Date and Time are nanosecond precision. */
+                return Types.CDB2_DATETIMEUS;
+
+            case java.sql.Types.CHAR:
+            case java.sql.Types.DECIMAL:
+            case java.sql.Types.DISTINCT:
+            case java.sql.Types.LONGNVARCHAR:
+            case java.sql.Types.LONGVARCHAR:
+            case java.sql.Types.NCHAR:
+            case java.sql.Types.NULL:
+            case java.sql.Types.NUMERIC:
+            case java.sql.Types.NVARCHAR:
+            case java.sql.Types.OTHER:
+            case java.sql.Types.REF:
+            case java.sql.Types.ROWID:
+            case java.sql.Types.SQLXML:
+            case java.sql.Types.STRUCT:
+            case java.sql.Types.VARCHAR:
+                return Types.CDB2_CSTRING;
+        }
+        return Types.CDB2_CSTRING;
+    }
+
+
+    @Override
+    public int getColumnType(int column) throws SQLException {
+        --column; /* zero-based */
+        return comdb2ToSql(hndl.columnType(column));
     }
 
     @Override
