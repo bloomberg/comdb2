@@ -7273,9 +7273,12 @@ retry_read:
             }
         }
 
-        if (client_supports_ssl)
-            send_dbinforesponse(sb);
-        else {
+        if (client_supports_ssl) {
+            newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL,
+                                  NULL, 1 , malloc, __func__, __LINE__);
+            /* Client is going to reuse the connection. Don't drop it. */
+            goto retry_read;
+        } else {
             char *err = "The database requires SSL connections.";
             struct fsqlresp resp;
             bzero(&resp, sizeof(resp));

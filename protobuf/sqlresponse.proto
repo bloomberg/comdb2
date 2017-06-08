@@ -77,6 +77,7 @@ enum ResponseHeader {
    SQL_RESPONSE_PING = 1007; // SQL_RESPONSE + requesting ack
    SQL_RESPONSE_PONG = 1008;
    SQL_RESPONSE_TRACE = 1009;
+   SQL_RESPONSE_SSL = 1010; // SSL header + empty payload to trigger client SSL
 }
 
 enum ResponseType {
