@@ -1595,7 +1595,7 @@ int sql_cancelled_transaction(struct ireq *iq)
 {
     int rc;
 
-    logmsg(LOGMSG_WARN, "%s: cancelled transaction\n", __func__);
+    logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     rc = osql_bplog_free(iq, 1, __func__, NULL, 0);
 
     if (iq->p_buf_orig) {
