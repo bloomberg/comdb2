@@ -6,6 +6,7 @@
   [clojure.java.io :as io]
   [clojure.string :as str]
   [clojure.pprint :refer [pprint]]
+  [jepsen.checker.timeline  :as timeline]
   [jepsen [client :as client]
     [core :as jepsen]
     [db :as db]
@@ -17,6 +18,7 @@
     [util :refer [timeout meh]]
     [generator :as gen]]
   [knossos.op :as op]
+  [knossos.model :as model]
   [clojure.java.jdbc :as j]))
 
 (java.sql.DriverManager/registerDriver (com.bloomberg.comdb2.jdbc.Driver.))
@@ -264,7 +266,7 @@
           (->> {:type :invoke, :f :read, :value nil}
            gen/once
            gen/clients))
-          :checker (checker/compose
+  :checker (checker/compose
           {:perf (checker/perf)
           :set checker/set})}))
 
@@ -280,7 +282,8 @@
                   (->> (gen/mix [bank-read bank-diff-transfer])
                        (gen/clients)
                        (gen/stagger 1/10)
-                       (gen/time-limit 100))
+                       (gen/time-limit 100)
+                       with-nemesis)
                   (gen/log "waiting for quiescence")
                   (gen/sleep 10)
                   (gen/clients (gen/once bank-read)))
@@ -350,6 +353,58 @@
      (assoc op :type :fail :reason (.getMessage e)))))
 
   (teardown! [_ test]))
+
+
+
+(defn comdb2-cas-register-client
+  "Comdb2 register client"
+  [node]
+  (reify client/Client
+    (setup! [this test node] 
+      (j/with-db-connection [c conn-spec]
+        (do
+          (j/delete! c :register ["1 = 1"])
+          (comdb2-cas-register-client node))))
+
+    (invoke! [this test op]
+
+      (j/with-db-connection [c conn-spec]
+        (do
+          (j/query c ["set hasql on"])
+          (j/query c ["set transaction serializable"])
+          (j/query c ["set max_retries 100000"])
+          (try
+            (j/with-db-transaction [c c]
+
+              (let [id   (first (:value op))
+                    val' (second (:value op))
+                    val  (-> c
+                             (j/query ["select val from register where id = ?"
+                                       id] :row-fn :val)
+                             first)]
+                (case (:f op)
+                  :read (assoc op :type :ok, :value (independent/tuple id val))
+
+                  :write (do
+                           (if (nil? val)
+                             (j/insert! c :register {:id id :val val'})
+                             (j/update! c :register {:val val'} ["id = ?" id]))
+                           (assoc op :type :ok))
+
+                  :cas (let [[expected-val new-val] val'
+                             cnt (j/update! c :register {:val new-val}
+                                            ["id = ? and val = ?"
+                                             id expected-val])]
+                         (assoc op :type (if (zero? (first cnt))
+                                           :fail
+                                           :ok))))))))))
+    (teardown! [_ test])))
+
+
+; Maybe make the register time % 10?
+(defn r   [_ _] {:type :invoke, :f :read, :value [1 nil]})
+(defn w   [_ _] {:type :invoke, :f :write, :value [1 (rand-int 5)]})
+(defn cas [_ _] {:type :invoke, :f :cas, :value [1 [(rand-int 5) (rand-int 5)]]})
 
 (defn client
   [n]
@@ -428,3 +483,53 @@
                 {:perf (checker/perf)
                  :dirty-reads (dirty-reads-checker)
                  :linearizable (independent/checker checker/linearizable)})}))
+
+
+(defn register-tester
+  [opts]
+  (basic-test
+    (merge
+      {:name        "register"
+       :client      (comdb2-cas-register-client nil)
+       :concurrency 10
+
+       :generator   (gen/phases
+                      (->> (gen/mix [w cas r])
+                           (gen/clients)
+                           (gen/stagger 1/10)
+                           (gen/time-limit 100))
+                      (gen/log "waiting for quiescence")
+                      (gen/sleep 10))
+       :model       (model/cas-register 0)
+       :time-limit   100
+       :recovery-time  30
+       :checker     (checker/compose
+                      {:perf  (checker/perf)
+                       :linearizable checker/linearizable}) }
+      opts)))
+
+
+(defn register-tester-nemesis
+  [opts]
+  (basic-test
+    (merge
+      {:name        "register"
+       :client      (comdb2-cas-register-client nil)
+       :concurrency 10
+
+       :generator   (gen/phases
+                      (->> (gen/mix [w cas r])
+                           (gen/clients)
+                           (gen/stagger 1/10)
+                           (gen/time-limit 100)
+                           with-nemesis)
+                      (gen/log "waiting for quiescence")
+                      (gen/sleep 10))
+       :model       (model/cas-register 0)
+       :time-limit   100
+       :recovery-time  30
+       :checker     (checker/compose
+                      {:perf  (checker/perf)
+                       :linearizable checker/linearizable}) }
+      opts)))
+
