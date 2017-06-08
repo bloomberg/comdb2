@@ -222,6 +222,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
             fingerprint[i*2+1] = hexchars[logger->fingerprint[i] & 0x0f];
         }
         cson_object_set(obj, "fingerprint", cson_value_new_string(fingerprint, 32));
+        // printf("%s -> %.*s\n", logger->stmt, sizeof(fingerprint), fingerprint);
     }
 
     cson_object_set(obj, "duration", cson_new_int(logger->durationms));

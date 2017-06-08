@@ -96,7 +96,8 @@ static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
     MD5Update(c, (const unsigned char*) &p->iAgg, sizeof(i16));
     MD5Update(c, (const unsigned char*) &p->iRightJoinTable, sizeof(i16));
     MD5Update(c, (const unsigned char*) &p->op2, sizeof(u8));
-    fingerprintTable(db, c, p->pTab);
+    if (p->iTable == TK_COLUMN)
+        fingerprintTable(db, c, p->pTab);
 
     if( !ExprHasProperty(p, (EP_TokenOnly)) ){
         if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
@@ -209,6 +210,8 @@ static void fingerprintInsertInt(sqlite3 *db, MD5Context *c, SrcList *pTabList, 
     fingerprintWith(db, c, pWith);
 }
 
+#include <fsnapf.h>
+
 /* Why isn't this in insert.c?  Because Insert doesn't introduce any new structures 
    that aren't already processed here */
 void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {
@@ -221,6 +224,19 @@ void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, I
     fingerprintInsertInt(db, &c, pTabList, pSelect, pColumn, pWith);
     MD5Final(db->fingerprint, &c);
 }
+
+void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
+    MD5Context c;
+
+    if (!db->should_fingerprint)
+        return;
+
+    MD5Init(&c);
+    fingerprintSrcList(db, &c, pTabList);
+    fingerprintExpr(db, &c, pWhere);
+    MD5Final(db->fingerprint, &c);
+}
+
 
 /*
 ** Delete all the content of a Select structure.  Deallocate the structure
