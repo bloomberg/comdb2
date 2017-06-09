@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -84,6 +84,8 @@ static int allow_pmux_route = 0;
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 #define MAX_NODES 16
+#define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
+#define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -549,6 +551,16 @@ static int cdb2_tcpconnecth_to(const char *host, int port, int myport,
     return cdb2_do_tcpconnect(in, port, myport, timeoutms);
 }
 
+struct context_messages {
+    char *message[MAX_CONTEXTS];
+    int count;
+    int has_changed;
+};
+
+/* Forward declarations. */
+static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl);
+static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
+
 /* Make it equal to FSQL header. */
 struct newsqlheader {
     int type;
@@ -651,6 +663,7 @@ struct cdb2_hndl {
     char *ca;
     cdb2_ssl_sess_list *sess_list;
 #endif
+    struct context_messages context_msgs;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -2040,6 +2053,13 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         sqlquery.skip_rows = skip_nrows;
     }
 
+    if (hndl->context_msgs.has_changed == 1 && hndl->context_msgs.count > 0) {
+        sqlquery.n_context = hndl->context_msgs.count;
+        sqlquery.context = hndl->context_msgs.message;
+        /* Reset the has_changed flag. */
+        hndl->context_msgs.has_changed = 0;
+    }
+
     int len = cdb2__query__get_packed_size(&query);
     unsigned char *buf = malloc(len + 1);
 
@@ -2391,6 +2411,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         free(hndl->hint);
 
     cdb2_clearbindings(hndl);
+    cdb2_free_context_msgs(hndl);
 #if WITH_SSL
     free(hndl->sslpath);
     free(hndl->cert);
@@ -4765,6 +4786,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
 
+    cdb2_init_context_msgs(hndl);
+
     if (getenv("CDB2_DEBUG"))
         hndl->debug_trace = 1;
 
@@ -4815,6 +4838,84 @@ done:
                 (void *)pthread_self(), dbname, type, flags, rc, *handle);
     }
     return rc;
+}
+
+/*
+  Initialize the context messages object.
+*/
+static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl)
+{
+    memset((void *)&hndl->context_msgs, 0, sizeof(struct context_messages));
+}
+
+/*
+  Free the alloc-ed context messages.
+*/
+static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl)
+{
+    int i = 0;
+
+    while (i < hndl->context_msgs.count) {
+        free(hndl->context_msgs.message[i]);
+        hndl->context_msgs.message[i] = 0;
+        i++;
+    }
+
+    hndl->context_msgs.count = 0;
+    hndl->context_msgs.has_changed = 0;
+
+    return 0;
+}
+
+/*
+  Store the specified message in the handle. Return error if
+  MAX_CONTEXTS number of messages have already been stored.
+
+  @param hndl [IN]   Connection handle
+  @param msg  [IN]   Context message
+
+  @return
+    0                Success
+    1                Error
+*/
+int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg)
+{
+    /* Check for overflow. */
+    if (hndl->context_msgs.count >= MAX_CONTEXTS) {
+        return 1;
+    }
+
+    hndl->context_msgs.message[hndl->context_msgs.count] =
+        strndup(msg, MAX_CONTEXT_LEN);
+    hndl->context_msgs.count++;
+    hndl->context_msgs.has_changed = 1;
+    return 0;
+}
+
+/*
+  Remove the last stored context message.
+*/
+int cdb2_pop_context(cdb2_hndl_tp *hndl)
+{
+    /* Check for underflow. */
+    if (hndl->context_msgs.count == 0) {
+        return 1;
+    }
+
+    hndl->context_msgs.count--;
+    free(hndl->context_msgs.message[hndl->context_msgs.count]);
+    hndl->context_msgs.message[hndl->context_msgs.count] = 0;
+    hndl->context_msgs.has_changed = 1;
+
+    return 0;
+}
+
+/*
+  Clear/free all the stored context messages.
+*/
+int cdb2_clear_contexts(cdb2_hndl_tp *hndl)
+{
+    return cdb2_free_context_msgs(hndl);
 }
 
 /* Include sbuf2.c directly to avoid libbb dependency. */

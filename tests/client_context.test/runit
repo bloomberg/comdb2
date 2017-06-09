@@ -1,0 +1,36 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+# Test case to verify client-side hooks.
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+./cdb2_client $dbname
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
+# Get the longreqs logs
+cat ${TESTDIR}/var/log/cdb2/${DBNAME}.longreqs | cut -d' ' -f3-100 | grep -v "LONG REQUEST" > testcase.out
+
+diff expected.out testcase.out
+
+# Compare the longreqs logs.
+if [ $? -ne 0 ]; then
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testcase}) has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/{testcase.out,expected.out}"
+    echo " "
+    diff testcase.out expected.out
+    echo " "
+    exit 1
+
+fi
+
+exit 0

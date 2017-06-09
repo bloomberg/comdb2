@@ -6802,7 +6802,7 @@ static int init(int argc, char **argv)
 
     /* Since we moved bbipc context code lower, we need to explicitly
      * initialize ctrace stuff, or our ctrace files will have names like
-     * dum50624.trc.c which isn't helpful */
+     * dum50624.trace which isn't helpful */
     if (gbl_ctrace_dbdir)
         ctrace_openlog_taskname(thedb->basedir, dbname);
     else {

@@ -1861,6 +1861,23 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
     reqlog_set_rows(logger, rows);
 }
 
+/*
+  Check and print the client context messages.
+*/
+static void log_client_context(struct reqlogger *logger,
+                               struct sqlclntstate *clnt)
+{
+    assert(clnt->sql_query);
+
+    if (clnt->sql_query->n_context > 0) {
+        int i = 0;
+        while (i < clnt->sql_query->n_context) {
+            reqlog_logf(logger, REQL_INFO, "(%d) %s", ++i,
+                        clnt->sql_query->context[i]);
+        }
+    }
+}
+
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse)
@@ -3472,7 +3489,7 @@ void thr_set_current_sql(const char *sql)
     }
 }
 
-void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     char info_nvreplays[40];
     info_nvreplays[0] = '\0';
@@ -3485,11 +3502,11 @@ void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     reqlog_new_sql_request(thd->logger, NULL, clnt->tag, clnt->tagbuf,
                            clnt->tagbufsz, clnt->nullbits, clnt->numnullbits);
-
+    log_client_context(thd->logger, clnt);
     log_queue_time(thd->logger, clnt);
 }
 
-void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     /* debug */
     thr_set_current_sql(clnt->sql);
