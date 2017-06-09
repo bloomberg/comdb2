@@ -12,7 +12,7 @@ void likely(int rc, int expected)
     if (rc != expected) fail();
 }
 
-void open(cdb2_hndl_tp **hndl, const char *db, const char *type)
+void opendb(cdb2_hndl_tp **hndl, const char *db, const char *type)
 {
     int ret;
 
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 
     cdb2_hndl_tp *hndl = NULL;
 
-    open(&hndl, argv[1], "default");
+    opendb(&hndl, argv[1], "default");
 
     /* Run a command without any client context message. */
     exec(hndl, "SELECT 1");

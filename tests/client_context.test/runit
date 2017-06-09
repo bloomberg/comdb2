@@ -15,7 +15,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Get the longreqs logs
-cat ${TESTDIR}/var/log/cdb2/${DBNAME}.longreqs | cut -d' ' -f3-100 | grep -v "LONG REQUEST" > testcase.out
+cat ${TESTDIR}/var/log/cdb2/${DBNAME}.longreqs | cut -d' ' -f3-100 | grep -v "LONG REQUEST" | sed 's/sql=//g; s/, fingerprint.*//g' > testcase.out
 
 diff expected.out testcase.out
 
