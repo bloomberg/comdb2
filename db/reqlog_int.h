@@ -115,6 +115,10 @@ struct reqlogger {
     const char *event_type;
 
     CDB2SQLQUERY *request;
+
+    int ntables;
+    int alloctables;
+    char **sqltables;
 };
 
 /* a rage of values to look for */

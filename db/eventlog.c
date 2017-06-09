@@ -127,6 +127,22 @@ void eventlog_params(cson_object *obj, const struct reqlogger *logger, int detai
     }
 }
 
+void eventlog_tables(cson_object *obj, const struct reqlogger *logger) {
+    if (logger->ntables == 0)
+        return;
+
+    cson_value *tables = cson_value_new_array();
+    cson_array *arr = cson_value_get_array(tables);
+    cson_array_reserve(arr, logger->ntables);
+
+    for (int i = 0; i < logger->ntables; i++) {
+        cson_value *v = cson_value_new_string(logger->sqltables[i], strlen(logger->sqltables[i]));
+        cson_array_append(arr, v);
+    }
+
+    cson_object_set(obj, "tables", tables);
+}
+
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger) {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
     int64_t start, end;
@@ -245,6 +261,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     eventlog_context(obj, logger);
     eventlog_params(obj, logger, detailed);
     eventlog_perfdata(obj, logger);
+    eventlog_tables(obj, logger);
 }
 
 

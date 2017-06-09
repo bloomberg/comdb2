@@ -2403,3 +2403,11 @@ void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request) {
 void reqlog_set_event(struct reqlogger *logger, const char *evtype) {
     logger->event_type = evtype;
 }
+
+void reqlog_add_table(struct reqlogger *logger, const char *table) {
+    if (logger->ntables == logger->alloctables) {
+        logger->alloctables = logger->alloctables * 2 + 10;
+        logger->sqltables = realloc(logger->sqltables, logger->alloctables * sizeof(char*));
+    }
+    logger->sqltables[logger->ntables++] = strdup(table);
+}
