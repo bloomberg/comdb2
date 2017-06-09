@@ -119,6 +119,7 @@ struct reqlogger {
     int ntables;
     int alloctables;
     char **sqltables;
+    char *error;
 };
 
 /* a rage of values to look for */

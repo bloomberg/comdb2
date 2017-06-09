@@ -5403,16 +5403,19 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
-            if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY)
+            if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY) {
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
+                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb));
+            }
             goto errors;
         }
 
         /* run the engine */
         fast_error = 0;
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err, comm);
+        printf("run_stmt rc %d\n", rc);
         if (rc) {
             int irc = errstat_get_rc(&err);
             switch(irc) {

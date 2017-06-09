@@ -2018,6 +2018,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     logger->nullbits = NULL;
     logger->have_id = 0;
     logger->have_fingerprint = 0;
+    free(logger->tables);
+    logger->tables = NULL;
+    free(logger->error);
+    logger->error = NULL;
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2410,4 +2414,8 @@ void reqlog_add_table(struct reqlogger *logger, const char *table) {
         logger->sqltables = realloc(logger->sqltables, logger->alloctables * sizeof(char*));
     }
     logger->sqltables[logger->ntables++] = strdup(table);
+}
+
+void reqlog_set_error(struct reqlogger *logger, const char *error) {
+    logger->error = strdup(error);
 }

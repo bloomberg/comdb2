@@ -244,6 +244,9 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     if (logger->vreplays)
         cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
 
+    if (logger->error)
+        cson_object_set(obj, "error", cson_value_new_string(logger->error, strlen(logger->error)));
+
     if (logger->have_fingerprint) {
         char fingerprint[32];
         for (int i = 0; i < 16; i++) {
