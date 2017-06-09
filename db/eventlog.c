@@ -296,7 +296,6 @@ void eventlog_add(const struct reqlogger *logger) {
     pthread_mutex_lock(&eventlog_lk);
     cson_output(val, write_json, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
-    cson_output(val, cson_data_dest_FILE, stdout, &opt);
 
     cson_value_free(val);
 }
