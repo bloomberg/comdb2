@@ -5415,7 +5415,6 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         /* run the engine */
         fast_error = 0;
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err, comm);
-        printf("run_stmt rc %d\n", rc);
         if (rc) {
             int irc = errstat_get_rc(&err);
             switch(irc) {

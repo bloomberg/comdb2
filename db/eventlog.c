@@ -257,7 +257,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         // printf("%s -> %.*s\n", logger->stmt, sizeof(fingerprint), fingerprint);
     }
 
-    cson_object_set(obj, "duration", cson_new_int(logger->durationms));
     if (logger->queuetimems)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
 
