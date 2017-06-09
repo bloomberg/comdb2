@@ -1258,7 +1258,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     SSL_SESSION *sess;
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d turning on ssl\n", 
+        fprintf(stderr, "td %u %s line %d try_ssl\n", 
                 (uint32_t) pthread_self(), __func__, __LINE__);
     }
 
@@ -1312,12 +1312,10 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     hdr.compression = 0;
     hdr.length = 0;
     rc = sbuf2fwrite((char *)&hdr, sizeof(hdr), 1, sb);
-    if (rc != 1) {
+    if (rc != 1)
         return -1;
-    }
-    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0) {
+    if ((rc = sbuf2flush(sb)) < 0 || (rc = sbuf2getc(sb)) < 0)
         return rc;
-    }
 
     /* The node does not agree with dbinfo. This usually happens
        during the downgrade from SSL to non-SSL. */
@@ -3107,7 +3105,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
 retry_queries:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d retry_queries, hndl->host %d (%s)\n", (uint32_t)
+        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host %d (%s)\n", (uint32_t)
                 pthread_self(), __func__, __LINE__, hndl->connected_host, (hndl->connected_host>=0?hndl->hosts[hndl->connected_host]:""));
     }
 
@@ -3300,9 +3298,8 @@ read_record:
         if (hndl && hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
         if (hndl->debug_trace) {
-            fprintf(stderr, "td %u reading response from %d (%s) line %d rc=%d\n", 
-                    (uint32_t) pthread_self(), hndl->connected_host, 
-                    host, __LINE__, rc, type);
+            fprintf(stderr, "td %u reading response from %s line %d rc=%d\n", 
+                    (uint32_t) pthread_self(), host, __LINE__, rc, type);
         }
     }
 
