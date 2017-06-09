@@ -2632,6 +2632,10 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             return 1;
         }
         if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
+            if (hndl->flags & CDB2_DIRECT_CPU) { 
+                /* direct cpu should not do anything with dbinfo */
+                PRINT_RETURN(-1);
+            }
             /* The master sent info about nodes that might be coherent. */
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
@@ -3303,10 +3307,20 @@ read_record:
     }
 
     if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+#if WITH_SSL
         hndl->s_sslmode = PEER_SSL_REQUIRE;
-        try_ssl(hndl, hndl->sb, hndl->connected_host);
+        /* server wants us to use ssl so turn ssl on in same connection */
+        int resp = try_ssl(hndl, hndl->sb, hndl->connected_host);
+        if (resp != 0) {
+            PRINT_RETURN(-1);
+        }
+
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
+#else
+        PRINT_RETURN(-1);
+#endif
+        RETRY_QUERIES();
         goto retry_queries;
     }
 
@@ -3314,7 +3328,7 @@ read_record:
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
         if (hndl->flags & CDB2_DIRECT_CPU) { 
             /* direct cpu should not do anything with dbinfo */
-            RETRY_QUERIES();
+            PRINT_RETURN(-1);
         }
         /* We got back info about nodes that might be coherent. */
         CDB2DBINFORESPONSE *dbinfo_resp = NULL;
@@ -3500,23 +3514,6 @@ read_record:
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
         PRINT_RETURN(-1);
-    }
-
-
-    if(hndl->firstresponse->response_type == RESPONSE_TYPE__SSL_INFO 
-        && strcmp(hndl->firstresponse->info_string, "SSL_REQUIRE" ) == 0) {
-#if WITH_SSL
-        
-        hndl->s_sslmode = PEER_SSL_REQUIRE;
-        /* server wants us to use ssl so turn ssl on in same connection */
-        int resp = try_ssl(hndl, hndl->sb, hndl->connected_host);
-        if (resp != 0) {
-            newsql_disconnect(hndl, hndl->sb, __LINE__);
-            hndl->connected_host = -1;
-        }
-        RETRY_QUERIES();
-#endif
-
     }
 
     if (using_hint) {
