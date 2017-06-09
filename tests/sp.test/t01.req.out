@@ -1,6 +1,8 @@
 (version='sptest')
 ($0='124', $1='432')
 ($0='124', $1='432')
+(rows inserted=1)
+(columnnamewithmorethanthirtytwocharacters=1, anothercolumnnamewithmorethanthirtytwocharacters=2)
 (version='sptest1')
 (rows inserted=1)
 (rows inserted=1)

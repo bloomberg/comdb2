@@ -598,6 +598,14 @@ public class Comdb2Handle extends AbstractConnection {
                                                                 // from server
                     return null;
                 nsh = NewSqlHeader.fromBytes(res);
+
+                if (nsh != null) {
+                    ack = (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_PING_VALUE);
+                    /* Server requires SSL. */
+                    if (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_SSL_VALUE)
+                        return nsh;
+                }
+
             } while (nsh == null || nsh.length == 0); // if error occurs when
                                                         // constructing
                                                         // NewSqlHeader from
@@ -606,8 +614,6 @@ public class Comdb2Handle extends AbstractConnection {
                                                         // 0 (a
                                                         // heartbeat packet),
                                                         // try again.
-
-            ack = (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_PING_VALUE);
             return nsh;
         } catch (IOException e) {
             last_non_logical_err = e;
@@ -1022,6 +1028,14 @@ public class Comdb2Handle extends AbstractConnection {
                         is_commit + " snapshotFile=" + snapshotFile + " is_rollback=" +
                         is_rollback);
                 return Errors.CDB2ERR_CONNECT_ERROR;
+            }
+
+            if (nsh.type == Sqlresponse.ResponseHeader.SQL_RESPONSE_SSL_VALUE) {
+                peersslmode = PEER_SSL_MODE.PEER_SSL_REQUIRE;
+                trySSL();
+                /* Decrement retry counter: It is not a real retry. */
+                --retry;
+                continue;
             }
 
             // Dbinfo .. go to new node

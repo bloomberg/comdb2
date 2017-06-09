@@ -532,7 +532,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
         rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
-            logmsg(LOGMSG_WARN, "trying readlock (%s %d), last writelock is %s %d\n", idstr,
+            logmsg(LOGMSG_INFO, "trying readlock (%s %d), last writelock is %s %d\n", idstr,
                     pthread_self(), lock_handle->bdb_lock_write_idstr,
                     lock_handle->bdb_lock_write_holder);
 
@@ -568,7 +568,7 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
                 stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
             if (rc) {
 #ifndef _LINUX_SOURCE
-                logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
+                logmsg(LOGMSG_INFO, "%s: failed to get stack %d\n", __func__, rc);
 #endif
                 lk->nstack = 0;
             }

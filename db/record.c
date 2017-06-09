@@ -1223,6 +1223,20 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
+    if (gbl_replicate_local &&
+        (strcasecmp(iq->usedb->dbname, "comdb2_oplog") != 0 &&
+         (strcasecmp(iq->usedb->dbname, "comdb2_commit_log")) != 0 &&
+         strncasecmp(iq->usedb->dbname, "sqlite_stat", 11) != 0) &&
+        !(flags & RECFLAGS_NEW_SCHEMA)) {
+
+        rc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
+                                                   opfailcode);
+        if (rc) {
+            retrc = rc;
+            ERR;
+        }
+    }
+
     /*
      * Update the data record using the correct verification technique.
      * bdblib will give us a new genid (if tagged) and will update the genid
@@ -1246,20 +1260,6 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                      odv_dta, od_len, vgenid, od_dta, od_len, rrn, genid, 1,
                      iq->blkstate->modnum); /* verifydta */
     } else {
-        if (gbl_replicate_local &&
-            (strcasecmp(iq->usedb->dbname, "comdb2_oplog") != 0 &&
-             (strcasecmp(iq->usedb->dbname, "comdb2_commit_log")) != 0 &&
-             strncasecmp(iq->usedb->dbname, "sqlite_stat", 11) != 0) &&
-            !(flags & RECFLAGS_NEW_SCHEMA)) {
-
-            rc = local_replicant_log_delete_for_update(iq, trans, rrn, vgenid,
-                                                       opfailcode);
-            if (rc) {
-                retrc = rc;
-                ERR;
-            }
-        }
-
         if (flags == RECFLAGS_UPGRADE_RECORD) {
             rc = dat_upgrade(iq, trans, od_dta, od_len, vgenid);
             *genid = vgenid;

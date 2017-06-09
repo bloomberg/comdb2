@@ -1,10 +1,11 @@
 # Local defs
 
-tools_LIBS:=libcdb2_sqlreplay.a libcdb2util.a
+tools_LIBS:=libcdb2util.a
 
 tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/cdb2api -I$(SRCHOME)/berkdb -I$(SRCHOME)/berkdb/build	\
--I$(SRCHOME)/dlmalloc -I$(SRCHOME)/sockpool $(OPTBBINCLUDE)
+-I$(SRCHOME)/dlmalloc -I$(SRCHOME)/sockpool -I$(SRCHOME)/cson		\
+$(OPTBBINCLUDE)
 
 tools_SYSLIBS=$(BBSTATIC) -lprotobuf-c -lssl -lcrypto -llz4 $(BBDYN)	\
 -lpthread -lrt -lm -lz $(ARCHLIBS)
@@ -29,13 +30,16 @@ cdb2sql: tools_LDLIBS+=$(LIBREADLINE)
 cdb2sql: $(cdb2sql_OBJS)
 	$(CC) $(tools_LDFLAGS) $^ $(tools_LDLIBS) -o $@
 
-libcdb2_sqlreplay.a: tools/cdb2_sqlreplay/cdb2_sqlreplay.o
+cdb2replay_OBJS:=tools/cdb2_sqlreplay/cdb2_sqlreplay.o
+cdb2replay_CFLAGS=-Icson
+cdb2replay_LDLIBS=-Lcson -lcson -Lcdb2api -l:libcdb2api.a -Lprotobuf   \
+                  -lssl -lcrypto -lz -lpthread
 
-cdb2replay_SRC=cdb2_sqlreplay.c
-cdb2replay_OBJS=$(patsubst %.c,tools/cdb2_sqlreplay/%.o,$(cdb2replay_SRC))
+$(cdb2replay_OBJS): %.o: %.cpp $(LIBS_BIN)
+	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(cdb2replay_CFLAGS) $(CXX11FLAGS) -c $< -o $@
 
-libcdb2_sqlreplay.a: $(cdb2replay_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
+cdb2_sqlreplay: $(cdb2replay_OBJS)
+	$(CXX11) $(tools_CPPFLAGS) $(LDFLAGS) $< $(cdb2replay_LDLIBS) -o $@
 
 # Cdb2sockpool - Use base rules, multiple object files
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c
@@ -88,7 +92,6 @@ pmux_OBJS:=$(patsubst %.cpp,%.o,$(pmux_SOURCES))
 pmux: $(pmux_OBJS)
 	$(CXX11) $(pmux_LDFLAGS) $< $(pmux_LDLIBS) -o $@
 
-
 $(pmux_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(CXX11FLAGS) -c $< -o $@
 
@@ -113,7 +116,9 @@ cdb2_printlog_OBJS:=$(patsubst %.c,tools/cdb2_printlog/%.o,$(cdb2_printlog_SOURC
 
 $(cdb2_printlog_OBJS): tools_CPPFLAGS+=$(cdb2_CPPFLAGS)
 
-tools_TASKS:=pmux cdb2sql comdb2ar cdb2sockpool
+# Defined in the top level makefile
+TASKS+=$(lcl_TASKS) $(tools_LIBS)
+tools_TASKS:=pmux cdb2sql comdb2ar cdb2sockpool cdb2_sqlreplay
 # Defined in the top level makefile
 TASKS+=$(tools_TASKS) $(tools_LIBS)
 
