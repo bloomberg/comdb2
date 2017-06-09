@@ -162,6 +162,19 @@ int write_json( void * state, void const * src, unsigned int n ) {
     return rc != n;
 }
 
+static void eventlog_context(cson_object *obj, const struct reqlogger *logger) {
+    cson_value *contexts = cson_value_new_array();
+    if (logger->request && logger->request->n_context > 0) {
+        cson_array *arr = cson_value_get_array(contexts);
+        cson_array_reserve(arr, logger->request->n_context);
+        for (int i = 0; i < logger->request->n_context; i++) {
+            cson_value *v = cson_value_new_string(logger->request->context[i], strlen(logger->request->context[i]));
+            cson_array_append(arr, v);
+        }
+        cson_object_set(obj, "context", contexts);
+    }
+}
+
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     static const char *hexchars = "0123456789abcdef";
 
@@ -229,8 +242,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     if (logger->queuetimems)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
 
+    eventlog_context(obj, logger);
     eventlog_params(obj, logger, detailed);
-
     eventlog_perfdata(obj, logger);
 }
 
@@ -264,6 +277,7 @@ void eventlog_add(const struct reqlogger *logger) {
     pthread_mutex_lock(&eventlog_lk);
     cson_output(val, write_json, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
+    cson_output(val, cson_data_dest_FILE, stdout, &opt);
 
     cson_value_free(val);
 }
