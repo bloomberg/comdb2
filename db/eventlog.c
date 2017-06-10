@@ -284,6 +284,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     if (logger->error)
         cson_object_set(obj, "error", cson_value_new_string(logger->error, strlen(logger->error)));
 
+    cson_object_set(obj, "host", cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+
     if (logger->have_fingerprint) {
         char fingerprint[32];
         for (int i = 0; i < 16; i++) {
