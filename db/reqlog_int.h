@@ -120,6 +120,8 @@ struct reqlogger {
     int alloctables;
     char **sqltables;
     char *error;
+
+    struct client_query_stats *path;
 };
 
 /* a rage of values to look for */

@@ -2419,3 +2419,7 @@ void reqlog_add_table(struct reqlogger *logger, const char *table) {
 void reqlog_set_error(struct reqlogger *logger, const char *error) {
     logger->error = strdup(error);
 }
+
+void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path) {
+    logger->path = path;
+}

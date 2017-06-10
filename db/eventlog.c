@@ -191,6 +191,34 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger) {
     }
 }
 
+static void eventlog_path(cson_object *obj, const struct reqlogger *logger) {
+    if (!logger->path || logger->path->n_components == 0)
+        return;
+
+    cson_value *components = cson_value_new_array();
+    cson_array *arr = cson_value_get_array(components);
+    cson_array_reserve(arr, logger->path->n_components);
+
+    for (int i = 0; i < logger->path->n_components; i++) {
+        cson_value *component;
+        component = cson_value_new_object();
+        cson_object *obj = cson_value_get_object(component);
+        struct client_query_path_component *c;
+        c = &logger->path->path_stats[i];
+        cson_object_set(obj, "table", cson_value_new_string(c->table, strlen(c->table)));
+        if (c->ix != -1)
+            cson_object_set(obj, "index", cson_new_int(c->ix));
+        if (c->nfind)
+            cson_object_set(obj, "find", cson_new_int(c->nfind));
+        if (c->nnext)
+            cson_object_set(obj, "next", cson_new_int(c->nnext));
+        if (c->nwrite)
+            cson_object_set(obj, "write", cson_new_int(c->nwrite));
+        cson_array_append(arr, component);
+    }
+    cson_object_set(obj, "path", components);
+}
+
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     static const char *hexchars = "0123456789abcdef";
 
@@ -224,6 +252,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         /* yes, this can spill the file to beyond the configured size - we need this
            event to be in the same file as the event its being logged for */
         cson_output(newval, write_json, eventlog, &opt);
+        // cson_output(newval, cson_data_dest_FILE, stdout, &opt);
         cson_value_free(newval);
     }
     pthread_mutex_unlock(&eventlog_lk);
@@ -264,6 +293,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     eventlog_params(obj, logger, detailed);
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);
+    eventlog_path(obj, logger);
 }
 
 
@@ -296,6 +326,8 @@ void eventlog_add(const struct reqlogger *logger) {
     pthread_mutex_lock(&eventlog_lk);
     cson_output(val, write_json, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
+
+    // cson_output(val, cson_data_dest_FILE, stdout, &opt);
 
     cson_value_free(val);
 }

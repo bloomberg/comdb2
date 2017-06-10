@@ -1490,7 +1490,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
+    if (clnt->query_stats == NULL) {
+        record_query_cost(thd, clnt);
+        reqlog_set_path(logger, clnt->query_stats);
+    }
     reqlog_set_vreplays(logger, clnt->verify_retries);
+
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
