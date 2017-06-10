@@ -6177,8 +6177,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 {
     int wrtimeoutsec = 0;
 
-    printf("reset\n");
-
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
