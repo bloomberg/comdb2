@@ -87,6 +87,7 @@
 #include "util.h"
 #include <logmsg.h>
 #include <bb_oscompat.h>
+#include <portmuxapi.h>
 
 extern int gbl_keycompr;
 
@@ -3210,6 +3211,11 @@ done2:
 
     print(bdb_state, "returning from dbenv_open\n");
 
+    /* TODO: one-shotting this isn't enough - we nee to 
+       periodically check this connection and re-establish it
+       in case pmux bounces */
+    portmux_hello("localhost", bdb_state->name);
+
     return dbenv;
 }
 
@@ -5712,6 +5718,11 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
                bdb_state->seqnum_info->seqnums[nodeix(gbl_mynode)].lsn.offset);
 
         BDB_RELLOCK();
+
+        /* Attach to pmux and say hello.  Only point of this is to make pmux
+           aware of all databases currently active.  'reg' isn't enough - it just
+           marks a database as active at some point. */
+
     } else {
         /* make sure our parent came from a real bdb_open() call. */
         if (!parent_bdb_state->master_handle) {
