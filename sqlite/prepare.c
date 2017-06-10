@@ -626,7 +626,7 @@ static int sqlite3Prepare(
   int i;                    /* Loop counter */
   Parse sParse;             /* Parsing context */
 
-  if (db->should_fingerprint) {
+  if (db->should_fingerprint && !db->init.busy) {
       memset(db->fingerprint, 0, sizeof(db->fingerprint));
   }
 

@@ -183,7 +183,7 @@ static void fingerprintSelectInt(sqlite3 *db, MD5Context *c, Select *p) {
 void sqlite3FingerprintSelect(sqlite3 *db, Select *p) {
     MD5Context c;
 
-    if (!db->should_fingerprint)
+    if (!db->should_fingerprint || db->init.busy)
         return;
 
     MD5Init(&c);
@@ -217,7 +217,7 @@ static void fingerprintInsertInt(sqlite3 *db, MD5Context *c, SrcList *pTabList, 
 void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, IdList *pColumn, With *pWith) {
     MD5Context c;
 
-    if (!db->should_fingerprint)
+    if (!db->should_fingerprint || db->init.busy)
         return;
 
     MD5Init(&c);
@@ -228,7 +228,7 @@ void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, I
 void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
     MD5Context c;
 
-    if (!db->should_fingerprint)
+    if (!db->should_fingerprint || db->init.busy)
         return;
 
     MD5Init(&c);
@@ -240,7 +240,7 @@ void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
 void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError) {
     MD5Context c;
 
-    if (!db->should_fingerprint)
+    if (!db->should_fingerprint || db->init.busy)
         return;
 
     MD5Init(&c);
