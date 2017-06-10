@@ -13,6 +13,7 @@
 #include "eventlog.h"
 #include "util.h"
 #include "plhash.h"
+#include "logmsg.h"
 
 #include "cson_amalgamation_core.h"
 
@@ -22,6 +23,7 @@ static int eventlog_rollat = 1024*1024*1024;
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
+static int eventlog_verbose = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -172,10 +174,15 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger) {
     cson_object_set(obj, "perf", perfval);
 }
 
-int write_json( void * state, void const * src, unsigned int n ) {
+int write_json( void * state, const void *src, unsigned int n ) {
     int rc = gzwrite((gzFile) state, src, n);
     bytes_written += rc;
     return rc != n;
+}
+
+int write_logmsg(void *state, const void *src, unsigned int n) {
+    logmsg(LOGMSG_USER, "%.*s", n, src);
+    return 0;
 }
 
 static void eventlog_context(cson_object *obj, const struct reqlogger *logger) {
@@ -252,7 +259,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         /* yes, this can spill the file to beyond the configured size - we need this
            event to be in the same file as the event its being logged for */
         cson_output(newval, write_json, eventlog, &opt);
-        // cson_output(newval, cson_data_dest_FILE, stdout, &opt);
+        if (eventlog_verbose)
+            cson_output(newval, write_logmsg, stdout, &opt);
         cson_value_free(newval);
     }
     pthread_mutex_unlock(&eventlog_lk);
@@ -327,7 +335,8 @@ void eventlog_add(const struct reqlogger *logger) {
     cson_output(val, write_json, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
 
-    // cson_output(val, cson_data_dest_FILE, stdout, &opt);
+    if (eventlog_verbose)
+        cson_output(val, write_logmsg, stdout, &opt);
 
     cson_value_free(val);
 }
@@ -429,6 +438,20 @@ void eventlog_process_message_locked(char *line, int lline, int *toff) {
         } else
             logmsg(LOGMSG_USER, "Logging every %d queries\n", eventlog_every_n);
         eventlog_every_n = every;
+    } else if (tokcmp(tok, ltok, "verbose") == 0) {
+        tok = segtok(line, lline, toff, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
+            return;
+        }
+        if (tokcmp(tok, ltok, "on") == 0)
+            eventlog_verbose = 1;
+        else if (tokcmp(tok, ltok, "off") == 0)
+            eventlog_verbose = 0;
+        else {
+            logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
+            return;
+        }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         gzflush(eventlog, 1);
     } else {
