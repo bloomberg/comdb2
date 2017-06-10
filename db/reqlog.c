@@ -1,8 +1,7 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
+   Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
 
        http://www.apache.org/licenses/LICENSE-2.0
@@ -2422,4 +2421,9 @@ void reqlog_set_error(struct reqlogger *logger, const char *error) {
 
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path) {
     logger->path = path;
+}
+
+void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context) {
+    logger->ncontext = ncontext;
+    logger->context = context;
 }

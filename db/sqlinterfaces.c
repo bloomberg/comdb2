@@ -1881,6 +1881,20 @@ static void log_client_context(struct reqlogger *logger,
                         clnt->sql_query->context[i]);
         }
     }
+
+    /* If request context is set, the client is changing the context. */
+    if (clnt->sql_query->context) {
+        /* Latch the context - client only re-sends context if
+           it changes.  TODO: this seems needlessly expensive. */
+        clnt->ncontext = clnt->sql_query->n_context;
+        if (clnt->context)
+            free(clnt->context);
+        clnt->context = malloc(sizeof(char*) * clnt->sql_query->n_context);
+        for (int i = 0; i < clnt->sql_query->n_context; i++)
+            clnt->context[i] = strdup(clnt->sql_query->context[i]);
+    }
+    /* Whether latched from previous run, or just set, pass this to logger. */
+    reqlog_set_context(logger, clnt->ncontext, clnt->context);
 }
 
 /* begin; send return code */
@@ -6163,6 +6177,8 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 {
     int wrtimeoutsec = 0;
 
+    printf("reset\n");
+
     if (initial) {
         bzero(clnt, sizeof(*clnt));
     }
@@ -6279,6 +6295,11 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->verify_indexes = 0;
     clnt->schema_mems = NULL;
     clnt->init_gen = 0;
+    for (int i = 0; i < clnt->ncontext; i++) {
+        free(clnt->context[i]);
+    }
+    free(clnt->context);
+    clnt->ncontext = 0;
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)

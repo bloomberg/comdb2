@@ -4862,7 +4862,7 @@ static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl)
     }
 
     hndl->context_msgs.count = 0;
-    hndl->context_msgs.has_changed = 0;
+    hndl->context_msgs.has_changed = 1;
 
     return 0;
 }

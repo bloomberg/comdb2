@@ -122,6 +122,8 @@ struct reqlogger {
     char *error;
 
     struct client_query_stats *path;
+    int ncontext;
+    char **context;
 };
 
 /* a rage of values to look for */

@@ -187,11 +187,11 @@ int write_logmsg(void *state, const void *src, unsigned int n) {
 
 static void eventlog_context(cson_object *obj, const struct reqlogger *logger) {
     cson_value *contexts = cson_value_new_array();
-    if (logger->request && logger->request->n_context > 0) {
+    if (logger->ncontext > 0) {
         cson_array *arr = cson_value_get_array(contexts);
-        cson_array_reserve(arr, logger->request->n_context);
-        for (int i = 0; i < logger->request->n_context; i++) {
-            cson_value *v = cson_value_new_string(logger->request->context[i], strlen(logger->request->context[i]));
+        cson_array_reserve(arr, logger->ncontext);
+        for (int i = 0; i < logger->ncontext; i++) {
+            cson_value *v = cson_value_new_string(logger->context[i], strlen(logger->context[i]));
             cson_array_append(arr, v);
         }
         cson_object_set(obj, "context", contexts);
