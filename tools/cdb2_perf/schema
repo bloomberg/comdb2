@@ -1,0 +1,67 @@
+cdb2sql comdb2perfdb - >/dev/null <<EOF
+drop table blocks
+drop table events
+drop table queries
+drop table querytypes
+EOF
+
+cdb2sql comdb2perfdb 'create table blocks {
+    schema {
+        cstring id[37]
+        datetime start
+        datetime end
+        cstring dbname[33]
+        vutf8 block
+    }
+
+    keys {
+        "db" = dbname + start
+        "id" = id
+    }
+}'
+
+cdb2sql comdb2perfdb 'create table events {
+    schema {
+        cstring dbname[33]
+        cstring host[64]
+        int event_type
+        datetime time_occurred
+    }
+
+    keys {
+    dup "event" = dbname + time_occurred
+    }
+}'
+
+cdb2sql comdb2perfdb 'create table queries {
+    schema {
+        cstring fingerprint[33]
+        cstring dbname[33]
+        cstring blockid[37]
+        cstring host[64]
+        cstring context[100]
+        datetime start
+        longlong count
+    }
+
+    keys {
+    dup "db" = dbname + start + fingerprint
+        "host" = host + start
+        "context" = context + start
+    }
+}'
+
+cdb2sql comdb2perfdb 'create table querytypes {
+    schema {
+        cstring fingerprint[33]
+        cstring dbname[33]
+        datetimeus first_seen
+        // longlong count   -- think about this - very handy to have, but turns into an update per db per block 
+        vutf8 sql[200]
+    }
+
+    keys {
+        "fp" = fingerprint
+    dup "dbname" = dbname + fingerprint
+    }
+}'
