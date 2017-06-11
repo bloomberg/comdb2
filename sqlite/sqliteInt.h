@@ -2354,6 +2354,8 @@ struct Expr {
                          ** TK_AGG_FUNCTION: nesting depth */
   AggInfo *pAggInfo;     /* Used by TK_AGG_COLUMN and TK_AGG_FUNCTION */
   Table *pTab;           /* Table for TK_COLUMN expressions. */
+  /* COMDB2 MODIFICATION */
+  u8 visited;            /* Set if visited by fingerprinter. */
 };
 
 /*

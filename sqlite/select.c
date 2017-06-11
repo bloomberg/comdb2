@@ -85,8 +85,10 @@ static void fingerprintTable(sqlite3 *db, MD5Context *c, Table *pTab) {
 }
 
 static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
-    if (p == NULL)
+    if (p == NULL || p->visited)
         return;
+
+    p->visited = 1;
 
     // printf("op %d flags %x iTable %d iColumn %d op2 %d\n", (int) p->op, p->flags, p->iTable, p->iColumn, (int) p->op2);
     MD5Update(c, (const unsigned char*) &p->op, sizeof(u8));
@@ -99,7 +101,7 @@ static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
     if (p->iTable == TK_COLUMN)
         fingerprintTable(db, c, p->pTab);
 
-    if( !ExprHasProperty(p, (EP_TokenOnly)) ){
+    if( !ExprHasProperty(p, (EP_TokenOnly|EP_Leaf)) ){
         if( p->pLeft) fingerprintExpr(db, c, p->pLeft);
         fingerprintExpr(db, c, p->pRight);
         if( ExprHasProperty(p, EP_xIsSelect) ){
