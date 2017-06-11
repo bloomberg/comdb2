@@ -272,7 +272,20 @@ void dumpqueries(dbstream &db) {
     }
 }
 
-void dumpqueries(const dbstream &db) {
+void storequeries(const dbstream &db, const std::string &blockid, std::string block) {
+    const char *sql = "insert into blocks(id, start, end, dbname, block) values(@id, @start, @end, @dbname, @block)";
+    cdb2_client_datetimeus_t start, end;
+    start = totimestamp(db.mintime);
+    end = totimestamp(db.maxtime);
+    cdb2_clearbindings(db.dbconn);
+    cdb2_bind_param(db.dbconn, "id", CDB2_CSTRING, blockid.c_str(), blockid.size());
+    cdb2_bind_param(db.dbconn, "start", CDB2_DATETIMEUS, &start, sizeof(start));
+    cdb2_bind_param(db.dbconn, "end", CDB2_DATETIMEUS, &end, sizeof(end));
+    cdb2_bind_param(db.dbconn, "dbname", CDB2_CSTRING, db.dbname.c_str(), db.dbname.size());
+    cdb2_bind_param(db.dbconn, "block", CDB2_BLOB, block.c_str(), block.size());
+    int rc = cdb2_run_statement(db.dbconn, sql);
+    if (rc)
+        std::cerr << "write block rc " << rc << " " << cdb2_errstr(db.dbconn) << std::endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -292,7 +305,11 @@ int main(int argc, char *argv[]) {
     }
     char buf[1024];
     int bytes = 0;
+
+    std::ostringstream block;
+
     while ((bytes = gzread(db.ingz, buf, sizeof(buf))) > 0) {
+        block << buf;
         db.out.write(buf, bytes);
     }
     db.out.close();
@@ -325,6 +342,6 @@ int main(int argc, char *argv[]) {
     // record what queries we gathered
     // dump them first 
     dumpqueries(db);
-    storequeries(db);
+    storequeries(db, blockid, block.str());
     return 0;
 }

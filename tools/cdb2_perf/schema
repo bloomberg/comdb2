@@ -1,14 +1,14 @@
-for table in $(comdb2dumpcs comdb2perdb); do
+for table in $(comdb2dumpcsc comdb2perfdb); do
     echo drop table $table
 done | cdb2sql comdb2perfdb - >/dev/null
 
 cdb2sql comdb2perfdb 'create table blocks {
     schema {
         cstring id[37]
-        datetime start
-        datetime end
+        datetimeus start
+        datetimeus end
         cstring dbname[33]
-        vutf8 block
+        blob block
     }
 
     keys {
@@ -44,7 +44,6 @@ cdb2sql comdb2perfdb 'create table queries {
 
     keys {
     dup "db" = dbname + start + fingerprint
-        "host" = host + start
         "context" = context + start
     }
 }'
