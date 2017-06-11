@@ -1,9 +1,6 @@
-cdb2sql comdb2perfdb - >/dev/null <<EOF
-drop table blocks
-drop table events
-drop table queries
-drop table querytypes
-EOF
+for table in $(comdb2dumpcs comdb2perdb); do
+    echo drop table $table
+done | cdb2sql comdb2perfdb - >/dev/null
 
 cdb2sql comdb2perfdb 'create table blocks {
     schema {
@@ -36,12 +33,13 @@ cdb2sql comdb2perfdb 'create table events {
 cdb2sql comdb2perfdb 'create table queries {
     schema {
         cstring fingerprint[33]
+        longlong fingerprint_count
         cstring dbname[33]
         cstring blockid[37]
-        cstring host[64]
         cstring context[100]
+        longlong context_count
         datetime start
-        longlong count
+        datetime end
     }
 
     keys {
