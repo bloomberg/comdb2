@@ -641,7 +641,7 @@ typedef struct {
 /* SEQUENCE object attributes */
 typedef struct {
     int version; /* Sequence attr struct version */
-    char *name; /* Identifier */
+    char name[MAXTABLELEN]; /* Identifier */
 
     /* Basic Attributes */
     long long min_val; /* Values dispensed must be greater than or equal to min_val */

@@ -1523,7 +1523,7 @@ sequence_t *new_sequence (char* name, long long min_val, long long max_val,
         return NULL;
     }
 
-    new_seq->name = name;
+    strcpy(new_seq->name, name);
     new_seq->min_val = min_val;
     new_seq->max_val = max_val;
     new_seq->increment = increment;

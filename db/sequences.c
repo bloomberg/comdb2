@@ -141,6 +141,13 @@ int add_sequence (char* name, long long min_val, long long max_val,
     long long increment, bool cycle,
     long long start_val, long long chunk_size)
 {
+    // Check that name is valid
+    if (strlen(name) > MAXTABLELEN - 1){
+        logmsg(LOGMSG_ERROR, "sequence name too long. Must be less than %d characters\n", MAXTABLELEN-1);
+        return 1;
+    }
+
+    // Check for duplicate name
     if (!(get_sequence(name) == NULL)){
         logmsg(LOGMSG_ERROR, "sequence with name \"%s\" already exists\n", name);
         return 1;
@@ -170,9 +177,14 @@ int add_sequence (char* name, long long min_val, long long max_val,
 
     // Create llmeta record
     int rc;
-    bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, &rc);
+    int bdberr;
+    rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, &bdberr);
+
+    if (rc)
+        return rc;
 
     thedb->num_sequences++;
+
     return 0;
 }
 
