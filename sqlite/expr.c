@@ -5661,6 +5661,21 @@ static char* sqlite3ExprDescribe_inner(
     case TK_FUNCTION: {
       char *ret, *ret2;
       int i;
+      /* dh: not all the functions can be blindely passed remotely! */
+      if(strncmp(pExpr->u.zToken, "now", 3) == 0)
+      { 
+        dttz_t dt;
+
+        if(pExpr->x.pList && pExpr->x.pList->nExpr == 1 &&
+           strncasecmp(pExpr->x.pList->a[0].pExpr->u.zToken, "us", 2) == 0)
+          timespec_to_dttz(&v->tspec, &dt, DTTZ_PREC_USEC);
+        else
+          timespec_to_dttz(&v->tspec, &dt, DTTZ_PREC_MSEC);
+
+        return sqlite3_mprintf("cast(%lld.%u as datetime)",  
+                               dt.dttz_sec, dt.dttz_frac);
+      }
+      /* default, pass the function remotely */
       if( pExpr->x.pList->nExpr <= 0 )
         return sqlite3_mprintf(" %s ( )", pExpr->u.zToken);
       char *arg = sqlite3ExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr,
