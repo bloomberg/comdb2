@@ -58,10 +58,10 @@ Notice that the trigger stored procedure runs in a independent transaction (sepa
 
 This implies that if trigger stored procedure transaction has any failure (ex.
 a failed insert, a duplicate error, etc.), that transaction will abort and the
-event will not be removed from the queue: the event will be reprocessed -- the
-trigger stored procedure will be retried again (if it fails, it will be
-retried, possibly indefinitely). So only if the stored procedure actions
-complete successfully, will the event be removed from the queue.
+event will not be removed from the queue, rather the event will be reprocessed:
+trigger stored procedure will be retried again (and if it fails, it will be
+retried again, possibly indefinitely). Only if the stored procedure actions
+complete successfully, will the event be consumed from the queue.
 
 Following is an example for a trigger `audit` which logs all changes to table `t`. Table has two int fields: `i`, `j`. 
 stored procedure logs data to `audit_tbl`, storing type of change to `t`, time of log and the changed values. 
