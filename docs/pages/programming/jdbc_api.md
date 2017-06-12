@@ -35,7 +35,7 @@ The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cd
 
 **A word of caution**: the build can fail if the version of protocol buffers installed on the system mismatches the version specified in
 `cdb2jdbc/pom.xml`.  If you encounter problems, update the protobuf-java version in the .pom file to match what's on the system.
-Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jcdb2` (JAR files will be written
+Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jdbc` (JAR files will be written
 to `cdb2jdbc/maven.m2/repository/com/bloomberg/comdb2/cdb2jdbc/2.0.0/`)
 
 
