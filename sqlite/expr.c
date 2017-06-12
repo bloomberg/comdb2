@@ -5665,15 +5665,19 @@ static char* sqlite3ExprDescribe_inner(
       if(strncasecmp(pExpr->u.zToken, "now", 3) == 0)
       { 
         dttz_t dt;
+        int prec;
+        
+        if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
+           DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
+                             prec, 0, break);
+        } else {
+          prec = gbl_datetime_precision;
+        }
+        
+        timespec_to_dttz(&v->tspec, &dt, prec);
 
-        if(pExpr->x.pList && pExpr->x.pList->nExpr == 1 &&
-           strncasecmp(pExpr->x.pList->a[0].pExpr->u.zToken, "us", 2) == 0)
-          timespec_to_dttz(&v->tspec, &dt, DTTZ_PREC_USEC);
-        else
-          timespec_to_dttz(&v->tspec, &dt, DTTZ_PREC_MSEC);
-
-        return sqlite3_mprintf("cast(%lld.%u as datetime)",  
-                               dt.dttz_sec, dt.dttz_frac);
+        return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
+                               dt.dttz_sec, prec, prec, dt.dttz_frac);
       }
       /* default, pass the function remotely */
       if( pExpr->x.pList->nExpr <= 0 )
