@@ -1072,16 +1072,16 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "DELETE");
-  sqlite3DeleteFrom(pParse,X,W);
   sqlite3FingerprintDelete(pParse->db, X, W);
+  sqlite3DeleteFrom(pParse,X,W);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  sqlite3DeleteFrom(pParse,X,W);
   sqlite3FingerprintDelete(pParse->db, X, W);
+  sqlite3DeleteFrom(pParse,X,W);
 }
 %endif
 

@@ -36,17 +36,31 @@ cdb2sql comdb2perfdb 'create table queries {
         longlong fingerprint_count
         cstring dbname[33]
         cstring blockid[37]
-        cstring context[100]
-        longlong context_count
-        datetime start
-        datetime end
+        datetimeus start
+        datetimeus end
     }
 
     keys {
     dup "db" = dbname + start + fingerprint
-        "context" = context + start
     }
 }'
+
+cdb2sql comdb2perfdb 'create table contexts {
+    schema {
+        cstring context[33]
+        longlong context_count
+        cstring dbname[33]
+        cstring blockid[37]
+        datetimeus start
+        datetimeus end
+    }
+
+    keys {
+        "context" = context + start
+        "contextdb" = context + dbname
+    }
+}'
+
 
 cdb2sql comdb2perfdb 'create table querytypes {
     schema {

@@ -42,9 +42,6 @@
 
 
 struct dbstream {
-    gzFile ingz;
-    std::ofstream out;
-    std::ifstream in;
     cdb2_hndl_tp *dbconn;
 
     std::string source;
@@ -56,8 +53,8 @@ struct dbstream {
     // stats since the last time the block was flushed
     int64_t mintime, maxtime;
     int64_t count;
-    std::map<std::string, int> fingerprints;  // known_fingerprints don't reset at each block, this does
-    std::map<std::string, int> contexts;
+    std::map<std::string, int64_t> fingerprints;  // known_fingerprints don't reset at each block, this does
+    std::map<std::string, int64_t> contexts;
 
     dbstream(std::string _dbname, std::string s) : 
         source(s), 
@@ -260,19 +257,19 @@ std::ostream& operator<<(std::ostream &os, const std::pair<std::string, int> &ob
     return os;
 }
 
-void dumpqueries(dbstream &db) {
+void dump(dbstream &db, const std::string &blockid) {
+    std::cout << "block: " << blockid << std::endl;
     std::cout << "contexts:" << std::endl;
     for (auto it = db.contexts.begin(); it != db.contexts.end(); ++it) {
         std::cout << *it << std::endl;
     }
-    std::cout << std::endl;
     std::cout << "fingerprints:" << std::endl;
     for (auto it = db.fingerprints.begin(); it != db.fingerprints.end(); ++it) {
         std::cout << *it << std::endl;
     }
 }
 
-void storequeries(const dbstream &db, const std::string &blockid, std::string block) {
+bool storeblock(const dbstream &db, const std::string &blockid, std::string block) {
     const char *sql = "insert into blocks(id, start, end, dbname, block) values(@id, @start, @end, @dbname, @block)";
     cdb2_client_datetimeus_t start, end;
     start = totimestamp(db.mintime);
@@ -284,8 +281,75 @@ void storequeries(const dbstream &db, const std::string &blockid, std::string bl
     cdb2_bind_param(db.dbconn, "dbname", CDB2_CSTRING, db.dbname.c_str(), db.dbname.size());
     cdb2_bind_param(db.dbconn, "block", CDB2_BLOB, block.c_str(), block.size());
     int rc = cdb2_run_statement(db.dbconn, sql);
-    if (rc)
+    if (rc) {
         std::cerr << "write block rc " << rc << " " << cdb2_errstr(db.dbconn) << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool storequeries(const dbstream &db, const std::string &blockid) {
+    for (auto it : db.fingerprints) {
+        const char *sql = "insert into queries(fingerprint, fingerprint_count, dbname, blockid, start, end) values(@fingerprint, @fingerprint_count, @dbname, @blockid, @start, @end)";
+
+        cdb2_client_datetimeus_t start = totimestamp(db.mintime);
+        cdb2_client_datetimeus_t end = totimestamp(db.maxtime);
+        
+        cdb2_clearbindings(db.dbconn);
+        cdb2_bind_param(db.dbconn, "fingerprint", CDB2_CSTRING, it.first.c_str(), it.first.size());
+        cdb2_bind_param(db.dbconn, "fingerprint_count", CDB2_INTEGER, &it.second, sizeof(it.second));
+        cdb2_bind_param(db.dbconn, "dbname", CDB2_CSTRING, db.dbname.c_str(), db.dbname.size());
+        cdb2_bind_param(db.dbconn, "blockid", CDB2_CSTRING, blockid.c_str(), blockid.size());
+        cdb2_bind_param(db.dbconn, "start", CDB2_DATETIMEUS, &start, sizeof(start));
+        cdb2_bind_param(db.dbconn, "end", CDB2_DATETIMEUS, &end, sizeof(end));
+        int rc = cdb2_run_statement(db.dbconn, sql);
+        if (rc) {
+            std::cerr << "write fingerprint rc " << rc << " " << cdb2_errstr(db.dbconn) << std::endl;
+            return false;
+        }
+    }
+
+    for (auto it : db.contexts) {
+        const char *sql = "insert into contexts(context, context_count, dbname, blockid, start, end) values(@context, @context_count, @dbname, @blockid, @start, @end)";
+
+        cdb2_client_datetimeus_t start = totimestamp(db.mintime);
+        cdb2_client_datetimeus_t end = totimestamp(db.maxtime);
+        
+        cdb2_clearbindings(db.dbconn);
+        cdb2_bind_param(db.dbconn, "context", CDB2_CSTRING, it.first.c_str(), it.first.size());
+        cdb2_bind_param(db.dbconn, "context_count", CDB2_INTEGER, &it.second, sizeof(it.second));
+        cdb2_bind_param(db.dbconn, "dbname", CDB2_CSTRING, db.dbname.c_str(), db.dbname.size());
+        cdb2_bind_param(db.dbconn, "blockid", CDB2_CSTRING, blockid.c_str(), blockid.size());
+        cdb2_bind_param(db.dbconn, "start", CDB2_DATETIMEUS, &start, sizeof(start));
+        cdb2_bind_param(db.dbconn, "end", CDB2_DATETIMEUS, &end, sizeof(end));
+        int rc = cdb2_run_statement(db.dbconn, sql);
+        if (rc) {
+            std::cerr << "write fingerprint rc " << rc << " " << cdb2_errstr(db.dbconn) << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+// TODO: exception on error
+void store(const dbstream &db, const std::string &blockid, std::string block) {
+    cdb2_clearbindings(db.dbconn);
+    int rc = cdb2_run_statement(db.dbconn, "begin");
+    if (rc) {
+        std::cerr << "begin rc " << rc << " " << cdb2_errstr(db.dbconn) << std::endl;
+    }
+    if (!storeblock(db, blockid, block))
+        goto abort;
+    if (!storequeries(db, blockid))
+        goto abort;
+    rc = cdb2_run_statement(db.dbconn, "commit");
+    if (rc) {
+        std::cerr << "commit rc " << rc << " " << cdb2_errstr(db.dbconn) << std::endl;
+    }
+    return;
+
+abort:
+    cdb2_run_statement(db.dbconn, "abort");
 }
 
 int main(int argc, char *argv[]) {
@@ -296,24 +360,17 @@ int main(int argc, char *argv[]) {
     char *fname = argv[1];
 
     dbstream db("mikedb", fname);
-    db.ingz = gzopen(fname, "r");
+    gzFile ingz = gzopen(fname, "r");
 
-    db.out.open("tmp", std::ios::out | std::ios::binary);
-    if (!db.out.is_open()) {
-        std::cerr << "can't open temp output file" << std::endl;
-        return 1;
-    }
     char buf[1024];
     int bytes = 0;
 
-    std::ostringstream block;
+    std::stringstream block;
 
-    while ((bytes = gzread(db.ingz, buf, sizeof(buf))) > 0) {
-        block << buf;
-        db.out.write(buf, bytes);
+    while ((bytes = gzread(ingz, buf, sizeof(buf))) > 0) {
+        block.write(buf, bytes);
     }
-    db.out.close();
-    gzclose(db.ingz);
+    gzclose(ingz);
 
     int rc = cdb2_open(&db.dbconn, "comdb2perfdb", "local" /* TODO ??? */, 0);
     if (rc) {
@@ -321,11 +378,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    db.in.open("tmp", std::ios::in | std::ios::binary);
-    if (!db.in.is_open()) {
-        std::cerr << "can't open temp input file" << std::endl;
-        return 1;
-    }
     std::string s;
     // Generate id for this block of data
     uuid_t blockid_uuid;
@@ -333,15 +385,13 @@ int main(int argc, char *argv[]) {
     char blockid[37];  // aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
     uuid_unparse(blockid_uuid, blockid);
     // std::cout << "uuid len " << strlen(blockid) << " " << blockid << std::endl;
-    for (;;) {
-        getline(db.in, s);
-        if (db.in.eof())
-            break;
+    do {
+        getline(block, s);
         process_event(db, std::string(blockid), s);
-    }
+    } while (!block.eof());
     // record what queries we gathered
     // dump them first 
-    dumpqueries(db);
-    storequeries(db, blockid, block.str());
+    dump(db, blockid);
+    store(db, blockid, block.str());
     return 0;
 }
