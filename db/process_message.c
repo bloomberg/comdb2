@@ -1846,7 +1846,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok = segtok(line, lline, &st, &ltok);
         char *name = "tst";
 
-        if (tokcmp(tok, ltok, "new") == 0) {
+        if (tokcmp(tok, ltok, "add") == 0) {
             if (!add_sequence(name, 0, 10, -1, true, 0, 100)) {
                 logmsg(LOGMSG_USER, "Created sequence \"%s\"\n", name);
             } else {
@@ -1854,7 +1854,13 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             }
         }
 
-        // TODO: ADD DELETE
+        else if (tokcmp(tok, ltok, "drop") == 0) {
+            if (!drop_sequence(name)) {
+                logmsg(LOGMSG_USER, "Deleted sequence \"%s\"\n", name);
+            } else {
+                logmsg(LOGMSG_USER, "Failed to delete sequence\n");
+            }
+        }
 
         else if (tokcmp(tok, ltok, "next_val") == 0) {
             long long *val = (long long *) malloc(sizeof(long long));

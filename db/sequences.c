@@ -45,6 +45,7 @@ int seq_next_val (char *name, long long *val) {
     long long inc = seq->increment;
     long long max = seq->max_val;
     long long min = seq->min_val;
+    long long next_val = seq->next_val;
 
     int dir = inc < 0 ? -1 : 1; // Direction of the sequence: 1 - Increasing, -1 - Decreasing
 
@@ -55,22 +56,24 @@ int seq_next_val (char *name, long long *val) {
 
     seq->prev_val = seq->next_val;
 
-    if (!check_overflow_ll_add(seq->next_val, inc))
+    // Check for integer overflow
+    if (!check_overflow_ll_add(next_val, inc))
         return 0;
 
-    seq->next_val += inc;
+    next_val += inc;
 
-    if ( ((inc >= 0) && (seq->next_val > max)) || ((inc < 0) && (seq->next_val < min)) ) {
+    if ( ((inc >= 0) && (next_val > max)) || ((inc < 0) && (next_val < min)) ) {
        if (seq->cycle && inc >= 0) {
-          seq->next_val = min;
+          next_val = min;
        } else if (seq->cycle && inc < 0) {
-          seq->next_val = max;
+          next_val = max;
        } else {
           // TODO: Error End of sequence
           return -1;
        }
     }
 
+    seq->next_val = next_val;
     return 0;
 }
 
@@ -129,9 +132,10 @@ sequence_t *get_sequence(char *name) {
 }
 
 
-/*-------------------------------------------------------------------------------------
- *
- * REMOVE: Test Function for adding a sequence directly to memory
+/**
+ * TODO: MOVE SOMEWHERE ELSE
+ * 
+ * Adds sequence to llmeta and memory
  */
 int add_sequence (char* name, long long min_val, long long max_val,
     long long increment, bool cycle,
@@ -166,8 +170,53 @@ int add_sequence (char* name, long long min_val, long long max_val,
 
     // Create llmeta record
     int rc;
-    // bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, &rc);
+    bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, &rc);
 
     thedb->num_sequences++;
     return 0;
+}
+
+/**
+ * TODO: MOVE SOMEWHERE ELSE
+ * 
+ * Drops sequence from llmeta and memory
+ */
+int drop_sequence (char *name) {
+    int rc;
+    int bdberr;
+    int i;
+
+    if (thedb->num_sequences == 0) {
+        // No Sequences Defined
+        logmsg(LOGMSG_ERROR, "No sequences defined\n");
+        return 1;
+    }
+
+    for(i = 0; i < thedb->num_sequences; i++) {
+        if ( strcmp(thedb->sequences[i]->name, name) == 0) {
+            // TOOD: add checks for usage in tables
+
+            // TODO: Crit section?
+            // Remove sequence from dbenv
+
+            thedb->num_sequences--;
+            
+            if (thedb->num_sequences > 0){
+                thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
+            }
+            
+            thedb->sequences[thedb->num_sequences] = NULL;
+
+            // Remove llmeta record
+            rc = bdb_llmeta_drop_sequence(NULL, name, &bdberr);
+
+            if (rc)
+                return rc;
+
+            return 0;
+        }
+    }
+
+    logmsg(LOGMSG_ERROR, "sequence with name \"%s\" does not exists\n", name);
+    return 1;
 }

@@ -26,5 +26,6 @@ sequence_t *get_sequence(char *name);
 int add_sequence (char *name, long long min_val, long long max_val, 
    long long increment, bool cycle, 
    long long start_val, long long chunk_size);
+int drop_sequence (char *name);
 
 #endif
