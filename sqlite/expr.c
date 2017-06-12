@@ -5662,7 +5662,7 @@ static char* sqlite3ExprDescribe_inner(
       char *ret, *ret2;
       int i;
       /* dh: not all the functions can be blindely passed remotely! */
-      if(strncmp(pExpr->u.zToken, "now", 3) == 0)
+      if(strncasecmp(pExpr->u.zToken, "now", 3) == 0)
       { 
         dttz_t dt;
 
