@@ -51,10 +51,12 @@ The stored procedure should return 0 on success. Not returning a value or any ot
 the stored procedure transaction to rollback.
 
 Notice that the trigger stored procedure runs in a independent transaction (separate from the event that triggered it):
-  `begin
+```
+begin
     exec procedure
     consume (dequeue)
-  commit`
+commit
+```
 
 This implies that if trigger stored procedure transaction has any failure (ex.
 a failed insert, a duplicate error, etc.), that transaction will abort and the
