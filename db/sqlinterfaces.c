@@ -1490,7 +1490,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
 
+    if (clnt->query_stats == NULL) {
+        record_query_cost(thd, clnt);
+        reqlog_set_path(logger, clnt->query_stats);
+    }
     reqlog_set_vreplays(logger, clnt->verify_retries);
+
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
@@ -1859,6 +1864,38 @@ static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
 static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
     reqlog_set_cost(logger, cost);
     reqlog_set_rows(logger, rows);
+}
+
+/*
+  Check and print the client context messages.
+*/
+static void log_client_context(struct reqlogger *logger,
+                               struct sqlclntstate *clnt)
+{
+    if (clnt->sql_query == NULL)
+        return;
+
+    if (clnt->sql_query->n_context > 0) {
+        int i = 0;
+        while (i < clnt->sql_query->n_context) {
+            reqlog_logf(logger, REQL_INFO, "(%d) %s", ++i,
+                        clnt->sql_query->context[i]);
+        }
+    }
+
+    /* If request context is set, the client is changing the context. */
+    if (clnt->sql_query->context) {
+        /* Latch the context - client only re-sends context if
+           it changes.  TODO: this seems needlessly expensive. */
+        clnt->ncontext = clnt->sql_query->n_context;
+        if (clnt->context)
+            free(clnt->context);
+        clnt->context = malloc(sizeof(char*) * clnt->sql_query->n_context);
+        for (int i = 0; i < clnt->sql_query->n_context; i++)
+            clnt->context[i] = strdup(clnt->sql_query->context[i]);
+    }
+    /* Whether latched from previous run, or just set, pass this to logger. */
+    reqlog_set_context(logger, clnt->ncontext, clnt->context);
 }
 
 /* begin; send return code */
@@ -3472,7 +3509,7 @@ void thr_set_current_sql(const char *sql)
     }
 }
 
-void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     char info_nvreplays[40];
     info_nvreplays[0] = '\0';
@@ -3485,11 +3522,11 @@ void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     reqlog_new_sql_request(thd->logger, NULL, clnt->tag, clnt->tagbuf,
                            clnt->tagbufsz, clnt->nullbits, clnt->numnullbits);
-
+    log_client_context(thd->logger, clnt);
     log_queue_time(thd->logger, clnt);
 }
 
-void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     /* debug */
     thr_set_current_sql(clnt->sql);
@@ -5207,11 +5244,13 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (rc)
             goto out;
 
-        int sz = clnt->sql_query->cnonce.len;
         char cnonce[256];
         cnonce[0] = '\0';
+        if (clnt->sql_query) {
+            int sz = clnt->sql_query->cnonce.len;
+        }
 
-        if (gbl_extended_sql_debug_trace) {
+        if (gbl_extended_sql_debug_trace && clnt->sql_query) {
             bzero(cnonce, sizeof(cnonce));
             snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
             logmsg(LOGMSG_USER, "%s: cnonce '%s': iswrite=%d replay=%d "
@@ -5386,10 +5425,12 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
-            if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY)
+            if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY) {
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
+                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb));
+            }
             goto errors;
         }
 
@@ -6255,6 +6296,11 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->verify_indexes = 0;
     clnt->schema_mems = NULL;
     clnt->init_gen = 0;
+    for (int i = 0; i < clnt->ncontext; i++) {
+        free(clnt->context[i]);
+    }
+    free(clnt->context);
+    clnt->ncontext = 0;
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)

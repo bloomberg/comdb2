@@ -1,0 +1,15 @@
+schema {
+    byte fingerprint[32]
+    char dbname[33]
+    cstring blockid[37]
+    cstring host[64]
+    cstring context[100]
+    datetime start
+    longlong count
+}
+
+keys {
+    "db" = dbname + start + fingerprint
+    "host" = host + start
+    "context" = context + start
+}
