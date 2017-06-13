@@ -41,7 +41,7 @@ Statement to set up trigger on insert into multiple tables, say `t1` and `t2` wo
 Behind the scenes, the database will set up a queue to save requested changes to specified tables. The database will 
 then select one node in the cluster to start listening on this queue. When there is an item on the queue, the 
 database reads the item, starts a new transaction, creates a corresponding Lua table and executes the stored 
-procedure. When stored procedure returns successfully, the database consumes this item from the queue and 
+procedure. When stored procedure completes successfully, the database consumes this item from the queue and 
 commits the transaction. The database then goes back to listening for subsequent items on the queue.
 
 `db:begin()` and `db:commit()` calls are not available to triggers as the database starts one implicitly so all 
@@ -49,6 +49,19 @@ of stored procedure actions and queue-consume operation are guaranteed to commit
 
 The stored procedure should return 0 on success. Not returning a value or any other non-zero value will cause 
 the stored procedure transaction to rollback.
+
+Notice that the trigger stored procedure runs in a independent transaction (separate from the event that triggered it):
+  `begin
+    exec procedure
+    consume (dequeue)
+  commit`
+
+This implies that if trigger stored procedure transaction has any failure (ex.
+a failed insert, a duplicate error, etc.), that transaction will abort and the
+event will not be removed from the queue, rather the event will be reprocessed:
+trigger stored procedure will be retried again (and if it fails, it will be
+retried again, possibly indefinitely). Only if the stored procedure actions
+complete successfully, will the event be consumed from the queue.
 
 Following is an example for a trigger `audit` which logs all changes to table `t`. Table has two int fields: `i`, `j`. 
 stored procedure logs data to `audit_tbl`, storing type of change to `t`, time of log and the changed values. 
