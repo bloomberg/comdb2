@@ -52,7 +52,7 @@ SYSLIBS=$(BBSTATIC) -lssl -lcrypto -lz -llz4 -luuid -lprotobuf-c \
 $(SRCHOME)/comdb2: CPPFLAGS=$(db_CPPFLAGS)
 
 $(SRCHOME)/comdb2: $(LIBS_BIN) $(db_OBJS) $(tools_LIBS)
-	$(CXX) -o $(SRCHOME)/comdb2 $(LCLFLAGS) $(LDFLAGS) $(db_OBJS) $(LCLLIBS) $(SYSLIBS) $(ARCHLIBS) $(tools_LIBS)
+	$(CC) -o $(SRCHOME)/comdb2 $(LCLFLAGS) $(LDFLAGS) $(db_OBJS) $(LCLLIBS) $(SYSLIBS) $(ARCHLIBS) $(tools_LIBS)
 
 $(db_OBJS): $(db_MEMGEN)
 

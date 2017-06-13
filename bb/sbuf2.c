@@ -103,10 +103,6 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     sslio_close(sb, 1);
 #endif
     sb->fd = -1;
-    if (sb->cert) {
-        X509_free(sb->cert);
-        sb->cert = NULL;
-    }
     if (sb->rbuf) {
         free(sb->rbuf);
         sb->rbuf = NULL;

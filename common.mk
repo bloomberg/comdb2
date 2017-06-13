@@ -12,7 +12,7 @@ bb_SOURCES:=averager.c bb_asprintf.c bbhrtime.c bb_oscompat.c		\
           safestrerror.c sbuf2.c segstring.c sltpck.c str0.c strbuf.c	\
           switches.c tcputil.c thdpool.c thread_malloc.c		\
           thread_util.c timers.c utilmisc.c walkback.c xstring.c	\
-          ssl_support.c logmsg.c
+          ssl_support.c logmsg.c int_overflow.c
 bb_abs_SOURCES:=$(foreach src,$(bb_SOURCES),bb/$(src))
 bb_OBJS=$(patsubst %.c,%.o,$(bb_abs_SOURCES))
 

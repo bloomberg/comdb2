@@ -20,7 +20,7 @@ To check out the source, please follow [the instructions](install.html#installin
 To install cdb2jdbc from source, the following additional software packages are required:
 
 *   JDK 1.6 or above
-*   [Protocol Buffers compiler 2.6 or above](https://developers.google.com/protocol-buffers/). Make sure that Protocol Buffers compiler is included in your `PATH`.
+*   [Protocol Buffers compiler 3.2](https://developers.google.com/protocol-buffers/). Make sure that Protocol Buffers compiler is included in your `PATH`.
 *   [Maven 3.x](https://maven.apache.org/)
 
 Once you check out the source and have all the required software installed on the system, change directory to cdb2jdbc under comdb2 source and type `mvn clean install`.
@@ -30,8 +30,14 @@ cd cdb2jdbc
 mvn clean install
 ```
 
-Cdb2jdbc should be successfully installed in your local Maven repository.
+cdb2jdbc should be successfully installed in your local Maven repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
+
+**A word of caution**: the build can fail if the version of protocol buffers installed on the system mismatches the version specified in
+`cdb2jdbc/pom.xml`.  If you encounter problems, update the protobuf-java version in the .pom file to match what's on the system.
+Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jdbc` (JAR files will be written
+to `cdb2jdbc/maven.m2/repository/com/bloomberg/comdb2/cdb2jdbc/2.0.0/`)
+
 
 
 ## Setting up Cdb2jdbc
