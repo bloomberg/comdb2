@@ -6,7 +6,7 @@
 
 #include <unistd.h>
 
-int roll_file(char *file, int nkeep)
+int roll_file(const char *file, int nkeep)
 {
     char *from = NULL, *to = NULL;
 

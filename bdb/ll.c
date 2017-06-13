@@ -1182,7 +1182,7 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
             /* Zap odh. */
             bzero(&odh, sizeof(odh));
 
-            init_odh(bdb_state, &odh, dta->data, dta->size, 0);
+            init_odh(bdb_state, &odh, dta->data, dta->size, is_blob);
 
             /* Allocate space for new record if it is small. */
             if (dta->size + ODH_SIZE_RESERVE < 16 * 1024) {

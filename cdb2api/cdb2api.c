@@ -681,7 +681,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
     }
 }
 
-void cdb2_set_comdb2db_config(char *cfg_file)
+void cdb2_set_comdb2db_config(const char *cfg_file)
 {
     pthread_once(&init_once, do_init_once);
     if (log_calls)
@@ -690,7 +690,7 @@ void cdb2_set_comdb2db_config(char *cfg_file)
     strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
 }
 
-void cdb2_set_comdb2db_info(char *cfg_info)
+void cdb2_set_comdb2db_info(const char *cfg_info)
 {
     int len = strlen(cfg_info) + 1;
     if (CDB2DBCONFIG_BUF != NULL)
@@ -1231,7 +1231,7 @@ static int send_reset(SBUF2 *sb)
 }
 
 #if WITH_SSL
-static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
+static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 {
     /*
      *                   |<---------------- CLIENT ---------------->|
@@ -1483,7 +1483,7 @@ retry_newsql_connect:
     }
 
 #if WITH_SSL
-    if (try_ssl(hndl, fd, sb, indx) != 0) {
+    if (try_ssl(hndl, sb, indx) != 0) {
         sbuf2close(sb);
         return -1;
     }
@@ -1727,6 +1727,15 @@ retry:
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
     hndl->ack = (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_PING);
+
+    /* Server requires SSL. Return the header type in `type'.
+       We may reach here under DIRECT_CPU mode where we skip DBINFO lookup. */
+    if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+        if (type == NULL)
+            return -1;
+        *type = hdr.type;
+        return 0;
+    }
 
     if (hdr.length == 0)
         goto retry;
@@ -1999,7 +2008,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         features[n_features] = CDB2_CLIENT_FEATURES__SSL;
         n_features++;
 #endif
-        if (retries_done && hndl->master == hndl->connected_host) {
+        if ((hndl->flags & CDB2_DIRECT_CPU) ||
+            (retries_done && hndl->master == hndl->connected_host)) {
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
             n_features++;
         }
@@ -3255,6 +3265,16 @@ read_record:
                     (uint32_t) pthread_self(), host, __LINE__, rc, type);
         }
     }
+
+#if WITH_SSL
+    if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+        hndl->s_sslmode = PEER_SSL_REQUIRE;
+        try_ssl(hndl, hndl->sb, hndl->connected_host);
+        /* Decrement retry counter: It is not a real retry. */
+        --retries_done;
+        goto retry_queries;
+    }
+#endif
 
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {

@@ -1,9 +1,5 @@
 #!/bin/bash
-# $Id: copycomdb2 104461 2015-07-23 18:50:27Z ppriest $
-# $URL: svn+ssh://devsvn/system/comdb2/trunk/tools/copycomdb2 $
-
-# New copycmdb2 script, which uses comdb2ar to serialise and deserialise
-# the underlying database.
+# Uses comdb2ar to serialise and deserialise a database.
 
 PREFIX=
 

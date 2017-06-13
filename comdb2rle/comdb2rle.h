@@ -30,6 +30,7 @@ typedef struct {
 /* Return 0: Success
 **        1: Failure */
 int compressComdb2RLE(Comdb2RLE *);
+int compressComdb2RLE_hints(Comdb2RLE *, uint16_t *);
 int decompressComdb2RLE(Comdb2RLE *);
 
 #endif

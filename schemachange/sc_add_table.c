@@ -248,7 +248,7 @@ int do_add_table_int(struct schema_change_type *s, struct ireq *iq)
 
     /* compression algorithms set to 0 for new table - this
        will have to be changed manually by the operator */
-    set_bdb_option_flags(db->handle, s->headers, s->ip_updates, s->instant_sc,
+    set_bdb_option_flags(db, s->headers, s->ip_updates, s->instant_sc,
                          db->version, s->compress, s->compress_blobs, 1);
 
     return 0;

@@ -1107,6 +1107,12 @@ static int process_this_session(
     osql_sess_getuuid(sess, uuid);
     key_next = key_crt = *key;
 
+    if (key->rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(iq->reqlogger, &key->rqid, sizeof(unsigned long long));
+    else
+        reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
+    reqlog_set_event(iq->reqlogger, "txn");
+
     /* go through each record */
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
@@ -1589,7 +1595,7 @@ int sql_cancelled_transaction(struct ireq *iq)
 {
     int rc;
 
-    logmsg(LOGMSG_WARN, "%s: cancelled transaction\n", __func__);
+    logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     rc = osql_bplog_free(iq, 1, __func__, NULL, 0);
 
     if (iq->p_buf_orig) {

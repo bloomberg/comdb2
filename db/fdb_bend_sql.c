@@ -464,6 +464,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     //#endif
 
     clnt->writeTransaction = 0;
+    clnt->dbtran.shadow_tran = NULL;
 
     return rc;
 }

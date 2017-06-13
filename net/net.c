@@ -27,18 +27,14 @@
 #include <strings.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/types.h>
 #include <time.h>
 #include <alloca.h>
+#include <ctrace.h>
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <netdb.h>
-#include <errno.h>
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
-#include <strings.h>
 #include <pthread.h>
 #include "thread_util.h"
 
@@ -53,21 +49,15 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
 #ifdef _AIX
 #include <sys/socketvar.h>
 #endif
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <signal.h>
-#include <string.h>
 #include <pwd.h>
 #include <dirent.h>
-#include <unistd.h>
-#include <time.h>
 #include <utime.h>
 #include <sys/time.h>
 #include <poll.h>
@@ -1243,8 +1233,8 @@ static int write_message_int(netinfo_type *netinfo_ptr,
     if ((flags & WRITE_MSG_NOHELLOCHECK) == 0) {
         if (!host_node_ptr->got_hello) {
             /*
-            fprintf(stderr, "%s: to %d, no hello\n",
-               __func__, host_node_ptr->node);
+            fprintf(stderr, "%s: to %s, no hello\n",
+               __func__, host_node_ptr->host);
             */
             return -9;
         }
@@ -1907,7 +1897,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
         }
 
         /*
-        fprintf(stderr, "waiting for ack from %d\n", host_node_ptr->node);
+        fprintf(stderr, "waiting for ack from %s\n", host_node_ptr->host);
         */
 
         rc = pthread_cond_timedwait(&(host_node_ptr->ack_wakeup),
@@ -2082,7 +2072,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     if (nodelay)
         host_node_ptr->num_sends = 0;
 
-    /*fprintf(stderr, "net_send_message: to node %d\n", host_node_ptr->node);*/
+    /*ctrace("net_send_message: to node %s, ut=%d\n", host_node_ptr->host, usertype);*/
 
     msghd.usertype = usertype;
     Pthread_mutex_lock(&(netinfo_ptr->seqlock));
@@ -2706,7 +2696,7 @@ static void rem_from_netinfo(netinfo_type *netinfo_ptr,
             }
         }
 
-        // if last_used is eq to host_node_ptr->node, clear last_used_node_ptr
+        // if last_used is eq to host_node_ptr->host, clear last_used_node_ptr
         if (host_node_ptr == netinfo_ptr->last_used_node_ptr) {
             netinfo_ptr->last_used_node_ptr = NULL;
         }
@@ -3681,12 +3671,13 @@ static int process_user_message(netinfo_type *netinfo_ptr,
     if (netinfo_ptr->fake || netinfo_ptr->exiting)
         return 0;
 
-    /*fprintf(stderr, "process_user_message from %d\n", host_node_ptr->node);*/
 
     int malloced = 0;
 
     int rc = read_user_data(host_node_ptr, &usertype, &seqnum, &needack,
                             &datalen, &data, &malloced);
+
+    /* fprintf(stderr, "process_user_message from %s, ut=%d\n", host_node_ptr->host, usertype); */
 
     if (rc != 0)
         return -1; /* not sure ... exit the reader thread??? */
@@ -3738,7 +3729,8 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             break;
         }
     } else {
-        /* got an unexpected usertype */
+        logmsg(LOGMSG_INFO, "%s: got an unexpected usertype from %s, ut=%d\n",
+               __func__, host_node_ptr->host, usertype);
     }
 
     if (ack_state)

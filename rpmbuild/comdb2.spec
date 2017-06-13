@@ -27,32 +27,26 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %files
-/opt/bb/bin/cdb2_dump
-/opt/bb/bin/cdb2_printlog
-/opt/bb/bin/cdb2_stat
-/opt/bb/bin/cdb2_verify
-/opt/bb/bin/cdb2_sqlreplay
-/opt/bb/bin/cdb2sql
 /opt/bb/bin/comdb2
-/opt/bb/bin/comdb2ar
-/opt/bb/bin/comdb2dumpcsc
-/opt/bb/bin/comdb2sc
+/opt/bb/bin/cdb2sql
+/opt/bb/bin/cdb2sockpool
 /opt/bb/bin/copycomdb2
 /opt/bb/bin/pmux
+/opt/bb/bin/comdb2ar
+/opt/bb/bin/cdb2_sqlreplay
 /opt/bb/etc/cdb2/config/comdb2.d
 /opt/bb/include
 /opt/bb/include/cdb2api.h
 /opt/bb/lib/libcdb2api.a
 /opt/bb/lib/libcdb2protobuf.a
-/lib/systemd/system/pmux.service
-/lib/systemd/system/cdb2sockpool.service
-/lib/systemd/system/supervisor_cdb2.service
-/usr/local/lib/pkgconfig/cdb2api.pc
-/opt/bb/bin/cdb2sockpool
+/opt/bb/lib/systemd/system/pmux.service
+/opt/bb/lib/systemd/system/cdb2sockpool.service
+/opt/bb/lib/systemd/system/supervisor_cdb2.service
+/opt/bb/usr/local/lib/pkgconfig/cdb2api.pc
 /opt/bb/bin/comdb2admin
 /opt/bb/etc/supervisord_cdb2.conf
 /opt/bb/lib/libcdb2api.so
-/opt/bb/lib/systemd/system/pmux.service
+/opt/bb/bin/comdb2dumpcsc
 
 %doc
 
@@ -70,10 +64,19 @@ chmod 755 /opt/bb/var /opt/bb/var/log
 echo 'PATH=$PATH:/opt/bb/bin' >> /home/comdb2/.bashrc
 chmod +x /home/comdb2/.bashrc
 chown comdb2:comdb2 /home/comdb2/.bashrc
-# This is ubuntu specific: maybe switch here for other systems?
-cp /opt/bb/lib/systemd/system/pmux.service /etc/systemd/system
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_dump
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_printlog
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
+ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
+
+cp /opt/bb/usr/local/lib/pkgconfig/cdb2api.pc /usr/local/lib/pkgconfig/cdb2api.pc
+cp /opt/bb/lib/systemd/system/pmux.service /lib/systemd/system/
+cp /opt/bb/lib/systemd/system/cdb2sockpool.service /lib/systemd/system/
+cp /opt/bb/lib/systemd/system/supervisor_cdb2.service /lib/systemd/system/
+
 systemctl daemon-reload
 if [ ! -e /.dockerenv ]; then
+
     systemctl stop pmux
     systemctl start pmux
     systemctl enable supervisor_cdb2

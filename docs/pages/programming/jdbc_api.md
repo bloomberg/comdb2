@@ -20,7 +20,7 @@ To check out the source, please follow [the instructions](install.html#installin
 To install cdb2jdbc from source, the following additional software packages are required:
 
 *   JDK 1.6 or above
-*   [Protocol Buffers compiler 2.6 or above](https://developers.google.com/protocol-buffers/). Make sure that Protocol Buffers compiler is included in your `PATH`.
+*   [Protocol Buffers compiler 3.2](https://developers.google.com/protocol-buffers/). Make sure that Protocol Buffers compiler is included in your `PATH`.
 *   [Maven 3.x](https://maven.apache.org/)
 
 Once you check out the source and have all the required software installed on the system, change directory to cdb2jdbc under comdb2 source and type `mvn clean install`.
@@ -30,8 +30,14 @@ cd cdb2jdbc
 mvn clean install
 ```
 
-Cdb2jdbc should be successfully installed in your local Maven repository.
+cdb2jdbc should be successfully installed in your local Maven repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
+
+**A word of caution**: the build can fail if the version of protocol buffers installed on the system mismatches the version specified in
+`cdb2jdbc/pom.xml`.  If you encounter problems, update the protobuf-java version in the .pom file to match what's on the system.
+Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jdbc` (JAR files will be written
+to `cdb2jdbc/maven.m2/repository/com/bloomberg/comdb2/cdb2jdbc/2.0.0/`)
+
 
 
 ## Setting up Cdb2jdbc
@@ -285,6 +291,48 @@ To load the trusted CA JKS into the driver, the JDBC URL looks like this:
 
 ```
 jdbc:comdb2//<hostname>/<database>?trust_store=<path/to/jks>&trust_store_password=<passwd>
+```
+
+
+## Comdb2 Extensions to the JDBC API
+
+### Executing Typed Queries
+
+A typed query gives applications more control over return types.
+The database will coerce the types of the resulting columns to the types specified by the application.
+If the types aren’t compatible, an exception will be thrown.
+
+To access the extension, you would need to cast the `java.sql.Statement` object to `com.bloomberg.comdb2.jdbc.Comdb2Statement`.
+For example:
+
+```java
+conn = DriverManager.getConnection("jdbc:comdb2:/localhost/testdb");
+stmt = conn.createStatement();
+comdb2stmt = (Comdb2Statement)stmt;
+String sql = "select now()";
+rset = comdb2stmt.executeQuery(sql, Arrays.asList(java.sql.Types.VARCHAR));
+```
+
+In the example above, the row will come back as a `java.lang.String` instead of a `java.sql.TIMESTAMP`.
+
+
+### Using Intervals
+
+JDBC standard does not define data types for intervals. You could work it around using Comdb2 interval types.
+For example, to bind an INTERVALDS (interval day to second) value, you would use:
+
+```
+// Load driver, get connection and create a parepared statement...
+// bind an interval year-month (+3 mon)
+stmt.setObject(1, new Cdb2Types.IntervalYearMonth(1, 0, 3));
+```
+
+### Using Named Parameters for PreparedStatement
+
+Comdb2 has built-in support for named parameters. You would simply use `@param_name` instead of `?` in your queries:
+
+```
+PreparedStatement stmt = conn.prepareStatement("insert into employee values (@id, @firstname, @lastname)");
 ```
 
 

@@ -725,7 +725,8 @@ struct db {
     int nsqlix;
 
     /*backend db engine handle*/
-    void *handle;
+    bdb_state_type *handle;
+
     /* meta-data.  this may be a lite db.  it may be NULL, because older
      * comdb2s didn't have meta dbs.  also it may be NULL if the dbenv
      * meta handle is non-NULL - the new approach is one meta table per
@@ -2906,6 +2907,9 @@ void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, int timems);
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
+void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
+void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
+void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
@@ -3516,7 +3520,7 @@ extern int gbl_check_wrong_db;
 
 extern int gbl_debug_sql_opcodes;
 
-void set_bdb_option_flags(void *bdb_handle, int odh, int ipu, int isc, int ver,
+void set_bdb_option_flags(struct db*, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh);
 
 extern int gbl_debug_temptables;

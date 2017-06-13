@@ -4203,6 +4203,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    /*ctrace("berkdb_receive_msg: from %s, ut=%d", from_host, usertype);*/
     switch (usertype) {
     case USER_TYPE_YOUARENOTCOHERENT:
         /* This version of comdb2 shouldn't be getting these messages */
@@ -4789,6 +4790,55 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
     }
 }
 
+
+static void update_durable_lsn(bdb_state_type *bdb_state)
+{
+    DB_LSN durable_lsn;
+    uint32_t durable_gen;
+    char *master, *eid;
+
+    BDB_READLOCK("calc_durable_lsn");
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master);
+    bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
+    if (!strcmp(master, eid)) {
+        DB_LSN old_durable_lsn;
+        uint32_t old_durable_gen;
+        bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &old_durable_lsn,
+                                          &old_durable_gen);
+        calculate_durable_lsn(bdb_state, &durable_lsn, &durable_gen, 0);
+
+        if ((old_durable_gen < durable_gen) ||
+            (old_durable_gen == durable_gen && 
+             (log_compare(&old_durable_lsn, &durable_lsn) < 0))) {
+
+            if (durable_lsn.file <= 0) {
+                logmsg(LOGMSG_WARN, "Watcher thread not updating, calc_durable_lsn "
+                       "returns [%d][%d] generation %d\n", durable_lsn.file,
+                       durable_lsn.offset, durable_gen);
+                durable_gen = old_durable_gen;
+                durable_lsn = old_durable_lsn;
+            }
+            else {
+                bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &durable_lsn,
+                                                  durable_gen);
+                ctrace("Watcher updating durable lsn from [%d][%d] gen %d "
+                       "to [%d][%d] gen %d\n", old_durable_lsn.file, 
+                       old_durable_lsn.offset, old_durable_gen, durable_lsn.file,
+                       durable_lsn.offset, durable_gen);
+            }
+        }
+        else {
+            durable_gen = old_durable_gen;
+            durable_lsn = old_durable_lsn;
+        }
+
+        if (durable_lsn.file) {
+            udp_send_durable_lsn(bdb_state, &durable_lsn, durable_gen);
+        }
+    }
+    BDB_RELLOCK();
+}
+
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
@@ -4810,8 +4860,7 @@ void *watcher_thread(void *arg)
     char *rep_master = 0;
     int list_start;
     int last_list_start = 0;
-    DB_LSN durable_lsn;
-    uint32_t durable_gen;
+    int is_durable;
 
     gbl_watcher_thread_ran = time_epoch();
 
@@ -5281,47 +5330,12 @@ void *watcher_thread(void *arg)
 
         send_context_to_all(bdb_state);
 
-        BDB_READLOCK("calc_durable_lsn");
-        char *master, *eid;
-        bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master);
-        bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
-        if (!strcmp(master, eid)) {
-            DB_LSN old_durable_lsn;
-            uint32_t old_durable_gen;
-            bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &old_durable_lsn,
-                                              &old_durable_gen);
-            calculate_durable_lsn(bdb_state, &durable_lsn, &durable_gen, 0);
-
-            if ((old_durable_gen < durable_gen) ||
-                (old_durable_gen == durable_gen && 
-                 (log_compare(&old_durable_lsn, &durable_lsn) < 0))) {
-
-                if (durable_lsn.file <= 0) {
-                    logmsg(LOGMSG_WARN, "Watcher thread not updating, calc_durable_lsn "
-                            "returns [%d][%d] generation %d\n", durable_lsn.file,
-                            durable_lsn.offset, durable_gen);
-                    durable_gen = old_durable_gen;
-                    durable_lsn = old_durable_lsn;
-                }
-                else {
-                    bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &durable_lsn,
-                            durable_gen);
-                    ctrace("Watcher updating durable lsn from [%d][%d] gen %d "
-                            "to [%d][%d] gen %d\n", old_durable_lsn.file, 
-                            old_durable_lsn.offset, old_durable_gen, durable_lsn.file,
-                            durable_lsn.offset, durable_gen);
-                }
-            }
-            else {
-                durable_gen = old_durable_gen;
-                durable_lsn = old_durable_lsn;
-            }
-
-            if (durable_lsn.file) {
-                udp_send_durable_lsn(bdb_state, &durable_lsn, durable_gen);
-            }
+        bdb_state->dbenv->getattr(bdb_state->dbenv, 
+                                  "elect_highest_committed_gen", 
+                                  NULL, &is_durable);
+        if (is_durable) {
+            update_durable_lsn(bdb_state);
         }
-        BDB_RELLOCK();
     }
 }
 

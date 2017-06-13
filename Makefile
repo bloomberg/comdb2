@@ -28,7 +28,7 @@ include mem.mk
 include sqlite/sqlite_common.defines
 
 modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
-lua db tools sockpool
+lua tools db sockpool
 include $(addsuffix /module.mk,$(modules))
 
 # The following object files make into cdb2api static (libcdb2api.a) as
@@ -97,21 +97,19 @@ install: all
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
 	rm -f db/copycomdb2.q
-	install -D comdb2ar $(DESTDIR)$(PREFIX)/bin/comdb2ar
-	install -D comdb2sc $(DESTDIR)$(PREFIX)/bin/comdb2sc
-	install -D cdb2_printlog $(DESTDIR)$(PREFIX)/bin/cdb2_printlog
-	install -D cdb2_verify $(DESTDIR)$(PREFIX)/bin/cdb2_verify
-	install -D cdb2_dump $(DESTDIR)$(PREFIX)/bin/cdb2_dump
-	install -D cdb2_stat $(DESTDIR)$(PREFIX)/bin/cdb2_stat
-	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
+	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
 	install -D cdb2_sqlreplay $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay
-	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
 	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
-	install -D tools/pmux/pmux.service $(DESTDIR)/lib/systemd/system/pmux.service
-	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)/lib/systemd/system/cdb2sockpool.service
-	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)/lib/systemd/system/supervisor_cdb2.service
-	install -D cdb2api/cdb2api.pc $(DESTDIR)/usr/local/lib/pkgconfig/cdb2api.pc
+	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
+	install -D comdb2ar $(DESTDIR)$(PREFIX)/bin/comdb2ar
+	install -D pmux $(DESTDIR)$(PREFIX)/bin/pmux
 	install -D tools/pmux/pmux.service $(DESTDIR)$(PREFIX)/lib/systemd/system/pmux.service
+	install -D tools/cdb2sockpool/cdb2sockpool.service $(DESTDIR)$(PREFIX)/lib/systemd/system/cdb2sockpool.service
+	install -D contrib/comdb2admin/supervisor_cdb2.service $(DESTDIR)$(PREFIX)/lib/systemd/system/supervisor_cdb2.service
+	install -D cdb2api/cdb2api.pc $(DESTDIR)$(PREFIX)/usr/local/lib/pkgconfig/cdb2api.pc
 	install -D db/comdb2dumpcsc $(DESTDIR)$(PREFIX)/bin/comdb2dumpcsc
 	mkdir -p $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/  $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/ $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/
 	[ -z "$(DESTDIR)" ] && chown $(USER):$(GROUP) $(DESTDIR)$(PREFIX)/var/cdb2/ $(DESTDIR)$(PREFIX)/etc/cdb2 $(DESTDIR)$(PREFIX)/var/log/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/rtcpu $(DESTDIR)$(PREFIX)/var/lib/cdb2 $(DESTDIR)$(PREFIX)/etc/cdb2/config/comdb2.d/ $(DESTDIR)$(PREFIX)/etc/cdb2/config/ $(DESTDIR)$(PREFIX)/tmp/cdb2/ $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/conf.d $(DESTDIR)$(PREFIX)/etc/cdb2_supervisor/conf.d/  $(DESTDIR)$(PREFIX)/var/run $(DESTDIR)$(PREFIX)/var/log/cdb2_supervisor/ || true  

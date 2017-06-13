@@ -1,0 +1,242 @@
+#ifndef INCLUDED_REQLOG_INT_H
+#define INCLUDED_REQLOG_INT_H
+
+#include "sqlquery.pb-c.h"
+#include "list.h"
+#include "comdb2.h"
+#include "cdb2_constants.h"
+
+/* This used to be private to reqlog.  Moving to a shared header since eventlog also
+   needs access to reqlog internals.  I am not sure which system is going to win here,
+   but it makes sense to separate them for now. */
+
+enum logevent_type {
+    EVENT_PUSH_PREFIX,
+    EVENT_POP_PREFIX,
+    EVENT_POP_PREFIX_ALL,
+    EVENT_PRINT
+};
+
+enum { MAXSTMT = 31, NUMSTMTS = 16 };
+
+struct logevent {
+    struct logevent *next;
+    enum logevent_type type;
+};
+
+struct push_prefix_event {
+    struct logevent hdr;
+    int length; /* -ve if not known, in which case text must be \0
+                   terminated */
+    const char *text;
+};
+
+struct pop_prefix_event {
+    struct logevent hdr;
+};
+
+struct print_event {
+    struct logevent hdr;
+    unsigned event_flag;
+    int length; /* -ve if not known, in which case text must be \0
+                   terminated */
+    char *text;
+};
+
+enum { MAX_PREFIXES = 16 };
+
+struct prefix_type {
+    char prefix[256];
+    int pos;
+    int stack[MAX_PREFIXES];
+    int stack_pos;
+};
+
+struct tablelist {
+    struct tablelist *next;
+    int count;
+    char name[1];
+};
+
+struct reqlogger {
+    char origin[128];
+
+    /* Everything from here onwards is transient and can be reset
+     * with a bzero. */
+    int start_transient;
+
+    /* flags that can be set as we progress */
+    unsigned reqflags;
+
+    int in_request;
+    const char *request_type;
+    unsigned event_mask;
+    unsigned dump_mask;
+    unsigned mask; /* bitwise or of the above two masks */
+
+    int startms;
+    int64_t startus;
+
+    struct prefix_type prefix;
+    char dumpline[1024];
+    int dumplinepos;
+
+    /* list of tables touched by this request */
+    int tracking_tables;
+    struct tablelist *tables;
+
+    /* our opcode - OP_SQL for sql */
+    int opcode;
+
+    struct ireq *iq;
+
+    /* singly linked list of all the stuff we've logged */
+    struct logevent *events;
+    struct logevent *last_event;
+
+    /* the sql statement */
+    char *stmt;
+    char *tags;
+    void *tagbuf;
+    void *nullbits;
+
+    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
+    int sqlrows;
+    double sqlcost;
+
+    int rc;
+    int durationms;
+    int vreplays;
+    int queuetimems;
+    char fingerprint[16];
+    int have_fingerprint;
+    char id[41];
+    int have_id;
+    const char *event_type;
+
+    CDB2SQLQUERY *request;
+};
+
+/* a rage of values to look for */
+struct range {
+    int from;
+    int to;
+};
+
+struct dblrange {
+    double from;
+    double to;
+};
+
+/* a list of integers to look for (or exclude) */
+enum { LIST_MAX = 32 };
+struct list {
+    unsigned num;
+    unsigned inv; /* flag - if set allow values not in list */
+    int list[LIST_MAX];
+};
+
+struct output {
+    LINKC_T(struct output) linkv;
+
+    int refcount;
+    int fd;
+
+    int use_time_prefix;
+    int lasttime;
+    char timeprefix[17]; /* "dd/mm hh:mm:ss: " */
+
+    /* serialise output so that we don't get */
+    pthread_mutex_t mutex;
+
+    char filename[1];
+};
+
+/* A set of conditions that must be met to log a request, what we want to
+ * log and where we should log it. */
+struct logrule {
+
+    /* A name for this rule */
+    char name[32];
+
+    int active;
+
+    /* Part 1: conditions.  These are all and conditions (all must be met) */
+
+    int count; /* how many to log.  delete rule after this many */
+
+    struct range duration;
+    struct range retries;
+    struct range vreplays;
+    struct dblrange sql_cost;
+    struct range sql_rows;
+
+    struct list rc_list;
+    struct list opcode_list;
+
+    char tablename[MAXTABLELEN + 1];
+
+    char stmt[MAXSTMT + 1];
+
+    /* Part 2: what to log */
+
+    unsigned event_mask;
+
+    /* Part 3: where to log it */
+
+    struct output *out;
+
+    /* Keep the rules in a linked list */
+    LINKC_T(struct logrule) linkv;
+};
+
+/* per client request stats */
+
+/* we normalise our request rate report to this period - we have a bucket for
+ * each second. */
+enum { NUM_BUCKETS = 10 };
+struct nodestats {
+    struct nodestats *next;
+
+    char *host;
+
+    /* raw counters, totals (updated locklessly by multiple threads) */
+    struct rawnodestats rawtotals;
+
+    /* previous totals for last time quanta */
+    struct rawnodestats prevtotals;
+
+    /* keep a diff of reqs/second for th last few seconds so we can
+     * caculate a smoothis reqs/second.  this may not get updated regularaly
+     * so we record epochms times. */
+    unsigned cur_bucket;
+    struct rawnodestats raw_buckets[NUM_BUCKETS];
+    int bucket_spanms[NUM_BUCKETS];
+};
+
+struct summary_nodestats {
+    char *host;
+
+    unsigned finds;
+    unsigned rngexts;
+    unsigned writes;
+    unsigned other_fstsnds;
+
+    unsigned adds;
+    unsigned upds;
+    unsigned dels;
+    unsigned bsql;     /* block sql */
+    unsigned recom;    /* recom sql */
+    unsigned snapisol; /* snapisol sql */
+    unsigned serial;   /* serial sql */
+
+    unsigned sql_queries;
+    unsigned sql_steps;
+    unsigned sql_rows;
+};
+
+extern int gbl_time_fdb;
+
+
+
+#endif

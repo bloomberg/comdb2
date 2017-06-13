@@ -21,9 +21,9 @@
  * gets more complicated as we will have to maintain binary compatibiiuty with
  * previous revisions.  For now though the ODH is 7 bytes which keeps it simple.
  *
- * The initiad design of this made it easy to plug in to the existing bdb
+ * The initial design of this made it easy to plug in to the existing bdb
  * code.  As this gets more established we can make a few optimisations to avoid
- * excessive copying.  Probably having the db/ layer reserve space in ondisk
+ * excessive copying.  Probably having the db layer reserve space in ondisk
  * buffers for the header would be a big win here.  Also we'd like the client
  * side api to do the compression of large blobs and pass the zlib compressed
  * data down the wire unmolested.
@@ -255,10 +255,8 @@ static void read_odh(const void *buf, struct odh *odh)
     odh->length = len;
 }
 
-#ifndef ODH_TESTS
-
 void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
-              size_t reclen, int dtanum)
+              size_t reclen, int is_blob)
 {
     odh->length = reclen;
     odh->updateid = 0;
@@ -268,7 +266,7 @@ void init_odh(bdb_state_type *bdb_state, struct odh *odh, void *rec,
         odh->csc2vers = 0;
     odh->flags = 0;
     odh->recptr = rec;
-    if (dtanum > 0) {
+    if (is_blob) {
         odh->flags |= (bdb_state->compress_blobs & ODH_FLAG_COMPR_MASK);
     } else {
         odh->flags |= (bdb_state->compress & ODH_FLAG_COMPR_MASK);
@@ -404,7 +402,7 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
                              .insz = odh->length,
                              .out = (uint8_t *)to + ODH_SIZE,
                              .outsz = odh->length - 1};
-            if (compressComdb2RLE(&rle) == 0)
+            if (compressComdb2RLE_hints(&rle, bdb_state->fld_hints) == 0)
                 *recsize = rle.outsz + ODH_SIZE;
             else
                 alg = BDB_COMPRESS_NONE;
@@ -1371,48 +1369,9 @@ void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
     *blob_compr = bdb_state->compress_blobs;
 }
 
-#endif /*ODH_TESTS*/
-
-#ifdef ODH_TESTS
-
-static void test_odh(const struct odh *odh)
+void bdb_set_fld_hints(bdb_state_type *bdb_state, uint16_t *hints)
 {
-    char buf[ODH_SIZE_RESERVE];
-    struct odh out;
-
-    write_odh(buf, odh, odh->flags);
-    read_odh(buf, &out);
-
-    if (odh->length != out.length || odh->csc2vers != out.csc2vers ||
-        odh->updateid != out.updateid || odh->flags != out.flags) {
-
-        char s[129];
-        fprintf(stderr, "ODH test failed\n");
-        fprintf(stderr, "Input  [%s]\n", snodhf(s, sizeof(s), odh));
-        fprintf(stderr, "output [%s]\n", snodhf(s, sizeof(s), &out));
-        fsnapf(stderr, buf, ODH_SIZE);
-    }
+    if (bdb_state->fld_hints)
+        free(bdb_state->fld_hints);
+    bdb_state->fld_hints = hints;
 }
-
-int main(int argc, char *argv[])
-{
-    struct odh odh;
-    int count = 0;
-
-    bzero(&odh, sizeof(odh));
-    for (odh.length = 1; odh.length < (1 << ODH_LENGTH_BITS) - 1;
-         odh.length <<= 1) {
-        for (odh.updateid = 0; odh.updateid < (1 << ODH_UPDATEID_BITS) - 1;
-             odh.updateid += 256) {
-            odh.csc2vers++;
-            odh.flags++;
-            test_odh(&odh);
-            count++;
-        }
-    }
-    printf("ran %d tests\n", count);
-
-    return 0;
-}
-#endif
-

@@ -741,14 +741,9 @@ void *handle_exit_thd(void *arg)
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     flush_db();
+    clean_exit();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
 
-    int num_fastq = 1;
-    if (gbl_use_bbipc) {
-        num_fastq = N_BBIPC;
-    }
-
-    timer(1, TMEV_EXIT);
     return NULL;
 }
 
@@ -793,7 +788,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsgperror("create exit thread: pthread_create");
             exit(1);
         }
-
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 
@@ -5033,8 +5027,17 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (max >= 0) {
                 gbl_testcompr_max = max;
             }
+        } else if (tokcmp(tok, ltok, "table") == 0) {
+            char table[128];
+            tok = segtok(line, lline, &st, &ltok);
+            tokcpy0(tok, ltok, table, sizeof(table));
+            FILE *f = io_override_get_std();
+            SBUF2 *sb = sbuf2open(fileno((f?f:stdout)), 0);
+            handle_testcompr(sb, table);
         } else {
-            logmsg(LOGMSG_USER, "testcompr percent <number> - Default 10%%\n"
+            logmsg(LOGMSG_USER, 
+                   "testcompr table <tbl> - Test compression for table tbl\n"
+                   "testcompr percent <number> - Default 10%%\n"
                    "testcompr max <number> - Set to 0 to process all records; "
                    "Default 300,000\n");
         }
