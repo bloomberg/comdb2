@@ -816,7 +816,7 @@ void reqlog_process_message(char *line, int st, int lline)
     } else if (ltok == 0) {
         logmsg(LOGMSG_ERROR, "huh?\n");
     } else if (tokcmp(tok, ltok, "events") == 0) {
-                eventlog_process_message(line, lline, &st);
+        eventlog_process_message(line, lline, &st);
     } else {
         char rulename[32];
         struct logrule *rule;

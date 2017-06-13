@@ -1872,7 +1872,8 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 static void log_client_context(struct reqlogger *logger,
                                struct sqlclntstate *clnt)
 {
-    assert(clnt->sql_query);
+    if (clnt->sql_query == NULL)
+        return;
 
     if (clnt->sql_query->n_context > 0) {
         int i = 0;
@@ -5243,11 +5244,13 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (rc)
             goto out;
 
-        int sz = clnt->sql_query->cnonce.len;
         char cnonce[256];
         cnonce[0] = '\0';
+        if (clnt->sql_query) {
+            int sz = clnt->sql_query->cnonce.len;
+        }
 
-        if (gbl_extended_sql_debug_trace) {
+        if (gbl_extended_sql_debug_trace && clnt->sql_query) {
             bzero(cnonce, sizeof(cnonce));
             snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
             logmsg(LOGMSG_USER, "%s: cnonce '%s': iswrite=%d replay=%d "
