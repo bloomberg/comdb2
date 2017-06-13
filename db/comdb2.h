@@ -1755,8 +1755,6 @@ extern char appsock_supported[];
 extern char appsock_unknown_old[];
 extern int gbl_serialise_sqlite3_open;
 
-extern char *gbl_lrl_fname;
-
 extern int gbl_rrenablecountchanges;
 
 extern int gbl_debug_log_twophase;

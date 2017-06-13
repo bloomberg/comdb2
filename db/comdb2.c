@@ -352,7 +352,6 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
-char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
 int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
@@ -411,7 +410,6 @@ int gbl_replicate_local_concurrent = 0;
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
-char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 int gbl_max_lua_instructions = 10000;
 
@@ -5674,13 +5672,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         return NULL;
     }
 
-    if (dbenv == 0)
-        return NULL;
-
-    dbenv->num_dbs = 0;
-    dbenv->dbs = NULL;
-    dbenv->stopped = 0;
-    dbenv->no_more_sql_connections = 0;
     dbenv->cacheszkbmin = 65536;
 
     dbenv->bdb_attr = bdb_attr_create();
@@ -5697,7 +5688,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /*default sync mode:*/
     dbenv->rep_sync = REP_SYNC_FULL;
-    dbenv->log_sync = 0;
     dbenv->log_sync_time = 10;        /*sync logs every n seconds */
     dbenv->log_mem_size = 128 * 1024; /*sync logs every n seconds */
     dbenv->log_delete = 1;            /*delete logs.*/
@@ -5715,8 +5705,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->managed_coordinators,
                offsetof(struct managed_component, lnk));
     pthread_mutex_init(&dbenv->incoherent_lk, NULL);
-    dbenv->fallen_offline = 0;
-    dbenv->shmflags = 0;
     init_deferred_options(dbenv);
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
 
@@ -5724,7 +5712,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
         return NULL;
     }
-    dbenv->dbqueue_admin_running = 0;
 
     if (lrlname)
        pre_read_lrl_file(dbenv, lrlname, dbname);
@@ -6557,8 +6544,9 @@ static int init(int argc, char **argv)
         return -1;
     }
 
+    char cwd[256];               /* start directory */
     /* get my working directory */
-    if (getcwd(gbl_cwd, sizeof(gbl_cwd)) == 0) {
+    if (getcwd(cwd, sizeof(cwd)) == 0) {
         logmsgperror("failed to getcwd");
         return -1;
     }
@@ -6774,7 +6762,6 @@ static int init(int argc, char **argv)
     }
 #endif
 
-    if (lrlname) gbl_lrl_fname = strdup(lrlname);
     initresourceman(lrlname);
     rc = schema_init();
     if (rc)

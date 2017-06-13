@@ -61,8 +61,6 @@ char *strdup(char *str1)
 
 void initresourceman(const char *newlrlname)
 {
-    char *resource_string;
-
     listc_init(&list, offsetof(struct resource, link));
     if (newlrlname) {
         lrlname = realpath(newlrlname, NULL);
