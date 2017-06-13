@@ -631,7 +631,7 @@ extern int gbl_parallel_memptrickle;
 int gbl_verify_dbreg = 0;
 extern int gbl_checkpoint_paranoid_verify;
 
-int gbl_forbid_ulonglong = 0;
+int gbl_forbid_ulonglong = 1;
 
 int gbl_support_datetime_in_triggers = 1;
 
