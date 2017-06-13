@@ -1257,11 +1257,6 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     cdb2_ssl_sess_list *store;
     SSL_SESSION *sess;
 
-    if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d try_ssl\n", 
-                (uint32_t) pthread_self(), __func__, __LINE__);
-    }
-
     if (hndl->c_sslmode >= SSL_REQUIRE) {
         switch (hndl->s_sslmode) {
         case PEER_SSL_UNSUPPORTED:
