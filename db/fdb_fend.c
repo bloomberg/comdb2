@@ -1326,6 +1326,7 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 
 static int __lock_wrlock_exclusive(fdb_t *fdb, int retry)
 {
+    struct sql_thread *thd;
     int rc = FDB_NOERR;
 
     if (_test_trap_dlock1 == 2) {
@@ -1344,7 +1345,25 @@ static int __lock_wrlock_exclusive(fdb_t *fdb, int retry)
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
             pthread_rwlock_unlock(&fdb->h_rwlock);
-            if(retry)
+
+            /* if we loop, make sure this is not a live lock
+               deadlocking with another sqlite engine that waits
+               for a bdb write lock to be processed */
+            if(unlikely(bdb_lock_desired(thedb->bdb_env))) {
+                thd = pthread_getspecific(query_info_key);
+                if(likely(thd)) {
+                     rc = recover_deadlock(thedb->bdb_env, thd, NULL, 
+                            100*thd->sqlclntstate->deadlock_recovered++);
+                     if(rc) {
+                         fprintf(stderr, 
+                                 "%s:%d recover_deadlock returned %d\n", 
+                                 __func__, __LINE__, rc);
+                         return FDB_ERR_GENERIC;
+                     }
+                } 
+            }
+
+            if(!retry)
                 return FDB_ERR_FDB_TBL_NOTFOUND;
             continue;
         } else {
