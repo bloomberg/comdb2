@@ -1511,12 +1511,13 @@ static int lrllinecmp(char *lrlline, char *cmpto)
  * @param cycle bool
  * @param start_val long long
  * @param chunk_size long long
- * @param last_avail_val long long
+ * @param flags char
+ * @param remaining_vals long long
+ * @param next_start_val long long
  */
 sequence_t *new_sequence (char* name, long long min_val, long long max_val, 
-   long long increment, bool cycle, long long start_val, long long chunk_size, 
-   long long last_avail_val)
-{
+    long long increment, bool cycle, long long start_val, long long chunk_size, 
+    char flags, long long remaining_vals, long long next_start_val) {
     sequence_t *new_seq = malloc(sizeof(sequence_t));
     if (new_seq == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for new sequence\n");
@@ -1531,9 +1532,11 @@ sequence_t *new_sequence (char* name, long long min_val, long long max_val,
     new_seq->prev_val = start_val;
     new_seq->next_val = start_val;
     new_seq->chunk_size = chunk_size;
-    new_seq->last_avail_val = last_avail_val;
+    new_seq->flags = flags;
+    new_seq->remaining_vals = remaining_vals;
+    new_seq->next_start_val = next_start_val;
 
-    int rc = pthread_rwlock_init(&new_seq->seq_lk, NULL);
+    int rc = pthread_mutex_init(&new_seq->seq_lk, NULL);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to initialize lock for sequence\n");
@@ -2164,15 +2167,25 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
 
 
 /*
- *  Create sequence objects in memory from definitions in llmeta
+ *  Create sequence objects in memory from definitions in llmeta and removes previous in-memory definitions
  */
 static int llmeta_load_sequences (struct dbenv *dbenv) {
     char *seq_names[MAX_NUM_SEQUENCES];
     int num_found_sequences;
     int rc;
+    int i;
     int bdberr;
 
-    // get names (and count) from llmeta
+    // Clear existing sequence information in memory
+    if (dbenv->num_sequences > 0) {
+        for (i = 0; i < dbenv->num_sequences; i++) {
+            free(dbenv->sequences[i]);
+        }
+    }
+    // Init number of sequences in memory
+    dbenv->num_sequences = 0;
+    
+    // Get names (and count) from llmeta
     bdberr = bdb_llmeta_get_sequence_names(seq_names, MAX_NUM_SEQUENCES, &num_found_sequences, &bdberr);
     if (bdberr) {
         logmsg(LOGMSG_ERROR, "bdb_llmeta_get_sequence_names bdberr %d\n", bdberr);
@@ -2181,22 +2194,19 @@ static int llmeta_load_sequences (struct dbenv *dbenv) {
 
     if (num_found_sequences == 0) {
         logmsg(LOGMSG_DEBUG, "---------------------- No Sequences found in llmeta ----------------------\n");
-
-        // Init number of sequences in memory
-        dbenv->num_sequences = 0;
-
         return 0;
     }
     
     // TODO: Check this number. Do we want to preallocate some more space so we don't have to realloc each time we create
-    dbenv->sequences = realloc(dbenv->sequences, (dbenv->num_sequences + num_found_sequences) * sizeof(sequence_t));
+    // TODO: Do we want a fresh reload each time (free old and malloc new)?
+    dbenv->sequences = realloc(dbenv->sequences, (num_found_sequences) * sizeof(sequence_t));
 
     if (dbenv->sequences == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for sequences list\n");
         return -1;
     }
 
-    for (int i = 0; i < num_found_sequences; i++) {
+    for (i = 0; i < num_found_sequences; i++) {
         sequence_t *seq;
         char* name = seq_names[i];
         long long min_val;
@@ -2204,33 +2214,31 @@ static int llmeta_load_sequences (struct dbenv *dbenv) {
         long long increment;
         bool cycle;
         long long start_val;
-        long long new_start_val;
-        long long last_avail_val;
+        long long remaining_vals;
         long long chunk_size;
-
-        logmsg(LOGMSG_DEBUG, "---------------------- Loading Sequence '%s' ----------------------\n",name);
+        char flags;
 
         // Get sequence configuration from llmeta
-        rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment, &cycle, &start_val, &chunk_size, &bdberr);
+        rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment, &cycle, &start_val, &chunk_size, &flags, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't get information for sequence \"%s\"\n", name);
             return -1;
         }
         
-        // Update llmeta with value + chunk_size
-        new_start_val = start_val + (chunk_size * (increment + 1));
-        last_avail_val = start_val + (chunk_size * increment);
+        // Get new chunk of sequence values from llmeta
+        long long next_start_val = start_val;
+        rc = bdb_llmeta_get_sequence_chunk(NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags, &remaining_vals, &next_start_val, &bdberr);
 
-        rc = bdb_llmeta_alter_sequence(NULL,name, min_val, max_val, increment, cycle, new_start_val, chunk_size, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "can't update information for sequence \"%s\"\n", name);
+            logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n", name);
             return -1;
         }
         
-        // Create new Sequence in memory
-        seq = new_sequence(name, min_val, max_val, increment, cycle, start_val, chunk_size, last_avail_val);
+        // Create new sequence in memory
+        seq = new_sequence(name, min_val, max_val, increment, cycle, start_val, chunk_size, flags, remaining_vals, next_start_val);
+
         if (seq == NULL) {
-            logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", seq_names[i]);
+            logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
             return -1;
         }
         dbenv->sequences[dbenv->num_sequences++] = seq;

@@ -1849,7 +1849,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         if (tokcmp(tok, ltok, "add") == 0) {
             name = segtok(line, lline, &st, &ltok);
 
-            if (!add_sequence(name, 0, 10, -1, true, 0, 100)) {
+            if (!add_sequence(name, 0, 11, -1, true, 0, 5, 0)) {
                 logmsg(LOGMSG_USER, "Created sequence \"%s\"\n", name);
             } else {
                 logmsg(LOGMSG_USER, "Failed to create sequence\n");
@@ -1908,8 +1908,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             int idx;
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
-                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %d\nPrev Val: %d\nMin Val: %d\nMax Val: %d\nInc: %d\nCycle?: %s\nChunk Size: %d\nLast Avail. Val: %d\n",
-                    idx,
+                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %d\nPrev Val: %d\nMin Val: %d\nMax Val: %d\nInc: %d\nCycle?: %s\nChunk Size: %d\nRemaining Vals: %d\nNext Start Val: %d\nSequence Exhausted?: %s\n",
+                    idx+1,
                     seq->name,
                     seq->next_val,
                     seq->prev_val,
@@ -1918,7 +1918,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                     seq->increment,
                     seq->cycle ? "true": "false",
                     seq->chunk_size,
-                    seq->last_avail_val
+                    seq->remaining_vals,
+                    seq->next_start_val,
+                    seq->flags & SEQUENCE_EXHAUSTED ? "true" : "false"
                 );
             }
         }

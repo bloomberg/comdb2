@@ -655,9 +655,13 @@ typedef struct {
 
     /* Synchronization with llmeta */
     long long chunk_size; /* Number of values to allocate from llmeta */
-    long long last_avail_val; /* Last value allocated from llmeta */
+    long long remaining_vals; /* Number of values allocated from llmeta */
+    long long next_start_val; /* Starting value of the next chunk */
 
-    pthread_rwlock_t seq_lk; /* rwlock for protecting the value dispensing */
+    /* Flags */
+    char flags; /* Flags for the sequence objeckt*/
+
+    pthread_mutex_t seq_lk; /* mutex for protecting the value dispensing */
 } sequence_t;
 
 struct managed_component {
@@ -2372,8 +2376,8 @@ int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
 
 sequence_t *new_sequence (char* name, long long min_val, long long max_val, 
-   long long increment, bool cycle, long long start_val, long long chunk_size, 
-   long long last_avail_val);
+    long long increment, bool cycle, long long start_val, long long chunk_size, 
+    char flags, long long remaining_vals, long long next_start_val) ;
 
 int put_db_odh(struct dbtable *db, tran_type *, int odh);
 int get_db_odh(struct dbtable *db, int *odh);

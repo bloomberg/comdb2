@@ -31,6 +31,7 @@ extern struct dbenv *thedb;
  */
 int seq_next_val (char *name, long long *val) {
     sequence_t *seq = get_sequence(name);
+    int rc, bdberr;
 
     if ( seq == NULL ) {
        // Failed to find sequence with specified name
@@ -38,7 +39,17 @@ int seq_next_val (char *name, long long *val) {
        return -1;
     }
 
-    //TODO: Protect crit section with lock
+    // Check for remaining values
+    if (seq->remaining_vals == 0) {
+        rc = bdb_llmeta_get_sequence_chunk(NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle, seq->chunk_size, &seq->flags, &seq->remaining_vals, &seq->next_start_val, &bdberr);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n", name);
+            return -1;
+        }
+    }
+
+    //TODO: Protect crit section with lock. Errors would occur when dispensing last value rather than after that
     *val = seq->next_val;
 
     // Increment Value
@@ -46,13 +57,6 @@ int seq_next_val (char *name, long long *val) {
     long long max = seq->max_val;
     long long min = seq->min_val;
     long long next_val = seq->next_val;
-
-    int dir = inc < 0 ? -1 : 1; // Direction of the sequence: 1 - Increasing, -1 - Decreasing
-
-    // TODO: Check for last value allocated, deal with cycles
-    // if ( (dir*(seq->next_val + inc) > dir*(seq->last_avail_val) ) {
-        
-    // }
 
     seq->prev_val = seq->next_val;
 
@@ -62,18 +66,29 @@ int seq_next_val (char *name, long long *val) {
 
     next_val += inc;
 
-    if ( ((inc >= 0) && (next_val > max)) || ((inc < 0) && (next_val < min)) ) {
-       if (seq->cycle && inc >= 0) {
-          next_val = min;
-       } else if (seq->cycle && inc < 0) {
-          next_val = max;
-       } else {
-          // TODO: Error End of sequence
-          return -1;
-       }
+    // Check for cycle conditions
+    if ( (seq->increment > 0) && (next_val > max) ) {
+        if (seq->cycle) {
+            next_val = min;
+        } else if (seq->cycle && seq->increment < 0) {
+            next_val = max;
+        } else {
+            // TODO: Error End of sequence (This would error out when dispensing the last valid value)
+            logmsg(LOGMSG_ERROR, "End of sequenence. No more values to dispense.");
+            return -1;
+        }
+    } else if ((seq->increment < 0) && (next_val < min)) {
+        if (seq->cycle) {
+           next_val = max;
+        } else {
+           // TODO: Error End of sequence (This would error out when dispensing the last valid value)
+           logmsg(LOGMSG_ERROR, "End of sequenence. No more values to dispense.");
+           return -1;
+        }
     }
 
     seq->next_val = next_val;
+    seq->remaining_vals--;
     return 0;
 }
 
@@ -128,19 +143,19 @@ sequence_t *get_sequence(char *name) {
         }
     }
 
-    return NULL; //TODO: FIX ERROR
+    logmsg(LOGMSG_ERROR, "Sequence '%s' cannot be found.\n", name);
+    return NULL; //TODO: Return some kind of ERROR
 }
 
 
 /**
  * TODO: MOVE SOMEWHERE ELSE
+ * TODO: Make Transactional
  * 
  * Adds sequence to llmeta and memory
  */
 int add_sequence (char* name, long long min_val, long long max_val,
-    long long increment, bool cycle,
-    long long start_val, long long chunk_size)
-{
+    long long increment, bool cycle, long long start_val, long long chunk_size, char flags) {
     // Check that name is valid
     if (strlen(name) > MAXTABLELEN - 1){
         logmsg(LOGMSG_ERROR, "sequence name too long. Must be less than %d characters\n", MAXTABLELEN-1);
@@ -159,6 +174,28 @@ int add_sequence (char* name, long long min_val, long long max_val,
         return 1;
     }
 
+    // Add sequence to llmeta
+    int rc, bdberr;
+
+    rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, flags, &bdberr);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't create new sequence \"%s\"\n", name);
+        return -1;
+    }
+    
+    // Allocate value chunk
+    long long next_start_val = start_val;
+    long long remaining_vals;
+    sequence_t *seq;
+
+    rc = bdb_llmeta_get_sequence_chunk(NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags, &remaining_vals, &next_start_val, &bdberr);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n", name);
+        return -1;
+    }
+    
     // Make space in memory
     thedb->sequences = realloc(thedb->sequences, (thedb->num_sequences + 1) * sizeof(sequence_t));
 
@@ -167,22 +204,15 @@ int add_sequence (char* name, long long min_val, long long max_val,
         return 1;
     }
 
-    // Create entry in memory
-    thedb->sequences[thedb->num_sequences] = new_sequence(name, min_val, max_val, increment, cycle, start_val, chunk_size, start_val + (chunk_size*increment) );
+    // Create new sequence in memory
+    seq = new_sequence(name, min_val, max_val, increment, cycle, start_val, chunk_size, flags, remaining_vals, next_start_val);
 
-    if(thedb->sequences[thedb->num_sequences]==NULL){
-        logmsg(LOGMSG_ERROR, "Failed to create sequence \"%s\"\n", name);
-        return 1;
+    if (seq == NULL) {
+        logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
+        return -1;
     }
-
-    // Create llmeta record
-    int rc;
-    int bdberr;
-    rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, &bdberr);
-
-    if (rc)
-        return rc;
-
+    
+    thedb->sequences[thedb->num_sequences] = seq;
     thedb->num_sequences++;
 
     return 0;
@@ -190,7 +220,7 @@ int add_sequence (char* name, long long min_val, long long max_val,
 
 /**
  * TODO: MOVE SOMEWHERE ELSE
- * 
+ * TODO: Make Transactional
  * Drops sequence from llmeta and memory
  */
 int drop_sequence (char *name) {
@@ -209,8 +239,8 @@ int drop_sequence (char *name) {
             // TOOD: add checks for usage in tables
 
             // TODO: Crit section?
-            // Remove sequence from dbenv
 
+            // Remove sequence from dbenv
             thedb->num_sequences--;
             
             if (thedb->num_sequences > 0){
