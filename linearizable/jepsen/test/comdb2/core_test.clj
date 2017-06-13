@@ -36,6 +36,6 @@
 ;  (is (:valid? (:results (jepsen/run! (register-tester-nemesis { } ))))))
 
 (deftest register-test
-  (is (:valid? (:results (jepsen/run! (register-tester { } ))))))
+  (is (:valid? (:results (jepsen/run! (register-tester-nemesis { } ))))))
 
 

@@ -232,7 +232,7 @@
 
         (j/query connection ["set hasql on"])
         (j/query connection ["set transaction serializable"])
-        (and (System/getenv "COMDB2_DEBUG") (j/query connection ["set debug on"]))
+        (when (System/getenv "COMDB2_DEBUG") (j/query connection ["set debug on"]))
 ;        (j/query connection ["set debug on"])
         (j/query connection ["set max_retries 100000"])
         (with-txn op conn-spec node
@@ -370,32 +370,50 @@
         (do
           (j/query c ["set hasql on"])
           (j/query c ["set transaction serializable"])
+          (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
           (j/query c ["set max_retries 100000"])
           (try
             (j/with-db-transaction [c c]
 
               (let [id   (first (:value op))
                     val' (second (:value op))
-                    val  (-> c
-                             (j/query ["select val from register where id = ?"
-                                       id] :row-fn :val)
-                             first)]
+                    [val uid] (second (j/query c ["select val,uid from register where id = ?"
+                                       id] :as-arrays? true))
+                    uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+
                 (case (:f op)
-                  :read (assoc op :type :ok, :value (independent/tuple id val))
+                  :read (do
+                           (info "Worker " (:process op) " READS val " val " uid " uid)
+                           (assoc op :type :ok, :value (independent/tuple id val))
+                        )
 
                   :write (do
                            (if (nil? val)
-                             (j/insert! c :register {:id id :val val'})
-                             (j/update! c :register {:val val'} ["id = ?" id]))
+                             (do
+                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid')
+                             (j/insert! c :register {:id id :val val' :uid uid'})
+                             )
+                             (do
+                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid')
+                             (j/update! c :register {:val val' :uid uid'} ["id = ?" id])
+                             )
+                           )
                            (assoc op :type :ok))
 
                   :cas (let [[expected-val new-val] val'
-                             cnt (j/update! c :register {:val new-val}
+                             cnt (j/update! c :register {:val new-val :uid uid'}
                                             ["id = ? and val = ?"
                                              id expected-val])]
+                         ; TODO here i am
+                         (do
+                         (if (zero? (first cnt))
+                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val')
+                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid'))
                          (assoc op :type (if (zero? (first cnt))
                                            :fail
-                                           :ok))))))))))
+                                           :ok))
+                         )
+                         ))))))))
     (teardown! [_ test])))
 
 
