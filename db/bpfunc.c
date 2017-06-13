@@ -16,6 +16,7 @@ extern int gbl_check_access_controls;
 
 static int prepare_create_timepart(bpfunc_t *tp);
 static int prepare_drop_timepart(bpfunc_t *tp);
+static int prepare_timepart_retention(bpfunc_t *tp);
 static int exec_grant(void *tran, bpfunc_t *func, char *err);
 static int exec_authentication(void *tran, bpfunc_t *func, char *err);
 static int exec_password(void *tran, bpfunc_t *func, char *err);
@@ -84,6 +85,10 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 
     case BPFUNC_ANALYZE_COVERAGE:
         func->exec = exec_analyze_coverage;
+        break;
+
+    case BPFUNC_TIMEPART_RETENTION:
+        prepare_timepart_retention(func);
         break;
 
     case BPFUNC_ROWLOCKS_ENABLE:
@@ -388,6 +393,42 @@ static int exec_analyze_coverage(void *tran, bpfunc_t *func, char *err)
     // upstream
     // would be nice
     return rc;
+}
+
+static int exec_timepart_retention(void *tran, bpfunc_t *func, char *err)
+{
+    BpfuncTimepartRetention *ret_f = func->arg->tp_ret;
+    struct errstat xerr = {0};
+    int rc;
+
+    rc = timepart_update_retention( tran, ret_f->timepartname, ret_f->newvalue, &xerr);
+
+    // TODO bdberr should not be ignored also a better way to pass err msg upstream
+    // would be nice
+    return rc;
+}
+
+int success_timepart_retention(void *tran, bpfunc_t *func, char *err)
+{
+     int rc = 0;
+     int bdberr = 0;
+
+     rc = bdb_llog_views(thedb->bdb_env, func->arg->tp_ret->timepartname, 1, &bdberr);
+     if(rc)
+     {
+        fprintf(stderr, "%s -- bdb_llog_views rc:%d bdberr:%d\n",
+              __func__, rc, bdberr);
+     }
+  
+    return rc;
+}
+
+static int prepare_timepart_retention(bpfunc_t *tp)
+{
+    tp->exec = exec_timepart_retention;
+    tp->success = success_timepart_retention;
+
+    return 0;
 }
 
 static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err)
