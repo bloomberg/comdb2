@@ -77,17 +77,23 @@ while :; do
         break 2
     fi
 
+    egrep "Analysis invalid!" $outfile >/dev/null 2>&1 
+    if [[ $? == 0 ]]; then
+        echo "!!! JEPSEN ANALYSIS INVALID $iter !!!" 
+        break 2
+    fi
+
     egrep -v "closeNo|gnuplot|IOException" $outfile | egrep exception
     if [[ $? == 0 ]]; then
         echo "!!! JEPSEN TEST FAILED WITH EXCEPTION ITERATION $iter !!!" 
         break 2
     fi
 
-    egrep -i "handle state" $outfile > /dev/null 2>&1
-    if [[ $? == 0 ]]; then
-        echo "!!! JEPSEN TEST FAILED WITH WRONG HANDLE STATE ITERATION $iter !!!" 
-        break 2
-    fi
+#    egrep -i "handle state" $outfile > /dev/null 2>&1
+#    if [[ $? == 0 ]]; then
+#        echo "!!! JEPSEN TEST FAILED WITH WRONG HANDLE STATE ITERATION $iter !!!" 
+#        break 2
+#    fi
 
     sleep 1
 

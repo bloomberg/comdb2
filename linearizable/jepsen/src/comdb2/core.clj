@@ -354,8 +354,6 @@
 
   (teardown! [_ test]))
 
-
-
 (defn comdb2-cas-register-client
   "Comdb2 register client"
   [node]
@@ -401,7 +399,7 @@
     (teardown! [_ test])))
 
 
-; Maybe make the register time % 10?
+; Test on only one register for now
 (defn r   [_ _] {:type :invoke, :f :read, :value [1 nil]})
 (defn w   [_ _] {:type :invoke, :f :write, :value [1 (rand-int 5)]})
 (defn cas [_ _] {:type :invoke, :f :cas, :value [1 [(rand-int 5) (rand-int 5)]]})
@@ -497,10 +495,10 @@
                       (->> (gen/mix [w cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 100))
+                           (gen/time-limit 10))
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (model/cas-register 0)
+       :model       (model/cas-register-comdb2 [1 nil])
        :time-limit   100
        :recovery-time  30
        :checker     (checker/compose
@@ -521,11 +519,11 @@
                       (->> (gen/mix [w cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 100)
+                           (gen/time-limit 10)
                            with-nemesis)
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (model/cas-register 0)
+       :model       (model/cas-register-comdb2 [1 nil])
        :time-limit   100
        :recovery-time  30
        :checker     (checker/compose
