@@ -1901,30 +1901,30 @@ int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
 
 /* get list of sequences */
 int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
-                          int *num_sequences, int *bdberr);
+                            int *num_sequences, int *bdberr);
 
 /* get attributes for a sequence */
-int bdb_llmeta_get_sequence(char* name, long long *min_val, long long *max_val, 
-                           long long *increment, bool *cycle, long long *start_Val, long long *chunk_size,
-                         int *bdberr);
+int bdb_llmeta_get_sequence(char* name, long long *min_val, long long *max_val, long long *increment,
+                            bool *cycle, long long *start_Val, long long *chunk_size,
+                            char *flags, int *bdberr);
 
 /* manipulate sequences */
 int bdb_llmeta_add_sequence(tran_type *tran,
-                         char* name, long long min_val, long long max_val, 
-                         long long increment, bool cycle, long long start_val, long long chunk_size,
-                         int *bdberr);
+                            char* name, long long min_val, long long max_val, 
+                            long long increment, bool cycle, long long start_val, long long chunk_size,
+                            char flags, int *bdberr);
 
 int bdb_llmeta_alter_sequence(tran_type *tran,
-                           char* name, long long min_val, long long max_val, 
-                           long long increment, bool cycle, long long start_val, long long chunk_size,
-                           int *bdberr);
+                            char* name, long long min_val, long long max_val, 
+                            long long increment, bool cycle, long long start_val, long long chunk_size,
+                            char flags, int *bdberr);
 
 int bdb_llmeta_drop_sequence(tran_type *tran,
-                          char *name, int *bdberr);
+                            char *name, int *bdberr);
 
 int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val, long long max_val,
-                           long long increment, bool cycle, long long chunk_size, long long last_avail_val,
-                           long long *new_last, int *bdberr);
+                           long long increment, bool cycle, long long chunk_size, char *flags,
+                           long long *remaining_vals, long long *next_start_val, int *bdberr);
 
 void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
