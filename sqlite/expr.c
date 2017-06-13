@@ -5667,13 +5667,19 @@ static char* sqlite3ExprDescribe_inner(
         dttz_t dt;
         int prec;
         
+        prec = v->dtprec;
         if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
-           DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
-                             prec, 0, break);
-        } else {
-          prec = gbl_datetime_precision;
+          if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
+            DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
+                              prec, 0, goto default_prec);
+          } else if( pExpr->x.pList->a[0].pExpr->op == TK_INTEGER
+                  && (pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_MSEC 
+                     ||
+                     pExpr->x.pList->a[0].pExpr->u.iValue == DTTZ_PREC_USEC)) {
+            prec = pExpr->x.pList->a[0].pExpr->u.iValue;
+          }
         }
-        
+default_prec:
         timespec_to_dttz(&v->tspec, &dt, prec);
 
         return sqlite3_mprintf("cast(%lld.%*.*u as datetime)",  
