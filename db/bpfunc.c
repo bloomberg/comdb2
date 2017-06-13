@@ -168,7 +168,7 @@ int success_create_timepart(void *tran, bpfunc_t *func, char *err)
                         &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s -- bdb_llog_views rc:%d bdberr:%d\n", __func__, rc,
-                bdberr);
+               bdberr);
     }
 
     return rc;
@@ -416,8 +416,8 @@ int success_timepart_retention(void *tran, bpfunc_t *func, char *err)
      rc = bdb_llog_views(thedb->bdb_env, func->arg->tp_ret->timepartname, 1, &bdberr);
      if(rc)
      {
-        fprintf(stderr, "%s -- bdb_llog_views rc:%d bdberr:%d\n",
-              __func__, rc, bdberr);
+        logmsg(LOGMSG_ERROR, "%s -- bdb_llog_views rc:%d bdberr:%d\n",
+               __func__, rc, bdberr);
      }
   
     return rc;
