@@ -284,5 +284,12 @@ int timepart_for_each_shard(const char *name,
  */
 int views_cron_restart(timepart_views_t *views);
 
+
+/**
+ * Update the retention of the existing partition
+ *
+ */
+int timepart_update_retention(void *tran, const char *name, int value, struct errstat *err);
+
 #endif
 

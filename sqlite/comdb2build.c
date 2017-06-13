@@ -1594,6 +1594,59 @@ void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName)
    }
 }
 
+
+void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
+{
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+
+
+    if (comdb2AuthenticateUserOp(v, pParse))
+        goto err;       
+
+    if (retention < 2)
+    {
+        setError(pParse, SQLITE_ERROR, "Retention must be 2 or higher");
+        goto clean_arg;
+    }
+
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    
+    if (arg)
+        bpfunc_arg__init(arg);
+    else
+        goto err;
+    BpfuncTimepartRetention *tp_retention = (BpfuncTimepartRetention*) 
+        malloc(sizeof(BpfuncTimepartRetention));
+
+    if (tp_retention)
+        bpfunc_timepart_retention__init(tp_retention);
+    else
+        goto err;
+
+    arg->tp_ret = tp_retention;
+    arg->type = BPFUNC_TIMEPART_RETENTION;
+    tp_retention->timepartname = (char*) malloc(MAXTABLELEN);
+    
+    if (!tp_retention->timepartname)
+        goto err;
+        
+    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1)) 
+        return;  
+    
+    tp_retention->newvalue = retention;
+
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree)&free_bpfunc_arg);
+
+    return;
+err:
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
+clean_arg:
+    if (arg)
+        free_bpfunc_arg(arg);
+}
+
+
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
     gbl_commit_sleep = num;
