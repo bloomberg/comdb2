@@ -1,6 +1,9 @@
 #!/bin/bash
 bash -n "$0" | exit 1
 
+# This doesn't make much sense as a clustered test - get a free pass
+[[ -n "$CLUSTER" ]] && exit 0
+
 # Test case to verify client-side hooks.
 
 dbname=$1
@@ -14,9 +17,13 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Get the longreqs logs
-cat ${TESTDIR}/var/log/cdb2/${DBNAME}.longreqs | cut -d' ' -f3-100 | grep -v "LONG REQUEST" | sed 's/sql=//g; s/, fingerprint.*//g' > testcase.out
+cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('reql events roll')"
 
+# Get the longreqs logs
+pwd
+zcat ../var/log/cdb2/clientcontext${TESTID}.events.* | grep context | grep -v cdb2sql | sed 's!.*"context": \[!context": \[!; s/\],.*/]/' > testcase.out
+
+set +x
 diff expected.out testcase.out
 
 # Compare the longreqs logs.
