@@ -2452,43 +2452,6 @@ static void print_dbg_verbose(const char *name, uuid_t *source_id,
 }
 
 
-/**
- * Update the retention of the existing partition
- *
- */
-int timepart_update_retention(void *tran, const char *name, int retention, struct errstat *err)
-{
-   timepart_views_t *views = thedb->timepart_views;
-   timepart_view_t *view;
-   int rc = VIEW_NOERR;
-
-   pthread_mutex_lock(&views_mtx);
-
-   /* make sure we are unique */
-   view = _get_view(views, name);
-   if (!view)
-   {
-      errstat_set_strf(err, "Partition %s doesn't exists!", name);
-      errstat_set_rc(err, rc = VIEW_ERR_EXIST);
-      goto done;
-   }
-
-   if(view->retention < retention) 
-   {
-      view->retention = retention;
-
-      rc = _view_rollout_publish(tran, view, err);
-      if(rc!=VIEW_NOERR)
-      {
-         goto done;
-      }
-   }
-
-done:
-   pthread_mutex_unlock(&views_mtx);
-   return rc; 
-}
-
 #include "views_serial.c"
 
 #include "views_sqlite.c"

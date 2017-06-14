@@ -418,7 +418,6 @@ The settings currently available to ```PUT``` are:
   * ```PASSWORD``` - sets a password for a given user.  ```PUT PASSWORD OFF``` disables the user.
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
-  * ```TIME PARTITION``` - changes the time partition configuration; only increasing retention is supported currently
 
 ## Operational commands
 

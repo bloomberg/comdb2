@@ -73,7 +73,6 @@
 #include "osqlcomm.h"
 #include "nodemap.h"
 #include <bdb_schemachange.h>
-#include "bpfunc.h"
 #include "debug_switches.h"
 #include "logmsg.h"
 
@@ -2420,29 +2419,6 @@ static pthread_rwlock_t commit_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 extern __thread int send_prefault_udp;
 extern void delay_if_sc_resuming(struct ireq *iq);
-
-void handle_postcommit_bpfunc(struct ireq *iq)
-{
-    bpfunc_lstnode_t *cur_bpfunc = NULL;
-
-    while((cur_bpfunc = listc_rtl(&iq->bpfunc_lst)))
-    {
-        assert(cur_bpfunc->func->success != NULL);
-        cur_bpfunc->func->success(NULL/*not used*/, cur_bpfunc->func, NULL);
-        free_bpfunc(cur_bpfunc->func);
-    }
-}
-
-void handle_postabort_bpfunc(struct ireq *iq)
-{
-    bpfunc_lstnode_t *cur_bpfunc = NULL;
-    while((cur_bpfunc = listc_rtl(&iq->bpfunc_lst)))
-    {
-        assert(cur_bpfunc->func->fail != NULL);
-        cur_bpfunc->func->fail(NULL/*not used*/, cur_bpfunc->func, NULL);
-        free_bpfunc(cur_bpfunc->func);
-    }
-}
 
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
@@ -5846,15 +5822,6 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     start = gettimeofday_ms();
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
-
-    if(rc == 0) 
-    {
-        handle_postcommit_bpfunc(iq);
-    }
-    else
-    {
-        handle_postabort_bpfunc(iq);
-    }
 
     pthread_mutex_lock(&blklk);
     blkcnt--;

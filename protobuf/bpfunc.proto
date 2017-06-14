@@ -49,12 +49,6 @@ message bpfunc_analyze_coverage
     required int32 newvalue = 2;
 }
 
-message bpfunc_timepart_retention
-{
-    required string timepartname = 1;
-    required int32 newvalue = 2;
-}
-
 message bpfunc_rowlocks_enable
 {
     required int32 enable = 1;
@@ -75,8 +69,7 @@ message bpfunc_arg {
     optional  bpfunc_alias alias = 7;
     optional  bpfunc_analyze_threshold an_thr = 8;
     optional  bpfunc_analyze_coverage an_cov = 9;
-    optional  bpfunc_timepart_retention tp_ret = 10;
-    optional  bpfunc_rowlocks_enable rl_enable = 11;
-    optional  bpfunc_genid48_enable gn_enable = 12;
+    optional  bpfunc_rowlocks_enable rl_enable = 10;
+    optional  bpfunc_genid48_enable gn_enable = 11;
 }
 
