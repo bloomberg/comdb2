@@ -7766,10 +7766,6 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             /* we increment only on the initial table locking */
             db->nsql++; /* per table nsql stats */
         }
-
-        int dbtblnum = 0, ixnum;
-        get_sqlite_tblnum_and_ixnum(thd, iTable, &dbtblnum, &ixnum);
-        reqlog_add_table(thd->bt->reqlogger, thedb->dbs[dbtblnum]->dbname);
     }
 
     if (!after_recovery)

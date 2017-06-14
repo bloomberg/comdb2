@@ -129,7 +129,6 @@ cdb2sql
 cdb2sockpool
 comdb2ar
 cdb2_sqlreplay
-cdb2_perf
 
 # built tool libraries
 libcomdb2ar.a

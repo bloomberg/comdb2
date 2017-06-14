@@ -373,8 +373,6 @@ int portmux_geti(struct in_addr addr, const char *app, const char *service,
 int portmux_geti_to(struct in_addr addr, const char *app, const char *service,
                     const char *instance, int timeout_ms);
 
-int portmux_hello(char *host, char *name);
-
 /* override default portmux timeout */
 void portmux_set_default_timeout(unsigned timeoutms);
 void portmux_set_max_wait_timeout(unsigned timeoutms);
