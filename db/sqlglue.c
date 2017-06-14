@@ -661,8 +661,8 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     int i;
     int rc = 0;
     int null;
-    Mem *m = NULL;
-    u32 type;
+    Mem m[MAXCOLUMNS];
+    int type[MAXCOLUMNS];
     int datasz = 0;
     int hdrsz = 0;
     int remainingsz = 0;
@@ -675,12 +675,6 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     int nField;
     int rec_srt_off = gbl_sort_nulls_correctly ? 0 : 1;
     u32 len;
-
-    m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
-    if (m == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
-        return -1;
-    }
 
     /* Raw index optimization */
     if (pCur && pCur->nCookFields >= 0)
@@ -700,11 +694,9 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
-        type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialTypeLen(type);
+        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
-        hdrsz += sqlite3VarintLen(type);
+        hdrsz += sqlite3VarintLen(type[fnum]);
     }
     ncols = fnum;
 
@@ -715,11 +707,9 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         m[fnum].u.i = genid;
         m[fnum].flags = MEM_Int;
 
-        type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialTypeLen(type);
+        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
-        hdrsz += sqlite3VarintLen(sz);
+        hdrsz += sqlite3VarintLen(type[fnum]);
         ncols++;
         /*fprintf( stderr, "%s:%d type=%d size=%d datasz=%d hdrsz=%d
           ncols->%d\n",
@@ -749,19 +739,11 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     sz = sqlite3PutVarint(hdrbuf, hdrsz);
     hdrbuf += sz;
 
-    /* keep track of the size remaining */
-    remainingsz = datasz;
-
     for (fnum = 0; fnum < ncols; fnum++) {
         // TODO: verify that this works as before
-        u32 serial_type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], serial_type);
+        sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], type[fnum]);
         dtabuf += sz;
-        remainingsz -= sz;
-        sz = sqlite3PutVarint(
-            hdrbuf,
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
+        sz = sqlite3PutVarint( hdrbuf, type[fnum]);
         hdrbuf += sz;
         assert(hdrbuf <= (out + hdrsz));
     }
@@ -777,8 +759,6 @@ done:
             xorbuf(in + f->offset + rec_srt_off, f->len - rec_srt_off);
         }
     }
-    if (m)
-        free(m);
     return rc;
 }
 
