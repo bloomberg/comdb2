@@ -3727,8 +3727,9 @@ static int get_prepared_bound_param(struct sqlthdstate *thd,
             return -1;
         }
 
-        rec->parameters_to_bind = new_dynamic_schema(
-            NULL, clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
+        rec->parameters_to_bind = new_dynamic_schema(clnt->tag,
+                                                     strlen(clnt->tag),
+                                                     gbl_dump_sql_dispatched);
         if (rec->parameters_to_bind == NULL) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s",
                                "invalid parametrized tag (api bug?)");
@@ -4114,8 +4115,9 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
 
     /* bind values here if it was a parametrized query */
     if (clnt->tag && (rec->parameters_to_bind == NULL)) {
-        rec->parameters_to_bind = new_dynamic_schema(
-            NULL, clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
+        rec->parameters_to_bind = new_dynamic_schema(clnt->tag,
+                                                     strlen(clnt->tag),
+                                                     gbl_dump_sql_dispatched);
         if (rec->parameters_to_bind == NULL) {
             errstat_set_str(err, "invalid parametrized tag (api bug?)");
             errstat_set_rc(err, ERR_PREPARE_RETRY);
@@ -8467,8 +8469,9 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     thd->nmove = thd->nfind = thd->nwrite = 0;
 
     if (clnt->tag) {
-        parameters_to_bind = new_dynamic_schema(
-            NULL, clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
+        parameters_to_bind = new_dynamic_schema(clnt->tag,
+                                                strlen(clnt->tag),
+                                                gbl_dump_sql_dispatched);
         if (parameters_to_bind == NULL) {
             logmsg(LOGMSG_ERROR, "%s:%d invalid parametrized sql tag: %s\n", __FILE__,
                    __LINE__, clnt->tag);

@@ -5764,8 +5764,7 @@ void free_dynamic_schema(const char *table, struct schema *dsc)
     free_tag_schema(dsc);
 }
 
-struct schema *new_dynamic_schema(struct db *db, const char *s, int len,
-                                  int trace)
+struct schema *new_dynamic_schema(const char *s, int len, int trace)
 {
     struct schema *sc;
     int toff = 6, tlen;
@@ -6538,7 +6537,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
     *dynschema = NULL;
     if (taglen >= 6 && strncasecmp(tagdescr, ".DYNT.", 6) == 0) {
         /* dynamic schema tag */
-        *dynschema = new_dynamic_schema(iq->usedb, (char *)tagdescr, taglen, 0);
+        *dynschema = new_dynamic_schema((char *)tagdescr, taglen, 0);
         if (!*dynschema) {
             if (iq->debug)
                 reqprintf(

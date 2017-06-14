@@ -2612,8 +2612,7 @@ void blob_print_stats(void);
 void purge_old_cached_blobs(void);
 
 void commit_schemas(const char *tblname);
-struct schema *new_dynamic_schema(struct db *db, const char *s, int len,
-                                  int trace);
+struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
 int getdefaultkeysize(const struct db *db, int ixnum);
 int getdefaultdatsize(const struct db *db);

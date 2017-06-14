@@ -1432,7 +1432,7 @@ void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
     if (!(logger && logger->mask & REQL_INFO)) return;
 
     struct schema *s;
-    s = new_dynamic_schema(NULL, tags, strlen(tags), 0);
+    s = new_dynamic_schema(tags, strlen(tags), 0);
     /* can't decode? */
     if (s == NULL) return;
 
