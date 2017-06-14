@@ -1,0 +1,78 @@
+for table in $(comdb2dumpcsc comdb2perfdb); do
+    echo drop table $table
+done | cdb2sql comdb2perfdb - >/dev/null
+
+cdb2sql comdb2perfdb 'create table blocks {
+    schema {
+        cstring id[37]
+        datetimeus start
+        datetimeus end
+        cstring dbname[33]
+        blob block
+    }
+
+    keys {
+        "db" = dbname + start
+        "id" = id
+    }
+}'
+
+cdb2sql comdb2perfdb 'create table events {
+    schema {
+        cstring dbname[33]
+        cstring host[64]
+        int event_type
+        datetime time_occurred
+    }
+
+    keys {
+    dup "event" = dbname + time_occurred
+    }
+}'
+
+cdb2sql comdb2perfdb 'create table queries {
+    schema {
+        cstring fingerprint[33]
+        longlong fingerprint_count
+        cstring dbname[33]
+        cstring blockid[37]
+        datetimeus start
+        datetimeus end
+    }
+
+    keys {
+    dup "db" = dbname + start + fingerprint
+    }
+}'
+
+cdb2sql comdb2perfdb 'create table contexts {
+    schema {
+        cstring context[33]
+        longlong context_count
+        cstring dbname[33]
+        cstring blockid[37]
+        datetimeus start
+        datetimeus end
+    }
+
+    keys {
+        "context" = context + start
+        "contextdb" = context + dbname
+    }
+}'
+
+
+cdb2sql comdb2perfdb 'create table querytypes {
+    schema {
+        cstring fingerprint[33]
+        cstring dbname[33]
+        datetimeus first_seen
+        // longlong count   -- think about this - very handy to have, but turns into an update per db per block 
+        vutf8 sql[200]
+    }
+
+    keys {
+        "fp" = fingerprint
+    dup "dbname" = dbname + fingerprint
+    }
+}'
