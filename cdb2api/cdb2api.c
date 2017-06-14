@@ -2053,7 +2053,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         sqlquery.skip_rows = skip_nrows;
     }
 
-    if (hndl->context_msgs.has_changed == 1 && hndl->context_msgs.count > 0) {
+    if (hndl && hndl->context_msgs.has_changed == 1 && hndl->context_msgs.count > 0) {
         sqlquery.n_context = hndl->context_msgs.count;
         sqlquery.context = hndl->context_msgs.message;
         /* Reset the has_changed flag. */
