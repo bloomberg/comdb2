@@ -236,6 +236,12 @@ putcmd ::= AUTHENTICATION OFF. {
     comdb2enableAuth(pParse, 0);
 }
 
+putcmd ::= TIME PARTITION nm(Y) dbnm(Z) RETENTION  INTEGER(R). {
+    int tmp;
+    if (!readIntFromToken(&R, &tmp))
+        tmp = 0;
+    comdb2timepartRetention(pParse, &Y, &Z, tmp);
+}
 
 putcmd ::= SCHEMACHANGE COMMITSLEEP INTEGER(F). {
     int tmp;

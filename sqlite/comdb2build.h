@@ -86,12 +86,15 @@ void comdb2CreateTimePartition(Parse* p, Token* table, Token* name,
 
 void comdb2DropTimePartition(Parse* p, Token* name);
 
-void comdb2bulkimport(Parse*, Token*,Token*, Token*, Token*);
+void comdb2CreateTimePartition(Parse* p, Token* table, Token* name, 
+                               Token* period, Token* retention, Token* start);
 
 void comdb2analyze(Parse*, int opt, Token*, Token*, int);
 
 void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,
         Token* lnm, Token* u);
+
+void comdb2timepartRetention(Parse*, Token*, Token*, int val);
 
 void comdb2enableAuth(Parse* pParse, int on);
 void comdb2setPassword(Parse* pParse, Token* password, Token* nm);
