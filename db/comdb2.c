@@ -5658,20 +5658,15 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
 
 static struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
-    struct dbenv *dbenv;
-    int redo_as_lrl = 0;
-    int found_tables = 0;
-    const char *envlrlname;
     int rc;
 
-    dbenv = calloc(1, sizeof(*dbenv));
+    struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
     if (dbenv == 0) {
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
         return NULL;
     }
 
     dbenv->cacheszkbmin = 65536;
-
     dbenv->bdb_attr = bdb_attr_create();
 
     /* default retry = 10 seconds.  this used to be 180 seconds (3 minutes)
@@ -5751,47 +5746,32 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     /* local defaults */
-    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname,
-                       0 /*not required*/)) {
+    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname, 0 /*not required*/)) {
         return 0;
     }
 
     /* if env variable is set, process another lrl.. */
-    envlrlname = getenv("COMDB2_CONFIG");
-    if(envlrlname)
-    {
-        if(!read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
-            return 0;
-        }
-    }
-
-    if (found_tables || redo_as_lrl) {
-        logmsg(LOGMSG_ERROR, "bad config .lrl files - found schema data where it "
-                        "shouldn't be!\n");
+    const char *envlrlname = getenv("COMDB2_CONFIG");
+    if(envlrlname && !read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
         return 0;
     }
 
     /* this database */
-    if (lrlname) {
-        if (!read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
-            return 0;
-        }
+    if (lrlname && !read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
+        return 0;
     }
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
-    /* if no tables were found, switch to keyless mode as long as no mode has
-     * been selected yet */
-    if (!found_tables) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
-    }
+    /* switch to keyless mode as long as no mode has been selected yet */
+    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL) {
-        if (gbl_dbdir) dbenv->basedir = gbl_dbdir;
-        if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
-        if (dbenv->basedir == NULL)
-            dbenv->basedir = comdb2_location("database", "%s", dbname);
-    }
+    if (dbenv->basedir == NULL && gbl_dbdir) 
+        dbenv->basedir = gbl_dbdir;
+    if (dbenv->basedir == NULL) 
+        dbenv->basedir = getenv("COMDB2_DB_DIR");
+    if (dbenv->basedir == NULL)
+        dbenv->basedir = comdb2_location("database", "%s", dbname);
 
     if (dbenv->basedir==NULL) {
         logmsg(LOGMSG_ERROR, "must specify database directory\n");
@@ -5810,12 +5790,20 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
           free(lrlname);
     }
 
-    if (gbl_create_mode && dbenv->basedir) {
+    if (gbl_create_mode) {
        /* make sure the database directory exists! */
        rc = mkdir(dbenv->basedir, 0774);
        if (rc && errno != EEXIST) {
           logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
           /* continue, this will make us fail later */
+       }
+    }
+    else {
+       struct stat sb;
+       stat(dbenv->basedir, &sb);
+       if (! S_ISDIR(sb.st_mode)) {
+          logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
+          return 0;
        }
     }
 
@@ -5849,8 +5837,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
-    ;
-    bzero(dbenv->sibling_flags, sizeof(char) * MAXSIBLINGS);
 
     return dbenv;
 }
