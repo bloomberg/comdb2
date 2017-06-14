@@ -2487,7 +2487,8 @@ db_tzset (name)
 register const char *	name;
 {
    int rc;
-   
+   if (lcl_is_set > 0 && strcmp(lcl_TZname, name) == 0)
+     return 0;
 	lcl_is_set = strlen(name) < sizeof lcl_TZname;
 	if (lcl_is_set)
 		(void) strcpy(lcl_TZname, name);
