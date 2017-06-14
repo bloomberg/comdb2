@@ -63,7 +63,6 @@ extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
 extern int gbl_rowlocks;
 extern int gbl_optimize_truncate_repdb;
-extern int gbl_enabled_new_context;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_collect_txn_time;
@@ -3389,7 +3388,7 @@ __rep_process_txn_int(dbenv, rctl, rec, ltrans, maxlsn, commit_gen, lockid, rp,
 	gbl_rep_lockid = lockid;
 
 	if (get_locks_and_ack) {
-		if (gbl_enabled_new_context && !context) {
+		if (!context) {
 			uint32_t flags =
 			    LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 			    LOCK_GET_LIST_PRINTLOCK : 0);
@@ -4046,7 +4045,7 @@ bad_resize:	;
 
 	/* XXX new logic: collect the locks & commit context, and then send the ack */
 
-	if (gbl_enabled_new_context && !rp->context) {
+	if (!rp->context) {
 		uint32_t flags =
 		    LOCK_GET_LIST_GETLOCK | (gbl_rep_printlock ?
 		    LOCK_GET_LIST_PRINTLOCK : 0);

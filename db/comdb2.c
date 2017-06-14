@@ -352,7 +352,6 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
-char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
 int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
@@ -411,7 +410,6 @@ int gbl_replicate_local_concurrent = 0;
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
-char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 int gbl_max_lua_instructions = 10000;
 
@@ -650,8 +648,6 @@ int gbl_fk_allow_superset_keys = 1;
 int gbl_update_delete_limit = 1;
 
 int verbose_deadlocks = 0;
-
-int gbl_enabled_new_context = 0;
 
 int gbl_early = 1;
 int gbl_reallyearly = 0;
@@ -5674,13 +5670,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         return NULL;
     }
 
-    if (dbenv == 0)
-        return NULL;
-
-    dbenv->num_dbs = 0;
-    dbenv->dbs = NULL;
-    dbenv->stopped = 0;
-    dbenv->no_more_sql_connections = 0;
     dbenv->cacheszkbmin = 65536;
 
     dbenv->bdb_attr = bdb_attr_create();
@@ -5697,7 +5686,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /*default sync mode:*/
     dbenv->rep_sync = REP_SYNC_FULL;
-    dbenv->log_sync = 0;
     dbenv->log_sync_time = 10;        /*sync logs every n seconds */
     dbenv->log_mem_size = 128 * 1024; /*sync logs every n seconds */
     dbenv->log_delete = 1;            /*delete logs.*/
@@ -5715,8 +5703,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->managed_coordinators,
                offsetof(struct managed_component, lnk));
     pthread_mutex_init(&dbenv->incoherent_lk, NULL);
-    dbenv->fallen_offline = 0;
-    dbenv->shmflags = 0;
     init_deferred_options(dbenv);
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
 
@@ -5724,7 +5710,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
         return NULL;
     }
-    dbenv->dbqueue_admin_running = 0;
 
     if (lrlname)
        pre_read_lrl_file(dbenv, lrlname, dbname);
@@ -6557,8 +6542,9 @@ static int init(int argc, char **argv)
         return -1;
     }
 
+    char cwd[256];               /* start directory */
     /* get my working directory */
-    if (getcwd(gbl_cwd, sizeof(gbl_cwd)) == 0) {
+    if (getcwd(cwd, sizeof(cwd)) == 0) {
         logmsgperror("failed to getcwd");
         return -1;
     }
@@ -6774,7 +6760,6 @@ static int init(int argc, char **argv)
     }
 #endif
 
-    if (lrlname) gbl_lrl_fname = strdup(lrlname);
     initresourceman(lrlname);
     rc = schema_init();
     if (rc)
@@ -8565,6 +8550,47 @@ static void getmyid(void)
     gbl_mypid = getpid();
 }
 
+void create_marker_file() 
+{
+    char *marker_file;
+    int tmpfd;
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        if (thedb->dbs[ii]->dbnum) {
+            marker_file =
+                comdb2_location("marker", "%s.trap", thedb->dbs[ii]->dbname);
+            tmpfd = creat(marker_file, 0666);
+            free(marker_file);
+            if (tmpfd != -1) close(tmpfd);
+        }
+    }
+    marker_file = comdb2_location("marker", "%s.trap", thedb->envname);
+    tmpfd = creat(marker_file, 0666);
+    free(marker_file);
+    if (tmpfd != -1) close(tmpfd);
+}
+
+void set_timepart_and_handle_resume_sc() 
+{
+    /* We need to do this before resuming schema chabge , if any */
+    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
+    thedb->timepart_views = timepart_views_init(thedb);
+    if (!thedb->timepart_views)
+        abort();
+
+    /* if there is an active schema changes, resume it, this is automatically
+     * done every time the master changes, but on startup the low level meta
+     * table wasn't open yet so we couldn't check to see if a schema change was
+     * in progress */
+    if (thedb->master == gbl_mynode) {
+        int irc = resume_schema_change();
+        if (irc)
+            logmsg(LOGMSG_ERROR, 
+                    "failed trying to resume schema change, "
+                    "if one was in progress it will have to be restarted\n");
+    }
+}
+
+
 #define TOOL(x) #x,
 
 #define TOOLS           \
@@ -8593,15 +8619,11 @@ struct tool tool_callbacks[] = {
 
 int main(int argc, char **argv)
 {
-    char *marker_file;
-    int ii;
     int rc;
-
     char *exe = NULL;
 
     /* clean left over transactions every 5 minutes */
     int clean_mins = 5 * 60 * 1000;
-    struct sigaction sact;
 
     /* allocate initializer first */
     comdb2ma_init(0, 0);
@@ -8637,14 +8659,13 @@ int main(int argc, char **argv)
     getmyid();
 
     /* ignore too large files signals */
+    struct sigaction sact;
     sact.sa_handler = SIG_IGN;
     sigemptyset(&sact.sa_mask);
     sact.sa_flags = 0;
     sigaction(SIGXFSZ, &sact, NULL);
 
     signal(SIGTERM, clean_exit_sigwrap);
-
-    gbl_enabled_new_context = 1;
 
     if (debug_switch_skip_skipables_on_verify())
         gbl_berkdb_verify_skip_skipables = 1;
@@ -8698,45 +8719,14 @@ int main(int argc, char **argv)
     }
 
     set_datetime_dir();
-
-    /* We need to do this before resuming schema chabge , if any */
-    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
-    thedb->timepart_views = timepart_views_init(thedb);
-    if (!thedb->timepart_views)
-        abort();
-
-    /* if there is an active schema changes, resume it, this is automatically
-     * done every time the master changes, but on startup the low level meta
-     * table wasn't open yet so we couldn't check to see if a schema change was
-     * in progress */
-    if (thedb->master == gbl_mynode) {
-        int irc = resume_schema_change();
-        if (irc)
-            logmsg(LOGMSG_ERROR, 
-                    "failed trying to resume schema change, "
-                    "if one was in progress it will have to be restarted\n");
-    }
+    set_timepart_and_handle_resume_sc();
 
     repl_list_init();
 
     /* Creating a server context wipes out the db #'s dbcommon entries.
      * Recreate them. */
     fix_lrl_ixlen();
-
-    int tmpfd;
-    for (ii = 0; ii < thedb->num_dbs; ii++) {
-        if (thedb->dbs[ii]->dbnum) {
-            marker_file =
-                comdb2_location("marker", "%s.trap", thedb->dbs[ii]->dbname);
-            tmpfd = creat(marker_file, 0666);
-            free(marker_file);
-            if (tmpfd != -1) close(tmpfd);
-        }
-    }
-    marker_file = comdb2_location("marker", "%s.trap", thedb->envname);
-    tmpfd = creat(marker_file, 0666);
-    free(marker_file);
-    if (tmpfd != -1) close(tmpfd);
+    create_marker_file();
 
     create_watchdog_thread(thedb);
     create_old_blkseq_thread(thedb);
@@ -8764,11 +8754,6 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    if (strcmp(thedb->envname, "leddydb") == 0)
-       logmsg(LOGMSG_WARN, "I AM LEDDY.\n");
-    else
-       logmsg(LOGMSG_WARN, "I AM READY.\n");
-
     if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
                                  deferred_do_commands)) {
         logmsg(LOGMSG_FATAL, "failed to process deferred options\n");
@@ -8780,6 +8765,7 @@ int main(int argc, char **argv)
     gbl_broken_max_rec_sz = 0;
 
     gbl_ready = 1;
+    logmsg(LOGMSG_WARN, "I AM READY.\n");
 
     extern void *timer_thread(void *);
     pthread_t timer_tid;
