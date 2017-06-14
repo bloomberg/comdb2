@@ -228,7 +228,7 @@ static int resolve_dc(char *host)
     }
 
 done:
-    if (db == NULL)
+    if (db != NULL)
         cdb2_close(db);
     // printf("%s->%d\n",  host, dc);
     return dc;
