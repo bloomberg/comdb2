@@ -662,7 +662,7 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     int rc = 0;
     int null;
     Mem m[MAXCOLUMNS];
-    int type[MAXCOLUMNS];
+    u32 type[MAXCOLUMNS];
     int datasz = 0;
     int hdrsz = 0;
     int remainingsz = 0;
