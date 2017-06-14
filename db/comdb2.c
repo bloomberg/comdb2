@@ -5659,7 +5659,6 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
 static struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
     int rc;
-
     struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
     if (dbenv == 0) {
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
@@ -5707,7 +5706,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     if (lrlname)
-       pre_read_lrl_file(dbenv, lrlname, dbname);
+        pre_read_lrl_file(dbenv, lrlname, dbname);
 
     /* if we havn't been told not to load the /bb/bin/ config files */
     if (!gbl_nogbllrl) {
@@ -5779,32 +5778,32 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     if (lrlname == NULL) {
-       char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
-       if (access(lrl, F_OK) == 0) {
-          if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
-             return 0;
-          }
-          lrlname = lrl;
-       }
-       else
-          free(lrlname);
+        char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
+        if (access(lrl, F_OK) == 0) {
+            if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
+                return 0;
+            }
+            lrlname = lrl;
+        }
+        else
+            free(lrlname);
     }
 
     if (gbl_create_mode) {
-       /* make sure the database directory exists! */
-       rc = mkdir(dbenv->basedir, 0774);
-       if (rc && errno != EEXIST) {
-          logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
-          /* continue, this will make us fail later */
-       }
+        /* make sure the database directory exists! */
+        rc = mkdir(dbenv->basedir, 0774);
+        if (rc && errno != EEXIST) {
+            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
+            /* continue, this will make us fail later */
+        }
     }
     else {
-       struct stat sb;
-       stat(dbenv->basedir, &sb);
-       if (! S_ISDIR(sb.st_mode)) {
-          logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
-          return 0;
-       }
+        struct stat sb;
+        stat(dbenv->basedir, &sb);
+        if (! S_ISDIR(sb.st_mode)) {
+            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
+            return 0;
+        }
     }
 
     tz_hash_init();
@@ -9007,4 +9006,4 @@ static int create_service_file(char *lrlname)
 
 #undef QUOTE
 
-/* vim: set sw=3 ts=3 et: */
+/* vim: set sw=4 ts=4 et: */
