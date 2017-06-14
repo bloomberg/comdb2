@@ -1888,8 +1888,6 @@ static void log_client_context(struct reqlogger *logger,
         /* Latch the context - client only re-sends context if
            it changes.  TODO: this seems needlessly expensive. */
         clnt->ncontext = clnt->sql_query->n_context;
-        if (clnt->context)
-            free(clnt->context);
         clnt->context = malloc(sizeof(char*) * clnt->sql_query->n_context);
         for (int i = 0; i < clnt->sql_query->n_context; i++)
             clnt->context[i] = strdup(clnt->sql_query->context[i]);
@@ -6300,6 +6298,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         free(clnt->context[i]);
     }
     free(clnt->context);
+    clnt->context = NULL;
     clnt->ncontext = 0;
 }
 
