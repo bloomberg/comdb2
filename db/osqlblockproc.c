@@ -1297,8 +1297,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         if (out_rc)
             break;
     }
-#if 0
-    /* we will apply these outside a transaction */
+
     if (out_rc) {
         while ((cur_bpfunc = listc_rtl(&iq->bpfunc_lst))) {
             assert(cur_bpfunc->func->fail != NULL);
@@ -1312,7 +1311,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
             free_bpfunc(cur_bpfunc->func);
         }
     }
-#endif
 
     if (rc = pthread_mutex_unlock(&tran->store_mtx)) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
