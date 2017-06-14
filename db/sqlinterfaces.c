@@ -3978,6 +3978,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         thr_set_current_sql(rec->sql);
     }
 
+    /* Set to the expanded version */
     reqlog_set_sql(thd->logger, (char *)rec->sql);
 
     /* if don't have a stmt */
@@ -4056,23 +4057,21 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     char *errstr = NULL;
     int rc = 0;
 
-    if (rec->parameters_to_bind ||
-        (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars)) {
-        if (clnt->is_newsql) {
-            rc = bind_parameters(rec->stmt, NULL, clnt->sql_query, NULL, NULL,
-                                 0, NULL, NULL, clnt->tzname,
-                                 gbl_dump_sql_dispatched, &errstr);
-        } else {
-            rc = bind_parameters(rec->stmt, rec->parameters_to_bind, NULL,
-                                 clnt->tagbuf, clnt->nullbits, clnt->numblobs,
-                                 clnt->blobs, clnt->bloblens, clnt->tzname,
-                                 gbl_dump_sql_dispatched, &errstr);
-        }
-
+    if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
+        rc = bind_parameters(rec->stmt, NULL, clnt->sql_query, NULL, NULL,
+                             0, NULL, NULL, clnt->tzname,
+                             gbl_dump_sql_dispatched, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
-        
+    } else if (rec->parameters_to_bind) {
+        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, NULL,
+                             clnt->tagbuf, clnt->nullbits, clnt->numblobs,
+                             clnt->blobs, clnt->bloblens, clnt->tzname,
+                             gbl_dump_sql_dispatched, &errstr);
+        if(rc) {
+            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
+        }
     } else if (clnt->verify_indexes) {
         bind_verify_indexes_query(rec->stmt, clnt->schema_mems);
     } else {
