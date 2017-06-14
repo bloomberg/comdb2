@@ -1861,36 +1861,6 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
     reqlog_set_rows(logger, rows);
 }
 
-/*
-  Check and print the client context messages.
-*/
-static void log_client_context(struct reqlogger *logger,
-                               struct sqlclntstate *clnt)
-{
-    if (clnt->sql_query == NULL)
-        return;
-
-    if (clnt->sql_query->n_context > 0) {
-        int i = 0;
-        while (i < clnt->sql_query->n_context) {
-            reqlog_logf(logger, REQL_INFO, "(%d) %s", ++i,
-                        clnt->sql_query->context[i]);
-        }
-    }
-
-    /* If request context is set, the client is changing the context. */
-    if (clnt->sql_query->context) {
-        /* Latch the context - client only re-sends context if
-           it changes.  TODO: this seems needlessly expensive. */
-        clnt->ncontext = clnt->sql_query->n_context;
-        clnt->context = malloc(sizeof(char*) * clnt->sql_query->n_context);
-        for (int i = 0; i < clnt->sql_query->n_context; i++)
-            clnt->context[i] = strdup(clnt->sql_query->context[i]);
-    }
-    /* Whether latched from previous run, or just set, pass this to logger. */
-    reqlog_set_context(logger, clnt->ncontext, clnt->context);
-}
-
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      int sendresponse)
@@ -6285,12 +6255,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->verify_indexes = 0;
     clnt->schema_mems = NULL;
     clnt->init_gen = 0;
-    for (int i = 0; i < clnt->ncontext; i++) {
-        free(clnt->context[i]);
-    }
-    free(clnt->context);
-    clnt->context = NULL;
-    clnt->ncontext = 0;
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
