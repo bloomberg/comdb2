@@ -137,6 +137,7 @@ unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
 
 extern int sqldbgflag;
+extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 
 static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
                                    bdb_cursor_ifn_t *cur, void *key, int keylen,
@@ -10086,19 +10087,35 @@ int convert_client_ftype(int type)
 }
 
 /*
+** Convert protobuf Bindvalue to our struct field
+*/
+struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
+                                   struct field *c_fld)
+{
+    c_fld->type = convert_client_ftype(bindvalue->type);
+    c_fld->datalen = bindvalue->value.len;
+    c_fld->idx = -1;
+    c_fld->name = bindvalue->varname;
+    c_fld->offset = 0;
+    return c_fld;
+}
+
+/*
 ** For sql queries with replaceable parameters.
 ** Take data from buffer and blobs, bind to
 ** sqlite parameters.
 */
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    CDB2SQLQUERY *sqlquery, void *bufp, void *nullbits,
-                    int numblobs, void **blobs, int *bloblens, char *tzname,
-                    int debug, char **err)
+                    struct sqlclntstate *clnt, char **err)
 {
+    /* old parameters */
+    CDB2SQLQUERY *sqlquery = clnt->sql_query;
+    char *buf = (char *)clnt->tagbuf;
+
+    /* initial stack variables */
     int fld;
     struct field c_fld;
     struct field *f;
-    char *buf = bufp;
     char *str;
     int datalen;
     char parmname[32];
@@ -10150,12 +10167,7 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         if (params) {
             f = &params->member[fld];
         } else {
-            c_fld.type = convert_client_ftype(sqlquery->bindvars[fld]->type);
-            c_fld.datalen = sqlquery->bindvars[fld]->value.len;
-            c_fld.idx = -1;
-            c_fld.name = sqlquery->bindvars[fld]->varname;
-            c_fld.offset = 0;
-            f = &c_fld;
+            f = convert_client_field(sqlquery->bindvars[fld], &c_fld);
             if (sqlquery->bindvars[fld]->has_index) {
                 pos = sqlquery->bindvars[fld]->index;
             }
@@ -10217,9 +10229,8 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 return -1;
             }
         }
-        if (nullbits)
-            isnull = btst(nullbits, fld) ? 1 : 0;
-        if (debug)
+        if (clnt->nullbits) isnull = btst(clnt->nullbits, fld) ? 1 : 0;
+        if (gbl_dump_sql_dispatched)
             logmsg(LOGMSG_USER, "binding field %d name %s position %d type %d %s pos %d "
                    "null %d\n",
                    fld, f->name, pos, f->type, strtype(f->type), pos, isnull);
@@ -10228,33 +10239,31 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         else {
             switch (f->type) {
             case CLIENT_INT:
-                if ((rc = get_int_field(f, buf, debug, (uint64_t *)&ival)) == 0)
+                if ((rc = get_int_field(f, buf, (uint64_t *)&ival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
                 break;
             case CLIENT_UINT:
-                if ((rc = get_uint_field(f, buf, debug, (uint64_t *)&uival)) ==
-                    0)
+                if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
                 break;
             case CLIENT_REAL:
-                if ((rc = get_real_field(f, buf, debug, &dval)) == 0)
+                if ((rc = get_real_field(f, buf, &dval)) == 0)
                     rc = sqlite3_bind_double(stmt, pos, dval);
                 break;
             case CLIENT_CSTR:
             case CLIENT_PSTR:
             case CLIENT_PSTR2:
-                if ((rc = get_str_field(f, buf, debug, &str, &datalen)) == 0)
+                if ((rc = get_str_field(f, buf, &str, &datalen)) == 0)
                     rc = sqlite3_bind_text(stmt, pos, str, datalen, NULL);
                 break;
             case CLIENT_BYTEARRAY:
-                if ((rc = get_byte_field(f, buf, debug, &byteval, &datalen)) ==
-                    0)
+                if ((rc = get_byte_field(f, buf, &byteval, &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
                 break;
             case CLIENT_BLOB:
                 if (params) {
-                    if ((rc = get_blob_field(blobno, numblobs, blobs, bloblens,
-                                             debug, &byteval, &datalen)) == 0) {
+                    if ((rc = get_blob_field(blobno, clnt, &byteval,
+                                             &datalen)) == 0) {
                         rc = sqlite3_bind_blob(stmt, pos, byteval, datalen,
                                                NULL);
                         blobno++;
@@ -10266,8 +10275,8 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 break;
             case CLIENT_VUTF8:
                 if (params) {
-                    if ((rc = get_blob_field(blobno, numblobs, blobs, bloblens,
-                                             debug, &byteval, &datalen)) == 0) {
+                    if ((rc = get_blob_field(blobno, clnt, &byteval,
+                                             &datalen)) == 0) {
                         rc = sqlite3_bind_text(stmt, pos, byteval, datalen,
                                                NULL);
                         blobno++;
@@ -10278,15 +10287,15 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 }
                 break;
             case CLIENT_DATETIME:
-                if ((rc = get_datetime_field(f, buf, tzname, &dt,
+                if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
                                              little_endian)) == 0)
-                    rc = sqlite3_bind_datetime(stmt, pos, &dt, tzname);
+                    rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
                 break;
 
             case CLIENT_DATETIMEUS:
-                if ((rc = get_datetimeus_field(f, buf, tzname, &dt,
+                if ((rc = get_datetimeus_field(f, buf, clnt->tzname, &dt,
                                                little_endian)) == 0)
-                    rc = sqlite3_bind_datetime(stmt, pos, &dt, tzname);
+                    rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
                 break;
 
             case CLIENT_INTVYM: {
@@ -10425,7 +10434,7 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 rc = SQLITE_ERROR;
             }
         }
-        if (debug)
+        if (gbl_dump_sql_dispatched)
             logmsg(LOGMSG_USER, 
                    "fld %d %s position %d type %d %s len %d null %d bind rc %d\n",
                    fld, f->name, f->type, pos, strtype(f->type), f->datalen,

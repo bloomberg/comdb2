@@ -2612,8 +2612,7 @@ void blob_print_stats(void);
 void purge_old_cached_blobs(void);
 
 void commit_schemas(const char *tblname);
-struct schema *new_dynamic_schema(struct db *db, const char *s, int len,
-                                  int trace);
+struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
 int getdefaultkeysize(const struct db *db, int ixnum);
 int getdefaultdatsize(const struct db *db);
@@ -2888,9 +2887,7 @@ void reqlog_usetable(struct reqlogger *logger, const char *tablename);
 void reqlog_setflag(struct reqlogger *logger, unsigned flag);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
-void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
-                            char *tags, void *tagbuf, int tagbufsz,
-                            void *nullbits, int numbits);
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
 void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt);
 int reqlog_current_ms(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
@@ -3326,9 +3323,7 @@ extern unsigned long long gbl_delupd_blob_cnt;
 extern unsigned long long gbl_addupd_blob_cnt;
 
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    CDB2SQLQUERY *query, void *bufp, void *nullbits,
-                    int numblobs, void **blobs, int *bloblens, char *tzname,
-                    int debug, char **err);
+                    struct sqlclntstate *clnt, char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 void verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 

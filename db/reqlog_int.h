@@ -96,9 +96,6 @@ struct reqlogger {
 
     /* the sql statement */
     char *stmt;
-    char *tags;
-    void *tagbuf;
-    void *nullbits;
 
     unsigned int nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
