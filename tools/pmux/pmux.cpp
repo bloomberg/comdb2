@@ -76,13 +76,9 @@ struct connection {
     char inbuf[128];
     int inoff;
     bool writable;
-    bool is_hello;
-    std::string service;
     struct in_addr addr;
     connection(void) : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out() {}
 };
-
-static std::set<std::string> active_services;
 
 std::vector<connection> connections;
 
@@ -176,10 +172,6 @@ int client_func(int fd)
 static void unwatchfd(struct pollfd &fd)
 {
     connections[fd.fd].inoff = 0;
-    if (connections[fd.fd].is_hello) {
-        active_services.erase(connections[fd.fd].service);
-    }
-
     // Throw away any buffers we may have
     while (connections[fd.fd].out.size())
         connections[fd.fd].out.pop_front();
@@ -597,24 +589,6 @@ again:
         }
     } else if (strcmp(cmd, "used") == 0 || strcmp(cmd, "list") == 0) {
         used(c);
-    } else if (strcmp(cmd, "hello") == 0) {
-        svc = strtok_r(NULL, " ", &sav);
-        if (c.writable && svc != nullptr) {
-            if (svc != nullptr) {
-                c.is_hello = true;
-                active_services.insert(std::string(svc));
-                c.service = std::string(svc);
-                conn_printf(c, "ok\n");
-            }
-        }
-        else {
-            disallowed_write(c, cmd);
-        }
-    } else if (strcmp(cmd, "active") == 0) {
-        conn_printf(c, "%d\n", active_services.size());
-        for (auto it : active_services) {
-            conn_printf(c, "%s\n", it.c_str());
-        }
     } else if (strcmp(cmd, "exit") == 0) {
         if (c.writable) {
             return 1;
@@ -629,8 +603,6 @@ again:
         conn_printf(c, "stat                    : dump some stats\n");
         conn_printf(c, "used                    : dump active port assignments\n");
         conn_printf(c, "rte                     : get route to instance service/port\n");
-        conn_printf(c, "hello service           : keep active connection\n");
-        conn_printf(c, "active                  : list active connections\n");
         conn_printf(c, "exit                    : shutdown pmux (may be restarted by system)\n");
     } else {
         conn_printf(c, "-1 unknown command, type 'help' for a brief usage description\n");

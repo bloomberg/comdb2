@@ -13,21 +13,19 @@
 #include "eventlog.h"
 #include "util.h"
 #include "plhash.h"
-#include "logmsg.h"
 
 #include "cson_amalgamation_core.h"
 
 static char* eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 1024*1024*1024;
-static int eventlog_enabled = 1;
+static int eventlog_enabled = 0;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
-static int eventlog_verbose = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static gzFile eventlog_open(void);
+static gzFile eventlog_open(const char *fname);
 int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
@@ -46,14 +44,10 @@ static hash_t *seen_sql;
 void eventlog_init(const char *dbname) {
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
-    if (eventlog_enabled)
-        eventlog = eventlog_open();
 }
 
-static gzFile eventlog_open() {
-    char *fname = eventlog_fname(thedb->envname);
+static gzFile eventlog_open(const char *fname) {
     gzFile f = gzopen(fname, "2w");
-    free(fname);
     if (f == NULL) {
         eventlog_enabled = 0;
         return NULL;
@@ -129,22 +123,6 @@ void eventlog_params(cson_object *obj, const struct reqlogger *logger, int detai
     }
 }
 
-void eventlog_tables(cson_object *obj, const struct reqlogger *logger) {
-    if (logger->ntables == 0)
-        return;
-
-    cson_value *tables = cson_value_new_array();
-    cson_array *arr = cson_value_get_array(tables);
-    cson_array_reserve(arr, logger->ntables);
-
-    for (int i = 0; i < logger->ntables; i++) {
-        cson_value *v = cson_value_new_string(logger->sqltables[i], strlen(logger->sqltables[i]));
-        cson_array_append(arr, v);
-    }
-
-    cson_object_set(obj, "tables", tables);
-}
-
 void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger) {
     const struct bdb_thread_stats *thread_stats = bdb_get_thread_stats();
     int64_t start, end;
@@ -174,56 +152,10 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger) {
     cson_object_set(obj, "perf", perfval);
 }
 
-int write_json( void * state, const void *src, unsigned int n ) {
+int write_json( void * state, void const * src, unsigned int n ) {
     int rc = gzwrite((gzFile) state, src, n);
     bytes_written += rc;
     return rc != n;
-}
-
-int write_logmsg(void *state, const void *src, unsigned int n) {
-    logmsg(LOGMSG_USER, "%.*s", n, src);
-    return 0;
-}
-
-static void eventlog_context(cson_object *obj, const struct reqlogger *logger) {
-    cson_value *contexts = cson_value_new_array();
-    if (logger->ncontext > 0) {
-        cson_array *arr = cson_value_get_array(contexts);
-        cson_array_reserve(arr, logger->ncontext);
-        for (int i = 0; i < logger->ncontext; i++) {
-            cson_value *v = cson_value_new_string(logger->context[i], strlen(logger->context[i]));
-            cson_array_append(arr, v);
-        }
-        cson_object_set(obj, "context", contexts);
-    }
-}
-
-static void eventlog_path(cson_object *obj, const struct reqlogger *logger) {
-    if (!logger->path || logger->path->n_components == 0)
-        return;
-
-    cson_value *components = cson_value_new_array();
-    cson_array *arr = cson_value_get_array(components);
-    cson_array_reserve(arr, logger->path->n_components);
-
-    for (int i = 0; i < logger->path->n_components; i++) {
-        cson_value *component;
-        component = cson_value_new_object();
-        cson_object *obj = cson_value_get_object(component);
-        struct client_query_path_component *c;
-        c = &logger->path->path_stats[i];
-        cson_object_set(obj, "table", cson_value_new_string(c->table, strlen(c->table)));
-        if (c->ix != -1)
-            cson_object_set(obj, "index", cson_new_int(c->ix));
-        if (c->nfind)
-            cson_object_set(obj, "find", cson_new_int(c->nfind));
-        if (c->nnext)
-            cson_object_set(obj, "next", cson_new_int(c->nnext));
-        if (c->nwrite)
-            cson_object_set(obj, "write", cson_new_int(c->nwrite));
-        cson_array_append(arr, component);
-    }
-    cson_object_set(obj, "path", components);
 }
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
@@ -259,8 +191,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
         /* yes, this can spill the file to beyond the configured size - we need this
            event to be in the same file as the event its being logged for */
         cson_output(newval, write_json, eventlog, &opt);
-        if (eventlog_verbose)
-            cson_output(newval, write_logmsg, stdout, &opt);
         cson_value_free(newval);
     }
     pthread_mutex_unlock(&eventlog_lk);
@@ -281,11 +211,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
     if (logger->vreplays)
         cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
 
-    if (logger->error)
-        cson_object_set(obj, "error", cson_value_new_string(logger->error, strlen(logger->error)));
-
-    cson_object_set(obj, "host", cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
-
     if (logger->have_fingerprint) {
         char fingerprint[32];
         for (int i = 0; i < 16; i++) {
@@ -293,17 +218,15 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger) {
             fingerprint[i*2+1] = hexchars[logger->fingerprint[i] & 0x0f];
         }
         cson_object_set(obj, "fingerprint", cson_value_new_string(fingerprint, 32));
-        // printf("%s -> %.*s\n", logger->stmt, sizeof(fingerprint), fingerprint);
     }
 
+    cson_object_set(obj, "duration", cson_new_int(logger->durationms));
     if (logger->queuetimems)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
 
-    eventlog_context(obj, logger);
     eventlog_params(obj, logger, detailed);
+
     eventlog_perfdata(obj, logger);
-    eventlog_tables(obj, logger);
-    eventlog_path(obj, logger);
 }
 
 
@@ -337,15 +260,14 @@ void eventlog_add(const struct reqlogger *logger) {
     cson_output(val, write_json, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
 
-    if (eventlog_verbose)
-        cson_output(val, write_logmsg, stdout, &opt);
-
     cson_value_free(val);
 }
 
 static void eventlog_roll(void) {
+    char *fname = eventlog_fname(thedb->envname);
     eventlog_close();
-    eventlog = eventlog_open();
+    eventlog = eventlog_open(fname);
+    free(fname);
 }
 
 static void eventlog_enable(void) {
@@ -440,20 +362,6 @@ void eventlog_process_message_locked(char *line, int lline, int *toff) {
         } else
             logmsg(LOGMSG_USER, "Logging every %d queries\n", eventlog_every_n);
         eventlog_every_n = every;
-    } else if (tokcmp(tok, ltok, "verbose") == 0) {
-        tok = segtok(line, lline, toff, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
-            return;
-        }
-        if (tokcmp(tok, ltok, "on") == 0)
-            eventlog_verbose = 1;
-        else if (tokcmp(tok, ltok, "off") == 0)
-            eventlog_verbose = 0;
-        else {
-            logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
-            return;
-        }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         gzflush(eventlog, 1);
     } else {
