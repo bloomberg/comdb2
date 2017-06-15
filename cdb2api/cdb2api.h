@@ -230,6 +230,11 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 
+int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg);
+int cdb2_pop_context(cdb2_hndl_tp *hndl);
+int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
+
+
 /* We keep the functions but make them no-op if not compiled
    with WITH_SSL. */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto);

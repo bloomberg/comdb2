@@ -352,6 +352,7 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
+char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
 int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
@@ -410,6 +411,7 @@ int gbl_replicate_local_concurrent = 0;
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
+char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 int gbl_max_lua_instructions = 10000;
 
@@ -6542,9 +6544,8 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    char cwd[256];               /* start directory */
     /* get my working directory */
-    if (getcwd(cwd, sizeof(cwd)) == 0) {
+    if (getcwd(gbl_cwd, sizeof(gbl_cwd)) == 0) {
         logmsgperror("failed to getcwd");
         return -1;
     }
@@ -6787,7 +6788,7 @@ static int init(int argc, char **argv)
 
     /* Since we moved bbipc context code lower, we need to explicitly
      * initialize ctrace stuff, or our ctrace files will have names like
-     * dum50624.trc.c which isn't helpful */
+     * dum50624.trace which isn't helpful */
     if (gbl_ctrace_dbdir)
         ctrace_openlog_taskname(thedb->basedir, dbname);
     else {
@@ -8619,7 +8620,10 @@ struct tool tool_callbacks[] = {
 
 int main(int argc, char **argv)
 {
+    char *marker_file;
+    int ii;
     int rc;
+
     char *exe = NULL;
 
     /* clean left over transactions every 5 minutes */

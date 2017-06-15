@@ -817,7 +817,7 @@ void reqlog_process_message(char *line, int st, int lline)
     } else if (ltok == 0) {
         logmsg(LOGMSG_ERROR, "huh?\n");
     } else if (tokcmp(tok, ltok, "events") == 0) {
-                eventlog_process_message(line, lline, &st);
+        eventlog_process_message(line, lline, &st);
     } else {
         char rulename[32];
         struct logrule *rule;
@@ -2026,6 +2026,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, 
     logger->nullbits = NULL;
     logger->have_id = 0;
     logger->have_fingerprint = 0;
+    free(logger->tables);
+    logger->tables = NULL;
+    free(logger->error);
+    logger->error = NULL;
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2410,4 +2414,25 @@ void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request) {
 
 void reqlog_set_event(struct reqlogger *logger, const char *evtype) {
     logger->event_type = evtype;
+}
+
+void reqlog_add_table(struct reqlogger *logger, const char *table) {
+    if (logger->ntables == logger->alloctables) {
+        logger->alloctables = logger->alloctables * 2 + 10;
+        logger->sqltables = realloc(logger->sqltables, logger->alloctables * sizeof(char*));
+    }    
+    logger->sqltables[logger->ntables++] = strdup(table);
+}
+
+void reqlog_set_error(struct reqlogger *logger, const char *error) {
+    logger->error = strdup(error);
+}
+
+void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path) {
+    logger->path = path;
+}
+
+void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context) {
+    logger->ncontext = ncontext;
+    logger->context = context;
 }

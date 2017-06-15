@@ -720,9 +720,8 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
+  sqlite3FingerprintSelect(pParse->db, X);
   sqlite3Select(pParse, X, &dest);
-  if (pParse->db->should_fingerprint)
-      sqlite3FingerprintSelect(pParse->db, X);
   sqlite3SelectDelete(pParse->db, X);
 }
 
@@ -1079,6 +1078,7 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "DELETE");
+  sqlite3FingerprintDelete(pParse->db, X, W);
   sqlite3DeleteFrom(pParse,X,W);
 }
 %endif
@@ -1086,6 +1086,7 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
 cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
+  sqlite3FingerprintDelete(pParse->db, X, W);
   sqlite3DeleteFrom(pParse,X,W);
 }
 %endif
@@ -1105,6 +1106,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "UPDATE");
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
   sqlite3Update(pParse,X,Y,W,R);
 }
 %endif
@@ -1114,6 +1116,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
   sqlite3Update(pParse,X,Y,W,R);
 }
 %endif
@@ -1140,12 +1143,14 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S). {
   sqlite3WithPush(pParse, W, 1);
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
   sqlite3Insert(pParse, X, S, F, R);
 }
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3WithPush(pParse, W, 1);
-  sqlite3Insert(pParse, X, 0, F, R);
+  sqlite3FingerprintInsert(pParse->db, X, NULL, F, W);
+  sqlite3Insert(pParse, X, NULL, F, R);
 }
 
 %type insert_cmd {int}
