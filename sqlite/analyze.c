@@ -2001,6 +2001,10 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
   assert( iDb>=0 && iDb<db->nDb );
   assert( db->aDb[iDb].pBt!=0 );
 
+  /* AZ: put disabler loader here */
+  void get_disable_skipscan_all();
+  get_disable_skipscan_all();
+
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
   for(i=sqliteHashFirst(&db->aDb[iDb].pSchema->idxHash);i;i=sqliteHashNext(i)){

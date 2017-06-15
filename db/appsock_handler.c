@@ -770,11 +770,9 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             tok = segtok(line, rc, &st, &ltok);
             if (ltok && strncmp(tok, "clear", 5) == 0) {
                 bdb_clear_table_parameter(NULL, table, "disableskipscan");
-                set_skipscan_for_table_indices(tbl, 0);
             } else {
                 const char *value = "true";
                 bdb_set_table_parameter(NULL, table, "disableskipscan", value);
-                set_skipscan_for_table_indices(tbl, 1);
             }
 
             char *setval = NULL;
@@ -787,6 +785,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
                 sbuf2printf(sb, ">disableskipscan cleared\n");
             sbuf2printf(sb, "SUCCESS\n");
             sbuf2flush(sb);
+            bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
         } else if (cmd == cmd_testcompr) {
             char table[128];
             tok = segtok(line, rc, &st, &ltok);

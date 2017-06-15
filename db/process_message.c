@@ -46,6 +46,7 @@ extern int __berkdb_fsync_alarm_ms;
 #include <ctrace.h>
 
 #include "comdb2.h"
+#include "glue.h"
 #include "block_internal.h"
 #include "timer.h"
 #include "translistener.h"
@@ -5013,11 +5014,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok = segtok(line, lline, &st, &ltok);
         if (tok && strncmp(tok, "clear", 5) == 0) {
             bdb_clear_table_parameter(NULL, table, "disableskipscan");
-            set_skipscan_for_table_indices(tbl, 0);
         } else {
             const char *value = "true";
             bdb_set_table_parameter(NULL, table, "disableskipscan", value);
-            set_skipscan_for_table_indices(tbl, 1);
         }
 
         char *setval = NULL;
