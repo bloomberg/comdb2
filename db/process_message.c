@@ -4989,12 +4989,44 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                    "Default 300,000\n");
         }
 
-       logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
+        logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
                gbl_testcompr_percent);
         if (gbl_testcompr_max) {
            logmsg(LOGMSG_USER, ", upto a max of %d", gbl_testcompr_max);
         }
        logmsg(LOGMSG_USER, "\n");
+    } else if (tokcmp(tok, ltok, "disableskipscan") == 0) {
+        char table[128];
+        tok = segtok(line, lline, &st, &ltok);
+        tokcpy0(tok, ltok, table, sizeof(table));
+        if(strlen(table) < 1) {
+            logmsg(LOGMSG_USER, "Usage disable skipscan <table> [clear] \n");
+            return 0;
+        }
+
+        struct db *tbl = getdbbyname(table);
+        if (!tbl) {
+            logmsg(LOGMSG_USER, "Cannot find table '%s'\n", table);
+            return 0;
+        }
+        tok = segtok(line, lline, &st, &ltok);
+        if (tok && strncmp(tok, "clear", 5) == 0) {
+            bdb_clear_table_parameter(NULL, table, "disableskipscan");
+            set_skipscan_for_table_indices(tbl, 0);
+        } else {
+            const char *value = "true";
+            bdb_set_table_parameter(NULL, table, "disableskipscan", value);
+            set_skipscan_for_table_indices(tbl, 1);
+        }
+
+        char *setval = NULL;
+        bdb_get_table_parameter(table, "disableskipscan", &setval);
+
+        if (setval) {
+            logmsg(LOGMSG_USER, "disableskipscan set %s\n", setval);
+            free(setval);
+        } else
+            logmsg(LOGMSG_USER, "disableskipscan cleared\n");
     } else if (tokcmp(tok, ltok, "decimal_rounding") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0 && tok[0]) {
