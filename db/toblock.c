@@ -1059,6 +1059,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         case ERR_CONSTR:
                         case ERR_UNCOMMITABLE_TXN:
                         case ERR_NOMASTER:
+                        case ERR_NOTSERIAL:
+                        case ERR_SC:
                         case ERR_TRAN_TOO_BIG:
                             iq->sorese.rcout = outrc;
                             break;
@@ -1096,12 +1098,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         memcpy(printkey, fstseqnum, seqlen);
         printkey[seqlen]='\0';
 
-        /* Sanity */
+        /* The snapinfo_outrc is definitive: log differences here */
         if (snapinfo_outrc != outrc) {
             logmsg(LOGMSG_ERROR, "%s line %d snapinfo_outrc is %d, outrc is %d\n", 
                     __func__, __LINE__, snapinfo_outrc, outrc);
-            abort();
         }
+        outrc = snapinfo_outrc;
     }
     else {
         printkey = (char *)malloc((seqlen * 2) + 1);
