@@ -48,8 +48,6 @@ static int level_to_syslog(loglvl lvl) {
             return LOG_DEBUG;
         case LOGMSG_INFO:
             return LOG_INFO;
-        case LOGMSG_USER:
-            return LOG_USER;
         case LOGMSG_WARN:
             return LOG_WARNING;
         case LOGMSG_ERROR:
