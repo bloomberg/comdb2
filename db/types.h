@@ -2027,19 +2027,19 @@ int timespec_to_dttz(const struct timespec *, dttz_t *, int);
 
 struct field;
 struct sqlclntstate;
-int get_int_field(struct field *, const uint8_t *buf, int dbg, int64_t *out);
-int get_uint_field(struct field *, const uint8_t *buf, int dbg, uint64_t *out);
-int get_real_field(struct field *, const uint8_t *buf, int dbg, double *out);
-int get_str_field(struct field *, const uint8_t *buf, int dbg, char **out,
+int get_int_field(struct field *, const uint8_t *buf, int64_t *out);
+int get_uint_field(struct field *, const uint8_t *buf, uint64_t *out);
+int get_real_field(struct field *, const uint8_t *buf, double *out);
+int get_str_field(struct field *, const uint8_t *buf, char **out,
                   int *outlen);
-int get_byte_field(struct field *, const uint8_t *buf, int dbg, void **out,
+int get_byte_field(struct field *, const uint8_t *buf, void **out,
                    int *outlen);
 int get_datetime_field(struct field *, const uint8_t *buf, const char *tz,
                        dttz_t *out, int little_endian);
 int get_datetimeus_field(struct field *, const uint8_t *buf, const char *tz,
                          dttz_t *out, int little_endian);
 int get_blob_field(int blobno, struct sqlclntstate *clnt,
-                   int dbg, void **out, int *outlen);
+                   void **out, int *outlen);
 
 short decimal_quantum_get(char *pdec, int len, int *sign);
 void decimal_quantum_set(char *pdec, int len, short *quantum, int *sign);
