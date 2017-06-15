@@ -238,7 +238,7 @@ int reload_lua()
     return 0;
 }
 
-int replicant_reload_analyze()
+int replicant_reload_analyze_stats()
 {
     ++gbl_analyze_gen;
     logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");

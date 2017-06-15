@@ -76,6 +76,7 @@ extern int __berkdb_fsync_alarm_ms;
 #include "timers.h"
 #include "crc32c.h"
 #include "ssl_bend.h"
+#include "bdb_schemachange.h"
 
 #include <trigger.h>
 #include <sc_stripes.h>
@@ -5027,6 +5028,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             free(setval);
         } else
             logmsg(LOGMSG_USER, "disableskipscan cleared\n");
+        int bdberr;
+        bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
     } else if (tokcmp(tok, ltok, "decimal_rounding") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0 && tok[0]) {
