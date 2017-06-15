@@ -3325,8 +3325,7 @@ extern unsigned long long gbl_delupd_blob_cnt;
 extern unsigned long long gbl_addupd_blob_cnt;
 
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    CDB2SQLQUERY *query, void *bufp, void *nullbits,
-                    int numblobs, void **blobs, int *bloblens, char *tzname,
+                    struct sqlclntstate *clnt,
                     int debug, char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 void verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);

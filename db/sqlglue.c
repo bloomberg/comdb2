@@ -10091,10 +10091,19 @@ int convert_client_ftype(int type)
 ** sqlite parameters.
 */
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    CDB2SQLQUERY *sqlquery, void *bufp, void *nullbits,
-                    int numblobs, void **blobs, int *bloblens, char *tzname,
+                    struct sqlclntstate *clnt,
                     int debug, char **err)
 {
+    /* old parameters */
+    CDB2SQLQUERY *sqlquery = clnt->sql_query;
+    char *bufp = clnt->tagbuf;
+    void *nullbits = clnt->nullbits;
+    int numblobs = clnt->numblobs;
+    void **blobs = clnt->blobs;
+    int *bloblens = clnt->bloblens;
+    char *tzname = clnt->tzname;
+
+    /* initial stack variables */
     int fld;
     struct field c_fld;
     struct field *f;

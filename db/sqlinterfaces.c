@@ -4059,16 +4059,13 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc = 0;
 
     if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
-        rc = bind_parameters(rec->stmt, NULL, clnt->sql_query, NULL, NULL,
-                             0, NULL, NULL, clnt->tzname,
+        rc = bind_parameters(rec->stmt, NULL, clnt,
                              gbl_dump_sql_dispatched, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
     } else if (rec->parameters_to_bind) {
-        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, NULL,
-                             clnt->tagbuf, clnt->nullbits, clnt->numblobs,
-                             clnt->blobs, clnt->bloblens, clnt->tzname,
+        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt,
                              gbl_dump_sql_dispatched, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
@@ -8577,9 +8574,7 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     }
 
     if (parameters_to_bind) {
-        rc = bind_parameters(stmt, parameters_to_bind, NULL, clnt->tagbuf,
-                             clnt->nullbits, clnt->numblobs, clnt->blobs,
-                             clnt->bloblens, clnt->tzname,
+        rc = bind_parameters(stmt, parameters_to_bind, clnt,
                              gbl_dump_sql_dispatched, &err);
         if (rc) {
             ret = ERR_SQL_PREP;
