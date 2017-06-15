@@ -357,7 +357,7 @@ See also:
 
 ![create-time-partition](images/create-time-part.gif)
 
-```CREATE TIME PARTITION``` defines the data retention policy for the given table.  TBD
+```CREATE TIME PARTITION``` defines the data retention policy for the given table. See [Time-based Table Partitioning](timepart.html)
 
 ### TRUNCATE
 
@@ -418,7 +418,7 @@ The settings currently available to ```PUT``` are:
   * ```PASSWORD``` - sets a password for a given user.  ```PUT PASSWORD OFF``` disables the user.
   * ```AUTHENTICATION``` - enables/disables authentication on the database.  If enabled, access checks are performed.
     Note that a user must be designated as a superuser before enabling authentication.
-  * ```TIME PARTITION``` - changes the time partition configuration; only increasing retention is supported currently
+  * ```TIME PARTITION``` - changes the [time partition](timepart.html) configuration; only increasing retention is supported currently
 
 ## Operational commands
 
