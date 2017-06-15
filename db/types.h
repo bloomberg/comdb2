@@ -2026,6 +2026,7 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *, const char *tz,
 int timespec_to_dttz(const struct timespec *, dttz_t *, int);
 
 struct field;
+struct sqlclntstate;
 int get_int_field(struct field *, const uint8_t *buf, int dbg, int64_t *out);
 int get_uint_field(struct field *, const uint8_t *buf, int dbg, uint64_t *out);
 int get_real_field(struct field *, const uint8_t *buf, int dbg, double *out);
@@ -2037,7 +2038,7 @@ int get_datetime_field(struct field *, const uint8_t *buf, const char *tz,
                        dttz_t *out, int little_endian);
 int get_datetimeus_field(struct field *, const uint8_t *buf, const char *tz,
                          dttz_t *out, int little_endian);
-int get_blob_field(int blobno, int numblobs, void **blobs, int *bloblens,
+int get_blob_field(int blobno, struct sqlclntstate *clnt,
                    int dbg, void **out, int *outlen);
 
 short decimal_quantum_get(char *pdec, int len, int *sign);

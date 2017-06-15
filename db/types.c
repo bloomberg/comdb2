@@ -13975,14 +13975,14 @@ int get_byte_field(struct field *f, const uint8_t *buf, int debug, void **out,
     return rc;
 }
 
-int get_blob_field(int blobno, int numblobs, void **blobs, int *bloblens,
+int get_blob_field(int blobno, struct sqlclntstate *clnt,
                    int debug, void **out, int *outlen)
 {
     int rc = 0;
-    if (blobno >= numblobs)
+    if (blobno >= clnt->numblobs)
         return -1;
-    *out = blobs[blobno];
-    *outlen = bloblens[blobno];
+    *out = clnt->blobs[blobno];
+    *outlen = clnt->bloblens[blobno];
     if (debug) {
        logmsg(LOGMSG_USER, "blob:\n");
         fsnapf(stdout, *out, *outlen);

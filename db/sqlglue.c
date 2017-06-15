@@ -10096,18 +10096,12 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
 {
     /* old parameters */
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
-    char *bufp = clnt->tagbuf;
-    void *nullbits = clnt->nullbits;
-    int numblobs = clnt->numblobs;
-    void **blobs = clnt->blobs;
-    int *bloblens = clnt->bloblens;
-    char *tzname = clnt->tzname;
+    char *buf = (char*)clnt->tagbuf;
 
     /* initial stack variables */
     int fld;
     struct field c_fld;
     struct field *f;
-    char *buf = bufp;
     char *str;
     int datalen;
     char parmname[32];
@@ -10226,8 +10220,8 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 return -1;
             }
         }
-        if (nullbits)
-            isnull = btst(nullbits, fld) ? 1 : 0;
+        if (clnt->nullbits)
+            isnull = btst(clnt->nullbits, fld) ? 1 : 0;
         if (debug)
             logmsg(LOGMSG_USER, "binding field %d name %s position %d type %d %s pos %d "
                    "null %d\n",
@@ -10262,7 +10256,7 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 break;
             case CLIENT_BLOB:
                 if (params) {
-                    if ((rc = get_blob_field(blobno, numblobs, blobs, bloblens,
+                    if ((rc = get_blob_field(blobno, clnt,
                                              debug, &byteval, &datalen)) == 0) {
                         rc = sqlite3_bind_blob(stmt, pos, byteval, datalen,
                                                NULL);
@@ -10275,7 +10269,7 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 break;
             case CLIENT_VUTF8:
                 if (params) {
-                    if ((rc = get_blob_field(blobno, numblobs, blobs, bloblens,
+                    if ((rc = get_blob_field(blobno, clnt,
                                              debug, &byteval, &datalen)) == 0) {
                         rc = sqlite3_bind_text(stmt, pos, byteval, datalen,
                                                NULL);
@@ -10287,15 +10281,15 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 }
                 break;
             case CLIENT_DATETIME:
-                if ((rc = get_datetime_field(f, buf, tzname, &dt,
+                if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
                                              little_endian)) == 0)
-                    rc = sqlite3_bind_datetime(stmt, pos, &dt, tzname);
+                    rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
                 break;
 
             case CLIENT_DATETIMEUS:
-                if ((rc = get_datetimeus_field(f, buf, tzname, &dt,
+                if ((rc = get_datetimeus_field(f, buf, clnt->tzname, &dt,
                                                little_endian)) == 0)
-                    rc = sqlite3_bind_datetime(stmt, pos, &dt, tzname);
+                    rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
                 break;
 
             case CLIENT_INTVYM: {

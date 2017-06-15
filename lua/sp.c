@@ -5281,7 +5281,7 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
         break;
     case CLIENT_BLOB:
         if (params) {
-            if ((rc = get_blob_field(*blobno, numblobs, blobs, bloblens, debug,
+            if ((rc = get_blob_field(*blobno, clnt, debug,
                                      &blob.data, &blob.length)) == 0) {
                 luabb_pushblob(lua, &blob);
                 ++(*blobno);
@@ -5317,7 +5317,7 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
         break;
     case CLIENT_VUTF8:
         if (params) {
-            if ((rc = get_blob_field(*blobno, numblobs, blobs, bloblens, debug,
+            if ((rc = get_blob_field(*blobno, clnt, debug,
                                      (void **)&str, &datalen)) == 0) {
                 luabb_pushcstringlen(lua, str, datalen);
                 ++(*blobno);
