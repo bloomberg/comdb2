@@ -661,8 +661,8 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     int i;
     int rc = 0;
     int null;
-    Mem m[MAXCOLUMNS];
-    u32 type[MAXCOLUMNS];
+    Mem *m = NULL;
+    u32 *type = NULL;
     int datasz = 0;
     int hdrsz = 0;
     int remainingsz = 0;
@@ -681,6 +681,10 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         nField = pCur->nCookFields;
     else
         nField = s->nmembers;
+
+    m = (Mem*) alloca (sizeof(Mem)* (nField+1)); // Extra 1 for genid
+
+    type = (u32*) alloca(sizeof(u32) * (nField+1));
 
 #ifdef debug_raw
     printf("convert => %s %s %d / %d\n", db->dbname, s->tag, nField,
