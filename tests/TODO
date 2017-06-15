@@ -19,14 +19,14 @@ Test suite TODO (priority order?):
 [ ] get rid of any lrl options in tests that are already default
 [ ] fix: stat4dump crashes the db -- datacopy.test has that portion disabled
 [ ] fix: dryrun for SC -- instant_sc.test t20 has dryrun disabled
+[X] explicitly specifying master for cdb2sql should make the query run on master. 
+[X} suite should select comdb2_host() and make sure every machine returns
+    itself before declaring that a cluster is ready
 
 
 Unrelated bugs found:
 [ ] master copycomdb2/comdb2ar don't work - fixed in this branch
 [ ] non-llmeta if missing lrl options - should give better error
-[ ] explicitly specifying master for cdb2sql should make the query run on master. Once
-    we have this, suite should select comdb2_host() and make sure every machine returns
-    itself before declaring that a cluster is ready
 
 Would be nice:
 [ ] 80% of the test scripts are almost identical: run req files, diff with 
