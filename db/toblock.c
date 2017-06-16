@@ -1037,15 +1037,19 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     goto replay_error;
                 }
 
-                switch (err.errcode) {
-                case ERR_NULL_CONSTRAINT:
-                case ERR_UNCOMMITABLE_TXN:
-                case ERR_NOMASTER:
-                    outrc = err.errcode;
-                    break;
-                default:
-                    outrc = ERR_BLOCK_FAILED;
-                    break;
+                if (snapinfo) {
+                    outrc = snapinfo_outrc;
+                } else {
+                    switch (err.errcode) {
+                        case ERR_NULL_CONSTRAINT:
+                        case ERR_UNCOMMITABLE_TXN:
+                        case ERR_NOMASTER:
+                            outrc = err.errcode;
+                            break;
+                        default:
+                            outrc = ERR_BLOCK_FAILED;
+                            break;
+                    }
                 }
 
                 if (iq->sorese.type) {
@@ -1097,13 +1101,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         printkey = (char *)malloc(seqlen + 1);
         memcpy(printkey, fstseqnum, seqlen);
         printkey[seqlen]='\0';
-
-        /* The snapinfo_outrc is definitive: log differences here */
-        if (snapinfo_outrc != outrc) {
-            logmsg(LOGMSG_ERROR, "%s line %d snapinfo_outrc is %d, outrc is %d\n", 
-                    __func__, __LINE__, snapinfo_outrc, outrc);
-        }
-        outrc = snapinfo_outrc;
     }
     else {
         printkey = (char *)malloc((seqlen * 2) + 1);
@@ -2450,6 +2447,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
     struct timespec start_time;
+    int did_replay = 0;
     int rowlocks = gbl_rowlocks;
 #if 0
     clock_gettime(CLOCK_REALTIME, &start_time);
@@ -2675,7 +2673,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0, replay_data, 
                         replay_len, __LINE__);
-
+                did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
             }
@@ -2695,6 +2693,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 logmsg(LOGMSG_WARN, "early blocksql replay detection\n");
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
                                        NULL, 0, __LINE__);
+                did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
             }
@@ -5490,6 +5489,7 @@ add_blkseq:
                         outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
                                 replay_data, replay_len, __LINE__);
                     }
+                    did_replay = 1;
                     logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                            __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
@@ -5586,6 +5586,7 @@ add_blkseq:
                     outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
                             replay_data, replay_len, __LINE__);
                 }
+                did_replay = 1;
                 logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                        __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
@@ -5800,6 +5801,13 @@ cleanup:
     */
     if (backed_out)
         trans_wait_for_last_seqnum(iq, source_host);
+
+    extern int gbl_test_blkseq_replay_code;
+    if (gbl_test_blkseq_replay_code && did_replay) {
+        logmsg(LOGMSG_USER, "Replay case: rc=%d, errval=%d errstr='%s' "
+                "rcout=%d\n", outrc, iq->errstat.errval, iq->errstat.errstr,
+                iq->sorese.rcout);
+    }
 
     return outrc;
 }
