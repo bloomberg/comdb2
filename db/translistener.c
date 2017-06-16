@@ -51,7 +51,7 @@ struct javasp_trans_state {
     int debug;
 };
 
-struct javasp_rec_blob {
+struct sp_rec_blob {
     int status;
     char *blobdta;
     size_t bloboff;
@@ -112,7 +112,7 @@ struct javasp_rec {
     size_t tempbuflen;
 
     /* Keep track of all the blobs for us */
-    struct javasp_rec_blob blobs[MAXBLOBS];
+    struct sp_rec_blob blobs[MAXBLOBS];
 
     /* Do I own ondisk_dta (if I do it will be freed along with this struct) */
     int ondisk_needs_free;
