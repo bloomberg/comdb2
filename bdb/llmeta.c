@@ -8132,7 +8132,6 @@ int bdb_llmeta_drop_sequence(tran_type *tran, char *name, int *bdberr) {
 
     rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
 
-    logmsg(LOGMSG_DEBUG, "Delete RC: %s\n", rc);
     if (rc)
         goto done;
 

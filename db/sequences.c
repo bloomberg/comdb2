@@ -36,8 +36,18 @@ int seq_next_val (char *name, long long *val) {
     if ( seq == NULL ) {
        // Failed to find sequence with specified name
        // TODO: error out another way
+       logmsg(LOGMSG_ERROR, "Sequence %s cannot be found", name);
        return -1;
     }
+
+    if (seq->flags & SEQUENCE_EXHAUSTED){
+        // TODO: Error End of sequence
+        logmsg(LOGMSG_ERROR, "End of sequenence. No more values to dispense.");
+        return -1;
+    }
+
+    // TODO: is this a good way to lock?
+    pthread_mutex_lock(&seq->seq_lk);
 
     // Check for remaining values
     if (seq->remaining_vals == 0) {
@@ -49,46 +59,53 @@ int seq_next_val (char *name, long long *val) {
         }
     }
 
-    //TODO: Protect crit section with lock. Errors would occur when dispensing last value rather than after that
+    // Dispense next_val
     *val = seq->next_val;
+    seq->remaining_vals--;
 
-    // Increment Value
-    long long inc = seq->increment;
-    long long max = seq->max_val;
-    long long min = seq->min_val;
+    // Increment Value for next request
     long long next_val = seq->next_val;
 
     seq->prev_val = seq->next_val;
 
     // Check for integer overflow
-    if (!check_overflow_ll_add(next_val, inc))
-        return 0;
+    if (!check_overflow_ll_add(seq->next_val, seq->increment)) {
+        if (seq->cycle) {
+            if (seq->increment > 0)
+                seq->next_val = seq->min_val;
+            else
+                seq->next_val = seq->max_val;
+        } else {
+            // No more sequence values to dispense. Value of next_val is now undefined behaviour (unreliable)
+            seq->flags |= SEQUENCE_EXHAUSTED;
+        }
 
-    next_val += inc;
+        pthread_mutex_unlock(&seq->seq_lk);
+        return 0;
+    }
+
+    seq->next_val += seq->increment;
 
     // Check for cycle conditions
-    if ( (seq->increment > 0) && (next_val > max) ) {
+    if ( (seq->increment > 0) && (seq->next_val > seq->max_val) ) {
         if (seq->cycle) {
-            next_val = min;
+            seq->next_val = seq->min_val;
         } else if (seq->cycle && seq->increment < 0) {
-            next_val = max;
+            seq->next_val = seq->max_val;
         } else {
-            // TODO: Error End of sequence (This would error out when dispensing the last valid value)
-            logmsg(LOGMSG_ERROR, "End of sequenence. No more values to dispense.");
-            return -1;
+            // No more sequence values to dispense. Value of next_val is now undefined behaviour (unreliable)
+            seq->flags |= SEQUENCE_EXHAUSTED;
         }
-    } else if ((seq->increment < 0) && (next_val < min)) {
+    } else if ((seq->increment < 0) && (seq->next_val < seq->min_val)) {
         if (seq->cycle) {
-           next_val = max;
+           seq->next_val = seq->max_val;
         } else {
-           // TODO: Error End of sequence (This would error out when dispensing the last valid value)
-           logmsg(LOGMSG_ERROR, "End of sequenence. No more values to dispense.");
-           return -1;
+           // No more sequence values to dispense. Value of next_val is now undefined behaviour (unreliable)
+           seq->flags |= SEQUENCE_EXHAUSTED;
         }
     }
 
-    seq->next_val = next_val;
-    seq->remaining_vals--;
+    pthread_mutex_unlock(&seq->seq_lk);
     return 0;
 }
 
@@ -125,7 +142,7 @@ int seq_prev_val (char *name, long long *val) {
 
 
 /**
- *  Helper to return a pointer to a sequence by name.
+ *  Helper to return a pointer to a sequence by name. Returns NULL if it cannot be found.
  *
  *  @param name char * Name of the sequence
  */
@@ -143,8 +160,7 @@ sequence_t *get_sequence(char *name) {
         }
     }
 
-    logmsg(LOGMSG_ERROR, "Sequence '%s' cannot be found.\n", name);
-    return NULL; //TODO: Return some kind of ERROR
+    return NULL;
 }
 
 
