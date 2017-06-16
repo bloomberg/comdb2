@@ -1,0 +1,43 @@
+#!/bin/bash
+
+bash -n "$0" | exit 1
+
+
+#add table t1
+dbname=analyze28343
+table=t20
+default=local
+
+cdb2sql ${CDB2_OPTIONS} $dbname $default "create table $table { 
+schema { 
+    int a
+    int b 
+    datetime c
+} 
+
+keys
+{
+    dup \"AB\" = a + b
+    dup \"AC\" = a + c
+}
+}
+"
+
+
+#for i in `seq 1 100` ; do
+#for j in `seq 1 100` ; do
+#echo "insert into $table (a,b,c) values($i, $j, now())"
+#done
+#done | cdb2sql ${CDB2_OPTIONS} $dbname $default - > /dev/null
+
+cdb2sql ${CDB2_OPTIONS} $dbname $default "analyze $table"
+
+cdb2sql ${CDB2_OPTIONS} $dbname $default "explain query plan select count(*) from $table where b < 34"
+
+cdb2sql ${CDB2_OPTIONS} $dbname $default "put skipscan disable $table"
+sleep 2
+cdb2sql ${CDB2_OPTIONS} $dbname $default "explain query plan select count(*) from $table where b < 34"
+
+cdb2sql ${CDB2_OPTIONS} $dbname $default "put skipscan enable $table"
+sleep 2
+cdb2sql ${CDB2_OPTIONS} $dbname $default "explain query plan select count(*) from $table where b < 34"
