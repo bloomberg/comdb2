@@ -4735,7 +4735,6 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
     double from_8;
     ieee4b from_4b;
     ieee8b from_8b;
-    double to_8;
 
     float to_4;
     void *cin;
@@ -4801,14 +4800,14 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
         break;
     case 8:
         if (to_net) {
-            to_8 = flibc_htond(from_8);
+            from_8 = flibc_htond(from_8);
         }
 
         if (to_little) {
-            to_8 = flibc_dblflip(to_8);
+            from_8 = flibc_dblflip(from_8);
         }
 
-        memcpy(out, &to_8, outlen);
+        memcpy(out, &from_8, outlen);
         *outdtsz = 8;
         break;
     default:
