@@ -1424,107 +1424,6 @@ void reqlog_new_request(struct ireq *iq)
     reqlog_start_request(logger);
 }
 
-void reqlog_dump_tags(struct reqlogger *logger, char *tags, void *tagbuf,
-                      int bufsz, void *nullbits, int numbits)
-{
-
-    /* don't do the work if we're not going to log this */
-    if (!(logger && logger->mask & REQL_INFO)) return;
-
-    struct schema *s;
-    s = new_dynamic_schema(tags, strlen(tags), 0);
-    /* can't decode? */
-    if (s == NULL) return;
-
-    for (int fldnum = 0; fldnum < s->nmembers; fldnum++) {
-        struct field *f;
-        f = &s->member[fldnum];
-
-        if (btst(nullbits, fldnum)) {
-            reqlog_logf(logger, REQL_INFO, " %s null", f->name);
-        } else {
-            if (f->offset + f->len > bufsz) continue;
-
-            switch (f->type) {
-            case CLIENT_INT: {
-                long long ival;
-                if (f->len != 8) continue;
-                buf_get(&ival, 8, (uint8_t *)tagbuf + f->offset,
-                        (uint8_t *)tagbuf + f->offset + f->len);
-                reqlog_logf(logger, REQL_INFO, " %s int %lld", f->name, ival);
-                break;
-            }
-            case CLIENT_REAL: {
-                double dval;
-                if (f->len != 8) continue;
-                buf_get(&dval, 8, (uint8_t *)tagbuf + f->offset,
-                        (uint8_t *)tagbuf + f->offset + f->len);
-                reqlog_logf(logger, REQL_INFO, " %s real %f", f->name, dval);
-                break;
-            }
-            case CLIENT_DATETIME: {
-                /* TODO */
-                struct cdb2_client_datetime dt;
-                if (f->len != sizeof(struct cdb2_client_datetime)) continue;
-                memcpy(&dt, (uint8_t *)tagbuf + f->offset, f->len);
-                dt.msec = ntohl(dt.msec);
-                dt.tm.tm_sec = ntohl(dt.tm.tm_sec);
-                dt.tm.tm_min = ntohl(dt.tm.tm_min);
-                dt.tm.tm_hour = ntohl(dt.tm.tm_hour);
-                dt.tm.tm_mday = ntohl(dt.tm.tm_mday);
-                dt.tm.tm_mon = ntohl(dt.tm.tm_mon);
-                dt.tm.tm_year = ntohl(dt.tm.tm_year);
-                dt.tm.tm_wday = ntohl(dt.tm.tm_wday);
-                dt.tm.tm_yday = ntohl(dt.tm.tm_yday);
-                dt.tm.tm_isdst = ntohl(dt.tm.tm_isdst);
-                reqlog_logf(logger, REQL_INFO,
-                            " datetime %02d/%02d/%d %02d:%02d:%02d.%03d %s",
-                            dt.tm.tm_mon + 1, dt.tm.tm_mday,
-                            1900 + dt.tm.tm_year, dt.tm.tm_hour, dt.tm.tm_min,
-                            dt.tm.tm_sec, dt.msec, dt.tzname);
-                break;
-            }
-            case CLIENT_DATETIMEUS: {
-                /* TODO */
-                struct cdb2_client_datetimeus dt;
-                if (f->len != sizeof(struct cdb2_client_datetimeus)) continue;
-                memcpy(&dt, (uint8_t *)tagbuf + f->offset, f->len);
-                dt.usec = ntohl(dt.usec);
-                dt.tm.tm_sec = ntohl(dt.tm.tm_sec);
-                dt.tm.tm_min = ntohl(dt.tm.tm_min);
-                dt.tm.tm_hour = ntohl(dt.tm.tm_hour);
-                dt.tm.tm_mday = ntohl(dt.tm.tm_mday);
-                dt.tm.tm_mon = ntohl(dt.tm.tm_mon);
-                dt.tm.tm_year = ntohl(dt.tm.tm_year);
-                dt.tm.tm_wday = ntohl(dt.tm.tm_wday);
-                dt.tm.tm_yday = ntohl(dt.tm.tm_yday);
-                dt.tm.tm_isdst = ntohl(dt.tm.tm_isdst);
-                reqlog_logf(logger, REQL_INFO,
-                            " datetimeus %02d/%02d/%d %02d:%02d:%02d.%06d %s",
-                            dt.tm.tm_mon + 1, dt.tm.tm_mday,
-                            1900 + dt.tm.tm_year, dt.tm.tm_hour, dt.tm.tm_min,
-                            dt.tm.tm_sec, dt.usec, dt.tzname);
-                break;
-            }
-            case CLIENT_CSTR: {
-                reqlog_logf(logger, REQL_INFO, " %s text \"%.*s\"", f->name,
-                            f->len, (uint8_t *)tagbuf + f->offset);
-                break;
-            }
-            case CLIENT_BLOB:
-            case CLIENT_BYTEARRAY: {
-                uint8_t *b = (uint8_t *)tagbuf + f->offset;
-                reqlog_logf(logger, REQL_INFO, " %s blob ", f->name);
-                reqlog_loghex(logger, REQL_INFO, b, f->len);
-                break;
-            }
-            }
-        }
-        reqlog_logf(logger, REQL_INFO, "\n");
-    }
-    free_tag_schema(s);
-}
-
 void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
 {
     if (sqlstmt) {
@@ -1534,9 +1433,7 @@ void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
     if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
 }
 
-void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt, char *tags,
-                            void *tagbuf, int tagbufsz, void *nullbits,
-                            int numbits)
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
 {
     if (!logger) {
         return;
@@ -2019,9 +1916,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
         osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
     }
-    logger->tags = NULL;
-    logger->tagbuf = NULL;
-    logger->nullbits = NULL;
     logger->have_id = 0;
     logger->have_fingerprint = 0;
     free(logger->tables);

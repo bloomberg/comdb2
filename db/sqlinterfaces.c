@@ -1911,7 +1911,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     /* this is a good "begin", just say "ok" */
@@ -1978,7 +1978,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
-    reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     reqlog_logf(thd->logger, REQL_QUERY,
@@ -2082,7 +2082,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     uint8_t *p_buf_colinfo_end = (p_buf_colinfo + COLUMN_INFO_LEN);
     int outrc = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     int64_t rows = clnt->log_effects.num_updated +
@@ -3520,8 +3520,7 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *c
 
     thrman_wheref(thd->thr_self, "%ssql: %s", info_nvreplays, clnt->sql);
 
-    reqlog_new_sql_request(thd->logger, NULL, clnt->tag, clnt->tagbuf,
-                           clnt->tagbufsz, clnt->nullbits, clnt->numnullbits);
+    reqlog_new_sql_request(thd->logger, NULL);
     log_client_context(thd->logger, clnt);
     log_queue_time(thd->logger, clnt);
 }
@@ -4059,6 +4058,7 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc = 0;
 
     if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
+        assert(rec->parameters_to_bind == NULL);
         rc = bind_parameters(rec->stmt, NULL, clnt,
                              gbl_dump_sql_dispatched, &errstr);
         if(rc) {
@@ -8476,7 +8476,7 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
         }
     }
 
-    reqlog_new_sql_request(poolthd->logger, sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(poolthd->logger, sql);
     log_queue_time(poolthd->logger, clnt);
 
     rc = sql_set_transaction_mode(sqldb, clnt, clnt->dbtran.mode);
@@ -8844,23 +8844,6 @@ static void init_query_limits_info(struct sqlclntstate *clnt,
     if (limits) {
         clnt->have_query_limits = 1;
         clnt->limits = *limits;
-    }
-}
-
-static void free_clnt_tag_info(struct sqlclntstate *clnt)
-{
-    int blobno;
-
-    if (clnt->tag) {
-        free(clnt->tag);
-        free(clnt->tagbuf);
-        free(clnt->nullbits);
-        for (blobno = 0; blobno < clnt->numblobs; blobno++)
-            free(clnt->blobs[blobno]);
-        if (clnt->bloblens)
-            free(clnt->bloblens);
-        if (clnt->blobs)
-            free(clnt->blobs);
     }
 }
 

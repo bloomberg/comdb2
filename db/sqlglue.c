@@ -10087,6 +10087,20 @@ int convert_client_ftype(int type)
 }
 
 /*
+** Convert protobuf Bindvalue to our struct field
+*/
+struct field* convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
+				   struct field *c_fld)
+{
+    c_fld->type = convert_client_ftype(bindvalue->type);
+    c_fld->datalen = bindvalue->value.len;
+    c_fld->idx = -1;
+    c_fld->name = bindvalue->varname;
+    c_fld->offset = 0;
+    return c_fld;
+}
+
+/*
 ** For sql queries with replaceable parameters.
 ** Take data from buffer and blobs, bind to
 ** sqlite parameters.
@@ -10154,12 +10168,7 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         if (params) {
             f = &params->member[fld];
         } else {
-            c_fld.type = convert_client_ftype(sqlquery->bindvars[fld]->type);
-            c_fld.datalen = sqlquery->bindvars[fld]->value.len;
-            c_fld.idx = -1;
-            c_fld.name = sqlquery->bindvars[fld]->varname;
-            c_fld.offset = 0;
-            f = &c_fld;
+	    f = convert_client_field(sqlquery->bindvars[fld], &c_fld);
             if (sqlquery->bindvars[fld]->has_index) {
                 pos = sqlquery->bindvars[fld]->index;
             }
