@@ -5202,8 +5202,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->verify_indexes && steprc == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
-        verify_indexes_column_value(stmt, clnt->schema_mems);
-        return 0;
+        return verify_indexes_column_value(stmt, clnt->schema_mems);
     } else if (clnt->verify_indexes && steprc == SQLITE_DONE) {
         clnt->has_sqliterow = 0;
         return 0;
