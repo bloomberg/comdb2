@@ -4059,14 +4059,12 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
         assert(rec->parameters_to_bind == NULL);
-        rc = bind_parameters(rec->stmt, NULL, clnt,
-                             gbl_dump_sql_dispatched, &errstr);
+        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
     } else if (rec->parameters_to_bind) {
-        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt,
-                             gbl_dump_sql_dispatched, &errstr);
+        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
@@ -8574,8 +8572,7 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     }
 
     if (parameters_to_bind) {
-        rc = bind_parameters(stmt, parameters_to_bind, clnt,
-                             gbl_dump_sql_dispatched, &err);
+        rc = bind_parameters(stmt, parameters_to_bind, clnt, &err);
         if (rc) {
             ret = ERR_SQL_PREP;
             have_our_own_error = 1;
@@ -8663,12 +8660,6 @@ done_here:
                             /* Its now not our problem. */
                             parameters_to_bind = NULL;
                         }
-#if 0             
-             /* Don't use sql hint in non socket mode. */
-             if (!sql_str) {
-               add_sql_hint_table(cache_hint, clnt->sql, clnt->tag);
-             }
-#endif
                     } else {
                         if (add_stmt_table(poolthd, clnt->sql, NULL, stmt,
                                            parameters_to_bind) == 0) {

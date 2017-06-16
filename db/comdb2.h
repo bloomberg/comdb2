@@ -3324,7 +3324,7 @@ extern unsigned long long gbl_addupd_blob_cnt;
 
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                     struct sqlclntstate *clnt,
-                    int debug, char **err);
+                    char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 void verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 

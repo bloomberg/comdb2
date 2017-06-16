@@ -10107,7 +10107,7 @@ struct field* convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
 */
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                     struct sqlclntstate *clnt,
-                    int debug, char **err)
+                    char **err)
 {
     /* old parameters */
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
