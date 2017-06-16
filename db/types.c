@@ -5008,7 +5008,7 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
                                      outblob);                                 \
     if (*outnull)                                                              \
         return 0;                                                              \
-    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, inopts, inblob,   \
+    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, outopts, inblob,   \
                                           out, outlen, outdtsz, outopts,       \
                                           outblob);
 
@@ -5020,7 +5020,7 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
                                      outnull, outdtsz, outopts, outblob);      \
     if (*outnull)                                                              \
         return 0;                                                              \
-    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen, inopts, inblob, out,  \
+    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen, outopts, inblob, out,  \
                                           outlen, outdtsz, outopts, outblob);
 
 TYPES_INLINE int SERVER_BCSTR_to_CLIENT_INT(
