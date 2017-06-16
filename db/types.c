@@ -4621,6 +4621,7 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
     int from_4b;
     short from_2b;
     int to_little = 0;
+    int to_net = 1;
 
     int to_4;
     short to_2;
@@ -4629,7 +4630,13 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
+#ifdef _LINUX_SOURCE
+        to_little = 0;
+        to_net = 0;
+#else
         to_little = 1;
+        to_net = 1;
+#endif
     }
 
     cint = (void *)(((char *)in) + 1);
@@ -4673,8 +4680,9 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
         if (to_little) {
             to_2 = flibc_shortflip(to_2);
         }
-
-        to_2 = htons(to_2);
+        if (to_net) {
+            to_2 = htons(to_2);
+        }
         memcpy(out, &to_2, outlen);
         *outdtsz = 2;
         break;
@@ -4686,8 +4694,9 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
         if (to_little) {
             to_4 = flibc_intflip(to_4);
         }
-
-        to_4 = htonl(to_4);
+        if (to_net) {
+            to_4 = htonl(to_4);
+        }
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
@@ -4695,8 +4704,9 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
         if (to_little) {
             from_8 = flibc_llflip(from_8);
         }
-
-        from_8 = flibc_htonll(from_8);
+        if (to_net) {
+          from_8 = flibc_htonll(from_8);
+        }
         memcpy(out, &from_8, outlen);
         *outdtsz = 8;
         break;
@@ -4720,11 +4730,18 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
     float to_4;
     void *cin;
     int to_little = 0;
+    int to_net = 0;
     *outdtsz = 0;
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
+#ifdef _LINUX_SOURCE
+        to_little = 0;
+        to_net = 0;
+#else
         to_little = 1;
+        to_net = 1;
+#endif
     }
 
     cin = (void *)(((char *)in) + 1);
@@ -4766,12 +4783,16 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
             to_4 = flibc_floatflip(to_4);
         }
 
-        to_4 = flibc_htonf(to_4);
+        if (to_net) {
+            to_4 = flibc_htonf(to_4);
+        }
         memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
     case 8:
-        to_8 = flibc_htond(from_8);
+        if (to_net) {
+            to_8 = flibc_htond(from_8);
+        }
 
         if (to_little) {
             to_8 = flibc_dblflip(to_8);

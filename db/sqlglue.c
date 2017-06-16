@@ -6807,12 +6807,17 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
         goto done;
     }
 
+#ifdef _LINUX_SOURCE
+    struct field_conv_opts convopts = {.flags = FLD_CONV_LENDIAN};
+#else
+    struct field_conv_opts convopts = {.flags = 0};
+#endif
+
     switch (f->type) {
     case SERVER_UINT:
         rc = SERVER_UINT_to_CLIENT_INT(
             in, f->len, NULL /*convopts */, NULL /*blob */, &ival, sizeof(ival),
-            &null, &outdtsz, NULL /*convopts */, NULL /*blob */);
-        ival = flibc_ntohll(ival);
+            &null, &outdtsz, &convopts, NULL /*blob */);
         m->u.i = ival;
         if (rc == -1)
             goto done;
@@ -6825,8 +6830,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
     case SERVER_BINT:
         rc = SERVER_BINT_to_CLIENT_INT(
             in, f->len, NULL /*convopts */, NULL /*blob */, &ival, sizeof(ival),
-            &null, &outdtsz, NULL /*convopts */, NULL /*blob */);
-        ival = flibc_ntohll(ival);
+            &null, &outdtsz, &convopts, NULL /*blob */);
         m->u.i = ival;
         if (rc == -1)
             goto done;
@@ -6840,8 +6844,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
     case SERVER_BREAL:
         rc = SERVER_BREAL_to_CLIENT_REAL(
             in, f->len, NULL /*convopts */, NULL /*blob */, &dval, sizeof(dval),
-            &null, &outdtsz, NULL /*convopts */, NULL /*blob */);
-        dval = flibc_ntohd(dval);
+            &null, &outdtsz, &convopts, NULL /*blob */);
         m->u.r = dval;
         if (rc == -1)
             goto done;
@@ -6894,12 +6897,11 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                     in, sizeof(db_time_t) + 1, NULL /*convopts */,
                     NULL /*blob */, &(m->du.dt.dttz_sec),
                     sizeof(m->du.dt.dttz_sec), &null, &outdtsz,
-                    NULL /*convopts */, NULL /*blob */);
+                    &convopts, NULL /*blob */);
                 if (rc == -1)
                     goto done;
 
                 memcpy(&msec, &in[1] + sizeof(db_time_t), sizeof(msec));
-                m->du.dt.dttz_sec = flibc_ntohll(m->du.dt.dttz_sec);
                 msec = ntohs(msec);
                 m->du.dt.dttz_frac = msec;
                 m->du.dt.dttz_prec = DTTZ_PREC_MSEC;
@@ -6948,12 +6950,11 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                         in, sizeof(db_time_t) + 1, NULL /*convopts */,
                         NULL /*blob */, &(m->du.dt.dttz_sec),
                         sizeof(m->du.dt.dttz_sec), &null, &outdtsz,
-                        NULL /*convopts */, NULL /*blob */);
+                        &convopts, NULL /*blob */);
                     if (rc == -1)
                         goto done;
 
                     memcpy(&usec, &in[1] + sizeof(db_time_t), sizeof(usec));
-                    m->du.dt.dttz_sec = flibc_ntohll(m->du.dt.dttz_sec);
                     usec = ntohl(usec);
                     m->du.dt.dttz_frac = usec;
                     m->du.dt.dttz_prec = DTTZ_PREC_USEC;
