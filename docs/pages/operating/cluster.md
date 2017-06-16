@@ -269,7 +269,7 @@ the complete cluster line that includes the new node.  It should then be added t
 deleting log files that are generated while the copy is taking place.  Note that any of the existing database
 nodes  can be used as the source for the copy.  Once the copy is complete, the new node can be brought up.
 It will catch up to any updates missed while it was being copied, and will join the cluster fully once that's
-done.  Bouncing nodes isn't required.
+done.  Restarting nodes isn't required.
 
 There's one small caveat.  Since more than half of the cluster's nodes must be connected to leave the cluster 
 available, simultaneously bringing as many (or mode) nodes that are currently in the cluster will make it
