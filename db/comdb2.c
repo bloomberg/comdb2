@@ -8807,7 +8807,7 @@ void delete_db(char *db_name)
 
     for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
-        thedb->dbs[i]->dbs_idx = i + 1;
+        thedb->dbs[i]->dbs_idx = i;
     }
 
     thedb->num_dbs -= 1;
@@ -8862,7 +8862,7 @@ void replace_db_idx(struct db *p_db, int idx, int add)
 
     for (int i = (thedb->num_dbs - 1); i > idx && move; i--) {
         thedb->dbs[i] = thedb->dbs[i - 1];
-        thedb->dbs[i]->dbs_idx = i - 1;
+        thedb->dbs[i]->dbs_idx = i;
     }
 
     p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if

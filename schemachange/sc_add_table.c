@@ -236,8 +236,8 @@ int do_add_table(struct ireq *iq, tran_type *trans)
         return rc;
 
     if ((db = getdbbyname(s->table))) {
-        sc_errf(s, "Table already exists");
-        logmsg(LOGMSG_ERROR, "Table already exists\n");
+        sc_errf(s, "Table %s already exists", s->table);
+        logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->table);
         return SC_TABLE_ALREADY_EXIST;
     }
 
@@ -304,14 +304,14 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
         add_tag_schema(db->dbname, ver_one);
     }
 
+    fix_lrl_ixlen_tran(tran);
+
     create_sqlmaster_records(tran);
     create_master_tables();
 
     db->sc_to = NULL;
     update_dbstore(db);
     sc_printf(s, "Add table ok\n");
-
-    fix_lrl_ixlen_tran(tran);
 
     if (gbl_init_with_bthash) {
         logmsg(LOGMSG_INFO, "Init table with bthash size %dkb per stripe\n",
