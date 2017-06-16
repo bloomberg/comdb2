@@ -34,8 +34,7 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
         char *syntax_err;
         err = csc2_get_errors();
         syntax_err = csc2_get_syntax_errors();
-        if (iq)
-            reqerrstr(iq, ERR_SC, "%s", syntax_err);
+        if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
         sc_errf(s, "%s", err);
         sc_errf(s, "Failed to load schema\n");
         return SC_INTERNAL_ERROR;
@@ -63,8 +62,7 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
     int rc;
     struct db *db;
 
-    if (debug_switch_skip_table_schema_check())
-        return 0;
+    if (debug_switch_skip_table_schema_check()) return 0;
 
     db = getdbbyname(table);
     if (!db) {
@@ -74,14 +72,16 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
 
     version = get_csc2_version(table);
     if (version < 0) {
-        logmsg(LOGMSG_ERROR, "check_table_schema: error getting current schema version\n");
+        logmsg(LOGMSG_ERROR,
+               "check_table_schema: error getting current schema version\n");
         return -1;
     }
 
     meta_csc2 = NULL;
     rc = get_csc2_file(table, version, &meta_csc2, &meta_csc2_len);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "check_table_schema: could not load meta schema %d for table %s "
+        logmsg(LOGMSG_ERROR,
+               "check_table_schema: could not load meta schema %d for table %s "
                "rcode %d\n",
                version, table, rc);
         if (version > 0) {
@@ -105,24 +105,23 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
         /* on master node, store schema if we don't have one already. */
         file_csc2 = load_text_file(csc2file);
         if (!file_csc2) {
-            if (meta_csc2)
-                free(meta_csc2);
+            if (meta_csc2) free(meta_csc2);
             return -1;
         }
 
-        logmsg(LOGMSG_ERROR, "check_table_schema: no schema loaded, loading now\n");
+        logmsg(LOGMSG_ERROR,
+               "check_table_schema: no schema loaded, loading now\n");
         rc = load_new_table_schema(dbenv, table, file_csc2);
     } else {
         /* in a cluster maybe we just can't load our schema.  accept this
          * and try again another time. */
-        logmsg(LOGMSG_ERROR, "check_table_schema: not master, cannot load schema\n");
+        logmsg(LOGMSG_ERROR,
+               "check_table_schema: not master, cannot load schema\n");
         rc = 0;
     }
 
-    if (meta_csc2)
-        free(meta_csc2);
-    if (file_csc2)
-        free(file_csc2);
+    if (meta_csc2) free(meta_csc2);
+    if (file_csc2) free(file_csc2);
     return rc;
 }
 
@@ -140,7 +139,8 @@ int schema_cmp(struct dbenv *dbenv, struct db *db, const char *csc2cmp)
      * or anything like that. */
     rc = add_cmacc_stmt_no_side_effects(db, 1);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "schema_cmp: error creating schema from comparison text\n");
+        logmsg(LOGMSG_ERROR,
+               "schema_cmp: error creating schema from comparison text\n");
         return -1;
     }
 
@@ -183,8 +183,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
     int version;
     struct db *db = getdbbyname(table);
 
-    if (debug_switch_skip_table_schema_check())
-        return 0;
+    if (debug_switch_skip_table_schema_check()) return 0;
     if (db && db->sc_to) {
         version = db->sc_to->version;
     } else {
@@ -207,7 +206,8 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
 
     rc = put_csc2_file(table, tran, version, csc2_text);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, 
+        logmsg(
+            LOGMSG_ERROR,
             "load_new_table_schema: unable to load table %s csc2 version %d\n",
             table, version);
         return -1;
@@ -233,26 +233,26 @@ int write_csc2_file_fname(const char *fname, const char *csc2text)
     snprintf(fnamesav, sizeof(fnamesav), "%s.sav", fname);
     if (rename(fname, fnamesav) == -1) {
         if (errno != ENOENT) {
-            logmsg(LOGMSG_ERROR, 
-                    "write_csc2_file_fname: error renaming %s -> %s: %d %s\n",
-                    fname, fnamesav, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "write_csc2_file_fname: error renaming %s -> %s: %d %s\n",
+                   fname, fnamesav, errno, strerror(errno));
         }
     }
 
     /* Dump new csc2 text into file. */
     fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd == -1) {
-        logmsg(LOGMSG_ERROR, 
-                "write_csc2_file_fname: error opening %s for writing: %d %s\n",
-                fname, errno, strerror(errno));
+        logmsg(LOGMSG_ERROR,
+               "write_csc2_file_fname: error opening %s for writing: %d %s\n",
+               fname, errno, strerror(errno));
         return -1;
     }
     while (len > 0) {
         nbytes = write(fd, csc2text, len);
         if (nbytes < 0) {
-            logmsg(LOGMSG_ERROR, 
-                    "write_csc2_file_fname: error writing to %s: %d %s\n",
-                    fname, errno, strerror(errno));
+            logmsg(LOGMSG_ERROR,
+                   "write_csc2_file_fname: error writing to %s: %d %s\n", fname,
+                   errno, strerror(errno));
             close(fd);
             return -1;
         }
@@ -261,10 +261,10 @@ int write_csc2_file_fname(const char *fname, const char *csc2text)
     }
     if (close(fd) == -1) {
         logmsg(LOGMSG_ERROR, "write_csc2_file_fname: error closing %s: %d %s\n",
-                fname, errno, strerror(errno));
+               fname, errno, strerror(errno));
     }
 
-   logmsg(LOGMSG_DEBUG, "wrote csc2 file '%s'\n", fname);
+    logmsg(LOGMSG_DEBUG, "wrote csc2 file '%s'\n", fname);
 
     return 0;
 }
@@ -287,8 +287,7 @@ int get_csc2_fname(const struct db *db, const char *dir, char *fname,
     int rc;
 
     rc = snprintf(fname, fname_len, "%s/%s.csc2", dir, db->dbname);
-    if (rc < 0 || rc >= fname_len)
-        return -1;
+    if (rc < 0 || rc >= fname_len) return -1;
 
     return 0;
 }
@@ -311,7 +310,8 @@ int dump_all_csc2_to_disk()
 
             version = get_csc2_version(thedb->dbs[ii]->dbname);
             if (version < 0) {
-                logmsg(LOGMSG_ERROR, "dump_all_csc2_to_disk: error getting current schema "
+                logmsg(LOGMSG_ERROR,
+                       "dump_all_csc2_to_disk: error getting current schema "
                        "version for table %s\n",
                        thedb->dbs[ii]->dbname);
                 return -1;
@@ -320,7 +320,8 @@ int dump_all_csc2_to_disk()
             rc = get_csc2_file(thedb->dbs[ii]->dbname, version, &meta_csc2,
                                &meta_csc2_len);
             if (rc != 0 || !meta_csc2) {
-                logmsg(LOGMSG_ERROR, "dump_all_csc2_to_disk: could not load meta schema %d "
+                logmsg(LOGMSG_ERROR,
+                       "dump_all_csc2_to_disk: could not load meta schema %d "
                        "for table %s rcode %d\n",
                        version, thedb->dbs[ii]->dbname, rc);
                 return -1;
@@ -329,7 +330,8 @@ int dump_all_csc2_to_disk()
             rc = write_csc2_file(thedb->dbs[ii], meta_csc2);
             free(meta_csc2);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n",
+                logmsg(LOGMSG_ERROR,
+                       "error printing out schema for table '%s'\n",
                        thedb->dbs[ii]->dbname);
                 return -1;
             }
@@ -351,7 +353,7 @@ int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname)
     version = get_csc2_version(db->dbname);
     if (version < 0) {
         logmsg(LOGMSG_ERROR, "%s: error getting current schema "
-               "version for table %s\n",
+                             "version for table %s\n",
                __func__, db->dbname);
         return -1;
     }
@@ -359,7 +361,7 @@ int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname)
     rc = get_csc2_file(db->dbname, version, &meta_csc2, &meta_csc2_len);
     if (rc != 0 || !meta_csc2) {
         logmsg(LOGMSG_ERROR, "%s: could not load meta schema %d "
-               "for table %s rcode %d\n",
+                             "for table %s rcode %d\n",
                __func__, version, db->dbname, rc);
         return -1;
     }
@@ -367,7 +369,8 @@ int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname)
     rc = write_csc2_file_fname(csc2_fname, meta_csc2);
     free(meta_csc2);
     if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n", db->dbname);
+        logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n",
+               db->dbname);
         return -1;
     }
 
@@ -385,14 +388,13 @@ int dump_table_csc2_to_disk(const char *table)
     char *meta_csc2 = NULL;
     int meta_csc2_len;
 
-    if (!(p_db = getdbbyname(table)))
-        return 1;
+    if (!(p_db = getdbbyname(table))) return 1;
 
-    if (p_db->dbtype != DBTYPE_TAGGED_TABLE)
-        return 1;
+    if (p_db->dbtype != DBTYPE_TAGGED_TABLE) return 1;
 
     if ((version = get_csc2_version(p_db->dbname)) < 0) {
-        logmsg(LOGMSG_ERROR, "dump_all_csc2_to_disk: error getting current schema version "
+        logmsg(LOGMSG_ERROR,
+               "dump_all_csc2_to_disk: error getting current schema version "
                "for table %s\n",
                p_db->dbname);
         return -1;
@@ -401,7 +403,8 @@ int dump_table_csc2_to_disk(const char *table)
     if ((rc = get_csc2_file(p_db->dbname, version, &meta_csc2,
                             &meta_csc2_len)) ||
         !meta_csc2) {
-        logmsg(LOGMSG_ERROR, "dump_all_csc2_to_disk: could not load meta schema %d for table "
+        logmsg(LOGMSG_ERROR,
+               "dump_all_csc2_to_disk: could not load meta schema %d for table "
                "%s rcode %d\n",
                version, p_db->dbname, rc);
         return -1;
@@ -410,7 +413,8 @@ int dump_table_csc2_to_disk(const char *table)
     rc = write_csc2_file(p_db, meta_csc2);
     free(meta_csc2);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n", p_db->dbname);
+        logmsg(LOGMSG_ERROR, "error printing out schema for table '%s'\n",
+               p_db->dbname);
         return -1;
     }
 

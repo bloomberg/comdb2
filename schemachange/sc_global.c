@@ -88,12 +88,9 @@ int stopsc = 0; /* stop schemachange, so it can resume */
 
 inline int is_dta_being_rebuilt(struct scplan *plan)
 {
-    if (!plan)
-        return 1;
-    if (!gbl_use_plan)
-        return 1;
-    if (plan->dta_plan)
-        return 1;
+    if (!plan) return 1;
+    if (!gbl_use_plan) return 1;
+    if (plan->dta_plan) return 1;
 
     return 0;
 }
@@ -103,7 +100,7 @@ const char *get_sc_to_name(const char *name)
     static char pref[256] = {0};
     static int preflen = 0;
 
-    if(!pref[0]) {
+    if (!pref[0]) {
         int bdberr;
 
         bdb_get_new_prefix(pref, sizeof(pref), &bdberr);
@@ -111,8 +108,7 @@ const char *get_sc_to_name(const char *name)
     }
 
     if (gbl_schema_change_in_progress) {
-        if (strncasecmp(name, pref, preflen) == 0)
-            return name+preflen;
+        if (strncasecmp(name, pref, preflen) == 0) return name + preflen;
     }
     return NULL;
 }
@@ -126,7 +122,8 @@ void wait_for_sc_to_stop(void)
         while (gbl_schema_change_in_progress && retry--) {
             sleep(1);
         }
-        logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n", 10 - retry);
+        logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
+               10 - retry);
     }
 }
 
@@ -162,7 +159,8 @@ int sc_set_running(int running, uint64_t seed, char *host, time_t time)
             }
         } else if (!running && seed != sc_seed && seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            logmsg(LOGMSG_ERROR, "cannot stop schema change; wrong seed given\n");
+            logmsg(LOGMSG_ERROR,
+                   "cannot stop schema change; wrong seed given\n");
             return -1;
         }
     }
@@ -198,10 +196,9 @@ void sc_status(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%llx\n",
                sc_seed);
         logmsg(LOGMSG_USER,
-               "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n", 
-               mach ? mach : "(unknown)", 
-               tm.tm_year+1900, tm.tm_mon + 1, tm.tm_mday, 
-               tm.tm_hour, tm.tm_min, tm.tm_sec);
+               "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",
+               mach ? mach : "(unknown)", tm.tm_year + 1900, tm.tm_mon + 1,
+               tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
         if (doing_conversion) {
             logmsg(LOGMSG_USER, "Conversion phase running %lld converted\n",
                    gbl_sc_nrecs);

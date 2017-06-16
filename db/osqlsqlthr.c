@@ -486,15 +486,14 @@ retry:
 
     /* retrying a transaction, don't skip on blkseq */
     flags = 0;
-    if (keep_rqid)
-        bset(&flags, OSQL_FLAGS_USE_BLKSEQ);
+    if (keep_rqid) bset(&flags, OSQL_FLAGS_USE_BLKSEQ);
 
     /* socksql: check if this is a verify retry, and if we got enough of those
        to trigger a self-deadlock check on the master */
 
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         clnt->verify_retries > gbl_osql_verify_ext_chk)
-        bset(&flags,  OSQL_FLAGS_CHECK_SELFLOCK);
+        bset(&flags, OSQL_FLAGS_CHECK_SELFLOCK);
     else
         flags = 0;
 
@@ -1662,8 +1661,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         if (hash_find_readonly(clnt->ddl_tables, tblname)) {
             free(tblname);
             return SQLITE_DDL_MISUSE;
-        }
-        else
+        } else
             hash_add(clnt->ddl_tables, tblname);
     } else {
         free(tblname);
@@ -1680,8 +1678,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         }
         return osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,
                                       sc, NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
-    }
-    else if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    } else if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         return -1;
     } else
         return -1;

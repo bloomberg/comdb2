@@ -17,12 +17,12 @@
 #ifndef INCLUDE_SC_LOGIC_H
 #define INCLUDE_SC_LOGIC_H
 
-
 #include "schemachange.h"
 
-int dryrun_int(struct schema_change_type *, struct db *db, struct db *newdb, struct scinfo *);
+int dryrun_int(struct schema_change_type *, struct db *db, struct db *newdb,
+               struct scinfo *);
 int dryrun(struct schema_change_type *s);
-int finalize_schema_change_thd(struct ireq*, tran_type *);
+int finalize_schema_change_thd(struct ireq *, tran_type *);
 int do_setcompr(struct ireq *iq, const char *rec, const char *blob);
 int delete_temp_table(struct ireq *iq, struct db *newdb);
 

@@ -472,7 +472,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, char *err)
     if (!rc) {
         struct ireq *iq = (struct ireq *)func->info->iq;
         iq->osql_rowlocks_enable = rl->enable;
-        bset(&iq->osql_flags,  OSQL_FLAGS_ROWLOCKS);
+        bset(&iq->osql_flags, OSQL_FLAGS_ROWLOCKS);
     }
     return rc;
 }

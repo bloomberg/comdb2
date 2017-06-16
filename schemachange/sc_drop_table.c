@@ -79,8 +79,7 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
     bdberr = bdb_reset_csc2_version(tran, db->dbname, db->version);
-    if (bdberr != BDBERR_NOERROR)
-        return -1;
+    if (bdberr != BDBERR_NOERROR) return -1;
 
     if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
         sc_errf(s, "%s: bdb_del_file_versions failed with rc: %d bdberr: "
@@ -104,7 +103,7 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
         return rc;
     }
     create_master_tables(); /* create sql statements */
- 
+
     live_sc_off(db);
 
     if (!gbl_create_mode) {
@@ -112,8 +111,7 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
                db->version);
     }
 
-    if (gbl_replicate_local)
-        local_replicant_write_clear(db);
+    if (gbl_replicate_local) local_replicant_write_clear(db);
 
     /* delete files we don't need now */
     sc_del_unused_files_tran(db, tran);

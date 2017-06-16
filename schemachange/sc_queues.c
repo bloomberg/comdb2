@@ -46,8 +46,8 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     broadcast_resume_threads();
     resume_threads(thedb);
 
-   logmsg(LOGMSG_WARN, "consumer change %s-%d-%s %s\n", queuename, consumern, method,
-           rc == 0 ? "SUCCESS" : "FAILED");
+    logmsg(LOGMSG_WARN, "consumer change %s-%d-%s %s\n", queuename, consumern,
+           method, rc == 0 ? "SUCCESS" : "FAILED");
 
     if (rc == 0) {
         logmsg(LOGMSG_WARN, "**************************************\n");
@@ -73,7 +73,8 @@ int do_alter_queues_int(struct schema_change_type *s)
             s->table, s->avgitemsz); // TODO Check the return value ??????
     } else {
         /* TODO - change item size in existing queue */
-        logmsg(LOGMSG_ERROR, "do_queue_change: changing existing queues not supported yet\n");
+        logmsg(LOGMSG_ERROR,
+               "do_queue_change: changing existing queues not supported yet\n");
         rc = 1;
     }
 
@@ -107,7 +108,8 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
 
     if (pagesize <= 0) {
         pagesize = bdb_queue_best_pagesize(avgitemsz);
-        logmsg(LOGMSG_WARN, "Using recommended pagesize %d for avg item size %d\n", pagesize,
+        logmsg(LOGMSG_WARN,
+               "Using recommended pagesize %d for avg item size %d\n", pagesize,
                avgitemsz);
     }
 
@@ -167,7 +169,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
                                   &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_queue %s rc %d bdberr %d\n",
-                    queue_name, rc, bdberr);
+                   queue_name, rc, bdberr);
             return rc;
         }
     }
@@ -177,7 +179,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         if (rc) {
             /* TODO: fatal error? */
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n",
-                    __func__, rc);
+                   __func__, rc);
             goto done;
         }
 
@@ -191,7 +193,8 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
                                          65536, thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
-            logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
+            logmsg(LOGMSG_ERROR,
+                   "bdb_open:failed to open queue %s/%s, rcode %d\n",
                    thedb->basedir, db->dbname, bdberr);
             rc = -1;
             goto done;
@@ -211,8 +214,9 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 
         rc = bdb_queue_consumer(db->handle, 0, 1, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
-                    __func__, rc, bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
             rc = -1;
             goto done;
         }
@@ -220,7 +224,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         db = getqueuebyname(queue_name);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: %s is not a valid trigger\n", __func__,
-                    queue_name);
+                   queue_name);
             rc = -1;
             goto done;
         }
@@ -239,7 +243,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         if (rc) {
             /* TODO: fatal error? */
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n",
-                    __func__, rc);
+                   __func__, rc);
             rc = -1;
             goto done;
         }
@@ -249,15 +253,16 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         db = getqueuebyname(queue_name);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "unexpected: replicant can't find queue %s\n",
-                    queue_name);
+                   queue_name);
             rc = -1;
             goto done;
         }
 
         rc = bdb_queue_consumer(db->handle, 0, 0, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
-                    __func__, rc, bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
             rc = -1;
             goto done;
         }
@@ -269,8 +274,8 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         /* close */
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n", __func__,
-                    rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
             rc = -1;
             goto done;
         }
@@ -283,7 +288,6 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 done:
     return rc;
 }
-
 
 static int perform_trigger_update_int(struct schema_change_type *sc)
 {
@@ -351,7 +355,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         dests = malloc(sizeof(char *) * sc->dests.count);
         if (dests == NULL) {
             sbuf2printf(sb, "!Can't allocate memory for destination list\n");
-            logmsg(LOGMSG_ERROR, "Can't allocate memory for destination list\n");
+            logmsg(LOGMSG_ERROR,
+                   "Can't allocate memory for destination list\n");
             goto done;
         }
         int i;
@@ -377,7 +382,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = javasp_do_procedure_op(JAVASP_OP_LOAD, sc->table, NULL, config);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n",
-                    __func__, rc);
+                   __func__, rc);
             sbuf2printf(sb,
                         "!Can't load procedure - check config/destinations?\n");
             sbuf2printf(sb, "FAILED\n");
@@ -387,7 +392,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->table, config,
                                   sc->dests.count, dests, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n",
+                   __func__, rc);
             goto done;
         }
 
@@ -404,7 +410,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         db->handle = bdb_create_queue(db->dbname, thedb->basedir, 65536, 65536,
                                       thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
-           logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
+            logmsg(LOGMSG_ERROR,
+                   "bdb_open:failed to open queue %s/%s, rcode %d\n",
                    thedb->basedir, db->dbname, bdberr);
             goto done;
         }
@@ -424,8 +431,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         rc = bdb_queue_consumer(db->handle, 0, 1, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
-                    __func__, rc, bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "%s: bdb_queue_consumer returned rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
             goto done;
         }
 
@@ -438,7 +446,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->table, config,
                                     sc->dests.count, dests, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_alter_queue returned %d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_alter_queue returned %d\n",
+                   __func__, rc);
             goto done;
         }
 
@@ -478,15 +487,15 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = bdb_llmeta_drop_queue(db->handle, tran, db->dbname, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n",
-                    __func__, rc, bdberr);
+                   __func__, rc, bdberr);
             goto done;
         }
 
         /* close */
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n", __func__,
-                    rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
             goto done;
         }
     }
@@ -504,7 +513,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         sbuf2printf(sb, "!Failed to broadcast queue %s\n",
                     sc->drop_table ? "drop" : "add");
         logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
-                sc->drop_table ? "drop" : "add");
+               sc->drop_table ? "drop" : "add");
         /* shouldn't be possible -- yeah right */
         goto done;
     }
@@ -523,8 +532,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         rc = bdb_del(db->handle, tran, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n", __func__,
-                    rc, bdberr);
+            logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
             goto done;
         }
 
@@ -537,8 +546,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
 done:
-    if (tran)
-        trans_abort(&iq, tran);
+    if (tran) trans_abort(&iq, tran);
 
     logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;

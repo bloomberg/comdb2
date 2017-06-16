@@ -173,8 +173,8 @@ typedef struct osqlstate {
         verify_tbl; /* storage for verify, common for all transaction */
     struct temp_cursor *verify_cur; /* verify cursor */
 
-    struct temp_table *
-        sc_tbl; /* storage for schemachange, common for all transaction */
+    struct temp_table
+        *sc_tbl; /* storage for schemachange, common for all transaction */
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
     struct errstat xerr; /* extended error */

@@ -2051,8 +2051,8 @@ enum {
 
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
-                        struct ireq *iq, tran_type **trans, tran_type **parent_trans,
-                        int *osql_needtransaction)
+                        struct ireq *iq, tran_type **trans,
+                        tran_type **parent_trans, int *osql_needtransaction)
 {
     int rc = 0;
     int irc = 0;
@@ -2116,7 +2116,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
 }
 
 static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
-                                    tran_type **trans, int *osql_needtransaction)
+                                    tran_type **trans,
+                                    int *osql_needtransaction)
 {
     int error = 0;
     int rc = 0;

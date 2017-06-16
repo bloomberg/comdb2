@@ -5561,7 +5561,7 @@ void fix_lrl_ixlen_tran(tran_type *tran)
             ver = get_csc2_version_tran(db->dbname, tran);
             if (ver > 0) {
                 get_csc2_file_tran(db->dbname, ver, &db->csc2_schema,
-                              &db->csc2_schema_len, tran);
+                                   &db->csc2_schema_len, tran);
             }
         } else {
             if (!db->csc2_schema)  

@@ -8827,10 +8827,10 @@ void replace_db(struct db *p_db, int add)
     }
 
     if (idx < 0) {
-       thedb->dbs =
-           realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
-       idx = thedb->num_dbs;
-       thedb->num_dbs++;
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        idx = thedb->num_dbs;
+        thedb->num_dbs++;
     }
 
     p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
@@ -8852,12 +8852,11 @@ void replace_db_idx(struct db *p_db, int idx, int add)
 
     if (idx < 0 || idx >= thedb->num_dbs ||
         strcasecmp(thedb->dbs[idx]->dbname, p_db->dbname) != 0) {
-       thedb->dbs =
-           realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
-       if (idx < 0 || idx >= thedb->num_dbs)
-          idx = thedb->num_dbs;
-       thedb->num_dbs++;
-       move = 1;
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
+        thedb->num_dbs++;
+        move = 1;
     }
 
     for (int i = (thedb->num_dbs - 1); i > idx && move; i--) {

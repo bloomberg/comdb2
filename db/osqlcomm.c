@@ -7027,8 +7027,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         struct schema_change_type *sc = new_schemachange_type();
         p_buf = osqlcomm_schemachange_type_get(sc, p_buf, p_buf_end);
 
-        if (p_buf == NULL)
-            return -1;
+        if (p_buf == NULL) return -1;
 
         sc->nothrevent = 1;
         sc->finalize = 0;
@@ -7048,7 +7047,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         } else {
             iq->sc->sc_next = iq->sc_pending;
             iq->sc_pending = iq->sc;
-            bset(&iq->osql_flags,  OSQL_FLAGS_SCDONE);
+            bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
         }
 
         return rc == SC_COMMIT_PENDING || !rc ? 0 : ERR_SC;

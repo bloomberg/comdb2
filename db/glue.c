@@ -278,9 +278,9 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*        TRANSACTIONAL STUFF        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-static
-int trans_start_int_int(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans,
-                        int logical, int sc, int retries)
+static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
+                               tran_type **out_trans, int logical, int sc,
+                               int retries)
 {
     int bdberr;
     void *bdb_handle = bdb_handle_from_ireq(iq);
@@ -353,7 +353,8 @@ int trans_start(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
         return trans_start_int(iq, parent_trans, out_trans, 0, 0);
 }
 
-int trans_start_sc(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
+int trans_start_sc(struct ireq *iq, tran_type *parent_trans,
+                   tran_type **out_trans)
 {
     return trans_start_int(iq, parent_trans, out_trans, 0, 0);
 }
@@ -4607,8 +4608,8 @@ int put_csc2_file(const char *table, void *tran, int version, const char *text)
  * schema is returned in a pointer set to *text (must be freed by the caller)
  * schema length is returnedin *len
  * returns !0 on failure or 0 on success */
-int get_csc2_file_tran(const char *table, int version,
-                       char **text, int *len, tran_type *tran)
+int get_csc2_file_tran(const char *table, int version, char **text, int *len,
+                       tran_type *tran)
 {
     int bdberr;
     if (bdb_get_csc2(tran, table, version, text, &bdberr) ||
@@ -4664,39 +4665,39 @@ int get_blobstripe_genid(struct db *db, unsigned long long *genid)
     return rc;
 }
 
-#define get_put_db(x, y)                                                   \
-int put_db_##x(struct db *db, tran_type *tran, int value)                  \
-{                                                                          \
-    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
-    int tmp = htonl(value);                                                \
-    return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
-}                                                                          \
-int get_db_##x##_tran(struct db *db, int *value, tran_type *tran)          \
-{                                                                          \
-    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
-    int tmp;                                                               \
-    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
-    if (rc == 0)                                                           \
-        *value = ntohl(tmp);                                               \
-    else                                                                   \
-        *value = 0;                                                        \
-    return rc;                                                             \
-}                                                                          \
-int get_db_##x(struct db *db, int *value)                                  \
-{                                                                          \
-    return get_db_##x##_tran(db, value, NULL);                             \
-}
+#define get_put_db(x, y)                                                       \
+    int put_db_##x(struct db *db, tran_type *tran, int value)                  \
+    {                                                                          \
+        struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+        int tmp = htonl(value);                                                \
+        return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
+    }                                                                          \
+    int get_db_##x##_tran(struct db *db, int *value, tran_type *tran)          \
+    {                                                                          \
+        struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+        int tmp;                                                               \
+        int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
+        if (rc == 0)                                                           \
+            *value = ntohl(tmp);                                               \
+        else                                                                   \
+            *value = 0;                                                        \
+        return rc;                                                             \
+    }                                                                          \
+    int get_db_##x(struct db *db, int *value)                                  \
+    {                                                                          \
+        return get_db_##x##_tran(db, value, NULL);                             \
+    }
 
-get_put_db(odh, META_ONDISK_HEADER_RRN)
-get_put_db(inplace_updates, META_INPLACE_UPDATES)
-get_put_db(compress, META_COMPRESS_RRN)
-get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
-get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
-get_put_db(datacopy_odh, META_DATACOPY_ODH)
-get_put_db(bthash, META_BTHASH)
+get_put_db(odh, META_ONDISK_HEADER_RRN) get_put_db(inplace_updates,
+                                                   META_INPLACE_UPDATES)
+    get_put_db(compress, META_COMPRESS_RRN)
+        get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
+            get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
+                get_put_db(datacopy_odh, META_DATACOPY_ODH)
+                    get_put_db(bthash, META_BTHASH)
 
-static int put_meta_int(const char *table, void *tran, int rrn, int key,
-                        int value)
+                        static int put_meta_int(const char *table, void *tran,
+                                                int rrn, int key, int value)
 {
     struct metahdr hdr;
     struct db *db;

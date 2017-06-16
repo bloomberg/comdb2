@@ -121,7 +121,7 @@ struct schema_change_type {
                              get new genids to avoid name collission */
     int drop_table;
     int dbnum;
-    int finalize; /* Whether the schema change should be committed */
+    int finalize;      /* Whether the schema change should be committed */
     int finalize_only; /* only commit the schema change */
 
     pthread_mutex_t mtx; /* mutex for thread sync */
@@ -164,11 +164,10 @@ struct schema_change_type {
                              At least this datastructure lives as much as the
                            whole schema change (I will change this in the
                            future)*/
- 
+
     struct db **timepart_dbs; /* support for timepart views */
     struct db **timepart_newdbs;
-    int       timepart_nshards;
-
+    int timepart_nshards;
 
     /*********************** temporary fields for table upgrade
      * ************************/
@@ -272,7 +271,8 @@ int pack_schema_change_type(struct schema_change_type *s, void **packed,
 int unpack_schema_change_type(struct schema_change_type *s, void *packed,
                               size_t packed_len);
 
-struct schema_change_type *init_schemachange_type(struct schema_change_type *sc);
+struct schema_change_type *
+init_schemachange_type(struct schema_change_type *sc);
 
 struct schema_change_type *new_schemachange_type();
 
@@ -288,8 +288,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 
-int change_schema(char *table, char *fname, int odh,
-                  int compress, int compress_blobs);
+int change_schema(char *table, char *fname, int odh, int compress,
+                  int compress_blobs);
 
 int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
                         const void *old_dta, unsigned long long del_keys,
@@ -304,14 +304,13 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                         blob_buffer_t *newblobs);
 
 int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
-                     uint8_t *od_dta, 
-                     unsigned long long ins_keys, blob_buffer_t *blobs, 
-                     size_t maxblobs, int origflags, int *rrn);
+                     uint8_t *od_dta, unsigned long long ins_keys,
+                     blob_buffer_t *blobs, size_t maxblobs, int origflags,
+                     int *rrn);
 
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
-                                    unsigned long long newgenid,
-                                    const void *od_dta,
-                                    unsigned long long ins_keys, int od_len);
+                             unsigned long long newgenid, const void *od_dta,
+                             unsigned long long ins_keys, int od_len);
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);

@@ -1186,9 +1186,8 @@ int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                 /* try to find the file version amongst the active data files */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
                      ++i) {
-                    rc = bdb_get_file_version_data(bdb_state, tran,
-                                                   i /*dtanum*/, &version_num,
-                                                   bdberr);
+                    rc = bdb_get_file_version_data(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found data version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -1200,9 +1199,8 @@ int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
 
                 /* try to find the file version amongst the active indiciese */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(bdb_state, tran,
-                                                    i /*dtanum*/, &version_num,
-                                                    bdberr);
+                    rc = bdb_get_file_version_index(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found ix version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -7545,9 +7543,8 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                 /* try to find the file version amongst the active data files */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
                      ++i) {
-                    rc = bdb_get_file_version_data(bdb_state, tran,
-                                                   i /*dtanum*/, &version_num,
-                                                   bdberr);
+                    rc = bdb_get_file_version_data(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found data version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -7559,9 +7556,8 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
 
                 /* try to find the file version amongst the active indices */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(bdb_state, tran,
-                                                    i /*dtanum*/, &version_num,
-                                                    bdberr);
+                    rc = bdb_get_file_version_index(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found ix version %016llx in "*/
                         /*"llmeta\n", version_num);*/

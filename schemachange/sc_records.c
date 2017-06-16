@@ -34,8 +34,7 @@ extern int gbl_partial_indexes;
 // place at any given time, currently from lkcounter_check() once per sec
 static inline void increase_max_threads(int *maxthreads, int sc_threads)
 {
-    if (*maxthreads >= sc_threads)
-        return;
+    if (*maxthreads >= sc_threads) return;
     ATOMIC_ADD((*maxthreads), 1);
 }
 
@@ -45,11 +44,9 @@ static inline void increase_max_threads(int *maxthreads, int sc_threads)
 // We also make certain that maxthreads does not go less than 1
 static inline void decrease_max_threads(int *maxthreads)
 {
-    if (*maxthreads <= 1)
-        return;
+    if (*maxthreads <= 1) return;
     /* ADDING -1 */
-    if (ATOMIC_ADD((*maxthreads), -1) < 1)
-        XCHANGE((*maxthreads), 1);
+    if (ATOMIC_ADD((*maxthreads), -1) < 1) XCHANGE((*maxthreads), 1);
 }
 
 // increment number of rebuild threads in use
@@ -57,8 +54,7 @@ static inline void decrease_max_threads(int *maxthreads)
 // if we were successful we return 0
 static inline int use_rebuild_thr(int *thrcount, int *maxthreads)
 {
-    if (*thrcount >= *maxthreads)
-        return 1;
+    if (*thrcount >= *maxthreads) return 1;
     ATOMIC_ADD((*thrcount), 1);
     return 0;
 }
@@ -90,8 +86,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
     int copy_total_lasttime = total_lasttime;
 
     /* Do work without locking */
-    if (now < copy_total_lasttime + sc_report_freq)
-        return 0;
+    if (now < copy_total_lasttime + sc_report_freq) return 0;
 
     /* If time is up to print, atomically set total_lastime
      * if this thread successful in setting, it can continue
@@ -99,8 +94,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
      */
 
     bool res = CAS(total_lasttime, copy_total_lasttime, now);
-    if (!res)
-        return 0;
+    if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
      * number of updates before cursor
@@ -114,8 +108,7 @@ static inline int print_global_sc_stat(struct convert_record_data *data,
                   gbl_sc_adds + gbl_sc_updates);
 
     /* totals across all threads */
-    if (data->scanmode != SCAN_PARALLEL)
-        return 1;
+    if (data->scanmode != SCAN_PARALLEL) return 1;
 
     long long total_nrecs_diff = gbl_sc_nrecs - gbl_sc_prev_nrecs;
     gbl_sc_prev_nrecs = gbl_sc_nrecs;
@@ -133,16 +126,14 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     int lkcounter_freq = bdb_attr_get(data->from->dbenv->bdb_attr,
                                       BDB_ATTR_SC_CHECK_LOCKWAITS_SEC);
     /* Do work without locking */
-    if (now < copy_lasttime + lkcounter_freq)
-        return;
+    if (now < copy_lasttime + lkcounter_freq) return;
 
     /* If time is up to do work, atomically set total_lastime
      * if this thread successful in setting, it can continue
      * to adjust num threads. If it failed, another thread is doing that work.
      */
     bool res = CAS(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
-    if (!res)
-        return;
+    if (!res) return;
 
     /* check lock waits -- there is no way to differentiate lock waits because
      * of
@@ -229,9 +220,9 @@ int init_sc_genids(struct db *db, struct schema_change_type *s)
          * if we have been rebuilding the data files we can grab the genids
          * straight from there, otherwise we look in the llmeta table */
         if (is_dta_being_rebuilt(db->plan))
-            rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec,
-                                       &dtalen, dtalen, &sc_genids[stripe],
-                                       &ver, &bdberr);
+            rc = bdb_find_newest_genid(db->handle, NULL, stripe, rec, &dtalen,
+                                       dtalen, &sc_genids[stripe], &ver,
+                                       &bdberr);
         else
             rc = bdb_get_high_genid(db->dbname, stripe, &sc_genids[stripe],
                                     &bdberr);
@@ -267,8 +258,7 @@ static inline int convert_server_record_cachedmap(
     if (rc) {
         convert_failure_reason_str(&reason, table, from->tag, to->tag, err,
                                    sizeof(err));
-        if (s->iq)
-            reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
+        if (s->iq) reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
         sc_errf(s, "convert_server_record_cachedmap: cannot convert data %s\n",
                 err);
         return rc;
@@ -285,16 +275,14 @@ static int convert_server_record_blobs(const void *inbufp, const char *from_tag,
     struct convert_failure reason;
     char err[1024];
 
-    if (from_tag == NULL)
-        from_tag = ".ONDISK";
+    if (from_tag == NULL) from_tag = ".ONDISK";
 
     int rc = stag_to_stag_buf_blobs(db->table, from_tag, inbuf, db->tag,
                                     db->recbuf, &reason, blobs, maxblobs, 1);
     if (rc) {
         convert_failure_reason_str(&reason, db->table, from_tag, db->tag, err,
                                    sizeof(err));
-        if (s->iq)
-            reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
+        if (s->iq) reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
         sc_errf(s, "convert_server_record_blobs: cannot convert data %s\n",
                 err);
         return 1;
@@ -350,7 +338,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
     if ((data->nrecs % data->num_records_per_trans) == 0) {
         if ((rc = trans_wait_for_seqnum(&data->iq, gbl_mynode, ss)) != 0) {
             sc_errf(data->s, "delay_sc_if_needed: error waiting for "
-                    "replication rcode %d\n",
+                             "replication rcode %d\n",
                     rc);
         } else if (gbl_sc_inco_chk) { /* committed successfully */
             int num;
@@ -371,8 +359,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
         }
     }
 
-    if (inco_delay)
-        poll(NULL, 0, inco_delay * mult);
+    if (inco_delay) poll(NULL, 0, inco_delay * mult);
 
     /* if we're in commitdelay mode, magnify the delay by 5 here */
     int delay = bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_COMMITDELAY);
@@ -526,10 +513,10 @@ static int convert_record(struct convert_record_data *data)
                 int bdberr;
                 rc = bdb_set_high_genid_stripe(NULL, data->to->dbname,
                                                data->stripe, -1ULL, &bdberr);
-                if (rc != 0)
-                    rc = -1; // convert_record expects -1
+                if (rc != 0) rc = -1; // convert_record expects -1
             }
-            sc_printf(data->s, "finished stripe %d, setting genid %llx, rc %d\n",
+            sc_printf(data->s,
+                      "finished stripe %d, setting genid %llx, rc %d\n",
                       data->stripe, data->sc_genids[data->stripe], rc);
             return rc;
         } else if (rc == RC_INTERNAL_RETRY) {
@@ -696,11 +683,12 @@ static int convert_record(struct convert_record_data *data)
     }
 
     int dta_needs_conversion = 1;
-    if (usellmeta && data->s->rebuild_index)
-        dta_needs_conversion = 0;
+    if (usellmeta && data->s->rebuild_index) dta_needs_conversion = 0;
 
     if (dta_needs_conversion) {
-        if (!data->s->force_rebuild &&  !data->s->use_old_blobs_on_rebuild)/* We have correct blob data in this. */
+        if (!data->s->force_rebuild &&
+            !data->s->use_old_blobs_on_rebuild) /* We have correct blob data in
+                                                   this. */
             bzero(data->wrblb, sizeof(data->wrblb));
 
         /* convert current.  this converts blob fields, but we need to make sure
@@ -763,24 +751,22 @@ static int convert_record(struct convert_record_data *data)
         }
     }
 
-
     if (data->s->use_new_genids) {
         assert(!gbl_use_plan);
         ngenid = get_genid(thedb->bdb_env, get_dtafile_from_genid(check_genid));
     } else {
         ngenid = check_genid;
     }
-    if (ngenid != genid)
-        data->n_genids_changed++;
+    if (ngenid != genid) data->n_genids_changed++;
 
     /* Write record to destination table */
     data->iq.usedb = data->to;
 
     int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS |
-               RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC | RECFLAGS_KEEP_GENID;
+                   RECFLAGS_NEW_SCHEMA | RECFLAGS_ADD_FROM_SC |
+                   RECFLAGS_KEEP_GENID;
 
-    if (data->to->plan && gbl_use_plan)
-        addflags |= RECFLAGS_NO_BLOBS;
+    if (data->to->plan && gbl_use_plan) addflags |= RECFLAGS_NO_BLOBS;
 
     int rebuild = (data->to->plan && data->to->plan->dta_plan) ||
                   schema_change == SC_CONSTRAINT_CHANGE;
@@ -810,15 +796,13 @@ static int convert_record(struct convert_record_data *data)
     rc = verify_record_constraint(&data->iq, data->to, data->trans, p_buf_data,
                                   dirty_keys, data->wrblb, MAXBLOBS,
                                   ".NEW..ONDISK", rebuild, 0);
-    if (rc)
-        goto err;
+    if (rc) goto err;
 
     if (gbl_partial_indexes && data->to->ix_partial) {
         rc = verify_partial_rev_constraint(data->from, data->to, data->trans,
                                            p_buf_data, dirty_keys,
                                            ".NEW..ONDISK");
-        if (rc)
-            goto err;
+        if (rc) goto err;
     }
 
     if (schema_change != SC_CONSTRAINT_CHANGE) {
@@ -832,8 +816,7 @@ static int convert_record(struct convert_record_data *data)
             0,            /* blkpos */
             addflags);
 
-        if (rc)
-            goto err;
+        if (rc) goto err;
     }
 
     /* if we have been rebuilding the data files we're gonna
@@ -897,30 +880,27 @@ err: /*if (is_schema_change_doomed())*/
         return -2;
     } else if (rc == ERR_CONSTR) {
         if (data->s->iq)
-            reqerrstr(
-                data->s->iq, ERR_SC,
-                "Error verifying constraints changed rrn %d genid 0x%llx",
-                rrn, genid);
+            reqerrstr(data->s->iq, ERR_SC,
+                      "Error verifying constraints changed rrn %d genid 0x%llx",
+                      rrn, genid);
         sc_errf(data->s, "Error verifying constraints changed!"
                          " rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
         if (data->s->iq)
-            reqerrstr(
-                data->s->iq, ERR_SC,
-                "Error verifying partial indexes rrn %d genid 0x%llx",
-                rrn, genid);
+            reqerrstr(data->s->iq, ERR_SC,
+                      "Error verifying partial indexes rrn %d genid 0x%llx",
+                      rrn, genid);
         sc_errf(data->s, "Error verifying partial indexes!"
                          " rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc != 0) {
         if (data->s->iq)
-            reqerrstr(
-                data->s->iq, ERR_SC,
-                "Error adding record rc %d rrn %d genid 0x%llx",
-                rc, rrn, genid);
+            reqerrstr(data->s->iq, ERR_SC,
+                      "Error adding record rc %d rrn %d genid 0x%llx", rc, rrn,
+                      genid);
         sc_errf(data->s, "Error adding record rcode %d opfailcode %d "
                          "ixfailnum %d rrn %d genid 0x%llx\n",
                 rc, opfailcode, ixfailnum, rrn, genid);
@@ -933,7 +913,7 @@ err: /*if (is_schema_change_doomed())*/
         data->sc_genids[data->stripe] = genid;
     }
 
-    //now do the commit
+    // now do the commit
     db_seqnum_type ss;
     if (data->live) {
         rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
@@ -951,18 +931,15 @@ err: /*if (is_schema_change_doomed())*/
         return -2;
     }
 
-    if (data->live)
-        delay_sc_if_needed(data, &ss);
+    if (data->live) delay_sc_if_needed(data, &ss);
 
     gbl_sc_nrecs++;
 
     int now = time_epoch();
-    if ((rc = report_sc_progress(data, now)))
-        return rc;
+    if ((rc = report_sc_progress(data, now))) return rc;
 
     // do the following check every second or so
-    if (data->cmembers->is_decrease_thrds)
-        lkcounter_check(data, now);
+    if (data->cmembers->is_decrease_thrds) lkcounter_check(data, now);
 
     return 1;
 }
@@ -983,8 +960,7 @@ void *convert_records_thd(struct convert_record_data *data)
     enum thrtype oldtype = THRTYPE_UNKNOWN;
     int rc = 1;
 
-    if (data->isThread)
-        thread_started("convert records");
+    if (data->isThread) thread_started("convert records");
 
     if (thr_self) {
         oldtype = thrman_get_type(thr_self);
@@ -1077,7 +1053,8 @@ cleanup:
     if (data->outrc == 0) {
         sc_printf(data->s,
                   "successfully converted %lld records with %d retries "
-                  "stripe %d\n", data->nrecs, data->totnretries, data->stripe);
+                  "stripe %d\n",
+                  data->nrecs, data->totnretries, data->stripe);
     } else {
         if (gbl_sc_abort) {
             sc_errf(data->s,
@@ -1097,12 +1074,10 @@ cleanup:
 cleanup_no_msg:
     convert_record_data_cleanup(data);
 
-    if (data->isThread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
     /* restore our  thread type to what it was before */
-    if (oldtype != THRTYPE_UNKNOWN)
-        thrman_change_type(thr_self, oldtype);
+    if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
 
     return NULL;
 }
@@ -1251,8 +1226,7 @@ int convert_all_records(struct db *from, struct db *to,
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
             void *ret;
 
-            if (threadSkipped[ii])
-                continue;
+            if (threadSkipped[ii]) continue;
 
             /* if the threadid is NULL, skip this one */
             if (!threadData[ii].tid) {
@@ -1275,8 +1249,7 @@ int convert_all_records(struct db *from, struct db *to,
             }
 
             /* if thread's conversions failed return error code */
-            if (threadData[ii].outrc != 0)
-                outrc = threadData[ii].outrc;
+            if (threadData[ii].outrc != 0) outrc = threadData[ii].outrc;
         }
 
         /* destroy attr */
@@ -1470,8 +1443,7 @@ static int upgrade_records(struct convert_record_data *data)
             }
         }
 
-        if (inco_delay)
-            poll(0, 0, inco_delay * mult);
+        if (inco_delay) poll(0, 0, inco_delay * mult);
 
         /* if we're in commitdelay mode, magnify the delay by 5 here */
         if ((commitdelay = bdb_attr_get(data->from->dbenv->bdb_attr,
@@ -1483,8 +1455,7 @@ static int upgrade_records(struct convert_record_data *data)
             poll(NULL, 0, 100);
 
         /* snooze for a bit if writes have been coming in */
-        if (gbl_sc_last_writer_time >= time_epoch() - 5)
-            usleep(gbl_sc_usleep);
+        if (gbl_sc_last_writer_time >= time_epoch() - 5) usleep(gbl_sc_usleep);
         break;
     } // end of rc check
 
@@ -1538,8 +1509,7 @@ static void *upgrade_records_thd(void *vdata)
     enum thrtype oldtype = THRTYPE_UNKNOWN;
 
     // transfer thread type
-    if (data->isThread)
-        thread_started("upgrade records");
+    if (data->isThread) thread_started("upgrade records");
 
     if (thr_self) {
         oldtype = thrman_get_type(thr_self);
@@ -1597,11 +1567,9 @@ cleanup:
 
     convert_record_data_cleanup(data);
 
-    if (data->isThread)
-        backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
 
-    if (oldtype != THRTYPE_UNKNOWN)
-        thrman_change_type(thr_self, oldtype);
+    if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
     return NULL;
 }
 
@@ -1684,8 +1652,7 @@ int upgrade_all_records(struct db *db, unsigned long long *sc_genids,
                 }
 
                 /* if thread's conversions failed return error code */
-                if (thread_data[idx].outrc != 0)
-                    outrc = thread_data[idx].outrc;
+                if (thread_data[idx].outrc != 0) outrc = thread_data[idx].outrc;
             }
         }
 

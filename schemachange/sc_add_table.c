@@ -94,11 +94,11 @@ static inline int init_bthashsize_tran(struct db *newdb, tran_type *tran)
 {
     int bthashsz;
 
-    if (get_db_bthash_tran(newdb, &bthashsz, tran) != 0)
-        bthashsz = 0;
+    if (get_db_bthash_tran(newdb, &bthashsz, tran) != 0) bthashsz = 0;
 
     if (bthashsz) {
-        logmsg(LOGMSG_INFO, "Init with bthash size %dkb per stripe\n", bthashsz);
+        logmsg(LOGMSG_INFO, "Init with bthash size %dkb per stripe\n",
+               bthashsz);
         bdb_handle_dbp_add_hash(newdb->handle, bthashsz);
     }
 
@@ -127,8 +127,7 @@ int add_table_to_environment(char *table, const char *csc2,
         char *syntax_err;
         err = csc2_get_errors();
         syntax_err = csc2_get_syntax_errors();
-        if (iq)
-            reqerrstr(iq, ERR_SC, "%s", syntax_err);
+        if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
         sc_errf(s, "%s\n", err);
         sc_errf(s, "error adding new table locally\n");
         logmsg(LOGMSG_WARN, "Failed to load schema for table %s\n", table);
@@ -137,8 +136,7 @@ int add_table_to_environment(char *table, const char *csc2,
     }
     newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
 
-    if (newdb == NULL)
-        return SC_INTERNAL_ERROR;
+    if (newdb == NULL) return SC_INTERNAL_ERROR;
 
     newdb->dtastripe = gbl_dtastripe;
 
@@ -157,7 +155,8 @@ int add_table_to_environment(char *table, const char *csc2,
     }
 
     if (populate_reverse_constraints(newdb)) {
-        logmsg(LOGMSG_ERROR, "%s: populating reverse constraints failed\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: populating reverse constraints failed\n",
+               __func__);
         rc = -1;
         goto err;
     }
@@ -167,8 +166,7 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if ((rc = get_db_handle(newdb, trans)))
-        goto err;
+    if ((rc = get_db_handle(newdb, trans))) goto err;
 
     gbl_sc_commit_count++;
     if (s && s->fastinit && s->db) {
@@ -186,8 +184,7 @@ int add_table_to_environment(char *table, const char *csc2,
     if (rc) {
         gbl_sc_commit_count--;
         thedb->dbs[--thedb->num_dbs] = NULL;
-        if (rc == SC_CSC2_ERROR)
-            sc_errf(s, "New indexes syntax error\n");
+        if (rc == SC_CSC2_ERROR) sc_errf(s, "New indexes syntax error\n");
         goto err;
     }
     newdb->schema->ix_blob = newdb->ix_blob;
@@ -213,16 +210,11 @@ err:
 
 static inline void set_empty_options(struct schema_change_type *s)
 {
-    if (s->headers == -1)
-        s->headers = gbl_init_with_odh;
-    if (s->compress == -1)
-        s->compress = gbl_init_with_compr;
-    if (s->compress_blobs == -1)
-        s->compress_blobs = gbl_init_with_compr_blobs;
-    if (s->ip_updates == -1)
-        s->ip_updates = gbl_init_with_ipu;
-    if (s->instant_sc == -1)
-        s->instant_sc = gbl_init_with_instant_sc;
+    if (s->headers == -1) s->headers = gbl_init_with_odh;
+    if (s->compress == -1) s->compress = gbl_init_with_compr;
+    if (s->compress_blobs == -1) s->compress_blobs = gbl_init_with_compr_blobs;
+    if (s->ip_updates == -1) s->ip_updates = gbl_init_with_ipu;
+    if (s->instant_sc == -1) s->instant_sc = gbl_init_with_instant_sc;
 }
 
 int do_add_table(struct ireq *iq, tran_type *trans)
@@ -232,8 +224,7 @@ int do_add_table(struct ireq *iq, tran_type *trans)
     struct db *db;
     set_empty_options(s);
 
-    if ((rc = check_option_coherency(s, NULL, NULL)))
-        return rc;
+    if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
 
     if ((db = getdbbyname(s->table))) {
         sc_errf(s, "Table %s already exists", s->table);
@@ -247,8 +238,7 @@ int do_add_table(struct ireq *iq, tran_type *trans)
         return rc;
     }
 
-    if (!(db = getdbbyname(s->table)))
-        return SC_INTERNAL_ERROR;
+    if (!(db = getdbbyname(s->table))) return SC_INTERNAL_ERROR;
 
     iq->usedb = db->sc_to = s->db = db;
     db->odh = s->headers;
@@ -288,19 +278,17 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
     }
 
     if ((rc = bdb_table_version_select(db->handle, tran, &db->tableversion,
-                                 &bdberr)) != 0) {
+                                       &bdberr)) != 0) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;
     }
 
-    if ((rc = mark_schemachange_over_tran(db->dbname, tran)))
-        return rc;
+    if ((rc = mark_schemachange_over_tran(db->dbname, tran))) return rc;
 
     /* Save .ONDISK as schema version 1 if instant_sc is enabled. */
     if (db->odh && db->instant_schema_change) {
         struct schema *ver_one;
-        if ((rc = prepare_table_version_one(tran, db, &ver_one)))
-            return rc;
+        if ((rc = prepare_table_version_one(tran, db, &ver_one))) return rc;
         add_tag_schema(db->dbname, ver_one);
     }
 

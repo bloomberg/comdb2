@@ -21,8 +21,8 @@ struct common_members {
     int64_t ndeadlocks;
     int64_t nlockwaits;
     int lkcountercheck_lasttime; /* used for checking lockwaints */
-    int thrcount; // number of threads currently available
-    int maxthreads; // maximum number of SC threads allowed
+    int thrcount;                // number of threads currently available
+    int maxthreads;              // maximum number of SC threads allowed
     int is_decrease_thrds; // is feature on to backoff and decrease threads
 };
 

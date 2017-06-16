@@ -2394,8 +2394,8 @@ int set_meta_odh_flags_tran(struct db *db, tran_type *tran, int odh,
 int get_csc2_version(const char *table);
 int get_csc2_version_tran(const char *table, tran_type *);
 int get_csc2_file(const char *table, int version, char **text, int *len);
-int get_csc2_file_tran(const char *table, int version,
-                       char **text, int *len, tran_type *);
+int get_csc2_file_tran(const char *table, int version, char **text, int *len,
+                       tran_type *);
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
 int put_csc2_stuff(struct db *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct db *db, void *tran, unsigned long long genid);

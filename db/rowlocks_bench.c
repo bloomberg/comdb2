@@ -31,8 +31,8 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                       int arg1, int arg2, void *payload, int paylen);
 int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                     int arg1, int arg2, void *payload, int paylen);
-int trans_start_int(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans,
-                    int logical, int retries);
+int trans_start_int(struct ireq *iq, tran_type *parent_trans,
+                    tran_type **out_trans, int logical, int retries);
 int bdb_tran_set_request_ack(void *trans);
 unsigned long long rep_get_send_callcount(void);
 unsigned long long rep_get_send_bytecount(void);
