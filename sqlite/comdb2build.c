@@ -892,18 +892,12 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err; 
+    if (!arg) goto err; 
+    bpfunc_arg__init(arg);
 
     BpfuncCreateTimepart *tp = malloc(sizeof(BpfuncCreateTimepart));
-    
-    if (tp)
-        bpfunc_create_timepart__init(tp);
-    else
-        goto err;
+    if (!tp) goto err;
+    bpfunc_create_timepart__init(tp);
     
     arg->crt_tp = tp;
     arg->type = BPFUNC_CREATE_TIMEPART;
@@ -924,14 +918,12 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     assert (*period->z == '\'' || *period->z == '\"');
     period->z++;
     period->n -= 2;
-   
     
     max_length = period->n < 50 ? period->n : 50;
     strncpy(period_str, period->z, max_length);
     tp->period = name_to_period(period_str);
     
-    if (tp->period == VIEW_TIMEPART_INVALID)
-    {
+    if (tp->period == VIEW_TIMEPART_INVALID) {
         setError(pParse, SQLITE_ERROR, "Invalid period name");
         goto clean_arg;
     }
@@ -953,8 +945,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     strncpy(start_str, start->z, max_length);
     tp->start = convert_time_string_to_epoch(start_str);
 
-    if (tp->start == -1 )
-    {
+    if (tp->start == -1 ) {
         setError(pParse, SQLITE_ERROR, "Invalid start date");
         goto clean_arg;
     }
@@ -963,11 +954,10 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     return;
 
 err:
-        setError(pParse, SQLITE_INTERNAL, "Internal Error");
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
         free_bpfunc_arg(arg);   
-    
 }
 
 
@@ -977,19 +967,12 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err; 
+    if (!arg) goto err; 
+    bpfunc_arg__init(arg);
     
     BpfuncDropTimepart *tp = malloc(sizeof(BpfuncDropTimepart));
-    
-
-    if (tp)
-        bpfunc_drop_timepart__init(tp);
-    else
-        goto err;
+    if (!tp) goto err;
+    bpfunc_drop_timepart__init(tp);
     
     arg->drop_tp = tp;
     arg->type = BPFUNC_DROP_TIMEPART;
@@ -1002,10 +985,10 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
 
     return;
 err:
-        setError(pParse, SQLITE_INTERNAL, "Internal Error");
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
-    free_bpfunc_arg(arg);
-
+    if(arg)
+        free_bpfunc_arg(arg);
 }
 
 
@@ -1032,11 +1015,9 @@ int comdb2vdbeAnalyze(OpFunc *f)
 void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
     int percentage = pc;
     int threads = GET_ANALYZE_THREAD(opt);
     int sum_threads = GET_ANALYZE_SUMTHREAD(opt);
-
   
     if (comdb2AuthenticateUserOp(v, pParse))
         return;       
@@ -1046,11 +1027,9 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
     if (sum_threads)
         analyze_set_max_sampling_threads(NULL, &sum_threads);
 
-    if (nm == NULL)
-    {
+    if (nm == NULL) {
         comdb2prepareNoRows(v, pParse, pc, NULL, &comdb2vdbeAnalyze, (vdbeFuncArgFree) &free);
-    } else
-    {
+    } else {
         char *tablename = (char*) malloc(MAXTABLELEN);
         if (!tablename)
             goto err;
@@ -1060,65 +1039,97 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
             goto err;
         }
         else
-           comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze, (vdbeFuncArgFree) &free); 
+            comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze, (vdbeFuncArgFree) &free); 
     }
 
     return;
 
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
-
 }
 
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
-
     if (comdb2AuthenticateUserOp(v, pParse))
         goto err;       
 
-    if (newscale < -1 || newscale > 100)
-    {
+    if (newscale < -1 || newscale > 100) {
         setError(pParse, SQLITE_ERROR, "Coverage must be between -1 and 100");
         goto clean_arg;
     }
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err;
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
+
     BpfuncAnalyzeCoverage *ancov_f = (BpfuncAnalyzeCoverage*) malloc(sizeof(BpfuncAnalyzeCoverage));
-    
-    if (ancov_f)
-        bpfunc_analyze_coverage__init(ancov_f);
-    else
-        goto err;
+    if (!ancov_f) goto err;
+    bpfunc_analyze_coverage__init(ancov_f);
 
     arg->an_cov = ancov_f;
     arg->type = BPFUNC_ANALYZE_COVERAGE;
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
-    
-    if (!ancov_f->tablename)
-        goto err;
+    if (!ancov_f->tablename) goto err;
         
     if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
-        return;  
+        goto clean_arg;  
     
     ancov_f->newvalue = newscale;
-
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
-
     return;
+
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
         free_bpfunc_arg(arg);
-
 }
+
+
+void comdb2setSkipScan(Parse* pParse, Token* nm, Token* lnm, int enable)
+{
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+    if (comdb2AuthenticateUserOp(v, pParse))
+        goto err;       
+
+    if (enable != 0 && enable != 1) {
+        setError(pParse, SQLITE_ERROR, "Can only enable or disable skipscan");
+        goto clean_arg;
+    }
+
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
+
+    BpfuncAnalyzeCoverage *ancov_f = (BpfuncAnalyzeCoverage*) malloc(sizeof(BpfuncAnalyzeCoverage));
+    if (!ancov_f) goto err;
+    bpfunc_analyze_coverage__init(ancov_f);
+
+    arg->an_cov = ancov_f;
+    arg->type = BPFUNC_SET_SKIPSCAN;
+    ancov_f->tablename = (char*) malloc(MAXTABLELEN);
+    if (!ancov_f->tablename) goto err;
+        
+    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
+        goto clean_arg;  
+    
+    ancov_f->newvalue = enable;
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    return;
+
+err:
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
+clean_arg:
+    if (arg)
+        free_bpfunc_arg(arg);
+    if (ancov_f) {
+        if(ancov_f->tablename)
+            free(ancov_f->tablename);
+        free(ancov_f);
+    }
+}
+
 
 void comdb2enableGenid48(Parse* pParse, int enable)
 {
