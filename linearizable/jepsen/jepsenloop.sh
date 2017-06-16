@@ -44,9 +44,10 @@ $scripts/addmach_comdb2db $db
 
 iter=0
 while :; do 
-    outfile=$outbase/jepsen_test.$db.$iter.out
 
     let iter=iter+1
+
+    outfile=$outbase/jepsen_test.$db.$iter.out
 
     $scripts/heal $db
 

@@ -2303,6 +2303,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         logmsg(LOGMSG_INFO,
                "Tables will be initialized with instant schema-change support\n");
         gbl_init_with_instant_sc = 1;
+    } else if (tokcmp(line, ltok, "dont_init_with_compr") == 0) {
+        gbl_init_with_compr = BDB_COMPRESS_NONE;
+        logmsg(LOGMSG_INFO, "New tables will not be compressed\n");
+    } else if (tokcmp(line, ltok, "dont_init_with_compr_blobs") == 0) {
+        gbl_init_with_compr_blobs = BDB_COMPRESS_NONE;
+        logmsg(LOGMSG_INFO, "Blobs in new tables will not be compressed\n");
     } else if (tokcmp(line, ltok, "init_with_compr") == 0) {
         tok = segtok(line, len, &st, &ltok);
         char *algo = tokdup(tok, ltok);
