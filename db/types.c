@@ -989,31 +989,23 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
 
     /* Determine if the from-data is little endian. */
     if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        from_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         from_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         from_flip = 1;
-#else
-        from_flip = 0;
 #endif
     }
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        to_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         to_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         to_flip = 1;
-#else
-        to_flip = 0;
 #endif
     }
 
@@ -1173,31 +1165,23 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_INT(
 
     /* Determine if the from-data is little endian. */
     if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        from_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         from_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         from_flip = 1;
-#else
-        from_flip = 0;
 #endif
     }
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        to_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         to_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         to_flip = 1;
-#else
-        to_flip = 0;
 #endif
     }
 
@@ -1354,26 +1338,36 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
 
     double to_8;
     float to_4;
-    int from_little = 0;
-    int to_little = 0;
+    int from_flip = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
     if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
+#ifndef _LINUX_SOURCE
+        from_flip = 1;
+#endif
+    } else {
+#ifdef _LINUX_SOURCE
+        from_flip = 1;
+#endif
     }
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
+#ifndef _LINUX_SOURCE
+        to_flip = 1;
+#endif
+    } else {
+#ifdef _LINUX_SOURCE
+        to_flip = 1;
+#endif
     }
 
     *outdtsz = 0;
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1383,11 +1377,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
-
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1396,11 +1388,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1412,9 +1402,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1424,11 +1412,10 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
 
-            to_8 = flibc_htond(to_8);
             *outdtsz = 8;
             memcpy(out, &to_8, 8);
             break;
@@ -1437,11 +1424,9 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_4 = from_4;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1453,9 +1438,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1465,22 +1448,18 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_REAL(
                 return -1;
             to_8 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_dblflip(to_8);
             }
-
-            to_8 = flibc_htond(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_floatflip(to_4);
             }
-
-            to_4 = flibc_htonf(to_4);
             memcpy(out, &to_4, 4);
             if (REAL_OUTOFRANGE(from_2, FLT_MAX))
                 return -1;
@@ -1514,11 +1493,17 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
 
     int i;
 
-    int from_little = 0;
+    int from_flip = 0;
 
     /* Determine if the from-data is little endian. */
     if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
+#ifndef _LINUX_SOURCE
+        from_flip = 1;
+#endif
+    } else {
+#ifdef _LINUX_SOURCE
+        from_flip = 1;
+#endif
     }
     /* To-little doesn't matter for strings. */
 
@@ -1529,9 +1514,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1540,9 +1523,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1551,9 +1532,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_CSTR(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1594,11 +1573,17 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
 
     int i;
 
-    int from_little = 0;
+    int from_flip = 0;
 
     /* Determine if the from-data is little endian. */
     if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
+#ifndef _LINUX_SOURCE
+        from_flip = 1;
+#endif
+    } else {
+#ifdef _LINUX_SOURCE
+        from_flip = 1;
+#endif
     }
 
     *outdtsz = 0;
@@ -1609,8 +1594,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
         rc = snprintf(outbuf, outlen + 1, "%llu", from_8);
@@ -1618,8 +1602,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
         rc = snprintf(outbuf, outlen + 1, "%u", from_4);
@@ -1627,8 +1610,7 @@ TYPES_INLINE int CLIENT_UINT_to_CLIENT_PSTR(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
         rc = snprintf(outbuf, outlen + 1, "%hu", from_2);
@@ -4527,16 +4509,12 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_UINT(
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        to_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         to_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         to_flip = 1;
-#else
-        to_flip = 0;
 #endif
     }
 
@@ -4628,16 +4606,12 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        to_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         to_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         to_flip = 1;
-#else
-        to_flip = 0;
 #endif
     }
 
@@ -4726,16 +4700,12 @@ TYPES_INLINE int SERVER_BREAL_to_CLIENT_REAL(
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-#ifdef _LINUX_SOURCE
-        to_flip = 0;
-#else
+#ifndef _LINUX_SOURCE
         to_flip = 1;
 #endif
     } else {
 #ifdef _LINUX_SOURCE
         to_flip = 1;
-#else
-        to_flip = 0;
 #endif
     }
 
