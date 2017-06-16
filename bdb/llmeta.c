@@ -8033,7 +8033,6 @@ bad_alloc:
     return NULL;
 }
 
-// TODO: Modify for sequences
 int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long long max_val,
                         long long increment, bool cycle, long long start_val, long long chunk_size,
                         char flags, int *bdberr) {
@@ -8048,7 +8047,6 @@ int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long
     p_buf_end = p_buf + LLMETA_IXLEN;
 
     sk.file_type = LLMETA_SEQUENCE_ATTR;
-    /* TODO: range check? assume sanitized at this point? */
     strcpy(sk.name, name);
 
     // Create new llmeta record and add sequence's llmeta key
@@ -8140,7 +8138,6 @@ done:
 }
 
 /**
- * TODO: Refactor start_val and next start_val (can be the same thing)
  * Get a new chunk of values from a specified sequence. Returns -1 in error
  *
  * @param tran_type *tran Current transaction
@@ -8166,15 +8163,28 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val
         logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
         return -1;
     }
+
     // Check sequence rules
-    unsigned long long max_uniq_values = abs((max_val-min_val)/increment); /* Maximum unique values in sequence 8 */
+    unsigned long long max_uniq_values;
+    // Checks for abs - min int value is undef behaviour
+    if (min_val == LLONG_MIN) {
+        max_uniq_values = (abs(max_val) + (LLONG_MAX - 1))/abs(increment); /* Maximum unique values in sequence 8 */
+    } else {
+        max_uniq_values = abs(max_val - min_val)/abs(increment); /* Maximum unique values in sequence 8 */
+    }
+
     unsigned long long values_before_cycle; /* Number of values that can be dispensed before hitting the max or min of the sequence */
 
     if (increment > 0) {
         // Increasing sequence
-        // TODO: overflow chck
-        values_before_cycle = abs((max_val - *next_start_val)/increment);
 
+        // Check for abs - min int value is undef behaviour
+        if (*next_start_val == LLONG_MIN){
+            values_before_cycle = abs(max_val + (LLONG_MAX - 1))/abs(increment);
+        } else {
+            values_before_cycle = abs(max_val - *next_start_val)/abs(increment);
+        }
+       
         if (values_before_cycle < chunk_size) {
             if (cycle) {
                 new_start_val = min_val + increment * ((chunk_size - values_before_cycle - 1) % max_uniq_values);
@@ -8209,7 +8219,14 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val
         }
     } else {
         // Decreasing sequence
-        values_before_cycle = abs((*next_start_val - min_val)/increment);
+
+        // Check for abs - min int value is undef behaviour
+        if (*next_start_val == LLONG_MIN) {
+            // min_val must be LLONG_MIN also in this case
+            values_before_cycle = 0;
+        } else {
+            values_before_cycle = abs((*next_start_val - min_val)/increment);
+        }
 
         if (values_before_cycle < chunk_size) {
             if (cycle) {

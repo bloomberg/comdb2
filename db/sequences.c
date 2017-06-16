@@ -69,7 +69,7 @@ int seq_next_val (char *name, long long *val) {
     seq->prev_val = seq->next_val;
 
     // Check for integer overflow
-    if (!check_overflow_ll_add(seq->next_val, seq->increment)) {
+    if (overflow_ll_add(seq->next_val, seq->increment)) {
         if (seq->cycle) {
             if (seq->increment > 0)
                 seq->next_val = seq->min_val;
