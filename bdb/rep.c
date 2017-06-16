@@ -2813,7 +2813,7 @@ again:
         if (i == count) {
             /* no longer connected to this node */
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
-            trigger_unregister_node_lk(host);
+            trigger_unregister_node(host);
             if (bdb_state->attr->wait_for_seqnum_trace) {
                 logmsg(LOGMSG_USER, " err waiting for seqnum: host %s no "
                         "longer connected\n",
