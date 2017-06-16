@@ -32,7 +32,7 @@ int trigger_unregister(trigger_reg_t *);
 void trigger_start(const char *);
 int trigger_register_req(trigger_reg_t *);
 int trigger_unregister_req(trigger_reg_t *);
-int trigger_unregister_node(const char *node);    // will get bdblock
+int trigger_unregister_node(const char *node);
 int trigger_registered(const char *);
 void trigger_clear_hash(void);
 void trigger_stat(void);
