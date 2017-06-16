@@ -2197,8 +2197,6 @@ static int llmeta_load_sequences (struct dbenv *dbenv) {
         return 0;
     }
     
-    // TODO: Check this number. Do we want to preallocate some more space so we don't have to realloc each time we create
-    // TODO: Do we want a fresh reload each time (free old and malloc new)?
     dbenv->sequences = realloc(dbenv->sequences, (num_found_sequences) * sizeof(sequence_t));
 
     if (dbenv->sequences == NULL) {
