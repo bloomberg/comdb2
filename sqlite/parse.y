@@ -1704,11 +1704,11 @@ putcmd ::= ANALYZE THRESHOLD nm(Y) dbnm(Z) INTEGER(F). {
     comdb2analyzeThreshold(pParse,&Y,&Z, tmp);
 }
 
-putcmd ::= SKIPSCAN ENABLE nm(Y) dbnm(Z) . {
+putcmd ::= SKIPSCAN ENABLE nm(Y) dbnm(Z). {
     comdb2setSkipscan(pParse,&Y, &Z, 1);
 }
 
-putcmd ::= SKIPSCAN DISABLE nm(Y) dbnm(Z) . {
+putcmd ::= SKIPSCAN DISABLE nm(Y) dbnm(Z). {
     comdb2setSkipscan(pParse,&Y, &Z, 0);
 }
 

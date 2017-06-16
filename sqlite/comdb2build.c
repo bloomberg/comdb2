@@ -1051,15 +1051,16 @@ err:
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
+    BpfuncArg *arg = NULL;
     if (comdb2AuthenticateUserOp(v, pParse))
-        goto err;       
+        return;
 
     if (newscale < -1 || newscale > 100) {
         setError(pParse, SQLITE_ERROR, "Coverage must be between -1 and 100");
         goto clean_arg;
     }
 
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     if (!arg) goto err;
     bpfunc_arg__init(arg);
 
@@ -1082,23 +1083,23 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
-    if (arg)
-        free_bpfunc_arg(arg);
+    if (arg) free_bpfunc_arg(arg);
 }
 
 
-void comdb2setSkipScan(Parse* pParse, Token* nm, Token* lnm, int enable)
+void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
+    BpfuncArg *arg = NULL;
     if (comdb2AuthenticateUserOp(v, pParse))
-        goto err;       
+        return;
 
     if (enable != 0 && enable != 1) {
         setError(pParse, SQLITE_ERROR, "Can only enable or disable skipscan");
         goto clean_arg;
     }
 
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
     if (!arg) goto err;
     bpfunc_arg__init(arg);
 
@@ -1121,13 +1122,7 @@ void comdb2setSkipScan(Parse* pParse, Token* nm, Token* lnm, int enable)
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
-    if (arg)
-        free_bpfunc_arg(arg);
-    if (ancov_f) {
-        if(ancov_f->tablename)
-            free(ancov_f->tablename);
-        free(ancov_f);
-    }
+    if (arg) free_bpfunc_arg(arg);
 }
 
 
@@ -1194,30 +1189,23 @@ clean_arg:
 void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthreshold)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
+    BpfuncArg *arg = NULL;
 
     if (comdb2AuthenticateUserOp(v, pParse))
-        goto clean_arg;       
+        return;
 
-    if (newthreshold < -1 || newthreshold > 100)
-    {
+    if (newthreshold < -1 || newthreshold > 100) {
         setError(pParse, SQLITE_ERROR, "Threshold must be between -1 and 100");
         goto clean_arg;
     }
     
-    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err;
-
+    arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
 
     BpfuncAnalyzeThreshold *anthr_f = (BpfuncAnalyzeThreshold*) malloc(sizeof(BpfuncAnalyzeThreshold));
-    
-    if (anthr_f)
-        bpfunc_analyze_threshold__init(anthr_f);
-    else
-        goto err;
+    if (!anthr_f) goto err;
+    bpfunc_analyze_threshold__init(anthr_f);
 
     arg->an_thr = anthr_f;
     arg->type = BPFUNC_ANALYZE_THRESHOLD;
