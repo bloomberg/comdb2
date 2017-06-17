@@ -4107,8 +4107,10 @@ static void get_disable_skipscan(struct db *tbl)
 
     char *str = NULL;
     int rc = bdb_get_table_parameter(tbl->dbname, "disableskipscan", &str);
-    if (rc != 0)
+    if (rc != 0) {
+        set_skipscan_for_table_indices(tbl, 0);
         return;
+    }
 
     int disable = (strncmp(str, "true", 4) == 0);
     free(str);
