@@ -374,7 +374,7 @@
           (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
           (j/query c ["set max_retries 100000"])
           (try
-            (j/with-db-transaction [c c]
+            (let [updated (first (j/with-db-transaction [c c]
 
               (let [id   (first (:value op))
                     val' (second (:value op))
@@ -383,37 +383,67 @@
 
                 (case (:f op)
                   :read (do
-                           (info "Worker " (:process op) " READS val " val " uid " uid)
-                           (assoc op :type :ok, :value (independent/tuple id val))
+                           (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
                         )
 
                   :write (do
                            (if (nil? val)
                              (do
-                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid')
+                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
                              (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
                              )
                              (do
-                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid')
+                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
                              (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
                              )
-                           )
-                           (assoc op :type :ok))
+                           ))
 
-                  :cas (let [[expected-val new-val] val'
-                             cnt (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])]
+                  :cas (let [[expected-val new-val] val' 
+                             cnt (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])] 
                          (do
                          (if (zero? (first cnt))
-                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val')
-                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid'))
-                         (assoc op :type (if (zero? (first cnt))
-                                           :fail
-                                           :ok))
+                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val' " PRE-COMMIT")
+                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid' " PRE-COMMIT"))
+                           )
+                  )
+                 )
+                ) 
+             )) ; first /with txn
+          ] 
+              (case (:f op)
+                :read (do
+                        (info "Worker " (:process op) " READS SUCCESS")
+                        (assoc op :type :ok)
+                        )
+                :write  (if (= updated 1) 
+                          (do
+                          (info "Worker " (:process op) " WRITE SUCCESS")
+                          (assoc op :type :ok)
+                          )
+                          (do
+                          (info "Worker " (:process op) " WRITE FAILED")
+                          (assoc op :type :fail)
+                          )
                          )
-                         ))))))))
+                :cas    (if (= updated 1)
+                          (do
+                          (info "Worker " (:process op) " CAS SUCCESS")
+                          (assoc op :type :ok)
+                          )
+                          (do
+                          (info "Worker " (:process op) " CAS FAILED")
+                          (assoc op :type :fail)
+                          )
+                         )
+                )
+              ) ; let
+            ) ; try
+          ) ; do
+        ) ; with txn
+      ) ; invoke
     (teardown! [_ test])))
 
-(defn comdb2-cas-register-client-params
+(defn comdb2-cas-register-client-params-broken-txn-error
   "Comdb2 register client"
   [node]
   (reify client/Client

@@ -84,7 +84,7 @@ while :; do
         break 2
     fi
 
-    egrep -v "closeNo|gnuplot|IOException" $outfile | egrep exception
+    egrep -v "closeNo|gnuplot|IOException|OutOfMemoryError|Uncaught" $outfile | egrep exception
     if [[ $? == 0 ]]; then
         echo "!!! JEPSEN TEST FAILED WITH EXCEPTION ITERATION $iter !!!" 
         break 2
