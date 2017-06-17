@@ -437,7 +437,20 @@
                          )
                 )
               ) ; let
-            ) ; try
+            (catch java.sql.SQLException e 
+              (let [error (.getErrorCode e)]
+                (cond 
+                  (= error 2) (do 
+                               (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                               (assoc op :type :fail)
+                               )
+                  :else (throw e))
+              )
+            ) 
+          
+          
+          
+            ); try
           ) ; do
         ) ; with txn
       ) ; invoke
