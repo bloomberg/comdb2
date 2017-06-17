@@ -4255,6 +4255,8 @@ int backend_open(struct dbenv *dbenv)
             if (get_db_bthash(d, &bthashsz) != 0) {
                 bthashsz = 0;
             }
+
+            get_disable_skipscan(d);
         }
 
         if (bthashsz) {
