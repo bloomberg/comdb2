@@ -2524,7 +2524,6 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohd(from_8);
 
         if (from_flip) {
             from_8 = flibc_dblflip(from_8);
@@ -2579,7 +2578,6 @@ TYPES_INLINE int CLIENT_REAL_to_CLIENT_INT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = flibc_ntohf(from_4);
 
         if (from_flip) {
             from_4 = flibc_floatflip(from_4);
