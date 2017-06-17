@@ -4599,8 +4599,8 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
     short from_2b;
     int to_flip = 0;
 
-    int to_4;
-    short to_2;
+    int *to_4;
+    short *to_2;
 
     void *cint;
 
@@ -4651,23 +4651,23 @@ TYPES_INLINE int SERVER_BINT_to_CLIENT_INT(
     case 2:
         if (from_8 < SHRT_MIN || from_8 > SHRT_MAX)
             return -1;
-        to_2 = (short)from_8;
+        to_2 = out;
+        *to_2 = (short)from_8;
 
         if (to_flip) {
-            to_2 = flibc_shortflip(to_2);
+            *to_2 = flibc_shortflip(*to_2);
         }
-        memcpy(out, &to_2, outlen);
         *outdtsz = 2;
         break;
     case 4:
         if (from_8 < INT_MIN || from_8 > INT_MAX)
             return -1;
-        to_4 = (int)from_8;
+        to_4 = out;
+        *to_4 = (int)from_8;
 
         if (to_flip) {
-            to_4 = flibc_intflip(to_4);
+            *to_4 = flibc_intflip(*to_4);
         }
-        memcpy(out, &to_4, outlen);
         *outdtsz = 4;
         break;
     case 8:
