@@ -770,6 +770,7 @@ Expr *sqlite3ExprAlloc(
     pNew->nHeight = 1;
 #endif  
   }
+  pNew->visited = 0;
   return pNew;
 }
 

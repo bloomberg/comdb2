@@ -214,20 +214,11 @@ static int trigger_unregister_node_int(const char *host)
     return 0;
 }
 
-int trigger_unregister_node_lk(const char *host)
+int trigger_unregister_node(const char *host)
 {
     pthread_mutex_lock(&trighash_lk);
     int rc = trigger_unregister_node_int(host);
     pthread_mutex_unlock(&trighash_lk);
-    return rc;
-}
-
-int trigger_unregister_node(const char *host)
-{
-    GET_BDB_STATE(bdb_state);
-    BDB_READLOCK("unregister trigger node");
-    int rc = trigger_unregister_node_lk(host);
-    BDB_RELLOCK();
     return rc;
 }
 

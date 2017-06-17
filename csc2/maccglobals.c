@@ -47,6 +47,7 @@ int un_init = 0;
 char *maccfuncpath = "";
 char *customcode = NULL;
 /*char *maccfuncpath="/bbinc/Cinclude/";*/
+time_t ctm;
 char includename[256];
 char includefiles[MAX_INCLUDES][MAX_INC_NAME];
 int includetypes[MAX_INCLUDES];
