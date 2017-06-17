@@ -46,7 +46,6 @@ extern int __berkdb_fsync_alarm_ms;
 #include <ctrace.h>
 
 #include "comdb2.h"
-#include "glue.h"
 #include "block_internal.h"
 #include "timer.h"
 #include "translistener.h"
@@ -77,7 +76,6 @@ extern int __berkdb_fsync_alarm_ms;
 #include "timers.h"
 #include "crc32c.h"
 #include "ssl_bend.h"
-#include "bdb_schemachange.h"
 
 #include <trigger.h>
 #include <sc_stripes.h>
