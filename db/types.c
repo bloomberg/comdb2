@@ -1736,21 +1736,33 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
     signed long long from_8;
     signed int from_4;
     signed short from_2;
-    int from_little = 0;
+    int from_flip = 0;
 
     unsigned long long to_8;
     unsigned int to_4;
     unsigned short to_2;
-    int to_little = 0;
+    int to_flip = 0;
 
     /* Determine if the from-data is little endian. */
     if (inopts && inopts->flags & FLD_CONV_LENDIAN) {
-        from_little = 1;
+#ifndef _LINUX_SOURCE
+        from_flip = 1;
+#endif
+    } else {
+#ifdef _LINUX_SOURCE
+        from_flip = 1;
+#endif
     }
 
     /* Determine if the to-data is little endian. */
     if (outopts && outopts->flags & FLD_CONV_LENDIAN) {
-        to_little = 1;
+#ifndef _LINUX_SOURCE
+        to_flip = 1;
+#endif
+    } else {
+#ifdef _LINUX_SOURCE
+        to_flip = 1;
+#endif
     }
 
     *outdtsz = 0;
@@ -1758,9 +1770,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
     switch (inlen) {
     case 8:
         memcpy(&from_8, in, 8);
-        from_8 = flibc_ntohll(from_8);
 
-        if (from_little) {
+        if (from_flip) {
             from_8 = flibc_llflip(from_8);
         }
 
@@ -1770,11 +1781,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
         case 8:
             to_8 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
@@ -1783,11 +1792,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
                 return -1;
             to_4 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1796,11 +1803,10 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
                 return -1;
             to_2 = from_8;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
 
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1812,9 +1818,8 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
 
     case 4:
         memcpy(&from_4, in, 4);
-        from_4 = ntohl(from_4);
 
-        if (from_little) {
+        if (from_flip) {
             from_4 = flibc_intflip(from_4);
         }
 
@@ -1823,19 +1828,17 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
         switch (outlen) {
         case 8:
             to_8 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
@@ -1843,10 +1846,9 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
             if (from_4 > USHRT_MAX)
                 return -1;
             to_2 = from_4;
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
@@ -1858,9 +1860,7 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
 
     case 2:
         memcpy(&from_2, in, 2);
-        from_2 = ntohs(from_2);
-
-        if (from_little) {
+        if (from_flip) {
             from_2 = flibc_shortflip(from_2);
         }
 
@@ -1870,33 +1870,29 @@ TYPES_INLINE int CLIENT_INT_to_CLIENT_UINT(
         case 8:
             to_8 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_8 = flibc_llflip(to_8);
             }
-
-            to_8 = flibc_htonll(to_8);
             memcpy(out, &to_8, 8);
             *outdtsz = 8;
             break;
         case 4:
             to_4 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_4 = flibc_intflip(to_4);
             }
 
-            to_4 = htonl(to_4);
             memcpy(out, &to_4, 4);
             *outdtsz = 4;
             break;
         case 2:
             to_2 = from_2;
 
-            if (to_little) {
+            if (to_flip) {
                 to_2 = flibc_shortflip(to_2);
             }
 
-            to_2 = htons(to_2);
             memcpy(out, &to_2, 2);
             *outdtsz = 2;
             break;
