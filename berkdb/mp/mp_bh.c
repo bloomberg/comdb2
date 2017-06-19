@@ -1129,18 +1129,18 @@ file_dead:
  * Bloomberg hack - record a hit to memp_fget, with the time taken
  */
 static void
-bb_memp_pg_hit(int start_time_ms)
+bb_memp_pg_hit(uint64_t start_time_us)
 {
-	int time_diff = bb_berkdb_fasttime() - start_time_ms;
+	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
 	struct bb_berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_pgs++;
-	stats->memp_pg_time_ms += time_diff;
+	stats->memp_pg_time_us += time_diff;
 
 	stats = bb_berkdb_get_process_stats();
 	stats->n_memp_pgs++;
-	stats->memp_pg_time_ms += time_diff;
+	stats->memp_pg_time_us += time_diff;
 }
 
 
@@ -1164,14 +1164,14 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	MPOOLFILE *mfp;
 	int ftype, ret;
 
-	int start_time_ms;
+	uint64_t start_time_us;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;
 	mfp = dbmfp->mfp;
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
-		start_time_ms = bb_berkdb_fasttime();
+		start_time_us = bb_berkdb_fasttime();
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 
@@ -1204,14 +1204,14 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
-		bb_memp_pg_hit(start_time_ms);
+		bb_memp_pg_hit(start_time_us);
 	return (0);
 
 err:	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 	__db_err(dbenv, "%s: %s failed for page %lu",
 	    __memp_fn(dbmfp), is_pgin ? "pgin" : "pgout", (u_long) pgno);
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
-		bb_memp_pg_hit(start_time_ms);
+		bb_memp_pg_hit(start_time_us);
 	return (ret);
 }
 

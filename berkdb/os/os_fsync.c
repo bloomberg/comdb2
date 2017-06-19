@@ -67,7 +67,7 @@ static long long *__berkdb_num_fsyncs = 0;
 static void (*fsync_callback)(int fd) = 0;
 
 /* defined in os_rw.c */
-int bb_berkdb_fasttime(void);
+uint64_t bb_berkdb_fasttime(void);
 
 void
 __berkdb_set_num_fsyncs(long long *n)
@@ -100,7 +100,7 @@ __os_fsync(dbenv, fhp)
 	DB_FH *fhp;
 {
 	int ret, retries, ckalmn;
-	int x1 = 0, x2 = 0;
+	uint64_t x1 = 0, x2 = 0;
 	struct bb_berkdb_thread_stats *p, *t;
 
 	ckalmn = __berkdb_fsync_alarm_ms;

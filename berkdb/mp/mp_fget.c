@@ -120,18 +120,18 @@ __berkdb_register_memp_callback(void (*callback) (void))
  * Bloomberg hack - record a hit to memp_fget, with the time taken
  */
 static void
-bb_memp_hit(int start_time_ms)
+bb_memp_hit(uint64_t start_time_us)
 {
-	int time_diff = bb_berkdb_fasttime() - start_time_ms;
+	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
 	struct bb_berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_memp_fgets++;
-	stats->memp_fget_time_ms += time_diff;
+	stats->memp_fget_time_us += time_diff;
 
 	stats = bb_berkdb_get_process_stats();
 	stats->n_memp_fgets++;
-	stats->memp_fget_time_ms += time_diff;
+	stats->memp_fget_time_us += time_diff;
 }
 
 
@@ -223,13 +223,13 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	int b_incr, extending, first, ret, is_recovery_page;
 	db_pgno_t falloc_off, falloc_len;
 
-	int start_time_ms;
+	uint64_t start_time_us;
 
 	if (memp_fget_callback)
 		memp_fget_callback();
 
 	if (gbl_bb_berkdb_enable_memp_timing) {
-		start_time_ms = bb_berkdb_fasttime();
+		start_time_us = bb_berkdb_fasttime();
 	}
 
 	*(void **)addrp = NULL;
@@ -297,7 +297,7 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 		    R_ADDR(dbmfp, *pgnoaddr * mfp->stat.st_pagesize);
 		++mfp->stat.st_map;
 		if (gbl_bb_berkdb_enable_memp_timing)
-			bb_memp_hit(start_time_ms);
+			bb_memp_hit(start_time_us);
 		return (0);
 	}
 
@@ -823,7 +823,7 @@ alloc:		/*
 	*(void **)addrp = bhp->buf;
 
 	if (gbl_bb_berkdb_enable_memp_timing)
-		bb_memp_hit(start_time_ms);
+		bb_memp_hit(start_time_us);
 	return (0);
 
 err:	/*
@@ -849,7 +849,7 @@ err:	/*
 	}
 
 	if (gbl_bb_berkdb_enable_memp_timing)
-		bb_memp_hit(start_time_ms);
+		bb_memp_hit(start_time_us);
 	return (ret);
 }
 

@@ -1519,30 +1519,35 @@ static void *dbqueue_consume_thread(void *arg)
 
         if (diffms > LONG_REQMS) {
             const struct bdb_thread_stats *t = bdb_get_thread_stats();
-            logmsg(LOGMSG_WARN, "LONG REQUEST %-8d msec  consumer thread queue '%s' "
+            logmsg(LOGMSG_WARN,
+                   "LONG REQUEST %-8d msec  consumer thread queue '%s' "
                    "consumer %d dbq_get\n",
                    diffms, consumer->db->dbname, consumer->consumern);
             if (t->n_lock_waits > 0) {
                 logmsg(LOGMSG_WARN, "  %u lock waits took %u ms (%u ms/wait)\n",
-                        t->n_lock_waits, t->lock_wait_time_ms,
-                        t->lock_wait_time_ms / t->n_lock_waits);
+                       t->n_lock_waits, MSEC(t->lock_wait_time_us),
+                       MSEC(t->lock_wait_time_us / t->n_lock_waits));
             }
             if (t->n_preads > 0) {
-                logmsg(LOGMSG_WARN, "  %u preads took %u ms total of %u bytes\n",
-                        t->n_preads, t->pread_time_ms, t->pread_bytes);
+                logmsg(LOGMSG_WARN,
+                       "  %u preads took %u ms total of %u bytes\n",
+                       t->n_preads, MSEC(t->pread_time_us), t->pread_bytes);
             }
             if (t->n_pwrites > 0) {
-                logmsg(LOGMSG_WARN, "  %u pwrites took %u ms total of %u bytes\n",
-                        t->n_pwrites, t->pwrite_time_ms, t->pwrite_bytes);
+                logmsg(LOGMSG_WARN,
+                       "  %u pwrites took %u ms total of %u bytes\n",
+                       t->n_pwrites, MSEC(t->pwrite_time_us), t->pwrite_bytes);
             }
             if (t->n_memp_fgets > 0) {
                 logmsg(LOGMSG_WARN, "  %u __memp_fget calls took %u ms\n",
-                        t->n_memp_fgets, t->memp_fget_time_ms);
+                       t->n_memp_fgets, MSEC(t->memp_fget_time_us));
             }
             if (t->n_shallocs > 0 || t->n_shalloc_frees > 0) {
-                logmsg(LOGMSG_WARN, "  %u shallocs took %u ms, %u shalloc_frees took %u ms\n",
-                    t->n_shallocs, t->shalloc_time_ms, t->n_shalloc_frees,
-                    t->shalloc_free_time_ms);
+                logmsg(LOGMSG_WARN,
+                       "  %u shallocs took %u ms, %u shalloc_frees "
+                       "took %u ms\n",
+                       t->n_shallocs, MSEC(t->shalloc_time_us),
+                       t->n_shalloc_frees, MSEC(t->shalloc_free_time_us));
             }
         }
         if (rc == 0) {

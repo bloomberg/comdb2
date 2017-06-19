@@ -1722,18 +1722,18 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         unsigned n_preads = p->n_preads ? p->n_preads : 1;
         unsigned n_pwrites = p->n_pwrites ? p->n_pwrites : 1;
         logmsgf(LOGMSG_USER, out, "  %u lock waits took %u ms (%u ms/wait)\n",
-                p->n_lock_waits, p->lock_wait_time_ms,
-                p->lock_wait_time_ms / n_lock_waits);
-        logmsgf(LOGMSG_USER, out, "  %u preads took %u ms total of %u bytes\n", p->n_preads,
-                p->pread_time_ms, p->pread_bytes);
+                p->n_lock_waits, MSEC(p->lock_wait_time_us),
+                MSEC(p->lock_wait_time_us / n_lock_waits));
+        logmsgf(LOGMSG_USER, out, "  %u preads took %u ms total of %u bytes\n",
+                p->n_preads, MSEC(p->pread_time_us), p->pread_bytes);
         if (p->n_preads > 0)
             logmsgf(LOGMSG_USER, out, "  average pread time %u ms\n",
-                    p->pread_time_ms / n_preads);
+                    MSEC(p->pread_time_us) / n_preads);
         logmsgf(LOGMSG_USER, out, "  %u pwrites took %u ms total of %u bytes\n",
-                p->n_pwrites, p->pwrite_time_ms, p->pwrite_bytes);
+                p->n_pwrites, MSEC(p->pwrite_time_us), p->pwrite_bytes);
         if (p->n_pwrites > 0)
             logmsgf(LOGMSG_USER, out, "  average pwrite time %u ms\n",
-                    p->pwrite_time_ms / n_pwrites);
+                    MSEC(p->pwrite_time_us / n_pwrites));
     }
 
     else if (tokcmp(tok, ltok, "memdump") == 0) {

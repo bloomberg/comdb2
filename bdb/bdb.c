@@ -728,35 +728,37 @@ void bdb_print_stats(const struct bdb_thread_stats *st, const char *prefix,
     char s[128];
     if (st->n_lock_waits > 0) {
         snprintf(s, sizeof(s), "%s%u lock waits took %u ms (%u ms/wait)\n",
-                 prefix, st->n_lock_waits, st->lock_wait_time_ms,
-                 st->lock_wait_time_ms / st->n_lock_waits);
+                 prefix, st->n_lock_waits, MSEC(st->lock_wait_time_us),
+                 MSEC(st->lock_wait_time_us / st->n_lock_waits));
         printfn(s, context);
     }
     if (st->n_preads > 0) {
         snprintf(s, sizeof(s), "%s%u preads took %u ms total of %u bytes\n",
-                 prefix, st->n_preads, st->pread_time_ms, st->pread_bytes);
+                 prefix, st->n_preads, MSEC(st->pread_time_us),
+                 st->pread_bytes);
         printfn(s, context);
     }
     if (st->n_pwrites > 0) {
         snprintf(s, sizeof(s), "%s%u pwrites took %u ms total of %u bytes\n",
-                 prefix, st->n_pwrites, st->pwrite_time_ms, st->pwrite_bytes);
+                 prefix, st->n_pwrites, MSEC(st->pwrite_time_us),
+                 st->pwrite_bytes);
         printfn(s, context);
     }
     if (st->n_memp_fgets > 0) {
         snprintf(s, sizeof(s), "%s%u __memp_fget calls took %u ms\n", prefix,
-                 st->n_memp_fgets, st->memp_fget_time_ms);
+                 st->n_memp_fgets, MSEC(st->memp_fget_time_us));
         printfn(s, context);
     }
     if (st->n_memp_pgs > 0) {
         snprintf(s, sizeof(s), "%s%u __memp_pg calls took %u ms\n", prefix,
-                 st->n_memp_pgs, st->memp_pg_time_ms);
+                 st->n_memp_pgs, MSEC(st->memp_pg_time_us));
         printfn(s, context);
     }
     if (st->n_shallocs > 0 || st->n_shalloc_frees > 0) {
         snprintf(s, sizeof(s),
                  "%s%u shallocs took %u ms, %u shalloc_frees took %u ms\n",
-                 prefix, st->n_shallocs, st->shalloc_time_ms,
-                 st->n_shalloc_frees, st->shalloc_free_time_ms);
+                 prefix, st->n_shallocs, MSEC(st->shalloc_time_us),
+                 st->n_shalloc_frees, MSEC(st->shalloc_free_time_us));
         printfn(s, context);
     }
 }
