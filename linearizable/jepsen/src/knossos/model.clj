@@ -100,12 +100,12 @@
       :cas   (let [[cur new] (:value op)]
                (if (= cur value)
                  (CASRegister. new)
-                 (inconsistent (str ">> can't CAS " value " from " cur
+                 (inconsistent (str "can't CAS " value " from " cur
                                     " to " new))))
       :read  (if (or (nil? (:value op))
                      (= value (:value op)))
                r
-               (inconsistent (str ">> can't read " (:value op)
+               (inconsistent (str "can't read " (:value op)
                                   " from register " value)))))
   Object
   (toString [this] (pr-str value)))

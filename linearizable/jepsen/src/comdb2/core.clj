@@ -374,7 +374,7 @@
           (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
           (j/query c ["set max_retries 100000"])
           (try
-            (j/with-db-transaction [c c]
+            (let [updated (first (j/with-db-transaction [c c]
 
               (let [id   (first (:value op))
                     val' (second (:value op))
@@ -383,96 +383,77 @@
 
                 (case (:f op)
                   :read (do
-                           (info "Worker " (:process op) " READS val " val " uid " uid)
-                           (assoc op :type :ok, :value (independent/tuple id val))
+                           (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
                         )
 
                   :write (do
                            (if (nil? val)
                              (do
-                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid')
+                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
                              (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
                              )
                              (do
-                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid')
+                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
                              (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
                              )
-                           )
-                           (assoc op :type :ok))
+                           ))
 
-                  :cas (let [[expected-val new-val] val'
-                             cnt (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])]
+                  :cas (let [[expected-val new-val] val' 
+                             cnt (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])] 
                          (do
                          (if (zero? (first cnt))
-                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val')
-                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid'))
-                         (assoc op :type (if (zero? (first cnt))
-                                           :fail
-                                           :ok))
-                         )
-                         ))))))))
-    (teardown! [_ test])))
-
-(defn comdb2-cas-register-client-params
-  "Comdb2 register client"
-  [node]
-  (reify client/Client
-    (setup! [this test node] 
-      (j/with-db-connection [c conn-spec]
-        (do
-          (j/delete! c :register ["1 = 1"])
-          (comdb2-cas-register-client node))))
-
-    (invoke! [this test op]
-
-      (j/with-db-connection [c conn-spec]
-        (do
-          (j/query c ["set hasql on"])
-          (j/query c ["set transaction serializable"])
-          (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
-          (j/query c ["set max_retries 100000"])
-          (try
-            (j/with-db-transaction [c c]
-
-              (let [id   (first (:value op))
-                    val' (second (:value op))
-                    [val uid] (second (j/query c ["select val,uid from register where id = ?"
-                                       id] :as-arrays? true))
-                    uid' (+ (* 1000 (rand-int 100000)) (:process op))]
-
-                (case (:f op)
-                  :read (do
-                           (info "Worker " (:process op) " READS val " val " uid " uid)
-                           (assoc op :type :ok, :value (independent/tuple id val))
+                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val' " PRE-COMMIT")
+                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid' " PRE-COMMIT"))
+                           )
+                  )
+                 )
+                ) 
+             )) ; first /with txn
+          ] 
+              (case (:f op)
+                :read (do
+                        (info "Worker " (:process op) " READS SUCCESS")
+                        (assoc op :type :ok)
                         )
-
-                  :write (do
-                           (if (nil? val)
-                             (do
-                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid')
-                             (j/insert! c :register {:id id :val val' :uid uid'})
-                             )
-                             (do
-                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid')
-                             (j/update! c :register {:val val' :uid uid'} ["id = ?" id])
-                             )
-                           )
-                           (assoc op :type :ok))
-
-                  :cas (let [[expected-val new-val] val'
-                             cnt (j/update! c :register {:val new-val :uid uid'}
-                                            ["id = ? and val = ?"
-                                             id expected-val])]
-                         ; TODO here i am
-                         (do
-                         (if (zero? (first cnt))
-                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val')
-                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid'))
-                         (assoc op :type (if (zero? (first cnt))
-                                           :fail
-                                           :ok))
+                :write  (if (= updated 1) 
+                          (do
+                          (info "Worker " (:process op) " WRITE SUCCESS")
+                          (assoc op :type :ok)
+                          )
+                          (do
+                          (info "Worker " (:process op) " WRITE FAILED")
+                          (assoc op :type :fail)
+                          )
                          )
-                         ))))))))
+                :cas    (if (= updated 1)
+                          (do
+                          (info "Worker " (:process op) " CAS SUCCESS")
+                          (assoc op :type :ok)
+                          )
+                          (do
+                          (info "Worker " (:process op) " CAS FAILED")
+                          (assoc op :type :fail)
+                          )
+                         )
+                )
+              ) ; let
+            (catch java.sql.SQLException e 
+              (let [error (.getErrorCode e)]
+                (cond 
+                  (= error 2) (do 
+                               (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                               (assoc op :type :fail)
+                               )
+                  :else (throw e))
+              )
+            ) 
+          
+          
+          
+            ); try
+          ) ; do
+        ) ; with txn
+      ) ; invoke
     (teardown! [_ test])))
 
 
@@ -572,7 +553,7 @@
                       (->> (gen/mix [w cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 10))
+                           (gen/time-limit 60))
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
        :model       (model/cas-register-comdb2 [1 nil])
@@ -596,7 +577,7 @@
                       (->> (gen/mix [w cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 10)
+                           (gen/time-limit 60)
                            with-nemesis)
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
