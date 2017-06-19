@@ -504,6 +504,8 @@ struct sqlclntstate {
     uint8_t skip_peer_chk;
 
     char fingerprint[16];
+    int ncontext;
+    char **context;
 };
 
 /* Query stats. */
