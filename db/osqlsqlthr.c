@@ -764,8 +764,15 @@ retry:
                         }
 
                         rcout = -109;
-                    }
-                    else {
+                    } else if (osql->xerr.errval == ERR_NOT_DURABLE) {
+                        /* Ask the client to change nodes */
+                        if (gbl_extended_sql_debug_trace) {
+                            logmsg(LOGMSG_USER, "td=%u %s line %d got %d and setting rcout to "
+                                    "SQLITE_CLIENT_CHANGENODE,  errval is %d\n", pthread_self(), 
+                                    __func__, __LINE__, rc, osql->xerr.errval);
+                        }
+                        rcout = SQLITE_CLIENT_CHANGENODE;
+                    } else {
                         if (gbl_extended_sql_debug_trace) {
                             logmsg(LOGMSG_USER, "td=%u %s line %d got %d and setting rcout to SQLITE_ABORT, " 
                                     " errval is %d\n", pthread_self(), __func__, __LINE__, rc, 
