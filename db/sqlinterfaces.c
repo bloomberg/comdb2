@@ -1086,9 +1086,10 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
     if (gbl_extended_sql_debug_trace) {
         char cnonce[256] = {0};
         snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
-        logmsg(LOGMSG_USER, "%s line %d cnonce='%s' [%d][%d] sending last_row, "
+        logmsg(LOGMSG_USER, "%u: %s line %d cnonce='%s' [%d][%d] sending last_row, "
                         "selected=%u updated=%u deleted=%u inserted=%u\n",
-                func, line, cnonce, clnt->snapshot_file, clnt->snapshot_offset,
+                pthread_self(), func, line, cnonce, clnt->snapshot_file, 
+                clnt->snapshot_offset,
                 sql_response.effects->num_selected,
                 sql_response.effects->num_updated,
                 sql_response.effects->num_deleted,

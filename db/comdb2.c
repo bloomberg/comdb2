@@ -465,6 +465,7 @@ int gbl_sql_tranlevel_sosql_pref = 1; /* set this to 1 if everytime the
                                        * means sosql; this does not switch
                                        * all the users to sosql */
 
+int gbl_test_blkseq_replay_code = 0;
 int gbl_test_curtran_change_code = 0;
 int gbl_enable_block_offload = 0;
 int gbl_enable_pageorder_trace = 0;
@@ -2304,6 +2305,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         logmsg(LOGMSG_INFO,
                "Tables will be initialized with instant schema-change support\n");
         gbl_init_with_instant_sc = 1;
+    } else if (tokcmp(line, ltok, "dont_init_with_compr") == 0) {
+        gbl_init_with_compr = BDB_COMPRESS_NONE;
+        logmsg(LOGMSG_INFO, "New tables will not be compressed\n");
+    } else if (tokcmp(line, ltok, "dont_init_with_compr_blobs") == 0) {
+        gbl_init_with_compr_blobs = BDB_COMPRESS_NONE;
+        logmsg(LOGMSG_INFO, "Blobs in new tables will not be compressed\n");
     } else if (tokcmp(line, ltok, "init_with_compr") == 0) {
         tok = segtok(line, len, &st, &ltok);
         char *algo = tokdup(tok, ltok);
@@ -8521,6 +8528,9 @@ static void register_all_int_switches()
     register_int_switch("test_curtran_change", 
                         "Test change-curtran codepath (for debugging only)",
                         &gbl_test_curtran_change_code);
+    register_int_switch("test_blkseq_replay",
+                        "Test blkseq replay codepath (for debugging only)",
+                        &gbl_test_blkseq_replay_code);
     register_int_switch("skip_cget_in_db_put", 
                         "Don't perform a cget when we do a cput",
                         &gbl_skip_cget_in_db_put);
