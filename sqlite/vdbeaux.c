@@ -3558,32 +3558,32 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
 
 
     memset(p, 0, offsetof(intv_t, u.ds.prec));
-    p->type = htonl(pMem->du.tv.type);
-    p->sign = htonl(pMem->du.tv.sign);
+    p->type = pMem->du.tv.type;
+    p->sign = pMem->du.tv.sign;
 
     /* ds type */
     if( pMem->du.tv.type == INTV_DS_TYPE )
     {
-        p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
-        p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
-        p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
-        p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
-        p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac );
+        p->u.ds.days = pMem->du.tv.u.ds.days;
+        p->u.ds.hours = pMem->du.tv.u.ds.hours;
+        p->u.ds.mins = pMem->du.tv.u.ds.mins;
+        p->u.ds.sec = pMem->du.tv.u.ds.sec;
+        p->u.ds.frac = pMem->du.tv.u.ds.frac;
     }
     else if( pMem->du.tv.type == INTV_DSUS_TYPE )
     {
         /* For R5 millisecond interval compatiblity. */
-        p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
-        p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
-        p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
-        p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
-        p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac/1000 );
+        p->u.ds.days = pMem->du.tv.u.ds.days;
+        p->u.ds.hours = pMem->du.tv.u.ds.hours;
+        p->u.ds.mins = pMem->du.tv.u.ds.mins;
+        p->u.ds.sec = pMem->du.tv.u.ds.sec;
+        p->u.ds.frac = pMem->du.tv.u.ds.frac/1000;
     }
     /* ym type */
     else if( pMem->du.tv.type == INTV_YM_TYPE)
     {
-        p->u.ym.years = htonl( pMem->du.tv.u.ym.years );
-        p->u.ym.months = htonl( pMem->du.tv.u.ym.months );
+        p->u.ym.years = pMem->du.tv.u.ym.years;
+        p->u.ym.months = pMem->du.tv.u.ym.months;
     }
     else
     {
@@ -3609,19 +3609,19 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
 
 
     bzero(p, sizeof(*p));
-    p->type = htonl(pMem->du.tv.type);
-    p->sign = htonl(pMem->du.tv.sign);
+    p->type = pMem->du.tv.type;
+    p->sign = pMem->du.tv.sign;
 
     /* ds type */
     if( pMem->du.tv.type == INTV_DS_TYPE || pMem->du.tv.type == INTV_DSUS_TYPE )
     {
-        p->u.ds.days = htonl( pMem->du.tv.u.ds.days );
-        p->u.ds.hours = htonl( pMem->du.tv.u.ds.hours );
-        p->u.ds.mins = htonl( pMem->du.tv.u.ds.mins );
-        p->u.ds.sec = htonl( pMem->du.tv.u.ds.sec );
-        p->u.ds.frac = htonl( pMem->du.tv.u.ds.frac );
-        p->u.ds.prec = htons( pMem->du.tv.u.ds.prec );
-        p->u.ds.conv = htons( pMem->du.tv.u.ds.conv );
+        p->u.ds.days = pMem->du.tv.u.ds.days;
+        p->u.ds.hours = pMem->du.tv.u.ds.hours;
+        p->u.ds.mins = pMem->du.tv.u.ds.mins;
+        p->u.ds.sec = pMem->du.tv.u.ds.sec;
+        p->u.ds.frac = pMem->du.tv.u.ds.frac;
+        p->u.ds.prec = pMem->du.tv.u.ds.prec;
+        p->u.ds.conv = pMem->du.tv.u.ds.conv;
     }
     /* ym type */
     else if( pMem->du.tv.type == INTV_YM_TYPE)
@@ -3631,7 +3631,7 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
     }
     else
     {
-       p->u.dec = pMem->du.tv.u.dec; /*TODO LINUX*/
+       p->u.dec = pMem->du.tv.u.dec;
     }
 
 #ifdef _SUN_SOURCE
@@ -3896,35 +3896,35 @@ static inline u32 sqlite3VdbeSerialGet(
       p = &scratch;
 #endif
 
-      pMem->du.tv.type = ntohl(p->type);
-      pMem->du.tv.sign = ntohl(p->sign);
+      pMem->du.tv.type = p->type;
+      pMem->du.tv.sign = p->sign;
 
       /* ds type */
       if( pMem->du.tv.type == INTV_DS_TYPE )
       {
-        pMem->du.tv.u.ds.days = ntohl(p->u.ds.days);
-        pMem->du.tv.u.ds.hours = ntohl(p->u.ds.hours);
-        pMem->du.tv.u.ds.mins = ntohl(p->u.ds.mins);
-        pMem->du.tv.u.ds.sec = ntohl(p->u.ds.sec);
-        pMem->du.tv.u.ds.frac = ntohl(p->u.ds.frac);
+        pMem->du.tv.u.ds.days = p->u.ds.days;
+        pMem->du.tv.u.ds.hours = p->u.ds.hours;
+        pMem->du.tv.u.ds.mins = p->u.ds.mins;
+        pMem->du.tv.u.ds.sec = p->u.ds.sec;
+        pMem->du.tv.u.ds.frac = p->u.ds.frac;
         pMem->du.tv.u.ds.prec = DTTZ_PREC_MSEC;
         pMem->du.tv.u.ds.conv = 1;
       }
       else if( pMem->du.tv.type == INTV_DSUS_TYPE )
       {
-        pMem->du.tv.u.ds.days = ntohl(p->u.ds.days);
-        pMem->du.tv.u.ds.hours = ntohl(p->u.ds.hours);
-        pMem->du.tv.u.ds.mins = ntohl(p->u.ds.mins);
-        pMem->du.tv.u.ds.sec = ntohl(p->u.ds.sec);
-        pMem->du.tv.u.ds.frac = ntohl(p->u.ds.frac) * 1000;
+        pMem->du.tv.u.ds.days = p->u.ds.days;
+        pMem->du.tv.u.ds.hours = p->u.ds.hours;
+        pMem->du.tv.u.ds.mins = p->u.ds.mins;
+        pMem->du.tv.u.ds.sec = p->u.ds.sec;
+        pMem->du.tv.u.ds.frac = p->u.ds.frac * 1000;
         pMem->du.tv.u.ds.prec = DTTZ_PREC_USEC;
         pMem->du.tv.u.ds.conv = 1;
       }
       /* ym type */
       else if( pMem->du.tv.type == INTV_YM_TYPE )
       {
-        pMem->du.tv.u.ym.years = ntohl(p->u.ym.years);
-        pMem->du.tv.u.ym.months = ntohl(p->u.ym.months);
+        pMem->du.tv.u.ym.years = p->u.ym.years;
+        pMem->du.tv.u.ym.months = p->u.ym.months;
       }
       else
       {
@@ -3944,25 +3944,25 @@ static inline u32 sqlite3VdbeSerialGet(
       p = &scratch;
 #endif
 
-      pMem->du.tv.type = ntohl(p->type);
-      pMem->du.tv.sign = ntohl(p->sign);
+      pMem->du.tv.type = p->type;
+      pMem->du.tv.sign = p->sign;
 
       /* ds type */
       if( pMem->du.tv.type == INTV_DS_TYPE || pMem->du.tv.type == INTV_DSUS_TYPE )
       {
-        pMem->du.tv.u.ds.days = ntohl(p->u.ds.days);
-        pMem->du.tv.u.ds.hours = ntohl(p->u.ds.hours);
-        pMem->du.tv.u.ds.mins = ntohl(p->u.ds.mins);
-        pMem->du.tv.u.ds.sec = ntohl(p->u.ds.sec);
-        pMem->du.tv.u.ds.frac = ntohl(p->u.ds.frac);
-        pMem->du.tv.u.ds.prec = ntohs(p->u.ds.prec);
-        pMem->du.tv.u.ds.conv = ntohs(p->u.ds.conv);
+        pMem->du.tv.u.ds.days = p->u.ds.days;
+        pMem->du.tv.u.ds.hours = p->u.ds.hours;
+        pMem->du.tv.u.ds.mins = p->u.ds.mins;
+        pMem->du.tv.u.ds.sec = p->u.ds.sec;
+        pMem->du.tv.u.ds.frac = p->u.ds.frac;
+        pMem->du.tv.u.ds.prec = p->u.ds.prec;
+        pMem->du.tv.u.ds.conv = p->u.ds.conv;
       }
       /* ym type */
       else if( pMem->du.tv.type == INTV_YM_TYPE )
       {
-        pMem->du.tv.u.ym.years = ntohl(p->u.ym.years);
-        pMem->du.tv.u.ym.months = ntohl(p->u.ym.months);
+        pMem->du.tv.u.ym.years = p->u.ym.years;
+        pMem->du.tv.u.ym.months = p->u.ym.months;
       }
       else
       {
@@ -4004,10 +4004,10 @@ static inline u32 sqlite3VdbeSerialGet(
 #endif
 
       /* datetime */
-      pMem->du.dt.dttz_sec = flibc_ntohll( p->dttz_sec );
-      pMem->du.dt.dttz_frac = ntohl( p->dttz_frac );
-      pMem->du.dt.dttz_prec = ntohs( p->dttz_prec );
-      pMem->du.dt.dttz_conv = ntohs( p->dttz_conv );
+      pMem->du.dt.dttz_sec = p->dttz_sec;
+      pMem->du.dt.dttz_frac = p->dttz_frac;
+      pMem->du.dt.dttz_prec = p->dttz_prec;
+      pMem->du.dt.dttz_conv = p->dttz_conv;
       pMem->flags = MEM_Datetime;
       pMem->tz = NULL;  /* make sure it's not garbage */
       return sizeof(dttz_t);
