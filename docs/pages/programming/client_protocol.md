@@ -55,6 +55,26 @@ Example code in  python:
   client_socket.send("newsql\n")
 ```
 
+Another faster way of starting database connection is by using pmux route. Pmux will route socket to database on receiving newline terminated string in format:
+
+```
+"rte comdb2/replication/<dbname>\n"
+```
+
+Example code in  python:
+```python
+def portmux_getsocket(host, dbname):
+  client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  command = "rte comdb2/replication/" + dbname  +"\n"
+  client_socket.connect((host, 5105))
+  client_socket.send(command)
+  byts = client_socket.recv(32)
+  port = int(byts)
+  return client_socket
+
+client_socket =  portmux_getsocket(machine, dbname)
+client_socket.send("newsql\n")
+```
 
 SQL Header
 ------
