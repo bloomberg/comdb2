@@ -3521,7 +3521,7 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
   if( serial_type == 6 )
   {
     int64_t *p=(int64_t *)buf;
-    *p=flibc_htonll( pMem->u.i );
+    *p=pMem->u.i;
     return sizeof(long long);
   }
 
@@ -3654,14 +3654,14 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
 
 
     bzero(p, sizeof(*p));
-    p->dttz_sec = flibc_htonll( pMem->du.dt.dttz_sec );
+    p->dttz_sec = pMem->du.dt.dttz_sec;
     if( pMem->du.dt.dttz_prec == DTTZ_PREC_USEC )
       /* For R5 millisecond datetime compatiblity. */
-      p->dttz_frac = htonl( pMem->du.dt.dttz_frac/1000 );
+      p->dttz_frac = pMem->du.dt.dttz_frac/1000;
     else
-      p->dttz_frac = htonl( pMem->du.dt.dttz_frac );
-    p->dttz_prec = htons( DTTZ_PREC_MSEC );
-    p->dttz_conv = htons( pMem->du.dt.dttz_conv );
+      p->dttz_frac = pMem->du.dt.dttz_frac;
+    p->dttz_prec = DTTZ_PREC_MSEC;
+    p->dttz_conv = pMem->du.dt.dttz_conv;
 
 #ifdef _SUN_SOURCE
     memcpy(buf, &scratch, sizeof(dttz_t));
@@ -3832,7 +3832,7 @@ static inline u32 sqlite3VdbeSerialGet(
 #else
       pMem->u.i = *(int64_t *)buf;
 #endif
-      pMem->u.i = flibc_ntohll(pMem->u.i);
+      pMem->u.i = pMem->u.i;
       pMem->flags = MEM_Int;
       return 8;
     }
@@ -3983,10 +3983,10 @@ static inline u32 sqlite3VdbeSerialGet(
 #endif
 
       /* datetime */
-      pMem->du.dt.dttz_sec = flibc_ntohll( p->dttz_sec );
-      pMem->du.dt.dttz_frac = ntohl( p->dttz_frac );
-      pMem->du.dt.dttz_prec = ntohs( p->dttz_prec );
-      pMem->du.dt.dttz_conv = ntohs( p->dttz_conv );
+      pMem->du.dt.dttz_sec = p->dttz_sec;
+      pMem->du.dt.dttz_frac = p->dttz_frac;
+      pMem->du.dt.dttz_prec = p->dttz_prec;
+      pMem->du.dt.dttz_conv = p->dttz_conv;
       if( pMem->du.dt.dttz_prec != DTTZ_PREC_MSEC ) /* data from R5 */
         pMem->du.dt.dttz_conv = 1;
       pMem->flags = MEM_Datetime;
