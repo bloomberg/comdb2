@@ -311,7 +311,7 @@ static void thd_dump_nolock(void)
             opc = thd->iq->opcode;
             logmsg(LOGMSG_USER, "busy  tid %-5d  time %5d ms  %-6s (%-3d) "
                                 "%-20s where %s %s\n",
-                   thd->tid, MSEC(nowus - thd->iq->nowus), req2a(opc), opc,
+                   thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc,
                    getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
         }
 
@@ -380,7 +380,7 @@ void thd_dump(void)
             logmsg(LOGMSG_USER,
                    "busy  tid %-5d  time %5d ms  %-6s (%-3d) %-20s where %s "
                    "%s\n",
-                   thd->tid, MSEC(nowus - thd->iq->nowus),
+                   thd->tid, U2M(nowus - thd->iq->nowus),
                    req2a(thd->iq->opcode), thd->iq->opcode, getorigin(thd->iq),
                    thd->iq->where, thd->iq->gluewhere);
         }

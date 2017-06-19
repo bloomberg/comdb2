@@ -1857,7 +1857,7 @@ static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
         return;
     if (clnt->deque_timeus - clnt->enque_timeus > 0)
         reqlog_logf(logger, REQL_INFO, "queuetime took %dms",
-                    MSEC(clnt->deque_timeus - clnt->enque_timeus));
+                    U2M(clnt->deque_timeus - clnt->enque_timeus));
     reqlog_set_queue_time(logger, clnt->deque_timeus - clnt->enque_timeus);
 }
 

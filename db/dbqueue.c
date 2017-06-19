@@ -1525,29 +1525,29 @@ static void *dbqueue_consume_thread(void *arg)
                    diffms, consumer->db->dbname, consumer->consumern);
             if (t->n_lock_waits > 0) {
                 logmsg(LOGMSG_WARN, "  %u lock waits took %u ms (%u ms/wait)\n",
-                       t->n_lock_waits, MSEC(t->lock_wait_time_us),
-                       MSEC(t->lock_wait_time_us / t->n_lock_waits));
+                       t->n_lock_waits, U2M(t->lock_wait_time_us),
+                       U2M(t->lock_wait_time_us / t->n_lock_waits));
             }
             if (t->n_preads > 0) {
                 logmsg(LOGMSG_WARN,
                        "  %u preads took %u ms total of %u bytes\n",
-                       t->n_preads, MSEC(t->pread_time_us), t->pread_bytes);
+                       t->n_preads, U2M(t->pread_time_us), t->pread_bytes);
             }
             if (t->n_pwrites > 0) {
                 logmsg(LOGMSG_WARN,
                        "  %u pwrites took %u ms total of %u bytes\n",
-                       t->n_pwrites, MSEC(t->pwrite_time_us), t->pwrite_bytes);
+                       t->n_pwrites, U2M(t->pwrite_time_us), t->pwrite_bytes);
             }
             if (t->n_memp_fgets > 0) {
                 logmsg(LOGMSG_WARN, "  %u __memp_fget calls took %u ms\n",
-                       t->n_memp_fgets, MSEC(t->memp_fget_time_us));
+                       t->n_memp_fgets, U2M(t->memp_fget_time_us));
             }
             if (t->n_shallocs > 0 || t->n_shalloc_frees > 0) {
                 logmsg(LOGMSG_WARN,
                        "  %u shallocs took %u ms, %u shalloc_frees "
                        "took %u ms\n",
-                       t->n_shallocs, MSEC(t->shalloc_time_us),
-                       t->n_shalloc_frees, MSEC(t->shalloc_free_time_us));
+                       t->n_shallocs, U2M(t->shalloc_time_us),
+                       t->n_shalloc_frees, U2M(t->shalloc_free_time_us));
             }
         }
         if (rc == 0) {

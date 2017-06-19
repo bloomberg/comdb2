@@ -55,11 +55,11 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 #include <poll.h>
 #include "logmsg.h"
 
-#ifndef MSEC
-#  define MSEC(usec) ((usec) / 1000)
+#ifndef U2M
+#  define U2M(usec) ((usec) / 1000)
 #endif
-#ifndef USEC
-#  define USEC(msec) ((msec) * 1000ULL)
+#ifndef M2U
+#  define M2U(msec) ((msec) * 1000ULL)
 #endif
 uint64_t bb_berkdb_fasttime(void);
 
@@ -538,7 +538,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 
 				snprintf(s, sizeof(s),
 				    "LONG PREAD (%d) %d ms fd %d\n",
-				    (int)pagesize, MSEC(x2 - x1), fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else if (F_ISSET(fhp, DB_FH_DIRECT))
@@ -592,13 +592,13 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				t->pwrite_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > USEC(__berkdb_write_alarm_ms) &&
+			if ((x2 - x1) > M2U(__berkdb_write_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PWRITE (%d) %d ms fd %d\n",
-				    (int)pagesize, MSEC(x2 - x1), fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else {
@@ -754,7 +754,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 
 				snprintf(s, sizeof(s),
 				    "LONG PREAD (%d) %d ms fd %d\n",
-				    (int)pagesize, MSEC(x2 - x1), fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else if (F_ISSET(fhp, DB_FH_DIRECT))
@@ -808,13 +808,13 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				t->pwrite_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > USEC(__berkdb_write_alarm_ms) &&
+			if ((x2 - x1) > M2U(__berkdb_write_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PWRITE (%d) %d ms fd %d\n",
-				    (int)pagesize, MSEC(x2 - x1), fhp->fd);
+				    (int)pagesize, U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		} else {
@@ -1178,7 +1178,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 
 				snprintf(s, sizeof(s),
 				    "LONG PREADV (%d) %d ms "
-				    "fd %d\n", (int)(*niop), MSEC(x2 - x1), fhp->fd);
+				    "fd %d\n", (int)(*niop), U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		}
@@ -1229,14 +1229,14 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 				t->pwrite_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > USEC(__berkdb_write_alarm_ms)
+			if ((x2 - x1) > M2U(__berkdb_write_alarm_ms)
 			    && __berkdb_trace_func) {
 				char s[80];
 
 				snprintf(s, sizeof(s),
 				    "LONG PWRITEV (%d) %d ms "
 				    " fd %d\n",
-				    (int)(nobufs * pagesize), MSEC(x2 - x1), fhp->fd);
+				    (int)(nobufs * pagesize), U2M(x2 - x1), fhp->fd);
 				__berkdb_trace_func(s);
 			}
 		}
