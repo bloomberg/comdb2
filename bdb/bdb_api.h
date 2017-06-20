@@ -630,6 +630,10 @@ tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
                            unsigned int flags);
 tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
                                   unsigned long long ltranid);
+void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid);
+void bdb_get_tran_lockerid(tran_type *tran, uint32_t *lockerid);
+void *bdb_get_physical_tran(tran_type *ltran);
+void bdb_ltran_get_schema_lock(tran_type *ltran);
 
 tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state,
                                   int has_qyery_isolation, int trak,
@@ -1340,8 +1344,8 @@ int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
                     int create_override, int *bdberr);
 int bdb_llmeta_set_tables(tran_type *input_trans, char **tblnames,
                           const int *dbnums, int numdbs, int *bdberr);
-int bdb_llmeta_get_tables(char **tblnames, int *dbnums, size_t maxnumtbls,
-                          int *fndnumtbls, int *bdberr);
+int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
+                          size_t maxnumtbls, int *fndnumtbls, int *bdberr);
 bdb_state_type *bdb_llmeta_bdb_state(void);
 
 int bdb_append_file_version(char *str_buf, size_t buflen,

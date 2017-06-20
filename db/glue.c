@@ -285,6 +285,8 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
     int bdberr;
     void *bdb_handle = bdb_handle_from_ireq(iq);
     struct dbenv *dbenv = dbenv_from_ireq(iq);
+    int rc = 0;
+    tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
 
     if (!logical) {
@@ -295,8 +297,22 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
 
         *out_trans = bdb_tran_begin_set_retries(bdb_handle, parent_trans,
                                                 retries, &bdberr);
-    } else
+    } else {
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
+        if (iq->tranddl && sc) {
+            bdb_ltran_get_schema_lock(*out_trans);
+            int get_physical_transaction(bdb_state_type * bdb_state,
+                                         tran_type * logical_tran,
+                                         tran_type * *outtran);
+            rc = get_physical_transaction(bdb_handle, *out_trans,
+                                          &physical_tran);
+            if (rc) {
+                logmsg(LOGMSG_FATAL, "%s :failed to get physical_tran\n",
+                       __func__);
+                abort();
+            }
+        }
+    }
 
     iq->gluewhere = "bdb_tran_begin done";
     if (*out_trans == 0) {
@@ -647,7 +663,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     int sync;
     int start_ms, end_ms;
 
-    sync = dbenv->rep_sync;
+    sync = iq->sc_pending ? REP_SYNC_FULL : dbenv->rep_sync;
 
     /*wait for synchronization, if necessary */
     start_ms = time_epochms();
@@ -3218,7 +3234,7 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
 
-    rc = reload_schema(table, csc2);
+    rc = reload_schema(table, csc2, NULL);
 
     rc2 = create_sqlmaster_records(NULL);
     create_master_tables(); /* create sql statements */

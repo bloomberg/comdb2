@@ -1436,6 +1436,7 @@ cleanup:
 /* gets all the tables' names and dbnumbers  from the low level meta table.
  * returns <0 on failure or 0 on success */
 int bdb_llmeta_get_tables(
+    tran_type *input_trans,
     char **tblnames,   /* will be populated with the table's names */
     int *dbnums,       /* will be populated with the table's dbnums (or 0
                         * if a table doesn't have a dbnum) */
@@ -1500,8 +1501,8 @@ int bdb_llmeta_get_tables(
 
 retry:
     /* try to fetch the version number */
-    rc = bdb_lite_exact_fetch(llmeta_bdb_state, key, p_outbuf, outbuflen,
-                              &fndlen, bdberr);
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, input_trans, key, p_outbuf,
+                                   outbuflen, &fndlen, bdberr);
 
     /* handle return codes */
     if (rc && *bdberr != BDBERR_NOERROR) {

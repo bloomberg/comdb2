@@ -697,16 +697,9 @@ static void osql_scdone_commit_callback(struct ireq *iq)
 {
     int bdberr;
     if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
-        llog_scdone_t *s;
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            s = iq->sc->scdone;
-            if (s) {
-                bdb_llog_scdone(s->handle, s->type, 1, &bdberr);
-                free(s);
-                iq->sc->scdone = NULL;
-            }
             sc_next = iq->sc->sc_next;
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
@@ -721,11 +714,6 @@ static void osql_scdone_abort_callback(struct ireq *iq)
         while (iq->sc != NULL) {
             int backout_schema_change(struct ireq * iq);
             struct schema_change_type *sc_next;
-            llog_scdone_t *s = iq->sc->scdone;
-            if (s) {
-                free(s);
-                iq->sc->scdone = NULL;
-            }
             backout_schema_change(iq);
             sc_next = iq->sc->sc_next;
             free_schema_change_type(iq->sc);

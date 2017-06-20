@@ -2501,6 +2501,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int delayed = 0;
 
     int hascommitlock = 0;
+    if (iq->tranddl) rowlocks = 1;
 
     /* zero this out very high up or we can crash if we get to backout: without
      * having initialised this. */
@@ -2752,7 +2753,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     } else {
         /* we dont have nested transaction support here.  we play games with
            writing the blkseq record differently in rowlocks mode */
-        irc = trans_start_logical(iq, &trans);
+        if (iq->tranddl)
+            irc = trans_start_logical_sc(iq, &trans);
+        else
+            irc = trans_start_logical(iq, &trans);
         parent_trans = NULL;
 
         if (irc != 0) {

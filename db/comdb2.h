@@ -1432,6 +1432,7 @@ struct ireq {
     uint64_t sc_seed;
     struct schema_change_type *sc_pending;
     int sc_locked;
+    int tranddl;
 };
 
 /* comdb array struct */
@@ -1951,6 +1952,7 @@ int get_elect_time_microsecs(void); /* get election time in seconds */
 
 /* open files and db. returns db backend handle */
 int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv);
+int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv);
 int llmeta_dump_mapping(struct dbenv *dbenv);
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                    const char *table, int err);
@@ -2000,6 +2002,7 @@ int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             int retries);
 int trans_start_logical(struct ireq *, tran_type **out);
+int trans_start_logical_sc(struct ireq *, tran_type **out);
 int is_rowlocks_transaction(tran_type *);
 int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
@@ -2356,7 +2359,7 @@ void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db(struct db *db, int add);
 void replace_db_idx(struct db *p_db, int idx, int add);
-int reload_schema(char *table, const char *csc2);
+int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,

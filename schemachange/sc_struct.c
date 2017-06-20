@@ -87,7 +87,6 @@ void free_schema_change_type(struct schema_change_type *s)
         pthread_mutex_destroy(&s->mtx);
 
         if (s->sb && s->must_close_sb) close_appsock(s->sb);
-        if (s->scdone) free(s->scdone);
         if (!s->onstack) {
             free(s);
             s = NULL;
@@ -811,7 +810,7 @@ int print_status(struct schema_change_type *s)
  * if there were changes on disk and we are NOT using low level meta table
  * this expects the table to be bdb_close_only already, if we are using the
  * llmeta this function will do it for us */
-int reload_schema(char *table, const char *csc2)
+int reload_schema(char *table, const char *csc2, tran_type *tran)
 {
     struct db *db;
     int rc;
@@ -889,23 +888,23 @@ int reload_schema(char *table, const char *csc2)
         }
 
         /* reopen db */
-        newdb->handle = bdb_open_more(
+        newdb->handle = bdb_open_more_tran(
             table, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
             newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
             newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-            thedb->bdb_env, &bdberr);
+            thedb->bdb_env, tran, &bdberr);
         logmsg(LOGMSG_DEBUG, "reload_schema handle %08x bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
 
-        rc = bdb_get_csc2_highest(NULL, table, &newdb->version, &bdberr);
+        rc = bdb_get_csc2_highest(tran, table, &newdb->version, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
             /* FIXME */
             exit(1);
         }
 
-        set_odh_options(newdb);
+        set_odh_options_tran(newdb, tran);
         transfer_db_settings(db, newdb);
         restore_constraint_pointers(db, newdb);
 
@@ -930,7 +929,7 @@ int reload_schema(char *table, const char *csc2)
         free(newdb);
 
         commit_schemas(table);
-        fix_lrl_ixlen();
+        fix_lrl_ixlen_tran(tran);
         update_dbstore(db);
 
         free(oldhandle);
@@ -945,19 +944,20 @@ int reload_schema(char *table, const char *csc2)
         /* fastinit.  reopen table handle (should be fast), no faffing with
          * schemas */
         /* faffing with schema required. schema can change in fastinit */
-        db->handle = bdb_open_more(
+        db->handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, &bdberr);
+            db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
+            &bdberr);
         logmsg(LOGMSG_DEBUG,
                "reload_schema (fastinit case) handle %08x bdberr %d\n",
                db->handle, bdberr);
         if (!db->handle || bdberr != 0) return 1;
 
-        set_odh_options(db);
+        set_odh_options_tran(db, tran);
     }
 
-    if (get_db_bthash(db, &bthashsz) != 0) bthashsz = 0;
+    if (get_db_bthash_tran(db, &bthashsz, tran) != 0) bthashsz = 0;
 
     if (bthashsz) {
         logmsg(LOGMSG_INFO,

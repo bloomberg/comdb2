@@ -5162,8 +5162,8 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5290,8 +5290,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
     struct db *db;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5429,7 +5429,7 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
  *
  * the db never uses this file it is only to make it easier for people to tell
  * what files belong to what parts of a table, etc */
-int llmeta_dump_mapping(struct dbenv *dbenv)
+int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
 {
     int i, rc;
     char *fname, fname_tail[] = "_file_vers_map";
@@ -5481,8 +5481,8 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         unsigned long long version_num;
 
         /* print the main data file's version number */
-        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
-                                      0 /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran, 0 /*dtanum*/,
+                                      &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
                             "number for %s's main data files\n",
@@ -5498,7 +5498,7 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
 
         /* print the indicies' version numbers */
         for (j = 1; j <= dbenv->dbs[i]->numblobs; ++j) {
-            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran,
                                           j /*dtanum*/, &version_num,
                                           &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
@@ -5516,7 +5516,7 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         /* print the indicies' version numbers */
         sbuf2printf(sbfile, "\tindex files\n");
         for (j = 0; j < dbenv->dbs[i]->nix; ++j) {
-            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, tran,
                                            j /*dtanum*/, &version_num,
                                            &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
@@ -5535,6 +5535,11 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
 done:
     sbuf2close(sbfile);
     return rc;
+}
+
+int llmeta_dump_mapping(struct dbenv *dbenv)
+{
+    return llmeta_dump_mapping_tran(NULL, dbenv);
 }
 
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,

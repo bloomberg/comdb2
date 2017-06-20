@@ -6363,11 +6363,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
+            void *ptran = bdb_get_physical_tran(trans);
             if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
                 return -1;
             }
             if (iq->sc->db) iq->usedb = iq->sc->db;
-            rc = finalize_schema_change(iq, trans);
+            rc = finalize_schema_change(iq, ptran);
             if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
             }
@@ -7035,13 +7036,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             strcmp(sc->original_master_node, gbl_mynode))
             sc->resume = 1;
 
+        void *ptran = bdb_get_physical_tran(trans);
+        bdb_ltran_get_schema_lock(trans);
         iq->sc = sc;
         if (sc->db == NULL) {
             sc->db = getdbbyname(sc->table);
         }
-        sc->tran = trans;
+        sc->tran = ptran;
         if (sc->db) iq->usedb = sc->db;
-        rc = start_schema_change_tran(iq, trans);
+        rc = start_schema_change_tran(iq, ptran);
         if (rc != SC_COMMIT_PENDING) {
             iq->sc = NULL;
         } else {

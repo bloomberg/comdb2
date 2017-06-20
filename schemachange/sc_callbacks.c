@@ -556,7 +556,8 @@ static int replicant_reload_views(const char *name)
  * their copies of the modified database
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
-int scdone_callback(const char table[], scdone_t type)
+int scdone_callback(bdb_state_type *bdb_state, const char table[],
+                    scdone_t type)
 {
     switch (type) {
     case luareload: return reload_lua();
@@ -585,27 +586,31 @@ int scdone_callback(const char table[], scdone_t type)
     int bdberr;
     int highest_ver;
     int dbnum;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
 
     struct db *olddb = getdbbyname(table);
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,
+               __LINE__, bdberr);
+        rc = bdberr;
+        goto done;
+    }
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
     if (olddb) {
         /* protect us from getting rep_handle_dead'ed to death */
-        rc = bdb_get_csc2_highest(NULL, table, &highest_ver, &bdberr);
+        rc = bdb_get_csc2_highest(tran, table, &highest_ver, &bdberr);
         if (rc && bdberr == BDBERR_DEADLOCK) {
-            rc = bdberr;
-            goto done;
-        }
-
-        tran = bdb_start_ltran_rep_sc(olddb->handle, get_id(olddb->handle));
-        if (tran == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n",
-                   __FILE__, __LINE__, bdberr);
             rc = bdberr;
             goto done;
         }
     }
 
     if (type != drop) {
-        if (get_csc2_file(table, -1, &csc2text, NULL)) {
+        if (get_csc2_file_tran(table, -1, &csc2text, NULL, tran)) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
                    table);
             exit(1);
@@ -622,7 +627,7 @@ int scdone_callback(const char table[], scdone_t type)
                "Replicant setting compression flags for table:%s\n", table);
     } else if (type == add && add_new_db) {
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
-        if (add_table_to_environment(table_copy, csc2text, NULL, NULL, NULL)) {
+        if (add_table_to_environment(table_copy, csc2text, NULL, NULL, tran)) {
             logmsg(LOGMSG_FATAL, "%s: error adding table "
                                  "%s.\n",
                    __func__, table);
@@ -656,7 +661,7 @@ int scdone_callback(const char table[], scdone_t type)
         int saved_broken_max_rec_sz = gbl_broken_max_rec_sz;
         if (db->lrl > COMDB2_MAX_RECORD_SIZE)
             gbl_broken_max_rec_sz = db->lrl - COMDB2_MAX_RECORD_SIZE;
-        if (reload_schema(table_copy, csc2text)) {
+        if (reload_schema(table_copy, csc2text, tran)) {
             logmsg(LOGMSG_FATAL, "%s: error reloading schema for %s.\n",
                    __func__, table);
             exit(1);
@@ -684,8 +689,8 @@ int scdone_callback(const char table[], scdone_t type)
         exit(1);
     }
 
-    set_odh_options(db);
-    db->tableversion = table_version_select(db, NULL);
+    set_odh_options_tran(db, tran);
+    db->tableversion = table_version_select(db, tran);
 
     /* Make sure to add a version 1 schema for instant-schema change tables */
     if (add_new_db && db->odh && db->instant_schema_change) {
@@ -711,14 +716,14 @@ int scdone_callback(const char table[], scdone_t type)
     }
 
     ++gbl_dbopen_gen;
-    llmeta_dump_mapping(thedb);
-    llmeta_dump_mapping_table(thedb, table, 1);
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
 
     /* Fetch the correct dbnum for this table.  We need this step because db
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch
      * it from there. */
-    dbnum = llmeta_get_dbnum(db->dbname, &bdberr);
+    dbnum = llmeta_get_dbnum_tran(tran, db->dbname, &bdberr);
     if (dbnum == -1) {
         logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
                db->dbname);
@@ -727,11 +732,12 @@ int scdone_callback(const char table[], scdone_t type)
     }
     db->dbnum = dbnum;
 
-    fix_lrl_ixlen();
+    fix_lrl_ixlen_tran(tran);
 
     rc = 0;
 done:
     if (tran) {
+        bdb_set_tran_lockerid(tran, lid);
         rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",

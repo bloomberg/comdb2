@@ -76,7 +76,7 @@ int check_sc_ok(struct schema_change_type *s)
     return 0;
 }
 
-int llmeta_get_dbnum(char *tablename, int *bdberr)
+int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr)
 {
     int rc;
     int dbnums[MAX_NUM_TABLES];
@@ -85,7 +85,7 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
     int i;
     int dbnum = -1;
 
-    rc = bdb_llmeta_get_tables((char **)&tblnames, dbnums, MAX_NUM_TABLES,
+    rc = bdb_llmeta_get_tables(tran, (char **)&tblnames, dbnums, MAX_NUM_TABLES,
                                &numtbls, bdberr);
     if (rc) {
         /* TODO: errors */
@@ -100,6 +100,11 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
         free(tblnames[i]);
     }
     return dbnum;
+}
+
+int llmeta_get_dbnum(char *tablename, int *bdberr)
+{
+    return llmeta_get_dbnum_tran(NULL, tablename, bdberr);
 }
 
 /* careful this can cause overflows, do not use */
