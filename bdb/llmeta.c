@@ -7935,11 +7935,6 @@ done:
     return rc;
 }
 
-// *******************************************************************************************************************************************************
-//
-// ------------------------------------------------------------------- REMOVE: SEQUENCES -----------------------------------------------------------------
-//
-// *******************************************************************************************************************************************************
 struct seq_key {
     int file_type;
     char name[LLMETA_TBLLEN + 1];
@@ -7952,8 +7947,9 @@ struct seq_data {
     /* Basic Attributes */
     long long min_val; /* Values dispensed must be greater than or equal to min_val */
     long long max_val; /* Values dispensed must be less than or equal to max_val */
-    long long increment; /* Normal difference between two consecutively dispensed values */
-    bool cycle; /* If cycling values is permitted */
+    long long increment; /* Normal difference between two consecutively
+                            dispensed values */
+    bool cycle;          /* If cycling values is permitted */
 
     /* Synchronization with llmeta */
     long long start_val; /* Next value to be dispensed from llmeta into memory */
@@ -7964,18 +7960,18 @@ struct seq_data {
 };
 
 static uint8_t *llmeta_sequence_key_put(struct seq_key *key, char *p_buf,
-                                     char *p_buf_end) {
-    if (p_buf_end - p_buf < sizeof(struct seq_key))
-        return NULL;
+                                        char *p_buf_end)
+{
+    if (p_buf_end - p_buf < sizeof(struct seq_key)) return NULL;
     p_buf = buf_put(&key->file_type, sizeof(key->file_type), p_buf, p_buf_end);
     p_buf = buf_no_net_put(&key->name, sizeof(key->name), p_buf, p_buf_end);
     return p_buf;
 }
 
 static uint8_t *llmeta_sequence_key_get(struct seq_key *key, char *p_buf,
-                                     char *p_buf_end) {
-    if (p_buf_end - p_buf < sizeof(struct seq_key))
-        return NULL;
+                                        char *p_buf_end)
+{
+    if (p_buf_end - p_buf < sizeof(struct seq_key)) return NULL;
     p_buf = (uint8_t *)buf_get(&key->file_type, sizeof(key->file_type), p_buf,
                                p_buf_end);
     p_buf = (uint8_t *)buf_no_net_get(&key->name, sizeof(key->name), p_buf,
@@ -7983,10 +7979,10 @@ static uint8_t *llmeta_sequence_key_get(struct seq_key *key, char *p_buf,
     return p_buf;
 }
 
-
 static uint8_t *llmeta_sequence_data_put(struct seq_data *data, char *p_buf,
-                                      char *p_buf_end) {
-    if (p_buf_end - p_buf < sizeof(struct seq_data)){
+                                         char *p_buf_end)
+{
+    if (p_buf_end - p_buf < sizeof(struct seq_data)) {
         // Not enough space in buffer
         return NULL;
     }
@@ -8004,38 +8000,42 @@ static uint8_t *llmeta_sequence_data_put(struct seq_data *data, char *p_buf,
     return p_buf;
 }
 
-
-static struct seq_data *llmeta_sequence_data_get(char *p_buf, char *p_buf_end) {
+static struct seq_data *llmeta_sequence_data_get(char *p_buf, char *p_buf_end)
+{
     struct seq_data *data = NULL;
 
     data = calloc(1, sizeof(struct seq_data));
-    if (data == NULL)
-        goto bad_alloc;
+    if (data == NULL) goto bad_alloc;
 
     // Place data in sd
     p_buf = (uint8_t *)buf_get(&data->version, sizeof(int), p_buf, p_buf_end);
-    p_buf = (uint8_t *)buf_get(&data->min_val, sizeof(long long), p_buf, p_buf_end);
-    p_buf = (uint8_t *)buf_get(&data->max_val, sizeof(long long), p_buf, p_buf_end);
-    p_buf = (uint8_t *)buf_get(&data->increment, sizeof(long long), p_buf, p_buf_end);
+    p_buf =
+        (uint8_t *)buf_get(&data->min_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf =
+        (uint8_t *)buf_get(&data->max_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->increment, sizeof(long long), p_buf,
+                               p_buf_end);
     p_buf = (uint8_t *)buf_get(&data->cycle, sizeof(bool), p_buf, p_buf_end);
-    p_buf = (uint8_t *)buf_get(&data->start_val, sizeof(long long), p_buf, p_buf_end);
-    p_buf = (uint8_t *)buf_get(&data->chunk_size, sizeof(long long), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->start_val, sizeof(long long), p_buf,
+                               p_buf_end);
+    p_buf = (uint8_t *)buf_get(&data->chunk_size, sizeof(long long), p_buf,
+                               p_buf_end);
     p_buf = (uint8_t *)buf_get(&data->flags, sizeof(char), p_buf, p_buf_end);
 
-    if (p_buf == NULL)
-        goto bad_alloc;
+    if (p_buf == NULL) goto bad_alloc;
 
     return data;
 
 bad_alloc:
-    if (data)
-        free(data);
+    if (data) free(data);
     return NULL;
 }
 
-int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long long max_val,
-                        long long increment, bool cycle, long long start_val, long long chunk_size,
-                        char flags, int *bdberr) {
+int bdb_llmeta_add_sequence(tran_type *tran, char *name, long long min_val,
+                            long long max_val, long long increment, bool cycle,
+                            long long start_val, long long chunk_size,
+                            char flags, int *bdberr)
+{
     char key[LLMETA_IXLEN] = {0};
     int dtalen;
     uint8_t *p_buf, *p_buf_end;
@@ -8053,7 +8053,8 @@ int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long
     p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
     if (p_buf == NULL) {
         *bdberr = BDBERR_MISC;
-        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta key\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta key\n",
+               __func__);
         return -1;
     }
 
@@ -8073,7 +8074,8 @@ int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long
 
     // Encode data
     if (llmeta_sequence_data_put(&sd, p_buf, p_buf_end) == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta data\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta data\n",
+               __func__);
         free(p_buf);
         return -1;
     }
@@ -8081,33 +8083,34 @@ int bdb_llmeta_add_sequence(tran_type *tran, char* name, long long min_val, long
     // Add to encoded data to llmeta
     rc = bdb_lite_add(llmeta_bdb_state, tran, p_buf, dtalen, key, bdberr);
     if (rc)
-        logmsg(LOGMSG_ERROR, "%s: failed to add llmeta sequence entry for %s: %d\n",
-                __func__, name, bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to add llmeta sequence entry for %s: %d\n", __func__,
+               name, bdberr);
     free(p_buf);
 
     return rc;
 }
 
-int bdb_llmeta_alter_sequence( tran_type *tran, char* name, long long min_val, long long max_val,
-                           long long increment, bool cycle, long long start_val, long long chunk_size,
-                           char flags, int *bdberr) {
+int bdb_llmeta_alter_sequence(tran_type *tran, char *name, long long min_val,
+                              long long max_val, long long increment,
+                              bool cycle, long long start_val,
+                              long long chunk_size, char flags, int *bdberr)
+{
     int rc;
 
     /* delete and add */
     rc = bdb_llmeta_drop_sequence(tran, name, bdberr);
-    if (rc)
-        goto done;
-    rc = bdb_llmeta_add_sequence(tran, name, min_val, max_val,
-                                increment, cycle, start_val, chunk_size,
-                                flags, bdberr);
-    if (rc)
-        goto done;
+    if (rc) goto done;
+    rc = bdb_llmeta_add_sequence(tran, name, min_val, max_val, increment, cycle,
+                                 start_val, chunk_size, flags, bdberr);
+    if (rc) goto done;
 
 done:
     return rc;
 }
 
-int bdb_llmeta_drop_sequence(tran_type *tran, char *name, int *bdberr) {
+int bdb_llmeta_drop_sequence(tran_type *tran, char *name, int *bdberr)
+{
     char key[LLMETA_IXLEN] = {0};
     uint8_t *p_buf, *p_buf_end;
     struct seq_key sk = {0};
@@ -8123,15 +8126,15 @@ int bdb_llmeta_drop_sequence(tran_type *tran, char *name, int *bdberr) {
     p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
     if (p_buf == NULL) {
         *bdberr = BDBERR_MISC;
-        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta key\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to encode sequence llmeta key\n",
+               __func__);
         rc = -1;
         goto done;
     }
 
     rc = bdb_lite_exact_del(llmeta_bdb_state, tran, key, bdberr);
 
-    if (rc)
-        goto done;
+    if (rc) goto done;
 
 done:
     return rc;
@@ -8152,14 +8155,18 @@ done:
  * @param long long *next_start_val
  * @param int *bdberr BDB error
  */
-int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val, long long max_val,
-                           long long increment, bool cycle, long long chunk_size, char *flags,
-                           long long *remaining_vals, long long *next_start_val, int *bdberr) {
+int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
+                                  long long min_val, long long max_val,
+                                  long long increment, bool cycle,
+                                  long long chunk_size, char *flags,
+                                  long long *remaining_vals,
+                                  long long *next_start_val, int *bdberr)
+{
     long long new_start_val;
-    int rc = 0 ;
+    int rc = 0;
 
     // Check if sequence is exhausted
-    if ( *flags & SEQUENCE_EXHAUSTED ){
+    if (*flags & SEQUENCE_EXHAUSTED) {
         logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
         return -1;
     }
@@ -8168,28 +8175,39 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val
     unsigned long long max_uniq_values;
     // Checks for abs - min int value is undef behaviour
     if (min_val == LLONG_MIN) {
-        max_uniq_values = (abs(max_val) + (LLONG_MAX - 1))/abs(increment); /* Maximum unique values in sequence 8 */
+        max_uniq_values =
+            (abs(max_val) + (LLONG_MAX - 1)) /
+            abs(increment); /* Maximum unique values in sequence 8 */
     } else {
-        max_uniq_values = abs(max_val - min_val)/abs(increment); /* Maximum unique values in sequence 8 */
+        max_uniq_values =
+            abs(max_val - min_val) /
+            abs(increment); /* Maximum unique values in sequence 8 */
     }
 
-    unsigned long long values_before_cycle; /* Number of values that can be dispensed before hitting the max or min of the sequence */
+    unsigned long long
+        values_before_cycle; /* Number of values that can be dispensed before
+                                hitting the max or min of the sequence */
 
     if (increment > 0) {
         // Increasing sequence
 
         // Check for abs - min int value is undef behaviour
-        if (*next_start_val == LLONG_MIN){
-            values_before_cycle = abs(max_val + (LLONG_MAX - 1))/abs(increment);
+        if (*next_start_val == LLONG_MIN) {
+            values_before_cycle =
+                abs(max_val + (LLONG_MAX - 1)) / abs(increment);
         } else {
-            values_before_cycle = abs(max_val - *next_start_val)/abs(increment);
+            values_before_cycle =
+                abs(max_val - *next_start_val) / abs(increment);
         }
-       
+
         if (values_before_cycle < chunk_size) {
             if (cycle) {
-                new_start_val = min_val + increment * ((chunk_size - values_before_cycle - 1) % max_uniq_values);
+                new_start_val =
+                    min_val +
+                    increment * ((chunk_size - values_before_cycle - 1) %
+                                 max_uniq_values);
                 *remaining_vals = chunk_size;
-            } else if (values_before_cycle == 0 ) {
+            } else if (values_before_cycle == 0) {
                 // Error, no more values in sequence
                 logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
                 // In this case, exausted sequence flag is set and
@@ -8225,14 +8243,17 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val
             // min_val must be LLONG_MIN also in this case
             values_before_cycle = 0;
         } else {
-            values_before_cycle = abs((*next_start_val - min_val)/increment);
+            values_before_cycle = abs((*next_start_val - min_val) / increment);
         }
 
         if (values_before_cycle < chunk_size) {
             if (cycle) {
-                new_start_val = max_val + increment * ((chunk_size - values_before_cycle - 1) % max_uniq_values);
+                new_start_val =
+                    max_val +
+                    increment * ((chunk_size - values_before_cycle - 1) %
+                                 max_uniq_values);
                 *remaining_vals = chunk_size;
-            } else if (values_before_cycle == 0 ) {
+            } else if (values_before_cycle == 0) {
                 // Error, no more values in sequence
                 logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
                 // In this case, exausted sequence flag is set and
@@ -8263,7 +8284,8 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val
     }
 
     // Write new start value to llmeta
-    bdb_llmeta_alter_sequence(NULL, name, min_val, max_val, increment, cycle, new_start_val, chunk_size, *flags, bdberr);
+    bdb_llmeta_alter_sequence(NULL, name, min_val, max_val, increment, cycle,
+                              new_start_val, chunk_size, *flags, bdberr);
 
     // Return start value of the next chunk
     *next_start_val = new_start_val;
@@ -8272,7 +8294,8 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char* name, long long min_val
 }
 
 int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
-                          int *num_sequences, int *bdberr) {
+                                  int *num_sequences, int *bdberr)
+{
     int rc;
     uint8_t key[LLMETA_IXLEN] = {0};
     uint8_t nextkey[LLMETA_IXLEN];
@@ -8290,14 +8313,13 @@ int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
         p_buf_end = p_buf + LLMETA_IXLEN;
         p_buf = llmeta_sequence_key_get(&sk, p_buf, p_buf_end);
         if (p_buf == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: failed to decode sequence key\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s: failed to decode sequence key\n",
+                   __func__);
             fsnapf(stdout, key, LLMETA_IXLEN);
             return -1;
         }
-        if (sk.file_type != LLMETA_SEQUENCE_ATTR)
-            break;
-        if (num_seqs >= max_seqs)
-            break;
+        if (sk.file_type != LLMETA_SEQUENCE_ATTR) break;
+        if (num_seqs >= max_seqs) break;
         logmsg(LOGMSG_USER, ">> sequence: %s\n", sk.name);
         sequence_names[num_seqs] = strdup(sk.name);
         num_seqs++;
@@ -8311,9 +8333,11 @@ int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
     return rc;
 }
 
-int bdb_llmeta_get_sequence(char* name, long long *min_val, long long *max_val, long long *increment,
-                            bool *cycle, long long *start_val, long long *chunk_size,
-                            char *flags, int *bdberr) {
+int bdb_llmeta_get_sequence(char *name, long long *min_val, long long *max_val,
+                            long long *increment, bool *cycle,
+                            long long *start_val, long long *chunk_size,
+                            char *flags, int *bdberr)
+{
     struct seq_key sk = {0};
     struct seq_data *sd = NULL;
     uint8_t key[LLMETA_IXLEN] = {0};
@@ -8331,7 +8355,8 @@ int bdb_llmeta_get_sequence(char* name, long long *min_val, long long *max_val, 
     p_buf_end = p_buf + LLMETA_IXLEN;
     p_buf = llmeta_sequence_key_put(&sk, p_buf, p_buf_end);
     if (p_buf == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: can't encode key for sequence %s\n", __func__, name);
+        logmsg(LOGMSG_ERROR, "%s: can't encode key for sequence %s\n", __func__,
+               name);
         *bdberr = BDBERR_MISC;
         rc = -1;
         goto done;
@@ -8353,30 +8378,21 @@ int bdb_llmeta_get_sequence(char* name, long long *min_val, long long *max_val, 
     }
 
     // Load data into pointer locations given
-    *min_val = sd->min_val ;
-    *max_val = sd->max_val ;
-    *increment = sd->increment ;
-    *cycle = sd->cycle ;
+    *min_val = sd->min_val;
+    *max_val = sd->max_val;
+    *increment = sd->increment;
+    *cycle = sd->cycle;
     *flags = sd->flags;
-    *chunk_size = sd->chunk_size ;
-    *start_val = sd->start_val ;
+    *chunk_size = sd->chunk_size;
+    *start_val = sd->start_val;
 
     free(sd);
     sd = NULL;
 done:
-    if (dta)
-        free(dta);
-    if (sd)
-        free(sd);
+    if (dta) free(dta);
+    if (sd) free(sd);
     return rc;
 }
-
-// *******************************************************************************************************************************************************
-//
-// --------------------------------------------------------------- REMOVE: END SEQUENCES -----------------------------------------------------------------
-//
-// *******************************************************************************************************************************************************
-
 
 /*
 ** kv_funcs() - operate on arbitrary key-value pairs

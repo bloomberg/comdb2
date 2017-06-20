@@ -20,12 +20,12 @@
 #include "comdb2.h"
 #include <stdbool.h>
 
-int seq_next_val (char *name, long long *val);
-int seq_prev_val (char *name, long long *val);
+int seq_next_val(char *name, long long *val);
+int seq_prev_val(char *name, long long *val);
 sequence_t *get_sequence(char *name);
-int add_sequence (char *name, long long min_val, long long max_val, 
-    long long increment, bool cycle, long long start_val, 
-    long long chunk_size, char flags);
-int drop_sequence (char *name);
+int add_sequence(char *name, long long min_val, long long max_val,
+                 long long increment, bool cycle, long long start_val,
+                 long long chunk_size, char flags);
+int drop_sequence(char *name);
 
 #endif
