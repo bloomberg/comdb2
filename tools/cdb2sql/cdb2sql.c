@@ -109,22 +109,33 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"             \
     "\n"                                                                      \
-    "Basic options:\n"                                                        \
-    "-h                 Help\n"                                               \
-    "-s                 Script mode (less verbose output)\n"                  \
-    "--tabs             Seperate output columns with tabs rather\n"           \
-    "                   than commas\n"                                        \
-    "--cdb2cfg          Change the config file to point to comdb2db\n"        \
-    "                   configuration file\n"                                 \
-    "--type TYPE        Type of database or tier (ie 'dev' or 'prod',\n"      \
-    "                                             default 'local')\n"         \
-    "--host HOSTNAME    Host to connect to and run query.\n"                  \
-    "--debugtrace       Set debug trace flag on api handle\n"                 \
-    "--showeffects      Show the effects of query at the end\n"               \
-    "--cost             Log the cost of query in db trace files\n"            \
-    "--precision #      Set precision for floation point outputs\n"           \
-    "--strblobs         Display blobs as strings\n"                           \
-    "-f filename        reads queries from the specified file\n";
+    "Options:\n"                                                              \
+    " -h, --help             Help on usage \n"                                \
+    " -s, --script           Script mode (less verbose output)\n"             \
+    "     --tabs             Seperate output columns with tabs rather\n"      \
+    "                        than commas\n"                                   \
+    " -c, --cdb2cfg          Change the config file to point to comdb2db\n"   \
+    "                        configuration file\n"                            \
+    " -t, --type TYPE        Type of database or tier (ie 'dev' or 'prod',\n" \
+    "                                              default 'local')\n"        \
+    " -n, --host HOSTNAME    Host to connect to and run query.\n"             \
+    "     --debugtrace       Set debug trace flag on api handle\n"            \
+    "     --showeffects      Show the effects of query at the end\n"          \
+    "     --cost             Log the cost of query in db trace files\n"       \
+    " -p, --precision #      Set precision for floation point outputs\n"      \
+    "     --strblobs         Display blobs as strings\n"                      \
+    " -f, --file FL          reads queries from the specified file FL\n"      \
+    "\n"                                                                      \
+    " Examples: \n"                                                           \
+    " * Querying db with name mydb on local server \n"                        \
+    "     cdb2sql mydb 'select 1'\n"                                          \
+    " * Query db via interactive session:\n"                                  \
+    "     cdb2sql mydb - \n"                                                  \
+    " * Query db by connecting to a specific server:\n"                       \
+    "     cdb2sql mydb --host node1 'select 1'\n"                             \
+    " * Query db by connecting to a known set of servers/ports:\n"            \
+    "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"       \
+    ;
 
 void cdb2sql_usage(int exit_val)
 {
