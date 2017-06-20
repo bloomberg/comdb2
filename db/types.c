@@ -7345,7 +7345,7 @@ static int twochar2int(char *str)
 }
 
 /* TODO: handle +offset format, and validate the TZNAME */
-int get_tzname(char *dst, char *src, int len)
+static int get_tzname(char *dst, char *src, int len)
 {
 
     int tzname_len =
@@ -7618,8 +7618,7 @@ int string2structdatetimeus_ISO(char *in, int len,
     return 0;                                                                  \
 /* END OF structm2string_ISO_func_body */
 
-static int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out,
-                                     int outlen)
+int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out, int outlen)
 {
     structtm2string_ISO_func_body(datetime, DATETIME, 3, msec, unsigned short);
 }

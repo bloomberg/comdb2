@@ -4058,11 +4058,13 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
         assert(rec->parameters_to_bind == NULL);
+        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
         rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
         if (rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
     } else if (rec->parameters_to_bind) {
+        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
         rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
@@ -8567,6 +8569,7 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     }
 
     if (parameters_to_bind) {
+        eventlog_params(poolthd->logger, stmt, parameters_to_bind, clnt);
         rc = bind_parameters(stmt, parameters_to_bind, clnt, &err);
         if (rc) {
             ret = ERR_SQL_PREP;
