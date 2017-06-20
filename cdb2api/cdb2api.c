@@ -3100,8 +3100,10 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
 retry_queries:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host %d (%s)\n", (uint32_t)
-                pthread_self(), __func__, __LINE__, hndl->connected_host, (hndl->connected_host>=0?hndl->hosts[hndl->connected_host]:""));
+        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host %d (%s)\n", 
+                (uint32_t) pthread_self(), __func__, __LINE__, 
+                hndl->connected_host, 
+                (hndl->connected_host>=0?hndl->hosts[hndl->connected_host]:""));
     }
 
 
@@ -3302,10 +3304,7 @@ read_record:
 #if WITH_SSL
         hndl->s_sslmode = PEER_SSL_REQUIRE;
         /* server wants us to use ssl so turn ssl on in same connection */
-        int resp = try_ssl(hndl, hndl->sb, hndl->connected_host);
-        if (resp != 0) {
-            PRINT_RETURN(-1);
-        }
+        try_ssl(hndl, hndl->sb, hndl->connected_host);
 
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
