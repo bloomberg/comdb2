@@ -197,5 +197,21 @@ public class PreparedStatementTest {
 
         stmt.clearParameters();	
     }
+    
+    /*
+     * test case insensitive column names
+     */
+    @Test
+    public void selectCaseSensitiveColumn() throws ClassNotFoundException, SQLException{
+        PreparedStatement stmt = conn.prepareStatement("select 1 id");
+        
+        ResultSet rs = stmt.executeQuery();
+        rs.next();
+        
+        int id = rs.getInt("ID");
+        assertEquals(id, 1);
+        
+        stmt.clearParameters();
+    }
 }
 /* vim: set sw=4 ts=4 et: */
