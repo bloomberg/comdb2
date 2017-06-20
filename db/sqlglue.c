@@ -6895,8 +6895,8 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                 rc = SERVER_BINT_to_CLIENT_INT(
                     in, sizeof(db_time_t) + 1, NULL /*convopts */,
                     NULL /*blob */, &(m->du.dt.dttz_sec),
-                    sizeof(m->du.dt.dttz_sec), &null, &outdtsz,
-                    &convopts, NULL /*blob */);
+                    sizeof(m->du.dt.dttz_sec), &null, &outdtsz, &convopts,
+                    NULL /*blob */);
                 if (rc == -1)
                     goto done;
 
@@ -6948,8 +6948,8 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                     rc = SERVER_BINT_to_CLIENT_INT(
                         in, sizeof(db_time_t) + 1, NULL /*convopts */,
                         NULL /*blob */, &(m->du.dt.dttz_sec),
-                        sizeof(m->du.dt.dttz_sec), &null, &outdtsz,
-                        &convopts, NULL /*blob */);
+                        sizeof(m->du.dt.dttz_sec), &null, &outdtsz, &convopts,
+                        NULL /*blob */);
                     if (rc == -1)
                         goto done;
 

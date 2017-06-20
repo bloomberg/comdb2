@@ -973,9 +973,11 @@ bytearray_copy(const void *in, int inlen, const struct field_conv_opts *inopts,
 }
 
 #ifdef _LINUX_SOURCE
-#define CHECK_FLIP(opts, flip) if (!(opts && opts->flags & FLD_CONV_LENDIAN)) flip = 1;
+#define CHECK_FLIP(opts, flip)                                                 \
+    if (!(opts && opts->flags & FLD_CONV_LENDIAN)) flip = 1;
 #else
-#define CHECK_FLIP(opts, flip) if ((opts && opts->flags & FLD_CONV_LENDIAN)) flip = 1;
+#define CHECK_FLIP(opts, flip)                                                 \
+    if ((opts && opts->flags & FLD_CONV_LENDIAN)) flip = 1;
 #endif
 
 TYPES_INLINE int CLIENT_UINT_to_CLIENT_UINT(
@@ -4696,9 +4698,8 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
     SERVER_##sfrom##_to_CLIENT_##sto(in, inlen, inopts, inblob, tmpbuf,        \
                                      inlen - 1, outnull, outdtsz, outopts,     \
                                      outblob);                                 \
-    if (*outnull)                                                              \
-        return 0;                                                              \
-    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, outopts, inblob,   \
+    if (*outnull) return 0;                                                    \
+    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen - 1, outopts, inblob,  \
                                           out, outlen, outdtsz, outopts,       \
                                           outblob);
 
@@ -4708,9 +4709,8 @@ TYPES_INLINE int SERVER_UINT_to_CLIENT_BYTEARRAY(
     *outnull = 0;                                                              \
     SERVER_##sfrom##_to_CLIENT_##sto(in, inlen, inopts, inblob, tmpbuf, inlen, \
                                      outnull, outdtsz, outopts, outblob);      \
-    if (*outnull)                                                              \
-        return 0;                                                              \
-    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen, outopts, inblob, out,  \
+    if (*outnull) return 0;                                                    \
+    return CLIENT_##sto##_to_CLIENT_##cto(tmpbuf, inlen, outopts, inblob, out, \
                                           outlen, outdtsz, outopts, outblob);
 
 TYPES_INLINE int SERVER_BCSTR_to_CLIENT_INT(
