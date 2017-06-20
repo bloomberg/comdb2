@@ -2,6 +2,8 @@
 
 set -x
 
+[[ $COMDB2_UNITTEST == 1 ]] && exit 0
+
 echo "!$TESTCASE: stopping"
 [ -z "$TESTDIR" ] && TESTDIR=${PWD}/test_${TESTID}
 [ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
