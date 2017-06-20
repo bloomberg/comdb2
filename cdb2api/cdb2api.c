@@ -3318,8 +3318,8 @@ read_record:
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
         if (hndl->flags & CDB2_DIRECT_CPU) { 
-            /* direct cpu should not do anything with dbinfo */
-            PRINT_RETURN(-1);
+            /* direct cpu should not do anything with dbinfo, just retry */
+            RETRY_QUERIES();
         }
         /* We got back info about nodes that might be coherent. */
         CDB2DBINFORESPONSE *dbinfo_resp = NULL;
