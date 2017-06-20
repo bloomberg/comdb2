@@ -4582,16 +4582,28 @@ static inline i64 vdbeRecordDecodeInt(u32 serial_type, const u8 *aKey){
   switch( serial_type ){
     case 0:
     case 1:
-      return *(char*)aKey;
+      testcase( aKey[0]&0x80 );
+      return ONE_BYTE_INT(aKey);
     case 2:
-      return *(short*)(aKey);
+      testcase( aKey[0]&0x80 );
+      return TWO_BYTE_INT(aKey);
+    case 3:
+      testcase( aKey[0]&0x80 );
+      return THREE_BYTE_INT(aKey);
     case 4: {
-      return *(int*)aKey;
+      testcase( aKey[0]&0x80 );
+      y = FOUR_BYTE_UINT(aKey);
+      return (i64)*(int*)&y;
+    }
+    case 5: {
+      testcase( aKey[0]&0x80 );
+      return FOUR_BYTE_UINT(aKey+2) + (((i64)1)<<32)*TWO_BYTE_INT(aKey);
     }
     case 6: {
-      return *(long long*)aKey;
+      return *(unsigned long long*)aKey;
     }
   }
+
   return (serial_type - 8);
 }
 
