@@ -3521,7 +3521,7 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
   if( serial_type == 6 )
   {
     int64_t *p=(int64_t *)buf;
-    *p=pMem->u.i;
+    *p=flibc_htonll(pMem->u.i);
     return sizeof(long long);
   }
 
@@ -3832,6 +3832,7 @@ static inline u32 sqlite3VdbeSerialGet(
 #else
       pMem->u.i = *(int64_t *)buf;
 #endif
+      pMem->u.i = flibc_ntohll(pMem->u.i);
       pMem->flags = MEM_Int;
       return 8;
     }
@@ -4600,7 +4601,10 @@ static inline i64 vdbeRecordDecodeInt(u32 serial_type, const u8 *aKey){
       return FOUR_BYTE_UINT(aKey+2) + (((i64)1)<<32)*TWO_BYTE_INT(aKey);
     }
     case 6: {
-      return *(unsigned long long*)aKey;
+      u64 x = FOUR_BYTE_UINT(aKey);
+      testcase( aKey[0]&0x80 );
+      x = (x<<32) | FOUR_BYTE_UINT(aKey+4);
+      return (i64)*(i64*)&x;
     }
   }
 
