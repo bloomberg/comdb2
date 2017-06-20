@@ -1932,6 +1932,8 @@ int CLIENT_INTVDSUS_to_SERVER_INTVDSUS(const void *in, int inlen, int isnull,
                                        const struct field_conv_opts *outopts,
                                        blob_buffer_t *outblob);
 
+int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out,
+			      int outlen);
 int utf8_validate(const char *str, int max_len, int *valid_len);
 
 int utf8_bytelen(const char *str, int max_len);

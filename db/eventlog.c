@@ -106,54 +106,187 @@ static cson_output_opt opt = {.indentation = 0,
                               .indentSingleMemberValues = 0,
                               .escapeForwardSlashes = 1};
 
-void eventlog_params(cson_object *obj, const struct reqlogger *logger,
-                     int detailed)
+void eventlog_params(struct reqlogger *logger,
+                     sqlite3_stmt *stmt,
+                     struct schema *params,
+                     struct sqlclntstate *clnt)
 {
     if (!logger->request) return;
-    if (logger->request && logger->request->n_bindvars > 0 && detailed) {
-        cson_object_set(obj, "le",
-                        cson_value_new_bool(logger->request->little_endian));
-        cson_value *bindings = cson_value_new_array();
-        cson_array *arr = cson_value_get_array(bindings);
-        cson_array_reserve(arr, logger->request->n_bindvars);
 
-        for (int i = 0; i < logger->request->n_bindvars; i++) {
-            cson_value *binding = cson_value_new_object();
-            cson_object *bobj = cson_value_get_object(binding);
+    cson_value *bind_list = cson_value_new_array();
+    logger->bound_param_cson = bind_list;
 
-            CDB2SQLQUERY__Bindvalue *val = logger->request->bindvars[i];
-            if (val->varname)
-                cson_object_set(
-                    bobj, "name",
-                    cson_value_new_string(val->varname, strlen(val->varname)));
-            else
-                cson_object_set(bobj, "index", cson_new_int(val->index));
-            if (!val->has_isnull && val->isnull) {
-                /* null, omit value */
-                cson_object_set(bobj, "value", cson_value_null());
-            } else {
-                uint8_t *value = malloc(val->value.len);
+    cson_array *arr = cson_value_get_array(bind_list);
 
-                cson_object_set(bobj, "type", cson_new_int(val->type));
-                cson_object_set(bobj, "len", cson_new_int(val->value.len));
+    int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
+    cson_array_reserve(arr, nfields);
+                       
+    int blobno = 0;    
+    for (int i = 0; i < nfields; i++) {
+        cson_value *binding = cson_value_new_object();
+        cson_object *bobj = cson_value_get_object(binding);
+        cson_value *value = cson_value_new_object();
+        cson_object *vobj = cson_value_get_object(value);
 
-                for (int i = 0; i < val->value.len; i++) {
-                    static const char *hexchars = "0123456789abcdef";
+        struct field c_fld;
+        struct field *f;
+        char *buf;
 
-                    value[i * 2] = hexchars[((val->value.data[i] & 0xf0) >> 4)];
-                    value[i * 2 + 1] = hexchars[val->value.data[i] & 0x0f];
-                }
-                cson_object_set(bobj, "value", cson_value_new_string(
-                                                   value, val->value.len * 2));
-                free(value);
-            }
-            cson_array_append(arr, binding);
+        if (params) {
+            f = &params->member[i];
+            buf = (char*) clnt->tagbuf;
+        } else {
+            f = convert_client_field(clnt->sql_query->bindvars[i], &c_fld);
+            buf = clnt->sql_query->bindvars[i]->value.data;
         }
 
-        cson_object_set(obj, "bindings", bindings);
-    } else if (logger->request->n_bindvars) {
-        cson_object_set(obj, "nbindings",
-                        cson_new_int(logger->request->n_bindvars));
+        /* name of bound parameter */
+        cson_object_set(bobj, "name",
+                        cson_value_new_string(f->name, strlen(f->name)));
+
+        /* bind value = {type, value} to sql binding  */
+        cson_object_set(bobj, "value", value);
+        /* bind binding to array of bindings */
+        cson_array_append(arr, binding);
+
+
+        /* mostly taken from sqltype() and bind_parameters() */
+        int dlen = f->datalen;
+        const char *strtype = "";
+        switch (f->type) {
+        case CLIENT_UINT:
+        case CLIENT_INT:
+            /* set type */
+            switch (dlen) {
+            case 2: strtype = "smallint";   break;
+            case 4: strtype = "int";        break;
+            case 8: strtype = "largeint";   break;
+            }
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+
+            /* set value */
+            if (f->type == CLIENT_UINT) {
+                unsigned long long uival;
+                if (get_uint_field(f, buf, (uint64_t *)&uival) == 0) {
+                cson_object_set(vobj, "value",
+                                cson_value_new_integer(uival));
+                }
+            } else {
+                long long ival;
+                if (get_int_field(f, buf, (uint64_t *)&ival) == 0) {
+                    cson_object_set(vobj, "value",
+                                    cson_value_new_integer(ival));
+                }
+            }
+            break;
+        case CLIENT_REAL: {
+            double dval;
+
+            /* set type */
+            switch (dlen) {
+            case 4: strtype = "smallfloat"; break;
+            case 8: strtype = "float";      break;
+            }
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+
+            /* set value */
+            if (get_real_field(f, buf, &dval) == 0)
+                cson_object_set(vobj, "value", cson_value_new_double(dval));
+            break;
+        }
+        case CLIENT_CSTR:
+        case CLIENT_PSTR:
+        case CLIENT_PSTR2: {
+            char *str;
+            int datalen;
+
+            /* set type */
+            strtype = "char";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+            
+            /* set value */
+            if (get_str_field(f, buf, &str, &datalen) == 0)
+                cson_object_set(vobj, "value",
+                                cson_value_new_string(str, datalen));
+            break;
+        }
+        case CLIENT_BYTEARRAY:
+        case CLIENT_BLOB:
+        case CLIENT_VUTF8: {
+            void *byteval;
+            int datalen;
+            int rc = 0;
+            
+            /* set type */
+            strtype = "blob";
+            if (f->type == CLIENT_VUTF8)
+                strtype = "varchar";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+            
+            /* set value */
+            if (f->type == CLIENT_BYTEARRAY) {
+                rc = get_byte_field(f, buf, &byteval, &datalen);
+            } else {
+                if (params) {
+                    rc = get_blob_field(blobno, clnt, &byteval, &datalen);
+                    blobno++;
+                }
+            }
+            if (rc == 0) 
+                cson_object_set(vobj, "value",
+                                cson_value_new_string(byteval, datalen));
+            break;
+        }
+        case CLIENT_DATETIME: {
+            char strtime[62];
+
+            /* set type */
+            strtype = "datetime";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+
+            /* set value */
+            if (structdatetime2string_ISO((void*)buf, strtime,
+                                          sizeof(strtime)) == 0)
+                cson_object_set(vobj, "value",
+                               cson_value_new_string(strtime, sizeof(strtime)));
+            break;
+        }
+        case CLIENT_DATETIMEUS: {
+            char strtime[65];
+
+            /* set type */
+            strtype = "datetimeus";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+
+            /* set value */
+            if (structdatetime2string_ISO((void*)buf, strtime,
+                                          sizeof(strtime)) == 0)
+                cson_object_set(vobj, "value",
+                               cson_value_new_string(strtime, sizeof(strtime)));
+            break;
+        }
+        case CLIENT_INTVYM:
+            strtype = "interval month";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+            break;
+        case CLIENT_INTVDS:
+            strtype = "interval sec";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+            break;
+        case CLIENT_INTVDSUS:
+            strtype = "interval usec";
+            cson_object_set(vobj, "type",
+                            cson_value_new_string(strtype, strlen(strtype)));
+            break;
+        }
     }
 }
 
@@ -357,7 +490,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
 
     eventlog_context(obj, logger);
-    eventlog_params(obj, logger, detailed);
+    cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);
     eventlog_path(obj, logger);
