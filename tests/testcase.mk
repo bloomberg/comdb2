@@ -12,6 +12,7 @@ export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
 export comdb2ar=$(SRCHOME)/comdb2ar
 export comdb2task=$(SRCHOME)/comdb2
+export COMDB2_UNITTEST?=0
 
 test:: tool
 	echo "Working from dir `pwd`" >> $(TESTDIR)/test.log
