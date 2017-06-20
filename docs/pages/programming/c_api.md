@@ -456,36 +456,36 @@ These return codes can be found in ```cdb2api.h```
 
 |Code    |Constant |Description
 |--------|---------|-----------
-| 0    |```CDB2_OK``` | Success.
-| 1    |```CDB2_OK_DONE``` | Returned by ```cdb2_next_record()``` if there are no more records in the stream.
-| -1   |```CDB2ERR_CONNECT_ERROR``` | Unable to open TCP connection to the database.  Make sure that the database is running.
-| -2   |```CDB2ERR_NOTCONNECTED``` | Not connected to the database.
-| -3   |```CDB2ERR_PREPARE_ERROR``` | SQLite rejected your SQL query.
-| -4   |```CDB2ERR_IO_ERROR``` | IO error.  This can happen if your request is cut off (the database node you are connected to may have come down for turning, or the database may have timed out your connection).  Make sure that you read records back in a timely manner without long pauses between reads.
-| -5   |```CDB2ERR_INTERNAL``` | Internal SQL error.
-| -6   |```CDB2ERR_NOSTATEMENT ``` | Returned if you call any of the sql stream query functions (such as ```cdb2_numcolumns```) but you have not yet used ```cdb2_next_record()``` to move on to a valid record.
-| -7   |```CDB2ERR_BADCOLUMN``` | Returned if you give an out of range column index to the sql api.
-| -8   |```CDB2ERR_BADSTATE ``` | The sql handle is in an incorrect state for the operation requested e.g. ```cdb2_column_size()``` was called after all the records have been read.
-| -15  |```CDB2ERR_REJECTED``` | Database was not able to read a request from the client, or was not able to dispatch it.
-| -16  |```CDB2ERR_STOPPED``` | Database is stopped operationally and isn't accepting requests.
-| -17  |```CDB2ERR_BADREQ``` |  A request is malformed.
-| -20  |```CDB2ERR_THREADPOOL_INTERNAL``` | Some error in threadpool code.
-| -21  |```CDB2ERR_READONLY``` | Database is readonly (possible because a schema change operation is in progress).
-| -101 |```CDB2ERR_NOMASTER``` | Database has no master node - try again later.
-| -103 |```CDB2ERR_CONSTRAINTS``` | Some constraint violation.
-| 203  |```CDB2ERR_DEADLOCK``` | Deadlock detected.
-| -105 |```CDB2ERR_TRAN_IO_ERROR``` | I/O error.
-| -106 |```CDB2ERR_ACCESS``` | Access denied.
-| -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | Transaction mode is unsupported.
-| 2    |```CDB2ERR_VERIFY_ERROR``` | An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose).
-| 3    |```CDB2ERR_FKEY_VIOLATION``` | Foreign key violation.
-| 4    |```CDB2ERR_NULL_CONSTRAINT``` | Null constraint violation.
-| 113  |```CDB2ERR_CONV_FAIL``` | Data could not be inserted/updated because the provided data could not be converted to the type/size in the table definition.
-| 115  |```CDB2ERR_MALLOC``` | Malloc failed.  Check your code for memory leaks or heap corruption!
-| 116  |```CDB2ERR_NOTSUPPORTED``` | Operation not supported.
-| 299  |```CDB2ERR_DUPLICATE``` | Transaction would have inserted a duplicate in a key that does not allow it.
-| 401  |```CDB2ERR_TZNAME_FAIL``` | Invalid timezone name.
-| 300  |```CDB2ERR_UNKNOWN``` | Unknown error.
+| 0    |```CDB2_OK``` | Success. <a id="CDB2_OK"/>
+| 1    |```CDB2_OK_DONE``` | Returned by ```cdb2_next_record()``` if there are no more records in the stream. <a id="CDB2_OK_DONE"/>
+| -1   |```CDB2ERR_CONNECT_ERROR``` | Unable to open TCP connection to the database.  Make sure that the database is running. <a id="CDB2ERR_CONNECT_ERROR"/>
+| -2   |```CDB2ERR_NOTCONNECTED``` | Not connected to the database. <a id="CDB2ERR_NOTCONNECTED"/>
+| -3   |```CDB2ERR_PREPARE_ERROR``` | SQLite rejected your SQL query. <a id="CDB2ERR_PREPARE_ERROR"/>
+| -4   |```CDB2ERR_IO_ERROR``` | IO error.  This can happen if your request is cut off (the database node you are connected to may have come down for turning, or the database may have timed out your connection).  Make sure that you read records back in a timely manner without long pauses between reads. <a id="CDB2ERR_IO_ERROR"/>
+| -5   |```CDB2ERR_INTERNAL``` | Internal SQL error. <a id="CDB2ERR_INTERNAL"/>
+| -6   |```CDB2ERR_NOSTATEMENT ``` | Returned if you call any of the sql stream query functions (such as ```cdb2_numcolumns```) but you have not yet used ```cdb2_next_record()``` to move on to a valid record. <a id="CDB2ERR_NOSTATEMENT"/>
+| -7   |```CDB2ERR_BADCOLUMN``` | Returned if you give an out of range column index to the sql api. <a id="CDB2ERR_BADCOLUMN"/>
+| -8   |```CDB2ERR_BADSTATE ``` | The sql handle is in an incorrect state for the operation requested e.g. ```cdb2_column_size()``` was called after all the records have been read. <a id="CDB2ERR_BADSTATE"/>
+| -15  |```CDB2ERR_REJECTED``` | Database was not able to read a request from the client, or was not able to dispatch it. <a id="CDB2ERR_REJECTED"/>
+| -16  |```CDB2ERR_STOPPED``` | Database is stopped operationally and isn't accepting requests. <a id="CDB2ERR_STOPPED"/>
+| -17  |```CDB2ERR_BADREQ``` |  A request is malformed. <a id="CDB2ERR_BADREQ"/>
+| -20  |```CDB2ERR_THREADPOOL_INTERNAL``` | Some error in threadpool code. <a id="CDB2ERR_THREADPOOL_INTERNAL"/>
+| -21  |```CDB2ERR_READONLY``` | Database is readonly (possible because a schema change operation is in progress). <a id="CDB2ERR_READONLY"/>
+| -101 |```CDB2ERR_NOMASTER``` | Database has no master node - try again later. <a id="CDB2ERR_NOMASTER"/>
+| -103 |```CDB2ERR_CONSTRAINTS``` | Some constraint violation. <a id="CDB2ERR_CONSTRAINTS"/>
+| 203  |```CDB2ERR_DEADLOCK``` | Deadlock detected. <a id="CDB2ERR_DEADLOCK"/>
+| -105 |```CDB2ERR_TRAN_IO_ERROR``` | I/O error. <a id="CDB2ERR_TRAN_IO_ERROR"/>
+| -106 |```CDB2ERR_ACCESS``` | Access denied. <a id="CDB2ERR_ACCESS"/>
+| -107 |```CDB2ERR_TRAN_MODE_UNSUPPORTED``` | Transaction mode is unsupported. <a id="CDB2ERR_TRAN_MODE_UNSUPPORTED"/>
+| 2    |```CDB2ERR_VERIFY_ERROR``` | An update failed because the record being updated was changed more recently than it was first read.  This could happen if a transaction attempts to update the same record twice, or it could happen if two concurrent transactions are trying to update the same record (one will win, and the other will lose). <a id="CDB2ERR_VERIFY_ERROR"/>
+| 3    |```CDB2ERR_FKEY_VIOLATION``` | Foreign key violation. <a id="CDB2ERR_FKEY_VIOLATION"/>
+| 4    |```CDB2ERR_NULL_CONSTRAINT``` | Null constraint violation. <a id="CDB2ERR_NULL_CONSTRAINT"/>
+| 113  |```CDB2ERR_CONV_FAIL``` | Data could not be inserted/updated because the provided data could not be converted to the type/size in the table definition. <a id="CDB2ERR_CONV_FAIL"/>
+| 115  |```CDB2ERR_MALLOC``` | Malloc failed.  Check your code for memory leaks or heap corruption! <a id="CDB2ERR_MALLOC"/>
+| 116  |```CDB2ERR_NOTSUPPORTED``` | Operation not supported. <a id="CDB2ERR_NOTSUPPORTED"/>
+| 299  |```CDB2ERR_DUPLICATE``` | Transaction would have inserted a duplicate in a key that does not allow it. <a id="CDB2ERR_DUPLICATE"/>
+| 401  |```CDB2ERR_TZNAME_FAIL``` | Invalid timezone name. <a id="CDB2ERR_TZNAME_FAIL"/>
+| 300  |```CDB2ERR_UNKNOWN``` | Unknown error. <a id="CDB2ERR_UNKNOWN"/>
 | Other| Any |  Any other return code should be treated as an internal error.
 
 ### Error handling.
