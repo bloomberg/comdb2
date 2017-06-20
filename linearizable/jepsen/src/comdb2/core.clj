@@ -373,88 +373,109 @@
           (j/query c ["set transaction serializable"])
           (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
           (j/query c ["set max_retries 100000"])
-          (try
-            (let [updated (first (j/with-db-transaction [c c]
+          (case (:f op)
+            :read 
+                    (let [id   (first (:value op))
+                          val' (second (:value op))
+                          [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true)) ]
+                      (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
+                      (assoc op :type :ok, :value (independent/tuple 1 val))
+                    )
 
-              (let [id   (first (:value op))
-                    val' (second (:value op))
-                    [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
-                    uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+            :write
+                 (try
+                   (let [updated (first (j/with-db-transaction [c c]
+                     (let [id   (first (:value op))
+                           val' (second (:value op))
+                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
 
-                (case (:f op)
-                  :read (do
-                           (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
-                        )
-
-                  :write (do
-                           (if (nil? val)
-                             (do
-                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
-                             (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
-                             )
-                             (do
-                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
-                             (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
-                             )
-                           ))
-
-                  :cas (let [[expected-val new-val] val' 
-                             cnt (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])] 
                          (do
-                         (if (zero? (first cnt))
-                           (info "Worker " (:process op) " FAIL-CAS from " val " to " val' " PRE-COMMIT")
-                           (info "Worker " (:process op) " SUCCESS-CAS from " val "-" uid " to " val' "-" uid' " PRE-COMMIT"))
+                                  (if (nil? val)
+                                    (do
+                                    (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
+                                    (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
+                                    )
+                                    (do
+                                    (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
+                                    (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
+                                    )
+                                  )
                            )
-                  )
-                 )
-                ) 
-             )) ; first /with txn
-          ] 
-              (case (:f op)
-                :read (do
-                        (info "Worker " (:process op) " READS SUCCESS")
-                        (assoc op :type :ok)
-                        )
-                :write  (if (= updated 1) 
-                          (do
-                          (info "Worker " (:process op) " WRITE SUCCESS")
-                          (assoc op :type :ok)
+                       )
+                      )
+                    ) ; first
+                   ]
+                     (if (zero? updated)
+                      (do
+                        (info "Worker " (:process op) " WRITE FAILED")
+                        (assoc op :type :fail)
+                      )
+                      (do
+                        (info "Worker " (:process op) " WRITE SUCCESS - RETURNING " (second (:value op)))
+                        (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
+                      )
+                     )
+                   )
+                   (catch java.sql.SQLException e
+                     (let [error (.getErrorCode e)]
+                       (cond 
+                         (= error 2) (do 
+                                      (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                                      (assoc op :type :fail)
+                                      )
+                         :else (throw e))
+                     )
+                   )
+                 ) ; try / :write case
+
+            :cas
+                 (try
+                   (let [updated (first (j/with-db-transaction [c c]
+                     (let [id   (first (:value op))
+                           val' (second (:value op))
+                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+
+                         (do
+                            (let [[expected-val new-val] val' ]
+                                 (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])))
                           )
-                          (do
-                          (info "Worker " (:process op) " WRITE FAILED")
-                          (assoc op :type :fail)
-                          )
-                         )
-                :cas    (if (= updated 1)
-                          (do
-                          (info "Worker " (:process op) " CAS SUCCESS")
-                          (assoc op :type :ok)
-                          )
-                          (do
-                          (info "Worker " (:process op) " CAS FAILED")
-                          (assoc op :type :fail)
-                          )
-                         )
+                       )
+                    )
+                  ]
+                      (do
+                      (info "Worker " (:process op) " TXN RCODE IS " updated)
+                      (if (zero? updated)
+                                 (do
+                                 (info "Worker " (:process op) " CAS FAILED")
+                                 (assoc op :type :fail)
+                                 )
+                                 (do
+                                 (info "Worker " (:process op) " CAS SUCCESS to " (second (:value op)))
+                                 (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
+                                 )
+                                )
+                      )
+                      )
+                 
+                   (catch java.sql.SQLException e
+                     (let [error (.getErrorCode e)]
+                       (cond 
+                         (= error 2) (do 
+                                      (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                                      (assoc op :type :fail)
+                                      )
+                         :else (throw e))
+                     )
+                   )
                 )
-              ) ; let
-            (catch java.sql.SQLException e 
-              (let [error (.getErrorCode e)]
-                (cond 
-                  (= error 2) (do 
-                               (info "Worker " (:process op) " FAILED: "(.getMessage e))
-                               (assoc op :type :fail)
-                               )
-                  :else (throw e))
-              )
-            ) 
-          
-          
-          
-            ); try
-          ) ; do
-        ) ; with txn
-      ) ; invoke
+            )
+          )
+        )
+      )
     (teardown! [_ test])))
+
 
 
 ; Test on only one register for now
@@ -550,13 +571,13 @@
        :concurrency 10
 
        :generator   (gen/phases
-                      (->> (gen/mix [w cas r])
+                      (->> (gen/mix [w cas cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 60))
+                           (gen/time-limit 10))
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (model/cas-register-comdb2 [1 nil])
+       :model       (model/cas-register-comdb2 [1 1])
        :time-limit   100
        :recovery-time  30
        :checker     (checker/compose
@@ -574,14 +595,14 @@
        :concurrency 10
 
        :generator   (gen/phases
-                      (->> (gen/mix [w cas r])
+                      (->> (gen/mix [w cas cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 60)
+                           (gen/time-limit 10)
                            with-nemesis)
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (model/cas-register-comdb2 [1 nil])
+       :model       (model/cas-register-comdb2 [1 1])
        :time-limit   100
        :recovery-time  30
        :checker     (checker/compose
