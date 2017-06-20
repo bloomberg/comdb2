@@ -55,12 +55,6 @@ static const char revid[] = "$Id: os_rw.c,v 11.30 2003/05/23 21:19:05 bostic Exp
 #include <poll.h>
 #include "logmsg.h"
 
-#ifndef U2M
-#  define U2M(usec) ((usec) / 1000)
-#endif
-#ifndef M2U
-#  define M2U(msec) ((msec) * 1000ULL)
-#endif
 uint64_t bb_berkdb_fasttime(void);
 
 #ifdef HAVE_FILESYSTEM_NOTZERO
@@ -532,7 +526,7 @@ __os_io_partial(dbenv, op, fhp, pgno, pagesize, parlen, buf, niop)
 				t->pread_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_read_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_read_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
@@ -748,7 +742,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 				t->pread_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_read_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_read_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 
@@ -1172,7 +1166,7 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 				t->pread_time_us += (x2 - x1);
 			}
 
-			if ((x2 - x1) > __berkdb_read_alarm_ms &&
+			if ((x2 - x1) > M2U(__berkdb_read_alarm_ms) &&
 			    __berkdb_trace_func) {
 				char s[80];
 

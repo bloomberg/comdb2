@@ -2662,6 +2662,18 @@ struct bb_berkdb_thread_stats {
 	uint64_t shalloc_free_time_us;
 };
 
+/*
+ * Helper macros for microsecond-granularity event logging.
+ * Multiplication usually takes fewer CPU cycles than division. Therefore
+ * when comparing a usec and a msec, it is preferable to use:
+ * usec <comparison operator> M2U(msec)
+ */
+#ifndef U2M
+#define U2M(usec) (int)((usec) / 1000)
+#endif
+#ifndef M2U
+#define M2U(msec) ((msec) * 1000ULL)
+#endif
 uint64_t bb_berkdb_fasttime(void);
 struct bb_berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
 struct bb_berkdb_thread_stats *bb_berkdb_get_process_stats(void);

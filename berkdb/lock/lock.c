@@ -2766,7 +2766,7 @@ upgrade:
 				 * the lock. */
 				u_int8_t *ptr;
 				gbl_bb_log_lock_waits_fn(sh_obj->lockobj.data,
-				    sh_obj->lockobj.size, (x2 - x1));
+				    sh_obj->lockobj.size, U2M(x2 - x1));
 			}
 		}
 

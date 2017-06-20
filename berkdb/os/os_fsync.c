@@ -170,11 +170,11 @@ __os_fsync(dbenv, fhp)
 		x2 = bb_berkdb_fasttime();
 
 
-	if ((x2 - x1) > ckalmn && __berkdb_trace_func) {
+	if ((x2 - x1) > M2U(ckalmn) && __berkdb_trace_func) {
 		char s[80];
 
 		snprintf(s, sizeof(s), "LONG FSYNC FD=%d %d ms\n",
-		    fhp->fd, x2 - x1);
+		    fhp->fd, U2M(x2 - x1));
 		__berkdb_trace_func(s);
 	}
 
