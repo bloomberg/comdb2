@@ -19,28 +19,28 @@
 
 extern struct dbenv *thedb;
 
-
 /**
  *  Returns the next value for a specified sequence object. If the sequence name
- *  cannot be found, -1 is returned. If the next value is greater than the max or
- *  less than min value, for ascending or decesending sequences respectively, and
- *  cycle is not enabled, <error>.
+ *  cannot be found, -1 is returned. If the next value is greater than the max
+ *  or less than min value, for ascending or decesending sequences respectively,
+ *  and cycle is not enabled, <error>.
  *
  *  @param name char * Name of the sequence
  *  @param val long long * Reference to output location
  */
-int seq_next_val (char *name, long long *val) {
+int seq_next_val(char *name, long long *val)
+{
     sequence_t *seq = get_sequence(name);
     int rc, bdberr;
 
-    if ( seq == NULL ) {
-       // Failed to find sequence with specified name
-       // TODO: error out another way
-       logmsg(LOGMSG_ERROR, "Sequence %s cannot be found", name);
-       return -1;
+    if (seq == NULL) {
+        // Failed to find sequence with specified name
+        // TODO: error out another way
+        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found", name);
+        return -1;
     }
 
-    if (seq->flags & SEQUENCE_EXHAUSTED){
+    if (seq->flags & SEQUENCE_EXHAUSTED) {
         // TODO: Error End of sequence
         logmsg(LOGMSG_ERROR, "End of sequenence. No more values to dispense.");
         return -1;
@@ -51,10 +51,14 @@ int seq_next_val (char *name, long long *val) {
 
     // Check for remaining values
     if (seq->remaining_vals == 0) {
-        rc = bdb_llmeta_get_sequence_chunk(NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle, seq->chunk_size, &seq->flags, &seq->remaining_vals, &seq->next_start_val, &bdberr);
+        rc = bdb_llmeta_get_sequence_chunk(
+            NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
+            seq->chunk_size, &seq->flags, &seq->remaining_vals,
+            &seq->next_start_val, &bdberr);
 
         if (rc) {
-            logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n", name);
+            logmsg(LOGMSG_ERROR,
+                   "can't retrive new chunk for sequence \"%s\"\n", name);
             return -1;
         }
     }
@@ -76,7 +80,8 @@ int seq_next_val (char *name, long long *val) {
             else
                 seq->next_val = seq->max_val;
         } else {
-            // No more sequence values to dispense. Value of next_val is now undefined behaviour (unreliable)
+            // No more sequence values to dispense. Value of next_val is now
+            // undefined behaviour (unreliable)
             seq->flags |= SEQUENCE_EXHAUSTED;
         }
 
@@ -87,21 +92,23 @@ int seq_next_val (char *name, long long *val) {
     seq->next_val += seq->increment;
 
     // Check for cycle conditions
-    if ( (seq->increment > 0) && (seq->next_val > seq->max_val) ) {
+    if ((seq->increment > 0) && (seq->next_val > seq->max_val)) {
         if (seq->cycle) {
             seq->next_val = seq->min_val;
         } else if (seq->cycle && seq->increment < 0) {
             seq->next_val = seq->max_val;
         } else {
-            // No more sequence values to dispense. Value of next_val is now undefined behaviour (unreliable)
+            // No more sequence values to dispense. Value of next_val is now
+            // undefined behaviour (unreliable)
             seq->flags |= SEQUENCE_EXHAUSTED;
         }
     } else if ((seq->increment < 0) && (seq->next_val < seq->min_val)) {
         if (seq->cycle) {
-           seq->next_val = seq->max_val;
+            seq->next_val = seq->max_val;
         } else {
-           // No more sequence values to dispense. Value of next_val is now undefined behaviour (unreliable)
-           seq->flags |= SEQUENCE_EXHAUSTED;
+            // No more sequence values to dispense. Value of next_val is now
+            // undefined behaviour (unreliable)
+            seq->flags |= SEQUENCE_EXHAUSTED;
         }
     }
 
@@ -109,27 +116,27 @@ int seq_next_val (char *name, long long *val) {
     return 0;
 }
 
-
 /**
  *  TODO: Rename to something else? Last value?
  *
- *  Returns the previous value that was dispensed for a specified sequence object.
- *  If the sequence name cannot be found, -1 is returned. If a previous value does
- *  not exist, <error>.
+ *  Returns the previous value that was dispensed for a specified sequence
+ *  object. If the sequence name cannot be found, -1 is returned. If a previous
+ *  value does not exist, <error>.
  *
  *  @param name char * Name of the sequence
  *  @param val long long * Reference to output location
  */
-int seq_prev_val (char *name, long long *val) {
+int seq_prev_val(char *name, long long *val)
+{
     sequence_t *seq = get_sequence(name);
 
-    if ( seq == NULL ) {
+    if (seq == NULL) {
         // Failed to find sequence with specified name
         // TODO: error out another way
         return -1;
     }
 
-    if ( seq->prev_val == seq->next_val ) {
+    if (seq->prev_val == seq->next_val) {
         // Previous Value doesn't exist
         // TODO: error out another way
         return -1;
@@ -140,13 +147,14 @@ int seq_prev_val (char *name, long long *val) {
     return 0;
 }
 
-
 /**
- *  Helper to return a pointer to a sequence by name. Returns NULL if it cannot be found.
+ *  Helper to return a pointer to a sequence by name. Returns NULL if it cannot
+ *  be found.
  *
  *  @param name char * Name of the sequence
  */
-sequence_t *get_sequence(char *name) {
+sequence_t *get_sequence(char *name)
+{
     int i;
 
     if (thedb->num_sequences == 0) {
@@ -154,8 +162,8 @@ sequence_t *get_sequence(char *name) {
         return NULL;
     }
 
-    for(i = 0; i < thedb->num_sequences; i++) {
-        if ( strcmp(thedb->sequences[i]->name, name) == 0) {
+    for (i = 0; i < thedb->num_sequences; i++) {
+        if (strcmp(thedb->sequences[i]->name, name) == 0) {
             return thedb->sequences[i];
         }
     }
@@ -163,57 +171,68 @@ sequence_t *get_sequence(char *name) {
     return NULL;
 }
 
-
 /**
  * TODO: MOVE SOMEWHERE ELSE
  * TODO: Make Transactional
- * 
+ *
  * Adds sequence to llmeta and memory
  */
-int add_sequence (char* name, long long min_val, long long max_val,
-    long long increment, bool cycle, long long start_val, long long chunk_size, char flags) {
+int add_sequence(char *name, long long min_val, long long max_val,
+                 long long increment, bool cycle, long long start_val,
+                 long long chunk_size, char flags)
+{
     // Check that name is valid
-    if (strlen(name) > MAXTABLELEN - 1){
-        logmsg(LOGMSG_ERROR, "sequence name too long. Must be less than %d characters\n", MAXTABLELEN-1);
+    if (strlen(name) > MAXTABLELEN - 1) {
+        logmsg(LOGMSG_ERROR,
+               "sequence name too long. Must be less than %d characters\n",
+               MAXTABLELEN - 1);
         return 1;
     }
 
     // Check for duplicate name
-    if (!(get_sequence(name) == NULL)){
-        logmsg(LOGMSG_ERROR, "sequence with name \"%s\" already exists\n", name);
+    if (!(get_sequence(name) == NULL)) {
+        logmsg(LOGMSG_ERROR, "sequence with name \"%s\" already exists\n",
+               name);
         return 1;
     }
 
     // Check that there aren't too many sequences
-    if (thedb->num_sequences >= MAX_NUM_SEQUENCES){
-        logmsg(LOGMSG_ERROR, "Max number of sequences created. Unable to create new sequence.");
+    if (thedb->num_sequences >= MAX_NUM_SEQUENCES) {
+        logmsg(
+            LOGMSG_ERROR,
+            "Max number of sequences created. Unable to create new sequence.");
         return 1;
     }
 
     // Add sequence to llmeta
     int rc, bdberr;
 
-    rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle, start_val, chunk_size, flags, &bdberr);
+    rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle,
+                                 start_val, chunk_size, flags, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't create new sequence \"%s\"\n", name);
         return -1;
     }
-    
+
     // Allocate value chunk
     long long next_start_val = start_val;
     long long remaining_vals;
     sequence_t *seq;
 
-    rc = bdb_llmeta_get_sequence_chunk(NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags, &remaining_vals, &next_start_val, &bdberr);
+    rc = bdb_llmeta_get_sequence_chunk(
+        NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags,
+        &remaining_vals, &next_start_val, &bdberr);
 
     if (rc) {
-        logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n", name);
+        logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n",
+               name);
         return -1;
     }
-    
+
     // Make space in memory
-    thedb->sequences = realloc(thedb->sequences, (thedb->num_sequences + 1) * sizeof(sequence_t));
+    thedb->sequences = realloc(thedb->sequences,
+                               (thedb->num_sequences + 1) * sizeof(sequence_t));
 
     if (thedb->sequences == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for sequences list\n");
@@ -221,13 +240,14 @@ int add_sequence (char* name, long long min_val, long long max_val,
     }
 
     // Create new sequence in memory
-    seq = new_sequence(name, min_val, max_val, increment, cycle, start_val, chunk_size, flags, remaining_vals, next_start_val);
+    seq = new_sequence(name, min_val, max_val, increment, cycle, start_val,
+                       chunk_size, flags, remaining_vals, next_start_val);
 
     if (seq == NULL) {
         logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
         return -1;
     }
-    
+
     thedb->sequences[thedb->num_sequences] = seq;
     thedb->num_sequences++;
 
@@ -239,7 +259,8 @@ int add_sequence (char* name, long long min_val, long long max_val,
  * TODO: Make Transactional
  * Drops sequence from llmeta and memory
  */
-int drop_sequence (char *name) {
+int drop_sequence(char *name)
+{
     int rc;
     int bdberr;
     int i;
@@ -250,26 +271,25 @@ int drop_sequence (char *name) {
         return 1;
     }
 
-    for(i = 0; i < thedb->num_sequences; i++) {
-        if ( strcmp(thedb->sequences[i]->name, name) == 0) {
+    for (i = 0; i < thedb->num_sequences; i++) {
+        if (strcmp(thedb->sequences[i]->name, name) == 0) {
             // TOOD: add checks for usage in tables
 
             // TODO: Crit section?
 
             // Remove sequence from dbenv
             thedb->num_sequences--;
-            
-            if (thedb->num_sequences > 0){
+
+            if (thedb->num_sequences > 0) {
                 thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
             }
-            
+
             thedb->sequences[thedb->num_sequences] = NULL;
 
             // Remove llmeta record
             rc = bdb_llmeta_drop_sequence(NULL, name, &bdberr);
 
-            if (rc)
-                return rc;
+            if (rc) return rc;
 
             return 0;
         }
