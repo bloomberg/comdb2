@@ -2,6 +2,8 @@
 
 set -x
 
+[[ $COMDB2_UNITTEST == 1 ]] && exit 0
+
 echo "!$TESTCASE: stopping"
 [ -z "$TESTDIR" ] && TESTDIR=${PWD}/test_${TESTID}
 [ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
@@ -69,6 +71,7 @@ deregister_db="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port
 
 if [[ -z "$CLUSTER" ]]; then
     cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")'
+    cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")'
     
     kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
     eval $deregister_db
@@ -81,6 +84,7 @@ else
     pidfilelist=""
     for node in $CLUSTER; do
         cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")'
+        cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")'
         check_pid_from_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
     done
 

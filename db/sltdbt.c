@@ -365,6 +365,17 @@ int handle_ireq(struct ireq *iq)
         retry:
             rc = toblock(iq);
 
+            extern int gbl_test_blkseq_replay_code;
+            if (gbl_test_blkseq_replay_code && (rc != RC_INTERNAL_RETRY &&
+                rc != ERR_NOT_DURABLE) && (rand() % 10) == 0) {
+                logmsg(LOGMSG_USER, "Test blkseq replay: returning "
+                        "ERR_NOT_DURABLE to test replay:\n");
+                logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n", rc,
+                        iq->errstat.errval, iq->errstat.errstr, 
+                        iq->sorese.rcout);
+                rc = ERR_NOT_DURABLE;
+            }
+
             if (rc == RC_INTERNAL_RETRY) {
                 iq->retries++;
                 if (++retries < gbl_maxretries) {
@@ -489,7 +500,7 @@ int handle_ireq(struct ireq *iq)
                override the extended code (which we don't care about, with
                the primary error code
                */
-            if (rc && !iq->sorese.rcout)
+            if (rc && (!iq->sorese.rcout || rc == ERR_NOT_DURABLE))
                 iq->sorese.rcout = rc;
 
             int sorese_rc = rc;
