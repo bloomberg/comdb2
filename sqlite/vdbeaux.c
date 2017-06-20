@@ -3626,8 +3626,8 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
     /* ym type */
     else if( pMem->du.tv.type == INTV_YM_TYPE)
     {
-        p->u.ym.years = htonl( pMem->du.tv.u.ym.years );
-        p->u.ym.months = htonl( pMem->du.tv.u.ym.months );
+        p->u.ym.years = pMem->du.tv.u.ym.years;
+        p->u.ym.months = pMem->du.tv.u.ym.months;
     }
     else
     {
@@ -3683,10 +3683,10 @@ u32 sqlite3VdbeSerialPut(u8 *buf, Mem *pMem, u32 serial_type){
 
 
     bzero(p, sizeof(*p));
-    p->dttz_sec = flibc_htonll( pMem->du.dt.dttz_sec );
-    p->dttz_frac = htonl( pMem->du.dt.dttz_frac );
-    p->dttz_prec = htons( pMem->du.dt.dttz_prec );
-    p->dttz_conv = htons( pMem->du.dt.dttz_conv );
+    p->dttz_sec = pMem->du.dt.dttz_sec;
+    p->dttz_frac = pMem->du.dt.dttz_frac;
+    p->dttz_prec = pMem->du.dt.dttz_prec;
+    p->dttz_conv = pMem->du.dt.dttz_conv;
 
 #ifdef _SUN_SOURCE
     memcpy(buf, &scratch, sizeof(dttz_t));
@@ -3832,7 +3832,6 @@ static inline u32 sqlite3VdbeSerialGet(
 #else
       pMem->u.i = *(int64_t *)buf;
 #endif
-      pMem->u.i = pMem->u.i;
       pMem->flags = MEM_Int;
       return 8;
     }
@@ -4583,31 +4582,16 @@ static inline i64 vdbeRecordDecodeInt(u32 serial_type, const u8 *aKey){
   switch( serial_type ){
     case 0:
     case 1:
-      testcase( aKey[0]&0x80 );
-      return ONE_BYTE_INT(aKey);
+      return *(char*)aKey;
     case 2:
-      testcase( aKey[0]&0x80 );
-      return TWO_BYTE_INT(aKey);
-    case 3:
-      testcase( aKey[0]&0x80 );
-      return THREE_BYTE_INT(aKey);
+      return *(short*)(aKey);
     case 4: {
-      testcase( aKey[0]&0x80 );
-      y = FOUR_BYTE_UINT(aKey);
-      return (i64)*(int*)&y;
-    }
-    case 5: {
-      testcase( aKey[0]&0x80 );
-      return FOUR_BYTE_UINT(aKey+2) + (((i64)1)<<32)*TWO_BYTE_INT(aKey);
+      return *(int*)aKey;
     }
     case 6: {
-      u64 x = FOUR_BYTE_UINT(aKey);
-      testcase( aKey[0]&0x80 );
-      x = (x<<32) | FOUR_BYTE_UINT(aKey+4);
-      return (i64)*(i64*)&x;
+      return *(long long*)aKey;
     }
   }
-
   return (serial_type - 8);
 }
 
