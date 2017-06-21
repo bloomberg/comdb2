@@ -805,6 +805,8 @@ static void block_state_free(block_state_t *p_blkstate)
     p_blkstate->p_buf_saved_start = NULL;
 }
 
+extern int gbl_dump_blkseq;
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -1116,12 +1118,26 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
      * the cluster is incoherent */
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
             !bdb_latest_commit_is_durable(thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR, "%u replay rc changed from %d to NOT_DURABLE for blkseq %s\n", line, 
-                outrc, printkey);
+        if (iq->have_snap_info) {
+            char *bskey = alloca(iq->snap_info.keylen + 1);
+            memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
+            bskey[iq->snap_info.keylen] = '\0';
+            logmsg(LOGMSG_ERROR, "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n", 
+                    line, outrc, bskey);
+        }
         outrc = ERR_NOT_DURABLE;
     }
 
     free(printkey);
+
+    if (gbl_dump_blkseq && iq->have_snap_info) {
+        char *bskey = alloca(iq->snap_info.keylen + 1);
+        memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
+        bskey[iq->snap_info.keylen] = '\0';
+        logmsg(LOGMSG_USER, "Replay case for '%s' rc=%d, errval=%d errstr='%s' "
+                "rcout=%d\n", bskey, outrc, iq->errstat.errval, 
+                iq->errstat.errstr, iq->sorese.rcout);
+    }
 
     return outrc;
 
@@ -5465,6 +5481,15 @@ add_blkseq:
                     }
                     hascommitlock = 0;
                 }
+                if (gbl_dump_blkseq && iq->have_snap_info) {
+                    char *bskey = alloca(iq->snap_info.keylen + 1);
+                    memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
+                    bskey[iq->snap_info.keylen] = '\0';
+                    logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
+                            "errstr='%s', rcout=%d commit-rc=%d\n", bskey, outrc, 
+                            iq->errstat.errval, iq->errstat.errstr, 
+                            iq->sorese.rcout, irc);
+                }
             } else {
                 if (hascommitlock) {
                     irc = pthread_rwlock_unlock(&commit_lock);
@@ -5801,13 +5826,6 @@ cleanup:
     */
     if (backed_out)
         trans_wait_for_last_seqnum(iq, source_host);
-
-    extern int gbl_test_blkseq_replay_code;
-    if (gbl_test_blkseq_replay_code && did_replay) {
-        logmsg(LOGMSG_USER, "Replay case: rc=%d, errval=%d errstr='%s' "
-                "rcout=%d\n", outrc, iq->errstat.errval, iq->errstat.errstr,
-                iq->sorese.rcout);
-    }
 
     return outrc;
 }

@@ -439,7 +439,9 @@
 
                          (do
                             (let [[expected-val new-val] val' ]
-                                 (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val)])))
+                                 (do
+                                 (info "Worker " (:process op) " CAS FROM " expected-val "-" uid " to " new-val "-" uid')
+                                 (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))))
                           )
                        )
                     )
@@ -452,7 +454,7 @@
                                  (assoc op :type :fail)
                                  )
                                  (do
-                                 (info "Worker " (:process op) " CAS SUCCESS to " (second (:value op)))
+                                 (info "Worker " (:process op) " CAS SUCCESS")
                                  (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
                                  )
                                 )
