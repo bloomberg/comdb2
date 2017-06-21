@@ -2896,7 +2896,7 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->snapshot_offset = 0;
 }
 
-#define GOTO_RETRY_QUERIES()                                                        \
+#define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
         if (hndl->debug_trace) {                                               \
             fprintf(stderr, "td %u %s line %d goto retry_queries\n",           \
