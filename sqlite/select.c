@@ -77,6 +77,16 @@ static void fingerprintExprList(sqlite3 *db, MD5Context *c, ExprList *l) {
   }
 }
 
+static void fingerprintSubqueryList(sqlite3 *db, MD5Context *c, ExprList *l) {
+  int i;
+  struct ExprList_item *pItem;
+  if (l == NULL) return;
+  for(pItem=l->a, i=0; i<l->nExpr; i++, pItem++){
+    if( ExprHasProperty(pItem->pExpr, EP_Subquery) )
+      fingerprintExpr(db, c, pItem->pExpr);
+  }
+}
+
 static void fingerprintTable(sqlite3 *db, MD5Context *c, Table *pTab) {
     if (pTab == NULL)
         return;
@@ -106,6 +116,9 @@ static void fingerprintExpr(sqlite3 *db, MD5Context *c, Expr *p) {
         fingerprintExpr(db, c, p->pRight);
         if( ExprHasProperty(p, EP_xIsSelect) ){
             fingerprintSelectInt(db, c, p->x.pSelect);
+        }else if( p->op == TK_IN ){
+            if( !ExprHasProperty(p, EP_Subquery) ) return;
+            fingerprintSubqueryList(db, c, p->x.pList);
         }else{
             fingerprintExprList(db, c, p->x.pList);
         }
