@@ -20,10 +20,10 @@
 extern "C" {
 #endif
 
-int check_overflow_ll_add (long long a, long long b);
-int check_overflow_ll_sub (long long a, long long b);
-int check_overflow_ll_mul (long long a, long long b);
-int check_overflow_ll_div (long long a, long long b);
+int overflow_ll_add(long long a, long long b);
+int overflow_ll_sub(long long a, long long b);
+int overflow_ll_mul(long long a, long long b);
+int overflow_ll_div(long long a, long long b);
 
 #ifdef __cplusplus
 }
