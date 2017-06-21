@@ -1878,6 +1878,8 @@ void udp_send_durable_lsn(bdb_state_type *bdb_state, DB_LSN *lsn, uint32_t gen);
 int bdb_durable_block(bdb_state_type *bdb_state, DB_LSN *commit_lsn,
                       uint32_t original_gen, int wait_durable);
 
+void populate_deleted_files(bdb_state_type *bdb_state);
+
 int has_low_headroom(const char *path, int threshold, int debug);
 
 #endif /* __bdb_int_h__ */

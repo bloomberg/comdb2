@@ -315,6 +315,7 @@ void *coherency_lease_thread(void *arg)
     return NULL;
 }
 
+
 void *logdelete_thread(void *arg)
 {
     bdb_state_type *bdb_state;
@@ -326,10 +327,13 @@ void *logdelete_thread(void *arg)
 
     while (!bdb_state->after_llmeta_init_done)
         sleep(1);
+    
+    populate_deleted_files(bdb_state);
 
     thread_started("bdb logdelete");
 
     bdb_thread_event(bdb_state, 1);
+
 
     while (1) {
         int sleeptime;
