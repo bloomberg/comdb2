@@ -3131,9 +3131,9 @@ done2:
     bdb_state->caught_up = 1;
 
     /* send our real seqnum to the master now.  */
-    
-    if (bdb_state->repinfo->master_host != gbl_mynode
-        && net_count_nodes(bdb_state->repinfo->netinfo) > 1) {
+
+    if (bdb_state->repinfo->master_host != gbl_mynode &&
+        net_count_nodes(bdb_state->repinfo->netinfo) > 1) {
         rc = send_myseqnum_to_master(bdb_state, 1);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "error sending seqnum to master\n");

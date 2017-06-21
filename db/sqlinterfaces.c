@@ -7037,7 +7037,6 @@ done:
     return rc;
 }
 
-
 static void send_dbinforesponse(SBUF2 *sb)
 {
     struct newsqlheader hdr;
