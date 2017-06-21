@@ -2626,8 +2626,12 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         }
         if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
             if (hndl->flags & CDB2_DIRECT_CPU) {
+                if (hndl->debug_trace) {
+                    fprintf(stderr, "td %u %s line %d retry_queries\n",
+                            (uint32_t)pthread_self(), __func__, __LINE__);
+                }
                 /* direct cpu should not do anything with dbinfo */
-                PRINT_RETURN(-1);
+                return 1;
             }
             /* The master sent info about nodes that might be coherent. */
             sbuf2close(hndl->sb);
@@ -2892,7 +2896,7 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->snapshot_offset = 0;
 }
 
-#define RETRY_QUERIES()                                                        \
+#define GOTO_RETRY_QUERIES()                                                        \
     do {                                                                       \
         if (hndl->debug_trace) {                                               \
             fprintf(stderr, "td %u %s line %d goto retry_queries\n",           \
@@ -3310,15 +3314,14 @@ read_record:
 #else
         PRINT_RETURN(-1);
 #endif
-        RETRY_QUERIES();
-        goto retry_queries;
+        GOTO_RETRY_QUERIES();
     }
 
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
         if (hndl->flags & CDB2_DIRECT_CPU) {
             /* direct cpu should not do anything with dbinfo, just retry */
-            RETRY_QUERIES();
+            GOTO_RETRY_QUERIES();
         }
         /* We got back info about nodes that might be coherent. */
         CDB2DBINFORESPONSE *dbinfo_resp = NULL;
@@ -3347,7 +3350,7 @@ read_record:
         }
 #endif
 
-        RETRY_QUERIES();
+        GOTO_RETRY_QUERIES();
     }
 
     if (rc) {
