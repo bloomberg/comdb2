@@ -767,6 +767,12 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
                 sbuf2flush(sb);
                 continue;
             }
+            if (thedb->master != gbl_mynode) {
+                sbuf2printf(sb, ">Must be run on the master\nFAILED\n");
+                sbuf2flush(sb);
+                continue;
+            }
+
             tok = segtok(line, rc, &st, &ltok);
             if (ltok && strncmp(tok, "clear", 5) == 0) {
                 bdb_clear_table_parameter(NULL, table, "disableskipscan");
