@@ -8559,7 +8559,7 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-void set_timepart_and_handle_resume_sc() 
+static void set_timepart_and_handle_resume_sc()
 {
     /* We need to do this before resuming schema chabge , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
@@ -8606,6 +8606,19 @@ struct tool tool_callbacks[] = {
    TOOLS
    NULL
 };
+
+static void wait_for_coherent()
+{
+    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
+    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
+    unsigned int counter = 1;
+    while (!bdb_am_i_coherent(thedb->bdb_env)) {
+        if ((++counter % wrn_cnt) == 0) {
+            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
+        }
+        usleep(cslp);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -8756,6 +8769,7 @@ int main(int argc, char **argv)
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
+    wait_for_coherent();
 
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
