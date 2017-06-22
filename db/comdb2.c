@@ -8574,7 +8574,7 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-void set_timepart_and_handle_resume_sc() 
+static void set_timepart_and_handle_resume_sc() 
 {
     /* We need to do this before resuming schema chabge , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
@@ -8622,17 +8622,16 @@ struct tool tool_callbacks[] = {
    NULL
 };
 
-
-void wait_for_coherent()
+static void wait_for_coherent()
 {
-    const unsigned int cslp = 10000;         // 10000us == 10ms
-    const unsigned int wrn_cnt = 5 * 1000000 / cslp; // 5s
+    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
+    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
     unsigned int counter = 1;
     while (!bdb_am_i_coherent(thedb->bdb_env)) {
-       if ((++counter % wrn_cnt) == 0) {
-          logmsg(LOGMSG_ERROR, "I am still incoherent\n");
-       }
-       usleep(cslp);
+        if ((++counter % wrn_cnt) == 0) {
+            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
+        }
+        usleep(cslp);
     }
 }
 
