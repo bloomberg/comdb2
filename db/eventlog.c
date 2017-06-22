@@ -188,25 +188,25 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(perfobj, "runtime", cson_new_int(end - start));
 
     if (thread_stats->n_lock_waits || thread_stats->n_preads ||
-        thread_stats->n_pwrites || thread_stats->pread_time_ms ||
-        thread_stats->pwrite_time_ms || thread_stats->lock_wait_time_ms) {
+        thread_stats->n_pwrites || thread_stats->pread_time_us ||
+        thread_stats->pwrite_time_us || thread_stats->lock_wait_time_us) {
         if (thread_stats->n_lock_waits) {
             cson_object_set(perfobj, "lockwaits",
                             cson_new_int(thread_stats->n_lock_waits));
             cson_object_set(perfobj, "lockwaittime",
-                            cson_new_int(thread_stats->lock_wait_time_ms));
+                            cson_new_int(thread_stats->lock_wait_time_us));
         }
         if (thread_stats->n_preads) {
             cson_object_set(perfobj, "reads",
                             cson_new_int(thread_stats->n_preads));
             cson_object_set(perfobj, "readtimetime",
-                            cson_new_int(thread_stats->pread_time_ms));
+                            cson_new_int(thread_stats->pread_time_us));
         }
         if (thread_stats->n_pwrites) {
             cson_object_set(perfobj, "writes",
                             cson_new_int(thread_stats->n_pwrites));
             cson_object_set(perfobj, "writetime",
-                            cson_new_int(thread_stats->pwrite_time_ms));
+                            cson_new_int(thread_stats->pwrite_time_us));
         }
     }
     cson_object_set(obj, "perf", perfval);
@@ -353,8 +353,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         // fingerprint);
     }
 
-    if (logger->queuetimems)
-        cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
+    if (logger->queuetimeus)
+        cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
 
     eventlog_context(obj, logger);
     eventlog_params(obj, logger, detailed);
@@ -422,7 +422,7 @@ void eventlog_stop(void)
     eventlog_disable();
 }
 
-void eventlog_process_message_locked(char *line, int lline, int *toff)
+static void eventlog_process_message_locked(char *line, int lline, int *toff)
 {
     char *tok;
     int ltok;

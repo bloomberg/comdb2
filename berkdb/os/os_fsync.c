@@ -67,7 +67,7 @@ static long long *__berkdb_num_fsyncs = 0;
 static void (*fsync_callback)(int fd) = 0;
 
 /* defined in os_rw.c */
-int bb_berkdb_fasttime(void);
+uint64_t bb_berkdb_fasttime(void);
 
 void
 __berkdb_set_num_fsyncs(long long *n)
@@ -100,7 +100,7 @@ __os_fsync(dbenv, fhp)
 	DB_FH *fhp;
 {
 	int ret, retries, ckalmn;
-	int x1 = 0, x2 = 0;
+	uint64_t x1 = 0, x2 = 0;
 	struct bb_berkdb_thread_stats *p, *t;
 
 	ckalmn = __berkdb_fsync_alarm_ms;
@@ -170,11 +170,11 @@ __os_fsync(dbenv, fhp)
 		x2 = bb_berkdb_fasttime();
 
 
-	if ((x2 - x1) > ckalmn && __berkdb_trace_func) {
+	if ((x2 - x1) > M2U(ckalmn) && __berkdb_trace_func) {
 		char s[80];
 
 		snprintf(s, sizeof(s), "LONG FSYNC FD=%d %d ms\n",
-		    fhp->fd, x2 - x1);
+		    fhp->fd, U2M(x2 - x1));
 		__berkdb_trace_func(s);
 	}
 

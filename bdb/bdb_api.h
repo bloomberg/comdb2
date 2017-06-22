@@ -135,29 +135,41 @@ struct bdb_queue_stats {
 };
 
 /* This is identical to bb_berkdb_thread_stats in db.h */
+
+/*
+ * Multiplication usually takes fewer CPU cycles than division. Therefore
+ * when comparing a usec and a msec, it is preferable to use:
+ * usec <comparison operator> M2U(msec)
+ */
+#ifndef U2M
+#define U2M(usec) (int)((usec) / 1000)
+#endif
+#ifndef M2U
+#define M2U(msec) ((msec)*1000ULL)
+#endif
 struct bdb_thread_stats {
     unsigned n_lock_waits;
-    unsigned lock_wait_time_ms;
+    uint64_t lock_wait_time_us;
 
     unsigned n_preads;
     unsigned pread_bytes;
-    unsigned pread_time_ms;
+    uint64_t pread_time_us;
 
     unsigned n_pwrites;
     unsigned pwrite_bytes;
-    unsigned pwrite_time_ms;
+    uint64_t pwrite_time_us;
 
     unsigned n_memp_fgets;
-    unsigned memp_fget_time_ms;
+    uint64_t memp_fget_time_us;
 
     unsigned n_memp_pgs;
-    unsigned memp_pg_time_ms;
+    uint64_t memp_pg_time_us;
 
     unsigned n_shallocs;
-    unsigned shalloc_time_ms;
+    uint64_t shalloc_time_us;
 
     unsigned n_shalloc_frees;
-    unsigned shalloc_free_time_ms;
+    uint64_t shalloc_free_time_us;
 };
 
 /* these are the values that "bdberr" can be */

@@ -213,7 +213,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         if (append_duration) {
             iov[niov].iov_base = durstr;
             iov[niov].iov_len = snprintf(durstr, sizeof(durstr), " TIME +%d",
-                                         time_epochms() - logger->startms);
+                                         U2M(time_epochus() - logger->startus));
             niov++;
         }
         iov[niov].iov_base = "\n";
@@ -632,7 +632,6 @@ static const char *help_text[] = {
     "Request logging framework commands",
     "reql longrequest #           - set long request threshold in msec",
     "reql longsqlrequest #        - set long SQL request threshold in msec",
-    "reql logallsql [on|off]      - log every sql request",
     "reql longreqfile <filename>  - set file to log long requests in",
     "reql diffstat #              - set diff stat threshold in sec",
     "reql truncate #              - set request truncation",
@@ -1412,8 +1411,7 @@ void reqlog_new_request(struct ireq *iq)
     }
 
     reqlog_reset_logger(logger);
-    logger->startms = iq->nowms;
-    logger->startus = time_epochus();
+    logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
     if (iq->is_fromsocket) {
@@ -1544,7 +1542,6 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt, char *tags,
     reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
-    logger->startms = time_epochms();
     logger->startus = time_epochus();
     reqlog_start_request(logger);
 
@@ -1614,10 +1611,10 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
     struct reqlog_print_callback_args args;
 
     if (out == long_request_out) {
-        dumpf(logger, out, "LONG REQUEST %d msec ", logger->durationms);
+        dumpf(logger, out, "LONG REQUEST %d msec ", U2M(logger->durationus));
     } else {
         dumpf(logger, out, "%s %d msec ", logger->request_type,
-              logger->durationms);
+              U2M(logger->durationus));
     }
     dumpf(logger, out, "from %s rc %d\n", reqorigin(logger), logger->rc);
 
@@ -1771,9 +1768,9 @@ void reqlog_set_rows(struct reqlogger *logger, int rows)
     if (logger) logger->sqlrows = rows;
 }
 
-int reqlog_current_ms(struct reqlogger *logger)
+uint64_t reqlog_current_us(struct reqlogger *logger)
 {
-    return (time_epochms() - logger->startms);
+    return (time_epochus() - logger->startus);
 }
 
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
@@ -1826,8 +1823,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     logger->rc = rc;
 
-    logger->durationms =
-        (time_epochms() - logger->startms) + logger->queuetimems;
+    logger->durationus =
+        (time_epochus() - logger->startus) + logger->queuetimeus;
 
     eventlog_add(logger);
 
@@ -1847,7 +1844,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                 }
             }
 
-            if (!inrange(&rule->duration, logger->durationms)) {
+            if (!inrange(&rule->duration, U2M(logger->durationus))) {
                 continue;
             }
 
@@ -1954,17 +1951,17 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
         long_request_thresh = long_request_ms;
     }
 
-    if (logger->durationms >= long_request_thresh) {
+    if (logger->durationus >= M2U(long_request_thresh)) {
 
         log_header(logger, long_request_out, 1);
         long_reqs++;
 
-        if (logger->durationms > longest_long_request_ms) {
-            longest_long_request_ms = logger->durationms;
+        if (logger->durationus > M2U(longest_long_request_ms)) {
+            longest_long_request_ms = U2M(logger->durationus);
         }
         if (shortest_long_request_ms == -1 ||
-            logger->durationms < shortest_long_request_ms) {
-            shortest_long_request_ms = logger->durationms;
+            logger->durationus < M2U(shortest_long_request_ms)) {
+            shortest_long_request_ms = U2M(logger->durationus);
         }
         long_request_count++;
         if (last_long_request_epoch != time_epoch()) {
@@ -1982,8 +1979,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                     if (long_request_count == 1) {
                         logmsg(LOGMSG_USER,
                                "LONG REQUEST %d MS logged in %s [%s]\n",
-                               logger->durationms, long_request_out->filename,
-                               sqlinfo);
+                               U2M(logger->durationus),
+                               long_request_out->filename, sqlinfo);
                     } else {
                         logmsg(LOGMSG_USER,
                                "%d LONG REQUESTS %d MS - %d MS logged "
@@ -1996,7 +1993,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                 } else {
                     if (long_request_count == 1) {
                         logmsg(LOGMSG_USER, "LONG REQUEST %d MS logged in %s\n",
-                               logger->durationms, long_request_out->filename);
+                               U2M(logger->durationus),
+                               long_request_out->filename);
                     } else {
                         logmsg(LOGMSG_USER,
                                "%d LONG REQUESTS %d MS - %d MS logged in %s\n",
@@ -2382,9 +2380,9 @@ void reqlog_set_vreplays(struct reqlogger *logger, int replays)
     if (logger) logger->vreplays = replays;
 }
 
-void reqlog_set_queue_time(struct reqlogger *logger, int timems)
+void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
 {
-    if (logger) logger->queuetimems = timems;
+    if (logger) logger->queuetimeus = timeus;
 }
 
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16])

@@ -2639,30 +2639,42 @@ void __db_hdestroy __P((void));
  * build_sundev1/db.h */
 struct bb_berkdb_thread_stats {
 	unsigned n_lock_waits;
-	unsigned lock_wait_time_ms;
+	uint64_t lock_wait_time_us;
 
 	unsigned n_preads;
 	unsigned pread_bytes;
-	unsigned pread_time_ms;
+	uint64_t pread_time_us;
 
 	unsigned n_pwrites;
 	unsigned pwrite_bytes;
-	unsigned pwrite_time_ms;
+	uint64_t pwrite_time_us;
 
 	unsigned n_memp_fgets;
-	unsigned memp_fget_time_ms;
+	uint64_t memp_fget_time_us;
 
 	unsigned n_memp_pgs;
-	unsigned memp_pg_time_ms;
+	uint64_t memp_pg_time_us;
 
 	unsigned n_shallocs;
-	unsigned shalloc_time_ms;
+	uint64_t shalloc_time_us;
 
 	unsigned n_shalloc_frees;
-	unsigned shalloc_free_time_ms;
+	uint64_t shalloc_free_time_us;
 };
 
-int bb_berkdb_fasttime(void);
+/*
+ * Helper macros for microsecond-granularity event logging.
+ * Multiplication usually takes fewer CPU cycles than division. Therefore
+ * when comparing a usec and a msec, it is preferable to use:
+ * usec <comparison operator> M2U(msec)
+ */
+#ifndef U2M
+#define U2M(usec) (int)((usec) / 1000)
+#endif
+#ifndef M2U
+#define M2U(msec) ((msec) * 1000ULL)
+#endif
+uint64_t bb_berkdb_fasttime(void);
 struct bb_berkdb_thread_stats *bb_berkdb_get_thread_stats(void);
 struct bb_berkdb_thread_stats *bb_berkdb_get_process_stats(void);
 void bb_berkdb_thread_stats_init(void);

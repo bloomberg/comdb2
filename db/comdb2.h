@@ -1254,8 +1254,8 @@ struct ireq {
     const char *where;
     char *gluewhere; /*backend code where*/
     int debug;
-    int debug_now;
-    int nowms; /*received.*/
+    uint64_t debug_now;
+    uint64_t nowus; /*received.*/
     struct query_limits __limits;
     int opcode;
     struct dbenv *dbenv;
@@ -1293,7 +1293,7 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
-    int startms; /*thread handling*/
+    uint64_t startus; /*thread handling*/
     int is_fake;
     int is_dumpresponse;
     int is_fromsocket;
@@ -2892,7 +2892,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
                             char *tags, void *tagbuf, int tagbufsz,
                             void *nullbits, int numbits);
 void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt);
-int reqlog_current_ms(struct reqlogger *logger);
+uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2903,7 +2903,7 @@ void reqlog_set_diffstat_thresh(int val);
 int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
-void reqlog_set_queue_time(struct reqlogger *logger, int timems);
+void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
@@ -3299,7 +3299,7 @@ extern int gbl_stop_thds_time_threshold;
 extern pthread_mutex_t stop_thds_time_lk;
 
 int trans_commit_logical_tran(void *trans, int *bdberr);
-int bb_berkdb_fasttime(void);
+uint64_t bb_berkdb_fasttime(void);
 extern int gbl_berk_track_cursors;
 
 void osql_checkboard_foreach_serial_dummy(bdb_osql_trn_t *tran);
