@@ -1,4 +1,3 @@
 table t1 t1.csc2
 dtastripe 16
 enable_snapshot_isolation
-pagesize blob 4096

@@ -1457,6 +1457,11 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
 static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                           int timeoutms, int indx)
 {
+
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d newsql_connect\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
     int fd = -1;
     SBUF2 *sb = NULL;
     snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
@@ -1593,6 +1598,11 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
     int requery_done = 0;
 
 retry_connect:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d cdb2_connect_sqlhost\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
+
     if ((hndl->flags & CDB2_RANDOM) && (hndl->node_seq == 0)) {
         hndl->node_seq = random() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
@@ -2574,7 +2584,10 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     if (!hndl->retry_all)
         return 0;
-
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d in retry_queries()\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
     int rc = 0;
     char *host = "NOT-CONNECTED";
     if (hndl->connected_host >= 0)
@@ -2633,6 +2646,14 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             return 1;
         }
         if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
+            if (hndl->flags & CDB2_DIRECT_CPU) {
+                if (hndl->debug_trace) {
+                    fprintf(stderr, "td %u %s line %d retry_queries\n",
+                            (uint32_t)pthread_self(), __func__, __LINE__);
+                }
+                /* direct cpu should not do anything with dbinfo */
+                return 1;
+            }
             /* The master sent info about nodes that might be coherent. */
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
@@ -2896,6 +2917,15 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->snapshot_offset = 0;
 }
 
+#define GOTO_RETRY_QUERIES()                                                   \
+    do {                                                                       \
+        if (hndl->debug_trace) {                                               \
+            fprintf(stderr, "td %u %s line %d goto retry_queries\n",           \
+                    (uint32_t)pthread_self(), __func__, __LINE__);             \
+        }                                                                      \
+        goto retry_queries;                                                    \
+    } while (0);
+
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
@@ -3093,6 +3123,13 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     int run_last = 1;
 
 retry_queries:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host %d (%s)\n",
+                (uint32_t)pthread_self(), __func__, __LINE__,
+                hndl->connected_host,
+                (hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host]
+                                           : ""));
+    }
 
     hndl->first_record_read = 0;
 
@@ -3289,35 +3326,41 @@ read_record:
 
 #if WITH_SSL
     if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+#if WITH_SSL
         hndl->s_sslmode = PEER_SSL_REQUIRE;
+        /* server wants us to use ssl so turn ssl on in same connection */
         try_ssl(hndl, hndl->sb, hndl->connected_host);
+
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
-        goto retry_queries;
+#else
+        PRINT_RETURN(-1);
+#endif
+        GOTO_RETRY_QUERIES();
     }
 #endif
 
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
-        /* The master sent info about nodes that might be coherent. */
-        newsql_disconnect(hndl, hndl->sb, __LINE__);
-        CDB2DBINFORESPONSE *dbinfo_response = NULL;
-        dbinfo_response =
-            cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
-                         &hndl->master, &hndl->num_hosts,
-                         &hndl->num_hosts_sameroom
+        if (hndl->flags & CDB2_DIRECT_CPU) {
+            /* direct cpu should not do anything with dbinfo, just retry */
+            GOTO_RETRY_QUERIES();
+        }
+        /* We got back info about nodes that might be coherent. */
+        CDB2DBINFORESPONSE *dbinfo_resp = NULL;
+        dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
+        parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports, &hndl->master,
+                         &hndl->num_hosts, &hndl->num_hosts_sameroom
 #if WITH_SSL
-                         , &hndl->s_sslmode
+                         ,
+                         &hndl->s_sslmode
 #endif
                          );
-        cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
-        hndl->retry_all = 1;
+        cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
+
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->connected_host = -1;
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
-                    pthread_self(), __func__, __LINE__);
-        }
+        hndl->retry_all = 1;
 
 #if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
@@ -3330,7 +3373,7 @@ read_record:
         }
 #endif
 
-        goto retry_queries;
+        GOTO_RETRY_QUERIES();
     }
 
     if (rc) {
