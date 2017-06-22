@@ -109,7 +109,9 @@ static cson_output_opt opt = {.indentation = 0,
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
-    if (!logger->request) return;
+    if (eventlog == NULL) return;
+    if (!eventlog_enabled) return;
+    if (!eventlog_detailed) return;
 
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
@@ -371,6 +373,9 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
+    if (eventlog == NULL) return;
+    if (!eventlog_enabled) return;
+
     if (!logger->path || logger->path->n_components == 0) return;
 
     cson_value *components = cson_value_new_array();
@@ -396,10 +401,10 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
+    if (eventlog == NULL) return;
+    if (!eventlog_enabled) return;
+
     static const char *hexchars = "0123456789abcdef";
-
-    int detailed = eventlog_detailed;
-
     pthread_mutex_lock(&eventlog_lk);
     if (logger->event_type && strcmp(logger->event_type, "sql") == 0 &&
         !hash_find(seen_sql, logger->fingerprint)) {
@@ -447,7 +452,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
                         cson_value_new_string(logger->event_type,
                                               strlen(logger->event_type)));
 
-    if (logger->stmt && detailed)
+    if (logger->stmt && eventlog_detailed)
         cson_object_set(obj, "sql", cson_value_new_string(
                                         logger->stmt, strlen(logger->stmt)));
 
@@ -486,7 +491,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimems));
 
     eventlog_context(obj, logger);
-    cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
+    if (eventlog_detailed)
+        cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);
     eventlog_path(obj, logger);
