@@ -7085,9 +7085,7 @@ done:
 static void send_dbinforesponse(SBUF2 *sb)
 {
     struct newsqlheader hdr;
-    CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-    CDB2DBINFORESPONSE *dbinfo_response;
-    dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
+    CDB2DBINFORESPONSE *dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
     cdb2__dbinforesponse__init(dbinfo_response);
 
     fill_dbinfo(dbinfo_response, thedb->bdb_env);

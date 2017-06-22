@@ -8993,15 +8993,14 @@ static void uprec_sender_array_init(void)
 
 int offload_comm_send_upgrade_records(struct db *db, unsigned long long genid)
 {
-    int rc = 0, stripe, idx, nhosts;
+    int rc = 0, stripe, idx;
     struct errstat xerr;
 
     if (genid == 0)
         return EINVAL;
 
     /* if i am master of a cluster, return. */
-    nhosts = net_count_nodes(osql_get_netinfo());
-    if (nhosts > 1 && thedb->master == gbl_mynode)
+    if (thedb->master == gbl_mynode && net_count_nodes(osql_get_netinfo()) > 1)
         return 0;
 
     (void)pthread_once(&uprec_sender_array_once, uprec_sender_array_init);

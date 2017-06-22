@@ -3295,14 +3295,14 @@ void net_count_nodes_ex(netinfo_type *netinfo_ptr, int *total_ptr,
                                            from myself */
 }
 
-int net_count_nodes(netinfo_type *netinfo_ptr)
+inline int net_count_nodes(netinfo_type *netinfo_ptr)
 {
     int total;
     net_count_nodes_ex(netinfo_ptr, &total, NULL);
     return total;
 }
 
-int net_count_connected_nodes(netinfo_type *netinfo_ptr)
+inline int net_count_connected_nodes(netinfo_type *netinfo_ptr)
 {
     int connected;
     net_count_nodes_ex(netinfo_ptr, NULL, &connected);
