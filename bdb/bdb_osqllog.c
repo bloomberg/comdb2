@@ -1708,14 +1708,13 @@ done:
     return rc;
 }
 
-/**
- * Same as old parse_log_for_shadows
- * Decided to create a new one since it diverts considerably from the old one
- *
+/*
+ * Creates osql undo logs for logical operations in a physical commit
  */
-bdb_osql_log_t *parse_log_for_snapisol(bdb_state_type *bdb_state, DB_LOGC *cur,
-                                       DB_LSN *last_logical_lsn, int is_bkfill,
-                                       int *bdberr)
+
+bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state, DB_LOGC *cur,
+                                      DB_LSN *last_logical_lsn, int is_bkfill,
+                                      int skip_logical_commit, int *bdberr)
 {
     int rc;
     DBT logdta;
@@ -1735,6 +1734,16 @@ bdb_osql_log_t *parse_log_for_snapisol(bdb_state_type *bdb_state, DB_LOGC *cur,
     llog_undo_upd_ix_args *upd_ix = NULL;
     llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
     llog_ltran_commit_args *commit = NULL;
+
+    /* Rowlockless comprec will need to remove
+     * records from addcur */
+    llog_ltran_comprec_args *comprec = NULL;
+
+    /* Rowlocks benchmark record */
+    llog_rowlocks_log_bench_args *rl_log = NULL;
+
+
+
     unsigned long long genid = 0;
     int done = 0;
 
@@ -1763,509 +1772,35 @@ bdb_osql_log_t *parse_log_for_snapisol(bdb_state_type *bdb_state, DB_LOGC *cur,
         LOGCOPY_32(&rectype, logdta.data);
     else {
         logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn\n");
-        return NULL;
+        undolog = NULL;
+        goto done;
     }
 
-    /* in snapisol, there is a logical commit always preceeding berkdb commit
-       in the track user transactions */
-    if (rectype != DB_llog_ltran_commit) {
-        return NULL;
-    }
-
-    /* make sure this is a commit */
-    rc = llog_ltran_commit_read(bdb_state->dbenv, logdta.data, &commit);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "Unable to get logical commit record\n");
-        return NULL;
-    }
-    if (commit->isabort) {
-        free(commit);
-        return NULL;
-    }
-    free(commit);
-    commit = NULL;
-    goto next;
-
-    while (rc == 0) {
-        if (lsn.file == 0 && lsn.offset == 1) {
-            logmsg(LOGMSG_ERROR, "reached last lsn but not a begin record type %d?\n",
-                   rectype);
-            break;
+    /* Logical commit is expected in snapisol: skip over it */
+    if (skip_logical_commit) {
+        /* Verify that the record is a logical commit */
+        if (rectype != DB_llog_ltran_commit) {
+            return NULL;
         }
-
-        /* check if we have a delete/update undo for data, which
-           is the only thing I care for snapshot/serializable;
-           Alternatively, I could grab indexes as well to
-           avoid recreating them based on data row + schema.
-           For simplicity, we chose to not do that.  This is ok
-           since sql switches atomically from one schema to a
-           new one during schema change, and there is not way
-           the indexes to change from the data row copy to their
-           recreation
-         */
-        /*
-        fprintf( stderr, "%d %s:%d rectype=%d\n",
-              pthread_self(), __FILE__, __LINE__, rectype);
-         */
-
-        switch (rectype) {
-
-        case DB_llog_undo_del_dta:
-
-            rc =
-                llog_undo_del_dta_read(bdb_state->dbenv, logdta.data, &del_dta);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_deldta(undolog, &lsn, del_dta, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(del_dta);
-            break;
-
-        case DB_llog_undo_del_dta_lk:
-
-            rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta.data,
-                                           &del_dta_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_deldta_lk(undolog, &lsn, del_dta_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-            free(del_dta_lk);
-            break;
-
-        case DB_llog_undo_del_ix:
-
-            rc = llog_undo_del_ix_read(bdb_state->dbenv, logdta.data, &del_ix);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_delix(undolog, &lsn, del_ix, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(del_ix);
-            break;
-
-        case DB_llog_undo_del_ix_lk:
-
-            rc = llog_undo_del_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                          &del_ix_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_delix_lk(undolog, &lsn, del_ix_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(del_ix_lk);
-            break;
-
-        case DB_llog_undo_add_dta:
-
-            if (is_bkfill == 1)
-                break;
-
-            rc =
-                llog_undo_add_dta_read(bdb_state->dbenv, logdta.data, &add_dta);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_adddta(undolog, &lsn, add_dta, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(add_dta);
-            break;
-
-        case DB_llog_undo_add_dta_lk:
-
-            if (is_bkfill == 1)
-                break;
-
-            rc = llog_undo_add_dta_lk_read(bdb_state->dbenv, logdta.data,
-                                           &add_dta_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_adddta_lk(undolog, &lsn, add_dta_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(add_dta_lk);
-            break;
-
-        case DB_llog_undo_add_ix:
-
-            if (is_bkfill == 1)
-                break;
-
-            rc = llog_undo_add_ix_read(bdb_state->dbenv, logdta.data, &add_ix);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_addix(undolog, &lsn, add_ix, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(add_ix);
-            break;
-
-        case DB_llog_undo_add_ix_lk:
-
-            if (is_bkfill == 1)
-                break;
-
-            rc = llog_undo_add_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                          &add_ix_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_addix_lk(undolog, &lsn, add_ix_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(add_ix_lk);
-            break;
-
-        case DB_llog_undo_upd_dta:
-
-            rc =
-                llog_undo_upd_dta_read(bdb_state->dbenv, logdta.data, &upd_dta);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_upddta(undolog, &lsn, upd_dta, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(upd_dta);
-            break;
-
-        case DB_llog_undo_upd_dta_lk:
-
-            rc = llog_undo_upd_dta_lk_read(bdb_state->dbenv, logdta.data,
-                                           &upd_dta_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_upddta_lk(undolog, &lsn, upd_dta_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(upd_dta_lk);
-            break;
-
-        case DB_llog_undo_upd_ix:
-
-            rc == llog_undo_upd_ix_read(bdb_state->dbenv, logdta.data, &upd_ix);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_updix(undolog, &lsn, upd_ix, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(upd_ix);
-            break;
-
-        case DB_llog_undo_upd_ix_lk:
-
-            rc == llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                           &upd_ix_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_updix_lk(undolog, &lsn, upd_ix_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(upd_ix_lk);
-            break;
-
-        case DB_llog_ltran_comprec:
-            /* TODO */
-            break;
-
-        case DB_llog_ltran_start:
-            break;
-
-        default:
-            logmsg(LOGMSG_ERROR, "%s:%d Unhandled logical record rectype=%d!\n",
-                    __FILE__, __LINE__, rectype);
-            done = 1;
-            break;
-        }
-
-        if (done && !undolog) /* if NOP, go out; otherwise flag partial
-                                 understood transaction */
-            break;
-
-    next:
-        rc = undo_get_prevlsn(bdb_state, &logdta, &lsn);
-        if (rc)
-            break;
-
-#if 0
-      printf("tran %016llx prevlsn %d:%d\n", tran->logical_tranid, lsn.file, lsn.offset);
-#endif
-
-        if (lsn.file == 0 && lsn.offset == 1)
-            break;
-
-        rc = cur->get(cur, &lsn, &logdta, DB_SET);
+        /* Verify that this commit didn't abort */
+        rc = llog_ltran_commit_read(bdb_state->dbenv, logdta.data, &commit);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn\n");
-            break;
+            logmsg(LOGMSG_ERROR, "Unable to get logical commit record\n");
+            return NULL;
         }
-        LOGCOPY_32(&rectype, logdta.data);
-    }
-
-done:
-    if (logdta.data)
-        free(logdta.data);
-
-    if (rc) {
-        rc = bdb_osql_log_destroy(undolog);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s fail to destroy log\n", __func__);
-        return NULL;
-    }
-
-    return undolog;
-}
-
-/**
- * Retrieve each log record for a provided lsn and create a osqllog
- * to be used for either backfilling or updating the snapshot of a
- * snapshot/serializable transaction
- *
- */
-bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
-                                      DB_LSN *last_logical_lsn, int is_bkfill,
-                                      int *bdberr)
-{
-    int rc;
-    DBT logdta;
-    DB_LSN lsn, prevlsn;
-    u_int32_t rectype;
-    bdb_osql_log_t *undolog = NULL;
-    llog_undo_del_dta_args *del_dta = NULL;
-    llog_undo_add_dta_args *add_dta = NULL;
-    llog_undo_del_ix_args *del_ix = NULL;
-    llog_undo_add_ix_args *add_ix = NULL;
-    llog_undo_upd_dta_args *upd_dta = NULL;
-    llog_undo_upd_ix_args *upd_ix = NULL;
-
-    /* Rowlocks version */
-    llog_undo_add_dta_lk_args *add_dta_lk = NULL;
-    llog_undo_add_ix_lk_args *add_ix_lk = NULL;
-    llog_undo_del_dta_lk_args *del_dta_lk = NULL;
-    llog_undo_del_ix_lk_args *del_ix_lk = NULL;
-    llog_undo_upd_dta_lk_args *upd_dta_lk = NULL;
-    llog_undo_upd_ix_lk_args *upd_ix_lk = NULL;
-
-    /* Rowlockless comprec will need to remove
-     * records from addcur */
-    llog_ltran_comprec_args *comprec = NULL;
-
-    /* Rowlocks benchmark record */
-    llog_rowlocks_log_bench_args *rl_log = NULL;
-
-    unsigned long long genid = 0;
-    int done = 0;
-
-    /*
-       if we don't support snapshot/serializable (no callback),
-       skip this step
-       if (!bdb_state->callback->undoshadow_rtn)
-       return 0;
-     */
-
-    bzero(&logdta, sizeof(DBT));
-    logdta.flags = DB_DBT_REALLOC;
-
-    prevlsn = lsn = *last_logical_lsn;
-
-    if (lsn.file == 0 && lsn.offset == 1) {
-        /*
-        fprintf(stderr, "%d %s:%d Empty transaction\n",
-              pthread_self(), __FILE__, __LINE__);
-         */
-        return NULL;
-    }
-
-    rc = cur->get(cur, &lsn, &logdta, DB_SET);
-    if (!rc)
-        LOGCOPY_32(&rectype, logdta.data);
-    else {
-        logmsg(LOGMSG_ERROR, "Unable to get last_logical_lsn\n");
-        undolog = NULL;
-        goto done;
-    }
-
-    if (is_bkfill && rectype == DB_llog_ltran_commit) {
-        undolog = NULL;
-        goto done;
+        if (commit->isabort) {
+            free(commit);
+            return NULL;
+        }
+        free(commit);
+        commit = NULL;
+        goto next;
+    } else {
+        /* Btree operations have their own unique commits in rowlocks */
+        if (is_bkfill && rectype == DB_llog_ltran_commit) {
+            undolog = NULL;
+            goto done;
+        }
     }
 
     while (rc == 0 && rectype != DB_llog_ltran_start && !done) {
@@ -2318,6 +1853,32 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             free(del_dta);
             break;
 
+        case DB_llog_undo_del_dta_lk:
+
+            rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta.data,
+                                           &del_dta_lk);
+            if (rc)
+                goto done;
+
+            /* queue the record */
+            if (undolog == NULL) {
+                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
+                if (undolog == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
+                            __func__, *bdberr);
+                    rc = -1;
+                    goto done;
+                }
+            }
+            rc = bdb_osql_log_deldta_lk(undolog, &lsn, del_dta_lk, bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
+                        *bdberr);
+                goto done;
+            }
+            free(del_dta_lk);
+            break;
+
         case DB_llog_undo_del_ix:
 
             rc = llog_undo_del_ix_read(bdb_state->dbenv, logdta.data, &del_ix);
@@ -2344,10 +1905,34 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             free(del_ix);
             break;
 
-        case DB_llog_undo_add_dta:
+        case DB_llog_undo_del_ix_lk:
 
-            if (is_bkfill == 1)
-                break;
+            rc = llog_undo_del_ix_lk_read(bdb_state->dbenv, logdta.data,
+                                          &del_ix_lk);
+            if (rc)
+                goto done;
+
+            /* queue the record */
+            if (undolog == NULL) {
+                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
+                if (undolog == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
+                            __func__, *bdberr);
+                    rc = -1;
+                    goto done;
+                }
+            }
+            rc = bdb_osql_log_delix_lk(undolog, &lsn, del_ix_lk, bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
+                        *bdberr);
+                goto done;
+            }
+
+            free(del_ix_lk);
+            break;
+
+        case DB_llog_undo_add_dta:
 
             rc =
                 llog_undo_add_dta_read(bdb_state->dbenv, logdta.data, &add_dta);
@@ -2374,10 +1959,34 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             free(add_dta);
             break;
 
-        case DB_llog_undo_add_ix:
+        case DB_llog_undo_add_dta_lk:
 
-            if (is_bkfill == 1)
-                break;
+            rc = llog_undo_add_dta_lk_read(bdb_state->dbenv, logdta.data,
+                                           &add_dta_lk);
+            if (rc)
+                goto done;
+
+            /* queue the record */
+            if (undolog == NULL) {
+                undolog = bdb_osql_log_begin(0, bdberr);
+                if (undolog == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
+                            __func__, *bdberr);
+                    rc = -1;
+                    goto done;
+                }
+            }
+            rc = bdb_osql_log_adddta_lk(undolog, &lsn, add_dta_lk, bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
+                        *bdberr);
+                goto done;
+            }
+
+            free(add_dta_lk);
+            break;
+
+        case DB_llog_undo_add_ix:
 
             rc = llog_undo_add_ix_read(bdb_state->dbenv, logdta.data, &add_ix);
             if (rc)
@@ -2430,146 +2039,6 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             free(upd_dta);
             break;
 
-        case DB_llog_undo_upd_ix:
-
-            rc = llog_undo_upd_ix_read(bdb_state->dbenv, logdta.data, &upd_ix);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_updix(undolog, &lsn, upd_ix, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(upd_ix);
-            break;
-
-        case DB_llog_undo_add_dta_lk:
-
-            if (is_bkfill == 1)
-                break;
-
-            rc = llog_undo_add_dta_lk_read(bdb_state->dbenv, logdta.data,
-                                           &add_dta_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_adddta_lk(undolog, &lsn, add_dta_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(add_dta_lk);
-            break;
-
-        case DB_llog_undo_add_ix_lk:
-
-            if (is_bkfill == 1)
-                break;
-
-            rc = llog_undo_add_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                          &add_ix_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_addix_lk(undolog, &lsn, add_ix_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(add_ix_lk);
-            break;
-
-        case DB_llog_undo_del_dta_lk:
-
-            rc = llog_undo_del_dta_lk_read(bdb_state->dbenv, logdta.data,
-                                           &del_dta_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_deldta_lk(undolog, &lsn, del_dta_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(del_dta_lk);
-            break;
-
-        case DB_llog_undo_del_ix_lk:
-
-            rc = llog_undo_del_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                          &del_ix_lk);
-            if (rc)
-                goto done;
-
-            /* queue the record */
-            if (undolog == NULL) {
-                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
-                if (undolog == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
-                            __func__, *bdberr);
-                    rc = -1;
-                    goto done;
-                }
-            }
-            rc = bdb_osql_log_delix_lk(undolog, &lsn, del_ix_lk, bdberr);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
-                        *bdberr);
-                goto done;
-            }
-
-            free(del_ix_lk);
-            break;
-
         case DB_llog_undo_upd_dta_lk:
 
             rc = llog_undo_upd_dta_lk_read(bdb_state->dbenv, logdta.data,
@@ -2597,10 +2066,36 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             free(upd_dta_lk);
             break;
 
+        case DB_llog_undo_upd_ix:
+
+            rc = llog_undo_upd_ix_read(bdb_state->dbenv, logdta.data, &upd_ix);
+            if (rc)
+                goto done;
+
+            /* queue the record */
+            if (undolog == NULL) {
+                undolog = bdb_osql_log_begin(0 /*trak*/, bdberr);
+                if (undolog == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
+                            __func__, *bdberr);
+                    rc = -1;
+                    goto done;
+                }
+            }
+            rc = bdb_osql_log_updix(undolog, &lsn, upd_ix, bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
+                        *bdberr);
+                goto done;
+            }
+
+            free(upd_ix);
+            break;
+
         case DB_llog_undo_upd_ix_lk:
 
-            rc = llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                          &upd_ix_lk);
+            rc == llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
+                                           &upd_ix_lk);
             if (rc)
                 goto done;
 
@@ -2624,10 +2119,33 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             free(upd_ix_lk);
             break;
 
-        /*
-         * Shouldn't get these yet - it will only occur
-         * if the commit record has the abort flag lit.
-         */
+        case DB_llog_undo_add_ix_lk:
+
+            rc = llog_undo_add_ix_lk_read(bdb_state->dbenv, logdta.data,
+                                          &add_ix_lk);
+            if (rc)
+                goto done;
+
+            /* queue the record */
+            if (undolog == NULL) {
+                undolog = bdb_osql_log_begin(0, bdberr);
+                if (undolog == NULL) {
+                    logmsg(LOGMSG_ERROR, "%s: fail to create a serial queue %d\n",
+                            __func__, *bdberr);
+                    rc = -1;
+                    goto done;
+                }
+            }
+            rc = bdb_osql_log_addix_lk(undolog, &lsn, add_ix_lk, bdberr);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: fail to que record %d %d\n", __func__, rc,
+                        *bdberr);
+                goto done;
+            }
+
+            free(add_ix_lk);
+            break;
+
         case DB_llog_ltran_comprec:
             rc = llog_ltran_comprec_read(bdb_state->dbenv, logdta.data,
                                          &comprec);
@@ -2658,6 +2176,9 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
         case DB_llog_ltran_commit:
             break;
 
+        case DB_llog_ltran_start:
+            break;
+
         case DB_llog_rowlocks_log_bench:
             break;
 
@@ -2665,6 +2186,7 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
             /* commits for a dbreg */
             done = 1;
             break;
+
         default:
             logmsg(LOGMSG_ERROR, "%s:%d Unhandled logical record rectype=%d!\n",
                     __FILE__, __LINE__, rectype);
@@ -2680,6 +2202,7 @@ bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
                                  generated */
             break;
 
+    next:
         rc = undo_get_prevlsn(bdb_state, &logdta, &lsn);
         if (rc)
             break;
@@ -2703,18 +2226,31 @@ done:
     if (logdta.data)
         free(logdta.data);
 
-    if (rc && undolog) {
+    if (rc) {
 
-        /* printf("XXX %d LOG %p Destroyed (error parse log), queue count=%d\n",
-         * pthread_self(), undolog, log_repo->logs.count); */
-
-        rc = bdb_osql_log_destroy(undolog);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s fail to destroy log\n", __func__);
+        if (undolog) {
+            rc = bdb_osql_log_destroy(undolog);
+            if (rc)
+                logmsg(LOGMSG_ERROR, "%s fail to destroy log\n", __func__);
+        }
         return NULL;
     }
 
     return undolog;
+}
+
+bdb_osql_log_t *parse_log_for_snapisol(bdb_state_type *bdb_state, DB_LOGC *cur,
+                                      DB_LSN *last_logical_lsn, int is_bkfill,
+                                      int *bdberr) {
+    return parse_log_for_shadows_int(bdb_state, cur, last_logical_lsn, is_bkfill,
+            1, bdberr);
+}
+
+bdb_osql_log_t *parse_log_for_shadows(bdb_state_type *bdb_state, DB_LOGC *cur,
+                                      DB_LSN *last_logical_lsn, int is_bkfill,
+                                      int *bdberr) {
+    return parse_log_for_shadows_int(bdb_state, cur, last_logical_lsn, is_bkfill,
+            0, bdberr);
 }
 
 static int undo_get_ltranid(bdb_state_type *bdb_state, DBT *logdta,
