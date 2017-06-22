@@ -8574,7 +8574,7 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-static void set_timepart_and_handle_resume_sc() 
+static void set_timepart_and_handle_resume_sc()
 {
     /* We need to do this before resuming schema chabge , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
