@@ -107,6 +107,11 @@ void comdb2timepartRetention(Parse*, Token*, Token*, int val);
 void comdb2enableAuth(Parse* pParse, int on);
 void comdb2setPassword(Parse* pParse, Token* password, Token* nm);
 void comdb2deletePassword(Parse* pParse, Token* nm);
+
+void comdb2CreateSequence(Parse*, Token*, Token*, int, Token*, int, int);
+void comdb2AlterSequence(Parse*, Token*, Token*, int, Token*, int dryrun);
+void comdb2DropSequence(Parse *pParse, SrcList *pName);
+
 int  comdb2genidcontainstime(void);
 void comdb2schemachangeCommitsleep(Parse* pParse, int num);
 void comdb2schemachangeConvertsleep(Parse* pParse, int num);
