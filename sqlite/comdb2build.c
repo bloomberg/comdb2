@@ -1534,6 +1534,147 @@ clean_arg:
     free_bpfunc_arg(arg);  
 }
 
+/**
+ * ------------------------------------------------------------------------------
+ * 
+ *                             REMOVE: Sequences
+ * 
+ * ------------------------------------------------------------------------------
+ */
+/****************************** SEQUENCES *******************************/
+// TODO: Modify for sequences
+void comdb2CreateSequence(
+    Parse *pParse, /* Parser context */
+    Token *pName1, /* First part of the name of the table or view */
+    Token *pName2, /* Second part of the name of the table or view */
+    int opt,       /* Various options for create (compress, etc) */
+    Token *csc2, int temp, int noErr)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v = sqlite3GetVdbe(pParse);
+    if (temp) {
+        setError(pParse, SQLITE_MISUSE, "can't create temp csc2 table");
+        return;
+    }
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+    TokenStr(table, pName1);
+    if (noErr && getdbbyname(table)) goto out;
+
+    if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
+        goto out;
+
+    if (authenticateSC(sc->table, pParse)) goto out;
+
+    v->readOnly = 0;
+    sc->addonly = 1;
+    sc->nothrevent = 1;
+    sc->live = 1;
+    fillTableOption(sc, opt);
+    copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
+// TODO: Modify for sequences
+void comdb2AlterSequence(
+    Parse *pParse, /* Parser context */
+    Token *pName1, /* First part of the name of the table or view */
+    Token *pName2, /* Second part of the name of the table or view */
+    int opt,       /* Various options for alter (compress, etc) */
+    Token *csc2, int dryrun)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 1))
+        goto out;
+
+    if (authenticateSC(sc->table, pParse)) goto out;
+
+    v->readOnly = 0;
+    sc->alteronly = 1;
+    sc->nothrevent = 1;
+    sc->live = 1;
+    sc->use_plan = 1;
+    sc->scanmode = SCAN_PARALLEL;
+    sc->dryrun = dryrun;
+    fillTableOption(sc, opt);
+
+    copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
+    if (dryrun)
+        comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
+                             (vdbeFuncArgFree)&free_schema_change_type);
+    else
+        comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                            (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
+// TODO: Modify for sequences
+void comdb2DropSequence(Parse *pParse, SrcList *pName)
+{
+
+    sqlite3 *db = pParse->db;
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (chkAndCopyTable(v, pParse, sc->table, pName->a[0].zName, MAXTABLELEN,
+                        1))
+        goto out;
+
+    if (authenticateSC(sc->table, pParse)) goto out;
+
+    v->readOnly = 0;
+    sc->same_schema = 1;
+    sc->drop_table = 1;
+    sc->fastinit = 1;
+    sc->nothrevent = 1;
+
+    if (get_csc2_file(sc->table, -1, &sc->newcsc2, NULL)) {
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n", sc->table);
+        setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
+        goto out;
+    }
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
+/**
+ * ------------------------------------------------------------------------------
+ * 
+ *                          REMOVE: END Sequences
+ * 
+ * ------------------------------------------------------------------------------
+ */
+
+
 int comdb2genidcontainstime(void)
 {
      bdb_state_type *bdb_state = thedb->bdb_env;

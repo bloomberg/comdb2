@@ -191,6 +191,43 @@ columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
 columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 
+///////////////////// COMDB2 CREATE SEQUENCE statement ////////////////////////////
+
+cmd ::= create_sequence create_sequence_args.
+create_table ::= createkw temp(T) SEQUENCE dbnm(Z) . {
+        comdb2CreateSequence(pParse,&Y,&Z,T,0,0,E);
+}
+
+createkw(A) ::= CREATE(A).  {disableLookaside(pParse);} // TODO: Defined in tables already. do i need it here?
+
+create_sequence_args ::= create_sequence_arg create_sequence_args.
+create_sequence_args ::= .
+
+%type create_sequence_start_with {long long}
+create_sequence_start_with(A) ::= START WITH (B). {A = B;}
+create_sequence_start_with(A) ::= . {A = NULL;}
+
+// create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_options(F). {
+//   sqlite3EndTable(pParse,&X,&E,F,0);
+// }
+// create_table_args ::= AS select(S). {
+//   sqlite3EndTable(pParse,0,0,0,S);
+//   sqlite3SelectDelete(pParse->db, S);
+// }
+// %type table_options {int}
+// table_options(A) ::= .    {A = 0;}
+// table_options(A) ::= WITHOUT nm(X). {
+//   if( X.n==5 && sqlite3_strnicmp(X.z,"rowid",5)==0 ){
+//     A = TF_WithoutRowid | TF_NoVisibleRowid;
+//   }else{
+//     A = 0;
+//     sqlite3ErrorMsg(pParse, "unknown table option: %.*s", X.n, X.z);
+//   }
+// }
+// columnlist ::= columnlist COMMA columnname carglist.
+// columnlist ::= columnname carglist.
+// columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
+
 // Define operator precedence early so that this is the first occurrence
 // of the operator tokens in the grammer.  Keeping the operators together
 // causes them to be assigned integer values that are close together,
@@ -322,10 +359,11 @@ ccons ::= WITH DBPAD EQ INTEGER(X). {
     comdb2AddDbpad(pParse, tmp);
 }
 
-// The optional AUTOINCREMENT keyword
-%type autoinc {int}
-autoinc(X) ::= .          {X = 0;}
-autoinc(X) ::= AUTOINCR.  {X = 1;}
+// The optional AUTOINCREMENT keyword 
+// COMDB2: Use SEQUENCE
+// %type autoinc {int}
+// autoinc(X) ::= .          {X = 0;}
+// autoinc(X) ::= AUTOINCR.  {X = 1;}
 
 // The next group of rules parses the arguments to a REFERENCES clause
 // that determine if the referential integrity checking is deferred or
