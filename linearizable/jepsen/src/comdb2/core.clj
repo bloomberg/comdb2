@@ -6,6 +6,7 @@
   [clojure.java.io :as io]
   [clojure.string :as str]
   [clojure.pprint :refer [pprint]]
+  [jepsen.checker.timeline  :as timeline]
   [jepsen [client :as client]
     [core :as jepsen]
     [db :as db]
@@ -17,6 +18,7 @@
     [util :refer [timeout meh]]
     [generator :as gen]]
   [knossos.op :as op]
+  [knossos.model :as model]
   [clojure.java.jdbc :as j]))
 
 (java.sql.DriverManager/registerDriver (com.bloomberg.comdb2.jdbc.Driver.))
@@ -230,7 +232,7 @@
 
         (j/query connection ["set hasql on"])
         (j/query connection ["set transaction serializable"])
-        (and (System/getenv "COMDB2_DEBUG") (j/query connection ["set debug on"]))
+        (when (System/getenv "COMDB2_DEBUG") (j/query connection ["set debug on"]))
 ;        (j/query connection ["set debug on"])
         (j/query connection ["set max_retries 100000"])
         (with-txn op conn-spec node
@@ -264,7 +266,7 @@
           (->> {:type :invoke, :f :read, :value nil}
            gen/once
            gen/clients))
-          :checker (checker/compose
+  :checker (checker/compose
           {:perf (checker/perf)
           :set checker/set})}))
 
@@ -280,7 +282,8 @@
                   (->> (gen/mix [bank-read bank-diff-transfer])
                        (gen/clients)
                        (gen/stagger 1/10)
-                       (gen/time-limit 100))
+                       (gen/time-limit 100)
+                       with-nemesis)
                   (gen/log "waiting for quiescence")
                   (gen/sleep 10)
                   (gen/clients (gen/once bank-read)))
@@ -350,6 +353,137 @@
      (assoc op :type :fail :reason (.getMessage e)))))
 
   (teardown! [_ test]))
+
+
+(defn comdb2-cas-register-client
+  "Comdb2 register client"
+  [node]
+  (reify client/Client
+    (setup! [this test node] 
+      (j/with-db-connection [c conn-spec]
+        (do
+          (j/delete! c :register ["1 = 1"])
+          (comdb2-cas-register-client node))))
+
+    (invoke! [this test op]
+
+      (j/with-db-connection [c conn-spec]
+        (do
+          (j/query c ["set hasql on"])
+          (j/query c ["set transaction serializable"])
+          (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
+          (j/query c ["set max_retries 100000"])
+          (case (:f op)
+            :read 
+                    (let [id   (first (:value op))
+                          val' (second (:value op))
+                          [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true)) ]
+                      (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
+                      (assoc op :type :ok, :value (independent/tuple 1 val))
+                    )
+
+            :write
+                 (try
+                   (let [updated (first (j/with-db-transaction [c c]
+                     (let [id   (first (:value op))
+                           val' (second (:value op))
+                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+
+                         (do
+                                  (if (nil? val)
+                                    (do
+                                    (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
+                                    (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
+                                    )
+                                    (do
+                                    (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
+                                    (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
+                                    )
+                                  )
+                           )
+                       )
+                      )
+                    ) ; first
+                   ]
+                     (if (zero? updated)
+                      (do
+                        (info "Worker " (:process op) " WRITE FAILED")
+                        (assoc op :type :fail)
+                      )
+                      (do
+                        (info "Worker " (:process op) " WRITE SUCCESS - RETURNING " (second (:value op)))
+                        (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
+                      )
+                     )
+                   )
+                   (catch java.sql.SQLException e
+                     (let [error (.getErrorCode e)]
+                       (cond 
+                         (= error 2) (do 
+                                      (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                                      (assoc op :type :fail)
+                                      )
+                         :else (throw e))
+                     )
+                   )
+                 ) ; try / :write case
+
+            :cas
+                 (try
+                   (let [updated (first (j/with-db-transaction [c c]
+                     (let [id   (first (:value op))
+                           val' (second (:value op))
+                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+
+                         (do
+                            (let [[expected-val new-val] val' ]
+                                 (do
+                                 (info "Worker " (:process op) " CAS FROM " expected-val "-" uid " to " new-val "-" uid')
+                                 (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))))
+                          )
+                       )
+                    )
+                  ]
+                      (do
+                      (info "Worker " (:process op) " TXN RCODE IS " updated)
+                      (if (zero? updated)
+                                 (do
+                                 (info "Worker " (:process op) " CAS FAILED")
+                                 (assoc op :type :fail)
+                                 )
+                                 (do
+                                 (info "Worker " (:process op) " CAS SUCCESS")
+                                 (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
+                                 )
+                                )
+                      )
+                      )
+                 
+                   (catch java.sql.SQLException e
+                     (let [error (.getErrorCode e)]
+                       (cond 
+                         (= error 2) (do 
+                                      (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                                      (assoc op :type :fail)
+                                      )
+                         :else (throw e))
+                     )
+                   )
+                )
+            )
+          )
+        )
+      )
+    (teardown! [_ test])))
+
+
+
+; Test on only one register for now
+(defn r   [_ _] {:type :invoke, :f :read, :value [1 nil]})
+(defn w   [_ _] {:type :invoke, :f :write, :value [1 (rand-int 5)]})
+(defn cas [_ _] {:type :invoke, :f :cas, :value [1 [(rand-int 5) (rand-int 5)]]})
 
 (defn client
   [n]
@@ -428,3 +562,53 @@
                 {:perf (checker/perf)
                  :dirty-reads (dirty-reads-checker)
                  :linearizable (independent/checker checker/linearizable)})}))
+
+
+(defn register-tester
+  [opts]
+  (basic-test
+    (merge
+      {:name        "register"
+       :client      (comdb2-cas-register-client nil)
+       :concurrency 10
+
+       :generator   (gen/phases
+                      (->> (gen/mix [w cas cas r])
+                           (gen/clients)
+                           (gen/stagger 1/10)
+                           (gen/time-limit 10))
+                      (gen/log "waiting for quiescence")
+                      (gen/sleep 10))
+       :model       (model/cas-register-comdb2 [1 1])
+       :time-limit   100
+       :recovery-time  30
+       :checker     (checker/compose
+                      {:perf  (checker/perf)
+                       :linearizable checker/linearizable}) }
+      opts)))
+
+
+(defn register-tester-nemesis
+  [opts]
+  (basic-test
+    (merge
+      {:name        "register"
+       :client      (comdb2-cas-register-client nil)
+       :concurrency 10
+
+       :generator   (gen/phases
+                      (->> (gen/mix [w cas cas r])
+                           (gen/clients)
+                           (gen/stagger 1/10)
+                           (gen/time-limit 10)
+                           with-nemesis)
+                      (gen/log "waiting for quiescence")
+                      (gen/sleep 10))
+       :model       (model/cas-register-comdb2 [1 1])
+       :time-limit   100
+       :recovery-time  30
+       :checker     (checker/compose
+                      {:perf  (checker/perf)
+                       :linearizable checker/linearizable}) }
+      opts)))
+

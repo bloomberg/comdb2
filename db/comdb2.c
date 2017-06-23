@@ -466,6 +466,7 @@ int gbl_sql_tranlevel_sosql_pref = 1; /* set this to 1 if everytime the
                                        * all the users to sosql */
 
 int gbl_test_blkseq_replay_code = 0;
+int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
 int gbl_enable_block_offload = 0;
 int gbl_enable_pageorder_trace = 0;
@@ -8510,7 +8511,9 @@ static void register_all_int_switches()
     register_int_switch("test_blkseq_replay",
                         "Test blkseq replay codepath (for debugging only)",
                         &gbl_test_blkseq_replay_code);
-    register_int_switch("skip_cget_in_db_put", 
+    register_int_switch("dump_blkseq", "Dump all blkseq inserts and replays",
+                        &gbl_dump_blkseq);
+    register_int_switch("skip_cget_in_db_put",
                         "Don't perform a cget when we do a cput",
                         &gbl_skip_cget_in_db_put);
     register_int_switch("direct_count",

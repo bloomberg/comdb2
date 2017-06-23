@@ -737,19 +737,20 @@ retry:
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == 999) {
                     if (retries++ < gbl_survive_n_master_swings) {
-                        if (gbl_master_swing_osql_verbose)
-                            logmsg(LOGMSG_ERROR, "%s:%d lost connection to master, "
-                                            "retrying %d in %d msec\n",
-                                    __FILE__, __LINE__, retries,
-                                    gbl_master_retry_poll_ms);
+                        if (gbl_master_swing_osql_verbose ||
+                            gbl_extended_sql_debug_trace)
+                            logmsg(LOGMSG_ERROR,
+                                   "%s:%d lost connection to master, "
+                                   "retrying %d in %d msec\n",
+                                   __FILE__, __LINE__, retries,
+                                   gbl_master_retry_poll_ms);
 
                         poll(NULL, 0, gbl_master_retry_poll_ms);
 
                         rc = osql_sock_restart(
                             clnt, 1,
                             1 /*no new rqid*/); /* retry at higher level */
-                        if (rc != SQLITE_TOOBIG)
-                            goto retry;
+                        if (rc != SQLITE_TOOBIG) goto retry;
                     }
                 }
                 /* transaction failed on the master,
@@ -782,9 +783,22 @@ retry:
                         // which is translated to 4 'null key constraint'.
                         rcout = SQLITE_ABORT;
                     }
-                }
-                else
+                } else {
+                    if (gbl_extended_sql_debug_trace) {
+                        logmsg(LOGMSG_USER,
+                               "td=%u %s line %d got %d and setting "
+                               "rcout to SQLITE_TOOBIG, "
+                               " errval is %d\n",
+                               pthread_self(), __func__, __LINE__, rc,
+                               osql->xerr.errval);
+                    }
                     rcout = SQLITE_TOOBIG;
+                }
+            } else {
+                if (gbl_extended_sql_debug_trace) {
+                    logmsg(LOGMSG_USER, "td=%u %s line %d got %d from %s\n",
+                           pthread_self(), __func__, __LINE__, rc, osql->host);
+                }
             }
         }
         if (clnt->client_understands_query_stats && clnt->dbglog)

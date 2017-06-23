@@ -62,6 +62,13 @@ on verbose_toblock_backouts
 # Fail randomly to test curtran generation changes
 on test_curtran_change
 
+# Disable compression so I can read printlog output
+init_with_compr none
+init_with_compr_blobs none
+
+# Dump blkseq additions
+on dump_blkseq
+
 # Make sure that the blkseq code works correctly
 #on test_blkseq_replay
 
