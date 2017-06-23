@@ -143,6 +143,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
+#include <schemachange.h>
 
 #define tokdup strndup
 
@@ -1247,7 +1248,7 @@ static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
     int rc;
-    void *trans;
+    tran_type *trans;
     struct ireq iq;
     int bdberr = 0;
     int empty = 0;
@@ -5162,8 +5163,8 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5290,8 +5291,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
     struct db *db;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5429,7 +5430,7 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
  *
  * the db never uses this file it is only to make it easier for people to tell
  * what files belong to what parts of a table, etc */
-int llmeta_dump_mapping(struct dbenv *dbenv)
+int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
 {
     int i, rc;
     char *fname, fname_tail[] = "_file_vers_map";
@@ -5481,8 +5482,8 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         unsigned long long version_num;
 
         /* print the main data file's version number */
-        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
-                                      0 /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran, 0 /*dtanum*/,
+                                      &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
                             "number for %s's main data files\n",
@@ -5498,7 +5499,7 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
 
         /* print the indicies' version numbers */
         for (j = 1; j <= dbenv->dbs[i]->numblobs; ++j) {
-            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran,
                                           j /*dtanum*/, &version_num,
                                           &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
@@ -5516,7 +5517,7 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         /* print the indicies' version numbers */
         sbuf2printf(sbfile, "\tindex files\n");
         for (j = 0; j < dbenv->dbs[i]->nix; ++j) {
-            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, tran,
                                            j /*dtanum*/, &version_num,
                                            &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
@@ -5537,6 +5538,11 @@ done:
     return rc;
 }
 
+int llmeta_dump_mapping(struct dbenv *dbenv)
+{
+    return llmeta_dump_mapping_tran(NULL, dbenv);
+}
+
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                    const char *table, int err)
 {
@@ -5551,7 +5557,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     /* print out the versions of each of the table's files */
 
     /* print the main data file's version number */
-    if (bdb_get_file_version_data(p_db->handle, tran /*tran*/, 0 /*dtanum*/,
+    if (bdb_get_file_version_data(p_db->handle, tran, 0 /*dtanum*/,
                                   &version_num, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         if (err)
@@ -5574,7 +5580,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
 
     /* print the blobs' version numbers */
     for (i = 1; i <= p_db->numblobs; ++i) {
-        if (bdb_get_file_version_data(p_db->handle, NULL /*tran*/, i /*dtanum*/,
+        if (bdb_get_file_version_data(p_db->handle, tran, i /*dtanum*/,
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
@@ -5598,8 +5604,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     /* print the indicies' version numbers */
     logmsg(LOGMSG_INFO, "\tindex files\n");
     for (i = 0; i < p_db->nix; ++i) {
-        if (bdb_get_file_version_index(p_db->handle, tran /*tran*/,
-                                       i /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_index(p_db->handle, tran, i /*dtanum*/,
+                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
                 logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
@@ -6426,7 +6432,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
         struct db *db = dbenv->dbs[i];
         update_dbstore(db);
 
-        db->tableversion = table_version_select(db);
+        db->tableversion = table_version_select(db, NULL);
         if (db->tableversion == -1) {
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
@@ -8574,7 +8580,8 @@ static void set_timepart_and_handle_resume_sc()
      * done every time the master changes, but on startup the low level meta
      * table wasn't open yet so we couldn't check to see if a schema change was
      * in progress */
-    if (thedb->master == gbl_mynode) {
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+        thedb->master == gbl_mynode) {
         int irc = resume_schema_change();
         if (irc)
             logmsg(LOGMSG_ERROR, 
@@ -8806,27 +8813,70 @@ void delete_db(char *db_name)
         exit(1);
     }
 
-    for (int i = idx; i < (thedb->num_dbs - 1); i++)
+    for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
+        thedb->dbs[i]->dbs_idx = i;
+    }
 
     thedb->num_dbs -= 1;
     pthread_rwlock_unlock(&thedb_lock);
 }
 
-void replace_db(struct db *p_db)
+void replace_db(struct db *p_db, int add)
 {
     int idx;
 
-    if ((idx = getdbidxbyname(p_db->dbname)) < 0) {
+    pthread_rwlock_wrlock(&thedb_lock);
+    idx = getdbidxbyname(p_db->dbname);
+    if (!add && idx < 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n", __func__,
                 p_db->dbname);
         exit(1);
+    }
+
+    if (idx < 0) {
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        idx = thedb->num_dbs;
+        thedb->num_dbs++;
     }
 
     p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
                                          * from the schema anymore */
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
+    pthread_rwlock_unlock(&thedb_lock);
+}
+
+void replace_db_idx(struct db *p_db, int idx, int add)
+{
+    int move = 0;
+    pthread_rwlock_wrlock(&thedb_lock);
+    if (!add && idx < 0) {
+        logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n",
+               __func__, p_db->dbname);
+        exit(1);
+    }
+
+    if (idx < 0 || idx >= thedb->num_dbs ||
+        strcasecmp(thedb->dbs[idx]->dbname, p_db->dbname) != 0) {
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
+        thedb->num_dbs++;
+        move = 1;
+    }
+
+    for (int i = (thedb->num_dbs - 1); i > idx && move; i--) {
+        thedb->dbs[i] = thedb->dbs[i - 1];
+        thedb->dbs[i]->dbs_idx = i;
+    }
+
+    p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
+                                         * from the schema anymore */
+    p_db->dbs_idx = idx;
+    thedb->dbs[idx] = p_db;
+    pthread_rwlock_unlock(&thedb_lock);
 }
 
 void epoch2a(int epoch, char *buf, size_t buflen)

@@ -451,7 +451,7 @@ int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe)
     } else
         oldname = strdup(oldname);
 
-    to_be_deleted->close(to_be_deleted, DB_NOSYNC);
+    to_be_deleted->close(to_be_deleted, NULL, DB_NOSYNC);
 
     if (oldname) {
         DB *db;

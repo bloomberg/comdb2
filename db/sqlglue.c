@@ -4041,6 +4041,9 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             free_cached_idx(clnt->idxInsert);
             free_cached_idx(clnt->idxDelete);
         }
+        if (rc == SQLITE_DDL_MISUSE)
+            sqlite3VdbeError(pCur->vdbe,
+                             "Transactional DDL Error: Overlapping Tables");
     }
 
 done:
@@ -4642,16 +4645,9 @@ const char *sqlite3BtreeGetJournalname(Btree *pBt)
 
 void get_current_lsn(struct sqlclntstate *clnt)
 {
-    struct ireq iq;
-    void *bdb_handle;
-    struct db *db;
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = thedb->dbs[0]; /* this is not used but required */
-    db = iq.usedb;
+    struct db *db = thedb->dbs[0]; /* this is not used but required */
     if (db) {
         bdb_get_current_lsn(db->handle, &(clnt->file), &(clnt->offset));
-    } else if (iq.use_handle) {
-        bdb_get_current_lsn(iq.use_handle, &(clnt->file), &(clnt->offset));
     } else {
         logmsg(LOGMSG_ERROR, "get_current_lsn: ireq has no bdb handle\n");
         abort();
@@ -4896,6 +4892,9 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
     }
     get_current_lsn(clnt);
 
+    clnt->ddl_tables = hash_init_str(0);
+    clnt->dml_tables = hash_init_str(0);
+
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_SOSQL:
     case TRANLEVEL_RECOM:
@@ -5113,6 +5112,10 @@ int sqlite3BtreeCommit(Btree *pBt)
             }
         } else {
             rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+            osqlstate_t *osql = &thd->sqlclntstate->osql;
+            if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
+                osql->xerr.errval = 0;
+            }
         }
         break;
 
@@ -5149,6 +5152,15 @@ int sqlite3BtreeCommit(Btree *pBt)
 
     /* we need to reset this here */
     clnt->writeTransaction = 0;
+
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Commit(pBt %d)      = %s\n",
@@ -5267,6 +5279,15 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
 
     /* we need to reset this here */
     clnt->writeTransaction = 0;
+
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Rollback(pBt %d)      = %s\n",
@@ -7683,7 +7704,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             unsigned long long version;
             int short_version;
 
-            version = table_version_select(db);
+            version = table_version_select(db, NULL);
             short_version = fdb_table_version(version);
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
@@ -8738,6 +8759,9 @@ int sqlite3BtreeInsert(
             free_cached_idx(clnt->idxInsert);
             free_cached_idx(clnt->idxDelete);
         }
+        if (rc == SQLITE_DDL_MISUSE)
+            sqlite3VdbeError(pCur->vdbe,
+                             "Transactional DDL Error: Overlapping Tables");
     }
 
 done:
@@ -11540,8 +11564,8 @@ int bt_hash_table(char *table, int szkb)
     struct db *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
-    void *metatran = NULL;
-    void *tran = NULL;
+    tran_type *metatran = NULL;
+    tran_type *tran = NULL;
     int rc, bdberr = 0;
     int bthashsz;
 
@@ -11595,8 +11619,8 @@ int del_bt_hash_table(char *table)
     struct db *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
-    void *metatran = NULL;
-    void *tran = NULL;
+    tran_type *metatran = NULL;
+    tran_type *tran = NULL;
     int rc, bdberr = 0;
     int bthashsz;
 

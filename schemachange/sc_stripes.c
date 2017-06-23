@@ -15,14 +15,12 @@
  */
 
 #include "schemachange.h"
-#include "schemachange_int.h"
 #include "sc_stripes.h"
 
 void apply_new_stripe_settings(int newdtastripe, int newblobstripe)
 {
     gbl_dtastripe = newdtastripe;
-    if (newblobstripe)
-        gbl_blobstripe = gbl_dtastripe;
+    if (newblobstripe) gbl_blobstripe = gbl_dtastripe;
     bdb_attr_set(thedb->bdb_attr, BDB_ATTR_DTASTRIPE, gbl_dtastripe);
     bdb_attr_set(thedb->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
     printf("Set new stripe settings in bdb OK\n");
@@ -51,13 +49,12 @@ int do_alter_stripes_int(struct schema_change_type *s)
     broadcast_quiesce_threads();
 
     /* CLOSE ALL TABLES */
-    if (close_all_dbs() != 0)
-        exit(1);
+    if (close_all_dbs() != 0) exit(1);
     broadcast_close_all_dbs();
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
-        void *tran = NULL;
+        tran_type *tran = NULL;
         struct ireq iq = {0};
 
         init_fake_ireq(thedb, &iq);
@@ -137,8 +134,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
     apply_new_stripe_settings(newdtastripe, newblobstripe);
 
     /* OPEN ALL TABLES */
-    if (open_all_dbs() != 0)
-        exit(1);
+    if (open_all_dbs() != 0) exit(1);
     broadcast_morestripe_and_open_all_dbs(newdtastripe, newblobstripe);
 
     /* START THREADS */

@@ -814,11 +814,11 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 
 
 #ifdef TRACE_DIFF
-	fprintf(fp, "%-10s %4lu %-7s ",
-	    mode, (u_long)lp->refcount, status);
+	logmsgf(LOGMSG_USER, fp, "%-10s %4lu %-7s ",
+	        mode, (u_long)lp->refcount, status);
 #else
-	fprintf(fp, "%8lx %-10s %4lu %-7s ",
-	    (u_long)lp->holderp->id, mode, (u_long)lp->refcount, status);
+	logmsgf(LOGMSG_USER, fp, "%8lx %-10s %4lu %-7s ",
+	        (u_long)lp->holderp->id, mode, (u_long)lp->refcount, status);
 #endif
 
 	lockobj = lp->lockobj;

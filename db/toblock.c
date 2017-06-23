@@ -2070,8 +2070,8 @@ enum {
 
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
-                        struct ireq *iq, void **trans, void **parent_trans,
-                        int *osql_needtransaction)
+                        struct ireq *iq, tran_type **trans,
+                        tran_type **parent_trans, int *osql_needtransaction)
 {
     int rc = 0;
     int irc = 0;
@@ -2134,8 +2134,9 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     return rc;
 }
 
-static int osql_destroy_transaction(struct ireq *iq, void **parent_trans,
-                                    void **trans, int *osql_needtransaction)
+static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
+                                    tran_type **trans,
+                                    int *osql_needtransaction)
 {
     int error = 0;
     int rc = 0;
@@ -2477,8 +2478,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int irc;
     char *source_host;
     char key[MAXKEYLEN];
-    void *trans = NULL; /*transaction handle */
-    void *parent_trans = NULL;
+    tran_type *trans = NULL; /*transaction handle */
+    tran_type *parent_trans = NULL;
     /* for updates */
     char saved_fndkey[MAXKEYLEN];
     int saved_rrn = 0;
@@ -2519,6 +2520,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int delayed = 0;
 
     int hascommitlock = 0;
+    if (iq->tranddl) rowlocks = 1;
 
     /* zero this out very high up or we can crash if we get to backout: without
      * having initialised this. */
@@ -2770,7 +2772,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     } else {
         /* we dont have nested transaction support here.  we play games with
            writing the blkseq record differently in rowlocks mode */
-        irc = trans_start_logical(iq, &trans);
+        if (iq->tranddl)
+            irc = trans_start_logical_sc(iq, &trans);
+        else
+            irc = trans_start_logical(iq, &trans);
         parent_trans = NULL;
 
         if (irc != 0) {
@@ -5010,7 +5015,6 @@ backout:
         reqerrstr(iq, ERR_NOTSERIAL, "transaction is not serializable");
     }
 
-
     /* starting writes, no more reads */
     iq->p_buf_in = NULL;
     iq->p_buf_in_end = NULL;
@@ -5729,28 +5733,22 @@ add_blkseq:
     if (outrc == 0) {
         /* Committed new sqlite_stat1 statistics from analyze - reload sqlite
          * engines */
-        int bdberr;
-        if (iq->osql_flags & OSQL_FLAGS_ANALYZE) {
-            bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
-        }
-        if (iq->osql_flags & OSQL_FLAGS_ROWLOCKS) {
-            bdb_llog_rowlocks(thedb->bdb_env, iq->osql_rowlocks_enable ?
-                    rowlocks_on : rowlocks_off, &bdberr);
-        }
-        if (iq->osql_flags & OSQL_FLAGS_GENID48) {
-            bdb_set_genid_format(iq->osql_genid48_enable ? LLMETA_GENID_48BIT : 
-                    LLMETA_GENID_ORIGINAL, &bdberr);
-            bdb_llog_genid_format(thedb->bdb_env, iq->osql_genid48_enable ?
-                    genid48_enable : genid48_disable, &bdberr);
-        }
         iq->dbenv->txns_committed++;
         if (iq->dbglog_file) {
             dbglog_dump_write_stats(iq);
             sbuf2close(iq->dbglog_file);
             iq->dbglog_file = NULL;
         }
-    } else
+        osql_postcommit_handle(iq);
+    } else {
         iq->dbenv->txns_aborted++;
+        osql_postabort_handle(iq);
+    }
+
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
+    }
 
     /* update stats (locklessly so we may get gibberish - I know this
      * and don't care) */

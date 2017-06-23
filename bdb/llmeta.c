@@ -1436,6 +1436,7 @@ cleanup:
 /* gets all the tables' names and dbnumbers  from the low level meta table.
  * returns <0 on failure or 0 on success */
 int bdb_llmeta_get_tables(
+    tran_type *input_trans,
     char **tblnames,   /* will be populated with the table's names */
     int *dbnums,       /* will be populated with the table's dbnums (or 0
                         * if a table doesn't have a dbnum) */
@@ -1500,8 +1501,8 @@ int bdb_llmeta_get_tables(
 
 retry:
     /* try to fetch the version number */
-    rc = bdb_lite_exact_fetch(llmeta_bdb_state, key, p_outbuf, outbuflen,
-                              &fndlen, bdberr);
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, input_trans, key, p_outbuf,
+                                   outbuflen, &fndlen, bdberr);
 
     /* handle return codes */
     if (rc && *bdberr != BDBERR_NOERROR) {
@@ -3715,6 +3716,12 @@ int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
 {
     return bdb_set_high_genid_int(input_trans, db_name,
                                   get_dtafile_from_genid(genid), genid, bdberr);
+}
+
+int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
+                              int stripe, unsigned long long genid, int *bdberr)
+{
+    return bdb_set_high_genid_int(input_trans, db_name, stripe, genid, bdberr);
 }
 
 /* looks up the last procesed genid for a given stripe in the in progress schema
@@ -7305,7 +7312,7 @@ rep:
 
     int fndlen;
     char *tmpstr = NULL;
-    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, NULL, llkey,
+    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, llkey,
                                             (void **)&tmpstr, &fndlen,
                                             &bdberr)) != 0) {
 
@@ -7883,7 +7890,7 @@ int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
     rc = bdb_lite_exact_fetch_alloc(llmeta_bdb_state, key, &dta, &foundlen,
                                     bdberr);
     if (rc) {
-        *bdberr == BDBERR_FETCH_DTA;
+        *bdberr = BDBERR_FETCH_DTA;
         goto done;
     }
     p_buf = dta;

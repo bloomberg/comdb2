@@ -14,19 +14,11 @@
    limitations under the License.
  */
 
-#ifndef INCLUDE_SC_NET_H
-#define INCLUDE_SC_NET_H
+#ifndef INCLUDE_SC_FASTINIT_H
+#define INCLUDE_SC_FASTINIT_H
 
-int appsock_schema_change(SBUF2 *sb, int *keepsocket);
-
-void handle_setcompr(SBUF2 *sb);
-
-void vsb_printf(SBUF2 *sb, const char *sb_prefix, const char *prefix,
-                const char *fmt, va_list args);
-void sb_printf(SBUF2 *sb, const char *fmt, ...);
-void sb_errf(SBUF2 *sb, const char *fmt, ...);
-
-void sc_printf(struct schema_change_type *s, const char *fmt, ...);
-void sc_errf(struct schema_change_type *s, const char *fmt, ...);
+struct ireq;
+int do_fastinit(struct ireq *, tran_type *);
+int finalize_fastinit_table(struct ireq *, tran_type *);
 
 #endif

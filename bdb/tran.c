@@ -242,6 +242,38 @@ tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
     return tran;
 }
 
+/* This allows the scdone 'rep-transaction' to gather locks using gbl_rep_lockid
+ */
+void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid)
+{
+    if (tran->tranclass == TRANCLASS_LOGICAL) {
+        tran->logical_lid = lockerid;
+    } else {
+        tran->tid->txnid = lockerid;
+    }
+}
+
+void bdb_get_tran_lockerid(tran_type *tran, uint32_t *lockerid)
+{
+    if (tran->tranclass == TRANCLASS_LOGICAL) {
+        (*lockerid) = tran->logical_lid;
+    } else {
+        (*lockerid) = tran->tid->txnid;
+    }
+}
+
+void *bdb_get_physical_tran(tran_type *ltran)
+{
+    assert(ltran->tranclass == TRANCLASS_LOGICAL);
+    return ltran->physical_tran;
+}
+
+void bdb_ltran_get_schema_lock(tran_type *ltran)
+{
+    ltran->get_schema_lock = 1;
+    ltran->single_physical_transaction = 1;
+}
+
 /* Create a txn and add to the txn list.  Called directly from the replication
  * stream.  */
 tran_type *bdb_start_ltran(bdb_state_type *bdb_state,

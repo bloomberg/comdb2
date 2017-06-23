@@ -2598,7 +2598,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
 
         /* and here we go... */
-        rc = change_schema(dbenv, table, fname, odh, compress, compress_blobs);
+        rc = change_schema(table, fname, odh, compress, compress_blobs);
         if (rc != 0) {
             if (rc == -99)
                 logmsg(LOGMSG_ERROR, 

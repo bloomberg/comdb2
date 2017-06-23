@@ -1933,6 +1933,16 @@ void lock_info(FILE *out, bdb_state_type *bdb_state, char *line, int st,
 #endif
 }
 
+void all_locks(bdb_state_type *x)
+{
+    char parm[2] = {0};
+    parm[0] = 'o';
+    __lock_dump_region(x->dbenv, parm, stdout);
+
+    parm[0] = 'l';
+    __lock_dump_region(x->dbenv, parm, stdout);
+}
+
 extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);
 
 static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,

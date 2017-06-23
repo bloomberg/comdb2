@@ -62,7 +62,7 @@ static void *pushlogs_thread(void *voidarg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
     while (1) {
-        void *trans;
+        tran_type *trans;
         struct ireq iq;
         int now;
         char cur_seqnum[SIZEOF_SEQNUM];

@@ -485,18 +485,15 @@ retry:
     }
 
     /* retrying a transaction, don't skip on blkseq */
-    if (keep_rqid) {
-        flags = OSQL_FLAGS_USE_BLKSEQ;
-    } else {
-        flags = 0;
-    }
+    flags = 0;
+    if (keep_rqid) bset(&flags, OSQL_FLAGS_USE_BLKSEQ);
 
     /* socksql: check if this is a verify retry, and if we got enough of those
        to trigger a self-deadlock check on the master */
 
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         clnt->verify_retries > gbl_osql_verify_ext_chk)
-        flags = OSQL_FLAGS_CHECK_SELFLOCK;
+        bset(&flags, OSQL_FLAGS_CHECK_SELFLOCK);
     else
         flags = 0;
 
@@ -868,6 +865,15 @@ err:
                    __FILE__, __LINE__, rc);
    }
 
+   if (clnt->ddl_tables) {
+       hash_free(clnt->ddl_tables);
+   }
+   if (clnt->dml_tables) {
+       hash_free(clnt->dml_tables);
+   }
+   clnt->ddl_tables = NULL;
+   clnt->dml_tables = NULL;
+
    return rcout;
 }
 
@@ -924,6 +930,15 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
         clnt->osql.tablenamelen = 0;
     }
 
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
+
     return rcout;
 }
 
@@ -965,6 +980,18 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     osqlstate_t *osql = &clnt->osql;
     int tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
     int rc = 0;
+
+    char *tblname = strdup(tablename);
+    void strupper(char *c);
+    strupper(tblname);
+    if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tblname)) {
+        free(tblname);
+        return SQLITE_DDL_MISUSE;
+    }
+    if (clnt->dml_tables && !hash_find_readonly(clnt->dml_tables, tblname))
+        hash_add(clnt->dml_tables, tblname);
+    else
+        free(tblname);
 
     if (osql->tablename) {
         if (osql->tablenamelen == (strlen(tablename) + 1) &&
@@ -1637,13 +1664,35 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     unsigned long long rqid = thd->sqlclntstate->osql.rqid;
     int rc = 0;
 
+    char *tblname = strdup(sc->table);
+    void strupper(char *c);
+    strupper(tblname);
+    if (clnt->dml_tables && hash_find_readonly(clnt->dml_tables, tblname)) {
+        free(tblname);
+        return SQLITE_DDL_MISUSE;
+    }
+    if (clnt->ddl_tables) {
+        if (hash_find_readonly(clnt->ddl_tables, tblname)) {
+            free(tblname);
+            return SQLITE_DDL_MISUSE;
+        } else
+            hash_add(clnt->ddl_tables, tblname);
+    } else {
+        free(tblname);
+    }
+
     // At this moment I have no idea of what to do at any other transaction
     // level
-
-    if (1 /*thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL*/)
+    if (1 /*thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL*/) {
+        rc = osql_save_schemachange(thd, sc);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
+                   __FILE__, __LINE__, __func__, rc);
+        }
         return osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,
                                       sc, NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
-    else if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    } else if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         return -1;
     } else
         return -1;

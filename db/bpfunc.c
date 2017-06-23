@@ -449,7 +449,7 @@ static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err)
     /* Set flags: we'll actually set the format in the block processor */
     struct ireq *iq = (struct ireq *)func->info->iq;
     iq->osql_genid48_enable = gn->enable;
-    iq->osql_flags |= OSQL_FLAGS_GENID48;
+    bset(&iq->osql_flags, OSQL_FLAGS_GENID48);
     return 0;
 }
 
@@ -472,7 +472,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, char *err)
     if (!rc) {
         struct ireq *iq = (struct ireq *)func->info->iq;
         iq->osql_rowlocks_enable = rl->enable;
-        iq->osql_flags |= OSQL_FLAGS_ROWLOCKS;
+        bset(&iq->osql_flags, OSQL_FLAGS_ROWLOCKS);
     }
     return rc;
 }

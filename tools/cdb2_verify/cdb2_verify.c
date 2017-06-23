@@ -182,7 +182,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			if ((ret = dbp1->open(dbp1, NULL,
 			    argv[0], NULL, DB_UNKNOWN, DB_RDONLY, 0)) != 0) {
 				dbenv->err(dbenv, ret, "DB->open: %s", argv[0]);
-				(void)dbp1->close(dbp1, 0);
+				(void)dbp1->close(dbp1, NULL, 0);
 				goto shutdown;
 			}
 			/*
@@ -194,12 +194,12 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			 * get back into the for-loop.
 			 */
 			ret = __db_util_cache(dbenv, dbp1, &cache, &resize);
-			(void)dbp1->close(dbp1, 0);
+			(void)dbp1->close(dbp1, NULL, 0);
 			if (ret != 0)
 				goto shutdown;
 
 			if (resize) {
-				(void)dbp->close(dbp, 0);
+				(void)dbp->close(dbp, NULL, 0);
 				dbp = NULL;
 
 				(void)dbenv->close(dbenv, 0);
@@ -222,7 +222,7 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 shutdown:	exitval = 1;
 	}
 
-	if (dbp != NULL && (ret = dbp->close(dbp, 0)) != 0) {
+	if (dbp != NULL && (ret = dbp->close(dbp, NULL, 0)) != 0) {
 		exitval = 1;
 		dbenv->err(dbenv, ret, "close");
 	}
