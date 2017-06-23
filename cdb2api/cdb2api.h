@@ -230,6 +230,9 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 
+void cdb2_enable_sockpool();
+void cdb2_disable_sockpool();
+
 /* We keep the functions but make them no-op if not compiled
    with WITH_SSL. */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto);
