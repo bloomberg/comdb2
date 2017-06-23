@@ -7972,8 +7972,8 @@ void *statthd(void *p)
                                       last_bdb_stats.n_lock_waits;
                     reqlog_logf(statlogger, REQL_INFO,
                                 "%u locks, avg time %ums\n", nreads,
-                                (cur_bdb_stats.lock_wait_time_ms -
-                                 last_bdb_stats.lock_wait_time_ms) /
+                                U2M(cur_bdb_stats.lock_wait_time_us -
+                                    last_bdb_stats.lock_wait_time_us) /
                                     nreads);
                 }
                 if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
@@ -7983,8 +7983,8 @@ void *statthd(void *p)
                                 "%u preads, %u bytes, avg time %ums\n", npreads,
                                 cur_bdb_stats.pread_bytes -
                                     last_bdb_stats.pread_bytes,
-                                (cur_bdb_stats.pread_time_ms -
-                                 last_bdb_stats.pread_time_ms) /
+                                U2M(cur_bdb_stats.pread_time_us -
+                                    last_bdb_stats.pread_time_us) /
                                     npreads);
                 }
                 if (cur_bdb_stats.n_pwrites > last_bdb_stats.n_pwrites) {
@@ -7994,8 +7994,8 @@ void *statthd(void *p)
                                 "%u pwrites, %u bytes, avg time %ums\n",
                                 npwrites, cur_bdb_stats.pwrite_bytes -
                                               last_bdb_stats.pwrite_bytes,
-                                (cur_bdb_stats.pwrite_time_ms -
-                                 last_bdb_stats.pwrite_time_ms) /
+                                U2M(cur_bdb_stats.pwrite_time_us -
+                                    last_bdb_stats.pwrite_time_us) /
                                     npwrites);
                 }
                 last_bdb_stats = cur_bdb_stats;
@@ -8562,7 +8562,7 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-void set_timepart_and_handle_resume_sc() 
+static void set_timepart_and_handle_resume_sc()
 {
     /* We need to do this before resuming schema chabge , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
@@ -8609,6 +8609,19 @@ struct tool tool_callbacks[] = {
    TOOLS
    NULL
 };
+
+static void wait_for_coherent()
+{
+    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
+    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
+    unsigned int counter = 1;
+    while (!bdb_am_i_coherent(thedb->bdb_env)) {
+        if ((++counter % wrn_cnt) == 0) {
+            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
+        }
+        usleep(cslp);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -8759,6 +8772,7 @@ int main(int argc, char **argv)
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
+    wait_for_coherent();
 
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");

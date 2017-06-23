@@ -301,17 +301,18 @@ static void thd_coalesce_check_ll(void)
 static void thd_dump_nolock(void)
 {
     struct thd *thd;
-    int nowms, opc, cnt = 0;
-    nowms = time_epochms();
+    uint64_t nowus;
+    int opc, cnt = 0;
+    nowus = time_epochus();
 
     {
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
             opc = thd->iq->opcode;
-            logmsg(LOGMSG_USER, 
-                "busy  tid %-5d  time %5d ms  %-6s (%-3d) %-20s where %s %s\n",
-                thd->tid, nowms - thd->iq->nowms, req2a(opc), opc,
-                getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
+            logmsg(LOGMSG_USER, "busy  tid %-5d  time %5d ms  %-6s (%-3d) "
+                                "%-20s where %s %s\n",
+                   thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc,
+                   getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
         }
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
@@ -369,17 +370,19 @@ void thd_coalesce(struct dbenv *dbenv)
 void thd_dump(void)
 {
     struct thd *thd;
-    int nowms, cnt = 0;
-    nowms = time_epochms();
+    uint64_t nowus;
+    int cnt = 0;
+    nowus = time_epochus();
     LOCK(&lock)
     {
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
-            logmsg(LOGMSG_USER, "busy  tid %-5d  time %5d ms  %-6s (%-3d) %-20s where %s "
+            logmsg(LOGMSG_USER,
+                   "busy  tid %-5d  time %5d ms  %-6s (%-3d) %-20s where %s "
                    "%s\n",
-                   thd->tid, nowms - thd->iq->nowms, req2a(thd->iq->opcode),
-                   thd->iq->opcode, getorigin(thd->iq), thd->iq->where,
-                   thd->iq->gluewhere);
+                   thd->tid, U2M(nowus - thd->iq->nowus),
+                   req2a(thd->iq->opcode), thd->iq->opcode, getorigin(thd->iq),
+                   thd->iq->where, thd->iq->gluewhere);
         }
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
@@ -501,7 +504,7 @@ static void *thd_req(void *vthd)
                     thd->tid, pthread_self());
             abort();
         }
-        thd->iq->startms = time_epochms();
+        thd->iq->startus = time_epochus();
         thd->iq->where = "executing";
         /*PROCESS REQUEST*/
         thd->iq->reqlogger = logger;
@@ -1103,11 +1106,12 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
               int luxref, unsigned long long rqid)
 {
     struct req_hdr hdr;
-    int rc, nowms, num, ndispatch, iamwriter = 0;
+    uint64_t nowus;
+    int rc, num, ndispatch, iamwriter = 0;
     struct thd *thd;
     int numwriterthreads;
 
-    nowms = time_epochms();
+    nowus = time_epochus();
 
     if (iq == 0) {
         if (!do_inline)
@@ -1130,7 +1134,7 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     iq->frompid = frompid;
     iq->gluewhere = "-";
     iq->debug = debug_this_request(gbl_debug_until) || (debug && gbl_debug);
-    iq->debug_now = iq->nowms = nowms;
+    iq->debug_now = iq->nowus = nowus;
     iq->dbenv = dbenv;
     iq->rqid = rqid;
 

@@ -17,6 +17,7 @@ static const char revid[] = "$Id: db_salloc.c,v 11.17 2003/01/08 04:42:01 bostic
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #endif
 
 #include "db_int.h"
@@ -145,33 +146,33 @@ __db_shalloc_size(len, align)
 }
 
 static void
-bb_shalloc_hit(int start_time_ms)
+bb_shalloc_hit(uint64_t start_time_us)
 {
-	int time_diff = bb_berkdb_fasttime() - start_time_ms;
+	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
 	struct bb_berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_shallocs++;
-	stats->shalloc_time_ms += time_diff;
+	stats->shalloc_time_us += time_diff;
 
 	stats = bb_berkdb_get_process_stats();
 	stats->n_shallocs++;
-	stats->shalloc_time_ms += time_diff;
+	stats->shalloc_time_us += time_diff;
 }
 
 static void
-bb_shalloc_free_hit(int start_time_ms)
+bb_shalloc_free_hit(uint64_t start_time_us)
 {
-	int time_diff = bb_berkdb_fasttime() - start_time_ms;
+	uint64_t time_diff = bb_berkdb_fasttime() - start_time_us;
 	struct bb_berkdb_thread_stats *stats;
 
 	stats = bb_berkdb_get_thread_stats();
 	stats->n_shalloc_frees++;
-	stats->shalloc_free_time_ms += time_diff;
+	stats->shalloc_free_time_us += time_diff;
 
 	stats = bb_berkdb_get_process_stats();
 	stats->n_shalloc_frees++;
-	stats->shalloc_free_time_ms += time_diff;
+	stats->shalloc_free_time_us += time_diff;
 }
 
 /*
@@ -189,17 +190,17 @@ __db_shalloc(p, len, align, retp)
 	size_t *sp;
 	void *rp;
 
-	int start_time_ms;
+	uint64_t start_time_us;
 
 	if (gbl_bb_berkdb_enable_shalloc_timing)
-		start_time_ms = bb_berkdb_fasttime();
+		start_time_us = bb_berkdb_fasttime();
 
 	if (__gbl_use_malloc_for_regions) {
 		int ret;
 
 		ret = __db_shalloc_malloc(p, len, align, retp);
 		if (gbl_bb_berkdb_enable_shalloc_timing)
-			bb_shalloc_hit(start_time_ms);
+			bb_shalloc_hit(start_time_us);
 		return ret;
 	}
 
@@ -261,7 +262,7 @@ __db_shalloc(p, len, align, retp)
 			    ((u_int8_t *)rp - (u_int8_t *)&elp->links);
 			elp->len -= *sp + sizeof(size_t);
 			if (gbl_bb_berkdb_enable_shalloc_timing)
-				bb_shalloc_hit(start_time_ms);
+				bb_shalloc_hit(start_time_us);
 			return (0);
 		}
 
@@ -278,12 +279,12 @@ __db_shalloc(p, len, align, retp)
 		for (sp = rp; (u_int8_t *)--sp >= (u_int8_t *)&elp->links;)
 			*sp = ILLEGAL_SIZE;
 		if (gbl_bb_berkdb_enable_shalloc_timing)
-			bb_shalloc_hit(start_time_ms);
+			bb_shalloc_hit(start_time_us);
 		return (0);
 	}
 
 	if (gbl_bb_berkdb_enable_shalloc_timing)
-		bb_shalloc_hit(start_time_ms);
+		bb_shalloc_hit(start_time_us);
 	return (ENOMEM);
 }
 
@@ -305,15 +306,15 @@ __db_shalloc_free(regionp, ptr)
 	if (ptr == NULL)
 		return;
 
-	int start_time_ms;
+	uint64_t start_time_us;
 
 	if (gbl_bb_berkdb_enable_shalloc_timing)
-		start_time_ms = bb_berkdb_fasttime();
+		start_time_us = bb_berkdb_fasttime();
 
 	if (__gbl_use_malloc_for_regions) {
 		__db_shalloc_free_malloc(regionp, ptr);
 		if (gbl_bb_berkdb_enable_shalloc_timing)
-			bb_shalloc_free_hit(start_time_ms);
+			bb_shalloc_free_hit(start_time_us);
 		return;
 	}
 
@@ -404,7 +405,7 @@ __db_shalloc_free(regionp, ptr)
 	}
 
 	if (gbl_bb_berkdb_enable_shalloc_timing)
-		bb_shalloc_free_hit(start_time_ms);
+		bb_shalloc_free_hit(start_time_us);
 }
 
 /*

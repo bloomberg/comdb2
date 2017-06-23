@@ -1856,10 +1856,10 @@ static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     if (!gbl_track_queue_time)
         return;
-    if (clnt->deque_time - clnt->enque_time > 0)
+    if (clnt->deque_timeus - clnt->enque_timeus > 0)
         reqlog_logf(logger, REQL_INFO, "queuetime took %dms",
-                    clnt->deque_time - clnt->enque_time);
-    reqlog_set_queue_time(logger, clnt->deque_time - clnt->enque_time);
+                    U2M(clnt->deque_timeus - clnt->enque_timeus));
+    reqlog_set_queue_time(logger, clnt->deque_timeus - clnt->enque_timeus);
 }
 
 static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
@@ -5650,7 +5650,7 @@ static void sqlengine_work_lua_thread(struct thdpool *pool, void *work,
     thr_set_user(clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_time = time_epochms();
+    clnt->deque_timeus = time_epochus();
 
     rdlock_schema_lk();
     sqlengine_prepare_engine(thd, clnt);
@@ -5686,7 +5686,7 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
     thr_set_user(clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_time = time_epochms();
+    clnt->deque_timeus = time_epochus();
 
     /* make sure we have an sqlite engine sqldb */
     if (clnt->verify_indexes) {
@@ -5980,7 +5980,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     pthread_mutex_unlock(&clnt->wait_mutex);
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
-    clnt->enque_time = time_epochms();
+    clnt->enque_timeus = time_epochus();
 
     char *sqlcpy;
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
@@ -6285,7 +6285,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->selectv_arr = NULL;
     clnt->file = 0;
     clnt->offset = 0;
-    clnt->enque_time = clnt->deque_time = 0;
+    clnt->enque_timeus = clnt->deque_timeus = 0;
     clnt->writeTransaction = 0;
 
     clnt->ins_keys = 0ULL;

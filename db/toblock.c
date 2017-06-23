@@ -5776,15 +5776,7 @@ add_blkseq:
     }
 
     struct timespec end_time;
-    int diff_time_micros = 0;
-#if 0
-    clock_gettime(CLOCK_REALTIME, &end_time); 
-
-    int diff_time_us = (end_time.tv_sec - start_time.tv_sec)*1000*1000 + (end_time.tv_nsec - start_time.tv_nsec)/1000;
-
-    printf("\n Time taken for commit = %d micro seconds", diff_time_us);
-#endif
-    diff_time_micros = (reqlog_current_ms(iq->reqlogger)) * 1000;
+    int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
     pthread_mutex_lock(&commit_stat_lk);
     n_commit_time += diff_time_micros;

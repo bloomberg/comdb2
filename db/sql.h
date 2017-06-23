@@ -467,8 +467,8 @@ struct sqlclntstate {
     unsigned int file;
     unsigned int offset;
 
-    int enque_time;
-    int deque_time;
+    uint64_t enque_timeus;
+    uint64_t deque_timeus;
 
     /* due to some sqlite vagaries, cursor is closed
        and I lose the side row; cache it here! */
