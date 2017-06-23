@@ -89,7 +89,7 @@ for m in $machines; do
     printf "%s " $m
     ssh $m rm -Rf $cpdir
     ssh $m mkdir -p $cpdir
-    copycomdb2 $cpdir/$db.lrl $m:$cpdir $m:$cpdir &
+    copycomdb2 $cpdir/$db.lrl $m:$cpdir $m:$cpdir
 done
 echo
 echo "waiting for copies"
