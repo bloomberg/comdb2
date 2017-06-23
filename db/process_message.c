@@ -1908,7 +1908,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             int idx;
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
-                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %d\nPrev Val: %d\nMin Val: %d\nMax Val: %d\nInc: %d\nCycle?: %s\nChunk Size: %d\nRemaining Vals: %d\nNext Start Val: %d\nSequence Exhausted?: %s\n",
+                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %lld\nPrev Val: %lld\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nRemaining Vals: %lld\nNext Start Val: %lld\nSequence Exhausted?: %s\n",
                     idx+1,
                     seq->name,
                     seq->next_val,
