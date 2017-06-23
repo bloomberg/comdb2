@@ -5097,10 +5097,11 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                   if ((ret = __txn_regop_rowlocks_read(dbenv, mylog.data,
                                                        &txn_rl_args)) != 0) {
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(stderr, "td %u %s line %d lsn %d:%d "
-                                      "txn_regop_rowlocks_read returns %d\n",
-                              (uint32_t)pthread_self(), __func__, __LINE__,
-                              lsn.file, lsn.offset, ret);
+                      logmsg(LOGMSG_USER,
+                             "td %u %s line %d lsn %d:%d "
+                             "txn_regop_rowlocks_read returns %d\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, ret);
                     }
                     return (ret);
                   }
@@ -5108,37 +5109,37 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                   if (txn_rl_args->timestamp < epoch) {
                     __os_free(dbenv, txn_rl_args);
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(
-                          stderr,
-                          "td %u %s line %d lsn %d:%d "
-                          "break-loop because timestamp (%d) < epoch (%d)\n",
-                          (uint32_t)pthread_self(), __func__, __LINE__,
-                          lsn.file, lsn.offset, txn_rl_args->timestamp, epoch);
+                      logmsg(LOGMSG_USER,
+                             "td %u %s line %d lsn %d:%d "
+                             "break-loop because timestamp (%d) < epoch (%d)\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, txn_rl_args->timestamp,
+                             epoch);
                     }
                     done = 1;
                     break;
-				}
+                                }
 
 				if (txn_rl_args->prev_lsn.file < file ||
 				    (txn_rl_args->prev_lsn.file == file &&
 					txn_rl_args->prev_lsn.offset <=
 					offset)) {
                                   if (gbl_extended_sql_debug_trace) {
-                                    fprintf(stderr,
-                                            "td %u %s line %d lsn %d:%d "
-                                            "break-loop because prev-lsn "
-                                            "(%d:%d) <= target-lsn "
-                                            "(%d:%d)\n",
-                                            (uint32_t)pthread_self(), __func__,
-                                            __LINE__, lsn.file, lsn.offset,
-                                            txn_rl_args->prev_lsn.file,
-                                            txn_rl_args->prev_lsn.offset, file,
-                                            offset);
+                                    logmsg(LOGMSG_USER,
+                                           "td %u %s line %d lsn %d:%d "
+                                           "break-loop because prev-lsn "
+                                           "(%d:%d) <= target-lsn "
+                                           "(%d:%d)\n",
+                                           (uint32_t)pthread_self(), __func__,
+                                           __LINE__, lsn.file, lsn.offset,
+                                           txn_rl_args->prev_lsn.file,
+                                           txn_rl_args->prev_lsn.offset, file,
+                                           offset);
                                   }
                                   __os_free(dbenv, txn_rl_args);
                                   done = 1;
                                   break;
-				}
+                                }
 
 				if (txn_rl_args->opcode == TXN_COMMIT &&
 				    txn_rl_args->
@@ -5170,20 +5171,20 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                         }
 
                                         if (gbl_extended_sql_debug_trace) {
-                                          fprintf(stderr,
-                                                  "td %u %s line %d lsn %d:%d "
-                                                  "adding prev-lsn %d:%d at "
-                                                  "index %d\n",
-                                                  (uint32_t)pthread_self(),
-                                                  __func__, __LINE__, lsn.file,
-                                                  lsn.offset,
-                                                  txn_rl_args->prev_lsn.file,
-                                                  txn_rl_args->prev_lsn.offset,
-                                                  *n_lsns);
+                                          logmsg(LOGMSG_USER,
+                                                 "td %u %s line %d lsn %d:%d "
+                                                 "adding prev-lsn %d:%d at "
+                                                 "index %d\n",
+                                                 (uint32_t)pthread_self(),
+                                                 __func__, __LINE__, lsn.file,
+                                                 lsn.offset,
+                                                 txn_rl_args->prev_lsn.file,
+                                                 txn_rl_args->prev_lsn.offset,
+                                                 *n_lsns);
                                         }
 
                                         lsns[*n_lsns] = txn_rl_args->prev_lsn;
-					*n_lsns += 1;
+                                        *n_lsns += 1;
 				}
 
 				__os_free(dbenv, txn_rl_args);
@@ -5211,12 +5212,12 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					    txn_gen_args->timestamp, epoch);
 #endif
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(
-                          stderr,
-                          "td %u %s line %d lsn %d:%d "
-                          "break-loop because timestamp (%d) < epoch (%d)\n",
-                          (uint32_t)pthread_self(), __func__, __LINE__,
-                          lsn.file, lsn.offset, txn_gen_args->timestamp, epoch);
+                      logmsg(LOGMSG_USER,
+                             "td %u %s line %d lsn %d:%d "
+                             "break-loop because timestamp (%d) < epoch (%d)\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, txn_gen_args->timestamp,
+                             epoch);
                     }
                     __os_free(dbenv, txn_gen_args);
 					done = 1;
@@ -5227,18 +5228,18 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                       (txn_gen_args->prev_lsn.file == file &&
                        txn_gen_args->prev_lsn.offset <= offset)) {
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(stderr, "td %u %s line %d lsn %d:%d "
-                                      "break-loop because prev-lsn "
-                                      "(%d:%d) <= target-lsn "
-                                      "(%d:%d)\n",
-                              (uint32_t)pthread_self(), __func__, __LINE__,
-                              lsn.file, lsn.offset, txn_gen_args->prev_lsn.file,
-                              txn_gen_args->prev_lsn.offset, file, offset);
+                      logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
+                                          "break-loop because prev-lsn "
+                                          "(%d:%d) <= target-lsn "
+                                          "(%d:%d)\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, txn_gen_args->prev_lsn.file,
+                             txn_gen_args->prev_lsn.offset, file, offset);
                     }
                     __os_free(dbenv, txn_gen_args);
                     done = 1;
                     break;
-				}
+                                }
 
 				if (txn_gen_args->opcode == TXN_COMMIT) {
 #if 0
@@ -5273,16 +5274,16 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                         }
 
                                         if (gbl_extended_sql_debug_trace) {
-                                          fprintf(stderr,
-                                                  "td %u %s line %d lsn %d:%d "
-                                                  "adding prev-lsn %d:%d at "
-                                                  "index %d\n",
-                                                  (uint32_t)pthread_self(),
-                                                  __func__, __LINE__, lsn.file,
-                                                  lsn.offset,
-                                                  txn_gen_args->prev_lsn.file,
-                                                  txn_gen_args->prev_lsn.offset,
-                                                  *n_lsns);
+                                          logmsg(LOGMSG_USER,
+                                                 "td %u %s line %d lsn %d:%d "
+                                                 "adding prev-lsn %d:%d at "
+                                                 "index %d\n",
+                                                 (uint32_t)pthread_self(),
+                                                 __func__, __LINE__, lsn.file,
+                                                 lsn.offset,
+                                                 txn_gen_args->prev_lsn.file,
+                                                 txn_gen_args->prev_lsn.offset,
+                                                 *n_lsns);
                                         }
 
                                         lsns[*n_lsns] = txn_gen_args->prev_lsn;
@@ -5291,15 +5292,14 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                 __os_free(dbenv, txn_gen_args);
                 } break;
 
-                case DB___txn_regop:
-			{
+                case DB___txn_regop: {
                   if ((ret = __txn_regop_read(dbenv, mylog.data, &txn_args)) !=
                       0) {
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(stderr, "td %u %s line %d lsn %d:%d"
-                                      "txn_regop_read returns %d\n",
-                              (uint32_t)pthread_self(), __func__, __LINE__,
-                              lsn.file, lsn.offset, ret);
+                      logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d"
+                                          "txn_regop_read returns %d\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, ret);
                     }
                     return (ret);
                   }
@@ -5312,12 +5312,11 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					    txn_args->timestamp, epoch);
 #endif
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(
-                          stderr,
-                          "td %u %s line %d lsn %d:%d "
-                          "break-loop because timestamp (%d) < epoch (%d)\n",
-                          (uint32_t)pthread_self(), __func__, __LINE__,
-                          lsn.file, lsn.offset, txn_args->timestamp, epoch);
+                      logmsg(LOGMSG_USER,
+                             "td %u %s line %d lsn %d:%d "
+                             "break-loop because timestamp (%d) < epoch (%d)\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, txn_args->timestamp, epoch);
                     }
                     __os_free(dbenv, txn_args);
                     done = 1;
@@ -5329,19 +5328,19 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                        txn_args->prev_lsn.offset <= offset)) {
 
                     if (gbl_extended_sql_debug_trace) {
-                      fprintf(stderr, "td %u %s line %d lsn %d:%d "
-                                      "break-loop because prev-lsn "
-                                      "(%d:%d) < target-lsn "
-                                      "(%d:%d)\n",
-                              (uint32_t)pthread_self(), __func__, __LINE__,
-                              lsn.file, lsn.offset, txn_args->prev_lsn.file,
-                              txn_args->prev_lsn.offset, file, offset);
+                      logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
+                                          "break-loop because prev-lsn "
+                                          "(%d:%d) < target-lsn "
+                                          "(%d:%d)\n",
+                             (uint32_t)pthread_self(), __func__, __LINE__,
+                             lsn.file, lsn.offset, txn_args->prev_lsn.file,
+                             txn_args->prev_lsn.offset, file, offset);
                     }
 
                     __os_free(dbenv, txn_args);
                     done = 1;
                     break;
-				}
+                                }
 
 				if (txn_args->opcode == TXN_COMMIT) {
 #if 0
@@ -5374,21 +5373,21 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                                   lsns = NULL;
                                                   __os_free(dbenv, txn_args);
                                                   goto err;
-						}
+                                                }
 						lsns = newlsns;
 					}
 
                                         if (gbl_extended_sql_debug_trace) {
-                                          fprintf(stderr,
-                                                  "td %u %s line %d lsn %d:%d "
-                                                  "adding prev-lsn %d:%d at "
-                                                  "index %d\n",
-                                                  (uint32_t)pthread_self(),
-                                                  __func__, __LINE__, lsn.file,
-                                                  lsn.offset,
-                                                  txn_args->prev_lsn.file,
-                                                  txn_args->prev_lsn.offset,
-                                                  *n_lsns);
+                                          logmsg(LOGMSG_USER,
+                                                 "td %u %s line %d lsn %d:%d "
+                                                 "adding prev-lsn %d:%d at "
+                                                 "index %d\n",
+                                                 (uint32_t)pthread_self(),
+                                                 __func__, __LINE__, lsn.file,
+                                                 lsn.offset,
+                                                 txn_args->prev_lsn.file,
+                                                 txn_args->prev_lsn.offset,
+                                                 *n_lsns);
                                         }
 
                                         lsns[*n_lsns] = txn_args->prev_lsn;
@@ -5413,8 +5412,8 @@ err:
   if ((t_ret = __log_c_close(logc)) != 0 && ret == 0) {
     ret = t_ret;
     if (gbl_extended_sql_debug_trace) {
-      fprintf(stderr, "td %u %s line %d log_c_close error: %d\n",
-              (uint32_t)pthread_self(), __func__, __LINE__, ret);
+      logmsg(LOGMSG_USER, "td %u %s line %d log_c_close error: %d\n",
+             (uint32_t)pthread_self(), __func__, __LINE__, ret);
     }
   }
 
@@ -5769,60 +5768,6 @@ again:
 
 	return 0;
 }
-
-#if 0
-int
-logical_recovery(dbenv, last_lsnp, first_lsnp)
-	DB_ENV *dbenv;
-	DB_LSN *last_lsnp;
-	DB_LSN *first_lsnp;
-{
-	DB_LOGC *logc;
-	DBT mylog;
-	DB_LSN lsn;
-	u_int32_t rectype;
-	int ret, t_ret;
-	void *txninfo;
-
-	txninfo = NULL;
-	if ((ret = __db_txnlist_init(dbenv, 0, 0, NULL, &txninfo)) != 0)
-		return ret;
-
-	if ((ret = __log_cursor(dbenv, &logc)) != 0)
-		return ret;
-
-	lsn = *last_lsnp;
-	ret = __log_c_get(logc, &lsn, &mylog, DB_SET);
-	if (ret) {
-		fprintf(stderr, "%s:%d failed to get log entry %d:%d, ret=%d\n",
-		    __FILE__, __LINE__, lsn.file, lsn.offset, ret);
-		goto err;
-	}
-
-	/* step 1
-	 * Go to every single record from last_lsnp to first_lsnp 
-	 * and collect committed transactions; records for committed transactions
-	 * are logically undone; */
-	do {
-		LOGCOPY_32(&rectype, mylog.data);
-		switch (rectype) {
-		default:
-			fprintf(stderr, "%s:%d Processing record type %d\n",
-			    __FILE__, __LINE__);
-		}
-	} while ((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0);
-
-	/* step 2
-	 * Go through each transaction and logically undo it; hopefully this will 
-	 * skip more records and not go to much back and forth */
-
-err:
-	if (t_ret = __log_c_close(logc) != 0 && ret = 0)
-		ret = t_ret;
-
-	return ret;
-}
-#endif
 
 static int
 __rep_bt_cmp(dbp, dbt1, dbt2)

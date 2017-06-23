@@ -692,27 +692,28 @@ void serialise_database(
         }
 
         // All btrees must have a datas0 file
-        for(std::list<std::string>::const_iterator
-                it = dbdir_files.begin();
-                it != dbdir_files.end();
-                ++it) {
-            size_t len = it->length();
-            if(len < 23) continue;
-            if(it->substr(len - 7) != ".datas0") continue;
-            if((*it)[len - 24] != '_') continue;
-            size_t ii;
-            for(ii = 0; ii < 16; ++ii) {
-                if(!std::isxdigit((*it)[len - 23 + ii])) {
-                    break;
-                }
+        for (std::list<std::string>::const_iterator it = dbdir_files.begin();
+             it != dbdir_files.end(); ++it) {
+          size_t len = it->length();
+          if (len < 23)
+            continue;
+          if (it->substr(len - 7) != ".datas0")
+            continue;
+          if ((*it)[len - 24] != '_')
+            continue;
+          size_t ii;
+          for (ii = 0; ii < 16; ++ii) {
+            if (!std::isxdigit((*it)[len - 23 + ii])) {
+              break;
             }
-            if(ii == 16) {
-                std::string table(it->substr(0, len - 24));
-                if(table_names.insert(table).second) {
-                    std::clog << "Inferred table " << table
-                        << " from " << *it << std::endl;
-                }
+          }
+          if (ii == 16) {
+            std::string table(it->substr(0, len - 24));
+            if (table_names.insert(table).second) {
+              std::clog << "Inferred table " << table << " from " << *it
+                        << std::endl;
             }
+          }
         }
     }
 
