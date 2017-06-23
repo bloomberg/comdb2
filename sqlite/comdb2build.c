@@ -1545,38 +1545,42 @@ clean_arg:
 // TODO: Modify for sequences
 void comdb2CreateSequence(
     Parse *pParse, /* Parser context */
-    Token *pName1, /* First part of the name of the table or view */
-    Token *pName2, /* Second part of the name of the table or view */
-    int opt,       /* Various options for create (compress, etc) */
-    Token *csc2, int temp, int noErr)
+    Token *pName, /* Name of sequence */
+
+    Token *min_val,
+    Token *max_val,
+    Token *inc,
+    Token *cycle,
+    Token *start_val,
+    Token *chunk_size
+    )
 {
     sqlite3 *db = pParse->db;
     Vdbe *v = sqlite3GetVdbe(pParse);
-    if (temp) {
-        setError(pParse, SQLITE_MISUSE, "can't create temp csc2 table");
-        return;
-    }
+
     struct schema_change_type *sc = new_schemachange_type();
     if (sc == NULL) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
-    TokenStr(table, pName1);
-    if (noErr && getdbbyname(table)) goto out;
+    TokenStr(sequence, pName);
+    // if (noErr && getdbbyname(table)) goto out;
 
-    if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
-        goto out;
+    // if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
+    //     goto out;
 
-    if (authenticateSC(sc->table, pParse)) goto out;
+    // if (authenticateSC(sc->table, pParse)) goto out;
 
-    v->readOnly = 0;
-    sc->addonly = 1;
-    sc->nothrevent = 1;
-    sc->live = 1;
-    fillTableOption(sc, opt);
-    copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                        (vdbeFuncArgFree)&free_schema_change_type);
+    // v->readOnly = 0;
+    // sc->addonly = 1;
+    // sc->nothrevent = 1;
+    // sc->live = 1;
+
+    // fillTableOption(sc, opt);
+
+    // copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
+    // comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+    //                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
