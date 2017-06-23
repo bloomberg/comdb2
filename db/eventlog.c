@@ -346,7 +346,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(obj, "perf", perfval);
 }
 
-int write_json(void *state, const void *src, unsigned int n)
+static int write_json(void *state, const void *src, unsigned int n)
 {
     int rc = gzwrite((gzFile)state, src, n);
     bytes_written += rc;
@@ -431,7 +431,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
                                            logger->stmt, strlen(logger->stmt)));
 
         char fingerprint[32];
-        MD5DigestToBase16(logger->fingerprint, fingerprint);
+        MD5DigestToBase16((unsigned char*)logger->fingerprint, fingerprint);
         cson_object_set(
             newobj, "fingerprint",
             cson_value_new_string(fingerprint, sizeof(fingerprint)));
@@ -475,11 +475,9 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     if (logger->have_fingerprint) {
         char fingerprint[32];
-        MD5DigestToBase16(logger->fingerprint, fingerprint);
+        MD5DigestToBase16((unsigned char*) logger->fingerprint, fingerprint);
         cson_object_set(obj, "fingerprint",
                         cson_value_new_string(fingerprint, 32));
-        // printf("%s -> %.*s\n", logger->stmt, sizeof(fingerprint),
-        // fingerprint);
     }
 
     if (logger->queuetimeus)
@@ -550,6 +548,26 @@ static void eventlog_disable(void)
 void eventlog_stop(void)
 {
     eventlog_disable();
+}
+
+static const char *help_text[] = {
+    "Event logging framework commands",
+    "events on                - enable event logging",
+    "events off               - disable event logging",
+    "events roll              - roll the event log",
+    "events keep #            - keep this many files",
+    "events detailed <on|off> - keep this many files",
+    "events rollat #          - roll after this many bytes",
+    "events every #           - sample every # events",
+    "events flush             - flush log",
+    NULL};
+
+static void eventlog_help(void)
+{
+    int ii;
+    for (ii = 0; help_text[ii]; ii++) {
+        logmsg(LOGMSG_USER, "%s\n", help_text[ii]);
+    }
 }
 
 static void eventlog_process_message_locked(char *line, int lline, int *toff)
@@ -647,8 +665,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         gzflush(eventlog, 1);
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown eventlog command\n");
-        return;
+        eventlog_help();
     }
 }
 
