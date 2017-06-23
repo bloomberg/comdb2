@@ -272,21 +272,21 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     /* optimization (will catch all transactions with no internal updates */
     if (osql_shadtbl_empty(clnt)) {
-      if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%u %s line %d empty-shadtbl, returning\n",
-               pthread_self(), __func__, __LINE__);
-      }
-      return 0;
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%u %s line %d empty-shadtbl, returning\n",
+                   pthread_self(), __func__, __LINE__);
+        }
+        return 0;
     }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
     if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
-      if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%u %s line %d empty-sv_arr, returning\n",
-               pthread_self(), __func__, __LINE__);
-      }
-      return 0;
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%u %s line %d empty-sv_arr, returning\n",
+                   pthread_self(), __func__, __LINE__);
+        }
+        return 0;
     }
 
     if (clnt->selectv_arr)
@@ -367,8 +367,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         int irc = 0;
 
         if (gbl_extended_sql_debug_trace) {
-          logmsg(LOGMSG_USER, "td=%u %s line %d aborting\n", pthread_self(),
-                 __func__, __LINE__);
+            logmsg(LOGMSG_USER, "td=%u %s line %d aborting\n", pthread_self(),
+                   __func__, __LINE__);
         }
 
         irc = osql_sock_abort(clnt, osqlreq_type);
@@ -389,8 +389,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
         /* close the block processor session and retrieve the result */
         if (gbl_extended_sql_debug_trace) {
-          logmsg(LOGMSG_USER, "td=%u %s line %d committing\n", pthread_self(),
-                 __func__, __LINE__);
+            logmsg(LOGMSG_USER, "td=%u %s line %d committing\n", pthread_self(),
+                   __func__, __LINE__);
         }
         rc = osql_sock_commit(clnt, osqlreq_type);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&

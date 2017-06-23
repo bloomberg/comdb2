@@ -319,8 +319,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
 
         /* If this isn't an asof query, backfill to the durable-lsn  */
         if (!epoch && !file) {
-          file = dur_lsn.file;
-          offset = dur_lsn.offset;
+            file = dur_lsn.file;
+            offset = dur_lsn.offset;
         }
 
         backfill_required = 1;
@@ -1189,19 +1189,19 @@ static int bdb_osql_trn_process_bfillhndl(bdb_state_type *bdb_state,
                 *bdberr);
     } else {
         do {
-          if ((trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
-               trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
-              (!gbl_rowlocks || !bkfill_active_trans))
-            log = parse_log_for_snapisol(
-                bdb_state, cur, &lsn, (!bkfill_active_trans) ? 2 : 1, bdberr);
-          else
-            log = parse_log_for_shadows(bdb_state, cur, &lsn, 1 /* backfill */,
-                                        bdberr);
-          if (*bdberr)
-            goto done;
+            if ((trn->shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
+                 trn->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
+                (!gbl_rowlocks || !bkfill_active_trans))
+                log = parse_log_for_snapisol(bdb_state, cur, &lsn,
+                                             (!bkfill_active_trans) ? 2 : 1,
+                                             bdberr);
+            else
+                log = parse_log_for_shadows(bdb_state, cur, &lsn,
+                                            1 /* backfill */, bdberr);
+            if (*bdberr) goto done;
 
-          if (log) {
-            listc_abl(&trn->bkfill_list, log);
+            if (log) {
+                listc_abl(&trn->bkfill_list, log);
             }
 
             rc = bdb_osqlbkfill_next_lsn(bkfill_hndl, &lsn, bdberr);
