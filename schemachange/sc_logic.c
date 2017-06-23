@@ -760,7 +760,7 @@ int resume_schema_change(void)
             logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n");
     }
     pthread_mutex_unlock(&sc_resuming_mtx);
-    return rc;
+    return 0;
 }
 
 /****************** Table functions ***********************************/
