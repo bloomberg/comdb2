@@ -99,6 +99,22 @@ static char *eventlog_fname(const char *dbname)
                            time_epochus());
 }
 
+/*
+** Convert a 128-bit MD5 digest into a 32-digit base-16 number.
+** From md5.c
+*/
+static void MD5DigestToBase16(unsigned char *digest, char *zBuf){
+  static char const zEncode[] = "0123456789abcdef";
+  int i, j;
+
+  for(j=i=0; i<16; i++){
+    int a = digest[i];
+    zBuf[j++] = zEncode[(a>>4)&0xf];
+    zBuf[j++] = zEncode[a & 0xf];
+  }
+  zBuf[j] = 0;
+}
+
 static cson_output_opt opt = {.indentation = 0,
                               .maxDepth = 4096,
                               .addNewline = 1,
@@ -415,11 +431,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
                                            logger->stmt, strlen(logger->stmt)));
 
         char fingerprint[32];
-        for (int i = 0; i < 16; i++) {
-            fingerprint[i * 2] =
-                hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
-            fingerprint[i * 2 + 1] = hexchars[logger->fingerprint[i] & 0x0f];
-        }
+        MD5DigestToBase16(logger->fingerprint, fingerprint);
         cson_object_set(
             newobj, "fingerprint",
             cson_value_new_string(fingerprint, sizeof(fingerprint)));
@@ -463,11 +475,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     if (logger->have_fingerprint) {
         char fingerprint[32];
-        for (int i = 0; i < 16; i++) {
-            fingerprint[i * 2] =
-                hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
-            fingerprint[i * 2 + 1] = hexchars[logger->fingerprint[i] & 0x0f];
-        }
+        MD5DigestToBase16(logger->fingerprint, fingerprint);
         cson_object_set(obj, "fingerprint",
                         cson_value_new_string(fingerprint, 32));
         // printf("%s -> %.*s\n", logger->stmt, sizeof(fingerprint),
