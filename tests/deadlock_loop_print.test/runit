@@ -1,0 +1,44 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+################################################################################
+
+
+# debug=1
+
+# args
+a_dbn=$1
+
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.send('debg 500')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 1000000')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.send('on verbose_deadlocks')"
+cdb2sql ${CDB2_OPTIONS} $a_dbn default "exec procedure sys.cmd.send('on print_deadlock_cycles')"
+
+f1() {
+    cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<"EOF"
+begin
+insert into t1 values (1, x'11')
+insert into t2 values (1, x'11')
+commit
+EOF
+}
+
+f2() {
+    cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<"EOF"
+begin
+insert into t2 values (2, x'22')
+insert into t1 values (2, x'22')
+commit
+EOF
+}
+
+#run two transactions that will get in a deadlock
+#will see DEADLOCK-CYCLE: in db log
+f1 &
+f2 &
+
+wait
+
+exit 1
+
+echo "Testcase passed."
