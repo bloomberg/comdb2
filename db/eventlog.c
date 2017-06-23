@@ -33,7 +33,6 @@
 
 #include "cson_amalgamation_core.h"
 
-static char *eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 1024 * 1024 * 1024;
 static int eventlog_enabled = 1;
@@ -41,9 +40,8 @@ static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
 static int eventlog_verbose = 0;
 
-static gzFile eventlog = NULL;
+static void *eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static gzFile eventlog_open(void);
 int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
@@ -59,26 +57,46 @@ LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
 
-void eventlog_init(const char *dbname)
+typedef struct _eventlog_callback {
+    void (*open)();
+    cson_data_dest_f write;
+    void (*flush)();
+    void (*close)();
+} eventlog_callback_t;
+
+eventlog_callback_t *eventlog_cb;
+
+static char *eventlog_fname()
 {
-    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
-    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
-    if (eventlog_enabled) eventlog = eventlog_open();
+    return comdb2_location("logs", "%s.events.%" PRId64 "", thedb->envname,
+                           time_epochus());
 }
 
-static gzFile eventlog_open()
+static void eventlog_open()
 {
     char *fname = eventlog_fname(thedb->envname);
     gzFile f = gzopen(fname, "2w");
     free(fname);
     if (f == NULL) {
         eventlog_enabled = 0;
-        return NULL;
+        eventlog = NULL;
     }
-    return f;
+    eventlog = f;
 }
 
-static void eventlog_close(void)
+static int eventlog_write(void *state, void const *src, unsigned int n)
+{
+    int rc = gzwrite((gzFile)state, src, n);
+    bytes_written += rc;
+    return rc != n;
+}
+
+static void eventlog_flush()
+{
+    gzflush(eventlog, 1);
+}
+
+static void eventlog_close()
 {
     if (eventlog == NULL) return;
     gzclose(eventlog);
@@ -93,10 +111,19 @@ static void eventlog_close(void)
     }
 }
 
-static char *eventlog_fname(const char *dbname)
+eventlog_callback_t default_cb = {
+    .open = eventlog_open,
+    .write = eventlog_write,
+    .flush = eventlog_flush,
+    .close = eventlog_close
+};
+
+void eventlog_init(const char *dbname)
 {
-    return comdb2_location("logs", "%s.events.%" PRId64 "", dbname,
-                           time_epochus());
+    eventlog_cb = &default_cb;
+    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
+    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
+    if (eventlog_enabled) eventlog_cb->open();
 }
 
 /*
@@ -346,13 +373,6 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(obj, "perf", perfval);
 }
 
-static int write_json(void *state, const void *src, unsigned int n)
-{
-    int rc = gzwrite((gzFile)state, src, n);
-    bytes_written += rc;
-    return rc != n;
-}
-
 int write_logmsg(void *state, const void *src, unsigned int n)
 {
     logmsg(LOGMSG_USER, "%.*s", n, src);
@@ -439,7 +459,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         /* yes, this can spill the file to beyond the configured size - we need
            this
            event to be in the same file as the event its being logged for */
-        cson_output(newval, write_json, eventlog, &opt);
+        cson_output(newval, eventlog_cb->write, eventlog, &opt);
         if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
         cson_value_free(newval);
     }
@@ -517,7 +537,7 @@ void eventlog_add(const struct reqlogger *logger)
     eventlog_add_int(obj, logger);
 
     pthread_mutex_lock(&eventlog_lk);
-    cson_output(val, write_json, eventlog, &opt);
+    cson_output(val, eventlog_cb->write, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
@@ -527,8 +547,8 @@ void eventlog_add(const struct reqlogger *logger)
 
 static void eventlog_roll(void)
 {
-    eventlog_close();
-    eventlog = eventlog_open();
+    eventlog_cb->close();
+    eventlog_cb->open();
 }
 
 static void eventlog_enable(void)
@@ -663,7 +683,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             return;
         }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
-        gzflush(eventlog, 1);
+        eventlog_cb->flush();
     } else {
         eventlog_help();
     }
