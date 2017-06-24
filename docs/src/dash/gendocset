@@ -156,5 +156,5 @@ EODOC
 )  | sqlite3 Comdb2.docset/Contents/Resources/docSet.dsidx
 
 # Debug step - remove when done.  Install in local Zeal docs.
-rm -fr ~/.local/share/Zeal/Zeal/docsets/Comdb2.docset
-cp -r Comdb2.docset ~/.local/share/Zeal/Zeal/docsets/
+#rm -fr ~/.local/share/Zeal/Zeal/docsets/Comdb2.docset
+#cp -r Comdb2.docset ~/.local/share/Zeal/Zeal/docsets/
