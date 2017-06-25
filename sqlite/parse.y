@@ -443,27 +443,51 @@ rle_compress_type(A) ::= LZ4. {A = REC_LZ4;}
 
 /////////////////// COMDB2 ALTER TABLE STATEMENT  //////////////////////////////
 
-
-cmd ::= alter_comdb2table.
-alter_comdb2table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
-        comdb2AlterTable(pParse,&Y,&Z,O,&C,D);
+/* ALTER TABLE (CSC2) */
+cmd ::= comdb2_alter_table_csc2.
+comdb2_alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+        comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
 }
+
+/* ALTER TABLE (Comdb2) */
+cmd ::= alter_table alter_table_action_list. {
+        comdb2AlterTableEnd(pParse);
+}
+
+alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
+        comdb2AlterTableStart(pParse,&Y,&Z,D);
+}
+
+alter_table_action_list ::= alter_table_action_list COMMA alter_table_action.
+alter_table_action_list ::= alter_table_action.
+
+alter_table_action ::= alter_table_add_column.
+alter_table_action ::= alter_table_drop_column.
+
+alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
+alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
+    comdb2DropColumn(pParse, &Y);
+}
+
+kwcolumn_opt ::= .
+kwcolumn_opt ::= COLUMNKW.
 
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= . {D=0;}
 
-
 ///////////////////// The CREATE TABLE statement ////////////////////////////
 
+/* CREATE TABLE */
 cmd ::= create_table create_table_args.
 create_table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) . {
-        sqlite3StartTable(pParse,&Y,&Z,T,0,0,E);
+        comdb2CreateTableStart(pParse,&Y,&Z,T,0,0,E);
 }
 
-cmd ::= create_comdb2table.
-create_comdb2table ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
-        comdb2CreateTable(pParse,&Y,&Z,O,&C,T,E);
+/* CREATE TABLE (Comdb2 - CSC2) */
+cmd ::= comdb2_create_table_csc2.
+comdb2_create_table_csc2 ::= createkw temp(T) TABLE ifnotexists(E) nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+        comdb2CreateTableCSC2(pParse,&Y,&Z,O,&C,T,E);
 }
 
 %type temp {int}
@@ -476,13 +500,14 @@ createkw(A) ::= CREATE(A).  {disableLookaside(pParse);}
 ifnotexists(A) ::= .              {A = 0;}
 ifnotexists(A) ::= IF NOT EXISTS. {A = 1;}
 
-create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_options(F). {
-  sqlite3EndTable(pParse,&X,&E,F,0);
+create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F). {
+  comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
 create_table_args ::= AS select(S). {
   sqlite3EndTable(pParse,0,0,0,S);
   sqlite3SelectDelete(pParse->db, S);
 }
+
 %type table_options {int}
 table_options(A) ::= .    {A = 0;}
 table_options(A) ::= WITHOUT nm(X). {
@@ -493,9 +518,10 @@ table_options(A) ::= WITHOUT nm(X). {
     sqlite3ErrorMsg(pParse, "unknown table option: %.*s", X.n, X.z);
   }
 }
+
 columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
-columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
+columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 
 // Define operator precedence early so that this is the first occurrence
 // of the operator tokens in the grammer.  Keeping the operators together
@@ -571,9 +597,11 @@ typetoken(A) ::= typename(A).
 typetoken(A) ::= typename(A) LP signed RP(Y). {
   A.n = (int)(&Y.z[Y.n] - A.z);
 }
+/*
 typetoken(A) ::= typename(A) LP signed COMMA signed RP(Y). {
   A.n = (int)(&Y.z[Y.n] - A.z);
 }
+*/
 %type typename {Token}
 typename(A) ::= ids(A).
 typename(A) ::= typename(A) ids(Y). {A.n=Y.n+(int)(Y.z-A.z);}
@@ -581,41 +609,47 @@ signed ::= plus_num.
 signed ::= minus_num.
 
 // "carglist" is a list of additional constraints that come after the
-// column name and column type in a CREATE TABLE statement.
+// column name and column type in a CREATE|ALTER TABLE statement.
 //
 carglist ::= carglist ccons.
 carglist ::= .
 ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
-ccons ::= DEFAULT term(X).            {sqlite3AddDefaultValue(pParse,&X);}
-ccons ::= DEFAULT LP expr(X) RP.      {sqlite3AddDefaultValue(pParse,&X);}
-ccons ::= DEFAULT PLUS term(X).       {sqlite3AddDefaultValue(pParse,&X);}
+ccons ::= DEFAULT term(X).            {comdb2AddDefaultValue(pParse,&X);}
+ccons ::= DEFAULT LP expr(X) RP.      {comdb2AddDefaultValue(pParse,&X);}
+ccons ::= DEFAULT PLUS term(X).       {comdb2AddDefaultValue(pParse,&X);}
 ccons ::= DEFAULT MINUS(A) term(X).      {
   ExprSpan v;
   v.pExpr = sqlite3PExpr(pParse, TK_UMINUS, X.pExpr, 0, 0);
   v.zStart = A.z;
   v.zEnd = X.zEnd;
-  sqlite3AddDefaultValue(pParse,&v);
+  comdb2AddDefaultValue(pParse,&v);
 }
 ccons ::= DEFAULT id(X).              {
   ExprSpan v;
   spanExpr(&v, pParse, TK_STRING, X);
-  sqlite3AddDefaultValue(pParse,&v);
+  comdb2AddDefaultValue(pParse,&v);
 }
 
 // In addition to the type name, we also care about the primary key and
 // UNIQUE constraints.
 //
-ccons ::= NULL onconf.
-ccons ::= NOT NULL onconf(R).    {sqlite3AddNotNull(pParse, R);}
+ccons ::= NULL onconf.           {comdb2AddNull(pParse);}
+ccons ::= NOT NULL onconf(R).    {comdb2AddNotNull(pParse, R);}
 ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
-                                 {sqlite3AddPrimaryKey(pParse,0,R,I,Z);}
-ccons ::= UNIQUE onconf(R).      {sqlite3CreateIndex(pParse,0,0,0,0,R,0,0,0,0,
+                                 {comdb2AddPrimaryKey(pParse,0,R,I,Z);}
+ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
 ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
 ccons ::= REFERENCES nm(T) eidlist_opt(TA) refargs(R).
-                                 {sqlite3CreateForeignKey(pParse,0,&T,TA,R);}
+                                 {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
 ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
 ccons ::= COLLATE ids(C).        {sqlite3AddCollateType(pParse, &C);}
+ccons ::= WITH DBPAD EQ INTEGER(X). {
+    int tmp;
+    if (!readIntFromToken(&X, &tmp))
+        tmp = 0;
+    comdb2AddDbpad(pParse, tmp);
+}
 
 // The optional AUTOINCREMENT keyword
 %type autoinc {int}
@@ -657,16 +691,16 @@ tconscomma ::= COMMA.            {pParse->constraintName.n = 0;}
 tconscomma ::= .
 tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
-                                 {sqlite3AddPrimaryKey(pParse,X,R,I,0);}
+                                 {comdb2AddPrimaryKey(pParse,X,R,I,0);}
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
-                                 {sqlite3CreateIndex(pParse,0,0,0,X,R,0,0,0,0,
-                                       SQLITE_IDXTYPE_UNIQUE);}
+                                 {comdb2AddIndex(pParse,X,R,
+                                   SQLITE_IDXTYPE_UNIQUE);}
 tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E.pExpr);}
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
           REFERENCES nm(T) eidlist_opt(TA) refargs(R) defer_subclause_opt(D). {
-    sqlite3CreateForeignKey(pParse, FA, &T, TA, R);
-    sqlite3DeferForeignKey(pParse, D);
+    comdb2CreateForeignKey(pParse, FA, &T, TA, R);
+    comdb2DeferForeignKey(pParse, D);
 }
 %type defer_subclause_opt {int}
 defer_subclause_opt(A) ::= .                    {A = 0;}
@@ -811,7 +845,7 @@ oneselect(A) ::= SELECT(S) distinct(D) selcollist(W) from(X) where_opt(Y)
 #if SELECTTRACE_ENABLED
   Token s = S; /*A-overwrites-S*/
 #endif
-  A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L.pLimit,L.pOffset);
+  A = sqlite3SelectNew(pParse,W,X,Y.pExpr,P,Q,Z,D,L.pLimit,L.pOffset);
 #if SELECTTRACE_ENABLED
   /* Populate the Select.zSelName[] string that is used to help with
   ** query planner debugging, to differentiate between multiple Select
@@ -861,7 +895,7 @@ values(A) ::= values(A) COMMA LP exprlist(Y) RP. {
  * add the SELECTV instruction */
 oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
-  A = sqlite3SelectNew(pParse,W,X,Y,P,Q,Z,D,L.pLimit,L.pOffset);
+  A = sqlite3SelectNew(pParse,W,X,Y.pExpr,P,Q,Z,D,L.pLimit,L.pOffset);
   A->op = TK_SELECTV;
   A->recording = 1;
 }
@@ -1087,25 +1121,25 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
         orderby_opt(O) limit_opt(L). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "DELETE");
-  sqlite3FingerprintDelete(pParse->db, X, W);
-  sqlite3DeleteFrom(pParse,X,W);
+  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "DELETE");
+  sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
+  sqlite3DeleteFrom(pParse,X,W.pExpr);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
 cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  sqlite3FingerprintDelete(pParse->db, X, W);
-  sqlite3DeleteFrom(pParse,X,W);
+  sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
+  sqlite3DeleteFrom(pParse,X,W.pExpr);
 }
 %endif
 
-%type where_opt {Expr*}
-%destructor where_opt {sqlite3ExprDelete(pParse->db, $$);}
+%type where_opt {ExprSpan}
+%destructor where_opt {sqlite3ExprDelete(pParse->db, $$.pExpr);}
 
-where_opt(A) ::= .                    {A = 0;}
-where_opt(A) ::= WHERE expr(X).       {A = X.pExpr;}
+where_opt(A) ::= .                    {A.pExpr = 0;}
+where_opt(A) ::= WHERE expr(X).       {A = X;}
 
 ////////////////////////// The UPDATE command ////////////////////////////////
 //
@@ -1115,9 +1149,9 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-  W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "UPDATE");
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-  sqlite3Update(pParse,X,Y,W,R);
+  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "UPDATE");
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -1126,8 +1160,8 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
-  sqlite3Update(pParse,X,Y,W,R);
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R);
 }
 %endif
 
@@ -1606,16 +1640,19 @@ paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 ///////////////////////////// The CREATE INDEX command ///////////////////////
 //
 cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
-        ON nm(Y) LP sortlist(Z) RP where_opt(W). {
-  sqlite3CreateIndex(pParse, &X, &D, 
-                     sqlite3SrcListAppend(pParse->db,0,&Y,0), Z, U,
-                      &S, W, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF);
+        ON nm(Y) LP sortlist(Z) RP with_opt(O) where_opt(W). {
+  comdb2CreateIndex(pParse, &X, &D,
+                    sqlite3SrcListAppend(pParse->db,0,&Y,0), Z, U,
+                    &S, &W, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF, O);
 }
 
 %type uniqueflag {int}
 uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
 uniqueflag(A) ::= .        {A = OE_None;}
 
+%type with_opt {int}
+with_opt(A) ::= WITH DATACOPY EQ ON. {A = 1;}
+with_opt(A) ::= . {A = 0;}
 
 // The eidlist non-terminal (Expression Id List) generates an ExprList
 // from a list of identifiers.  The identifier names are in ExprList.a[].zName.
@@ -1678,7 +1715,8 @@ collate(C) ::= COLLATE ids.   {C = 1;}
 
 ///////////////////////////// The DROP INDEX command /////////////////////////
 //
-cmd ::= DROP INDEX ifexists(E) fullname(X).   {sqlite3DropIndex(pParse, X, E);}
+cmd ::= DROP INDEX ifexists(E) fullname(X).   {comdb2DropIndex(pParse, X, E);}
+cmd ::= DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndexExtn(pParse, &X, &Y, E);}
 
 ///////////////////////////// The VACUUM command /////////////////////////////
 //
@@ -1796,7 +1834,7 @@ tridxby ::= NOT INDEXED. {
 // UPDATE 
 trigger_cmd(A) ::=
    UPDATE orconf(R) trnm(X) tridxby SET setlist(Y) where_opt(Z).  
-   {A = sqlite3TriggerUpdateStep(pParse->db, &X, Y, Z, R);}
+   {A = sqlite3TriggerUpdateStep(pParse->db, &X, Y, Z.pExpr, R);}
 
 // INSERT
 trigger_cmd(A) ::= insert_cmd(R) INTO trnm(X) idlist_opt(F) select(S).
@@ -1804,7 +1842,7 @@ trigger_cmd(A) ::= insert_cmd(R) INTO trnm(X) idlist_opt(F) select(S).
 
 // DELETE
 trigger_cmd(A) ::= DELETE FROM trnm(X) tridxby where_opt(Y).
-   {A = sqlite3TriggerDeleteStep(pParse->db, &X, Y);}
+   {A = sqlite3TriggerDeleteStep(pParse->db, &X, Y.pExpr);}
 
 // SELECT
 trigger_cmd(A) ::= select(X).
