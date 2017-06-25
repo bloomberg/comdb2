@@ -3958,29 +3958,29 @@ __lock_getlocker(lt, locker, indx, retries, flags, retp)
 
 	lock_locker_partition(region, partition);
 
-    int ret = __lock_getlocker_int(lt, locker, indx, partition, lk_create,
+	int ret = __lock_getlocker_int(lt, locker, indx, partition, lk_create,
                                    retries, retp, &created, is_logical);
     
 	if (ret || *retp == NULL || keep_part_lock == 0) 
 		unlock_locker_partition(region, partition);
 
-    if(created) {
-        if (get_locker_lock) {
-            if (keep_part_lock) /* cant hold locker partition when locking lockers*/
-                unlock_locker_partition(region, partition);
-            lock_lockers(region);
-        }
-        SH_TAILQ_INSERT_HEAD(&region->lockers, *retp, ulinks, __db_locker);
-        if (++region->stat.st_nlockers > region->stat.st_maxnlockers)
-            region->stat.st_maxnlockers = region->stat.st_nlockers;
-        if (get_locker_lock) {
-            unlock_lockers(region);
-            if (keep_part_lock) /* caller expects partition locked */
-                lock_locker_partition(region, partition);
-        }
-    }
+	if(!created)
+		return ret;
 
-    return ret;
+	if (get_locker_lock) {
+		if (keep_part_lock) /* cant hold locker partition when locking lockers*/
+			unlock_locker_partition(region, partition);
+		lock_lockers(region);
+	}
+	SH_TAILQ_INSERT_HEAD(&region->lockers, *retp, ulinks, __db_locker);
+	if (++region->stat.st_nlockers > region->stat.st_maxnlockers)
+		region->stat.st_maxnlockers = region->stat.st_nlockers;
+	if (get_locker_lock) {
+		unlock_lockers(region);
+		if (keep_part_lock) /* caller expects partition locked */
+			lock_locker_partition(region, partition);
+	}
+	return ret;
 }
 
 

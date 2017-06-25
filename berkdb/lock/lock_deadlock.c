@@ -1043,17 +1043,17 @@ __adjust_lockerid_priority_td(dbenv, atype, lip, dd_id, id_array, increment)
  * otherwise do nothing 
  */
 static inline int __resize_object(DB_ENV *dbenv, void **obj, size_t *obj_size, 
-        size_t new_size)
+	size_t new_size)
 {
-    if(new_size < *obj_size)
-        return 0;
-    new_size = new_size + new_size/2;
-    __os_free(dbenv, *obj);
-    int ret = __os_malloc (dbenv, new_size, obj);
-    if (ret)
-        return ret;
-    *obj_size = new_size;
-    return 0;
+	if(new_size < *obj_size)
+		return 0;
+	new_size = new_size + new_size/2;
+	__os_free(dbenv, *obj);
+	int ret = __os_malloc (dbenv, new_size, obj);
+	if (ret)
+		return ret;
+	*obj_size = new_size;
+	return 0;
 }
 
 
@@ -1126,12 +1126,12 @@ retry:	count = region->stat.st_nlockers;
 	count +=20;
 	allocSz = (size_t)count * sizeof(locker_info);
 
-    ret = __resize_object(dbenv, (void**) &dd_id_array, 
-            &dd_id_array_size, allocSz);
-    if(ret) {
-        if (sparse_map) 
-            free_sparse_map(dbenv, sparse_map);
-        return ret;
+	ret = __resize_object(dbenv, (void**) &dd_id_array, 
+		&dd_id_array_size, allocSz);
+	if(ret) {
+	    if (sparse_map) 
+		free_sparse_map(dbenv, sparse_map);
+	    return ret;
     }
 	memset(dd_id_array, 0, allocSz);
 
@@ -1195,21 +1195,21 @@ retry:	count = region->stat.st_nlockers;
 		dd_bitmap = NULL;
 	} else {
 		allocSz = (size_t)count * sizeof(u_int32_t) * nentries;
-        ret = __resize_object(dbenv, (void**) &dd_bitmap, 
-                &dd_bitmap_size, allocSz);
+		ret = __resize_object(dbenv, (void**) &dd_bitmap, 
+			&dd_bitmap_size, allocSz);
 		if (ret)
-            return ret;
+		    return ret;
 		memset(dd_bitmap, 0, allocSz);
 		sparse_map = NULL;
 	}
 
 	allocSz = sizeof(u_int32_t) * nentries;
-    ret = __resize_object(dbenv, (void**) &dd_tmpmap, &dd_tmpmap_size, allocSz);
-    if(ret) {
-        if (sparse_map) 
-            free_sparse_map(dbenv, sparse_map);
-        return ret;
-    }
+	ret = __resize_object(dbenv, (void**) &dd_tmpmap, &dd_tmpmap_size, allocSz);
+	if(ret) {
+	    if (sparse_map) 
+		free_sparse_map(dbenv, sparse_map);
+	    return ret;
+	}
 	memset(dd_tmpmap, 0, allocSz);
 
 
