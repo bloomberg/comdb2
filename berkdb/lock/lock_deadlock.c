@@ -665,8 +665,8 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 		} else
 			killid = (u_int32_t) ((*deadp - bitmap) / nalloc);
 
-		if ((atype == DB_LOCK_DEFAULT ||
-			atype == DB_LOCK_RANDOM)&&0 == idmap[killid].saveme)
+		if ((atype == DB_LOCK_DEFAULT || atype == DB_LOCK_RANDOM) &&
+				0 == idmap[killid].saveme)
 			goto dokill;
 		/*
 		 * It's conceivable that under XA, the locker could
@@ -712,8 +712,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 				 continue;
 
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_DEADLOCK)) {
-				logmsg(LOGMSG_USER, "conflicting with other transaction %d\n",
-				    i);
+				logmsg(LOGMSG_USER, "conflicting with other transaction %d\n", i);
 				show_locker_info(dbenv, lt, region, idmap, i);
 			}
 			/* A 'killme' lockerid is participating in a deadlock */
@@ -852,7 +851,7 @@ dokill:
 #endif
 		}
 
-		if (idmap[killid].count == UINT_MAX &&can_retry) {
+		if (idmap[killid].count == UINT_MAX && can_retry) {
 			*can_retry = 1;
 			goto out;
 		}
