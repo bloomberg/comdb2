@@ -2310,24 +2310,25 @@ done:
  * Alter a timepart 
  *
  */
-int timepart_alter_timepart(
-    struct schema_change_type *s, struct ireq *iq, const char *original_name, 
-    int alter(struct schema_change_type *s, struct ireq *iq, int indx,
-              int maxindx))
+int timepart_alter_timepart(struct ireq *iq, void *tran,
+                            int alter(struct ireq *iq, int indx, int maxindx,
+                                      void *tran))
 {
-   timepart_views_t *views = thedb->timepart_views;
-   timepart_view_t *view;
-   int rc;
-   int i;
-   int start;
-   char *name;
+    struct schema_change_type *s = iq->sc;
+    const char *original_name = s->table;
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    int rc;
+    int i;
+    int start;
+    char *name;
 
-   pthread_mutex_lock(&views_mtx);
+    pthread_mutex_lock(&views_mtx);
 
-   if(unlikely(s->resume)) {
-      /* s->table is the last table touched, go from there */
-      view = _check_shard_collision(views, original_name, &start, 
-                                    _CHECK_ONLY_CURRENT_SHARDS);
+    if (unlikely(s->resume)) {
+        /* s->table is the last table touched, go from there */
+        view = _check_shard_collision(views, original_name, &start,
+                                      _CHECK_ONLY_CURRENT_SHARDS);
    } else {
       start = 0;
 
@@ -2341,7 +2342,7 @@ int timepart_alter_timepart(
 
    for(i=start;i<view->nshards; i++) {
       strncpy0(s->table, view->shards[i].tblname, sizeof(s->table));
-      rc = alter(s, iq, i, view->nshards);
+      rc = alter(iq, i, view->nshards, tran);
       if(rc) {
          rc = VIEW_ERR_SC;
          break;
@@ -2451,6 +2452,43 @@ static void print_dbg_verbose(const char *name, uuid_t *source_id,
     va_end(va);
 }
 
+
+/**
+ * Update the retention of the existing partition
+ *
+ */
+int timepart_update_retention(void *tran, const char *name, int retention, struct errstat *err)
+{
+   timepart_views_t *views = thedb->timepart_views;
+   timepart_view_t *view;
+   int rc = VIEW_NOERR;
+
+   pthread_mutex_lock(&views_mtx);
+
+   /* make sure we are unique */
+   view = _get_view(views, name);
+   if (!view)
+   {
+      errstat_set_strf(err, "Partition %s doesn't exists!", name);
+      errstat_set_rc(err, rc = VIEW_ERR_EXIST);
+      goto done;
+   }
+
+   if(view->retention < retention) 
+   {
+      view->retention = retention;
+
+      rc = _view_rollout_publish(tran, view, err);
+      if(rc!=VIEW_NOERR)
+      {
+         goto done;
+      }
+   }
+
+done:
+   pthread_mutex_unlock(&views_mtx);
+   return rc; 
+}
 
 #include "views_serial.c"
 

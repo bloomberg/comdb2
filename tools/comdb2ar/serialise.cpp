@@ -691,56 +691,24 @@ void serialise_database(
             optional_files.push_back(dbname + "_file_vers_map");
         }
 
-        // Do a synchronous "dumpllmeta" message trap to force the
-        // version map to be up to date.
-        std::string cmd("comdb2sc " + dbname + " send dumpllmeta >/dev/null >&2");
-        system(cmd.c_str());
-
-        std::string versmapfile;
-        if (nonames) {
-            versmapfile = dbdir + "/file_vers_map";
-        } else {
-            versmapfile = dbdir + "/" + dbname + "_file_vers_map";
-        }
-        std::ifstream filemapstream(versmapfile.c_str());
-        if(filemapstream.is_open()) {
-            // Use file_vers_map if it exists
-            int lineno = 0;
-            while(!filemapstream.eof()) {
-                std::string line;
-                std::getline(filemapstream, line);
-                lineno++;
-                std::istringstream liness(line);
-
-                std::string tok;
-                if(liness >> tok && tok == "table" && liness >> tok) {
-                    table_names.insert(tok);
+        // All btrees must have a datas0 file
+        for (std::list<std::string>::const_iterator it = dbdir_files.begin();
+             it != dbdir_files.end(); ++it) {
+            size_t len = it->length();
+            if (len < 23) continue;
+            if (it->substr(len - 7) != ".datas0") continue;
+            if ((*it)[len - 24] != '_') continue;
+            size_t ii;
+            for (ii = 0; ii < 16; ++ii) {
+                if (!std::isxdigit((*it)[len - 23 + ii])) {
+                    break;
                 }
             }
-        } else {
-            // If all else fails, be promiscuous - guess at the tables based
-            // on the file names we find.  All tables must have indexes, so
-            // look for .index files.
-            for(std::list<std::string>::const_iterator
-                    it = dbdir_files.begin();
-                    it != dbdir_files.end();
-                    ++it) {
-                size_t len = it->length();
-                if(len < 23) continue;
-                if(it->substr(len - 6) != ".index") continue;
-                if((*it)[len - 23] != '_') continue;
-                size_t ii;
-                for(ii = 0; ii < 16; ++ii) {
-                    if(!std::isxdigit((*it)[len - 22 + ii])) {
-                        break;
-                    }
-                }
-                if(ii == 16) {
-                    std::string table(it->substr(0, len - 23));
-                    if(table_names.insert(table).second) {
-                        std::clog << "Inferred table " << table
-                            << " from " << *it << std::endl;
-                    }
+            if (ii == 16) {
+                std::string table(it->substr(0, len - 24));
+                if (table_names.insert(table).second) {
+                    std::clog << "Inferred table " << table << " from " << *it
+                              << std::endl;
                 }
             }
         }

@@ -173,6 +173,10 @@ typedef struct osqlstate {
         verify_tbl; /* storage for verify, common for all transaction */
     struct temp_cursor *verify_cur; /* verify cursor */
 
+    struct temp_table
+        *sc_tbl; /* storage for schemachange, common for all transaction */
+    struct temp_cursor *sc_cur; /* schemachange cursor */
+
     struct errstat xerr; /* extended error */
 
     /* performance */
@@ -467,8 +471,8 @@ struct sqlclntstate {
     unsigned int file;
     unsigned int offset;
 
-    int enque_time;
-    int deque_time;
+    uint64_t enque_timeus;
+    uint64_t deque_timeus;
 
     /* due to some sqlite vagaries, cursor is closed
        and I lose the side row; cache it here! */
@@ -504,6 +508,11 @@ struct sqlclntstate {
     uint8_t skip_peer_chk;
 
     char fingerprint[16];
+    int ncontext;
+    char **context;
+
+    hash_t *ddl_tables;
+    hash_t *dml_tables;
 };
 
 /* Query stats. */

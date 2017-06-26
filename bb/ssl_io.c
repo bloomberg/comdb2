@@ -696,7 +696,11 @@ int SBUF2_FUNC(sslio_close)(SBUF2 *sb, int reuse)
             rc = 0;
     }
 
-done:
+    if (sb->cert) {
+        X509_free(sb->cert);
+        sb->cert = NULL;
+    }
+
     SSL_free(sb->ssl);
     sb->ssl = NULL;
     return rc;

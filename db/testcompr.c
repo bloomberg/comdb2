@@ -399,6 +399,7 @@ static void *handle_comptest_thd(void *_arg)
         }
         compr_stat(&comp);
     }
+    sbuf2flush(arg->sb);
     backend_thread_event(thedb, BDBTHR_EVENT_DONE_RDONLY);
     return NULL;
 }

@@ -51,8 +51,6 @@ struct stored_proc {
     int  rc;
     SP parent;
 
-    char **sqlname;
-    int *sqltype;
     int in_parent_trans;
     int make_parent_trans;
 

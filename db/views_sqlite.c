@@ -369,6 +369,8 @@ static int _views_create_triggers(timepart_view_t *view, sqlite3 *db,
             return err->errval;
         }
     }
+    /* clear last side row, might break a racing sql otherwise */
+    clearClientSideRow(NULL);
     return VIEW_NOERR;
 }
 

@@ -12,7 +12,7 @@ bb_SOURCES:=averager.c bb_asprintf.c bbhrtime.c bb_oscompat.c		\
           safestrerror.c sbuf2.c segstring.c sltpck.c str0.c strbuf.c	\
           switches.c tcputil.c thdpool.c thread_malloc.c		\
           thread_util.c timers.c utilmisc.c walkback.c xstring.c	\
-          ssl_support.c logmsg.c
+          ssl_support.c logmsg.c int_overflow.c
 bb_abs_SOURCES:=$(foreach src,$(bb_SOURCES),bb/$(src))
 bb_OBJS=$(patsubst %.c,%.o,$(bb_abs_SOURCES))
 
@@ -49,7 +49,7 @@ $(tz_OBJS): CFLAGS+=-DSTD_INSPIRED
 
 # protobuf Module
 pbuf_MEMGEN:=protobuf/mem_protobuf.h
-pbuf_SOURCES:=sqlquery.pb-c.c sqlresponse.pb-c.c bpfunc.pb-c.c log.pb-c.c
+pbuf_SOURCES:=sqlquery.pb-c.c sqlresponse.pb-c.c bpfunc.pb-c.c
 pbuf_abs_SOURCES:=$(foreach src,$(pbuf_SOURCES),protobuf/$(src))
 pbuf_OBJS:=$(patsubst %.c,%.o,$(pbuf_abs_SOURCES))
 
@@ -101,6 +101,7 @@ GENH+=$(dfp_MEMGEN)
 # cson Module
 cson_SOURCES:=cson/cson_amalgamation_core.c
 cson_OBJS:=$(patsubst %.c,%.o,$(cson_SOURCES))
+cson/cson_amalgamation_core.o: CFLAGS+=-O3
 
 cson/libcson.a: $(cson_OBJS)
 	$(AR) $(ARFLAGS) $@ $^

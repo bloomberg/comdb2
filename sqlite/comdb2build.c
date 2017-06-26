@@ -215,7 +215,9 @@ void fillTableOption(struct schema_change_type* sc, int opt)
         sc->instant_sc = 1;
 
     sc->compress_blobs = -1;
-    if (OPT_ON(opt, BLOB_RLE))
+    if (OPT_ON(opt, BLOB_NONE))
+        sc->compress_blobs = BDB_COMPRESS_NONE;
+    else if (OPT_ON(opt, BLOB_RLE))
         sc->compress_blobs = BDB_COMPRESS_RLE8;
     else if (OPT_ON(opt, BLOB_ZLIB))
         sc->compress_blobs = BDB_COMPRESS_ZLIB;
@@ -223,7 +225,9 @@ void fillTableOption(struct schema_change_type* sc, int opt)
         sc->compress_blobs = BDB_COMPRESS_LZ4;
 
     sc->compress = -1;
-    if (OPT_ON(opt, REC_RLE))
+    if (OPT_ON(opt, REC_NONE))
+        sc->compress = BDB_COMPRESS_NONE;
+    else if (OPT_ON(opt, REC_RLE))
         sc->compress = BDB_COMPRESS_RLE8;
     else if (OPT_ON(opt, REC_CRLE))
         sc->compress = BDB_COMPRESS_CRLE;
@@ -319,7 +323,6 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     s->sb = sb;
     int sv_onstack = s->onstack;
     s->onstack = 1;
-    int do_dryrun(struct schema_change_type *sc);
     f->rc = do_dryrun(s);
     s->onstack = sv_onstack;
     sbuf2close(sb);
@@ -347,8 +350,20 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     return f->rc;
 }
 
+static int comdb2SqlSchemaChange(OpFunc *f)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct schema_change_type *s = (struct schema_change_type*)f->arg;
+    thd->sqlclntstate->osql.long_request = 1;
+    f->rc = osql_schemachange_logic(s, thd);
+    if (f->rc == SQLITE_DDL_MISUSE)
+        f->errorMsg = "Transactional DDL Error: Overlapping Tables";
+    else if (f->rc)
+        f->errorMsg = "Transactional DDL Error: Internal Errors";
+    return f->rc;
+}
 
-int comdb2SqlSchemaChange(OpFunc *f)
+int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
@@ -367,7 +382,7 @@ int comdb2SqlSchemaChange(OpFunc *f)
 
 static int comdb2ProcSchemaChange(OpFunc *f)
 {
-	int rc = comdb2SqlSchemaChange(f);
+	int rc = comdb2SqlSchemaChange_tran(f);
 	if (rc == 0) {
 		opFuncPrintf(f, "%s", f->errorMsg);
 	}
@@ -399,11 +414,11 @@ int comdb2SendBpfunc(OpFunc *f)
    
    BpfuncArg *arg = (BpfuncArg*)f->arg;
 
-   osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
+   //osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
 
    rc = osql_send_bpfunc(node, osql->rqid, osql->uuid, arg, NET_OSQL_SOCK_RPL,osql->logsb);
    
-   rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+   //rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
 
    rc = osql->xerr.errval;
    osql->xerr.errval = 0;
@@ -481,7 +496,7 @@ void comdb2CreateTable(
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    v->readOnly = 0;
+    comdb2WriteTransaction(pParse);
     sc->addonly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -518,7 +533,10 @@ void comdb2AlterTable(
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    v->readOnly = 0;
+    if (dryrun)
+        v->readOnly = 0;
+    else
+        comdb2WriteTransaction(pParse);
     sc->alteronly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -557,7 +575,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    v->readOnly = 0;
+    comdb2WriteTransaction(pParse);
     sc->same_schema = 1;
     sc->drop_table = 1;
     sc->fastinit = 1;
@@ -618,7 +636,7 @@ static inline void comdb2rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t o
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -660,7 +678,7 @@ void comdb2truncate(Parse* pParse, Token* nm, Token* lnm)
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    v->readOnly = 0;
+    comdb2WriteTransaction(pParse);
     sc->fastinit = 1;
     sc->nothrevent = 1;
     sc->same_schema = 1;
@@ -722,7 +740,7 @@ void comdb2rebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
     sc->scanmode = gbl_default_sc_scanmode;
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -823,7 +841,7 @@ void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     v->readOnly = 0;
     sc->delsp = 1;
   
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);    
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)  &free_schema_change_type);
 }
 /********************* PARTITIONS  **********************************************/
 
@@ -1590,6 +1608,59 @@ void resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName)
    }
 }
 
+
+void comdb2timepartRetention(Parse *pParse, Token *nm, Token *lnm, int retention)
+{
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+
+
+    if (comdb2AuthenticateUserOp(v, pParse))
+        goto err;       
+
+    if (retention < 2)
+    {
+        setError(pParse, SQLITE_ERROR, "Retention must be 2 or higher");
+        goto clean_arg;
+    }
+
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    
+    if (arg)
+        bpfunc_arg__init(arg);
+    else
+        goto err;
+    BpfuncTimepartRetention *tp_retention = (BpfuncTimepartRetention*) 
+        malloc(sizeof(BpfuncTimepartRetention));
+
+    if (tp_retention)
+        bpfunc_timepart_retention__init(tp_retention);
+    else
+        goto err;
+
+    arg->tp_ret = tp_retention;
+    arg->type = BPFUNC_TIMEPART_RETENTION;
+    tp_retention->timepartname = (char*) malloc(MAXTABLELEN);
+    
+    if (!tp_retention->timepartname)
+        goto err;
+        
+    if (chkAndCopyTableTokens(v, pParse, tp_retention->timepartname, nm, lnm, 1)) 
+        return;  
+    
+    tp_retention->newvalue = retention;
+
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree)&free_bpfunc_arg);
+
+    return;
+err:
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
+clean_arg:
+    if (arg)
+        free_bpfunc_arg(arg);
+}
+
+
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
     gbl_commit_sleep = num;
@@ -1598,4 +1669,9 @@ void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 void comdb2schemachangeConvertsleep(Parse* pParse, int num)
 {
     gbl_convert_sleep = num;
+}
+
+void comdb2WriteTransaction(Parse *pParse)
+{
+    pParse->write = 1;
 }

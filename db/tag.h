@@ -260,6 +260,8 @@ char *csc2type(struct field *f);
 void debug_dump_schemas(void);
 void debug_dump_tags(const char *tblname);
 void fix_lrl_ixlen(void);
+struct tran_tag;
+void fix_lrl_ixlen_tran(struct tran_tag *);
 int max_type_size(int type, int len);
 int getidxnumbyname(const char *dbname, const char *tagname, int *ixnum);
 int partial_key_length(const char *dbname, const char *keyname,

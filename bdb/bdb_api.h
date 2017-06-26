@@ -135,29 +135,41 @@ struct bdb_queue_stats {
 };
 
 /* This is identical to bb_berkdb_thread_stats in db.h */
+
+/*
+ * Multiplication usually takes fewer CPU cycles than division. Therefore
+ * when comparing a usec and a msec, it is preferable to use:
+ * usec <comparison operator> M2U(msec)
+ */
+#ifndef U2M
+#define U2M(usec) (int)((usec) / 1000)
+#endif
+#ifndef M2U
+#define M2U(msec) ((msec)*1000ULL)
+#endif
 struct bdb_thread_stats {
     unsigned n_lock_waits;
-    unsigned lock_wait_time_ms;
+    uint64_t lock_wait_time_us;
 
     unsigned n_preads;
     unsigned pread_bytes;
-    unsigned pread_time_ms;
+    uint64_t pread_time_us;
 
     unsigned n_pwrites;
     unsigned pwrite_bytes;
-    unsigned pwrite_time_ms;
+    uint64_t pwrite_time_us;
 
     unsigned n_memp_fgets;
-    unsigned memp_fget_time_ms;
+    uint64_t memp_fget_time_us;
 
     unsigned n_memp_pgs;
-    unsigned memp_pg_time_ms;
+    uint64_t memp_pg_time_us;
 
     unsigned n_shallocs;
-    unsigned shalloc_time_ms;
+    uint64_t shalloc_time_us;
 
     unsigned n_shalloc_frees;
-    unsigned shalloc_free_time_ms;
+    uint64_t shalloc_free_time_us;
 };
 
 /* these are the values that "bdberr" can be */
@@ -499,6 +511,14 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
            int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
            int *bdberr);
 
+bdb_state_type *
+bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
+                const short ixlen[], const signed char ixdups[],
+                const signed char ixrecnum[], const signed char ixdta[],
+                const signed char ixcollattr[], const signed char ixnulls[],
+                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int *bdberr, tran_type *);
+
 /* open a databasent.  no actual db files are created. */
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
@@ -508,7 +528,8 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              int *bdberr);
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
-int bdb_handle_reset(bdb_state_type *bdb_state);
+int bdb_handle_reset(bdb_state_type *);
+int bdb_handle_reset_tran(bdb_state_type *, tran_type *);
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb);
 int bdb_handle_dbp_drop_hash(bdb_state_type *bdb_state);
 int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state);
@@ -609,6 +630,10 @@ tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
                            unsigned int flags);
 tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
                                   unsigned long long ltranid);
+void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid);
+void bdb_get_tran_lockerid(tran_type *tran, uint32_t *lockerid);
+void *bdb_get_physical_tran(tran_type *ltran);
+void bdb_ltran_get_schema_lock(tran_type *ltran);
 
 tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state,
                                   int has_qyery_isolation, int trak,
@@ -1060,7 +1085,11 @@ int bdb_del_ix(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
                int *bdberr);
 
 int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr);
+int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr);
 int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner);
+int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                               int *bdberr, char *powner);
 
 /* make new stripes */
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,
@@ -1315,8 +1344,8 @@ int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
                     int create_override, int *bdberr);
 int bdb_llmeta_set_tables(tran_type *input_trans, char **tblnames,
                           const int *dbnums, int numdbs, int *bdberr);
-int bdb_llmeta_get_tables(char **tblnames, int *dbnums, size_t maxnumtbls,
-                          int *fndnumtbls, int *bdberr);
+int bdb_llmeta_get_tables(tran_type *input_trans, char **tblnames, int *dbnums,
+                          size_t maxnumtbls, int *fndnumtbls, int *bdberr);
 bdb_state_type *bdb_llmeta_bdb_state(void);
 
 int bdb_append_file_version(char *str_buf, size_t buflen,
@@ -1421,6 +1450,9 @@ int bdb_get_in_schema_change(const char *db_name, void **schema_change_data,
 
 int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
                        unsigned long long genid, int *bdberr);
+int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
+                              int stripe, unsigned long long genid,
+                              int *bdberr);
 int bdb_clear_high_genid(tran_type *input_trans, const char *db_name,
                          int num_stripes, int *bdberr);
 int bdb_get_high_genid(const char *db_name, int stripe,

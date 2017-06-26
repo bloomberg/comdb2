@@ -159,7 +159,6 @@ void init_globals()
     un_init = 0;
     maccfuncpath = "";
     customcode = NULL;
-    ctm = 0;
     memset(includename, 0, sizeof(includename));
     memset(includefiles, 0, sizeof(includefiles));
     memset(includetypes, 0, sizeof(includetypes));

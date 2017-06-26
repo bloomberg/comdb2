@@ -264,10 +264,9 @@ int timepart_is_timepart(const char *name, int lock);
  * Alter a timepart 
  *
  */
-int timepart_alter_timepart(
-    struct schema_change_type *s, struct ireq *iq, const char *original_name, 
-    int alter(struct schema_change_type *s, struct ireq *iq, int indx,
-              int maxindx));
+int timepart_alter_timepart(struct ireq *iq, void *tran,
+                            int alter(struct ireq *iq, int indx, int maxindx,
+                                      void *tran));
 
 /**
  * Under views lock, call a function for each shard
@@ -283,6 +282,13 @@ int timepart_for_each_shard(const char *name,
  *
  */
 int views_cron_restart(timepart_views_t *views);
+
+
+/**
+ * Update the retention of the existing partition
+ *
+ */
+int timepart_update_retention(void *tran, const char *name, int value, struct errstat *err);
 
 #endif
 

@@ -186,8 +186,8 @@ typedef struct cdb2_effects_type cdb2_effects_tp;
 typedef struct cdb2_effects_type effects_tp;
 #endif
 
-void cdb2_set_comdb2db_config(char *cfg_file);
-void cdb2_set_comdb2db_info(char *cfg_info);
+void cdb2_set_comdb2db_config(const char *cfg_file);
+void cdb2_set_comdb2db_info(const char *cfg_info);
 
 int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type,
               int flags);
@@ -232,6 +232,10 @@ const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 
 void cdb2_enable_sockpool();
 void cdb2_disable_sockpool();
+
+int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg);
+int cdb2_pop_context(cdb2_hndl_tp *hndl);
+int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
 
 /* We keep the functions but make them no-op if not compiled
    with WITH_SSL. */

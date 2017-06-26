@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -84,6 +84,8 @@ static int allow_pmux_route = 0;
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 #define MAX_NODES 16
+#define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
+#define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -549,6 +551,16 @@ static int cdb2_tcpconnecth_to(const char *host, int port, int myport,
     return cdb2_do_tcpconnect(in, port, myport, timeoutms);
 }
 
+struct context_messages {
+    char *message[MAX_CONTEXTS];
+    int count;
+    int has_changed;
+};
+
+/* Forward declarations. */
+static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl);
+static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
+
 /* Make it equal to FSQL header. */
 struct newsqlheader {
     int type;
@@ -651,6 +663,7 @@ struct cdb2_hndl {
     char *ca;
     cdb2_ssl_sess_list *sess_list;
 #endif
+    struct context_messages context_msgs;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -681,7 +694,7 @@ void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries)
     }
 }
 
-void cdb2_set_comdb2db_config(char *cfg_file)
+void cdb2_set_comdb2db_config(const char *cfg_file)
 {
     pthread_once(&init_once, do_init_once);
     if (log_calls)
@@ -690,7 +703,7 @@ void cdb2_set_comdb2db_config(char *cfg_file)
     strncpy(CDB2DBCONFIG_NOBBENV, cfg_file, 511);
 }
 
-void cdb2_set_comdb2db_info(char *cfg_info)
+void cdb2_set_comdb2db_info(const char *cfg_info)
 {
     int len = strlen(cfg_info) + 1;
     if (CDB2DBCONFIG_BUF != NULL)
@@ -1256,7 +1269,7 @@ static int send_reset(SBUF2 *sb)
 }
 
 #if WITH_SSL
-static int try_ssl(cdb2_hndl_tp *hndl, int fd, SBUF2 *sb, int indx)
+static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 {
     /*
      *                   |<---------------- CLIENT ---------------->|
@@ -1469,6 +1482,11 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
 static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
                           int timeoutms, int indx)
 {
+
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d newsql_connect\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
     int fd = -1;
     SBUF2 *sb = NULL;
     snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
@@ -1508,7 +1526,7 @@ retry_newsql_connect:
     }
 
 #if WITH_SSL
-    if (try_ssl(hndl, fd, sb, indx) != 0) {
+    if (try_ssl(hndl, sb, indx) != 0) {
         sbuf2close(sb);
         return -1;
     }
@@ -1605,6 +1623,11 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
     int requery_done = 0;
 
 retry_connect:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d cdb2_connect_sqlhost\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
+
     if ((hndl->flags & CDB2_RANDOM) && (hndl->node_seq == 0)) {
         hndl->node_seq = random() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
@@ -1752,6 +1775,15 @@ retry:
     hdr.compression = ntohl(hdr.compression);
     hdr.length = ntohl(hdr.length);
     hndl->ack = (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_PING);
+
+    /* Server requires SSL. Return the header type in `type'.
+       We may reach here under DIRECT_CPU mode where we skip DBINFO lookup. */
+    if (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+        if (type == NULL)
+            return -1;
+        *type = hdr.type;
+        return 0;
+    }
 
     if (hdr.length == 0)
         goto retry;
@@ -2024,7 +2056,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         features[n_features] = CDB2_CLIENT_FEATURES__SSL;
         n_features++;
 #endif
-        if (retries_done && hndl->master == hndl->connected_host) {
+        if ((hndl->flags & CDB2_DIRECT_CPU) ||
+            (retries_done && hndl->master == hndl->connected_host)) {
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
             n_features++;
         }
@@ -2053,6 +2086,13 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     if (skip_nrows) {
         sqlquery.has_skip_rows = 1;
         sqlquery.skip_rows = skip_nrows;
+    }
+
+    if (hndl && hndl->context_msgs.has_changed == 1 && hndl->context_msgs.count > 0) {
+        sqlquery.n_context = hndl->context_msgs.count;
+        sqlquery.context = hndl->context_msgs.message;
+        /* Reset the has_changed flag. */
+        hndl->context_msgs.has_changed = 0;
     }
 
     int len = cdb2__query__get_packed_size(&query);
@@ -2406,6 +2446,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         free(hndl->hint);
 
     cdb2_clearbindings(hndl);
+    cdb2_free_context_msgs(hndl);
 #if WITH_SSL
     free(hndl->sslpath);
     free(hndl->cert);
@@ -2568,7 +2609,10 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 {
     if (!hndl->retry_all)
         return 0;
-
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d in retry_queries()\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
     int rc = 0;
     char *host = "NOT-CONNECTED";
     if (hndl->connected_host >= 0)
@@ -2627,6 +2671,14 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             return 1;
         }
         if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
+            if (hndl->flags & CDB2_DIRECT_CPU) {
+                if (hndl->debug_trace) {
+                    fprintf(stderr, "td %u %s line %d retry_queries\n",
+                            (uint32_t)pthread_self(), __func__, __LINE__);
+                }
+                /* direct cpu should not do anything with dbinfo */
+                return 1;
+            }
             /* The master sent info about nodes that might be coherent. */
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
@@ -2890,6 +2942,15 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->snapshot_offset = 0;
 }
 
+#define GOTO_RETRY_QUERIES()                                                   \
+    do {                                                                       \
+        if (hndl->debug_trace) {                                               \
+            fprintf(stderr, "td %u %s line %d goto retry_queries\n",           \
+                    (uint32_t)pthread_self(), __func__, __LINE__);             \
+        }                                                                      \
+        goto retry_queries;                                                    \
+    } while (0);
+
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
@@ -3087,6 +3148,13 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     int run_last = 1;
 
 retry_queries:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host %d (%s)\n",
+                (uint32_t)pthread_self(), __func__, __LINE__,
+                hndl->connected_host,
+                (hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host]
+                                           : ""));
+    }
 
     hndl->first_record_read = 0;
 
@@ -3281,27 +3349,43 @@ read_record:
         }
     }
 
+#if WITH_SSL
+    if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+#if WITH_SSL
+        hndl->s_sslmode = PEER_SSL_REQUIRE;
+        /* server wants us to use ssl so turn ssl on in same connection */
+        try_ssl(hndl, hndl->sb, hndl->connected_host);
+
+        /* Decrement retry counter: It is not a real retry. */
+        --retries_done;
+#else
+        PRINT_RETURN(-1);
+#endif
+        GOTO_RETRY_QUERIES();
+    }
+#endif
+
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
-        /* The master sent info about nodes that might be coherent. */
-        newsql_disconnect(hndl, hndl->sb, __LINE__);
-        CDB2DBINFORESPONSE *dbinfo_response = NULL;
-        dbinfo_response =
-            cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
-                         &hndl->master, &hndl->num_hosts,
-                         &hndl->num_hosts_sameroom
+        if (hndl->flags & CDB2_DIRECT_CPU) {
+            /* direct cpu should not do anything with dbinfo, just retry */
+            GOTO_RETRY_QUERIES();
+        }
+        /* We got back info about nodes that might be coherent. */
+        CDB2DBINFORESPONSE *dbinfo_resp = NULL;
+        dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
+        parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports, &hndl->master,
+                         &hndl->num_hosts, &hndl->num_hosts_sameroom
 #if WITH_SSL
-                         , &hndl->s_sslmode
+                         ,
+                         &hndl->s_sslmode
 #endif
                          );
-        cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
-        hndl->retry_all = 1;
+        cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
+
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->connected_host = -1;
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
-                    pthread_self(), __func__, __LINE__);
-        }
+        hndl->retry_all = 1;
 
 #if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
@@ -3314,7 +3398,7 @@ read_record:
         }
 #endif
 
-        goto retry_queries;
+        GOTO_RETRY_QUERIES();
     }
 
     if (rc) {
@@ -4772,6 +4856,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
 
+    cdb2_init_context_msgs(hndl);
+
     if (getenv("CDB2_DEBUG"))
         hndl->debug_trace = 1;
 
@@ -4822,6 +4908,84 @@ done:
                 (void *)pthread_self(), dbname, type, flags, rc, *handle);
     }
     return rc;
+}
+
+/*
+  Initialize the context messages object.
+*/
+static void cdb2_init_context_msgs(cdb2_hndl_tp *hndl)
+{
+    memset((void *)&hndl->context_msgs, 0, sizeof(struct context_messages));
+}
+
+/*
+  Free the alloc-ed context messages.
+*/
+static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl)
+{
+    int i = 0;
+
+    while (i < hndl->context_msgs.count) {
+        free(hndl->context_msgs.message[i]);
+        hndl->context_msgs.message[i] = 0;
+        i++;
+    }
+
+    hndl->context_msgs.count = 0;
+    hndl->context_msgs.has_changed = 1;
+
+    return 0;
+}
+
+/*
+  Store the specified message in the handle. Return error if
+  MAX_CONTEXTS number of messages have already been stored.
+
+  @param hndl [IN]   Connection handle
+  @param msg  [IN]   Context message
+
+  @return
+    0                Success
+    1                Error
+*/
+int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg)
+{
+    /* Check for overflow. */
+    if (hndl->context_msgs.count >= MAX_CONTEXTS) {
+        return 1;
+    }
+
+    hndl->context_msgs.message[hndl->context_msgs.count] =
+        strndup(msg, MAX_CONTEXT_LEN);
+    hndl->context_msgs.count++;
+    hndl->context_msgs.has_changed = 1;
+    return 0;
+}
+
+/*
+  Remove the last stored context message.
+*/
+int cdb2_pop_context(cdb2_hndl_tp *hndl)
+{
+    /* Check for underflow. */
+    if (hndl->context_msgs.count == 0) {
+        return 1;
+    }
+
+    hndl->context_msgs.count--;
+    free(hndl->context_msgs.message[hndl->context_msgs.count]);
+    hndl->context_msgs.message[hndl->context_msgs.count] = 0;
+    hndl->context_msgs.has_changed = 1;
+
+    return 0;
+}
+
+/*
+  Clear/free all the stored context messages.
+*/
+int cdb2_clear_contexts(cdb2_hndl_tp *hndl)
+{
+    return cdb2_free_context_msgs(hndl);
 }
 
 /* Include sbuf2.c directly to avoid libbb dependency. */

@@ -2044,7 +2044,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		return DB_LOCK_DEADLOCK;
 	}
 	u_int32_t partition = gbl_lk_parts, lpartition = gbl_lkr_parts;
-	int x1, x2;
+	uint64_t x1, x2;
 	struct __db_lock *newl, *lp, *firstlp, *wwrite;
 	DB_ENV *dbenv;
 	DB_LOCKER *sh_locker;
@@ -2755,9 +2755,9 @@ upgrade:
 			}
 			t = bb_berkdb_get_thread_stats();
 			p = bb_berkdb_get_process_stats();
-			p->lock_wait_time_ms += (x2 - x1);
+			p->lock_wait_time_us += (x2 - x1);
 			p->n_lock_waits++;
-			t->lock_wait_time_ms += (x2 - x1);
+			t->lock_wait_time_us += (x2 - x1);
 			t->n_lock_waits++;
 
 			if (gbl_bb_log_lock_waits_fn) {
@@ -2766,7 +2766,7 @@ upgrade:
 				 * the lock. */
 				u_int8_t *ptr;
 				gbl_bb_log_lock_waits_fn(sh_obj->lockobj.data,
-				    sh_obj->lockobj.size, (x2 - x1));
+				    sh_obj->lockobj.size, U2M(x2 - x1));
 			}
 		}
 

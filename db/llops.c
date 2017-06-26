@@ -92,7 +92,7 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
     int stripe = -1;
     int dtafile = 0;
     int ix = -1;
-    void *trans = NULL;
+    tran_type *trans = NULL;
     struct ireq iq;
     int key_alloc = 0, data_alloc = 0, datacopy_alloc = 0;
     uint8_t *key = NULL, *data = NULL, *datacopy = NULL;

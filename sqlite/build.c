@@ -164,11 +164,14 @@ void sqlite3FinishCoding(Parse *pParse){
     ** on each used database.
     */
     if( db->mallocFailed==0 
-     && (DbMaskNonZero(pParse->cookieMask, 0) || pParse->pConstExpr)
+     && (DbMaskNonZero(pParse->cookieMask, 0) || pParse->pConstExpr
+         || pParse->write) /* COMDB2 MODIFICATION */
     ){
       int iDb, i;
       assert( sqlite3VdbeGetOp(v, 0)->opcode==OP_Init );
       sqlite3VdbeJumpHere(v, 0);
+      /* COMDB2 MODIFICATION DDL/PUT wants a write transaction */
+      if( pParse->write ) sqlite3VdbeAddOp2(v, OP_Transaction, 0, 1); else
       for(iDb=0; iDb<db->nDb; iDb++){
         Schema *pSchema;
         if( DbMaskTest(pParse->cookieMask, iDb)==0 ) continue;
@@ -3670,6 +3673,19 @@ void sqlite3CreateIndex(
     Index *p;
     assert( !IN_DECLARE_VTAB );
     assert( sqlite3SchemaMutexHeld(db, 0, pIndex->pSchema) );
+    
+    /* COMDB2 MODIFICATION */
+    /* remote indexes don't use skip-scan indexes */
+    if( db->init.iDb > 1 ){
+      extern int gbl_fdb_track;
+      if (gbl_fdb_track)
+        logmsg(LOGMSG_DEBUG, "XXX: no skip-scan for remote index %s:%s\n", 
+               pIndex->pTable->zName, pIndex->zName);
+      pIndex->noSkipScan  = 1;
+    } else {
+      pIndex->noSkipScan = 0;
+    }
+
     p = sqlite3HashInsert(&pIndex->pSchema->idxHash, 
                           pIndex->zName, pIndex);
     if( p ){

@@ -3220,14 +3220,14 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
                     sizeof(unsigned long long), llldta, updop->old_dta_len);
             }
             if (irc)
-                logmsg(LOGMSG_ERROR, "%s %d rc=%d lsn [%d][%d]\n", __FILE__,
+                printf("%s %d rc=%d lsn [%d][%d]\n", __FILE__,
                         __LINE__, irc, lsn->file, lsn->offset);
             else {
-                logmsg(LOGMSG_USER, "--dta   ");
+                printf("--dta   ");
                 for (iii = 0; iii < updop->old_dta_len; iii++) {
-                    logmsg(LOGMSG_USER, "02x", (unsigned char)llldta[iii]);
+                    printf("02x", (unsigned char)llldta[iii]);
                 }
-                logmsg(LOGMSG_USER, "\n");
+                printf("\n");
             }
         }
         break;

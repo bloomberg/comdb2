@@ -69,8 +69,8 @@ cat $pathbase/linearizable/linearizable.lrl >> $cpdir/$db.lrl
 
 outfile=$db.out.$(date +%Y%m%d%H%M%S)
 
-echo "comdb2 $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid >$outfile 2>&1 &"
-comdb2 $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid >$outfile 2>&1 &
+echo "comdb2 $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid >$cpdir/$outfile 2>&1 &"
+comdb2 $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid >$cpdir/$outfile 2>&1 &
 wait_for_db_up $db @localhost
 cat >> $cpdir/$db.lrl <<EOF
 cluster nodes $machines
@@ -89,7 +89,7 @@ for m in $machines; do
     printf "%s " $m
     ssh $m rm -Rf $cpdir
     ssh $m mkdir -p $cpdir
-    copycomdb2 $cpdir/$db.lrl $m:$cpdir $m:$cpdir &
+    copycomdb2 $cpdir/$db.lrl $m:$cpdir $m:$cpdir
 done
 echo
 echo "waiting for copies"

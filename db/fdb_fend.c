@@ -250,7 +250,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_name_from_fdb(fdb_t *fdb,
                                                        const char *name);
 
 static int __free_fdb_tbl(void *obj, void *arg);
-static int __lock_wrlock_exclusive(fdb_t *fdb);
+static int __lock_wrlock_exclusive(fdb_t *fdb, int retry);
 
 /* Node affinity functions: a clnt tries to stick to one node, unless error in
    which
@@ -594,7 +594,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name, int *version)
     fdb_tbl_t *table;
     int exists = 0;
 
-    table = hash_find(fdb->h_tbls_name, &table_name);
+    table = hash_find_readonly(fdb->h_tbls_name, &table_name);
     if (table) {
         /* ok, table exists, HURRAY!
            Is the table marked obsolete? */
@@ -686,6 +686,14 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
                              there is no "sqlite_master" entry for
                              sqlite_master, but
                              that doesn't make the case here to fail */
+retry_find_table:
+    /* check if the table exists, and if it does need refreshing
+       if it exists and has right version, grab the version and return */
+    if (_table_exists(fdb, table_name, version)) {
+        /* fdb unlocked, users incremented */
+        rc = FDB_NOERR;
+        goto nop;
+    }
 
     /* NOTE: since this function is called recursively to add sqlite_stat* for a
      * table as well
@@ -701,23 +709,19 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
         __fdb_rem_user(fdb);
 
-        /*pthread_rwlock_wrlock(&fdb->h_rwlock);*/
-        rc = __lock_wrlock_exclusive(fdb);
+        rc = __lock_wrlock_exclusive(fdb, 0);
         if (rc) {
+            if (rc == FDB_ERR_FDB_TBL_NOTFOUND) {
+                __fdb_add_user(fdb); /* puts us back */
+                /* try to find the table, maybe someone adds it already */
+                goto retry_find_table;
+            }
             logmsg(LOGMSG_ERROR, "%s: fail to lock rc=%d!\n", __func__, rc);
             return rc;
         }
 
         /* add ourselves back */
         __fdb_add_user(fdb);
-    }
-
-    /* check if the table exists, and if it does need refreshing
-       if it exists and has right version, grab the version and return */
-    if (_table_exists(fdb, table_name, version)) {
-        /* fdb unlocked, users incremented */
-        rc = FDB_NOERR;
-        goto done;
     }
 
     /* is this the first table? grab sqlite_stats too */
@@ -796,6 +800,7 @@ done:
         pthread_rwlock_unlock(&fdb->h_rwlock);
     }
 
+nop:
     return rc;
 }
 
@@ -1319,8 +1324,9 @@ static int __lock_wrlock_shared(fdb_t *fdb)
     return rc;
 }
 
-static int __lock_wrlock_exclusive(fdb_t *fdb)
+static int __lock_wrlock_exclusive(fdb_t *fdb, int retry)
 {
+    struct sql_thread *thd;
     int rc = FDB_NOERR;
 
     if (_test_trap_dlock1 == 2) {
@@ -1339,6 +1345,26 @@ static int __lock_wrlock_exclusive(fdb_t *fdb)
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
             pthread_rwlock_unlock(&fdb->h_rwlock);
+
+            /* if we loop, make sure this is not a live lock
+               deadlocking with another sqlite engine that waits
+               for a bdb write lock to be processed */
+            if(unlikely(bdb_lock_desired(thedb->bdb_env))) {
+                thd = pthread_getspecific(query_info_key);
+                if(likely(thd)) {
+                     rc = recover_deadlock(thedb->bdb_env, thd, NULL, 
+                            100*thd->sqlclntstate->deadlock_recovered++);
+                     if(rc) {
+                         fprintf(stderr, 
+                                 "%s:%d recover_deadlock returned %d\n", 
+                                 __func__, __LINE__, rc);
+                         return FDB_ERR_GENERIC;
+                     }
+                } 
+            }
+
+            if(!retry)
+                return FDB_ERR_FDB_TBL_NOTFOUND;
             continue;
         } else {
             break; /* own fdb */
@@ -4115,7 +4141,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
    return;
 #endif
 
-    if (__lock_wrlock_exclusive(fdb)) {
+    if (__lock_wrlock_exclusive(fdb, 1)) {
         return;
     }
 

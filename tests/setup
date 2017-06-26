@@ -5,6 +5,8 @@ set -x
 
 debug=0
 
+[[ $COMDB2_UNITTEST == 1 ]] && exit 0
+
 while [[ $# -gt 0 && $1 = -* ]]; do
     [[ $1 = '-debug' ]] && debug=1
     shift
@@ -145,7 +147,6 @@ copy_files_to_cluster()
 {
     # copy executables to each node except localhost
     pmux=${SRCHOME}/pmux
-    cdb2_stat=${SRCHOME}/cdb2_stat
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
@@ -155,7 +156,6 @@ copy_files_to_cluster()
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2"
         scp -o StrictHostKeyChecking=no $comdb2ar $node:${SRCHOME} 
         scp -o StrictHostKeyChecking=no $comdb2task $node:${SRCHOME}
-        scp -o StrictHostKeyChecking=no $cdb2_stat $node:${SRCHOME}
         # stop pmux on nodes first before copying and starting it
         if [ -n "$PMUXPORT" ] ; then
             ssh -o StrictHostKeyChecking=no $node "$stop_pmux"

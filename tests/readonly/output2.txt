@@ -1,0 +1,7 @@
+[insert into t values (1)] failed with rc -106 SET READONLY ON for the client
+[update t set id=id+1 limit 1] failed with rc -106 SET READONLY ON for the client
+cdb2sql> set readonly on
+[set readonly on] rc 0
+cdb2sql> insert into t values (1)
+cdb2sql> update t set id=id+1 limit 1
+cdb2sql> 

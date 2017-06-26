@@ -126,7 +126,10 @@ sqlite/lemon
 comdb2
 pmux
 cdb2sql
+cdb2sockpool
 comdb2ar
+cdb2_sqlreplay
+cdb2_perf
 
 # built tool libraries
 libcomdb2ar.a
@@ -147,6 +150,7 @@ debian/comdb2.binary-stamp
 debian/comdb2.install-stamp
 tags
 dbsize
+callgrind.*
 
 # Bloomberg-specific
 *.tsk
@@ -237,6 +241,7 @@ mem_*.c
 mem_*.h
 builddeps
 debian
+dbsize
 
 # jdbc driver
 !cdb2jdbc/**

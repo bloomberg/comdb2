@@ -662,7 +662,7 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     int rc = 0;
     int null;
     Mem *m = NULL;
-    u32 type;
+    u32 *type = NULL;
     int datasz = 0;
     int hdrsz = 0;
     int remainingsz = 0;
@@ -676,17 +676,15 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     int rec_srt_off = gbl_sort_nulls_correctly ? 0 : 1;
     u32 len;
 
-    m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
-    if (m == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
-        return -1;
-    }
-
     /* Raw index optimization */
     if (pCur && pCur->nCookFields >= 0)
         nField = pCur->nCookFields;
     else
         nField = s->nmembers;
+
+    m = (Mem*) alloca (sizeof(Mem)* (nField+1)); // Extra 1 for genid
+
+    type = (u32*) alloca(sizeof(u32) * (nField+1));
 
 #ifdef debug_raw
     printf("convert => %s %s %d / %d\n", db->dbname, s->tag, nField,
@@ -700,11 +698,9 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
-        type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialTypeLen(type);
+        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
-        hdrsz += sqlite3VarintLen(type);
+        hdrsz += sqlite3VarintLen(type[fnum]);
     }
     ncols = fnum;
 
@@ -715,11 +711,9 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         m[fnum].u.i = genid;
         m[fnum].flags = MEM_Int;
 
-        type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialTypeLen(type);
+        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
-        hdrsz += sqlite3VarintLen(sz);
+        hdrsz += sqlite3VarintLen(type[fnum]);
         ncols++;
         /*fprintf( stderr, "%s:%d type=%d size=%d datasz=%d hdrsz=%d
           ncols->%d\n",
@@ -749,19 +743,11 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     sz = sqlite3PutVarint(hdrbuf, hdrsz);
     hdrbuf += sz;
 
-    /* keep track of the size remaining */
-    remainingsz = datasz;
-
     for (fnum = 0; fnum < ncols; fnum++) {
         // TODO: verify that this works as before
-        u32 serial_type =
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], serial_type);
+        sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], type[fnum]);
         dtabuf += sz;
-        remainingsz -= sz;
-        sz = sqlite3PutVarint(
-            hdrbuf,
-            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
+        sz = sqlite3PutVarint( hdrbuf, type[fnum]);
         hdrbuf += sz;
         assert(hdrbuf <= (out + hdrsz));
     }
@@ -777,8 +763,6 @@ done:
             xorbuf(in + f->offset + rec_srt_off, f->len - rec_srt_off);
         }
     }
-    if (m)
-        free(m);
     return rc;
 }
 
@@ -3902,7 +3886,9 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         pCur->nwrite++;
     }
 
-    if (clnt->is_readonly) {
+    if (clnt->is_readonly &&
+        /* exclude writes in a temp table for a select */
+        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || clnt->iswrite)){
         errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
         rc = SQLITE_ACCESS;
         goto done;
@@ -4055,6 +4041,9 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             free_cached_idx(clnt->idxInsert);
             free_cached_idx(clnt->idxDelete);
         }
+        if (rc == SQLITE_DDL_MISUSE)
+            sqlite3VdbeError(pCur->vdbe,
+                             "Transactional DDL Error: Overlapping Tables");
     }
 
 done:
@@ -4656,16 +4645,9 @@ const char *sqlite3BtreeGetJournalname(Btree *pBt)
 
 void get_current_lsn(struct sqlclntstate *clnt)
 {
-    struct ireq iq;
-    void *bdb_handle;
-    struct db *db;
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = thedb->dbs[0]; /* this is not used but required */
-    db = iq.usedb;
+    struct db *db = thedb->dbs[0]; /* this is not used but required */
     if (db) {
         bdb_get_current_lsn(db->handle, &(clnt->file), &(clnt->offset));
-    } else if (iq.use_handle) {
-        bdb_get_current_lsn(iq.use_handle, &(clnt->file), &(clnt->offset));
     } else {
         logmsg(LOGMSG_ERROR, "get_current_lsn: ireq has no bdb handle\n");
         abort();
@@ -4910,6 +4892,9 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
     }
     get_current_lsn(clnt);
 
+    clnt->ddl_tables = hash_init_str(0);
+    clnt->dml_tables = hash_init_str(0);
+
     switch (clnt->dbtran.mode) {
     case TRANLEVEL_SOSQL:
     case TRANLEVEL_RECOM:
@@ -5127,6 +5112,10 @@ int sqlite3BtreeCommit(Btree *pBt)
             }
         } else {
             rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
+            osqlstate_t *osql = &thd->sqlclntstate->osql;
+            if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
+                osql->xerr.errval = 0;
+            }
         }
         break;
 
@@ -5163,6 +5152,15 @@ int sqlite3BtreeCommit(Btree *pBt)
 
     /* we need to reset this here */
     clnt->writeTransaction = 0;
+
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Commit(pBt %d)      = %s\n",
@@ -5281,6 +5279,15 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
 
     /* we need to reset this here */
     clnt->writeTransaction = 0;
+
+    if (clnt->ddl_tables) {
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 
 done:
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "Rollback(pBt %d)      = %s\n",
@@ -7697,7 +7704,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             unsigned long long version;
             int short_version;
 
-            version = table_version_select(db);
+            version = table_version_select(db, NULL);
             short_version = fdb_table_version(version);
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
@@ -7764,6 +7771,10 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             /* we increment only on the initial table locking */
             db->nsql++; /* per table nsql stats */
         }
+
+        int dbtblnum = 0, ixnum;
+        get_sqlite_tblnum_and_ixnum(thd, iTable, &dbtblnum, &ixnum);
+        reqlog_add_table(thd->bt->reqlogger, thedb->dbs[dbtblnum]->dbname);
     }
 
     if (!after_recovery)
@@ -8484,7 +8495,9 @@ int sqlite3BtreeInsert(
 
     assert(0 == pCur->is_sampled_idx);
 
-    if (clnt->is_readonly) {
+    if (clnt->is_readonly &&
+        /* exclude writes in a temp table for a select */
+        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || clnt->iswrite)){
         errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
         rc = SQLITE_ACCESS;
         goto done;
@@ -8746,6 +8759,9 @@ int sqlite3BtreeInsert(
             free_cached_idx(clnt->idxInsert);
             free_cached_idx(clnt->idxDelete);
         }
+        if (rc == SQLITE_DDL_MISUSE)
+            sqlite3VdbeError(pCur->vdbe,
+                             "Transactional DDL Error: Overlapping Tables");
     }
 
 done:
@@ -11548,8 +11564,8 @@ int bt_hash_table(char *table, int szkb)
     struct db *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
-    void *metatran = NULL;
-    void *tran = NULL;
+    tran_type *metatran = NULL;
+    tran_type *tran = NULL;
     int rc, bdberr = 0;
     int bthashsz;
 
@@ -11603,8 +11619,8 @@ int del_bt_hash_table(char *table)
     struct db *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
-    void *metatran = NULL;
-    void *tran = NULL;
+    tran_type *metatran = NULL;
+    tran_type *tran = NULL;
     int rc, bdberr = 0;
     int bthashsz;
 

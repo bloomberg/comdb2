@@ -601,6 +601,7 @@ const char *osql_reqtype_str(int type)
         return "delete";
     case OSQL_UPDATE:
         return "update";
+    case OSQL_SCHEMACHANGE: return "schemachange";
     default:
         return "???";
     }
@@ -628,15 +629,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int debug = 0;
     uuidstr_t us;
 
-#if 0
-   {
-      int type = 0;
-      buf_get(&type, sizeof(type), rpl, rpl+rplen);
+    int type = 0;
+    buf_get(&type, sizeof(type), rpl, rpl + rplen);
+    if (type == OSQL_SCHEMACHANGE) sess->iq->tranddl = 1;
 
-      printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n", rqid, type, 
-              osql_reqtype_str(type),
-              osql_log_time(), seq);
-   }
+#if 0
+    printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
+           rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
     key.rqid = rqid;
@@ -1107,6 +1106,12 @@ static int process_this_session(
     osql_sess_getuuid(sess, uuid);
     key_next = key_crt = *key;
 
+    if (key->rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(iq->reqlogger, &key->rqid, sizeof(unsigned long long));
+    else
+        reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
+    reqlog_set_event(iq->reqlogger, "txn");
+
     /* go through each record */
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
@@ -1291,7 +1296,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         if (out_rc)
             break;
     }
-
+#if 0
+    /* we will apply these outside a transaction */
     if (out_rc) {
         while ((cur_bpfunc = listc_rtl(&iq->bpfunc_lst))) {
             assert(cur_bpfunc->func->fail != NULL);
@@ -1305,6 +1311,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
             free_bpfunc(cur_bpfunc->func);
         }
     }
+#endif
 
     if (rc = pthread_mutex_unlock(&tran->store_mtx)) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
@@ -1589,7 +1596,7 @@ int sql_cancelled_transaction(struct ireq *iq)
 {
     int rc;
 
-    logmsg(LOGMSG_WARN, "%s: cancelled transaction\n", __func__);
+    logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     rc = osql_bplog_free(iq, 1, __func__, NULL, 0);
 
     if (iq->p_buf_orig) {

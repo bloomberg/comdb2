@@ -354,6 +354,7 @@ set all_graphs {
       {line ALIAS /local-table-name /remote-table-name}
       {line PASSWORD {or OFF /string-literal} FOR /user-name}
       {line AUTHENTICATION {or ON OFF}}
+      {line TIME PARTITION /partition-name RETENTION /numeric-literal}
     }
   }
   set-stmt {

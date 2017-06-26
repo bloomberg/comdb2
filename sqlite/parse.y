@@ -175,7 +175,9 @@ getcmd ::= ANALYZE THRESHOLD nm(Y) dbnm(Z). {
 
 ///////////////////// COMDB2 PUT statements //////////////////////////////////
 
-cmd ::= PUT putcmd.
+cmd ::= PUT putcmd. {
+    comdb2WriteTransaction(pParse);
+}
 
 putcmd ::= ANALYZE COVERAGE nm(Y) dbnm(Z) INTEGER(F). {
     int tmp;
@@ -236,6 +238,12 @@ putcmd ::= AUTHENTICATION OFF. {
     comdb2enableAuth(pParse, 0);
 }
 
+putcmd ::= TIME PARTITION nm(Y) dbnm(Z) RETENTION  INTEGER(R). {
+    int tmp;
+    if (!readIntFromToken(&R, &tmp))
+        tmp = 0;
+    comdb2timepartRetention(pParse, &Y, &Z, tmp);
+}
 
 putcmd ::= SCHEMACHANGE COMMITSLEEP INTEGER(F). {
     int tmp;
@@ -285,26 +293,32 @@ op_permission(A) ::= OP.   { A = AUTH_OP;   }
 userschema(A) ::= USERSCHEMA. {A = AUTH_USERSCHEMA;}
 
 cmd ::= GRANT sql_permission(P) ON nm(T) dbnm(Y) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 0, P, &T,&Y,&U);
 }
 
 cmd ::= GRANT op_permission(P) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 0, P, NULL,NULL,&U);
 }
 
 cmd ::= GRANT userschema(P) nm(U1) TO nm(U2). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 0, P, &U1,NULL,&U2);
 }
 
 cmd ::= REVOKE sql_permission(P) ON nm(T) dbnm(Y) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, &T,&Y,&U);
 }
 
 cmd ::= REVOKE op_permission(P) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, NULL,NULL,&U);
 }
 
 cmd ::= REVOKE userschema(P) nm(U1) TO nm(U2). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, &U1,NULL,&U2);
 }
 
@@ -323,10 +337,12 @@ cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
 //////////////////// COMDB2 PARTITION //////////////////////////////////
 
 cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+    comdb2WriteTransaction(pParse);
     comdb2CreateTimePartition(pParse, &A, &P, &D, &R, &S);
 }
 
 cmd ::= DROP TIME PARTITION nm(N). {
+    comdb2WriteTransaction(pParse);
     comdb2DropTimePartition(pParse, &N);
 }
 
@@ -409,6 +425,7 @@ isc(A) ::= ISC OFF. {A = ISC_OFF;}
 compress_blob(A) ::= BLOBFIELD blob_compress_type(T). { A = T;}
 
 %type blob_compress_type {int}
+blob_compress_type(A) ::= NONE. {A = BLOB_NONE;}
 blob_compress_type(A) ::= RLE. {A = BLOB_RLE;}
 //blob_compress_type(A) ::= CRLE. {A = BLOB_CRLE;}
 blob_compress_type(A) ::= ZLIB. {A = BLOB_ZLIB;}
@@ -418,6 +435,7 @@ blob_compress_type(A) ::= LZ4. {A = BLOB_LZ4;}
 compress_rec(A) ::= REC rle_compress_type(T). {A = T;}
 
 %type rle_compress_type {int}
+rle_compress_type(A) ::= NONE. {A = REC_NONE;}
 rle_compress_type(A) ::= RLE. {A = REC_RLE;}
 rle_compress_type(A) ::= CRLE. {A = REC_CRLE;}
 rle_compress_type(A) ::= ZLIB. {A = REC_ZLIB;}
@@ -524,7 +542,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   REINDEX RENAME CTIME_KW IF
 // COMDB2 KEYWORDS  
   AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT COMMITSLEEP CONSUMER 
-  CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DISABLE ENABLE FOR FUNCTION GET GRANT IPU 
+  CONVERTSLEEP COVERAGE NONE CRLE DATA DATABLOB DISABLE ENABLE FOR FUNCTION GET GRANT IPU 
   ISC KW LUA LZ4 ODH OFF OP OPTIONS PARTITION PASSWORD PERIOD 
   PROCEDURE PUT REBUILD READ REC RESERVED RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE START SUMMARIZE THREADS THRESHOLD TIME 
@@ -712,9 +730,8 @@ cmd ::= DROP VIEW ifexists(E) fullname(X). {
 //
 cmd ::= select(X).  {
   SelectDest dest = {SRT_Output, 0, 0, 0, 0, 0};
+  sqlite3FingerprintSelect(pParse->db, X);
   sqlite3Select(pParse, X, &dest);
-  if (pParse->db->should_fingerprint)
-      sqlite3FingerprintSelect(pParse->db, X);
   sqlite3SelectDelete(pParse->db, X);
 }
 
@@ -1071,6 +1088,7 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "DELETE");
+  sqlite3FingerprintDelete(pParse->db, X, W);
   sqlite3DeleteFrom(pParse,X,W);
 }
 %endif
@@ -1078,6 +1096,7 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
 cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
+  sqlite3FingerprintDelete(pParse->db, X, W);
   sqlite3DeleteFrom(pParse,X,W);
 }
 %endif
@@ -1097,6 +1116,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   W = sqlite3LimitWhere(pParse, X, W, O, L.pLimit, L.pOffset, "UPDATE");
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
   sqlite3Update(pParse,X,Y,W,R);
 }
 %endif
@@ -1106,6 +1126,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+  sqlite3FingerprintUpdate(pParse->db, X, Y, W, R);
   sqlite3Update(pParse,X,Y,W,R);
 }
 %endif
@@ -1132,12 +1153,14 @@ setlist(A) ::= LP idlist(X) RP EQ expr(Y). {
 //
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) select(S). {
   sqlite3WithPush(pParse, W, 1);
+  sqlite3FingerprintInsert(pParse->db, X, S, F, W);
   sqlite3Insert(pParse, X, S, F, R);
 }
 cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 {
   sqlite3WithPush(pParse, W, 1);
-  sqlite3Insert(pParse, X, 0, F, R);
+  sqlite3FingerprintInsert(pParse->db, X, NULL, F, W);
+  sqlite3Insert(pParse, X, NULL, F, R);
 }
 
 %type insert_cmd {int}

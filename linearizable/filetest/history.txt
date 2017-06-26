@@ -1,0 +1,6 @@
+[
+{:type :invoke :f :write :value 1 :process 0 :time 1}
+{:type :ok :f :write :process 0 :value 1 :time 2}
+{:type :invoke :f :read :process 0 :time 3}
+{:type :ok :process 0 :f :read :value 1 :time 4}
+]
