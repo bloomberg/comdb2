@@ -2241,14 +2241,10 @@ static char *format_csc2(struct comdb2_ddl_context *ctx, int nconstraints,
         strbuf_append(csc2, "\n\t}\n");
     }
 
-#define ANSI_COLOR_BLUE "\x1b[34m"
-#define ANSI_COLOR_RESET "\x1b[0m"
-
-    printf("CSC2 :\n" ANSI_COLOR_BLUE "%s\n" ANSI_COLOR_RESET,
-           strbuf_buf(csc2));
-
     str = strdup((char *)strbuf_buf(csc2));
     strbuf_free(csc2);
+
+    logmsg(LOGMSG_DEBUG, "CSC2: %s\n", str);
 
     return str;
 }
