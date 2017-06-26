@@ -187,7 +187,7 @@ public class BBSysUtils {
         try {
             String name = String.format("get %s/%s/%s\n", app, service, instance);
 
-            io = new SockIO(host, port);
+            io = new SockIO(host, port, null);
 
             io.write(name.getBytes());
             io.flush();
@@ -240,7 +240,7 @@ public class BBSysUtils {
 
         try {
             if (dbInfoResp == null) {
-                io = new SockIO(host, port);
+                io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
 
                 /*********************************
                  * Sending data...
@@ -360,7 +360,7 @@ public class BBSysUtils {
         SockIO io = null;
 
         try {
-            io = new SockIO(host, port);
+            io = new SockIO(host, port, hndl.pmuxrte ? hndl.myDbName : null);
 
             /*********************************
              * Sending data...
@@ -654,6 +654,16 @@ public class BBSysUtils {
          * Ask them one-by-one to get the host(s) and port(s) of the database we
          * want to hndlect to.
          **********************************************/
+
+        /* If pmux route is enabled, use pmux port. */
+        if (hndl.pmuxrte) {
+            hndl.myDbPorts.clear();
+            for (int i = 0; i != hndl.myDbHosts.size(); ++i)
+                hndl.myDbPorts.add(hndl.portMuxPort);
+            return;
+        }
+
+
         found = false;
 
         int port = -1;

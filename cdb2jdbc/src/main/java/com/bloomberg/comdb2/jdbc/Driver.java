@@ -46,6 +46,7 @@ public class Driver implements java.sql.Driver {
     public static final String PROPERTY_SSL_CA = "trust_store";
     public static final String PROPERTY_SSL_CAPASS = "trust_store_password";
     public static final String PROPERTY_SSL_CATYPE = "trust_store_type";
+    public static final String PROPERTY_PMUX_RTE = "allow_pmux_route";
 
     /**
      * Register our driver statically.
@@ -96,6 +97,7 @@ public class Driver implements java.sql.Driver {
         String sslca = null;
         String sslcapass = null;
         String sslcatype = null;
+        String pmuxrte = null;
         String attributes = null;
 
         String policy = null;
@@ -198,6 +200,8 @@ public class Driver implements java.sql.Driver {
                         sslcapass = keyval[1];
                     else if (PROPERTY_SSL_CATYPE.equalsIgnoreCase(keyval[0]))
                         sslcatype = keyval[1];
+                    else if (PROPERTY_PMUX_RTE.equalsIgnoreCase(keyval[0]))
+                        pmuxrte = keyval[1];
                 }
             }
         }
@@ -252,6 +256,8 @@ public class Driver implements java.sql.Driver {
             sslcapass = info.getProperty(PROPERTY_SSL_CAPASS);
         if (sslcatype == null)
             sslcatype = info.getProperty(PROPERTY_SSL_CATYPE);
+        if (pmuxrte == null)
+            pmuxrte = info.getProperty(PROPERTY_PMUX_RTE);
 
         try {
             if (port != null) {
@@ -372,6 +378,11 @@ public class Driver implements java.sql.Driver {
             if (sslcatype != null) {
                 logger.log(Level.FINE, String.format("Setting ssl tstype to %s\n", sslcatype));
                 ret.setSSLCAType(sslcatype);
+            }
+
+            if (pmuxrte != null) {
+                logger.log(Level.FINE, String.format("Setting pmux passthrouth to %s\n", pmuxrte));
+                ret.setAllowPmuxRoute(pmuxrte);
             }
         } catch (NumberFormatException e1) {
             logger.log(Level.WARNING, "Incorrect configuration in: " + url, e1);

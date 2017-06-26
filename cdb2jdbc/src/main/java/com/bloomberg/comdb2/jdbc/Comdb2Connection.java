@@ -236,6 +236,16 @@ public class Comdb2Connection implements Connection {
         hndl.setSSLCAType(catype);
     }
 
+    public void setAllowPmuxRoute(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setAllowPmuxRoute(true);
+        else
+            hndl.setAllowPmuxRoute(false);
+    }
+
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
         return hndl.getDbHosts();
     }
