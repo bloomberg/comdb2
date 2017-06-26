@@ -7,7 +7,7 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-for testreq in `ls t*.req` ; do
+for testreq in `ls t*.sql` ; do
     testname=`echo $testreq | cut -d "." -f 1`
     cmd="cdb2sql -s -f $testreq ${CDB2_OPTIONS} $dbname default "
     echo $cmd "> $testname.output"
