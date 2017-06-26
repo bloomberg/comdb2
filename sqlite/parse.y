@@ -1315,6 +1315,19 @@ expr(A) ::= expr(A) COLLATE ids(C). {
   A.pExpr = sqlite3ExprAddCollateToken(pParse, A.pExpr, &C, 1);
   A.zEnd = &C.z[C.n];
 }
+
+expr(A) ::= expr(A) COLLATE DATACOPY. {
+  if (pParse->db->init.busy == 0) {
+      sqlite3ErrorMsg(pParse, "Support for 'COLLATE DATACOPY' syntax "
+                      "has been removed; use WITH DATACOPY.");
+      pParse->rc = SQLITE_ERROR;
+  } else {
+      Token t = {"DATACOPY", 8};
+      A.pExpr = sqlite3ExprAddCollateToken(pParse, A.pExpr, &t, 1);
+      A.zEnd = &t.z[t.n];
+  }
+}
+
 %ifndef SQLITE_OMIT_CAST
 expr(A) ::= CAST(X) LP expr(E) AS typetoken(T) RP(Y). {
   spanSet(&A,&X,&Y); /*A-overwrites-X*/
@@ -1651,7 +1664,7 @@ uniqueflag(A) ::= UNIQUE.  {A = OE_Abort;}
 uniqueflag(A) ::= .        {A = OE_None;}
 
 %type with_opt {int}
-with_opt(A) ::= WITH DATACOPY EQ ON. {A = 1;}
+with_opt(A) ::= WITH DATACOPY. {A = 1;}
 with_opt(A) ::= . {A = 0;}
 
 // The eidlist non-terminal (Expression Id List) generates an ExprList
