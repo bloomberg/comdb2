@@ -1886,11 +1886,9 @@ void lock_info_lockers(FILE *out, bdb_state_type *bdb_state)
 void lock_info(FILE *out, bdb_state_type *bdb_state, char *line, int st,
                int lline)
 {
-
     int ltok;
     const char *tok;
     char parm[2] = {0};
-    int flags = 0;
 
     tok = segtok(line, lline, &st, &ltok);
     if (ltok == 0) {
@@ -1899,26 +1897,14 @@ void lock_info(FILE *out, bdb_state_type *bdb_state, char *line, int st,
     }
     if (tokcmp(tok, ltok, "conflict") == 0) {
         parm[0] = 'c';
-#ifdef BERKDB_46
-        flags |= DB_STAT_LOCK_CONF;
-#endif
     } else if (tokcmp(tok, ltok, "lockers") == 0) {
         parm[0] = 'l';
-#ifdef BERKDB_46
-        flags |= DB_STAT_LOCK_LOCKERS;
-#endif
     } else if (tokcmp(tok, ltok, "locks") == 0) {
         parm[0] = 'o';
-#ifdef BERKDB_46
-        flags |= DB_STAT_LOCK_OBJECTS;
-#endif
     } else if (tokcmp(tok, ltok, "region") == 0) {
         parm[0] = 'm';
     } else if (tokcmp(tok, ltok, "params") == 0) {
         parm[0] = 'p';
-#ifdef BERKDB_46
-        flags |= DB_STAT_LOCK_PARAMS;
-#endif
     } else if (tokcmp(tok, ltok, "latches") == 0) {
         __latch_dump_region(bdb_state->dbenv, out);
         return;
@@ -1926,11 +1912,7 @@ void lock_info(FILE *out, bdb_state_type *bdb_state, char *line, int st,
         lock_info_help();
         return;
     }
-#ifndef BERKDB_46
     __lock_dump_region(bdb_state->dbenv, parm, out);
-#else
-    __lock_print_all(bdb_state->dbenv, flags);
-#endif
 }
 
 void all_locks(bdb_state_type *x)

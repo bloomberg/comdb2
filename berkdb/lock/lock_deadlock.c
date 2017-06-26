@@ -419,10 +419,9 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_USER, "*");
-		logmsg(LOGMSG_USER, "%u(%u) ", idmap[j].id, idmap[j].count);
+		logmsg(LOGMSG_USER, "%lx(%u) ", (long)idmap[j].id, idmap[j].count);
 	}
 	logmsg(LOGMSG_USER, "\n");
-	fflush(stderr);
 }
 
 
@@ -861,6 +860,11 @@ dokill:
 			    (u_long)idmap[killid].id, idmap[killid].killme);
 			show_locker_info(dbenv, lt, region, idmap, killid);
 		}
+
+         char parm[2] = {0};
+         parm[0] = 'l';
+         __lock_dump_region(dbenv, parm, stdout);
+
 
 		if (found_tracked) {
 			__dd_print_tracked(idmap, *deadp, nlockers, killid);
