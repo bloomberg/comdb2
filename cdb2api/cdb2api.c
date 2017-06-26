@@ -1125,14 +1125,16 @@ static int open_sockpool_ll(void)
     return fd;
 }
 
-void cdb2_enable_sockpool() {
+void cdb2_enable_sockpool()
+{
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     sockpool_enabled = 1;
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
 /* Disable sockpool and close sockpool socket */
-void cdb2_disable_sockpool() {
+void cdb2_disable_sockpool()
+{
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     /* Close sockpool fd */
     if ((sockpool_enabled == 1) && (sockpool_fd != -1)) {
@@ -1154,11 +1156,11 @@ int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
     if (sockpool_enabled == 0) {
         time_t current_time = time(NULL);
         /* Check every 10 seconds. */
-        if ((current_time -sockpool_fail_time) > 10) {
+        if ((current_time - sockpool_fail_time) > 10) {
             sockpool_enabled = 1;
         }
     }
-    if(sockpool_enabled == 1) {
+    if (sockpool_enabled == 1) {
         if (sockpool_fd == -1) {
             sockpool_fd = open_sockpool_ll();
             if (sockpool_fd == -1) {
@@ -2689,7 +2691,8 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                              &hndl->master, &hndl->num_hosts,
                              &hndl->num_hosts_sameroom
 #if WITH_SSL
-                             , &hndl->s_sslmode
+                             ,
+                             &hndl->s_sslmode
 #endif
                              );
             cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
