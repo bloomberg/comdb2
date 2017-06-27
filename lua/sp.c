@@ -5194,7 +5194,6 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
     int numblobs = clnt->numblobs;
     void **blobs = clnt->blobs;
     int *bloblens = clnt->bloblens;
-    int debug = gbl_dump_sql_dispatched;
 
     uint8_t *buf = bufp;
     char parmname[32];
@@ -5242,7 +5241,7 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
         }
     }
 
-    if (debug) {
+    if (gbl_dump_sql_dispatched) {
         logmsg(LOGMSG_USER,
                "binding field %d name %s type %d %s pos %d null %d\n", pos,
                f->name, f->type, strtype(f->type), pos, isnull);
@@ -5256,33 +5255,32 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
     int rc = 0;
     switch (f->type) {
     case CLIENT_INT:
-        if ((rc = get_int_field(f, buf, debug, &ival)) == 0)
+        if ((rc = get_int_field(f, buf, &ival)) == 0)
             luabb_pushinteger(lua, ival);
         break;
     case CLIENT_UINT:
-        if ((rc = get_uint_field(f, buf, debug, &uval)) == 0)
+        if ((rc = get_uint_field(f, buf, &uval)) == 0)
             luabb_pushinteger(lua, uval);
         break;
     case CLIENT_REAL:
-        if ((rc = get_real_field(f, buf, debug, &dval)) == 0)
+        if ((rc = get_real_field(f, buf, &dval)) == 0)
             luabb_pushreal(lua, dval);
         break;
     case CLIENT_CSTR:
     case CLIENT_PSTR:
     case CLIENT_PSTR2:
-        if ((rc = get_str_field(f, buf, debug, &str, &datalen)) == 0)
+        if ((rc = get_str_field(f, buf, &str, &datalen)) == 0)
             luabb_pushcstringlen(lua, str, datalen);
         break;
     case CLIENT_BYTEARRAY:
-        if ((rc = get_byte_field(f, buf, debug, &blob.data, &blob.length)) ==
-            0) {
+        if ((rc = get_byte_field(f, buf, &blob.data, &blob.length)) == 0) {
             luabb_pushblob(lua, &blob);
         }
         break;
     case CLIENT_BLOB:
         if (params) {
-            if ((rc = get_blob_field(*blobno, numblobs, blobs, bloblens, debug,
-                                     &blob.data, &blob.length)) == 0) {
+            if ((rc = get_blob_field(*blobno, clnt, &blob.data,
+                                     &blob.length)) == 0) {
                 luabb_pushblob(lua, &blob);
                 ++(*blobno);
             }
@@ -5317,8 +5315,8 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
         break;
     case CLIENT_VUTF8:
         if (params) {
-            if ((rc = get_blob_field(*blobno, numblobs, blobs, bloblens, debug,
-                                     (void **)&str, &datalen)) == 0) {
+            if ((rc = get_blob_field(*blobno, clnt, (void **)&str, &datalen)) ==
+                0) {
                 luabb_pushcstringlen(lua, str, datalen);
                 ++(*blobno);
             }
@@ -5330,7 +5328,7 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
     default: logmsg(LOGMSG_ERROR, "Unknown type %d\n", f->type); rc = -1;
     }
 
-    if (debug)
+    if (gbl_dump_sql_dispatched)
         logmsg(LOGMSG_USER, "pos %d %s type %d %s len %d null %d bind rc %d\n",
                pos, f->name, f->type, strtype(f->type), f->datalen, isnull, rc);
 

@@ -7345,7 +7345,7 @@ static int twochar2int(char *str)
 }
 
 /* TODO: handle +offset format, and validate the TZNAME */
-int get_tzname(char *dst, char *src, int len)
+static int get_tzname(char *dst, char *src, int len)
 {
 
     int tzname_len =
@@ -7618,8 +7618,7 @@ int string2structdatetimeus_ISO(char *in, int len,
     return 0;                                                                  \
 /* END OF structm2string_ISO_func_body */
 
-static int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out,
-                                     int outlen)
+int structdatetime2string_ISO(cdb2_client_datetime_t *in, char *out, int outlen)
 {
     structtm2string_ISO_func_body(datetime, DATETIME, 3, msec, unsigned short);
 }
@@ -13863,24 +13862,23 @@ int client_datetimeus_to_dttz(const cdb2_client_datetimeus_t *in,
     client_dt_to_dttz_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
-int get_int_field(struct field *f, const uint8_t *buf, int debug, int64_t *out)
+extern int gbl_dump_sql_dispatched; /* for the following get_field()s */
+int get_int_field(struct field *f, const uint8_t *buf, int64_t *out)
 {
     int rc = 0;
     switch (f->datalen) {
     case sizeof(short):
         *out = (short)htons(*(short *)(buf + f->offset));
-        if (debug)
-            logmsg(LOGMSG_USER, "short: %lld\n", *out);
+        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "short: %lld\n", *out);
         break;
     case sizeof(int):
         *out = (int)htonl(*(int *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "int: %lld\n", *out);
+        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "int: %lld\n", *out);
         break;
     case sizeof(long long):
         *out = (long long)flibc_htonll(*(long long *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "long long: %lld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "long long: %lld\n", *out);
         break;
     default:
         rc = -1;
@@ -13889,8 +13887,7 @@ int get_int_field(struct field *f, const uint8_t *buf, int debug, int64_t *out)
     return rc;
 }
 
-int get_uint_field(struct field *f, const uint8_t *buf, int debug,
-                   uint64_t *out)
+int get_uint_field(struct field *f, const uint8_t *buf, uint64_t *out)
 {
     int rc = 0;
     int64_t ival;
@@ -13898,13 +13895,13 @@ int get_uint_field(struct field *f, const uint8_t *buf, int debug,
     switch (f->datalen) {
     case sizeof(unsigned short):
         ival = (long long)(unsigned short)htons(*(short *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "unsigned short: %lld\n", ival);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "unsigned short: %lld\n", ival);
         break;
     case sizeof(unsigned int):
         ival = (long long)(unsigned int)htonl(*(int *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "unsigned int: %lld\n", ival);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "unsigned int: %lld\n", ival);
         break;
     case sizeof(unsigned long long):
         uival = (uint64_t)flibc_htonll(*(uint64_t *)(buf + f->offset));
@@ -13913,8 +13910,8 @@ int get_uint_field(struct field *f, const uint8_t *buf, int debug,
             break;
         }
         ival = uival;
-        if (debug)
-           logmsg(LOGMSG_USER, "unsigned long long: %lld\n", ival);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "unsigned long long: %lld\n", ival);
         break;
     default:
         rc = -1;
@@ -13924,20 +13921,18 @@ int get_uint_field(struct field *f, const uint8_t *buf, int debug,
     return rc;
 }
 
-int get_real_field(struct field *f, const uint8_t *buf, int debug, double *out)
+int get_real_field(struct field *f, const uint8_t *buf, double *out)
 {
     int rc = 0;
     double dval;
     switch (f->datalen) {
     case sizeof(float):
         dval = (double)flibc_htonf(*(float *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "float: %hf\n", dval);
+        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "float: %hf\n", dval);
         break;
     case sizeof(double):
         dval = (double)flibc_htond(*(double *)(buf + f->offset));
-        if (debug)
-           logmsg(LOGMSG_USER, "double: %f\n", dval);
+        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "double: %f\n", dval);
         break;
     default:
         rc = 1;
@@ -13946,8 +13941,7 @@ int get_real_field(struct field *f, const uint8_t *buf, int debug, double *out)
     return rc;
 }
 
-int get_str_field(struct field *f, const uint8_t *buf, int debug, char **out,
-                  int *outlen)
+int get_str_field(struct field *f, const uint8_t *buf, char **out, int *outlen)
 {
     int rc = 0;
     *out = (char *)buf + f->offset;
@@ -13962,29 +13956,27 @@ int get_str_field(struct field *f, const uint8_t *buf, int debug, char **out,
     return rc;
 }
 
-int get_byte_field(struct field *f, const uint8_t *buf, int debug, void **out,
-                   int *outlen)
+int get_byte_field(struct field *f, const uint8_t *buf, void **out, int *outlen)
 {
     int rc = 0;
     *out = (void *)buf + f->offset;
     *outlen = f->datalen;
-    if (debug) {
-       logmsg(LOGMSG_USER, "byte:\n");
+    if (gbl_dump_sql_dispatched) {
+        logmsg(LOGMSG_USER, "byte:\n");
         fsnapf(stdout, *out, *outlen);
     }
     return rc;
 }
 
-int get_blob_field(int blobno, int numblobs, void **blobs, int *bloblens,
-                   int debug, void **out, int *outlen)
+int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
+                   int *outlen)
 {
     int rc = 0;
-    if (blobno >= numblobs)
-        return -1;
-    *out = blobs[blobno];
-    *outlen = bloblens[blobno];
-    if (debug) {
-       logmsg(LOGMSG_USER, "blob:\n");
+    if (blobno >= clnt->numblobs) return -1;
+    *out = clnt->blobs[blobno];
+    *outlen = clnt->bloblens[blobno];
+    if (gbl_dump_sql_dispatched) {
+        logmsg(LOGMSG_USER, "blob:\n");
         fsnapf(stdout, *out, *outlen);
     }
     return rc;

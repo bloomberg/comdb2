@@ -626,8 +626,8 @@ int toblobask(struct ireq *iq)
                       key.dyntag_extra1, key.dyntag_extra2);
 
         if (is_dynt) {
-            dynschema = (struct schema *)new_dynamic_schema(
-                iq->usedb, schemaname, req.taglen, 0);
+            dynschema =
+                (struct schema *)new_dynamic_schema(schemaname, req.taglen, 0);
             if (dynschema == NULL) {
                 if (iq->debug)
                     reqprintf(iq, "CANT ALLOCATE DYNAMIC SCHEMA '%s' %s\n",
