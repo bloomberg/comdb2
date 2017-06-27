@@ -31,8 +31,8 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                       int arg1, int arg2, void *payload, int paylen);
 int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                     int arg1, int arg2, void *payload, int paylen);
-int trans_start_int(struct ireq *iq, void *parent_trans, void **out_trans,
-                    int logical, int retries);
+int trans_start_int(struct ireq *iq, tran_type *parent_trans,
+                    tran_type **out_trans, int logical, int retries);
 int bdb_tran_set_request_ack(void *trans);
 unsigned long long rep_get_send_callcount(void);
 unsigned long long rep_get_send_bytecount(void);
@@ -49,7 +49,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
                              int count)
 {
     int i, j, rc, start, end = 0, now, elapsed;
-    void *parent = NULL, *trans = NULL;
+    tran_type *trans = NULL;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
     struct ireq iq;
@@ -153,7 +153,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
     int i, j, rc, start, end = 0, now, elapsed, physcnt;
     unsigned long long repcalls, repbytes, flushes, explicit_flushes,
         interval_flushes;
-    void *trans = NULL;
+    tran_type *trans = NULL;
     struct ireq iq;
 
     assert(op > 0);

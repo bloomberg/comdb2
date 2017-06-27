@@ -875,8 +875,8 @@ struct dbenv {
     /*sibling info*/
     int nsiblings;
     char *sibling_hostname[MAXSIBLINGS];
-    int sibling_node[MAXSIBLINGS];
-    int sibling_flags[MAXSIBLINGS];
+    int sibling_node[MAXSIBLINGS];  /* currently not used */
+    int sibling_flags[MAXSIBLINGS]; /* currently not used */
     int sibling_port[MAXSIBLINGS][MAXNETS];
     int listen_fds[MAXNETS];
     /* banckend db engine handle for replication */
@@ -1237,7 +1237,7 @@ typedef struct bpfunc_lstnode {
 
 typedef LISTC_T(bpfunc_lstnode_t) bpfunc_list_t;
 /*******************************************************************/
-
+struct llog_scdone;
 struct ireq {
     /* bzero-ing this entire struct was turning out to be very expensive.
      * So organizing this into 3 regions:
@@ -1254,8 +1254,8 @@ struct ireq {
     const char *where;
     char *gluewhere; /*backend code where*/
     int debug;
-    int debug_now;
-    int nowms; /*received.*/
+    uint64_t debug_now;
+    uint64_t nowus; /*received.*/
     struct query_limits __limits;
     int opcode;
     struct dbenv *dbenv;
@@ -1293,7 +1293,7 @@ struct ireq {
     /************/
     uint8_t region3; /* used for offsetof */
 
-    int startms; /*thread handling*/
+    uint64_t startus; /*thread handling*/
     int is_fake;
     int is_dumpresponse;
     int is_fromsocket;
@@ -1429,6 +1429,10 @@ struct ireq {
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 
     unsigned char have_snap_info;
+    uint64_t sc_seed;
+    struct schema_change_type *sc_pending;
+    int sc_locked;
+    int tranddl;
 };
 
 /* comdb array struct */
@@ -1948,6 +1952,7 @@ int get_elect_time_microsecs(void); /* get election time in seconds */
 
 /* open files and db. returns db backend handle */
 int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv);
+int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv);
 int llmeta_dump_mapping(struct dbenv *dbenv);
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                    const char *table, int err);
@@ -1982,7 +1987,7 @@ void backend_update_sync(struct dbenv *dbenv);
 void backend_sync_stat(struct dbenv *dbenv);
 
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb);
-void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq);
+void init_fake_ireq(struct dbenv *, struct ireq *);
 int set_tran_lowpri(struct ireq *iq, tran_type *tran);
 
 /* long transaction routines */
@@ -1992,22 +1997,23 @@ int add_new_transaction_entry(struct dbenv *dbenv, void *entry);
 void tran_dump(struct long_trn_stat *tstats);
 
 /* transactional stuff */
-int trans_start(struct ireq *iq, void *parent_trans, void **out_trans);
-int trans_start_sc(struct ireq *iq, void *parent_trans, void **out_trans);
-int trans_start_set_retries(struct ireq *iq, void *parent_trans,
-                            void **out_trans, int retries);
-int trans_start_logical(struct ireq *iq, void **out_trans);
-int is_rowlocks_transaction(void *trans);
-int rowlocks_check_commit_physical(bdb_state_type *bdb_state, void *tran,
+int trans_start(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
+                            int retries);
+int trans_start_logical(struct ireq *, tran_type **out);
+int trans_start_logical_sc(struct ireq *, tran_type **out);
+int is_rowlocks_transaction(tran_type *);
+int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
-tran_type *trans_start_readcommitted(struct ireq *iq, int ignore_newer_updates,
+tran_type *trans_start_readcommitted(struct ireq *, int ignore_newer_updates,
                                      int trak);
-tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, 
-                                int file, int offset, int *error);
-tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
+tran_type *trans_start_serializable(struct ireq *, int trak, int epoch,
+                                    int file, int offset, int *error);
+tran_type *trans_start_snapisol(struct ireq *, int trak, int epoch, int file,
                                 int offset, int *error);
-tran_type *trans_start_queryisolation(struct ireq *iq, int trak);
-tran_type *trans_start_socksql(struct ireq *iq, int ignore_newer_updates,
+tran_type *trans_start_queryisolation(struct ireq *, int trak);
+tran_type *trans_start_socksql(struct ireq *, int ignore_newer_updates,
                                int trak);
 
 int trans_commit(struct ireq *iq, void *trans, char *source_host);
@@ -2351,8 +2357,9 @@ struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
-void replace_db(struct db *db);
-int reload_schema(char *table, const char *csc2);
+void replace_db(struct db *db, int add);
+void replace_db_idx(struct db *p_db, int idx, int add);
+int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
@@ -2360,30 +2367,38 @@ int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
 int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
 
-int put_db_init_with_odh(struct db *db, void *tran, int init_with_odh);
-int get_db_init_with_odh(struct db *db, int *init_with_odh);
-int put_db_odh(struct db *db, void *tran, int odh);
+int put_db_odh(struct db *db, tran_type *, int odh);
 int get_db_odh(struct db *db, int *odh);
-int put_db_compress(struct db *db, void *tran, int compress);
+int get_db_odh_tran(struct db *, int *odh, tran_type *);
+int put_db_compress(struct db *db, tran_type *, int compress);
 int get_db_compress(struct db *db, int *compress);
-int put_db_compress_blobs(struct db *db, void *tran, int compress_blobs);
+int get_db_compress_tran(struct db *, int *compress, tran_type *);
+int put_db_compress_blobs(struct db *db, tran_type *, int compress_blobs);
 int get_db_compress_blobs(struct db *db, int *compress_blobs);
-int put_db_inplace_updates(struct db *db, void *tran, int ipupdates);
+int get_db_compress_blobs_tran(struct db *, int *compress_blobs, tran_type *);
+int put_db_inplace_updates(struct db *db, tran_type *, int ipupdates);
 int get_db_inplace_updates(struct db *db, int *ipupdates);
-int put_db_datacopy_odh(struct db *db, void *tran, int cdc);
+int get_db_inplace_updates_tran(struct db *, int *ipupdates, tran_type *);
+int put_db_datacopy_odh(struct db *db, tran_type *, int cdc);
 int get_db_datacopy_odh(struct db *db, int *cdc);
-int put_db_bthash(struct db *db, void *tran, int bthashsz);
+int get_db_datacopy_odh_tran(struct db *, int *cdc, tran_type *);
+int put_db_bthash(struct db *db, tran_type *, int bthashsz);
 int get_db_bthash(struct db *db, int *bthashsz);
+int get_db_bthash_tran(struct db *, int *bthashsz, tran_type *);
+int put_db_instant_schema_change(struct db *db, tran_type *tran, int isc);
+int get_db_instant_schema_change(struct db *db, int *isc);
+int get_db_instant_schema_change_tran(struct db *, int *isc, tran_type *tran);
+
 int set_meta_odh_flags(struct db *db, int odh, int compress, int compress_blobs,
                        int ipupates);
 int set_meta_odh_flags_tran(struct db *db, tran_type *tran, int odh,
                             int compress, int compress_blobs, int ipupdates);
 
 int get_csc2_version(const char *table);
-int get_csc2_version_tran(tran_type *tran, const char *table, int *bdberr);
+int get_csc2_version_tran(const char *table, tran_type *);
 int get_csc2_file(const char *table, int version, char **text, int *len);
-int get_csc2_file_tran(tran_type *tran, const char *table, int version,
-                       char **text, int *len);
+int get_csc2_file_tran(const char *table, int version, char **text, int *len,
+                       tran_type *);
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
 int put_csc2_stuff(struct db *db, void *trans, void *stuff, size_t lenstuff);
 int put_blobstripe_genid(struct db *db, void *tran, unsigned long long genid);
@@ -2511,7 +2526,6 @@ void get_copy_rootpages(struct sql_thread *thd);
 void free_copy_rootpages(struct sql_thread *thd);
 void create_master_tables(void);
 int new_indexes_syntax_check(struct ireq *iq);
-int add_schema_change_tables(void);
 void handle_isql(struct db *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct db *db);
 int handle_fastsql(struct thr_handle *thr_self, SBUF2 *sb, struct db *db,
@@ -2612,8 +2626,7 @@ void blob_print_stats(void);
 void purge_old_cached_blobs(void);
 
 void commit_schemas(const char *tblname);
-struct schema *new_dynamic_schema(struct db *db, const char *s, int len,
-                                  int trace);
+struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
 int getdefaultkeysize(const struct db *db, int ixnum);
 int getdefaultdatsize(const struct db *db);
@@ -2888,11 +2901,9 @@ void reqlog_usetable(struct reqlogger *logger, const char *tablename);
 void reqlog_setflag(struct reqlogger *logger, unsigned flag);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
-void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt,
-                            char *tags, void *tagbuf, int tagbufsz,
-                            void *nullbits, int numbits);
+void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
 void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt);
-int reqlog_current_ms(struct reqlogger *logger);
+uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2903,7 +2914,7 @@ void reqlog_set_diffstat_thresh(int val);
 int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
-void reqlog_set_queue_time(struct reqlogger *logger, int timems);
+void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
 void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
@@ -2912,6 +2923,9 @@ void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
+
+void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
+                     struct schema *params, struct sqlclntstate *clnt);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
@@ -3299,7 +3313,7 @@ extern int gbl_stop_thds_time_threshold;
 extern pthread_mutex_t stop_thds_time_lk;
 
 int trans_commit_logical_tran(void *trans, int *bdberr);
-int bb_berkdb_fasttime(void);
+uint64_t bb_berkdb_fasttime(void);
 extern int gbl_berk_track_cursors;
 
 void osql_checkboard_foreach_serial_dummy(bdb_osql_trn_t *tran);
@@ -3325,10 +3339,10 @@ extern unsigned long long gbl_inplace_blob_cnt;
 extern unsigned long long gbl_delupd_blob_cnt;
 extern unsigned long long gbl_addupd_blob_cnt;
 
+struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
+                                   struct field *c_fld);
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    CDB2SQLQUERY *query, void *bufp, void *nullbits,
-                    int numblobs, void **blobs, int *bloblens, char *tzname,
-                    int debug, char **err);
+                    struct sqlclntstate *clnt, char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 void verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 
@@ -3371,8 +3385,6 @@ void osql_checkboard_check_down_nodes(char *host);
 int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
                    int *bdberr);
 
-int put_db_instant_schema_change(struct db *db, void *tran, int isc);
-int get_db_instant_schema_change(struct db *db, int *isc);
 int vtag_to_ondisk(struct db *db, uint8_t *rec, int *len, uint8_t ver,
                    unsigned long long genid);
 int vtag_to_ondisk_vermap(struct db *db, uint8_t *rec, int *len, uint8_t ver);
@@ -3484,8 +3496,10 @@ extern int dfp_conv_check_status(void *pctx, char *from, char *to);
 void fix_constraint_pointers(struct db *db, struct db *newdb);
 struct schema *create_version_schema(char *csc2, int version, struct dbenv *);
 void set_odh_options(struct db *);
+void set_odh_options_tran(struct db *db, tran_type *tran);
 void transfer_db_settings(struct db *olddb, struct db *newdb);
 int reload_after_bulkimport(struct db *, tran_type *);
+int reload_db_tran(struct db *, tran_type *);
 int debug_this_request(int until);
 
 int gbl_disable_stable_for_ipu;
@@ -3504,6 +3518,7 @@ void sql_dump_hints(void);
 extern int gbl_disable_exit_on_thread_error;
 
 void sc_del_unused_files(struct db *db);
+void sc_del_unused_files_tran(struct db *db, tran_type *tran);
 
 extern int gbl_support_sock_lu;
 
@@ -3580,7 +3595,7 @@ int table_version_upsert(struct db *db, void *trans, int *bdberr);
  * Retrieves table version or 0 if no entry
  *
  */
-unsigned long long table_version_select(struct db *db);
+unsigned long long table_version_select(struct db *db, tran_type *tran);
 
 /**
  * Interface between partition roller and schema change */
@@ -3599,7 +3614,8 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                   size_t descrlen);
 int getdbidxbyname(const char *p_name);
-int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp);
+int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
+                        tran_type *tran);
 int find_constraint(struct db *db, constraint_t *ct);
 
 /* END OF SCHEMACHANGE DECLARATIONS*/

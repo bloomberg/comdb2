@@ -49,7 +49,7 @@ int  readIntFromToken(Token* t, int *rst);
 
 void fillTableOption(struct schema_change_type*, int);
 
-int  comdb2SqlSchemaChange(OpFunc *arg);
+int  comdb2SqlSchemaChange_tran(OpFunc *arg);
 void comdb2CreateTable(Parse*, Token*, Token*, int, Token*, int, int);
 void comdb2AlterTable(Parse*, Token*, Token*, int, Token*, int dryrun);
 void comdb2DropTable(Parse *pParse, SrcList *pName);

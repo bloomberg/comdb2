@@ -29,9 +29,9 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             blob_buffer_t *oldblobs);
 
 int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
-                         const uint8_t *od_dta, 
-                         unsigned long long ins_keys, blob_buffer_t *blobs,
-                         size_t maxblobs, int origflags, int *rrn);
+                         const uint8_t *od_dta, unsigned long long ins_keys,
+                         blob_buffer_t *blobs, size_t maxblobs, int origflags,
+                         int *rrn);
 
 int live_sc_post_update_int(struct ireq *iq, void *trans,
                             unsigned long long oldgenid, const void *old_dta,
@@ -42,17 +42,18 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs);
 
 int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
-                                        unsigned long long newgenid,
-                                        const void *od_dta,
-                                        unsigned long long ins_keys,
-                                        int od_len);
+                                             unsigned long long newgenid,
+                                             const void *od_dta,
+                                             unsigned long long ins_keys,
+                                             int od_len);
 
-int scdone_callback(const char table[], scdone_t type);
+int scdone_callback(bdb_state_type *bdb_state, const char table[],
+                    scdone_t type);
 
 int schema_change_abort_callback(void);
 
-void sc_del_unused_files(struct db *db);
-
+void sc_del_unused_files(struct db *);
+void sc_del_unused_files_tran(struct db *, tran_type *);
 void sc_del_unused_files_check_progress(void);
 
 void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet);

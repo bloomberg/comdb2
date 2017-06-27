@@ -460,6 +460,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_CONV_ERROR  208    /* error converting types in sqlite_column* routines */
 #define SQLITE_COMDB2SCHEMA 209   /* The current Vdbe has been changed under the hood (the compiled statement executed comdb2 custom code) */
 #define SQLITE_CLIENT_CHANGENODE 210  /* Ask the client api to retry against another node */
+#define SQLITE_DDL_MISUSE 211 /* overlapping tables detected in transactional DDLs */
 /* end-of-error-codes */
 
 /*

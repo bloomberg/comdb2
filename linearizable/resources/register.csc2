@@ -1,0 +1,9 @@
+tag ondisk {
+    int id
+    int val null=yes
+    longlong uid null=yes
+}
+
+keys {
+    "id" = id
+}

@@ -352,7 +352,7 @@ DEF_ATTR(PLANNER_WARN_ON_DISCREPANCY, planner_warn_on_discrepancy, BOOLEAN, 0)
 DEF_ATTR(PLANNER_EFFORT, planner_effort, QUANTITY, 1)
 DEF_ATTR(SHOW_COST_IN_LONGREQ, show_cost_in_longreq, BOOLEAN, 1)
 /* Delay restarting SC by this many seconds from db up*/
-DEF_ATTR(SC_RESTART_SEC, sc_restart_sec, QUANTITY, 60)
+DEF_ATTR(SC_RESTART_SEC, sc_restart_sec, QUANTITY, 0)
 /* Save to llmeta every n-th genid for index only rebuilds */
 DEF_ATTR(INDEXREBUILD_SAVE_EVERY_N, indexrebuild_save_every_n, QUANTITY, 1)
 /* decrease number of SC threads on DEADLOCK -- way to have sc backoff */
@@ -366,6 +366,10 @@ DEF_ATTR(SC_USE_NUM_THREADS, sc_use_num_threads, QUANTITY, 0)
 DEF_ATTR(SC_NO_REBUILD_THR_SLEEP, sc_no_rebuild_thr_sleep, QUANTITY, 10)
 /* force delay schemachange after every record inserted -- to have sc backoff */
 DEF_ATTR(SC_FORCE_DELAY, sc_force_delay, BOOLEAN, 0)
+/* always resume autocommit schemachange if possible */
+DEF_ATTR(SC_RESUME_AUTOCOMMIT, sc_resume_autocommit, BOOLEAN, 1)
+/* sc_resuming_watchdog timer */
+DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60)
 
 /* use vtag_to_ondisk_vermap conversion function from vtag_to_ondisk */
 DEF_ATTR(USE_VTAG_ONDISK_VERMAP, use_vtag_ondisk_vermap, BOOLEAN, 1)

@@ -19,6 +19,7 @@
 
 int close_all_dbs(void);
 int open_all_dbs(void);
+int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr);
 int llmeta_get_dbnum(char *tablename, int *bdberr);
 char *get_temp_db_name(struct db *db, char *prefix, char tmpname[]);
 
@@ -30,5 +31,7 @@ int sc_via_ddl_only();
 
 // check table for index name length
 int validate_ix_names(struct db *db);
+
+int sc_via_ddl_only();
 
 #endif

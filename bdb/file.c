@@ -98,9 +98,9 @@
 #include "dbinc/txn.h"
 
 extern int gbl_keycompr;
-
 extern int gbl_early;
 extern int gbl_fullrecovery;
+extern char *gbl_mynode;
 
 #define FILENAMELEN 100
 
@@ -1086,7 +1086,8 @@ int bdb_del_list_add_all(bdb_state_type *bdb_state, tran_type *tran, void *list,
 }
 
 /* deletes all the files that are no longer in use by a table */
-int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
+int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr)
 {
     const char *blob_ext = ".blob";
     const char *data_ext = ".data";
@@ -1193,9 +1194,8 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
                 /* try to find the file version amongst the active data files */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
                      ++i) {
-                    rc = bdb_get_file_version_data(bdb_state, NULL /*tran*/,
-                                                   i /*dtanum*/, &version_num,
-                                                   bdberr);
+                    rc = bdb_get_file_version_data(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found data version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -1207,9 +1207,8 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
 
                 /* try to find the file version amongst the active indiciese */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(bdb_state, NULL /*tran*/,
-                                                    i /*dtanum*/, &version_num,
-                                                    bdberr);
+                    rc = bdb_get_file_version_index(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found ix version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -1235,8 +1234,8 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
                     print(bdb_state, "deleting file %s\n", ent->d_name);
 
                     if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
-                                                    NULL /*parent_tid*/, &tid,
-                                                    0 /*flags*/)) {
+                                                    tran ? tran->tid : NULL,
+                                                    &tid, 0 /*flags*/)) {
                         logmsg(LOGMSG_ERROR, "%s: failed to begin trans for "
                                         "deleteing file: %s\n",
                                 __func__, ent->d_name);
@@ -1266,6 +1265,11 @@ int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_del_unused_files_tran(bdb_state, NULL, bdberr);
 }
 
 int bdb_del_list_free(void *list, int *bdberr)
@@ -1411,8 +1415,7 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     int dtanum, strnum;
 
     int flags = 0;
-    if (nosync)
-        flags = DB_NOSYNC;
+    if (nosync) flags = DB_NOSYNC;
 
     print(bdb_state, "in closedbs(name=%s)\n", bdb_state->name);
 
@@ -1425,11 +1428,12 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
         for (strnum = 0; strnum < MAXSTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
                 rc = bdb_state->dbp_data[dtanum][strnum]->close(
-                    bdb_state->dbp_data[dtanum][strnum], flags);
+                    bdb_state->dbp_data[dtanum][strnum], NULL, flags);
                 if (0 != rc) {
-                    logmsg(LOGMSG_ERROR, 
+                    logmsg(LOGMSG_ERROR,
                            "closedbs: error closing %s[%d][%d]: %d %s\n",
-                           bdb_state->name, dtanum, strnum, rc, db_strerror(rc));
+                           bdb_state->name, dtanum, strnum, rc,
+                           db_strerror(rc));
                 }
             }
         }
@@ -1438,10 +1442,10 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
-            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
+            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, flags);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "closedbs: error closing %s->dbp_ix[%d] %d %s\n",
+                logmsg(LOGMSG_ERROR,
+                       "closedbs: error closing %s->dbp_ix[%d] %d %s\n",
                        bdb_state->name, i, rc, db_strerror(rc));
             }
         }
@@ -1646,8 +1650,9 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     return 0;
 }
 
-int bdb_handle_reset(bdb_state_type *bdb_state)
+int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
+    DB_TXN *tid = trans ? trans->tid : NULL;
     int rc = closedbs(bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
@@ -1660,7 +1665,7 @@ int bdb_handle_reset(bdb_state_type *bdb_state)
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, NULL);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, tid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -1668,6 +1673,10 @@ int bdb_handle_reset(bdb_state_type *bdb_state)
     bdb_state->isopen = 1;
 
     return 0;
+}
+int bdb_handle_reset(bdb_state_type *bdb_state)
+{
+    return bdb_handle_reset_tran(bdb_state, NULL);
 }
 
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb)
@@ -3140,9 +3149,9 @@ done2:
     bdb_state->caught_up = 1;
 
     /* send our real seqnum to the master now.  */
-    
-    const char *hostlist[REPMAX];
-    if(net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist) > 0) {
+
+    if (bdb_state->repinfo->master_host != gbl_mynode &&
+        net_count_nodes(bdb_state->repinfo->netinfo) > 1) {
         rc = send_myseqnum_to_master(bdb_state, 1);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "error sending seqnum to master\n");
@@ -4072,7 +4081,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
                     print(bdb_state, "open_dbs: cannot open %s: %d %s\n",
                           tmpname, rc, db_strerror(rc));
-                    rc = dbp->close(dbp, 0);
+                    rc = dbp->close(dbp, NULL, 0);
                     if (0 != rc)
                         logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n",
                                 tmpname, rc, db_strerror(rc));
@@ -4175,7 +4184,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
             print(bdb_state, "open_dbs: cannot open %s: %d %s\n", tmpname, rc,
                   db_strerror(rc));
-            rc = dbp->close(dbp, 0);
+            rc = dbp->close(dbp, NULL, 0);
             if (rc != 0)
                 logmsg(LOGMSG_ERROR, "bdp_dta->close(%s) failed: rc=%d %s\n",
                         tmpname, rc, db_strerror(rc));
@@ -4309,7 +4318,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
 
                 bdb_state->dbp_ix[i]->err(bdb_state->dbp_ix[i], rc, "%s",
                                           tmpname);
-                rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], 0);
+                rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, 0);
                 logmsg(LOGMSG_ERROR, "close ix=%d name=%s failed rc=%d\n", i,
                         tmpname, rc);
                 logmsg(LOGMSG_ERROR, "couldnt open ix db\n");
@@ -4502,7 +4511,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
                 logmsg(LOGMSG_ERROR, "bdb_create_stripes_int: cannot open %s: %d %s\n",
                         tmpname, rc, db_strerror(rc));
-                rc = dbp->close(dbp, 0);
+                rc = dbp->close(dbp, NULL, 0);
                 if (0 != rc)
                     logmsg(LOGMSG_ERROR, "DB->close(%s) failed: rc=%d %s\n", tmpname,
                             rc, db_strerror(rc));
@@ -4527,7 +4536,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
     /* Now go and close all the tables. */
     for (ii = 0; ii < dbp_count; ii++) {
-        rc = dbp_array[ii]->close(dbp_array[ii], 0);
+        rc = dbp_array[ii]->close(dbp_array[ii], NULL, 0);
         if (0 != rc)
             logmsg(LOGMSG_ERROR,
                     "bdb_create_stripes_int: DB->close #%d failed: rc=%d %s\n",
@@ -5098,8 +5107,6 @@ void bdb_free_cloned_handle_with_other_data_files(bdb_state_type *bdb_state)
 
 int bdb_is_open(bdb_state_type *bdb_state) { return bdb_state->isopen; }
 
-extern char *gbl_mynode;
-
 int create_master_lease_thread(bdb_state_type *bdb_state)
 {
 	pthread_t tid;
@@ -5110,8 +5117,6 @@ int create_master_lease_thread(bdb_state_type *bdb_state)
 	pthread_create(&tid, &attr, master_lease_thread, bdb_state);
     return 0;
 }
-
-extern char *gbl_mynode;
 
 void create_coherency_lease_thread(bdb_state_type *bdb_state)
 {
@@ -5514,7 +5519,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bzero(bdb_state->repinfo, sizeof(repinfo_type));
 
         /* record who we are */
-        extern char *gbl_mynode;
         bdb_state->repinfo->myhost = gbl_mynode;
 
         /* we dont know who the master is yet */
@@ -5869,13 +5873,14 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
 }
 
 bdb_state_type *
-bdb_create(const char name[], const char dir[], int lrl, short numix,
-           const short ixlen[], const signed char ixdups[],
-           const signed char ixrecnum[], const signed char ixdta[],
-           const signed char ixcollattr[], const signed char ixnulls[],
-           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
-           int *bdberr)
+bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
+                const short ixlen[], const signed char ixdups[],
+                const signed char ixrecnum[], const signed char ixdta[],
+                const signed char ixcollattr[], const signed char ixnulls[],
+                int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+                int *bdberr, tran_type *trans)
 {
+    DB_TXN *tid = trans ? trans->tid : NULL;
     bdb_state_type *bdb_state, *ret;
 
     *bdberr = BDBERR_NOERROR;
@@ -5895,7 +5900,7 @@ bdb_create(const char name[], const char dir[], int lrl, short numix,
                          NULL, /* netinfo_signal */
                          0,    /* upgrade */
                          1,    /* create */
-                         bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, NULL, 0,
+                         bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, tid, 0,
                          NULL /* open lite options */
                          );
 
@@ -5946,6 +5951,19 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                        BDBTYPE_TABLE, NULL, 0, NULL);
 
     return ret;
+}
+
+bdb_state_type *
+bdb_create(const char name[], const char dir[], int lrl, short numix,
+           const short ixlen[], const signed char ixdups[],
+           const signed char ixrecnum[], const signed char ixdta[],
+           const signed char ixcollattr[], const signed char ixnulls[],
+           int numdtafiles, bdb_state_type *parent_bdb_handle, int temp,
+           int *bdberr)
+{
+    return bdb_create_tran(name, dir, lrl, numix, ixlen, ixdups, ixrecnum,
+                           ixdta, ixcollattr, ixnulls, numdtafiles,
+                           parent_bdb_handle, temp, bdberr, NULL);
 }
 
 /* open another database in the same transaction/replication
@@ -6376,7 +6394,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
         if ((rc = db_create(&dbp, dbenv, 0)) == 0 &&
             (rc = dbp->open(dbp, NULL, pname, NULL, DB_BTREE, 0, 0666)) == 0) {
             bdb_remove_fileid_pglogs_queue(bdb_state, dbp->fileid);
-            dbp->close(dbp, DB_NOSYNC);
+            dbp->close(dbp, NULL, DB_NOSYNC);
         }
 
         rc = dbenv->dbremove(dbenv, tid, filename, NULL, 0);
@@ -6812,8 +6830,7 @@ int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 {
     int rc;
 
-    if (bdb_state->envonly)
-        return 0;
+    if (bdb_state->envonly) return 0;
 
     BDB_READLOCK("bdb_close_only");
 
@@ -7411,7 +7428,8 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
 }
 
 /* queue all found unused files for garbage collection */
-int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
+int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                               int *bdberr, char *powner)
 {
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -7533,9 +7551,8 @@ int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
                 /* try to find the file version amongst the active data files */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
                      ++i) {
-                    rc = bdb_get_file_version_data(bdb_state, NULL /*tran*/,
-                                                   i /*dtanum*/, &version_num,
-                                                   bdberr);
+                    rc = bdb_get_file_version_data(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found data version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -7547,9 +7564,8 @@ int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
 
                 /* try to find the file version amongst the active indices */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(bdb_state, NULL /*tran*/,
-                                                    i /*dtanum*/, &version_num,
-                                                    bdberr);
+                    rc = bdb_get_file_version_index(
+                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
                         /*fprintf(stderr, "found ix version %016llx in "*/
                         /*"llmeta\n", version_num);*/
@@ -7602,6 +7618,11 @@ done:
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
+{
+    return bdb_list_unused_files_tran(bdb_state, NULL, bdberr, powner);
 }
 
 int bdb_have_unused_files(void) { return oldfile_list_empty() != 1; }

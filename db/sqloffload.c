@@ -59,7 +59,7 @@
 #define TEST_RECOM
 #endif
 
-int gbl_master_swing_osql_verbose = 0;
+int gbl_master_swing_osql_verbose = 1;
 
 int g_osql_ready = 0;
 int tran2netreq(int dbtran)
@@ -271,13 +271,23 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int usedb_only = 0;
 
     /* optimization (will catch all transactions with no internal updates */
-    if (osql_shadtbl_empty(clnt))
+    if (osql_shadtbl_empty(clnt)) {
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%u %s line %d empty-shadtbl, returning\n",
+                   pthread_self(), __func__, __LINE__);
+        }
         return 0;
+    }
 
     usedb_only = osql_shadtbl_usedb_only(clnt);
 
-    if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk)
+    if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%u %s line %d empty-sv_arr, returning\n",
+                   pthread_self(), __func__, __LINE__);
+        }
         return 0;
+    }
 
     if (clnt->selectv_arr)
         currangearr_build_hash(clnt->selectv_arr);
@@ -356,6 +366,11 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (rc && rc != -2) {
         int irc = 0;
 
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%u %s line %d aborting\n", pthread_self(),
+                   __func__, __LINE__);
+        }
+
         irc = osql_sock_abort(clnt, osqlreq_type);
         if (irc) {
             logmsg(LOGMSG_ERROR, "%s: failed to abort sorese transaction rc=%d\n",
@@ -373,6 +388,10 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     } else {
 
         /* close the block processor session and retrieve the result */
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%u %s line %d committing\n", pthread_self(),
+                   __func__, __LINE__);
+        }
         rc = osql_sock_commit(clnt, osqlreq_type);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
             rc != SQLITE_BUSY && rc != SQLITE_CLIENT_CHANGENODE) {
@@ -659,4 +678,101 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
     return 0;
+}
+
+static void osql_analyze_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_ANALYZE)) {
+        bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
+    }
+}
+
+static void osql_rowlocks_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_ROWLOCKS)) {
+        bdb_llog_rowlocks(thedb->bdb_env,
+                          iq->osql_rowlocks_enable ? rowlocks_on : rowlocks_off,
+                          &bdberr);
+    }
+}
+
+static void osql_genid48_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_GENID48)) {
+        bdb_set_genid_format(iq->osql_genid48_enable ? LLMETA_GENID_48BIT
+                                                     : LLMETA_GENID_ORIGINAL,
+                             &bdberr);
+        bdb_llog_genid_format(thedb->bdb_env,
+                              iq->osql_genid48_enable ? genid48_enable
+                                                      : genid48_disable,
+                              &bdberr);
+    }
+}
+
+static void osql_scdone_commit_callback(struct ireq *iq)
+{
+    int bdberr;
+    if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
+        struct schema_change_type *sc_next;
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            sc_next = iq->sc->sc_next;
+            free_schema_change_type(iq->sc);
+            iq->sc = sc_next;
+        }
+    }
+}
+
+static void osql_scdone_abort_callback(struct ireq *iq)
+{
+    if (btst(&iq->osql_flags, OSQL_FLAGS_SCDONE)) {
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            int backout_schema_change(struct ireq * iq);
+            struct schema_change_type *sc_next;
+            backout_schema_change(iq);
+            sc_next = iq->sc->sc_next;
+            free_schema_change_type(iq->sc);
+            iq->sc = sc_next;
+        }
+    }
+}
+
+typedef void (*osql_callback_t)(struct ireq *iq);
+/* must matches OSQL_FLAGS_* enums order */
+static osql_callback_t commit_callbacks[] = {
+    NULL,                          /* OSQL_FLAGS_RECORD_COST */
+    NULL,                          /* OSQL_FLAGS_AUTH */
+    osql_analyze_commit_callback,  /* OSQL_FLAGS_ANALYZE */
+    NULL,                          /* OSQL_FLAGS_CHECK_SELFLOCK */
+    NULL,                          /* OSQL_FLAGS_USE_BLKSEQ */
+    osql_rowlocks_commit_callback, /* OSQL_FLAGS_ROWLOCKS */
+    osql_genid48_commit_callback,  /* OSQL_FLAGS_GENID48 */
+    osql_scdone_commit_callback    /* OSQL_FLAGS_SCDONE */
+};
+static osql_callback_t abort_callbacks[] = {
+    NULL,                      /* OSQL_FLAGS_RECORD_COST */
+    NULL,                      /* OSQL_FLAGS_AUTH */
+    NULL,                      /* OSQL_FLAGS_ANALYZE */
+    NULL,                      /* OSQL_FLAGS_CHECK_SELFLOCK */
+    NULL,                      /* OSQL_FLAGS_USE_BLKSEQ */
+    NULL,                      /* OSQL_FLAGS_ROWLOCKS */
+    NULL,                      /* OSQL_FLAGS_GENID48 */
+    osql_scdone_abort_callback /* OSQL_FLAGS_SCDONE */
+};
+
+void osql_postcommit_handle(struct ireq *iq)
+{
+    commit_callbacks[OSQL_FLAGS_ANALYZE](iq);
+    commit_callbacks[OSQL_FLAGS_ROWLOCKS](iq);
+    commit_callbacks[OSQL_FLAGS_GENID48](iq);
+    commit_callbacks[OSQL_FLAGS_SCDONE](iq);
+}
+
+void osql_postabort_handle(struct ireq *iq)
+{
+    abort_callbacks[OSQL_FLAGS_SCDONE](iq);
 }

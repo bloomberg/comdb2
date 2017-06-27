@@ -576,7 +576,7 @@ int analyze_is_sampled(struct sqlclntstate *client, char *table, int idx)
 static int local_replicate_write_analyze(char *table)
 {
     int rc;
-    void *trans = NULL;
+    tran_type *trans = NULL;
     long long seqno;
     int nretries = 0;
     struct ireq iq;

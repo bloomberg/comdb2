@@ -1722,18 +1722,18 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         unsigned n_preads = p->n_preads ? p->n_preads : 1;
         unsigned n_pwrites = p->n_pwrites ? p->n_pwrites : 1;
         logmsgf(LOGMSG_USER, out, "  %u lock waits took %u ms (%u ms/wait)\n",
-                p->n_lock_waits, p->lock_wait_time_ms,
-                p->lock_wait_time_ms / n_lock_waits);
-        logmsgf(LOGMSG_USER, out, "  %u preads took %u ms total of %u bytes\n", p->n_preads,
-                p->pread_time_ms, p->pread_bytes);
+                p->n_lock_waits, U2M(p->lock_wait_time_us),
+                U2M(p->lock_wait_time_us / n_lock_waits));
+        logmsgf(LOGMSG_USER, out, "  %u preads took %u ms total of %u bytes\n",
+                p->n_preads, U2M(p->pread_time_us), p->pread_bytes);
         if (p->n_preads > 0)
             logmsgf(LOGMSG_USER, out, "  average pread time %u ms\n",
-                    p->pread_time_ms / n_preads);
+                    U2M(p->pread_time_us) / n_preads);
         logmsgf(LOGMSG_USER, out, "  %u pwrites took %u ms total of %u bytes\n",
-                p->n_pwrites, p->pwrite_time_ms, p->pwrite_bytes);
+                p->n_pwrites, U2M(p->pwrite_time_us), p->pwrite_bytes);
         if (p->n_pwrites > 0)
             logmsgf(LOGMSG_USER, out, "  average pwrite time %u ms\n",
-                    p->pwrite_time_ms / n_pwrites);
+                    U2M(p->pwrite_time_us / n_pwrites));
     }
 
     else if (tokcmp(tok, ltok, "memdump") == 0) {
@@ -1931,6 +1931,16 @@ void lock_info(FILE *out, bdb_state_type *bdb_state, char *line, int st,
 #else
     __lock_print_all(bdb_state->dbenv, flags);
 #endif
+}
+
+void all_locks(bdb_state_type *x)
+{
+    char parm[2] = {0};
+    parm[0] = 'o';
+    __lock_dump_region(x->dbenv, parm, stdout);
+
+    parm[0] = 'l';
+    __lock_dump_region(x->dbenv, parm, stdout);
 }
 
 extern int __qam_extent_names(DB_ENV *dbenv, char *name, char ***namelistp);

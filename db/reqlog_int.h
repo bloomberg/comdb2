@@ -5,10 +5,13 @@
 #include "list.h"
 #include "comdb2.h"
 #include "cdb2_constants.h"
+#include "cson_amalgamation_core.h"
+#include "sql.h"
 
-/* This used to be private to reqlog.  Moving to a shared header since eventlog also
-   needs access to reqlog internals.  I am not sure which system is going to win here,
-   but it makes sense to separate them for now. */
+/* This used to be private to reqlog.  Moving to a shared header since
+   eventlog also needs access to reqlog internals.  I am not sure
+   which system is going to win here, but it makes sense to separate
+   them for now. */
 
 enum logevent_type {
     EVENT_PUSH_PREFIX,
@@ -74,8 +77,7 @@ struct reqlogger {
     unsigned dump_mask;
     unsigned mask; /* bitwise or of the above two masks */
 
-    int startms;
-    int64_t startus;
+    uint64_t startus;
 
     struct prefix_type prefix;
     char dumpline[1024];
@@ -96,18 +98,18 @@ struct reqlogger {
 
     /* the sql statement */
     char *stmt;
-    char *tags;
-    void *tagbuf;
-    void *nullbits;
+
+    /* the bound parameters */
+    cson_value *bound_param_cson;
 
     unsigned int nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
     double sqlcost;
 
     int rc;
-    int durationms;
+    uint64_t durationus;
     int vreplays;
-    int queuetimems;
+    uint64_t queuetimeus;
     char fingerprint[16];
     int have_fingerprint;
     char id[41];

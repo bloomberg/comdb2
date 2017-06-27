@@ -1086,13 +1086,14 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
     if (gbl_extended_sql_debug_trace) {
         char cnonce[256] = {0};
         snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
-        logmsg(LOGMSG_USER, "%s line %d cnonce='%s' [%d][%d] sending last_row, "
-                        "selected=%u updated=%u deleted=%u inserted=%u\n",
-                func, line, cnonce, clnt->snapshot_file, clnt->snapshot_offset,
-                sql_response.effects->num_selected,
-                sql_response.effects->num_updated,
-                sql_response.effects->num_deleted,
-                sql_response.effects->num_inserted);
+        logmsg(LOGMSG_USER,
+               "%u: %s line %d cnonce='%s' [%d][%d] sending last_row, "
+               "selected=%u updated=%u deleted=%u inserted=%u\n",
+               pthread_self(), func, line, cnonce, clnt->snapshot_file,
+               clnt->snapshot_offset, sql_response.effects->num_selected,
+               sql_response.effects->num_updated,
+               sql_response.effects->num_deleted,
+               sql_response.effects->num_inserted);
     }
 
     return _push_row_new(clnt, RESPONSE_TYPE__LAST_ROW, &sql_response, NULL, 0,
@@ -1855,10 +1856,10 @@ static void log_queue_time(struct reqlogger *logger, struct sqlclntstate *clnt)
 {
     if (!gbl_track_queue_time)
         return;
-    if (clnt->deque_time - clnt->enque_time > 0)
+    if (clnt->deque_timeus - clnt->enque_timeus > 0)
         reqlog_logf(logger, REQL_INFO, "queuetime took %dms",
-                    clnt->deque_time - clnt->enque_time);
-    reqlog_set_queue_time(logger, clnt->deque_time - clnt->enque_time);
+                    U2M(clnt->deque_timeus - clnt->enque_timeus));
+    reqlog_set_queue_time(logger, clnt->deque_timeus - clnt->enque_timeus);
 }
 
 static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
@@ -1911,7 +1912,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     pthread_mutex_lock(&clnt->wait_mutex);
     clnt->ready_for_heartbeats = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     /* this is a good "begin", just say "ok" */
@@ -1978,7 +1979,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
-    reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     reqlog_logf(thd->logger, REQL_QUERY,
@@ -2082,7 +2083,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     uint8_t *p_buf_colinfo_end = (p_buf_colinfo + COLUMN_INFO_LEN);
     int outrc = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
 
     int64_t rows = clnt->log_effects.num_updated +
@@ -3520,8 +3521,7 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *c
 
     thrman_wheref(thd->thr_self, "%ssql: %s", info_nvreplays, clnt->sql);
 
-    reqlog_new_sql_request(thd->logger, NULL, clnt->tag, clnt->tagbuf,
-                           clnt->tagbufsz, clnt->nullbits, clnt->numnullbits);
+    reqlog_new_sql_request(thd->logger, NULL);
     log_client_context(thd->logger, clnt);
     log_queue_time(thd->logger, clnt);
 }
@@ -3728,7 +3728,7 @@ static int get_prepared_bound_param(struct sqlthdstate *thd,
         }
 
         rec->parameters_to_bind = new_dynamic_schema(
-            NULL, clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
+            clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
         if (rec->parameters_to_bind == NULL) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s",
                                "invalid parametrized tag (api bug?)");
@@ -3978,6 +3978,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         thr_set_current_sql(rec->sql);
     }
 
+    /* Set to the expanded version */
     reqlog_set_sql(thd->logger, (char *)rec->sql);
 
     /* if don't have a stmt */
@@ -4056,23 +4057,19 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     char *errstr = NULL;
     int rc = 0;
 
-    if (rec->parameters_to_bind ||
-        (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars)) {
-        if (clnt->is_newsql) {
-            rc = bind_parameters(rec->stmt, NULL, clnt->sql_query, NULL, NULL,
-                                 0, NULL, NULL, clnt->tzname,
-                                 gbl_dump_sql_dispatched, &errstr);
-        } else {
-            rc = bind_parameters(rec->stmt, rec->parameters_to_bind, NULL,
-                                 clnt->tagbuf, clnt->nullbits, clnt->numblobs,
-                                 clnt->blobs, clnt->bloblens, clnt->tzname,
-                                 gbl_dump_sql_dispatched, &errstr);
+    if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
+        assert(rec->parameters_to_bind == NULL);
+        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
+        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
+        if (rc) {
+            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
-
+    } else if (rec->parameters_to_bind) {
+        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
+        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
         if(rc) {
             errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
         }
-        
     } else if (clnt->verify_indexes) {
         bind_verify_indexes_query(rec->stmt, clnt->schema_mems);
     } else {
@@ -4116,7 +4113,7 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
     /* bind values here if it was a parametrized query */
     if (clnt->tag && (rec->parameters_to_bind == NULL)) {
         rec->parameters_to_bind = new_dynamic_schema(
-            NULL, clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
+            clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
         if (rec->parameters_to_bind == NULL) {
             errstat_set_str(err, "invalid parametrized tag (api bug?)");
             errstat_set_rc(err, ERR_PREPARE_RETRY);
@@ -5649,7 +5646,7 @@ static void sqlengine_work_lua_thread(struct thdpool *pool, void *work,
     thr_set_user(clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_time = time_epochms();
+    clnt->deque_timeus = time_epochus();
 
     rdlock_schema_lk();
     sqlengine_prepare_engine(thd, clnt);
@@ -5685,7 +5682,7 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
     thr_set_user(clnt->appsock_id);
 
     clnt->osql.timings.query_dispatched = osql_log_time();
-    clnt->deque_time = time_epochms();
+    clnt->deque_timeus = time_epochus();
 
     /* make sure we have an sqlite engine sqldb */
     if (clnt->verify_indexes) {
@@ -5979,7 +5976,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     pthread_mutex_unlock(&clnt->wait_mutex);
 
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
-    clnt->enque_time = time_epochms();
+    clnt->enque_timeus = time_epochus();
 
     char *sqlcpy;
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
@@ -6284,7 +6281,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->selectv_arr = NULL;
     clnt->file = 0;
     clnt->offset = 0;
-    clnt->enque_time = clnt->deque_time = 0;
+    clnt->enque_timeus = clnt->deque_timeus = 0;
     clnt->writeTransaction = 0;
 
     clnt->ins_keys = 0ULL;
@@ -7084,9 +7081,7 @@ done:
 static void send_dbinforesponse(SBUF2 *sb)
 {
     struct newsqlheader hdr;
-    CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-    CDB2DBINFORESPONSE *dbinfo_response;
-    dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
+    CDB2DBINFORESPONSE *dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
     cdb2__dbinforesponse__init(dbinfo_response);
 
     fill_dbinfo(dbinfo_response, thedb->bdb_env);
@@ -8468,8 +8463,8 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     thd->nmove = thd->nfind = thd->nwrite = 0;
 
     if (clnt->tag) {
-        parameters_to_bind = new_dynamic_schema(
-            NULL, clnt->tag, strlen(clnt->tag), gbl_dump_sql_dispatched);
+        parameters_to_bind = new_dynamic_schema(clnt->tag, strlen(clnt->tag),
+                                                gbl_dump_sql_dispatched);
         if (parameters_to_bind == NULL) {
             logmsg(LOGMSG_ERROR, "%s:%d invalid parametrized sql tag: %s\n", __FILE__,
                    __LINE__, clnt->tag);
@@ -8477,7 +8472,7 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
         }
     }
 
-    reqlog_new_sql_request(poolthd->logger, sql, NULL, NULL, 0, NULL, 0);
+    reqlog_new_sql_request(poolthd->logger, sql);
     log_queue_time(poolthd->logger, clnt);
 
     rc = sql_set_transaction_mode(sqldb, clnt, clnt->dbtran.mode);
@@ -8575,10 +8570,8 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     }
 
     if (parameters_to_bind) {
-        rc = bind_parameters(stmt, parameters_to_bind, NULL, clnt->tagbuf,
-                             clnt->nullbits, clnt->numblobs, clnt->blobs,
-                             clnt->bloblens, clnt->tzname,
-                             gbl_dump_sql_dispatched, &err);
+        eventlog_params(poolthd->logger, stmt, parameters_to_bind, clnt);
+        rc = bind_parameters(stmt, parameters_to_bind, clnt, &err);
         if (rc) {
             ret = ERR_SQL_PREP;
             have_our_own_error = 1;
@@ -8666,12 +8659,6 @@ done_here:
                             /* Its now not our problem. */
                             parameters_to_bind = NULL;
                         }
-#if 0             
-             /* Don't use sql hint in non socket mode. */
-             if (!sql_str) {
-               add_sql_hint_table(cache_hint, clnt->sql, clnt->tag);
-             }
-#endif
                     } else {
                         if (add_stmt_table(poolthd, clnt->sql, NULL, stmt,
                                            parameters_to_bind) == 0) {
@@ -8847,23 +8834,6 @@ static void init_query_limits_info(struct sqlclntstate *clnt,
     if (limits) {
         clnt->have_query_limits = 1;
         clnt->limits = *limits;
-    }
-}
-
-static void free_clnt_tag_info(struct sqlclntstate *clnt)
-{
-    int blobno;
-
-    if (clnt->tag) {
-        free(clnt->tag);
-        free(clnt->tagbuf);
-        free(clnt->nullbits);
-        for (blobno = 0; blobno < clnt->numblobs; blobno++)
-            free(clnt->blobs[blobno]);
-        if (clnt->bloblens)
-            free(clnt->bloblens);
-        if (clnt->blobs)
-            free(clnt->blobs);
     }
 }
 

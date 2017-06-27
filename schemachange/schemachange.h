@@ -121,7 +121,18 @@ struct schema_change_type {
                              get new genids to avoid name collission */
     int drop_table;
     int dbnum;
-    int finalize; /* Whether the schema change should be committed */
+    int finalize;      /* Whether the schema change should be committed */
+    int finalize_only; /* only commit the schema change */
+
+    pthread_mutex_t mtx; /* mutex for thread sync */
+    int sc_rc;
+
+    struct ireq *iq;
+    void *tran; /* transactional schemachange */
+    unsigned long long rqid;
+    uuid_t uuid;
+
+    struct schema_change_type *sc_next;
 
 /* instead of failing to resume schemachange, generate sc plan
  * compatible with previous versions of comdb2 depending on which of
@@ -152,11 +163,10 @@ struct schema_change_type {
                              At least this datastructure lives as much as the
                            whole schema change (I will change this in the
                            future)*/
- 
+
     struct db **timepart_dbs; /* support for timepart views */
     struct db **timepart_newdbs;
-    int       timepart_nshards;
-
+    int timepart_nshards;
 
     /*********************** temporary fields for table upgrade
      * ************************/
@@ -176,10 +186,10 @@ struct schema_change_type {
 };
 
 struct ireq;
-struct sc_arg {
-    struct schema_change_type *s;
+typedef struct {
+    tran_type *trans;
     struct ireq *iq;
-};
+} sc_arg_t;
 
 struct scinfo {
     int olddb_compress;
@@ -218,15 +228,24 @@ enum schema_change_views_rc {
     SC_VIEW_ERR_SC = -4
 };
 
-size_t schemachange_packed_size(struct schema_change_type *s);
-struct ireq;
-int start_schema_change(struct dbenv *, struct schema_change_type *,
-                        struct ireq *);
-int finalize_schema_change(struct schema_change_type *s);
+enum schema_change_resume {
+    SC_NOT_RESUME = 0,
+    SC_RESUME = 1,
+    SC_NEW_MASTER_RESUME = 2
+};
 
+#include <bdb_schemachange.h>
+typedef struct llog_scdone {
+    void *handle;
+    scdone_t type;
+} llog_scdone_t;
+
+size_t schemachange_packed_size(struct schema_change_type *s);
+int start_schema_change_tran(struct ireq *, tran_type *tran);
+int start_schema_change(struct schema_change_type *);
+int finalize_schema_change(struct ireq *, tran_type *);
 int create_queue(struct dbenv *, char *queuename, int avgitem, int pagesize,
                  int isqueuedb);
-
 int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
                         unsigned long long genid, int full, int partial,
                         int sync);
@@ -251,7 +270,8 @@ int pack_schema_change_type(struct schema_change_type *s, void **packed,
 int unpack_schema_change_type(struct schema_change_type *s, void *packed,
                               size_t packed_len);
 
-void init_schemachange_type(struct schema_change_type *sc);
+struct schema_change_type *
+init_schemachange_type(struct schema_change_type *sc);
 
 struct schema_change_type *new_schemachange_type();
 
@@ -267,8 +287,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
 /* This belong into sc_util.h */
 int check_sc_ok(struct schema_change_type *s);
 
-int change_schema(struct dbenv *dbenvin, char *table, char *fname, int odh,
-                  int compress, int compress_blobs);
+int change_schema(char *table, char *fname, int odh, int compress,
+                  int compress_blobs);
 
 int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
                         const void *old_dta, unsigned long long del_keys,
@@ -283,15 +303,28 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                         blob_buffer_t *newblobs);
 
 int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
-                     uint8_t *od_dta, 
-                     unsigned long long ins_keys, blob_buffer_t *blobs, 
-                     size_t maxblobs, int origflags, int *rrn);
+                     uint8_t *od_dta, unsigned long long ins_keys,
+                     blob_buffer_t *blobs, size_t maxblobs, int origflags,
+                     int *rrn);
 
 int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
-                                    unsigned long long newgenid,
-                                    const void *od_dta,
-                                    unsigned long long ins_keys, int od_len);
-int add_schema_change_tables(void);
+                             unsigned long long newgenid, const void *od_dta,
+                             unsigned long long ins_keys, int od_len);
+int add_schema_change_tables();
 
-unsigned long long get_genid(bdb_state_type *bdb_state, int dtastripe);
+extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
+
+int appsock_schema_change(SBUF2 *sb, int *keepsocket);
+
+void handle_setcompr(SBUF2 *sb);
+
+void vsb_printf(loglvl lvl, SBUF2 *sb, const char *sb_prefix,
+                const char *prefix, const char *fmt, va_list args);
+void sb_printf(SBUF2 *sb, const char *fmt, ...);
+void sb_errf(SBUF2 *sb, const char *fmt, ...);
+
+void sc_printf(struct schema_change_type *s, const char *fmt, ...);
+void sc_errf(struct schema_change_type *s, const char *fmt, ...);
+int do_dryrun(struct schema_change_type *);
+
 #endif

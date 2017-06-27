@@ -143,6 +143,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <autoanalyze.h>
 #include <cdb2_constants.h>
 #include <bb_oscompat.h>
+#include <schemachange.h>
 
 #define tokdup strndup
 
@@ -466,6 +467,7 @@ int gbl_sql_tranlevel_sosql_pref = 1; /* set this to 1 if everytime the
                                        * all the users to sosql */
 
 int gbl_test_blkseq_replay_code = 0;
+int gbl_dump_blkseq = 0;
 int gbl_test_curtran_change_code = 0;
 int gbl_enable_block_offload = 0;
 int gbl_enable_pageorder_trace = 0;
@@ -1246,7 +1248,7 @@ static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
     int rc;
-    void *trans;
+    tran_type *trans;
     struct ireq iq;
     int bdberr = 0;
     int empty = 0;
@@ -5161,8 +5163,8 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5289,8 +5291,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
     struct db *db;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tblnames, dbnums, sizeof(tblnames), &fndnumtbls,
-                              &bdberr) ||
+    if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
+                              &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
                         "\n");
@@ -5428,7 +5430,7 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
  *
  * the db never uses this file it is only to make it easier for people to tell
  * what files belong to what parts of a table, etc */
-int llmeta_dump_mapping(struct dbenv *dbenv)
+int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
 {
     int i, rc;
     char *fname, fname_tail[] = "_file_vers_map";
@@ -5480,8 +5482,8 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         unsigned long long version_num;
 
         /* print the main data file's version number */
-        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
-                                      0 /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran, 0 /*dtanum*/,
+                                      &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
                             "number for %s's main data files\n",
@@ -5497,7 +5499,7 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
 
         /* print the indicies' version numbers */
         for (j = 1; j <= dbenv->dbs[i]->numblobs; ++j) {
-            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_data(dbenv->dbs[i]->handle, tran,
                                           j /*dtanum*/, &version_num,
                                           &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
@@ -5515,7 +5517,7 @@ int llmeta_dump_mapping(struct dbenv *dbenv)
         /* print the indicies' version numbers */
         sbuf2printf(sbfile, "\tindex files\n");
         for (j = 0; j < dbenv->dbs[i]->nix; ++j) {
-            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, NULL /*tran*/,
+            if (bdb_get_file_version_index(dbenv->dbs[i]->handle, tran,
                                            j /*dtanum*/, &version_num,
                                            &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
@@ -5536,6 +5538,11 @@ done:
     return rc;
 }
 
+int llmeta_dump_mapping(struct dbenv *dbenv)
+{
+    return llmeta_dump_mapping_tran(NULL, dbenv);
+}
+
 int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                    const char *table, int err)
 {
@@ -5550,7 +5557,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     /* print out the versions of each of the table's files */
 
     /* print the main data file's version number */
-    if (bdb_get_file_version_data(p_db->handle, tran /*tran*/, 0 /*dtanum*/,
+    if (bdb_get_file_version_data(p_db->handle, tran, 0 /*dtanum*/,
                                   &version_num, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         if (err)
@@ -5573,7 +5580,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
 
     /* print the blobs' version numbers */
     for (i = 1; i <= p_db->numblobs; ++i) {
-        if (bdb_get_file_version_data(p_db->handle, NULL /*tran*/, i /*dtanum*/,
+        if (bdb_get_file_version_data(p_db->handle, tran, i /*dtanum*/,
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
@@ -5597,8 +5604,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     /* print the indicies' version numbers */
     logmsg(LOGMSG_INFO, "\tindex files\n");
     for (i = 0; i < p_db->nix; ++i) {
-        if (bdb_get_file_version_index(p_db->handle, tran /*tran*/,
-                                       i /*dtanum*/, &version_num, &bdberr) ||
+        if (bdb_get_file_version_index(p_db->handle, tran, i /*dtanum*/,
+                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
                 logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
@@ -5661,20 +5668,14 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
 
 static struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
-    struct dbenv *dbenv;
-    int redo_as_lrl = 0;
-    int found_tables = 0;
-    const char *envlrlname;
     int rc;
-
-    dbenv = calloc(1, sizeof(*dbenv));
+    struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
     if (dbenv == 0) {
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
         return NULL;
     }
 
     dbenv->cacheszkbmin = 65536;
-
     dbenv->bdb_attr = bdb_attr_create();
 
     /* default retry = 10 seconds.  this used to be 180 seconds (3 minutes)
@@ -5715,7 +5716,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     if (lrlname)
-       pre_read_lrl_file(dbenv, lrlname, dbname);
+        pre_read_lrl_file(dbenv, lrlname, dbname);
 
     /* if we havn't been told not to load the /bb/bin/ config files */
     if (!gbl_nogbllrl) {
@@ -5754,47 +5755,32 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     /* local defaults */
-    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname,
-                       0 /*not required*/)) {
+    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname, 0 /*not required*/)) {
         return 0;
     }
 
     /* if env variable is set, process another lrl.. */
-    envlrlname = getenv("COMDB2_CONFIG");
-    if(envlrlname)
-    {
-        if(!read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
-            return 0;
-        }
-    }
-
-    if (found_tables || redo_as_lrl) {
-        logmsg(LOGMSG_ERROR, "bad config .lrl files - found schema data where it "
-                        "shouldn't be!\n");
+    const char *envlrlname = getenv("COMDB2_CONFIG");
+    if(envlrlname && !read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
         return 0;
     }
 
     /* this database */
-    if (lrlname) {
-        if (!read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
-            return 0;
-        }
+    if (lrlname && !read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
+        return 0;
     }
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
-    /* if no tables were found, switch to keyless mode as long as no mode has
-     * been selected yet */
-    if (!found_tables) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
-    }
+    /* switch to keyless mode as long as no mode has been selected yet */
+    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL) {
-        if (gbl_dbdir) dbenv->basedir = gbl_dbdir;
-        if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
-        if (dbenv->basedir == NULL)
-            dbenv->basedir = comdb2_location("database", "%s", dbname);
-    }
+    if (dbenv->basedir == NULL && gbl_dbdir) 
+        dbenv->basedir = gbl_dbdir;
+    if (dbenv->basedir == NULL) 
+        dbenv->basedir = getenv("COMDB2_DB_DIR");
+    if (dbenv->basedir == NULL)
+        dbenv->basedir = comdb2_location("database", "%s", dbname);
 
     if (dbenv->basedir==NULL) {
         logmsg(LOGMSG_ERROR, "must specify database directory\n");
@@ -5802,24 +5788,32 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     if (lrlname == NULL) {
-       char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
-       if (access(lrl, F_OK) == 0) {
-          if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
-             return 0;
-          }
-          lrlname = lrl;
-       }
-       else
-          free(lrlname);
+        char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
+        if (access(lrl, F_OK) == 0) {
+            if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
+                return 0;
+            }
+            lrlname = lrl;
+        }
+        else
+            free(lrlname);
     }
 
-    if (gbl_create_mode && dbenv->basedir) {
-       /* make sure the database directory exists! */
-       rc = mkdir(dbenv->basedir, 0774);
-       if (rc && errno != EEXIST) {
-          logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
-          /* continue, this will make us fail later */
-       }
+    if (gbl_create_mode) {
+        /* make sure the database directory exists! */
+        rc = mkdir(dbenv->basedir, 0774);
+        if (rc && errno != EEXIST) {
+            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
+            /* continue, this will make us fail later */
+        }
+    }
+    else {
+        struct stat sb;
+        stat(dbenv->basedir, &sb);
+        if (! S_ISDIR(sb.st_mode)) {
+            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
+            return 0;
+        }
     }
 
     tz_hash_init();
@@ -5852,8 +5846,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
-    ;
-    bzero(dbenv->sibling_flags, sizeof(char) * MAXSIBLINGS);
 
     return dbenv;
 }
@@ -6440,7 +6432,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
         struct db *db = dbenv->dbs[i];
         update_dbstore(db);
 
-        db->tableversion = table_version_select(db);
+        db->tableversion = table_version_select(db, NULL);
         if (db->tableversion == -1) {
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
@@ -7986,8 +7978,8 @@ void *statthd(void *p)
                                       last_bdb_stats.n_lock_waits;
                     reqlog_logf(statlogger, REQL_INFO,
                                 "%u locks, avg time %ums\n", nreads,
-                                (cur_bdb_stats.lock_wait_time_ms -
-                                 last_bdb_stats.lock_wait_time_ms) /
+                                U2M(cur_bdb_stats.lock_wait_time_us -
+                                    last_bdb_stats.lock_wait_time_us) /
                                     nreads);
                 }
                 if (cur_bdb_stats.n_preads > last_bdb_stats.n_preads) {
@@ -7997,8 +7989,8 @@ void *statthd(void *p)
                                 "%u preads, %u bytes, avg time %ums\n", npreads,
                                 cur_bdb_stats.pread_bytes -
                                     last_bdb_stats.pread_bytes,
-                                (cur_bdb_stats.pread_time_ms -
-                                 last_bdb_stats.pread_time_ms) /
+                                U2M(cur_bdb_stats.pread_time_us -
+                                    last_bdb_stats.pread_time_us) /
                                     npreads);
                 }
                 if (cur_bdb_stats.n_pwrites > last_bdb_stats.n_pwrites) {
@@ -8008,8 +8000,8 @@ void *statthd(void *p)
                                 "%u pwrites, %u bytes, avg time %ums\n",
                                 npwrites, cur_bdb_stats.pwrite_bytes -
                                               last_bdb_stats.pwrite_bytes,
-                                (cur_bdb_stats.pwrite_time_ms -
-                                 last_bdb_stats.pwrite_time_ms) /
+                                U2M(cur_bdb_stats.pwrite_time_us -
+                                    last_bdb_stats.pwrite_time_us) /
                                     npwrites);
                 }
                 last_bdb_stats = cur_bdb_stats;
@@ -8525,7 +8517,9 @@ static void register_all_int_switches()
     register_int_switch("test_blkseq_replay",
                         "Test blkseq replay codepath (for debugging only)",
                         &gbl_test_blkseq_replay_code);
-    register_int_switch("skip_cget_in_db_put", 
+    register_int_switch("dump_blkseq", "Dump all blkseq inserts and replays",
+                        &gbl_dump_blkseq);
+    register_int_switch("skip_cget_in_db_put",
                         "Don't perform a cget when we do a cput",
                         &gbl_skip_cget_in_db_put);
     register_int_switch("direct_count",
@@ -8574,7 +8568,7 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-void set_timepart_and_handle_resume_sc() 
+static void set_timepart_and_handle_resume_sc()
 {
     /* We need to do this before resuming schema chabge , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
@@ -8586,7 +8580,8 @@ void set_timepart_and_handle_resume_sc()
      * done every time the master changes, but on startup the low level meta
      * table wasn't open yet so we couldn't check to see if a schema change was
      * in progress */
-    if (thedb->master == gbl_mynode) {
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+        thedb->master == gbl_mynode) {
         int irc = resume_schema_change();
         if (irc)
             logmsg(LOGMSG_ERROR, 
@@ -8621,6 +8616,19 @@ struct tool tool_callbacks[] = {
    TOOLS
    NULL
 };
+
+static void wait_for_coherent()
+{
+    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
+    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
+    unsigned int counter = 1;
+    while (!bdb_am_i_coherent(thedb->bdb_env)) {
+        if ((++counter % wrn_cnt) == 0) {
+            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
+        }
+        usleep(cslp);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -8771,6 +8779,7 @@ int main(int argc, char **argv)
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
+    wait_for_coherent();
 
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
@@ -8804,27 +8813,70 @@ void delete_db(char *db_name)
         exit(1);
     }
 
-    for (int i = idx; i < (thedb->num_dbs - 1); i++)
+    for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
+        thedb->dbs[i]->dbs_idx = i;
+    }
 
     thedb->num_dbs -= 1;
     pthread_rwlock_unlock(&thedb_lock);
 }
 
-void replace_db(struct db *p_db)
+void replace_db(struct db *p_db, int add)
 {
     int idx;
 
-    if ((idx = getdbidxbyname(p_db->dbname)) < 0) {
+    pthread_rwlock_wrlock(&thedb_lock);
+    idx = getdbidxbyname(p_db->dbname);
+    if (!add && idx < 0) {
         logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n", __func__,
                 p_db->dbname);
         exit(1);
+    }
+
+    if (idx < 0) {
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        idx = thedb->num_dbs;
+        thedb->num_dbs++;
     }
 
     p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
                                          * from the schema anymore */
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
+    pthread_rwlock_unlock(&thedb_lock);
+}
+
+void replace_db_idx(struct db *p_db, int idx, int add)
+{
+    int move = 0;
+    pthread_rwlock_wrlock(&thedb_lock);
+    if (!add && idx < 0) {
+        logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n",
+               __func__, p_db->dbname);
+        exit(1);
+    }
+
+    if (idx < 0 || idx >= thedb->num_dbs ||
+        strcasecmp(thedb->dbs[idx]->dbname, p_db->dbname) != 0) {
+        thedb->dbs =
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+        if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
+        thedb->num_dbs++;
+        move = 1;
+    }
+
+    for (int i = (thedb->num_dbs - 1); i > idx && move; i--) {
+        thedb->dbs[i] = thedb->dbs[i - 1];
+        thedb->dbs[i]->dbs_idx = i;
+    }
+
+    p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
+                                         * from the schema anymore */
+    p_db->dbs_idx = idx;
+    thedb->dbs[idx] = p_db;
+    pthread_rwlock_unlock(&thedb_lock);
 }
 
 void epoch2a(int epoch, char *buf, size_t buflen)
@@ -9029,4 +9081,4 @@ static int create_service_file(char *lrlname)
 
 #undef QUOTE
 
-/* vim: set sw=3 ts=3 et: */
+/* vim: set sw=4 ts=4 et: */

@@ -25,6 +25,7 @@
 #include <plhash.h>
 
 #include <genid.h>
+#include <net_types.h>
 #include "comdb2uuid.h"
 #include "logmsg.h"
 
@@ -82,6 +83,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                      int *bdberr, int crt_nops);
 static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
                                            int *bdberr);
+static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr);
 static int process_local_shadtbl_dbq(struct sqlclntstate *, int *bdberr,
                                      int *crt_nops);
 
@@ -98,6 +100,11 @@ static int osql_create_verify(bdb_state_type *bdb_state,
                               struct sqlclntstate *clnt, int *bdberr);
 static int osql_destroy_verify(bdb_state_type *bdb_state,
                                struct sqlclntstate *clnt);
+
+static int osql_create_schemachange(bdb_state_type *bdb_state,
+                                    struct sqlclntstate *clnt, int *bdberr);
+static int osql_destroy_schemachange(bdb_state_type *bdb_state,
+                                     struct sqlclntstate *clnt);
 
 static int free_it(void *obj, void *arg)
 {
@@ -306,6 +313,27 @@ int osql_shadtbl_reset_for_selectv(struct sqlclntstate *clnt)
             logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_cursor failed, bdberr=%d\n",
                     __func__, bdberr);
             bdb_temp_table_close(thedb->bdb_env, osql->verify_tbl, &bdberr);
+            return -1;
+        }
+    }
+    /* close sc cursor but keep table */
+    if (osql->sc_cur) {
+        rc = bdb_temp_table_close_cursor(thedb->bdb_env, osql->sc_cur, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: bdb_temp_table_close failed, rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
+            return -1;
+        }
+
+        /* new code doesn't open the cursor unless I am saving in it */
+        osql->sc_cur =
+            bdb_temp_table_cursor(thedb->bdb_env, osql->sc_tbl, NULL, &bdberr);
+        if (!osql->sc_cur) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: bdb_temp_table_cursor failed, bdberr=%d\n", __func__,
+                   bdberr);
+            bdb_temp_table_close(thedb->bdb_env, osql->sc_tbl, &bdberr);
             return -1;
         }
     }
@@ -1376,7 +1404,8 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
        consumer-producer pullers that run selectv!
      */
     if (!osql->dirty &&
-        !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
+        !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP) &&
+        !osql->sc_tbl) {
         return -3;
     }
 
@@ -1387,6 +1416,8 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
     rc = process_local_shadtbl_recgenids(clnt, bdberr);
     if (rc)
         return -1;
+    rc = process_local_shadtbl_sc(clnt, bdberr);
+    if (rc) return -1;
 
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {
@@ -1450,6 +1481,11 @@ int osql_shadtbl_cleartbls(struct sqlclntstate *clnt)
     if (osql->verify_tbl) {
         truncate_tablecursor(thedb->bdb_env, &osql->verify_cur,
                              osql->verify_tbl, &bdberr);
+    }
+    /* reset the sc */
+    if (osql->sc_tbl) {
+        truncate_tablecursor(thedb->bdb_env, &osql->sc_cur, osql->sc_tbl,
+                             &bdberr);
     }
 
     /* close the temporary bdb structures first */
@@ -2172,6 +2208,7 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
 
     osql_destroy_verify(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);
+    osql_destroy_schemachange(thedb->bdb_env, clnt);
 
     LISTC_FOR_EACH_SAFE(&osql->shadtbls, tbl, tmp, linkv)
     {
@@ -2218,6 +2255,8 @@ int osql_shadtbl_begin_query(bdb_state_type *bdb_env, struct sqlclntstate *clnt)
     /*printf( "Opening %d locals\n", osql->shadtbls.count); */
     if (reopen_shadtbl_cursors(bdb_env, osql, osql->verify_tbl,
                                &osql->verify_cur))
+        return -1;
+    if (reopen_shadtbl_cursors(bdb_env, osql, osql->sc_tbl, &osql->sc_cur))
         return -1;
 
     /* close the temporary bdb structures first */
@@ -2281,6 +2320,7 @@ int osql_shadtbl_done_query(bdb_state_type *bdb_env, struct sqlclntstate *clnt)
 
     /*printf( "Cleaning %d locals\n", osql->shadtbls.count); */
     close_shadtbl_cursors(bdb_env, osql, osql->verify_tbl, &osql->verify_cur);
+    close_shadtbl_cursors(bdb_env, osql, osql->sc_tbl, &osql->sc_cur);
 
     /* close the temporary bdb structures first */
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
@@ -2563,6 +2603,120 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
     return rc;
 }
 
+int osql_save_schemachange(struct sql_thread *thd,
+                           struct schema_change_type *sc)
+{
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    int rc = 0;
+    int bdberr = 0;
+    void *packed_sc_data = NULL;
+    size_t packed_sc_data_len;
+    int count = 0;
+
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+        !clnt->in_client_trans)
+        return 0;
+
+    if (!osql->sc_tbl) {
+        rc = osql_create_schemachange(thedb->bdb_env, thd->sqlclntstate,
+                                      &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to create sc rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
+            return -1;
+        }
+    }
+
+    if (!osql->sc_tbl || !osql->sc_cur) {
+        logmsg(LOGMSG_ERROR, "%s: error getting sc table for \'%s\'\n",
+               __func__, sc->table);
+        return -1;
+    }
+    sc->rqid = osql->rqid;
+    comdb2uuidcpy(sc->uuid, osql->uuid);
+
+    if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {
+        logmsg(LOGMSG_ERROR, "%s: error packing sc table for \'%s\'\n",
+               __func__, sc->table);
+        return -1;
+    }
+    if (clnt->ddl_tables)
+        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+    rc = bdb_temp_table_put(thedb->bdb_env, osql->sc_tbl, &count, sizeof(int),
+                            packed_sc_data, packed_sc_data_len, NULL, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error saving sc table for \'%s\'\n", __func__,
+               sc->table);
+        return -1;
+    }
+
+    free(packed_sc_data);
+    return 0;
+}
+
+static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
+{
+    osqlstate_t *osql = &clnt->osql;
+    int rc = 0;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct temp_cursor *cur = osql->sc_cur;
+    void *packed_sc_data = NULL;
+    size_t packed_sc_data_len;
+
+    if (!cur) {
+        return 0;
+    }
+
+    rc = bdb_temp_table_first(bdb_state, cur, bdberr);
+    if (rc == IX_EMPTY) return 0;
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n", __func__,
+               rc, *bdberr);
+        return SQLITE_INTERNAL;
+    }
+
+    while (rc == 0) {
+        struct schema_change_type *sc = NULL;
+        packed_sc_data = bdb_temp_table_data(cur);
+        packed_sc_data_len = bdb_temp_table_datasize(cur);
+
+        sc = new_schemachange_type();
+        if (!sc) {
+            logmsg(LOGMSG_ERROR, "%s: ran out of memory\n", __func__);
+            return -1;
+        }
+        if (unpack_schema_change_type(sc, packed_sc_data, packed_sc_data_len)) {
+            logmsg(LOGMSG_ERROR, "%s: failed to unpack sc\n", __func__);
+            return -1;
+        }
+
+        rc = osql_send_schemachange(osql->host, osql->rqid, osql->uuid, sc,
+                                    NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: error writting record to master in offload mode!\n",
+                   __func__);
+            return SQLITE_INTERNAL;
+        }
+        free_schema_change_type(sc);
+
+        rc = bdb_temp_table_next(bdb_state, cur, bdberr);
+    }
+
+    if (rc == IX_PASTEOF || rc == IX_EMPTY) {
+        rc = 0;
+    } else {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n", __func__,
+               __LINE__, rc, *bdberr);
+        /* fall-through */
+    }
+
+    return rc;
+}
+
 /**
  *  Check of a shadow table transaction has cached selectv records
  *
@@ -2589,10 +2743,10 @@ int osql_shadtbl_has_selectv(struct sqlclntstate *clnt, int *bdberr)
     return rc;
 }
 
-static int osql_create_verify(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr)
+static int osql_create_temptbl(bdb_state_type *bdb_state,
+                               struct temp_table **out_table,
+                               struct temp_cursor **out_cursor, int *bdberr)
 {
-    osqlstate_t *osql = &clnt->osql;
     struct temp_table *table;
     struct temp_cursor *cursor;
 
@@ -2611,45 +2765,72 @@ static int osql_create_verify(bdb_state_type *bdb_state,
         return -1;
     }
 
-    osql->verify_tbl = table;
-    osql->verify_cur = cursor;
+    *out_table = table;
+    *out_cursor = cursor;
 
     return 0;
 }
 
-int osql_destroy_verify(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
+static int osql_destroy_temptbl(bdb_state_type *bdb_state,
+                                struct temp_table **table,
+                                struct temp_cursor **cursor)
 {
-    osqlstate_t *osql = &clnt->osql;
-    struct temp_table *table;
-    struct temp_cursor *cursor;
     int rc = 0;
     int bdberr = 0;
 
-    table = osql->verify_tbl;
-    cursor = osql->verify_cur;
-
-    if (cursor) {
-        rc = bdb_temp_table_close_cursor(bdb_state, cursor, &bdberr);
+    if (*cursor) {
+        rc = bdb_temp_table_close_cursor(bdb_state, *cursor, &bdberr);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s: fail to close cursor bdberr=%d\n", __func__,
                     bdberr);
     }
 
-    if (table) {
-        rc = bdb_temp_table_close(bdb_state, table, &bdberr);
+    if (*table) {
+        rc = bdb_temp_table_close(bdb_state, *table, &bdberr);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s: fail to bdberr=%d\n", __func__, bdberr);
     }
 
-    osql->verify_cur = NULL;
-    osql->verify_tbl = NULL;
+    *cursor = NULL;
+    *table = NULL;
 
     return 0; /* not sure what value is returning rc at this point */
 }
 
+static int osql_create_verify(bdb_state_type *bdb_state,
+                              struct sqlclntstate *clnt, int *bdberr)
+{
+    osqlstate_t *osql = &clnt->osql;
+    return osql_create_temptbl(bdb_state, &osql->verify_tbl, &osql->verify_cur,
+                               bdberr);
+}
+
+static int osql_destroy_verify(bdb_state_type *bdb_state,
+                               struct sqlclntstate *clnt)
+{
+    osqlstate_t *osql = &clnt->osql;
+    return osql_destroy_temptbl(bdb_state, &osql->verify_tbl,
+                                &osql->verify_cur);
+}
+
+static int osql_create_schemachange(bdb_state_type *bdb_state,
+                                    struct sqlclntstate *clnt, int *bdberr)
+{
+    osqlstate_t *osql = &clnt->osql;
+    return osql_create_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur, bdberr);
+}
+
+int osql_destroy_schemachange(bdb_state_type *bdb_state,
+                              struct sqlclntstate *clnt)
+{
+    osqlstate_t *osql = &clnt->osql;
+    return osql_destroy_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur);
+}
+
 int osql_shadtbl_empty(struct sqlclntstate *clnt)
 {
-    return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl;
+    return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
+           !clnt->osql.sc_tbl;
 }
 
 int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
@@ -2662,7 +2843,8 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
     unsigned long long genid = 0;
     char *data = NULL;
     int datalen = 0;
-    if (LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl)
+    if (LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
+        !clnt->osql.sc_tbl)
         return 1;
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {

@@ -20,9 +20,10 @@ int set_header_and_properties(void *tran, struct db *newdb,
                               struct schema_change_type *s, int inplace_upd,
                               int bthash);
 
-int mark_schemachange_over(void *tran, const char *table);
+int mark_schemachange_over(const char *table);
+int mark_schemachange_over_tran(const char *table, tran_type *);
 
-int prepare_table_version_one(void *tran, struct db *db,
+int prepare_table_version_one(tran_type *, struct db *db,
                               struct schema **version);
 
 int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
@@ -56,7 +57,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct db *olddb,
 
 void transfer_db_settings(struct db *olddb, struct db *newdb);
 
-int set_odh_options_tran(struct db *db, void *trans, int *bdber);
+void set_odh_options_tran(struct db *db, tran_type *tran);
 void set_odh_options(struct db *db);
 
 int compare_constraints(const char *table, struct db *newdb);
