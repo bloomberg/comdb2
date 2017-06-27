@@ -643,7 +643,7 @@ A literal value is an integer number or a floating point number. Scientific nota
 
 A literal value can also be the token ```NULL```.
 
-The ```LIKE``` operator does a pattern matching comparison. The operand to the right contains the pattern, the left hand operand contains the string to match against the pattern. A percent symbol ```%``` in the pattern matches any sequence of zero or more characters in the string. An underscore ```_``` in the pattern matches any single character in the string. Any other character matches itself or it's equivalent (i.e. case-sensitive matching). The ```LIKE``` operator is case sensitive in Comdb2.
+The ```LIKE``` operator does a pattern matching comparison. The operand to the right contains the pattern, the left hand operand contains the string to match against the pattern. A percent symbol ```%``` in the pattern matches any sequence of zero or more characters in the string. An underscore ```_``` in the pattern matches any single character in the string. Any other character matches itself or its equivalent (i.e. case-sensitive matching). The ```LIKE``` operator is case sensitive in Comdb2.
 
 The ```GLOB``` operator is similar to ```LIKE``` but uses the Unix file globbing syntax for its wildcards. ```GLOB``` is case sensitive. Both ```GLOB``` and ```LIKE``` may be preceded by the ```NOT``` keyword to invert the sense of the test.
 
