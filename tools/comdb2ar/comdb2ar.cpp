@@ -5,6 +5,7 @@
 // comdb2backup and comdb2restore.
 
 #include "comdb2ar.h"
+#include "util.h"
 
 #include <exception>
 #include <iostream>
@@ -13,6 +14,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <crc32c.h>
 
 #include <sys/types.h>
@@ -41,6 +43,10 @@ const char *help_text[] = {
 "  serialised input stream.",
 "  -C strip     strip cluster nodes lines from lrl file",
 "  -C preserve  preserve cluster nodes lines in lrl file",
+"  -I create    create the incremental meta files while serialising",
+"  -I inc       create an increment for the incremental backup",
+"  -I <UUID>    deserialise from a specified incremental backup",
+"  -b <path>    location to store/load the incremental backup",
 "  -x <path>    path to comdb2 binary to use for full recovery",
 "  -r/R         do/do-not run full recovery after extracting",
 "  -u %         do not allow disk usage to exceed this percentage",
@@ -94,6 +100,12 @@ int main(int argc, char *argv[])
     unsigned percent_full = 95;
     bool legacy_mode = false;
     bool do_direct_io = true;
+    bool incr_mode = false;
+    bool incr_create = false;
+    bool incr_gen = false;
+    bool incr_ex = true;
+    std::string incr_name = "";
+    std::string incr_path = "increment";
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -107,7 +119,7 @@ int main(int argc, char *argv[])
     ss << root << "/bin/comdb2";
     std::string comdb2_task(ss.str());
 
-    while((c = getopt(argc, argv, "hsSLC:x:u:rRSKfOD")) != EOF) {
+    while((c = getopt(argc, argv, "hsSLC:I:b::x:u:rRSKfOD")) != EOF) {
         switch(c) {
             case 'O':
                 legacy_mode = true;
@@ -170,13 +182,38 @@ int main(int argc, char *argv[])
                 kludge_write = true;
                 break;
 
-
             case 'f':
                 force_mode = true;
                 break;
 
             case 'D':
                 do_direct_io = false;
+                break;
+
+            case 'I':
+                incr_mode = true;
+                if(std::strcmp(optarg, "create") == 0) {
+                    incr_create = true;
+                } else if(std::strcmp(optarg, "generate") == 0) {
+                    incr_gen = true;
+                } else {
+                    if(optarg != NULL) {
+                        incr_name = std::string(optarg);
+                    } else {
+                        std::cerr << "Restoration path must be specified" <<
+                            " for extraction" << std::endl;
+                        std::exit(2);
+                    }
+                }
+                break;
+
+            case 'b':
+                if(!(optarg == NULL)){
+                    incr_path = std::string(optarg);
+                    if(incr_path[incr_path.length() - 1] == '/'){
+                        incr_path.resize(incr_path.length() - 1);
+                    }
+                }
                 break;
 
             case '?':
@@ -226,19 +263,30 @@ int main(int argc, char *argv[])
             std::exit(2);
         }
 
+        if(incr_mode && !(incr_gen || incr_create)) {
+
+            std::cerr << "Incremental mode must either create a new backup or"
+                << " generate an increment" << std::endl;
+            std::exit(2);
+        }
+
+
         const std::string lrlpath(argv[1]);
 
         try {
-           serialise_database(
-             lrlpath,
-             comdb2_task, 
-             disable_log_deletion,
-             strip_cluster_info,
-             support_files_only, 
-             run_with_done_file,
-             kludge_write,
-             do_direct_io
-           );
+            serialise_database(
+                lrlpath,
+                comdb2_task,
+                disable_log_deletion,
+                strip_cluster_info,
+                support_files_only,
+                run_with_done_file,
+                kludge_write,
+                do_direct_io,
+                incr_create,
+                incr_gen,
+                incr_path
+            );
         } catch(std::exception& e) {
             std::cerr << e.what() << std::endl;
             errexit();
@@ -264,25 +312,43 @@ int main(int argc, char *argv[])
             std::exit(2);
         }
         bool is_disk_full = false;
-        try {
-           deserialise_database(
-             p_lrldest,
-             p_datadest,
-             strip_cluster_info,
-             strip_consumer_info,
-             comdb2_task,
-             percent_full,
-             force_mode,
-             legacy_mode,
-             is_disk_full,
-             run_with_done_file
-           );
-        } catch(std::exception& e) {
-            std::cerr << e.what() << std::endl;
-            if (is_disk_full) {
-              errexit(3);
-            } else {
-              errexit();
+        if(!incr_ex) {
+            try {
+               deserialise_database(
+                 p_lrldest,
+                 p_datadest,
+                 strip_cluster_info,
+                 strip_consumer_info,
+                 comdb2_task,
+                 percent_full,
+                 force_mode,
+                 legacy_mode,
+                 is_disk_full,
+                 run_with_done_file
+               );
+            } catch(std::exception& e) {
+                std::cerr << e.what() << std::endl;
+                if (is_disk_full) {
+                  errexit(3);
+                } else {
+                  errexit();
+                }
+            }
+        } else {
+            try {
+                incr_deserialise_database(
+                  p_lrldest,
+                  p_datadest,
+                  incr_name,
+                  incr_path
+                );
+            } catch(std::exception& e) {
+                std::cerr << e.what() << std::endl;
+                if (is_disk_full) {
+                  errexit(3);
+                } else {
+                  errexit();
+                }
             }
         }
     }

@@ -1,16 +1,16 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
-   
+
        http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and 
+   See the License for the specific language governing permissions and
    limitations under the License.
  */
 
@@ -88,14 +88,17 @@ void serialise_database(
   bool support_files_only,
   bool run_with_done_file,
   bool kludge_write,
-  bool do_direct_io
+  bool do_direct_io,
+  bool incr_create,
+  bool incr_gen,
+  const std::string& incr_path
 );
 // Serialise a database into tape archive format and write it to stdout.
 // If support_only is true then only support files (lrl and schema) will
 // be serialised.  If disable_log_deletion and the database is running then
 // it will be advised to hold log file deletion until the backup is complete
 // (highly recommended!)
-// If legacy_mode is enabled, old file format are not removed after restore 
+// If legacy_mode is enabled, old file format are not removed after restore
 
 
 void deserialise_database(
@@ -122,6 +125,13 @@ void deserialise_database(
 // halted.
 
 bool isDirectory(const std::string& file);
+
+void incr_deserialise_database(
+  const std::string *p_lrldestdir,
+  const std::string *p_datadest,
+  const std::string& incr_name,
+  const std::string& incr_path
+);
 
 /* this definition needs to agree with DBENV_MAP in berkdb */
 struct iomap {

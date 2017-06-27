@@ -30,7 +30,7 @@ FileInfo::FileInfo(
         size_t pagesize,
         bool checksums,
 	bool crypto,
-        bool sparse, 
+        bool sparse,
         bool do_direct_io,
 	bool swapped) :
     m_type(type),
@@ -151,7 +151,6 @@ void write_manifest_entry(std::ostream& os, const FileInfo& file)
     std::cerr << std::endl;
     //return os;
 }
-
 
 bool read_FileInfo(const std::string& line, FileInfo& file)
 // Attempt to deserialise a FileInfo object from the provided string.

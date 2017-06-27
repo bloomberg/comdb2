@@ -55,16 +55,16 @@ comdb2ar_SOURCES:=appsock.cpp comdb2ar.cpp db_wrap.cpp		\
 		   file_info.cpp logholder.cpp lrlerror.cpp	\
 		   repopnewlrl.cpp riia.cpp serialise.cpp	\
 		   serialiseerror.cpp tar_header.cpp util.cpp	\
-		   chksum.cpp
+		   chksum.cpp increment.cpp
 comdb2ar_OBJS:=$(patsubst %.cpp,tools/comdb2ar/%.o,		\
 	$(filter %.cpp,$(comdb2ar_SOURCES)))			\
 	$(patsubst %.c,tools/comdb2ar/%.o,			\
 	$(filter %.c,$(comdb2ar_SOURCES)))
-comdb2ar_LDLIBS+= $(BBSTATIC) $(BBLIB) $(CRC32C) -ldlmalloc $(DLMALLOC)		\
-		  $(BBDYN) -lpthread -lm -lssl -lcrypto -ldl -lrt -lz $(ARCHLIBS)
+comdb2ar_LDLIBS+= $(BBSTATIC) $(BBLIB) $(CRC32C) -ldlmalloc -lssl -lcrypto $(DLMALLOC)		\
+		  $(BBDYN) -lpthread -lm -ldl -lrt -lz $(ARCHLIBS)
 
 comdb2ar: $(comdb2ar_OBJS)
-	$(CXX11) $(tools_LDFLAGS) $^ $(comdb2ar_LDLIBS) -o $@
+	$(CXX11) -Bstatic $(tools_LDFLAGS) $^ $(comdb2ar_LDLIBS) -o $@
 
 
 # Files that include db.h require COMDB2AR to be defined

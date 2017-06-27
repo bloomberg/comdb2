@@ -1,16 +1,16 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
-   
+
        http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and 
+   See the License for the specific language governing permissions and
    limitations under the License.
  */
 
@@ -32,7 +32,7 @@ int gooddir(char *d);
 void xorbufcpy(char *dest, const char *src, size_t len);
 #define xorbuf(p,len) xorbufcpy((void*)(p), (const void *)(p), (len))
 
-/* load a text file.  returns NULL and prints an error if it fails. 
+/* load a text file.  returns NULL and prints an error if it fails.
  * caller is responsible for free()ing the returned memory. */
 char *load_text_file(const char *filename);
 
@@ -53,5 +53,4 @@ int cpu_usage(double *user_time, double *system_time);
 
 void timeval_diff(struct timeval *before, struct timeval *after, struct timeval *diff);
 int getroom_callback(void *dummy, int node);
-
 #endif

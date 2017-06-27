@@ -5,6 +5,7 @@
 #include <cstring>
 #include <sstream>
 #include <string>
+#include <ctime>
 
 #include <sys/stat.h>
 
@@ -132,7 +133,7 @@ void listdir(std::list<std::string>& output_list, const std::string& dirname)
 }
 
 void listdir_abs(std::list<std::string>& output_list, const std::string &dirname) {
-    listdir_internal(output_list, dirname, false, 
+    listdir_internal(output_list, dirname, false,
             dirname.empty() || dirname[dirname.length()-1] == '/' ? dirname
             : dirname + "/");
 }
@@ -207,3 +208,5 @@ bool isDirectory(const std::string& file) {
     else
         return false;
 }
+
+
