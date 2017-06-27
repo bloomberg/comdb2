@@ -19,7 +19,7 @@ Comments begin with ```//``` and go until the end of the line.  There's no multi
 ![constants](images/constant-section.gif)
 
 Users can specify constant values in this section to use in the rest of the definition.  This is occasionally helpful when several fields should
-be sized the same.  This practice is of limited utility.  The constants section consists of the  keyword ```constants``1 and a list of
+be sized the same.  This practice is of limited utility.  The constants section consists of the keyword `constants` and a list of
 constants enclosed by braces.  Example:
 
 ```
