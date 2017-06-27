@@ -20,6 +20,8 @@
 extern pthread_mutex_t schema_change_in_progress_mutex;
 extern pthread_mutex_t fastinit_in_progress_mutex;
 extern pthread_mutex_t schema_change_sbuf2_lock;
+extern pthread_mutex_t sc_resuming_mtx;
+extern struct schema_change_type *sc_resuming;
 extern volatile int gbl_schema_change_in_progress;
 extern volatile int gbl_lua_version;
 extern uint64_t sc_seed;
@@ -46,7 +48,7 @@ extern unsigned gbl_sc_updates;
 extern unsigned gbl_sc_deletes;
 extern long long gbl_sc_nrecs;
 extern long long gbl_sc_prev_nrecs; /* nrecs since last report */
-extern int gbl_sc_report_freq; /* seconds between reports */
+extern int gbl_sc_report_freq;      /* seconds between reports */
 extern int gbl_sc_abort;
 extern int gbl_sc_resume_start;
 /* see sc_del_unused_files() and sc_del_unused_files_check_progress() */

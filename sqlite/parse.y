@@ -175,7 +175,9 @@ getcmd ::= ANALYZE THRESHOLD nm(Y) dbnm(Z). {
 
 ///////////////////// COMDB2 PUT statements //////////////////////////////////
 
-cmd ::= PUT putcmd.
+cmd ::= PUT putcmd. {
+    comdb2WriteTransaction(pParse);
+}
 
 putcmd ::= ANALYZE COVERAGE nm(Y) dbnm(Z) INTEGER(F). {
     int tmp;
@@ -291,26 +293,32 @@ op_permission(A) ::= OP.   { A = AUTH_OP;   }
 userschema(A) ::= USERSCHEMA. {A = AUTH_USERSCHEMA;}
 
 cmd ::= GRANT sql_permission(P) ON nm(T) dbnm(Y) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 0, P, &T,&Y,&U);
 }
 
 cmd ::= GRANT op_permission(P) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 0, P, NULL,NULL,&U);
 }
 
 cmd ::= GRANT userschema(P) nm(U1) TO nm(U2). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 0, P, &U1,NULL,&U2);
 }
 
 cmd ::= REVOKE sql_permission(P) ON nm(T) dbnm(Y) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, &T,&Y,&U);
 }
 
 cmd ::= REVOKE op_permission(P) TO nm(U). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, NULL,NULL,&U);
 }
 
 cmd ::= REVOKE userschema(P) nm(U1) TO nm(U2). {
+    comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, &U1,NULL,&U2);
 }
 
@@ -329,10 +337,12 @@ cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
 //////////////////// COMDB2 PARTITION //////////////////////////////////
 
 cmd ::= createkw TIME PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+    comdb2WriteTransaction(pParse);
     comdb2CreateTimePartition(pParse, &A, &P, &D, &R, &S);
 }
 
 cmd ::= DROP TIME PARTITION nm(N). {
+    comdb2WriteTransaction(pParse);
     comdb2DropTimePartition(pParse, &N);
 }
 

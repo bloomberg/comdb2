@@ -5531,7 +5531,7 @@ int add_cmacc_stmt_no_side_effects(struct db *db, int alt)
 
 /* this routine is called from comdb2 when all is well
    (we checked that all schemas are defined, etc.) */
-void fix_lrl_ixlen(void)
+void fix_lrl_ixlen_tran(tran_type *tran)
 {
     int tbl, ix;
     char namebuf[MAXTAGLEN + 1];
@@ -5558,10 +5558,10 @@ void fix_lrl_ixlen(void)
 
         if (bdb_have_llmeta()) {
             int ver;
-            ver = get_csc2_version(db->dbname);
+            ver = get_csc2_version_tran(db->dbname, tran);
             if (ver > 0) {
-                get_csc2_file(db->dbname, ver, &db->csc2_schema,
-                              &db->csc2_schema_len);
+                get_csc2_file_tran(db->dbname, ver, &db->csc2_schema,
+                                   &db->csc2_schema_len, tran);
             }
         } else {
             if (!db->csc2_schema)  
@@ -5571,6 +5571,11 @@ void fix_lrl_ixlen(void)
         }
     }
     /* TODO: schema information for foreign tables */
+}
+
+void fix_lrl_ixlen()
+{
+    fix_lrl_ixlen_tran(NULL);
 }
 
 static int tablecount = 0;
@@ -5764,8 +5769,7 @@ void free_dynamic_schema(const char *table, struct schema *dsc)
     free_tag_schema(dsc);
 }
 
-struct schema *new_dynamic_schema(struct db *db, const char *s, int len,
-                                  int trace)
+struct schema *new_dynamic_schema(const char *s, int len, int trace)
 {
     struct schema *sc;
     int toff = 6, tlen;
@@ -6538,7 +6542,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
     *dynschema = NULL;
     if (taglen >= 6 && strncasecmp(tagdescr, ".DYNT.", 6) == 0) {
         /* dynamic schema tag */
-        *dynschema = new_dynamic_schema(iq->usedb, (char *)tagdescr, taglen, 0);
+        *dynschema = new_dynamic_schema((char *)tagdescr, taglen, 0);
         if (!*dynschema) {
             if (iq->debug)
                 reqprintf(
@@ -6989,19 +6993,19 @@ static void clear_existing_schemas(struct db *db)
     freeschema(schema);
 }
 
-static int load_new_versions(struct db *db)
+static int load_new_versions(struct db *db, tran_type *tran)
 {
     int isc;
-    get_db_instant_schema_change(db, &isc);
+    get_db_instant_schema_change_tran(db, &isc, tran);
     if (!isc)
         return 0;
 
     int i;
-    int version = get_csc2_version(db->dbname);
+    int version = get_csc2_version_tran(db->dbname, tran);
     for (i = 1; i <= version; ++i) {
         char *csc2;
         int len;
-        get_csc2_file(db->dbname, i, &csc2, &len);
+        get_csc2_file_tran(db->dbname, i, &csc2, &len, tran);
         struct schema *schema = create_version_schema(csc2, i, db->dbenv);
         if (schema == NULL) {
             logmsg(LOGMSG_ERROR, "Could not create schema version: %d\n", i);
@@ -7013,16 +7017,16 @@ static int load_new_versions(struct db *db)
     return 0;
 }
 
-static int load_new_ondisk(struct db *db)
+static int load_new_ondisk(struct db *db, tran_type *tran)
 {
     int rc;
     int bdberr;
     int foundix = db->dbs_idx;
-    int version = get_csc2_version(db->dbname);
+    int version = get_csc2_version_tran(db->dbname, tran);
     int len;
     char *csc2 = NULL;
 
-    rc = get_csc2_file(db->dbname, version, &csc2, &len);
+    rc = get_csc2_file_tran(db->dbname, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
         logmsg(LOGMSG_ERROR, "rc: %d len: %d csc2:\n%s\n", rc, len, csc2);
@@ -7054,11 +7058,11 @@ static int load_new_ondisk(struct db *db)
     newdb->dtastripe = gbl_dtastripe;
 
     /* reopen db */
-    newdb->handle = bdb_open_more(db->dbname, thedb->basedir, newdb->lrl,
-                                  newdb->nix, newdb->ix_keylen, newdb->ix_dupes,
-                                  newdb->ix_recnums, newdb->ix_datacopy,
-                                  newdb->ix_collattr, newdb->ix_nullsallowed,
-                                  newdb->numblobs + 1, thedb->bdb_env, &bdberr);
+    newdb->handle = bdb_open_more_tran(
+        db->dbname, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
+        newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
+        newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
+        thedb->bdb_env, tran, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %08x bdberr %d\n", newdb->handle, bdberr);
@@ -7066,7 +7070,7 @@ static int load_new_ondisk(struct db *db)
         goto err;
     }
 
-    set_odh_options(newdb);
+    set_odh_options_tran(newdb, tran);
     transfer_db_settings(db, newdb);
     restore_constraint_pointers(db, newdb);
     bdb_close_only(db->handle, &bdberr);
@@ -7078,7 +7082,8 @@ static int load_new_ondisk(struct db *db)
     fix_constraint_pointers(db, newdb);
     memset(newdb, 0xff, sizeof(struct db));
     free(newdb);
-    fix_lrl_ixlen();
+    replace_db_idx(db, foundix, 1);
+    fix_lrl_ixlen_tran(tran);
     free(csc2);
     return 0;
 
@@ -7090,14 +7095,33 @@ err:
 int reload_after_bulkimport(struct db *db, tran_type *tran)
 {
     clear_existing_schemas(db);
-    if (load_new_ondisk(db)) {
+    if (load_new_ondisk(db, NULL)) {
         logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
         return 1;
     }
-    if (load_new_versions(db)) {
+    if (load_new_versions(db, NULL)) {
         logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
         return 1;
     }
+    db->tableversion = table_version_select(db, NULL);
+    update_dbstore(db);
+    create_sqlmaster_records(tran);
+    create_master_tables();
+    return 0;
+}
+
+int reload_db_tran(struct db *db, tran_type *tran)
+{
+    clear_existing_schemas(db);
+    if (load_new_ondisk(db, tran)) {
+        logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
+        return 1;
+    }
+    if (load_new_versions(db, tran)) {
+        logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
+        return 1;
+    }
+    db->tableversion = table_version_select(db, tran);
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_master_tables();

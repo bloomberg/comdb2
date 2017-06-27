@@ -601,6 +601,7 @@ const char *osql_reqtype_str(int type)
         return "delete";
     case OSQL_UPDATE:
         return "update";
+    case OSQL_SCHEMACHANGE: return "schemachange";
     default:
         return "???";
     }
@@ -628,15 +629,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int debug = 0;
     uuidstr_t us;
 
-#if 0
-   {
-      int type = 0;
-      buf_get(&type, sizeof(type), rpl, rpl+rplen);
+    int type = 0;
+    buf_get(&type, sizeof(type), rpl, rpl + rplen);
+    if (type == OSQL_SCHEMACHANGE) sess->iq->tranddl = 1;
 
-      printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n", rqid, type, 
-              osql_reqtype_str(type),
-              osql_log_time(), seq);
-   }
+#if 0
+    printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
+           rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
     key.rqid = rqid;

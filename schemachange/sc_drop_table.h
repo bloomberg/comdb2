@@ -14,10 +14,11 @@
    limitations under the License.
  */
 
-#ifndef INCLUDE_SC_FASTINIT_H
-#define INCLUDE_SC_FASTINIT_H
+#ifndef INCLUDE_SC_DROP_H
+#define INCLUDE_SC_DROP_H
 
-int delete_table(char *table);
-int do_fastinit_int(struct schema_change_type *s);
-int finalize_fastinit_table(struct schema_change_type *s);
+struct ireq;
+int do_drop_table(struct ireq *, tran_type *);
+int finalize_drop_table(struct ireq *, tran_type *);
+
 #endif

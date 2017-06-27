@@ -746,7 +746,7 @@ int local_replicant_write_clear(struct db *db)
 {
     struct schema *s;
     int rc;
-    void *trans = NULL;
+    tran_type *trans = NULL;
     long long seqno;
     int nretries = 0;
     struct ireq iq;

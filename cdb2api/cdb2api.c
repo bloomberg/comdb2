@@ -1049,6 +1049,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
 /* SOCKPOOL CODE START */
 
 static int sockpool_enabled = 1;
+static time_t sockpool_fail_time = 0;
 static int sockpool_fd = -1;
 
 struct sockaddr_sun {
@@ -1124,6 +1125,26 @@ static int open_sockpool_ll(void)
     return fd;
 }
 
+void cdb2_enable_sockpool()
+{
+    pthread_mutex_lock(&cdb2_sockpool_mutex);
+    sockpool_enabled = 1;
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
+/* Disable sockpool and close sockpool socket */
+void cdb2_disable_sockpool()
+{
+    pthread_mutex_lock(&cdb2_sockpool_mutex);
+    /* Close sockpool fd */
+    if ((sockpool_enabled == 1) && (sockpool_fd != -1)) {
+        close(sockpool_fd);
+        sockpool_fd = -1;
+    }
+    sockpool_enabled = -1;
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+}
+
 /* Get the file descriptor of a socket matching the given type string from
  * the pool.  Returns -1 if none is available or the file descriptor on
  * success. */
@@ -1132,13 +1153,19 @@ int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
     int fd = -1;
 
     pthread_mutex_lock(&cdb2_sockpool_mutex);
-    /* If we couldn't get this socket locally it may be available from the
-     * global socket pool. */
-    if (fd == -1 && sockpool_enabled) {
+    if (sockpool_enabled == 0) {
+        time_t current_time = time(NULL);
+        /* Check every 10 seconds. */
+        if ((current_time - sockpool_fail_time) > 10) {
+            sockpool_enabled = 1;
+        }
+    }
+    if (sockpool_enabled == 1) {
         if (sockpool_fd == -1) {
             sockpool_fd = open_sockpool_ll();
             if (sockpool_fd == -1) {
                 sockpool_enabled = 0;
+                sockpool_fail_time = time(NULL);
                 pthread_mutex_unlock(&cdb2_sockpool_mutex);
                 return -1;
             }
@@ -1190,7 +1217,7 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
                                  void *voidarg)
 {
     pthread_mutex_lock(&cdb2_sockpool_mutex);
-    if (sockpool_enabled) {
+    if (sockpool_enabled == 1) {
         /* Donate this socket to the global socket pool.  We know that the
          * mutex is held. */
         if (sockpool_fd == -1) {
@@ -2664,7 +2691,8 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                              &hndl->master, &hndl->num_hosts,
                              &hndl->num_hosts_sameroom
 #if WITH_SSL
-                             , &hndl->s_sslmode
+                             ,
+                             &hndl->s_sslmode
 #endif
                              );
             cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
