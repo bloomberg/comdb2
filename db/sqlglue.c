@@ -4674,6 +4674,13 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     int ignore_newer_updates =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SQL_QUERY_IGNORE_NEWER_UPDATES);
     int error = 0;
+    int snapshot_file = 0;
+    int snapshot_offset = 0;
+
+    if (!clnt->snapshot && clnt->sql_query && clnt->sql_query->snapshot_info) {
+        snapshot_file = clnt->sql_query->snapshot_info->file;
+        snapshot_offset = clnt->sql_query->snapshot_info->offset;
+    }
 
     init_fake_ireq(thedb, &iq);
     iq.usedb = thedb->dbs[0]; /* this is not used but required */
@@ -4686,8 +4693,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
 
     case TRANLEVEL_SNAPISOL:
         clnt->dbtran.shadow_tran = trans_start_snapisol(
-            &iq, clnt->bdb_osql_trak, clnt->snapshot, clnt->snapshot_file,
-            clnt->snapshot_offset, &error);
+            &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
+            snapshot_offset, &error);
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_snapisol error %d\n", __func__,
@@ -4717,8 +4724,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
          * and updates will have visible effects otherwise
          */
         clnt->dbtran.shadow_tran = trans_start_serializable(
-            &iq, clnt->bdb_osql_trak, clnt->snapshot, clnt->snapshot_file,
-            clnt->snapshot_offset, &error);
+            &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
+            snapshot_offset, &error);
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_serializable error\n", __func__);
