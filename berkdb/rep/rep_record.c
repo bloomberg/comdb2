@@ -5120,23 +5120,6 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                     break;
                 }
 
-                if (txn_rl_args->prev_lsn.file < file ||
-                    (txn_rl_args->prev_lsn.file == file &&
-                     txn_rl_args->prev_lsn.offset <= offset)) {
-                    if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
-                                            "break-loop because prev-lsn "
-                                            "(%d:%d) <= target-lsn "
-                                            "(%d:%d)\n",
-                               (uint32_t)pthread_self(), __func__, __LINE__,
-                               lsn.file, lsn.offset, txn_rl_args->prev_lsn.file,
-                               txn_rl_args->prev_lsn.offset, file, offset);
-                    }
-                    __os_free(dbenv, txn_rl_args);
-                    done = 1;
-                    break;
-                }
-
                 if (txn_rl_args->opcode == TXN_COMMIT &&
                     txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT) {
                     if (*n_lsns + 1 >= curlim) {
