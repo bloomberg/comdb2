@@ -15,13 +15,18 @@
 #include <ctype.h>
 #include <signal.h>
 #include <assert.h>
-
+#include <testutil.h>
+#include <nemesis.h>
 #include <cdb2api.h>
 
-enum testtypes {
-    PARTITION_TEST          = 0x00000001
-   ,SIGSTOP_TEST            = 0x00000002
-   ,CLOCK_TEST              = 0x00000004
+enum eventtypes {
+    PARTITION_EVENT         = 0x00000001
+   ,SIGSTOP_EVENT           = 0x00000002
+   ,CLOCK_EVENT             = 0x00000004
+};
+
+enum testbasetype {
+    INSERT_TEST             = 1
 };
 
 int nthreads = 5;
@@ -35,16 +40,11 @@ int largest = -1;
 int allocated = 10000000;
 int max_retries = 1000000;
 int *state;
-uint32_t which_tests = 0;
+uint32_t which_events = 0;
 pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-char *master_node = NULL;
-char *readmach = NULL;
 char *dbname = NULL;
 char *cltype = "dev";
-char **cluster = NULL;
-int *ports = NULL;
 char *argv0 = NULL;
-int numnodes = 0;
 int fixtest_after = 0;
 int partition_master = 1;
 int is_hasql = 1;
@@ -76,7 +76,7 @@ void usage(FILE *f)
 {
     fprintf(f, "Usage: %s [ opts ]\n", argv0);
     fprintf(f, "        -d <dbname>         - set name of the test database\n");
-    fprintf(f, "        -G <test>           - add <test>: test can be 'partition', 'sigstop', 'clock'\n");
+    fprintf(f, "        -G <event>          - add event type ('partition', 'sigstop', or 'clock')\n");
     fprintf(f, "        -T <numthd>         - set the number of threads\n");
     fprintf(f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
     fprintf(f, "        -P                  - don't partition anything\n");
@@ -116,107 +116,7 @@ enum {
     UNKNOWN   = 6
 };
 
-#define MAXCL 64
 
-void setcluster(void)
-{
-    int rc, count=0;
-    cdb2_hndl_tp *db;
-    while ((rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM))!=0) {
-        fprintf(stderr, "%s cdb2_open returns %d\n", __func__, rc);
-        cdb2_close(db);
-        if (++count > 100)
-            myexit(__func__, __LINE__, 1);
-        sleep (1);
-    }
-
-    cluster = (char **)malloc(sizeof (char *) * MAXCL);
-    ports = (int *)malloc(sizeof(int) * MAXCL);
-
-    cdb2_cluster_info(db, cluster, ports, MAXCL, &numnodes);
-    cdb2_close(db);
-}
-
-#define FMTSZ 512
-void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line, const char *format, ...)
-{
-    va_list ap;
-    char fmt[FMTSZ];
-    char buf[128];
-
-    fmt[0] = '\0';
-
-    if (strncasecmp(format, "XXX ", 3) == 0) {
-        strcat(fmt, "XXX ");
-    }
-
-    snprintf(buf, sizeof(buf), "td %u ", (uint32_t)pthread_self());
-    strcat(fmt, buf);
-
-    snprintf(buf, sizeof(buf), "handle %p ", db);
-    strcat(fmt, buf);
-
-    snprintf(buf, sizeof(buf), "%s:%d ", func, line);
-    strcat(fmt, buf);
-    
-    snprintf(buf, sizeof(buf), "cnonce '%s' ", db ? cdb2_cnonce(db) : "(null)");
-    strcat(fmt, buf);
-
-    int file = -1, offset = -1;
-    if (db) 
-        cdb2_snapshot_file(db, &file, &offset);
-    snprintf(buf, sizeof(buf), "snapshot_lsn [%d][%d] ", file, offset);
-    strcat(fmt, buf);
-
-    strcat(fmt, format);
-    va_start(ap, format);
-    vfprintf(f, fmt, ap);
-    va_end(ap);
-}
-
-
-#if 0
-int countmachs(const char *clusterln)
-{
-    int len=strlen(clusterln), cnt=1, i;
-    for (i=0 ; i<len;i++)
-        cnt+=(clusterln[i] == ',');
-    return cnt;
-}
-
-void setcluster(const char *clusterln)
-{
-    int cnt, j, idx=0, slen = strlen(clusterln), takenext;
-    char **newcl, *clstr = strdup(clusterln);
-
-    cnt = countmachs(clusterln);
-    newcl = (char **)malloc(sizeof(char *) * cnt);
-
-    takenext=1;
-
-    for(j=0;j<slen;j++)
-    {
-        if(takenext)
-            newcl[idx++] = &clstr[j];
-
-        if(clstr[j] == ',')
-        {
-            clstr[j] = '\0';
-            takenext = 1;
-        }
-        else
-            takenext = 0;
-    }
-
-    if(cluster)
-    {
-        free(&cluster[0]);
-        free(cluster);
-    }
-    cluster = newcl;
-    numnodes = cnt;
-}
-#endif
 
 int insert(cdb2_hndl_tp **indb, const char *readnode) {
     int i, val;
@@ -237,11 +137,6 @@ int insert(cdb2_hndl_tp **indb, const char *readnode) {
     if (value >= allocated) {
         fprintf(stderr, "Exceeded allocated amount: exiting\n");
         myexit(__func__, __LINE__, 1);
-        /*
-        state = realloc(state, sizeof(int) * (allocated * 2 + 10000));
-        memset(&state[allocated], 0, allocated + 10000);
-        allocated = allocated * 2 + 10000;
-        */
     }
     pthread_mutex_unlock(&lk);
 
@@ -506,172 +401,6 @@ void* thd(void *arg) {
     return NULL;
 }
 
-void breakclocks(int maxskew) {
-
- // cur=$(date +%s) ; maxskew=XXX ; newtime=$(( cur + (maxskew / 2) - (RANDOM % maxskew) )) ; sudo date "+%s" -s @$newtime
-    char cmd[1024];
-    for (int x=0 ; x < numnodes ; x++) {
-        sprintf(cmd, "ssh %s \"cur=\\$(date +%%s) ; maxskew=%d ; "
-                     "newtime=\\$(( cur + (maxskew / 2) - (RANDOM %% maxskew) )) ; "
-                     "sudo date \\\"+%%s\\\" -s \\@\\$newtime\" < /dev/null\n",
-                     cluster[x], maxskew);
-        printf("%s", cmd);
-        system(cmd);
-    }
-
-}
-
-void fixclocks() {
-    char cmd[1024];
-    for (int x=0 ; x < numnodes ; x++) {
-        sprintf(cmd, "ssh %s \"sudo service ntp stop ; sudo service ntp start\" < /dev/null\n", 
-                cluster[x]);
-        printf("%s", cmd);
-        fflush(stdout);
-        system(cmd);
-    }
-}
-
-void signaldb(int signal, int all) {
-    char cmd[1024];
-    int *node = alloca(numnodes * sizeof(int));
-
-    bzero(node, numnodes * sizeof(int));
-    int n1 = -1, n2, i;
-
-    if (!all) {
-        if (master_node && partition_master)
-        {
-            for(i=0;i<numnodes;i++)
-            {
-                if (master_node && !strcmp(cluster[i], master_node))
-                {
-                    n1 = i;
-                    break;
-                }
-            }
-
-            if (n1 == -1)
-            {
-                fprintf(stderr, "Error: couldn't find master (?)\n");
-                abort();
-            }
-        }
-        else
-            n1 = rand() % numnodes;
-
-        node[n1] = 1;
-        do {
-            n2 = rand() % numnodes;
-        } while (n2 == n1);
-        node[n2] = 1;
-    }
-
-    printf("signaling %d on ", signal);
-    for (int x = 0 ; x < numnodes ; x++) {
-        if (node[x] || all) {
-            printf("%s ", cluster[x]);
-        }
-    }
-    printf("\n");
-
-    for (int broken=0 ; broken < numnodes ; broken++) {
-        if (node[broken] || all) {
-            /*
-            sprintf(cmd, "ssh %s \"sudo echo %d \\$(cat /tmp/%s.pid)\" < /dev/null\n", 
-                    cluster[broken], signal, dbname);
-                    */
-
-            sprintf(cmd, "ssh %s \"sudo kill -%d \\$(cat /tmp/%s.pid)\" < /dev/null\n", 
-                    cluster[broken], signal, dbname);
-            printf("%s", cmd);
-            fflush(stdout);
-            system(cmd);
-        }
-    }
-}
-
-void breaknet(void) {
-    char cmd[1024];
-    char c[256];
-    int *node = alloca(numnodes * sizeof(int));
-
-    bzero(node, numnodes * sizeof(int));
-    int n1 = -1, n2, i;
-
-    if (master_node && partition_master)
-    {
-        for(i=0;i<numnodes;i++)
-        {
-            if (master_node && !strcmp(cluster[i], master_node))
-            {
-                n1 = i;
-                break;
-            }
-        }
-
-        if (n1 == -1)
-        {
-            fprintf(stderr, "Error: couldn't find master (?)\n");
-            abort();
-        }
-    }
-    else
-        n1 = rand() % numnodes;
-
-    node[n1] = 1;
-    do {
-        n2 = rand() % numnodes;
-    } while (n2 == n1);
-    node[n2] = 1;
-
-    printf("cutting off %s %s from cluster\n", cluster[n1], cluster[n2]);
-
-    for (int broken = 0; broken < numnodes; broken++) {
-        if (node[broken]) {
-            cmd[0] = 0;
-            sprintf(c,  "ssh %s \"", cluster[broken]);
-            strcat(cmd, c);
-            for (int working = 0; working < numnodes; working++) {
-                if (!node[working]) {
-                    sprintf(c, "sudo iptables -A INPUT -s %s -p tcp --destination-port %d -j DROP -w;", cluster[working], ports[working]);
-                    strcat(cmd, c);
-                    sprintf(c, "sudo iptables -A INPUT -s %s -p udp --destination-port %d -j DROP -w;", cluster[working], ports[working]);
-                    strcat(cmd, c);
-                }
-            }
-            strcat(cmd, "\" < /dev/null");
-            printf("%s\n", cmd);
-            system(cmd);
-        }
-    }
-}
-
-void fixnet(void) {
-    char cmd[2048];
-    char c[256];
-
-    for (int count = 0 ; count < 2 ; count++) {
-        for (int i = 0; i < numnodes; i++) {
-
-            cmd[0] = 0;
-            sprintf(c,  "ssh %s \"", cluster[i]);
-            strcat(cmd, c);
-
-            for (int j = 0 ; j < numnodes; j++) {
-                sprintf(c, "sudo iptables -D INPUT -s %s -p tcp --destination-port %d -j DROP -w;", cluster[j], ports[j]);
-                strcat(cmd, c);
-                sprintf(c, "sudo iptables -D INPUT -s %s -p udp --destination-port %d -j DROP -w;", cluster[j], ports[j]);
-                strcat(cmd, c);
-            }
-            //strcat(cmd, "\" >/dev/null 2>&1");
-            strcat(cmd, "\" < /dev/null");
-            printf("%s\n", cmd);
-            system(cmd);
-        }
-    }
-}
-
 void check(void) {
     cdb2_hndl_tp *db;
     int rc, reopen_count=0;
@@ -866,7 +595,7 @@ int prepare_select_bug(void)
             }
             inserted_this_txn++;
 
-            if (inserted_this_txn >= INSERTS_FOR_T1_BUGGED) {
+            if (inserted_this_txn >= 100000) {
                 rc = cdb2_run_statement(db, "commit");
                 if (rc) {
                     tdprintf(stderr, db, __func__, __LINE__, "XXX %s line %d: commit rc %d %s\n", __func__, __LINE__, 
@@ -1232,13 +961,13 @@ int main(int argc, char *argv[]) {
                 break;
             case 'G':
                 if (0 == strcasecmp(optarg, "partition")) {
-                    which_tests |= PARTITION_TEST;
+                    which_events |= PARTITION_EVENT;
                 }
                 else if (0 == strcasecmp(optarg, "sigstop")) {
-                    which_tests |= SIGSTOP_TEST;
+                    which_events |= SIGSTOP_EVENT;
                 }
                 else if (0 == strcasecmp(optarg, "clock")) {
-                    which_tests |= CLOCK_TEST;
+                    which_events |= CLOCK_EVENT;
                 }
                 else {
                     fprintf(stderr, "Unknown test: %s\n", optarg);
@@ -1269,11 +998,6 @@ int main(int argc, char *argv[]) {
             case 'i':
                 inserts_per_txn = atoi(optarg);
                 break;
-#if 0
-            case 'c':
-                setcluster(optarg);
-                break;
-#endif
             case 'h':
                 is_hasql = 1;
                 break;
@@ -1317,17 +1041,15 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    if (which_tests == 0){
+    if (which_events == 0){
         fprintf(stderr, "NO TESTS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
     }
 
-    setcluster();
+    struct nemesis *n = nemesis_open(dbname, cltype, partition_master ? 
+            PARTITION_MASTER : 0);
+    fixall(n);
 
-    signaldb(SIGCONT, 1);
-    fixnet();
-    fixclocks();
-
-    master_node = master();
+    char *master_node = master();
     if (master_node)
         printf("master is %s\n", master_node);
     else
@@ -1354,27 +1076,27 @@ int main(int argc, char *argv[]) {
     }
     sleep(runtime / 2 - 1);
 
-    if (which_tests & PARTITION_TEST) {
-        breaknet();
+    if (which_events & PARTITION_EVENT) {
+        breaknet(n);
     }
-    if (which_tests & SIGSTOP_TEST) {
-        signaldb(SIGSTOP, 0);
+    if (which_events & SIGSTOP_EVENT) {
+        signaldb(n, SIGSTOP, 0);
     }
-    if (which_tests & CLOCK_TEST) {
-        breakclocks(max_clock_skew); 
+    if (which_events & CLOCK_EVENT) {
+        breakclocks(n, max_clock_skew); 
     } 
 
     sleep(runtime / 2 - 1);
 
     if (!fixtest_after) {
-        if (which_tests & PARTITION_TEST) {
-            fixnet();
+        if (which_events & PARTITION_EVENT) {
+            fixnet(n);
         }
-        if (which_tests & SIGSTOP_TEST) {
-            signaldb(SIGCONT, 1);
+        if (which_events & SIGSTOP_EVENT) {
+            signaldb(n,SIGCONT, 1);
         }
-        if (which_tests & CLOCK_TEST) {
-            fixclocks();
+        if (which_events & CLOCK_EVENT) {
+            fixclocks(n);
         }
     }
 
@@ -1389,11 +1111,11 @@ int main(int argc, char *argv[]) {
         }
     }
     if (fixtest_after) {
-        if (which_tests & PARTITION_TEST) {
-            fixnet();
+        if (which_events & PARTITION_EVENT) {
+            fixnet(n);
         }
-        if (which_tests & SIGSTOP_TEST) {
-            signaldb(SIGCONT, 1);
+        if (which_events & SIGSTOP_EVENT) {
+            signaldb(n, SIGCONT, 1);
         }
     }
     sleep(2);
