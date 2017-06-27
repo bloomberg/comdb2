@@ -1519,7 +1519,7 @@ cdb2sql> select greet_name(sex, firstName, lastName) as hi from persons`
 ```
 
 The `DROP LUA SCALAR FUNCTION func-name` statement disassociates the stored procedure from SQL function. 
-The stored procedure still exists, its just not callable as a function from SQL.
+The stored procedure still exists, but it's not callable as a function from SQL.
 
 ### Aggregate function
 
@@ -1583,4 +1583,4 @@ cdb2sql> select median(i) from t;
 (median(i)=3)
 ```
 
-The `DROP LUA AGGREGATE FUNCTION func-name` statement disassociates the stored procedure from SQL function. The stored procedure still exists, its just not callable as a function from SQL.
+The `DROP LUA AGGREGATE FUNCTION func-name` statement disassociates the stored procedure from SQL function. The stored procedure still exists, but it's not callable as a function from SQL.

@@ -44,8 +44,8 @@ SQL statements run on a replicant with short duration locks only.  Locks are alw
 Rows in Comdb2 are always identified by a row id (internally called a *genid*).  There are 3 things that can be done to a record: 
 
   * It can be inserted (where the master will generate a brand new genid).
-  * It can be deleted. The record to be deleted is identified by it's table and genid.  The record ceases to exist.  The genid is never reused.
-  * It can be updated. The record to be updated is also identified by it's table and genid.  Updating the record changes the genid.  The old value is never reused.
+  * It can be deleted. The record to be deleted is identified by its table and genid.  The record ceases to exist.  The genid is never reused.
+  * It can be updated. The record to be updated is also identified by its table and genid.  Updating the record changes the genid.  The old value is never reused.
 
 Since ```UPDATE``` and ```DELETE``` statements run on replicants, and do not acquire write locks, it's possible that records they refer to no longer exist on the master at the time it executes the transaction. Consider for example an application that runs the same bulk delete job at the same time on 2 replicants.  Comdb2 calls this a *verify error*.  There are 2 ways to deal with a verify error:
 
@@ -238,11 +238,11 @@ insert 51.  The history above is not serializable.
 
 ## Coherency Leases
 
-A <i>coherency lease</i> is the mechanism by which a cluster's master permits a replicant to service client requests for a period of time.  A lease gives a replicant permission to service requests for a period of time by extending it's <i>coherency_timestamp</i> to some point in the future beyond the replicants current clocktime.  Replicant leases are issued by the master over UDP. A lease contains the master's timestamp when it decided to issue the lease, and the duration of the lease.  When a replicant receives the lease, it updates it's <i>coherency_timestamp</i> to 
+A <i>coherency lease</i> is the mechanism by which a cluster's master permits a replicant to service client requests for a period of time.  A lease gives a replicant permission to service requests for a period of time by extending its <i>coherency_timestamp</i> to some point in the future beyond the replicants current clocktime.  Replicant leases are issued by the master over UDP. A lease contains the master's timestamp when it decided to issue the lease, and the duration of the lease.  When a replicant receives the lease, it updates its <i>coherency_timestamp</i> to 
 
 ``MIN(master-timestamp-on-lease,current-replicant-system-time) + lease-duration``
 
-Because this system is time-based, it is subject to clock-skew.  Specifically, if a replicant's clock is ahead the master's clock by an amount larger than the lease itself then the lease itself will never exceed the replicant's current-time, and the replicant will never be able to service requests.  A more serious situation occurs if the lease itself is delayed on the network for a period of time exceeding it's duration: if the replicant's clock trails the master's, then this expired lease could incorrectly be deemed as valid, allowing an incoherent replicant to service requests.
+Because this system is time-based, it is subject to clock-skew.  Specifically, if a replicant's clock is ahead the master's clock by an amount larger than the lease itself then the lease itself will never exceed the replicant's current-time, and the replicant will never be able to service requests.  A more serious situation occurs if the lease itself is delayed on the network for a period of time exceeding its duration: if the replicant's clock trails the master's, then this expired lease could incorrectly be deemed as valid, allowing an incoherent replicant to service requests.
 
 Because of this, comdb2, like other distributed systems, requires that the clock-skew between cluster nodes is bound.  A reasonable lease duration will be substantially greater (an order of magnitude or larger) than the maximum clock skew.  The default lease duration is 500 ms, but this can be modified in your database's lrl file via the <i>COHERENCY_LEASE</i> attribute:
 

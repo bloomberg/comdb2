@@ -91,7 +91,7 @@ size of the value, but are null-terminated.
 
 Comdb2 datetime types store the amount of time that has passed since the start of the time epoch 
 (```1970-01-01T00:00:00.000 GMT```).  On the way into the database, datetime values specify the local timezone.  Time 
-is converted from that timezone to UTC and stored.  At query time, the application will pass it's local timezone.
+is converted from that timezone to UTC and stored.  At query time, the application will pass its local timezone.
 Times are converted to this timezone before being sent to the application.  Timezone information is not stored
 with the time value.  Datetime can be stored with either millisecond or microsecond precision, depending on the
 type specified in the table schema.

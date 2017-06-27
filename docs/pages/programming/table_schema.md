@@ -7,7 +7,7 @@ permalink: table_schema.html
 
 ## Overview
 
-Unlike many other relational database systems, Comdb2 does not use SQL for it's data definition language.  The language it uses is
+Unlike many other relational database systems, Comdb2 does not use SQL for its data definition language.  The language it uses is
 declarative rather than imperative.  The entire schema per table is presented to the database at once.  It's up to the database to
 figure out which indices to add/remove/modify, which fields to grow, shrink, etc.  A table definition has a several sections: the 
 [constants](#constants-section), the [table definition](#schema-section), the [keys](#key-section), and the [constraints](#constraints-section). 
@@ -44,7 +44,7 @@ The table definition lists the fields present in the table, along with their def
 are allowed.  NULLs are not allowed by default.  The section is indicated with the ```schema``` keyword, and the list
 of fields enclosed by braces.
 
-Field types are explained in the [data types](datatypes.html) section.  A field is defined by listing it's type, 
+Field types are explained in the [data types](datatypes.html) section.  A field is defined by listing its type, 
 name, size (if allowed/required by type), followed by optional field keywords.
 
 A example table definition looks like this:
@@ -295,8 +295,8 @@ be convertible.  The local key can be a prefix of the foreign key, and the forei
 local key.
 
 A key can point at more than one key by specifying multiple ```"REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"``` 
-items on the same line delimited by white-space.  A key can point to a key within it's own table by specifying 
-it's own table name in ```REFERENCED_TABLE_NAME```.
+items on the same line delimited by white-space.  A key can point to a key within its own table by specifying 
+its own table name in ```REFERENCED_TABLE_NAME```.
 
 Cascading deletes are supported on a constraint by adding the text ```on delete cascade``` (all in lower case) to 
 the end of the constraint line.  Cascading updates are supported on a constraint by adding the text 
