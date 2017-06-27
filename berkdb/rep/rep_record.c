@@ -50,6 +50,7 @@ static const char revid[] =
 #include <epochlib.h>
 #include "schema_lk.h"
 #include "logmsg.h"
+#include <errno.h>
 
 
 #ifndef TESTSUITE
@@ -5130,9 +5131,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                                  "snapshot (realloc "
                                                  "failure at trns %d)\n",
                                    __FILE__, __LINE__, *n_lsns);
-                            ret = 22
-                                /*BDBERR_TRANTOOCOMPLEX */
-                                ;
+                            ret = ENOMEM;
                             if (lsns) free(lsns);
                             lsns = NULL;
                             __os_free(dbenv, txn_rl_args);
@@ -5209,10 +5208,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                 "%s:%d Too complex snapshot (realloc failure at trns %d)\n",
 							    __FILE__, __LINE__,
 							    *n_lsns);
-                                                        ret = 22
-                                                            /*BDBERR_TRANTOOCOMPLEX
-                                                               */
-                                                            ;
+                                                        ret = ENOMEM;
                                                         if (lsns) free(lsns);
                                                         lsns = NULL;
                                                         __os_free(dbenv,
@@ -5297,10 +5293,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                                                            "%d)\n",
                                                            __FILE__, __LINE__,
                                                            *n_lsns);
-                                                    ret = 22
-                                                        /*BDBERR_TRANTOOCOMPLEX
-                                                           */
-                                                        ;
+                                                    ret = ENOMEM;
                                                     if (lsns) free(lsns);
                                                     lsns = NULL;
                                                     __os_free(dbenv, txn_args);
