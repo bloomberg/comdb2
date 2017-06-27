@@ -4692,9 +4692,9 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         goto done;
 
     case TRANLEVEL_SNAPISOL:
-        clnt->dbtran.shadow_tran = trans_start_snapisol(
-            &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
-            snapshot_offset, &error);
+        clnt->dbtran.shadow_tran =
+            trans_start_snapisol(&iq, clnt->bdb_osql_trak, clnt->snapshot,
+                                 snapshot_file, snapshot_offset, &error);
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_snapisol error %d\n", __func__,
@@ -4723,9 +4723,9 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
          * the same data (inserts are easily skipped, but deletes
          * and updates will have visible effects otherwise
          */
-        clnt->dbtran.shadow_tran = trans_start_serializable(
-            &iq, clnt->bdb_osql_trak, clnt->snapshot, snapshot_file,
-            snapshot_offset, &error);
+        clnt->dbtran.shadow_tran =
+            trans_start_serializable(&iq, clnt->bdb_osql_trak, clnt->snapshot,
+                                     snapshot_file, snapshot_offset, &error);
 
         if (!clnt->dbtran.shadow_tran) {
             logmsg(LOGMSG_ERROR, "%s:trans_start_serializable error\n", __func__);
