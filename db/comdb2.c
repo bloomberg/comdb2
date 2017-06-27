@@ -4196,6 +4196,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "notimeout") == 0) {
         logmsg(LOGMSG_INFO, "disabling timeouts\n");
         gbl_notimeouts = 1;
+    } else if (tokcmp(tok, ltok, "enable_cursor_ser") == 0) {
+        logmsg(LOGMSG_INFO, "enabling cursor serialization\n");
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_ENABLECURSORSER, 1);
+    } else if (tokcmp(tok, ltok, "enable_cursor_pause") == 0) {
+        logmsg(LOGMSG_INFO, "enabling cursor pause\n");
+        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_ENABLECURSORPAUSE, 1);
     } else if (tokcmp(tok, ltok, "setsqlattr") == 0) {
         char *attrname = NULL;
         char *attrval = NULL;
