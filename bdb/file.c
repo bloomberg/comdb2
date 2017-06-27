@@ -8100,6 +8100,12 @@ static int get_prev_checkpoint(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn,
   if (rc)
     goto done;
 
+  if(unlikely(argp->last_ckp.file == 0)) {
+    /* fresh created dbs can have this */
+    rc = -1;
+    goto done;
+  }
+
   *retlsn = argp->last_ckp;
 
 done:
@@ -8286,6 +8292,13 @@ void populate_deleted_files(bdb_state_type *bdb_state) {
   }
   print_fnames_hash(fs, "LLLL");
 
+  /* skip empty checkpoints */
+  if(hash_get_num_entries(fs->fnames) == 0) {
+    free_file_set(fs);
+    fs = NULL;
+  }
+
+
   do {
     /* the search stopped at txn_ckp; we can retrieve previous
        checkpoint's fileset*/
@@ -8297,14 +8310,17 @@ void populate_deleted_files(bdb_state_type *bdb_state) {
     prev_fs = construct_file_set(dbenv, logc, &prev_lsn);
 
     /* compare old vs new, and queue what's missing */
-    rc = compare_filesets(bdb_state, fs, &lsn, prev_fs, &prev_lsn);
-    if (rc) {
-      logmsg(LOGMSG_ERROR, "%s: failed comparing file sets\n", __func__);
+    if(fs) {
+        rc = compare_filesets(bdb_state, fs, &lsn, prev_fs, &prev_lsn);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed comparing file sets\n", __func__);
+        }
     }
 
     lsn = prev_lsn;
 
-    free_file_set(fs);
+    if(fs)
+        free_file_set(fs);
     fs = prev_fs;
     prev_fs = NULL;
 
