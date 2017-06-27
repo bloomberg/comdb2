@@ -176,7 +176,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  &>> $insfl)
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  2>> $insfl)
         if [ "$out" = "1" ]; then 
             let j=j+1
             continue
