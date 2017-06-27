@@ -5089,8 +5089,8 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 		goto err;
 	}
 
-        while (!done && (!file || (lsn.file > file || (lsn.file == file &&
-                                                       lsn.offset > offset)))) {
+        while (!done &&
+               (lsn.file > file || (lsn.file == file && lsn.offset > offset))) {
             LOGCOPY_32(&rectype, mylog.data);
             switch (rectype) {
             case DB___txn_regop_rowlocks: {
@@ -5338,8 +5338,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                     done = 1;
         }
 
-        if (ret == DB_NOTFOUND)
-		ret = 0;
+        if (ret == DB_NOTFOUND) ret = 0;
 
 err:
     if ((t_ret = __log_c_close(logc)) != 0 && ret == 0) {
