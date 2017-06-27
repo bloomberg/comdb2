@@ -875,8 +875,8 @@ struct dbenv {
     /*sibling info*/
     int nsiblings;
     char *sibling_hostname[MAXSIBLINGS];
-    int sibling_node[MAXSIBLINGS];
-    int sibling_flags[MAXSIBLINGS];
+    int sibling_node[MAXSIBLINGS];  /* currently not used */
+    int sibling_flags[MAXSIBLINGS]; /* currently not used */
     int sibling_port[MAXSIBLINGS][MAXNETS];
     int listen_fds[MAXNETS];
     /* banckend db engine handle for replication */
@@ -2908,6 +2908,10 @@ void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
+void reqlog_add_table(struct reqlogger *logger, const char *table);
+void reqlog_set_error(struct reqlogger *logger, const char *error);
+void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
+void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);

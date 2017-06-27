@@ -11,13 +11,13 @@ echo Starting $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
 mkdir -p ${TESTDIR}/logs/
 
 function call_unsetup {
-    [[ $TESTCASE == "crle" ]] && return
+    [[ $COMDB2_UNITTEST == 1 ]] && return
     ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
 }
 
 
 function call_setup {
-    [[ "$TESTCASE" == "crle" ]] && return
+    [[ $COMDB2_UNITTEST == 1 ]] && return
     timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
     rc=$?
     glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`

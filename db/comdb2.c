@@ -352,6 +352,7 @@ int gbl_maxretries = 500;              /* thats a lotta retries */
 int gbl_maxblobretries =
     0; /* everyone assures me this can't happen unless the data is corrupt */
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
+char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
 int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
@@ -410,6 +411,7 @@ int gbl_replicate_local_concurrent = 0;
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;
 int gbl_check_client_tags = 1;
+char *gbl_lrl_fname = NULL;
 char *gbl_spfile_name = NULL;
 int gbl_max_lua_instructions = 10000;
 
@@ -463,6 +465,7 @@ int gbl_sql_tranlevel_sosql_pref = 1; /* set this to 1 if everytime the
                                        * means sosql; this does not switch
                                        * all the users to sosql */
 
+int gbl_test_blkseq_replay_code = 0;
 int gbl_test_curtran_change_code = 0;
 int gbl_enable_block_offload = 0;
 int gbl_enable_pageorder_trace = 0;
@@ -5658,20 +5661,14 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
 
 static struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
-    struct dbenv *dbenv;
-    int redo_as_lrl = 0;
-    int found_tables = 0;
-    const char *envlrlname;
     int rc;
-
-    dbenv = calloc(1, sizeof(*dbenv));
+    struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
     if (dbenv == 0) {
         logmsg(LOGMSG_FATAL, "newdb:calloc dbenv");
         return NULL;
     }
 
     dbenv->cacheszkbmin = 65536;
-
     dbenv->bdb_attr = bdb_attr_create();
 
     /* default retry = 10 seconds.  this used to be 180 seconds (3 minutes)
@@ -5712,7 +5709,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     if (lrlname)
-       pre_read_lrl_file(dbenv, lrlname, dbname);
+        pre_read_lrl_file(dbenv, lrlname, dbname);
 
     /* if we havn't been told not to load the /bb/bin/ config files */
     if (!gbl_nogbllrl) {
@@ -5751,47 +5748,32 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     /* local defaults */
-    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname,
-                       0 /*not required*/)) {
+    if (!read_lrl_file(dbenv, "comdb2_local.lrl", dbname, 0 /*not required*/)) {
         return 0;
     }
 
     /* if env variable is set, process another lrl.. */
-    envlrlname = getenv("COMDB2_CONFIG");
-    if(envlrlname)
-    {
-        if(!read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
-            return 0;
-        }
-    }
-
-    if (found_tables || redo_as_lrl) {
-        logmsg(LOGMSG_ERROR, "bad config .lrl files - found schema data where it "
-                        "shouldn't be!\n");
+    const char *envlrlname = getenv("COMDB2_CONFIG");
+    if(envlrlname && !read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
         return 0;
     }
 
     /* this database */
-    if (lrlname) {
-        if (!read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
-            return 0;
-        }
+    if (lrlname && !read_lrl_file(dbenv, lrlname, dbname, 1 /*required*/)) {
+        return 0;
     }
 
     logmsg(LOGMSG_INFO, "database %s starting\n", dbenv->envname);
 
-    /* if no tables were found, switch to keyless mode as long as no mode has
-     * been selected yet */
-    if (!found_tables) {
-        bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
-    }
+    /* switch to keyless mode as long as no mode has been selected yet */
+    bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL) {
-        if (gbl_dbdir) dbenv->basedir = gbl_dbdir;
-        if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
-        if (dbenv->basedir == NULL)
-            dbenv->basedir = comdb2_location("database", "%s", dbname);
-    }
+    if (dbenv->basedir == NULL && gbl_dbdir) 
+        dbenv->basedir = gbl_dbdir;
+    if (dbenv->basedir == NULL) 
+        dbenv->basedir = getenv("COMDB2_DB_DIR");
+    if (dbenv->basedir == NULL)
+        dbenv->basedir = comdb2_location("database", "%s", dbname);
 
     if (dbenv->basedir==NULL) {
         logmsg(LOGMSG_ERROR, "must specify database directory\n");
@@ -5799,24 +5781,32 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     }
 
     if (lrlname == NULL) {
-       char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
-       if (access(lrl, F_OK) == 0) {
-          if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
-             return 0;
-          }
-          lrlname = lrl;
-       }
-       else
-          free(lrlname);
+        char *lrl = comdb2_asprintf("%s/%s.lrl", dbenv->basedir, dbname);
+        if (access(lrl, F_OK) == 0) {
+            if (read_lrl_file(dbenv, lrl, dbname, 0) == NULL) {
+                return 0;
+            }
+            lrlname = lrl;
+        }
+        else
+            free(lrlname);
     }
 
-    if (gbl_create_mode && dbenv->basedir) {
-       /* make sure the database directory exists! */
-       rc = mkdir(dbenv->basedir, 0774);
-       if (rc && errno != EEXIST) {
-          logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
-          /* continue, this will make us fail later */
-       }
+    if (gbl_create_mode) {
+        /* make sure the database directory exists! */
+        rc = mkdir(dbenv->basedir, 0774);
+        if (rc && errno != EEXIST) {
+            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
+            /* continue, this will make us fail later */
+        }
+    }
+    else {
+        struct stat sb;
+        stat(dbenv->basedir, &sb);
+        if (! S_ISDIR(sb.st_mode)) {
+            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
+            return 0;
+        }
     }
 
     tz_hash_init();
@@ -5849,8 +5839,6 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     listc_init(&dbenv->sqlhist, offsetof(struct sql_hist, lnk));
     dbenv->master = NULL; /*no known master at this point.*/
     dbenv->errstaton = 1; /* ON */
-    ;
-    bzero(dbenv->sibling_flags, sizeof(char) * MAXSIBLINGS);
 
     return dbenv;
 }
@@ -6542,9 +6530,8 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    char cwd[256];               /* start directory */
     /* get my working directory */
-    if (getcwd(cwd, sizeof(cwd)) == 0) {
+    if (getcwd(gbl_cwd, sizeof(gbl_cwd)) == 0) {
         logmsgperror("failed to getcwd");
         return -1;
     }
@@ -6787,7 +6774,7 @@ static int init(int argc, char **argv)
 
     /* Since we moved bbipc context code lower, we need to explicitly
      * initialize ctrace stuff, or our ctrace files will have names like
-     * dum50624.trc.c which isn't helpful */
+     * dum50624.trace which isn't helpful */
     if (gbl_ctrace_dbdir)
         ctrace_openlog_taskname(thedb->basedir, dbname);
     else {
@@ -8520,6 +8507,9 @@ static void register_all_int_switches()
     register_int_switch("test_curtran_change", 
                         "Test change-curtran codepath (for debugging only)",
                         &gbl_test_curtran_change_code);
+    register_int_switch("test_blkseq_replay",
+                        "Test blkseq replay codepath (for debugging only)",
+                        &gbl_test_blkseq_replay_code);
     register_int_switch("skip_cget_in_db_put", 
                         "Don't perform a cget when we do a cput",
                         &gbl_skip_cget_in_db_put);
@@ -8569,7 +8559,7 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-void set_timepart_and_handle_resume_sc() 
+static void set_timepart_and_handle_resume_sc()
 {
     /* We need to do this before resuming schema chabge , if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
@@ -8617,9 +8607,25 @@ struct tool tool_callbacks[] = {
    NULL
 };
 
+static void wait_for_coherent()
+{
+    const unsigned int cslp = 10000;                 /* 10000us == 10ms */
+    const unsigned int wrn_cnt = 5 * 1000000 / cslp; /* 5s */
+    unsigned int counter = 1;
+    while (!bdb_am_i_coherent(thedb->bdb_env)) {
+        if ((++counter % wrn_cnt) == 0) {
+            logmsg(LOGMSG_ERROR, "I am still incoherent\n");
+        }
+        usleep(cslp);
+    }
+}
+
 int main(int argc, char **argv)
 {
+    char *marker_file;
+    int ii;
     int rc;
+
     char *exe = NULL;
 
     /* clean left over transactions every 5 minutes */
@@ -8763,6 +8769,7 @@ int main(int argc, char **argv)
     // db started - disable recsize kludge so
     // new schemachanges won't allow broken size.
     gbl_broken_max_rec_sz = 0;
+    wait_for_coherent();
 
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
@@ -9021,4 +9028,4 @@ static int create_service_file(char *lrlname)
 
 #undef QUOTE
 
-/* vim: set sw=3 ts=3 et: */
+/* vim: set sw=4 ts=4 et: */

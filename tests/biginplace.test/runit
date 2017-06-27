@@ -13,15 +13,17 @@ db=$1
 debug=0
 cppid=-1
 
-TMPDIR=${TMPDIR:-/tmp}
-cdb2sql ${CDB2_OPTIONS} $db default "select comdb2_host()"
+#set -x
+set -e
 
+TMPDIR=${TMPDIR:-/tmp}
 
 
 # Artificially torque the pagesize down to 4096
 cdb2sql ${CDB2_OPTIONS} $db default "truncate t1"
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 echo "master node is $master"
+cdb2sql ${CDB2_OPTIONS} --host $master $db "select comdb2_host()"
 cdb2sql ${CDB2_OPTIONS} --host $master $db 'exec procedure sys.cmd.send("pagesize set t1 blob 4096")'
 cdb2sql ${CDB2_OPTIONS} $db default "rebuild t1"
 

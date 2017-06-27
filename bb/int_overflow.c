@@ -15,94 +15,96 @@
  */
 
 /**
- * Signed integer overflow detection utility functions below were derrived from
+ * Signed integer overflow detection utility functions below were derived from
  * CERT Secure Coding standards for operations on signed integers (INT32-C).
  */
 
-#include "int_overflow.h"
-
 #include <limits.h>
 
-
 /**
- * Checks for overflow will occur when a + b is performed, a and b being long long int. 
- * Returns 1 if no overflow will occur.
- * 
+ * Checks for overflow will occur when a + b is performed, a and b being long
+ * long int.
+ * Returns 0 if no overflow will occur.
+ *
  * @param long long a
  * @param long long b
  */
-int check_overflow_ll_add (long long a, long long b) {
-    if ( ((b > 0) && (a > (LLONG_MAX - b))) || 
-         ((b < 0) && (a < (LLONG_MIN - b))) ) {
-        return 0;
+int overflow_ll_add(long long a, long long b)
+{
+    if (((b > 0) && (a > (LLONG_MAX - b))) ||
+        ((b < 0) && (a < (LLONG_MIN - b)))) {
+        return 1;
     }
 
-    return 1;
+    return 0;
 }
 
-
 /**
- * Checks for overflow will occur when a - b is performed, a and b being long long int. 
- * Returns 1 if no overflow will occur.
- * 
+ * Checks for overflow will occur when a - b is performed, a and b being long
+ * long int.
+ * Returns 0 if no overflow will occur.
+ *
  * @param long long a
  * @param long long b
  */
-int check_overflow_ll_sub (long long a, long long b) {
-    if ( ((b > 0) && (a < (LLONG_MIN + b))) || 
-         ((b < 0) && (a > (LLONG_MAX + b))) ) {
-        return 0;
+int overflow_ll_sub(long long a, long long b)
+{
+    if (((b > 0) && (a < (LLONG_MIN + b))) ||
+        ((b < 0) && (a > (LLONG_MAX + b)))) {
+        return 1;
     }
 
-    return 1;
+    return 0;
 }
 
-
 /**
- * Checks for overflow will occur when a * b is performed, a and b being long long int. 
- * Returns 1 if no overflow will occur.
- * 
+ * Checks for overflow will occur when a * b is performed, a and b being long
+ * long int.
+ * Returns 0 if no overflow will occur.
+ *
  * @param long long a
  * @param long long b
  */
-int check_overflow_ll_mul (long long a, long long b) {
-    if (a > 0) { // a is positive
+int overflow_ll_mul(long long a, long long b)
+{
+    if (a > 0) {     // a is positive
         if (b > 0) { // a and b are positive
             if (a > (LLONG_MAX / b)) {
-                return 0;
+                return 1;
             }
         } else { // a is positive and b is non-positive
             if (b < (LLONG_MIN / a)) {
-                return 0;
+                return 1;
             }
         }
     } else {
         if (b > 0) { // a is non-positive and b is positive
             if (a < (LLONG_MIN / b)) {
-                return 0;
+                return 1;
             }
         } else { // a and b are non-positive
             if ((a != 0) && (b < (LLONG_MAX / a))) {
-                return 0;
+                return 1;
             }
         }
     }
 
-    return 1;
+    return 0;
 }
 
-
 /**
- * Checks for overflow will occur when a / b is performed, a and b being long long int. 
- * Returns 1 if no overflow will occur.
- * 
+ * Checks for overflow will occur when a / b is performed, a and b being long
+ * long int.
+ * Returns 0 if no overflow will occur.
+ *
  * @param long long a
  * @param long long b
  */
-int check_overflow_ll_div (long long a, long long b) {
-    if ( (b == 0) || ((a == LLONG_MIN) && (b == -1)) ) {
-        return 0;
+int overflow_ll_div(long long a, long long b)
+{
+    if ((b == 0) || ((a == LLONG_MIN) && (b == -1))) {
+        return 1;
     }
 
-    return 1;
+    return 0;
 }

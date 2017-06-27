@@ -60,6 +60,7 @@ message CDB2_SQLQUERY {
 
   }
   optional cinfo client_info = 15;
+  repeated string context    = 16; // Client context messages.
 }
 
 

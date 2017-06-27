@@ -2354,6 +2354,8 @@ struct Expr {
                          ** TK_AGG_FUNCTION: nesting depth */
   AggInfo *pAggInfo;     /* Used by TK_AGG_COLUMN and TK_AGG_FUNCTION */
   Table *pTab;           /* Table for TK_COLUMN expressions. */
+  /* COMDB2 MODIFICATION */
+  u8 visited;            /* Set if visited by fingerprinter. */
 };
 
 /*
@@ -4457,5 +4459,8 @@ int sqlite3ExprIsVector(Expr *pExpr);
 Expr *sqlite3VectorFieldSubexpr(Expr*, int);
 Expr *sqlite3ExprForVectorField(Parse*,Expr*,int);
 void sqlite3FingerprintSelect(sqlite3 *db, Select *p);
+void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere);
+void sqlite3FingerprintInsert(sqlite3 *db, SrcList *, Select *, IdList *, With *);
+void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError);
 
 #endif /* _SQLITEINT_H_ */

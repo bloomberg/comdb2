@@ -2370,6 +2370,7 @@ static int dyns_load_schema_int(char *filename, char *string, char *dbname,
         *ifn = 0;
 
     init_globals();
+    ctm = time(NULL); /* what time is it?             */
 
     flag_anyname = 1;
     if (strlen(dbname) >= MAX_DBNAME_LENGTH || strlen(dbname) < 3) {
