@@ -779,7 +779,7 @@ char *gbl_dbdir = NULL;
 
 extern int gbl_verbose_net;
 
-static int create_service_file(char *lrlname);
+static void create_service_file(const char *lrlname);
 
 static const char *help_text = {
   "usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
@@ -1304,7 +1304,7 @@ static void *purge_old_files_thread(void *arg)
             logmsg(LOGMSG_ERROR,
                     "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
                     __func__, rc, bdberr);
-            rc = trans_abort(&iq, trans);
+            trans_abort(&iq, trans);
             sleep(empty_pause);
             continue;
         }
@@ -2407,9 +2407,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
     } else if (tokcmp(tok, ltok, "queue") == 0) {
         struct db *db;
-        char *qname;
+        char *qname = NULL;
         int avgsz;
         int pagesize = 0;
+	int lrc = 0;
 
         /*
           queue <qname>
@@ -2417,19 +2418,22 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         tok = segtok(line, len, &st, &ltok); /* queue name */
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
+            lrc = -1;
+	    goto cleanup_queue;
         }
         qname = tokdup(tok, ltok);
 
         tok = segtok(line, len, &st, &ltok); /* item sz*/
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
+            lrc = -1;
+	    goto cleanup_queue;
         }
         avgsz = toknum(tok, ltok);
         if (avgsz == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
-            return -1;
+            lrc = -1;
+	    goto cleanup_queue;
         }
 
         /* This code is dupliated in the message trap parser.. sorry */
@@ -2441,14 +2445,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 pagesize = atoi(ctok + 9);
             } else {
                 logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-                return -1;
+		lrc = -1;
+		goto cleanup_queue;
             }
             tok = segtok(line, len, &st, &ltok);
         }
 
         db = newqdb(dbenv, qname, avgsz, pagesize, 0);
         if (!db) {
-            return -1;
+            lrc = -1;
+	    goto cleanup_queue;
         }
         db->dbs_idx = -1;
 
@@ -2459,11 +2465,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         /* Add queue to the hash. */
         hash_add(dbenv->qdb_hash, db);
 
+cleanup_queue:
+        if(qname) free(qname);
+	if(lrc) return lrc;
     } else if (tokcmp(tok, ltok, "consumer") == 0) {
-        char *qname;
+        char *qname = NULL;
         int consumer;
-        char *method;
+        char *method = NULL;
         struct db *db;
+        int lrc = 0;
 
         /*
          * consumer <qname> <consumer#> <method>
@@ -2471,32 +2481,41 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         tok = segtok(line, len, &st, &ltok); /* queue name */
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
+            lrc = -1;
+            goto cleanup_consumer;
         }
         qname = tokdup(tok, ltok);
         tok = segtok(line, len, &st, &ltok); /* consumer # */
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
+            lrc = -1;
+            goto cleanup_consumer;
         }
         consumer = toknum(tok, ltok);
         tok = segtok(line, len, &st, &ltok); /* method */
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"consumer\" directive\n");
-            return -1;
+            lrc = -1;
+            goto cleanup_consumer;
         }
         method = tokdup(tok, ltok);
 
         db = getqueuebyname(qname);
         if (!db) {
             logmsg(LOGMSG_ERROR, "No such queue '%s'\n", qname);
-            return -1;
+            lrc = -1;
+            goto cleanup_consumer;
         }
 
         if (dbqueue_add_consumer(db, consumer, method, 1) != 0) {
-            return -1;
+            lrc = -1;
         }
 
+
+cleanup_consumer:
+        if(qname) free(qname);
+        if(method) free(method);
+	if(lrc) return lrc;
     } else if (tokcmp(tok, ltok, "sfuncs") == 0) {
         parse_lua_funcs(s);
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
@@ -2517,11 +2536,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return -1;
         }
         *qdb = newqdb(dbenv, name, 65536, 65536, 1);
+        free(name);
         if (*qdb == NULL) {
             logmsg(LOGMSG_ERROR, "newqdb failed for:%s\n", name);
             return -1;
         }
-        free(name);
     } else if (tokcmp(tok, ltok, "table") == 0) {
         /*
          * variants:
@@ -2992,16 +3011,13 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv,
         options.lineno++;
         read_lrl_option(dbenv, line, &options, strlen(line));
     }
+    fclose(ff);
     options.lineno = 0;
     rc = process_deferred_options(dbenv, DEFERRED_LEGACY_DEFAULTS, &options,
                                   read_lrl_option);
     if (rc) {
-       logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
-       fclose(ff);
-    }
-    if (rc) {
-       fclose(ff);
-       return NULL;
+        logmsg(LOGMSG_WARN, "process_deferred_options rc %d\n", rc);
+        return NULL;
     }
 
     /* process legacy options (we deferred them) */
@@ -3017,8 +3033,6 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv,
            (at least without some kludgery, or snapshots) */
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN, 0);
     }
-
-    fclose(ff);
 
     return dbenv;
 }
@@ -3100,7 +3114,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         }
 
         int isc = 0;
-        rc = get_db_instant_schema_change(db, &isc);
+        get_db_instant_schema_change(db, &isc);
         if (isc) {
             /* load schema for older versions */
             for (int v = 1; v <= ver; ++v) {
@@ -3583,7 +3597,7 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
     return llmeta_dump_mapping_table_tran(NULL, dbenv, table, err);
 }
 
-static struct dbenv *newdbenv(char *dbname, char *lrlname)
+static struct dbenv *newdbenv(char *dbname, const char *lrlname)
 {
     int rc;
     struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
@@ -4230,14 +4244,7 @@ static char *create_default_lrl_file(char *dbname, char *dir) {
         free(lrlfile_name);
         return NULL;
     }
-    lrlfile_name = malloc(strlen(dir) + strlen(dbname) + 4 /*.lrl*/ +
-                          1 /*slash*/ + 1 /*nul*/);
-    sprintf(lrlfile_name, "%s/%s.lrl", dir, dbname);
-    lrlfile = fopen(lrlfile_name, "w");
-    if (lrlfile == NULL) {
-        logmsg(LOGMSG_ERROR, "fopen(\"%s\") rc %d %s.\n", errno, strerror(errno));
-        return NULL;
-    }
+    
     fprintf(lrlfile, "name    %s\n", dbname);
     fprintf(lrlfile, "dir     %s\n\n", dir);
     fclose(lrlfile);
@@ -4974,12 +4981,6 @@ static int init(int argc, char **argv)
        bdb_genid_set_format(thedb->bdb_env, format);
     }
 
-    rc = pthread_key_create(&query_info_key, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
-        return -1;
-    }
-
     tz_hash_init();
     set_datetime_dir();
 
@@ -5228,8 +5229,7 @@ static int init(int argc, char **argv)
     }
 
     if (gbl_create_mode) {
-       if (create_service_file(lrlname))
-          logmsg(LOGMSG_ERROR, "couldn't create service file\n");
+       create_service_file(lrlname);
     }
 
     /* open db engine */
@@ -5602,7 +5602,6 @@ void *statthd(void *p)
     int diff_ncommits;
     long long diff_ncommit_time;
     int diff_newsql;
-    int diff_newsql_steps;
     int diff_nretries;
     int diff_deadlocks;
     int diff_lockwaits;
@@ -5615,7 +5614,6 @@ void *statthd(void *p)
     int last_ncommits = 0;
     long long last_ncommit_time = 0;
     int last_newsql = 0;
-    long long last_newsql_steps = 0;
     int last_nretries = 0;
     int64_t last_ndeadlocks = 0, last_nlockwaits = 0;
     int64_t last_vreplays = 0;
@@ -5685,8 +5683,6 @@ void *statthd(void *p)
             diff_deadlocks = ndeadlocks - last_ndeadlocks;
             diff_lockwaits = nlockwaits - last_nlockwaits;
         } else {
-            diff_deadlocks = 0;
-            diff_lockwaits = 0;
             reqlog_free(statlogger);
             return NULL;
         }
@@ -5696,7 +5692,6 @@ void *statthd(void *p)
         diff_nsql = nsql - last_nsql;
         diff_nsql_steps = nsql_steps - last_nsql_steps;
         diff_newsql = newsql - last_newsql;
-        diff_newsql_steps = newsql_steps - last_newsql_steps;
         diff_nretries = nretries - last_nretries;
         diff_vreplays = vreplays - last_vreplays;
         diff_ncommits = ncommits - last_ncommits;
@@ -5709,7 +5704,6 @@ void *statthd(void *p)
         last_nsql = nsql;
         last_nsql_steps = nsql_steps;
         last_newsql = newsql;
-        last_newsql_steps = newsql_steps;
         last_nretries = nretries;
         last_ndeadlocks = ndeadlocks;
         last_nlockwaits = nlockwaits;
@@ -5772,7 +5766,7 @@ void *statthd(void *p)
                 diff_nsql = nsql - last_report_nsql;
                 diff_nsql_steps = nsql_steps - last_report_nsql_steps;
                 diff_newsql = newsql - last_report_newsql;
-                diff_newsql_steps = newsql_steps - last_report_newsql_steps;
+                int diff_newsql_steps = newsql_steps - last_report_newsql_steps;
                 diff_nretries = nretries - last_report_nretries;
                 diff_ncommits = ncommits - last_report_ncommits;
                 diff_ncommit_time = ncommit_time - last_report_ncommit_time;
@@ -6975,15 +6969,13 @@ int comdb2_is_standalone(void *dbenv)
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 
-static int create_service_file(char *lrlname)
+static void create_service_file(const char *lrlname)
 {
 #ifdef _LINUX_SOURCE
     char *comdb2_path = comdb2_location("scripts", "comdb2");
 
     char *service_file =
         comdb2_asprintf("%s/%s.service", thedb->basedir, thedb->envname);
-    struct passwd *pw;
-    char *user;
     char lrl[PATH_MAX];
     if (lrlname) {
        if (realpath(lrlname, lrl) == NULL) {
@@ -6991,22 +6983,19 @@ static int create_service_file(char *lrlname)
        }
     }
 
-    FILE *f = fopen(service_file, "w");
-
-    pw = getpwuid(getuid());
+    struct passwd *pw = getpwuid(getuid());
     if (pw == NULL) {
         logmsg(LOGMSG_ERROR, "can't resolve current user: %d %s\n", errno,
                 strerror(errno));
-        free(service_file);
+        return; /* TODO: Do we want to return here ? */
     }
-    user = pw->pw_name;
 
+    FILE *f = fopen(service_file, "w");
+    free(service_file);
     if (f == NULL) {
         logmsg(LOGMSG_ERROR, "can't create service file: %d %s\n", errno,
                 strerror(errno));
-        free(service_file);
-        fclose(f);
-        return 1;
+        return;
     }
 
     fprintf(f, "[Unit]\n");
@@ -7018,11 +7007,11 @@ static int create_service_file(char *lrlname)
                "Restart=always\n"
                "RestartSec=1\n\n"
                "[Install]\n"
-               "WantedBy=multi-user.target\n", user);
+               "WantedBy=multi-user.target\n", pw->pw_name);
 
     fclose(f);
 #endif
-    return 0;
+    return;
 }
 
 #undef QUOTE
