@@ -494,7 +494,7 @@ void sc_del_unused_files_check_progress(void)
     }
 }
 
-static int delete_table_rep(char *table)
+static int delete_table_rep(char *table, void *tran)
 {
     struct db *db;
     int rc, bdberr;
@@ -512,7 +512,7 @@ static int delete_table_rep(char *table)
     }
 
     /* update the delayed deleted files */
-    rc = bdb_list_unused_files(db->handle, &bdberr, (char *)__func__);
+    rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
     if (rc) {
       logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
              bdberr);
@@ -642,7 +642,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
         }
     } else if (type == drop) {
         logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", table);
-        if (delete_table_rep((char *)table)) {
+        if (delete_table_rep((char *)table, tran)) {
             logmsg(LOGMSG_FATAL, "%s: error deleting table "
                                  " %s.\n",
                    __func__, table);
@@ -686,7 +686,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
 
         /* update the delayed deleted files */
         assert(db && !add_new_db);
-        rc = bdb_list_unused_files(db->handle, &bdberr, (char *)__func__);
+        rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
         if (rc) {
           logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
                  bdberr);
