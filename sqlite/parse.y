@@ -229,20 +229,7 @@ create_sequence::= createkw SEQUENCE ifnotexists(E) nm(N) create_sequence_args(A
   memcpy(name, N.z, N.n);
   name[N.n] = '\0';
 
-  logmsg(LOGMSG_USER,"------ Sequence ------\nName: %s\nIf Not Exists: %s\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nStart Val: %lld\nDefault Flags: %d\n",
-    name,
-    E ? "true": "false",
-    A.min_val,
-    A.max_val,
-    A.increment,
-    A.cycle ? "true": "false",
-    A.chunk_size,
-    A.start_val,
-    A.modified
-  );
-
-  // TODO:
-        // comdb2CreateSequence(pParse,&Y,&Z,T,0,0,E);
+  comdb2CreateSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,E);
 }
 
 // Rule for long long ints

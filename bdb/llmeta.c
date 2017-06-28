@@ -7956,7 +7956,7 @@ struct seq_data {
     long long chunk_size; /* Number of values to allocate from llmeta */
 
     /* Flags */
-    char flags; /* Flags for the sequence objeckt*/
+    char flags; /* Flags for the sequence object*/
 };
 
 static uint8_t *llmeta_sequence_key_put(struct seq_key *key, char *p_buf,
