@@ -315,42 +315,43 @@ void *coherency_lease_thread(void *arg)
     return NULL;
 }
 
-void *logdelete_thread(void *arg)
-{
-    bdb_state_type *bdb_state;
+void *logdelete_thread(void *arg) {
+  bdb_state_type *bdb_state;
 
-    bdb_state = (bdb_state_type *)arg;
+  bdb_state = (bdb_state_type *)arg;
 
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
+  if (bdb_state->parent)
+    bdb_state = bdb_state->parent;
 
-    while (!bdb_state->after_llmeta_init_done)
-        sleep(1);
+  while (!bdb_state->after_llmeta_init_done)
+    sleep(1);
 
-    thread_started("bdb logdelete");
+  populate_deleted_files(bdb_state);
 
-    bdb_thread_event(bdb_state, 1);
+  thread_started("bdb logdelete");
 
-    while (1) {
-        int sleeptime;
-        BDB_READLOCK("logdelete_thread");
+  bdb_thread_event(bdb_state, 1);
 
-        if (bdb_state->exiting) {
-            logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
+  while (1) {
+    int sleeptime;
+    BDB_READLOCK("logdelete_thread");
 
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
-        }
+    if (bdb_state->exiting) {
+      logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
 
-        delete_log_files(bdb_state);
-
-        BDB_RELLOCK();
-        sleeptime = bdb_state->attr->logdelete_run_interval;
-        sleeptime = (sleeptime <= 0 ? 30 : sleeptime);
-
-        sleep(sleeptime);
+      BDB_RELLOCK();
+      bdb_thread_event(bdb_state, 0);
+      pthread_exit(NULL);
     }
+
+    delete_log_files(bdb_state);
+
+    BDB_RELLOCK();
+    sleeptime = bdb_state->attr->logdelete_run_interval;
+    sleeptime = (sleeptime <= 0 ? 30 : sleeptime);
+
+    sleep(sleeptime);
+  }
 }
 
 extern int gbl_rowlocks;

@@ -494,7 +494,7 @@ void sc_del_unused_files_check_progress(void)
     }
 }
 
-static int delete_table_rep(char *table)
+static int delete_table_rep(char *table, void *tran)
 {
     struct db *db;
     int rc, bdberr;
@@ -509,6 +509,13 @@ static int delete_table_rep(char *table)
     if ((rc = bdb_close_only(db->handle, &bdberr))) {
         logmsg(LOGMSG_ERROR, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
         return -1;
+    }
+
+    /* update the delayed deleted files */
+    rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
+    if (rc) {
+      logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
+             bdberr);
     }
 
     delete_db(table);
@@ -635,7 +642,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
         }
     } else if (type == drop) {
         logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", table);
-        if (delete_table_rep((char *)table)) {
+        if (delete_table_rep((char *)table, tran)) {
             logmsg(LOGMSG_FATAL, "%s: error deleting table "
                                  " %s.\n",
                    __func__, table);
@@ -676,17 +683,27 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
             exit(1);
         }
         create_master_tables(); /* create sql statements */
+
+        /* update the delayed deleted files */
+        assert(db && !add_new_db);
+        rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
+        if (rc) {
+          logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
+                 bdberr);
+        }
     }
 
     free(table_copy);
     free(csc2text);
 
     /* if we just added the table, get a pointer for it */
-    db = getdbbyname(table);
-    if (!db) {
+    if (add_new_db) {
+      db = getdbbyname(table);
+      if (!db) {
         logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
                __func__, table);
         exit(1);
+      }
     }
 
     set_odh_options_tran(db, tran);
