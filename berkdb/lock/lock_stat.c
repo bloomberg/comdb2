@@ -307,8 +307,7 @@ __lock_dump_region_int(dbenv, area, fp, just_active_locks)
 	FILE *fp;
 	int just_active_locks;
 {
-	return __lock_dump_region_int_int(dbenv, area, fp, just_active_locks,
-	    0);
+	return __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, 0);
 }
 
 int
@@ -560,7 +559,7 @@ __lock_locker_pagelockcount_pp(dbenv, id, nlocks)
 void
 __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 	DB_LOCKTAB *lt;
-	DB_LOCKER *lip;
+    DB_LOCKER *lip;
 	FILE *fp;
 	int just_active_locks;
 {

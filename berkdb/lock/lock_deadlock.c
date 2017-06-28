@@ -59,6 +59,7 @@ void stack_me(char *location);
 typedef struct {
 	DB_LOCKOBJ *last_obj;
 	pthread_t tid;
+    const char * cnonce;
 	roff_t last_lock;
 	u_int32_t count;
 	u_int32_t id;
@@ -862,8 +863,8 @@ dokill:
 		}
 
          char parm[2] = {0};
-         parm[0] = 'l';
-         __lock_dump_region(dbenv, parm, stdout);
+         parm[0] = 'o';
+         __lock_dump_region_int_int(dbenv, parm, stdout, 1, 0);
 
 
 		if (found_tracked) {
