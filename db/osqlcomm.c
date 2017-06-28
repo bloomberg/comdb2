@@ -64,6 +64,7 @@ osqlpf_step *gbl_osqlpf_step = NULL;
 queue_type *gbl_osqlpf_stepq = NULL;
 
 pthread_mutex_t osqlpf_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_key_t osql_cnonce;
 
 extern __thread int send_prefault_udp;
 extern int gbl_prefault_udp;
@@ -3229,6 +3230,13 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                      sizeof(snap_uid_t), 1);
 }
 
+void log_snap_info_key(snap_uid_t *snap_info)
+{
+    if(snap_info)
+        logmsg(LOGMSG_USER, "%*s", snap_info->keylen, snap_info->key);
+}
+
+
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
@@ -3287,7 +3295,8 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
-            pthread_setspecific(cnonce, iq->snap_info);
+            pthread_setspecific(osql_cnonce, &iq->snap_info);
+            printf("WOULD CORRECTLY ASSIGN THIS, %llx\n", pthread_self());
             iq->have_snap_info = 1;
         }
 
@@ -6346,8 +6355,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         if (type == OSQL_DONE_SNAP) {
             snap_uid_t snap_info;
-            assert(iq->have_snap_info == 1);
-
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
             iq->have_snap_info = 1;

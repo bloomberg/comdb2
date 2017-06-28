@@ -7044,7 +7044,8 @@ static int init(int argc, char **argv)
        bdb_genid_set_format(thedb->bdb_env, format);
     }
 
-    rc = pthread_key_create(&query_info_key, NULL);
+    extern pthread_key_t osql_cnonce;
+    rc = pthread_key_create(&osql_cnonce, NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
         return -1;

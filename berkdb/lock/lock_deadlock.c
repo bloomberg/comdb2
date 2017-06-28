@@ -420,7 +420,9 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_USER, "*");
-		logmsg(LOGMSG_USER, "%lx(%u) ", (long)idmap[j].id, idmap[j].count);
+        extern void log_snap_info_key(const void *);
+        log_snap_info_key(idmap[j].cnonce);
+		logmsg(LOGMSG_USER, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
 	logmsg(LOGMSG_USER, "\n");
 }
@@ -1573,6 +1575,7 @@ get_lock:	dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
 				memcpy(&dd_id_array[id].pgno, pptr, sizeof(db_pgno_t));
 			else
 				dd_id_array[id].pgno = 0;
+            dd_id_array[id].cnonce = lockerp->cnonce;
 out:		unlock_obj_partition(region, lpartition);
 		}
 		unlock_locker_partition(region, lkr_partition);

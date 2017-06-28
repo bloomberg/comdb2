@@ -3922,8 +3922,13 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		F_SET(sh_locker, DB_LOCKER_LOGICAL);
 
 	/* heuristic: use create as hint that I will OWN this */
-	if (sh_locker && create)
+	if (sh_locker && create) {
 		sh_locker->tid = pthread_self();
+
+        extern pthread_key_t osql_cnonce;
+        sh_locker->cnonce = pthread_getspecific(osql_cnonce);
+        printf("WOULD CORRECTLY READ THIS tid=%llx\n", sh_locker->tid);
+    }
 
 	*retp = sh_locker;
 	return (0);
