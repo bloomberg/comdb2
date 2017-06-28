@@ -57,6 +57,7 @@ LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
 
+
 typedef struct _eventlog_callback {
     void (*open)();
     cson_data_dest_f write;
@@ -64,7 +65,7 @@ typedef struct _eventlog_callback {
     void (*close)();
 } eventlog_callback_t;
 
-eventlog_callback_t *eventlog_cb;
+static eventlog_callback_t *eventlog_cb;
 
 static char *eventlog_fname()
 {
@@ -79,14 +80,13 @@ static void eventlog_open()
     free(fname);
     if (f == NULL) {
         eventlog_enabled = 0;
-        eventlog = NULL;
     }
     eventlog = f;
 }
 
 static int eventlog_write(void *state, void const *src, unsigned int n)
 {
-    int rc = gzwrite((gzFile)state, src, n);
+    int rc = gzwrite(eventlog, src, n);
     bytes_written += rc;
     return rc != n;
 }
@@ -96,12 +96,8 @@ static void eventlog_flush()
     gzflush(eventlog, 1);
 }
 
-static void eventlog_close()
+static void clear_sqlstatements()
 {
-    if (eventlog == NULL) return;
-    gzclose(eventlog);
-    eventlog = NULL;
-    bytes_written = 0;
     struct sqltrack *t = listc_rtl(&sql_statements);
     while (t) {
         hash_del(seen_sql, t);
@@ -111,16 +107,63 @@ static void eventlog_close()
     }
 }
 
-eventlog_callback_t default_cb = {
+static void eventlog_close()
+{
+    if (eventlog == NULL) return;
+    gzclose(eventlog);
+    eventlog = NULL;
+    bytes_written = 0;
+    clear_sqlstatements();
+}
+
+static eventlog_callback_t gz_io = {
     .open = eventlog_open,
     .write = eventlog_write,
     .flush = eventlog_flush,
     .close = eventlog_close
 };
 
-void eventlog_init(const char *dbname)
+static void plain_open()
 {
-    eventlog_cb = &default_cb;
+    char *fname = eventlog_fname(thedb->envname);
+    FILE *f = fopen(fname, "w");
+    if (f == NULL) {
+        eventlog_enabled = 0;
+    }
+    eventlog = f;
+}
+
+static int plain_write(void *state, void const *src, unsigned int n)
+{
+    size_t rc = fwrite(src, 1, n, eventlog);
+    bytes_written += rc;
+    return rc != n;
+}
+
+static void plain_flush()
+{
+    fflush(eventlog);
+}
+
+static void plain_close()
+{
+    if (eventlog == NULL) return;
+    fclose(eventlog);
+    eventlog = NULL;
+    bytes_written = 0;
+    clear_sqlstatements();
+}
+
+static eventlog_callback_t plain_io = {
+    .open = plain_open,
+    .write = plain_write,
+    .flush = plain_flush,
+    .close = plain_close
+};
+
+void eventlog_init()
+{
+    eventlog_cb = &plain_io;
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
     if (eventlog_enabled) eventlog_cb->open();
@@ -427,7 +470,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     if (eventlog == NULL) return;
     if (!eventlog_enabled) return;
 
-    static const char *hexchars = "0123456789abcdef";
     pthread_mutex_lock(&eventlog_lk);
     if (logger->event_type && strcmp(logger->event_type, "sql") == 0 &&
         !hash_find(seen_sql, logger->fingerprint)) {
@@ -559,7 +601,7 @@ static void eventlog_enable(void)
 
 static void eventlog_disable(void)
 {
-    eventlog_close();
+    eventlog_cb->close();
     eventlog = NULL;
     eventlog_enabled = 0;
     bytes_written = 0;
