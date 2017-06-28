@@ -2466,10 +2466,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         hash_add(dbenv->qdb_hash, db);
 
     cleanup_queue:
-        if (qname)
-            free(qname);
-        if (lrc)
-            return lrc;
+        if (qname) free(qname);
+        if (lrc) return lrc;
     } else if (tokcmp(tok, ltok, "consumer") == 0) {
         char *qname = NULL;
         int consumer;
@@ -2513,12 +2511,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             lrc = -1;
         }
     cleanup_consumer:
-        if (qname)
-            free(qname);
-        if (method)
-            free(method);
-        if (lrc)
-            return lrc;
+        if (qname) free(qname);
+        if (method) free(method);
+        if (lrc) return lrc;
     } else if (tokcmp(tok, ltok, "sfuncs") == 0) {
         parse_lua_funcs(s);
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
