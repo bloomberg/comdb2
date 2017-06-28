@@ -2410,7 +2410,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         char *qname = NULL;
         int avgsz;
         int pagesize = 0;
-	int lrc = 0;
+        int lrc = 0;
 
         /*
           queue <qname>
@@ -2419,7 +2419,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
             lrc = -1;
-	    goto cleanup_queue;
+            goto cleanup_queue;
         }
         qname = tokdup(tok, ltok);
 
@@ -2427,13 +2427,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
             lrc = -1;
-	    goto cleanup_queue;
+            goto cleanup_queue;
         }
         avgsz = toknum(tok, ltok);
         if (avgsz == 0) {
             logmsg(LOGMSG_ERROR, "Malformed \"queue\" directive\n");
             lrc = -1;
-	    goto cleanup_queue;
+            goto cleanup_queue;
         }
 
         /* This code is dupliated in the message trap parser.. sorry */
@@ -2445,8 +2445,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 pagesize = atoi(ctok + 9);
             } else {
                 logmsg(LOGMSG_ERROR, "Bad queue attribute '%s'\n", ctok);
-		lrc = -1;
-		goto cleanup_queue;
+                lrc = -1;
+                goto cleanup_queue;
             }
             tok = segtok(line, len, &st, &ltok);
         }
@@ -2454,7 +2454,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         db = newqdb(dbenv, qname, avgsz, pagesize, 0);
         if (!db) {
             lrc = -1;
-	    goto cleanup_queue;
+            goto cleanup_queue;
         }
         db->dbs_idx = -1;
 
@@ -2465,9 +2465,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         /* Add queue to the hash. */
         hash_add(dbenv->qdb_hash, db);
 
-cleanup_queue:
-        if(qname) free(qname);
-	if(lrc) return lrc;
+    cleanup_queue:
+        if (qname)
+            free(qname);
+        if (lrc)
+            return lrc;
     } else if (tokcmp(tok, ltok, "consumer") == 0) {
         char *qname = NULL;
         int consumer;
@@ -2510,12 +2512,13 @@ cleanup_queue:
         if (dbqueue_add_consumer(db, consumer, method, 1) != 0) {
             lrc = -1;
         }
-
-
-cleanup_consumer:
-        if(qname) free(qname);
-        if(method) free(method);
-	if(lrc) return lrc;
+    cleanup_consumer:
+        if (qname)
+            free(qname);
+        if (method)
+            free(method);
+        if (lrc)
+            return lrc;
     } else if (tokcmp(tok, ltok, "sfuncs") == 0) {
         parse_lua_funcs(s);
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
@@ -4244,7 +4247,7 @@ static char *create_default_lrl_file(char *dbname, char *dir) {
         free(lrlfile_name);
         return NULL;
     }
-    
+
     fprintf(lrlfile, "name    %s\n", dbname);
     fprintf(lrlfile, "dir     %s\n\n", dir);
     fclose(lrlfile);
@@ -5229,7 +5232,7 @@ static int init(int argc, char **argv)
     }
 
     if (gbl_create_mode) {
-       create_service_file(lrlname);
+        create_service_file(lrlname);
     }
 
     /* open db engine */
@@ -7007,7 +7010,8 @@ static void create_service_file(const char *lrlname)
                "Restart=always\n"
                "RestartSec=1\n\n"
                "[Install]\n"
-               "WantedBy=multi-user.target\n", pw->pw_name);
+               "WantedBy=multi-user.target\n",
+            pw->pw_name);
 
     fclose(f);
 #endif
