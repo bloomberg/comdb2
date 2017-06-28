@@ -5,6 +5,7 @@
 #include "comdb2vdbe.h"
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 #include <schemachange.h>
 #include <sc_lua.h>
@@ -1545,16 +1546,27 @@ clean_arg:
 // TODO: Modify for sequences
 void comdb2CreateSequence(
     Parse *pParse, /* Parser context */
-    Token *pName, /* Name of sequence */
-
-    Token *min_val,
-    Token *max_val,
-    Token *inc,
-    Token *cycle,
-    Token *start_val,
-    Token *chunk_size
-    )
+    char *name, /* Name of sequence */
+    long long min_val,
+    long long max_val,
+    long long inc,
+    bool cycle,
+    long long start_val,
+    long long chunk_size,
+    bool err
+)
 {
+    logmsg(LOGMSG_USER,"------ Sequence ------\nName: %s\nIf Not Exists: %s\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nStart Val: %lld\n",
+        name,
+        err ? "true": "false",
+        min_val,
+        max_val,
+        inc,
+        cycle ? "true": "false",
+        chunk_size,
+        start_val
+    );
+
     sqlite3 *db = pParse->db;
     Vdbe *v = sqlite3GetVdbe(pParse);
 
@@ -1563,7 +1575,8 @@ void comdb2CreateSequence(
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
-    TokenStr(sequence, pName);
+
+    // TODO: replace with sequence
     // if (noErr && getdbbyname(table)) goto out;
 
     // if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))

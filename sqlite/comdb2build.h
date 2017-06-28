@@ -108,9 +108,9 @@ void comdb2enableAuth(Parse* pParse, int on);
 void comdb2setPassword(Parse* pParse, Token* password, Token* nm);
 void comdb2deletePassword(Parse* pParse, Token* nm);
 
-void comdb2CreateSequence(Parse *pParse, Token *name, Token *min_val,
-                          Token *max_val, Token *inc, Token *cycle,
-                          Token *start_val, Token *chunk_size);
+void comdb2CreateSequence(Parse *pParse, char *name, long long min_val,
+                          long long max_val, long long inc, bool cycle,
+                          long long start_val, long long chunk_size, bool err);
 void comdb2AlterSequence(Parse *, Token *, Token *, int, Token *, int dryrun);
 void comdb2DropSequence(Parse *pParse, SrcList *pName);
 
