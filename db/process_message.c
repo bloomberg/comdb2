@@ -644,7 +644,8 @@ struct deadlock_policy_st {
 
 const char *deadlock_policy_str(int policy)
 {
-    if (policy > (sizeof(deadlock_policy) / sizeof(char *))) {
+    if ((policy > ((sizeof(deadlock_policy) / sizeof(char *)) - 1)) ||
+        (policy < 0)) {
         return "INVALID_POLICY";
     }
     return deadlock_policy[policy].name;

@@ -390,6 +390,8 @@ struct __db_dbt {
 /*
  * Deadlock detector modes; used in the DB_ENV structure to configure the
  * locking subsystem.
+ * If you're adding more modes please also update deadlock_policy[]
+ * under db/process_message.c.
  */
 #define	DB_LOCK_NORUN		0
 #define	DB_LOCK_DEFAULT         1	/* Default policy. */
