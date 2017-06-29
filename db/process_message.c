@@ -628,55 +628,26 @@ static void on_off_trap(char *line, int lline, int *st, int *ltok, char *msg,
     }
 }
 
-char *deadlock_policy_str(int policy)
+/* See: berkdb/build/db.h */
+
+struct deadlock_policy_st {
+    const char *name;
+} deadlock_policy[] = {
+    {"DB_LOCK_NORUN"},           {"DB_LOCK_DEFAULT"},
+    {"DB_LOCK_EXPIRE"},          {"DB_LOCK_MAXLOCKS"},
+    {"DB_LOCK_MINLOCKS"},        {"DB_LOCK_MINWRITE"},
+    {"DB_LOCK_OLDEST"},          {"DB_LOCK_RANDOM"},
+    {"DB_LOCK_YOUNGEST"},        {"DB_LOCK_MAXWRITE"},
+    {"DB_LOCK_MINWRITE_NOREAD"}, {"DB_LOCK_YOUNGEST_EVER"},
+    {"DB_LOCK_MINWRITE_EVER"},
+};
+
+const char *deadlock_policy_str(int policy)
 {
-    switch (policy) {
-    case 0:
-        return "DB_LOCK_NORUN";
-        break;
-
-    case 1:
-        return "DB_LOCK_DEFAULT";
-        break;
-
-    case 2:
-        return "DB_LOCK_EXPIRE";
-        break;
-
-    case 3:
-        return "DB_LOCK_MAXLOCKS";
-        break;
-    case 4:
-        return "DB_LOCK_MINLOCKS";
-        break;
-    case 5:
-        return "DB_LOCK_MINWRITE";
-        break;
-    case 6:
-        return "DB_LOCK_OLDEST";
-        break;
-    case 7:
-        return "DB_LOCK_RANDOM";
-        break;
-    case 8:
-        return "DB_LOCK_YOUNGEST";
-        break;
-    case 9:
-        return "DB_LOCK_MAXWRITE";
-        break;
-    case 10:
-        return "DB_LOCK_MINWRITE_NOREAD";
-        break;
-    case 11:
-        return "DB_LOCK_YOUNGEST_EVER";
-        break;
-    case 12:
-        return "DB_LOCK_MINWRITE_EVER";
-        break;
-    default:
+    if (policy > (sizeof(deadlock_policy) / sizeof(char *))) {
         return "INVALID_POLICY";
-        break;
     }
+    return deadlock_policy[policy].name;
 }
 
 extern int gbl_new_snapisol;
