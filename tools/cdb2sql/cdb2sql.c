@@ -83,6 +83,10 @@ static int istty = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
+
+int sigaction(int signum, const struct sigaction *act,
+                     struct sigaction *oldact);
+
 static void hexdump(FILE *f, void *datap, int len)
 {
     u_char *data = (u_char *)datap;
@@ -887,6 +891,26 @@ static void replace_args(int argc, char *argv[])
     }
 }
 
+
+static int int_handler_cnt = 0;
+
+/* If ctrl_c was pressed to clear existing line and go to new line
+ * If we see two ctrl_c in a row we exit.
+ * However, after a ctrl_c if user typed something 
+ * (rl_line_buffer is not empty) and then issue a ctrl_c then dont exit.
+ */
+static void int_handler(int signum)
+{
+    if(strlen(rl_line_buffer) > 0) 
+	int_handler_cnt = 0;
+    if (++int_handler_cnt > 1) 
+        exit(1);
+    printf("\n");
+    rl_on_new_line();
+    rl_replace_line("", 0);
+    rl_redisplay();
+}
+
 int main(int argc, char *argv[])
 {
     static char *filename = NULL;
@@ -1036,8 +1060,12 @@ int main(int argc, char *argv[])
         istty = 1;
     if (isttyarg == 2)
         istty = 0;
-    if (istty)
+    if (istty) {
         load_readline_history();
+	struct sigaction sact;
+	sact.sa_handler = int_handler;
+	sigaction(SIGINT, &sact, NULL);
+    }
     char *line;
     int multi;
     while ((line = read_line()) != NULL) {
