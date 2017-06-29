@@ -1882,4 +1882,7 @@ void populate_deleted_files(bdb_state_type *bdb_state);
 
 int has_low_headroom(const char *path, int threshold, int debug);
 
+const char *deadlock_policy_str(int policy);
+int deadlock_policy_max();
+
 #endif /* __bdb_int_h__ */
