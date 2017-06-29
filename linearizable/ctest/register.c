@@ -37,6 +37,7 @@ char *argv0 = NULL;
 uint32_t which_events = 0;
 int is_hasql = 1;
 int partition_master = 1;
+int max_retries = 10;
 int debug_trace = 0;
 FILE *c_file;
 
@@ -55,9 +56,11 @@ void usage(FILE *f)
     fprintf(f, "        -j <output>         - set clojure-output file\n");
 }
 
-static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, int curval, int newval, int newuid, int *foundval, int *founduid) 
+static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, int newval, int newuid, int *foundval, int *founduid) 
 {
-    int rc;
+    int rc, count=0, curval, curuid;
+    cdb2_effects_tp effects;
+    char sql[128];
 
     /* If there are no records, these will remain -1 */
     (*foundval) = (*founduid) = -1;
@@ -73,25 +76,32 @@ static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, i
         }
     }
 
-
     rc = cdb2_run_statement(db, "select * from register where id = 1");
     if (rc) {
         tdprintf(stderr, db, __func__, __LINE__, "XXX select line %d: error %s\n",
                 __LINE__, cdb2_errstr(db));
-        return rc;
+        goto out;
     }
 
     rc = cdb2_next_record(db);
     while (rc == CDB2_OK) {
         count++;
-        v = (int)*(long long*)cdb2_column_value(db, 0);
+        int v = (int)*(long long*)cdb2_column_value(db, 0);
         if (v != 1) {
-            fprintf(stderr, "Unexpected value for column 0: %d\n", v);
+            tdprintf(stderr, db, __func__, __LINE__, "Unexpected value for column 0: %d\n", v);
             myexit(__func__, __LINE__, 1);
         }
 
         *foundval = curval = (int)*(long long*)cdb2_column_value(db, 1);
         *founduid = curuid = (int)*(long long*)cdb2_column_value(db, 2);
+
+        rc = cdb2_next_record(db);
+    }
+
+    if (rc != CDB2_OK_DONE) {
+        cdb2_run_statement(db, "commit");
+        tdprintf(stderr, db, __func__, __LINE__, "Unexpected error from cdb2_next_record, %d\n", rc);
+        goto out;
     }
 
     if (count > 1) {
@@ -99,29 +109,119 @@ static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, i
         myexit(__func__, __LINE__, 1);
     }
 
-    if (op == 0) 
-        return 0;
+    /* Read */
+    if (op == 0) {
+        rc = cdb2_run_statement(db, "commit");
+        if (rc) {
+            tdprintf(stderr, db, __func__, __LINE__, "Failure committing after a single select statement?  rc=%d %s\n", 
+                    rc, cdb2_errstr(db));
+        }
 
-    /* Write .. if there are no records, this is an insert, otherwise this is an update */
+        /* This can't really fail - I've already read it */
+        rc = 0;
+    }
+
+    /* Write */
     if (op == 1) {
         if (count == 0) {
-            rc = cdb2_run_statement(db, "insert into register (id, val, uid) values (1, %d, %d)\n", 
-                    newval, newuid);
-        }
+            snprintf(sql, sizeof(sql), "insert into register (id, val, uid) values (1, %d, %d)", newval, newuid);
+            rc = cdb2_run_statement(db, sql);
+            if (rc) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX insert returns %d, %s\n", rc, 
+                        cdb2_errstr(db));
+                goto out;
+            }
+
+            rc = cdb2_run_statement(db, "commit");
+            if (rc) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX commit: insert into register(id, val, uid) values (1, %d, %d) rc = %d %s\n",
+                        newval, newuid, rc, cdb2_errstr(db));
+                goto out;
+            }
+
+            rc = cdb2_get_effects(db, &effects);
+            if (rc) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
+                myexit(__func__, __LINE__, 1);
+            }
+
+            if (effects.num_inserted != 1) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects num_inserted = %d\n", effects.num_inserted);
+                rc = -1;
+                goto out;
+            }
+        } 
         else {
-            rc = cdb2_run_statement(db, "update register set val = %d, uid = %d where 1\n", 
-                    newval, newuid);
+            snprintf(sql, sizeof(sql), "update register set val = %d, uid = %d where 1 -- cur uid is %d", 
+                    newval, newuid, curuid);
+            rc = cdb2_run_statement(db, sql);
+            if (rc) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX update returns %d, %s\n", rc, 
+                        cdb2_errstr(db));
+                goto out;
+            }
+
+            rc = cdb2_run_statement(db, "commit");
+            if (rc) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX commit: update register set val = %d, uid = %d where 1 -- cur uid is %d : rc = %d %s\n",
+                        newval, newuid, curuid, rc, cdb2_errstr(db));
+                goto out;
+            }
+
+            rc = cdb2_get_effects(db, &effects);
+            if (rc) {
+                tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
+                myexit(__func__, __LINE__, 1);
+            }
+
+            if (effects.num_updated != 1) {
+                rc = -1;
+                goto out;
+            }
         }
     }
 
-    /* curval is only used for CAS as the guessed original value */
+    /* Compare and Set */
+    if (op == 2) {
+        snprintf(sql, sizeof(sql), "update register set val = %d, uid = %d where val = %d -- cur uid is %d", 
+                newval, newuid, curval, curuid);
+        rc = cdb2_run_statement(db, sql);
+
+        if (rc) {
+            tdprintf(stderr, db, __func__, __LINE__, "XXX update returns %d, %s\n", rc, 
+                    cdb2_errstr(db));
+            goto out;
+        }
+
+        rc = cdb2_run_statement(db, "commit");
+        if (rc) {
+            tdprintf(stderr, db, __func__, __LINE__, "XXX commit: update register set val = %d, uid = %d where val = %d -- cur uid is %d : rc = %d %s\n",
+                    newval, newuid, curval, curuid, rc, cdb2_errstr(db));
+            goto out;
+        }
+
+        rc = cdb2_get_effects(db, &effects);
+        if (rc) {
+            tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
+            myexit(__func__, __LINE__, 1);
+        }
+
+        if (effects.num_updated != 1) {
+            rc = -1;
+            goto out;
+        }
+    }
+
+out:
+
+    return rc;
 }
 
 void update(cdb2_hndl_tp **indb, char *readnode, int threadnum) {
     cdb2_hndl_tp *db = (*indb);
-    int rc, op, newval = (rand() % 5), curval = (rand() % 5), curuid, newuid = (rand() % 100000), v, count=0;
+    int rc, op, newval = (rand() % 5), curval = (rand() % 5), newuid = (rand() % 100000);
     int foundval, founduid;
-    uint64_t beginms, endms;
+    unsigned long long beginms, endms;
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
     op = (rand() % 3);
@@ -131,14 +231,14 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum) {
         rc = cdb2_run_statement(db, "set hasql on");
         if (rc) {
             tdprintf(stderr, db, __func__, __LINE__, "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
-            return rc;
+            return;
         }
     }
 
     rc = cdb2_run_statement(db, "set transaction serializable");
     if (rc) {
         tdprintf(stderr, db, __func__, __LINE__, "set transaction serializable, rc %d, %s\n", rc, cdb2_errstr(db));
-        return rc;
+        return;
     }
 
     beginms = timems();
@@ -153,32 +253,19 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum) {
 
         /* Write */
         if (op == 1) {
-            fprintf(c_file, "{:type :invoke :f :write :value %d :process %d :time %llu :uid %d :time %llu}\n", 
+            fprintf(c_file, "{:type :invoke :f :write :value %d :process %d :uid %d :time %llu}\n", 
                     newval, threadnum, newuid, beginms);
         }
 
         /* CAS */
         if (op == 2) {
-            fprintf(c_file, "{:type :invoke :f :cas :value [%d %d] :process %d :time %llu :uid %d :time %llu}\n", 
+            fprintf(c_file, "{:type :invoke :f :cas :value [%d %d] :process %d :uid %d :time %llu}\n", 
                     curval, newval, threadnum, newuid, beginms);
         }
         pthread_mutex_unlock(&lk);
     }
 
-    /*
-    rc = cdb2_run_statement(db, "begin");
-    if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "begin failed, rc %d, %s\n", rc, cdb2_errstr(db));
-        return rc;
-    }
-    else {
-        if (debug_trace) {
-            tdprintf(stderr, db, __func__, __LINE__, "begin: read node %s (success)\n", readnode);
-        }
-    }
-
     rc = update_int(db, readnode, threadnum, op, newval, newuid, &foundval, &founduid);
-    */
 
     endms = timems();
 
@@ -210,20 +297,15 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum) {
         /* CAS */
         if (op == 2) {
             if (rc == 0) {
-                fprintf(c_file, "{:type :ok :f :cas :value [%d %d] :process %d :time %llu :uid %d :time %llu}\n", 
+                fprintf(c_file, "{:type :ok :f :cas :value [%d %d] :process %d :uid %d :time %llu}\n", 
                         curval, newval, threadnum, newuid, beginms);
             }
             else {
             }
         }
 
-
         pthread_mutex_unlock(&lk);
     }
-
-
-
-
 }
 
 void* thd(void *arg) 
@@ -232,7 +314,7 @@ void* thd(void *arg)
     char *readnode;
     cdb2_hndl_tp *db;
     int rc;
-    int threadnum = (int)arg;
+    int threadnum = (unsigned long long)arg;
 
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
     if (rc) {
@@ -286,6 +368,7 @@ int main (int argc, char *argv[])
     argv0 = argv[0];
 
     while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:"))!=EOF) {
+        switch(c) {
             case 'd':
                 dbname = optarg;
                 break;
@@ -328,13 +411,14 @@ int main (int argc, char *argv[])
             case 'j':
                 if ((c_file = fopen(optarg, "w")) == NULL) {
                     fprintf(stderr, "Error opening clojure output file: %s\n",
-                            perror(errno));
+                            strerror(errno));
                 }
                 break;
             default:
                 fprintf(stderr, "Unknown option, '%c'\n", c);
                 errors++;
                 break;
+        }
     }
 
     if (errors) {
@@ -365,8 +449,8 @@ int main (int argc, char *argv[])
     }
 
     threads = malloc(sizeof(pthread_t) * nthreads);
-    for (int i = 0; i < nthreads; i++) {
-        rc = pthread_create(&threads[i], NULL, thd, i);
+    for (unsigned long long i = 0; i < nthreads; i++) {
+        rc = pthread_create(&threads[i], NULL, thd, (void *)i);
     }
 
     sleep(runtime / 2 - 1);
@@ -408,5 +492,4 @@ int main (int argc, char *argv[])
     if (c_file) {
         fprintf(c_file, "\n]");
     }
-
 }

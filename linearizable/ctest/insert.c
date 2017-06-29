@@ -58,15 +58,6 @@ void exit(int status)
     _exit(status);
 }
 
-void myexit(const char *func, int line, int status)
-{
-    printf("calling exit from thread %u function %s line %d with status %d\n", 
-            (uint32_t)pthread_self(), func, line, status);
-    fflush(stdout);
-    fflush(stderr);
-    exit(status);
-}
-
 void usage(FILE *f)
 {
     fprintf(f, "Usage: %s [ opts ]\n", argv0);
@@ -948,7 +939,7 @@ int main(int argc, char *argv[]) {
             PARTITION_MASTER : 0);
     fixall(n);
 
-    char *master_node = master();
+    char *master_node = master(dbname, cltype);
     if (master_node)
         printf("master is %s\n", master_node);
     else

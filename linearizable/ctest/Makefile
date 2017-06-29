@@ -5,7 +5,7 @@ SHR_OBJS=nemesis.o testutil.o
 LIBS=../../cdb2api/libcdb2api.a -lcdb2protobuf -L/opt/bb/lib -lprotobuf-c -lpthread
 CFLAGS=-Wall -g -std=c99 -I../../cdb2api -I../../protobuf -D_XOPEN_SOURCE=500 -I. 
 
-all: insert
+all: insert register
 
 insert: $(INS_OBJS) $(SHR_OBJS)
 	gcc -o $@ $^ $(LDFLAGS) $(LIBS) -lssl -lcrypto

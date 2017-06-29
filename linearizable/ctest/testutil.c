@@ -5,7 +5,9 @@
 #include <pthread.h>
 #include <testutil.h>
 #include <stdint.h>
+#include <sys/time.h>
 #include <stdarg.h>
+#include <errno.h>
 
 #define FMTSZ 512
 
@@ -45,17 +47,25 @@ void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line, const char 
     va_end(ap);
 }
 
-char* master(cdb2_hndl_tp *db) 
+char *master(const char *dbname, const char *cltype) 
 {
     int rc;
     char *s_master = NULL;
+    cdb2_hndl_tp *db;
+
+    rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
+    if (rc) {
+        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc, cdb2_errstr(db));
+        cdb2_close(db);
+        return NULL;
+    }
 
     rc = cdb2_run_statement(db, "exec procedure sys.cmd.send('bdb cluster')");
     if (rc) {
         fprintf(stderr, "exec procedure sys.cmd.send: %d %s\n", rc, 
                 cdb2_errstr(db));
         cdb2_close(db);
-        return -1;
+        return NULL;
     }
 
     rc = cdb2_next_record(db);
@@ -77,13 +87,14 @@ char* master(cdb2_hndl_tp *db)
     if (rc != CDB2_OK_DONE) {
         fprintf(stderr, "next master rc %d %s\n", rc, cdb2_errstr(db));
         cdb2_close(db);
-        return -1;
+        return NULL;
     }
 
+    cdb2_close(db);
     return s_master;
 }
 
-char* read_node(cdb2_hndl_tp *db) 
+char *read_node(cdb2_hndl_tp *db) 
 {
     char *host;
     int rc;
@@ -108,6 +119,7 @@ char* read_node(cdb2_hndl_tp *db)
         tdprintf(stderr, db, __func__, __LINE__, "next read node rc %d %s\n", rc, cdb2_errstr(db));
         return NULL;
     }
+
     return host;
 }
 

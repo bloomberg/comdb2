@@ -7,6 +7,7 @@
 #include <alloca.h>
 #include <cdb2api.h>
 #include <signal.h>
+#include <testutil.h>
 #include <nemesis.h>
 
 #define MAXCL 64
@@ -31,14 +32,15 @@ static int setcluster(struct nemesis *n, char *dbname, char *cltype, uint32_t fl
     n->ports = (int *)malloc(sizeof(int) * MAXCL);
     n->flags = flags;
 
-    cdb2_cluster_info(db, n->cluster, n->ports, MAXCL, &n->numnodes);
-
     rc = cdb2_run_statement(db, "set hasql on"); 
     do {
         rc = cdb2_next_record(db);
     } while (rc == CDB2_OK);
 
-    n->master = master(db);
+    cdb2_cluster_info(db, n->cluster, n->ports, MAXCL, &n->numnodes);
+    cdb2_close(db);
+
+    n->master = master(dbname, cltype);
 
     return 0;
 }
