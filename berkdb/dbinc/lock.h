@@ -268,7 +268,7 @@ typedef struct __db_locker {
 	db_timeval_t	lk_expire;	/* When current lock expires. */
 	db_timeval_t	tx_expire;	/* When this txn expires. */
 	db_timeout_t	lk_timeout;	/* How long do we let locks live. */
-    const char *cnonce;     /* client nonce to print deadlock info */
+	const char *snap_info; /* client nonce to print deadlock info */
 	u_int32_t id;			/* Locker id. */
 	u_int32_t dd_id;		/* Deadlock detector id. */
 	u_int32_t nlocks;		/* Number of locks held. */

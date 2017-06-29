@@ -214,6 +214,7 @@ int handle_buf_bbipc(struct dbenv *, uint8_t *p_buf, const uint8_t *p_buf_end,
 
 pthread_key_t comdb2_open_key;
 pthread_key_t blockproc_retry_key;
+pthread_key_t osql_snap_info; /* contains cnonce */
 
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = "R7.0pre";
@@ -7044,8 +7045,7 @@ static int init(int argc, char **argv)
        bdb_genid_set_format(thedb->bdb_env, format);
     }
 
-    extern pthread_key_t osql_cnonce;
-    rc = pthread_key_create(&osql_cnonce, NULL);
+    rc = pthread_key_create(&osql_snap_info, NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
         return -1;

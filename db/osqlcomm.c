@@ -64,7 +64,6 @@ osqlpf_step *gbl_osqlpf_step = NULL;
 queue_type *gbl_osqlpf_stepq = NULL;
 
 pthread_mutex_t osqlpf_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_key_t osql_cnonce;
 
 extern __thread int send_prefault_udp;
 extern int gbl_prefault_udp;
@@ -3295,8 +3294,6 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
-            pthread_setspecific(osql_cnonce, &iq->snap_info);
-            printf("WOULD CORRECTLY ASSIGN THIS, %llx\n", pthread_self());
             iq->have_snap_info = 1;
         }
 

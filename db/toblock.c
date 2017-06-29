@@ -5437,6 +5437,7 @@ add_blkseq:
             char *buf; 
             memcpy(p_buf_fstblk, &t, sizeof(int));
 
+            printf("calling bdb_blkseq_insert tid=%lx\n", pthread_self());
             /* Snap_info is our blkseq key */
             if (iq->have_snap_info)
             {

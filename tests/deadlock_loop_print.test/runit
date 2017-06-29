@@ -1,6 +1,7 @@
 #!/bin/bash
 bash -n "$0" | exit 1
 
+set -x
 ################################################################################
 
 
@@ -9,7 +10,7 @@ bash -n "$0" | exit 1
 # args
 a_dbn=$1
 
-cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
     cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('debg 500')"
     cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 1000000')"

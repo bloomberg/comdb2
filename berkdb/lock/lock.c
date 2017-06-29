@@ -3925,10 +3925,10 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	if (sh_locker && create) {
 		sh_locker->tid = pthread_self();
 
-        extern pthread_key_t osql_cnonce;
-        sh_locker->cnonce = pthread_getspecific(osql_cnonce);
-        printf("WOULD CORRECTLY READ THIS tid=%llx\n", sh_locker->tid);
-    }
+		extern pthread_key_t osql_snap_info;
+		void * si = pthread_getspecific(osql_snap_info);
+		if(si) sh_locker->snap_info = si;
+	}
 
 	*retp = sh_locker;
 	return (0);

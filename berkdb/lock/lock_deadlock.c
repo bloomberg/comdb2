@@ -59,7 +59,7 @@ void stack_me(char *location);
 typedef struct {
 	DB_LOCKOBJ *last_obj;
 	pthread_t tid;
-    const char * cnonce;
+	const void * snap_info; /* contains cnonce */
 	roff_t last_lock;
 	u_int32_t count;
 	u_int32_t id;
@@ -420,8 +420,8 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_USER, "*");
-        extern void log_snap_info_key(const void *);
-        log_snap_info_key(idmap[j].cnonce);
+		extern void log_snap_info_key(const void *);
+		log_snap_info_key(idmap[j].snap_info);
 		logmsg(LOGMSG_USER, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
 	logmsg(LOGMSG_USER, "\n");
@@ -1575,8 +1575,9 @@ get_lock:	dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
 				memcpy(&dd_id_array[id].pgno, pptr, sizeof(db_pgno_t));
 			else
 				dd_id_array[id].pgno = 0;
-            dd_id_array[id].cnonce = lockerp->cnonce;
-out:		unlock_obj_partition(region, lpartition);
+			dd_id_array[id].snap_info = lockerp->snap_info;
+out:
+			unlock_obj_partition(region, lpartition);
 		}
 		unlock_locker_partition(region, lkr_partition);
 	}
