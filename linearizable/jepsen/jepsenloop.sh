@@ -38,6 +38,8 @@ scripts=$pathbase/linearizable/scripts
 . $scripts/setvars
 outbase=${COMDB2_OUTBASE:-/db/testout}
 
+$scripts/heallall
+
 # add to comdb2db
 $scripts/addmach_comdb2db $db
 
