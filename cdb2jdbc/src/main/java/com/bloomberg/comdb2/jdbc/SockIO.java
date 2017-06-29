@@ -29,6 +29,7 @@ public class SockIO implements IO {
     protected String host;
     protected int port;
     protected int tcpbufsz;
+    protected String pmuxrtedb = null;
 
     protected boolean opened = false;
 
@@ -49,14 +50,19 @@ public class SockIO implements IO {
         opened = false;
     }
 
-    public SockIO(String host, int port, int tcpbufsz) {
+    public SockIO(String host, int port, int tcpbufsz, String pmuxrtedb) {
         this.host = host;
         this.port = port;
         this.tcpbufsz = tcpbufsz;
+        this.pmuxrtedb = pmuxrtedb;
     }
 
     public SockIO(String host, int port) {
-        this(host, port, 0);
+        this(host, port, 0, null);
+    }
+
+    public SockIO(String host, int port, String pmuxrtedb) {
+        this(host, port, 0, pmuxrtedb);
     }
 
     public SockIO() {
@@ -131,6 +137,14 @@ public class SockIO implements IO {
             out = new BufferedOutputStream(sock.getOutputStream());
             in = new BufferedInputStream(sock.getInputStream());
             opened = true;
+
+            if (pmuxrtedb != null) {
+                String rtepacket = String.format("rte %s/%s/%s\n", "comdb2", "replication", pmuxrtedb);
+                /* Errors are handled by the catch block below. */
+                out.write(rtepacket.getBytes());
+                out.flush();
+                readLine(32);
+            }
         } catch (IOException e) {
             opened = false;
             logger.log(Level.FINE, "Unable to open socket connection to " + host + ":" + port, e);
