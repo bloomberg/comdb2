@@ -3979,6 +3979,7 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     start_lsn_response_t start_lsn = {0};
     uint8_t buf[START_LSN_RESPONSE_TYPE_LEN];
     uint8_t *p_buf, *p_buf_end;
+    uint32_t current_gen;
     bdb_state_type *bdb_state = usr_ptr;
     repinfo_type *repinfo = bdb_state->repinfo;
 
@@ -4002,6 +4003,16 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
 
     bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &start_lsn.lsn, 
             &start_lsn.gen);
+
+    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
+
+    if (start_lsn.gen != current_gen) {
+        logmsg(LOGMSG_ERROR, "%s line %d generation-mismatch: current_gen=%d, "
+                             "durable_gen=%d\n",
+               __func__, __LINE__, current_gen, start_lsn.gen);
+        net_ack_message(ack_handle, 3);
+        return;
+    }
 
     if (start_lsn.lsn.file == 2147483647) {
         logmsg(LOGMSG_FATAL, "Huh? Durable lsn is 2147483647???\n");
@@ -5459,6 +5470,7 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
     const uint8_t *p_buf, *p_buf_end;
     DB_LSN durable_lsn;
     uint8_t *buf = NULL;
+    uint32_t current_gen;
     int data = 0, buflen = 0, waitms = bdb_state->attr->durable_lsn_request_waitms, rc;
     int request_durable_lsn_trace = bdb_state->attr->request_durable_lsn_trace;
     start_lsn_response_t start_lsn;
@@ -5481,6 +5493,16 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         }
 
         bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn, durable_gen);
+        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
+
+        if (current_gen != *durable_gen) {
+            logmsg(LOGMSG_ERROR, "%s line %d master generation-mismatch: "
+                                 "current_gen=%d, durable_gen=%d\n",
+                   __func__, __LINE__, current_gen, *durable_gen);
+            badcount++;
+            return -3;
+        }
+
         *durable_file = durable_lsn.file;
         *durable_offset = durable_lsn.offset;
 
