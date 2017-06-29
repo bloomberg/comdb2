@@ -3926,7 +3926,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		sh_locker->tid = pthread_self();
 
 		extern pthread_key_t osql_snap_info;
-		void * si = pthread_getspecific(osql_snap_info);
+		const char *si = pthread_getspecific(osql_snap_info);
 		if(si) sh_locker->snap_info = si;
 	}
 
