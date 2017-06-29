@@ -1129,10 +1129,10 @@ retry:	count = region->stat.st_nlockers;
 	ret = __resize_object(dbenv, (void**) &dd_id_array, 
 		&dd_id_array_size, allocSz);
 	if(ret) {
-	    if (sparse_map) 
-		free_sparse_map(dbenv, sparse_map);
-	    return ret;
-    }
+		if (sparse_map) 
+			free_sparse_map(dbenv, sparse_map);
+		return ret;
+	}
 	memset(dd_id_array, 0, allocSz);
 
 
@@ -1153,7 +1153,7 @@ retry:	count = region->stat.st_nlockers;
 	id = 0;
 
 	for (DB_LOCKER *lip = SH_TAILQ_FIRST(&region->lockers, __db_locker);
-	    lip != NULL; lip = SH_TAILQ_NEXT(lip, ulinks, __db_locker)) {
+		lip != NULL; lip = SH_TAILQ_NEXT(lip, ulinks, __db_locker)) {
 		if (lip->wstatus == 1) {	/*only master lockers can be in waiting status */
 			lip->dd_id = id ++;
 			locker_info *ptr_idarr = &dd_id_array[lip->dd_id];
@@ -1163,22 +1163,22 @@ retry:	count = region->stat.st_nlockers;
 			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
 			ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
 			ptr_idarr->saveme =
-			    F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
+				F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
 			ptr_idarr->in_abort =
-			    (F_ISSET(lip, DB_LOCKER_INABORT) != 0);
+				(F_ISSET(lip, DB_LOCKER_INABORT) != 0);
 			ptr_idarr->tracked =
-			    (F_ISSET(lip, DB_LOCKER_TRACK) != 0);
+				(F_ISSET(lip, DB_LOCKER_TRACK) != 0);
 
 #if TEST_DEADLOCKS
 			__adjust_lockerid_priority_td(dbenv, atype, lip,
-			    lip->dd_id, dd_id_array, 0);
+				lip->dd_id, dd_id_array, 0);
 #else
 			__init_lockerid_priority(dbenv, atype, lip, ptr_idarr);
 #endif
 
 			if (verbose_deadlocks &&lip->id >DB_LOCK_MAXID)
 				logmsg(LOGMSG_USER, "Added lip %p id=%x dd_id=%x count=%u\n",
-				    lip, lip->id, lip->dd_id, ptr_idarr->count);
+					lip, lip->id, lip->dd_id, ptr_idarr->count);
 
 		} else {
 			lip->dd_id = DD_INVALID_ID;
@@ -1198,7 +1198,7 @@ retry:	count = region->stat.st_nlockers;
 		ret = __resize_object(dbenv, (void**) &dd_bitmap, 
 			&dd_bitmap_size, allocSz);
 		if (ret)
-		    return ret;
+			return ret;
 		memset(dd_bitmap, 0, allocSz);
 		sparse_map = NULL;
 	}
@@ -1206,9 +1206,9 @@ retry:	count = region->stat.st_nlockers;
 	allocSz = sizeof(u_int32_t) * nentries;
 	ret = __resize_object(dbenv, (void**) &dd_tmpmap, &dd_tmpmap_size, allocSz);
 	if(ret) {
-	    if (sparse_map) 
-		free_sparse_map(dbenv, sparse_map);
-	    return ret;
+		if (sparse_map) 
+			free_sparse_map(dbenv, sparse_map);
+		return ret;
 	}
 	memset(dd_tmpmap, 0, allocSz);
 
@@ -1257,7 +1257,7 @@ obj_loop:
 		int has_master = 0;
 
 		for (lp = SH_TAILQ_FIRST(&op->holders, __db_lock);
-		    lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
+			lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 			lockerp = lp->holderp;
 			has_master = 0;
 
@@ -1271,10 +1271,10 @@ obj_loop:
 				lockerp->dd_id = dd;
 #if TEST_DEADLOCKS
 				__adjust_lockerid_priority_td(dbenv, atype,
-				    lockerp, dd, dd_id_array, 1);
+					lockerp, dd, dd_id_array, 1);
 #else
 				__adjust_lockerid_priority(dbenv, atype,
-				    lockerp, &dd_id_array[dd]);
+					lockerp, &dd_id_array[dd]);
 #endif
 				if (F_ISSET(lockerp, DB_LOCKER_INABORT))
 					dd_id_array[dd].in_abort = 1;
@@ -1286,10 +1286,10 @@ obj_loop:
 
 			if (verbose_deadlocks)
 				logmsg(LOGMSG_USER, 
-                    "Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
-				    lockerp, lockerp->id, lockerp->dd_id,
-				    dd_id_array[lockerp->dd_id].count,
-				    (has_master)? lockerp->master_locker : 0);
+					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
+						lockerp, lockerp->id, lockerp->dd_id,
+						dd_id_array[lockerp->dd_id].count,
+						(has_master)? lockerp->master_locker : 0);
 
 			/*
 			 * If the holder has already been aborted, then
@@ -1308,10 +1308,9 @@ obj_loop:
 		 * mutex already.
 		 */
 look_waiters:
-		for (is_first = 1,
-		    lp = SH_TAILQ_FIRST(&op->waiters, __db_lock);
-		    lp !=NULL;
-		    is_first = 0, lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
+		for (is_first = 1, lp = SH_TAILQ_FIRST(&op->waiters, __db_lock);
+			lp !=NULL;
+			is_first = 0, lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 			lockerp = lp->holderp;
 
 			if (lockerp == NULL)
@@ -1343,10 +1342,10 @@ look_waiters:
 				lockerp->dd_id = dd;
 #if TEST_DEADLOCKS
 				__adjust_lockerid_priority_td(dbenv, atype,
-				    lockerp, dd, dd_id_array, 1);
+					lockerp, dd, dd_id_array, 1);
 #else
 				__adjust_lockerid_priority(dbenv, atype,
-				    lockerp, &dd_id_array[dd]);
+					lockerp, &dd_id_array[dd]);
 #endif
 				has_master = 1;
 
@@ -1356,9 +1355,9 @@ look_waiters:
 
 			if (verbose_deadlocks)
 				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
-				    lockerp, lockerp->id, lockerp->dd_id,
-				    dd_id_array[lockerp->dd_id].count,
-				    (has_master)? lockerp->master_locker : 0);
+					lockerp, lockerp->id, lockerp->dd_id,
+					dd_id_array[lockerp->dd_id].count,
+					(has_master)? lockerp->master_locker : 0);
 
 			/*
 			 * If the transaction is pending abortion, then
@@ -1372,13 +1371,12 @@ look_waiters:
 				if (sparse_map->map[dd] == NULL) {
 					if ((ret =
 						__os_calloc(dbenv, nentries, sizeof(u_int32_t),
-						    &sparse_map->map[dd]))!=0) {
+							&sparse_map->map[dd]))!=0) {
 						free_sparse_map(dbenv, sparse_map);
 						unlock_obj_partition(region, partition);
 						return (ret);
 					}
-					sparse_map->alloclist[sparse_map->
-					    alloccnt++] = dd;
+					sparse_map->alloclist[sparse_map->alloccnt++] = dd;
 				}
 				entryp = sparse_map->map[dd];
 			} else {
@@ -1428,23 +1426,23 @@ look_waiters:
 
 		/* MINWRITE_NOREAD and MINWRITE_EVER count write-locks, not readlocks */
 		if (fix_pure_readers && dd_id_array[id].count == 0 &&
-		    dd_id_array[id].readonly) {
+			dd_id_array[id].readonly) {
 			/*fprintf(stderr, "setting count to uint_max\n"); */
 			dd_id_array[id].count = (UINT_MAX -1);
 			if (verbose_deadlocks &&dd_id_array[id].
-			    id >DB_LOCK_MAXID)
-				 logmsg(LOGMSG_USER, "Adjusted id=%x dd_id=%x count=%u\n",
-				    dd_id_array[id].id, id,
-				    dd_id_array[id].count);
+				id >DB_LOCK_MAXID)
+				logmsg(LOGMSG_USER, "Adjusted id=%x dd_id=%x count=%u\n",
+					dd_id_array[id].id, id,
+					dd_id_array[id].count);
 		}
 
 		LOCKER_INDX(lt, region, dd_id_array[id].id, ndx);
 
 		if ((ret = __lock_getlocker(lt, dd_id_array[id].id,
-			    ndx, 0, GETLOCKER_KEEP_PART, &lockerp))!=0) {
+				ndx, 0, GETLOCKER_KEEP_PART, &lockerp))!=0) {
 			__db_err(dbenv,
-			    "No locks for locker %lu",
-			    (u_long)dd_id_array[id].id);
+				"No locks for locker %lu",
+				(u_long)dd_id_array[id].id);
 			continue;
 		}
 		if (lockerp == NULL) {
@@ -1458,7 +1456,7 @@ look_waiters:
 
 		/* Rep-thread can't release rowlocks (it'll corrupt the database) */
 		if (is_replicant &&
-		    gbl_rowlocks &&F_ISSET(lockerp, DB_LOCKER_LOGICAL)) {
+			gbl_rowlocks &&F_ISSET(lockerp, DB_LOCKER_LOGICAL)) {
 			dd_id_array[id].count = (UINT_MAX);
 		}
 
@@ -1479,7 +1477,7 @@ look_waiters:
 		if (child !=NULL) {
 			do {
 again1:			lp = SH_LIST_FIRST(&child->heldby,
-				    __db_lock);
+					__db_lock);
 				if (lp !=NULL) {
 					lpartition = lp->lpartition;
 
@@ -1531,7 +1529,7 @@ again2:	lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock);
 			if (lpartition >= gbl_lk_parts) {
 				if (SH_LIST_EMPTY(&lockerp->heldby)) {
 					unlock_locker_partition(region,
-					    lkr_partition);
+						lkr_partition);
 					continue;
 				} else {
 					puts("THIS IS STILL HAPPENING...");
@@ -1562,7 +1560,7 @@ again2:	lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock);
 				goto again2;
 			}
 			dd_id_array[id].last_locker_id = lockerp->id;
-get_lock:   dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
+get_lock:	dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
 			dd_id_array[id].last_obj = lp->lockobj;
 			pptr = lo->lockobj.data;
 
@@ -1570,7 +1568,7 @@ get_lock:   dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
 				memcpy(&dd_id_array[id].pgno, pptr, sizeof(db_pgno_t));
 			else
 				dd_id_array[id].pgno = 0;
-out:        unlock_obj_partition(region, lpartition);
+out:		unlock_obj_partition(region, lpartition);
 		}
 		unlock_locker_partition(region, lkr_partition);
 	}
@@ -1585,7 +1583,7 @@ out:        unlock_obj_partition(region, lpartition);
 	 */
 	if (sparse_map) {
 		qsort(sparse_map->alloclist, sparse_map->alloccnt, sizeof(int),
-		    sparse_map_cmp);
+			sparse_map_cmp);
 	}
 
 	/*
@@ -1604,7 +1602,7 @@ out:        unlock_obj_partition(region, lpartition);
 
 static int
 __dd_find(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, deadp, deadwho,
-    found_tracked)
+		found_tracked)
 	DB_ENV *dbenv;
 	u_int32_t *bmp, nlockers, nalloc;
 	sparse_map_t *sparse_map;
@@ -1626,11 +1624,11 @@ __dd_find(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, deadp, deadwho,
 	*deadwho = NULL;
 
 	if ((ret = __os_malloc (dbenv,
-		    ndeadalloc * sizeof(u_int32_t *), &retp))!=0)
+				ndeadalloc * sizeof(u_int32_t *), &retp))!=0)
 		 return (ret);
 
 	if (sparse_map &&(ret = __os_malloc (dbenv,
-		    ndeadalloc * sizeof(u_int32_t), &whop))!=0) {
+				ndeadalloc * sizeof(u_int32_t), &whop))!=0) {
 		__os_free (dbenv, retp);
 
 		return (ret);
@@ -1744,7 +1742,7 @@ already_aborted_trace(int lineno)
 
 		if ((now = time (NULL))>lastpr) {
 			logmsg(LOGMSG_USER, "Already aborted count is %llu lineno is %d\n",
-			    already_aborted_count, lineno);
+					already_aborted_count, lineno);
 			lastpr = now;
 		}
 	}
@@ -1776,9 +1774,9 @@ __dd_abort(dbenv, info)
 	LOCKER_INDX(lt, region, info->last_locker_id, ndx);
 
 	if ((ret = __lock_getlocker(lt, info->last_locker_id, ndx, 0,
-		    GETLOCKER_KEEP_PART, &lockerp))!=0) {
+			GETLOCKER_KEEP_PART, &lockerp))!=0) {
 		printf("%s:%d__lock_getlocker ret: %d\n",
-		    __func__, __LINE__, ret);
+			__func__, __LINE__, ret);
 		goto out;
 	}
 	if (lockerp == NULL) {
@@ -1822,8 +1820,8 @@ __dd_abort(dbenv, info)
 	lock_obj_partition(region, partition);
 
 	if (R_OFFSET(&lt->reginfo, lockp) != info->last_lock ||
-	    lockp->holderp->id !=lockerp->id ||lockp->lockobj !=info->last_obj
-	    || lockp->status !=DB_LSTAT_WAITING) {
+		lockp->holderp->id !=lockerp->id ||lockp->lockobj !=info->last_obj
+		|| lockp->status !=DB_LSTAT_WAITING) {
 		already_aborted_count++;
 		already_aborted_trace(__LINE__);
 		ret = DB_ALREADY_ABORTED;
@@ -1835,11 +1833,11 @@ __dd_abort(dbenv, info)
 
 	if (verbose_deadlocks)
 		logmsg(LOGMSG_USER, 
-            "%d %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%d parent_locker=%d\n",
-		    pthread_self(), __FILE__, __LINE__, lockerp->id,
-		    info->count, lockerp->id, lockerp->dd_id, lockerp->nlocks,
-		    lockerp->npagelocks, lockerp->nwrites,
-		    lockerp->master_locker, lockerp->parent_locker);
+			"%d %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%d parent_locker=%d\n",
+			pthread_self(), __FILE__, __LINE__, lockerp->id,
+			info->count, lockerp->id, lockerp->dd_id, lockerp->nlocks,
+			lockerp->npagelocks, lockerp->nwrites,
+			lockerp->master_locker, lockerp->parent_locker);
 	lockerp->nretries = info->count;
 
 	sh_obj = lockp->lockobj;
