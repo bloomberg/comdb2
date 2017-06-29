@@ -1762,8 +1762,7 @@ struct comdb2_type_mapping {
     /* Additional types mapped to a Comdb2 type. */
     COMDB2_TYPE("varchar", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
     COMDB2_TYPE("char", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("date", "datetime", 0)};
+    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY)};
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
