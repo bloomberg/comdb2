@@ -606,6 +606,7 @@ void serialise_database(
         /* if we couldn't figure it out, we'll go by what parse_lrl_file told us */
     }
 
+    // Create the directory for incremental backups if needed
     std::string aug_incr_path = dbdir + "/" + incr_path;
 
     if (incr_create) {
@@ -713,6 +714,15 @@ void serialise_database(
     if(!support_files_only) {
         listdir(dbdir_files, dbdir);
         listdir(dbtxndir_files, dbtxndir);
+    }
+
+    // List of incremental comparison files to determine new/updated/deleted files
+    std::list<std::string> incr_files_list;
+    std::set<std::string> incr_files;
+    if(incr_gen) {
+        listdir(incr_files_list, aug_incr_path);
+        incr_files_list.remove_if(is_not_incr_file);
+        incr_files = std::set<std::string>(incr_files_list.begin(), incr_files_list.end());
     }
 
     // If it's an llmeta db then look for the file version map too.
@@ -976,7 +986,16 @@ void serialise_database(
             std::vector<uint32_t> pages_list;
             ssize_t data_size = 0;
 
-            if(compare_checksum(*it, aug_incr_path, pages_list, &data_size)) {
+            if(compare_checksum(*it, aug_incr_path, pages_list, &data_size, incr_files)) {
+                std::clog << "Difference found in file: " << (*it).get_filename()
+                    << " in pages ";
+                for(std::vector<uint32_t>::const_iterator
+                        it = pages_list.begin();
+                        it != pages_list.end();
+                        ++it){
+                    std::clog << *it << " ";
+                }
+                std::clog << std::endl;
                 incr_data_files.push_back(*it);
                 page_number_vec.push_back(pages_list);
                 write_incr_manifest_entry(manifest, *it, pages_list);
@@ -984,10 +1003,18 @@ void serialise_database(
             }
         }
 
-        if(incr_data_files.length() != page_number_vec.length()){
+        if(incr_data_files.size() != page_number_vec.size()){
             std::ostringstream ss;
             ss << "data files and page vectors don't align";
             throw Error(ss);
+        }
+
+        // Any leftover .incr files indicate that that file has been deleted
+        for(std::set<std::string>::const_iterator
+                it = incr_files.begin();
+                it != incr_files.end();
+                ++it){
+            write_del_manifest_entry(manifest, *it);
         }
 
     }
@@ -1093,7 +1120,7 @@ void serialise_database(
 
         // Write the header
         TarHeader head;
-        head.set_filename(data.tmp);
+        head.set_filename("data.tmp");
         head.set_attrs(st);
         head.set_checksum();
 
@@ -1101,16 +1128,22 @@ void serialise_database(
                 != sizeof(tar_block_header)) {
             std::ostringstream ss;
             ss << "error writing tar block header: " << std::strerror(errno);
-            throw SerialiseError(filename, ss.str());
+            throw Error(ss.str());
         }
 
-        data_it = incr_data_files.begin();
-        page_it = page_number_vec.begin();
+        std::vector<FileInfo>::const_iterator data_it = incr_data_files.begin();
+        std::vector<std::vector<uint32_t>>::const_iterator
+            page_it = page_number_vec.begin();
 
         ssize_t data_written = 0;
 
-        while(data_it != incr_data_files_end()){
-            data_written += write_incr_file(*data_it, *page_it);
+        while(data_it != incr_data_files.end()){
+            if((*page_it).empty()){
+                serialise_file(*data_it, iom, "", aug_incr_path, true);
+            } else {
+                data_written += write_incr_file(*data_it, *page_it, aug_incr_path);
+            }
+
             ++data_it;
             ++page_it;
         }
