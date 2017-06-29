@@ -25,23 +25,16 @@ enum eventtypes {
    ,CLOCK_EVENT             = 0x00000004
 };
 
-enum testbasetype {
-    INSERT_TEST             = 1
-};
-
 int nthreads = 5;
 pthread_t *threads;
-int delay = 100;
 int id = 0, value = 0;
 int runtime = 60;
-
 int max_clock_skew = 60;
 int largest = -1;
 int allocated = 10000000;
 int max_retries = 1000000;
 int *state;
 uint32_t which_events = 0;
-pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 char *dbname = NULL;
 char *cltype = "dev";
 char *argv0 = NULL;
@@ -69,6 +62,8 @@ void myexit(const char *func, int line, int status)
 {
     printf("calling exit from thread %u function %s line %d with status %d\n", 
             (uint32_t)pthread_self(), func, line, status);
+    fflush(stdout);
+    fflush(stderr);
     exit(status);
 }
 
@@ -79,7 +74,6 @@ void usage(FILE *f)
     fprintf(f, "        -G <event>          - add event type ('partition', 'sigstop', or 'clock')\n");
     fprintf(f, "        -T <numthd>         - set the number of threads\n");
     fprintf(f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
-    fprintf(f, "        -P                  - don't partition anything\n");
     fprintf(f, "        -i <count>          - insert this many records per transaction\n");
     fprintf(f, "        -M                  - partition the master\n");
     fprintf(f, "        -m <max-retries>    - set max-retries in the api\n");
@@ -88,23 +82,11 @@ void usage(FILE *f)
     fprintf(f, "        -F                  - fix things after test\n");
     fprintf(f, "        -e                  - exit at insert failure\n");
     fprintf(f, "        -x                  - test blkseq handling of dup error\n");
-    fprintf(f, "        -q                  - query ports\n");
     fprintf(f, "        -s                  - select between inserts\n");
     fprintf(f, "        -S <records>        - set number of select records\n");
     fprintf(f, "        -r <runtime>        - set runtime in seconds\n");
     fprintf(f, "        -Y                  - prepare select test and exit\n");
     fprintf(f, "        -B                  - prepare select test BUG\n");
-}
-
-int64_t timems(void) {
-    int rc;
-    struct timeval tv;
-    rc = gettimeofday(&tv, NULL);
-    if (rc == -1) {
-        fprintf(stderr, "Can't get time rc %d %s\n", errno, strerror(errno));
-        return 1;
-    }
-    return (tv.tv_sec * 1000000 + tv.tv_usec) / 1000;
 }
 
 enum {
@@ -116,9 +98,8 @@ enum {
     UNKNOWN   = 6
 };
 
-
-
 int insert(cdb2_hndl_tp **indb, const char *readnode) {
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     int i, val;
     cdb2_hndl_tp *db = (*indb);
     char cnonce_begin[100];
@@ -326,40 +307,11 @@ int insert(cdb2_hndl_tp **indb, const char *readnode) {
     return rc;
 }
 
-char* read_node(cdb2_hndl_tp *db) {
-    char *host;
-    int rc;
-
-    rc = cdb2_run_statement(db, "select comdb2_host()");
-    if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "run: don't know what node I'm on\n");
-        return NULL;
-    }
-    rc = cdb2_next_record(db);
-    if (rc != CDB2_OK) {
-        tdprintf(stderr, db, __func__, __LINE__, "next: don't know what node I'm on\n");
-        return NULL;
-    }
-    host = cdb2_column_value(db, 0);
-    if (host)
-        host = strdup(host);
-    while (rc == CDB2_OK) {
-        rc = cdb2_next_record(db);
-    }
-    if (rc != CDB2_OK_DONE) {
-        tdprintf(stderr, db, __func__, __LINE__, "next read node rc %d %s\n", rc, cdb2_errstr(db));
-        return NULL;
-    }
-    return host;
-}
-
 void* thd(void *arg) {
     int64_t now = timems(), end = now + runtime * 1000;
     char *readnode;
     cdb2_hndl_tp *db;
     int rc;
-
-    free(arg);
 
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
     if (rc) {
@@ -890,59 +842,6 @@ char* statestr(int num) {
             return "???";
     }
 }
-
-char* master(void) {
-    cdb2_hndl_tp *db;
-    int rc;
-    char *m = NULL, *master_out = NULL;
-
-    rc = cdb2_open(&db, dbname, cltype, 0);
-    if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "clear: open rc %d %s\n", rc, cdb2_errstr(db));
-        cdb2_close(db);
-        myexit(__func__, __LINE__, 1);
-    }
-    cdb2_set_max_retries(max_retries);
-    if (debug_trace) {
-        cdb2_set_debug_trace(db);
-    }
-
-    rc = cdb2_run_statement(db, "set hasql on"); 
-    do {
-        rc = cdb2_next_record(db);
-    } while (rc == CDB2_OK);
-
-
-    rc = cdb2_run_statement(db, "exec procedure sys.cmd.send('bdb cluster')");
-    if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "run master rc %d %s\n", rc, cdb2_errstr(db));
-        myexit(__func__, __LINE__, 1);
-    }
-    rc = cdb2_next_record(db);
-    while (rc == CDB2_OK) {
-        char *s;
-        s = cdb2_column_value(db, 0);
-        if (strstr(s, "MASTER")) {
-            while (*s && isspace(*s)) s++;
-            char *endptr;
-            m = strdup(s);
-            m = strtok_r(m, ":", &endptr);
-            if (m) {
-                master_out = strdup(m);
-            }
-        }
-        rc = cdb2_next_record(db);
-    }
-    if (rc != CDB2_OK_DONE) {
-        tdprintf(stderr, db, __func__, __LINE__, "next master rc %d %s\n", rc, cdb2_errstr(db));
-        myexit(__func__, __LINE__, 1);
-    }
-    if (m) free(m);
-    cdb2_close(db);
-    return master_out;
-}
-
-
 
 int main(int argc, char *argv[]) {
 

@@ -55,11 +55,11 @@ select_test_flag=""
 if [[ "$select_test" == "1" ]]; then
     select_test_flag="-s"
     echo "Adding initial records for select-test (this could take a while)"
-    $runbase/test -d $db -Y
+    $runbase/insert -d $db -Y
 fi
 
 while :; do 
-    outfile=$outbase/test.$db.$iter.out
+    outfile=$outbase/insert.$db.$iter.out
     if [[ $(( iter % 2 )) == 0 ]]; then
         mflag="-M"
     else
@@ -104,8 +104,8 @@ while :; do
     echo "$descr"
 
     # -D = enable debug-trace flags, -i <#> = number of inserts per txn
-    echo "$runbase/test $debug_trace_flags -i $insper $runtest $select_test_flag -d $db $mflag"
-    $runbase/test $debug_trace_flags -i $insper $runtest $select_test_flag -d $db $mflag > $outfile 2>&1
+    echo "$runbase/insert $debug_trace_flags -i $insper $runtest $select_test_flag -d $db $mflag"
+    $runbase/insert $debug_trace_flags -i $insper $runtest $select_test_flag -d $db $mflag > $outfile 2>&1
     grep "lost value" $outfile 
     if [[ $? == 0 ]]; then
         echo "!!! LOST VALUE IN ITERATION $iter !!!"

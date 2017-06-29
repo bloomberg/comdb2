@@ -38,35 +38,7 @@ static int setcluster(struct nemesis *n, char *dbname, char *cltype, uint32_t fl
         rc = cdb2_next_record(db);
     } while (rc == CDB2_OK);
 
-    rc = cdb2_run_statement(db, "exec procedure sys.cmd.send('bdb cluster')");
-    if (rc) {
-        fprintf(stderr, "exec procedure sys.cmd.send: %d %s\n", rc, 
-                cdb2_errstr(db));
-        cdb2_close(db);
-        return -1;
-    }
-
-    rc = cdb2_next_record(db);
-    while (rc == CDB2_OK) {
-        char *f, *s, *m;
-        s = cdb2_column_value(db, 0);
-        if (strstr(s, "MASTER")) {
-            while (*s && isspace(*s)) s++;
-            char *endptr;
-            f = m = strdup(s);
-            m = strtok_r(m, ":", &endptr);
-            if (m) {
-                n->master = strdup(m);
-            }
-            free(f);
-        }
-        rc = cdb2_next_record(db);
-    }
-    if (rc != CDB2_OK_DONE) {
-        fprintf(stderr, "next master rc %d %s\n", rc, cdb2_errstr(db));
-        cdb2_close(db);
-        return -1;
-    }
+    n->master = master(db);
 
     return 0;
 }
