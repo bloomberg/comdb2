@@ -1667,7 +1667,6 @@ extern unsigned gbl_goose_add_rate;
 extern unsigned gbl_goose_consume_rate;
 extern int gbl_queue_sleeptime;
 extern int gbl_reset_queue_cursor;
-extern int gbl_fastdump_timeoutms;
 extern int gbl_readonly;
 extern int gbl_use_bbipc;
 extern int gbl_init_single_meta;
