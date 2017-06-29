@@ -4008,7 +4008,8 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
 
     if (start_lsn.gen != current_gen) {
         logmsg(LOGMSG_ERROR, "%s line %d generation-mismatch: current_gen=%d, "
-                "durable_gen=%d\n", __func__, __LINE__, current_gen, start_lsn.gen);
+                             "durable_gen=%d\n",
+               __func__, __LINE__, current_gen, start_lsn.gen);
         net_ack_message(ack_handle, 3);
         return;
     }
@@ -5495,8 +5496,9 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
 
         if (current_gen != *durable_gen) {
-            logmsg(LOGMSG_ERROR, "%s line %d master generation-mismatch: current_gen=%d, durable_gen=%d\n",
-                    __func__, __LINE__, current_gen, *durable_gen);
+            logmsg(LOGMSG_ERROR, "%s line %d master generation-mismatch: "
+                                 "current_gen=%d, durable_gen=%d\n",
+                   __func__, __LINE__, current_gen, *durable_gen);
             badcount++;
             return -3;
         }

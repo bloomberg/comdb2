@@ -292,7 +292,8 @@ void *coherency_lease_thread(void *arg)
 
             /* See if master has written a durable LSN */
             bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
-            bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn, &durable_gen);
+            bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
+                                              &durable_gen);
 
             /* Insert a record if it hasn't */
             if (durable_gen != current_gen) {
