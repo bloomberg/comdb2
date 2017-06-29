@@ -45,7 +45,7 @@ const char *help_text[] = {
 "  -C preserve  preserve cluster nodes lines in lrl file",
 "  -I create    create the incremental meta files while serialising",
 "  -I inc       create an increment for the incremental backup",
-"  -I <UUID>    deserialise from a specified incremental backup",
+"  -I <path>    deserialise from a specified incremental backup",
 "  -b <path>    location to store/load the incremental backup",
 "  -x <path>    path to comdb2 binary to use for full recovery",
 "  -r/R         do/do-not run full recovery after extracting",
@@ -194,7 +194,7 @@ int main(int argc, char *argv[])
                 incr_mode = true;
                 if(std::strcmp(optarg, "create") == 0) {
                     incr_create = true;
-                } else if(std::strcmp(optarg, "generate") == 0) {
+                } else if(std::strcmp(optarg, "inc") == 0) {
                     incr_gen = true;
                 } else {
                     if(optarg != NULL) {

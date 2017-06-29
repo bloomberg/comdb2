@@ -123,9 +123,9 @@ void write_incr_manifest_entry(std::ostream& os, const FileInfo& file,
 {
 
     os << "File " << file.get_filename();
-    std::cerr << "File " << file.get_filename();
+    std::clog << "File " << file.get_filename();
     os << " Type " << file.get_type_string();
-    std::cerr << " Type " << file.get_type_string();
+    std::clog << " Type " << file.get_type_string();
     if(file.get_type() == FileInfo::BERKDB_FILE) {
         os << " PageSize " << file.get_pagesize();
         std::clog << " PageSize " << file.get_pagesize();
@@ -133,16 +133,21 @@ void write_incr_manifest_entry(std::ostream& os, const FileInfo& file,
 
     if(!pages.empty()){
         os << " Pages [";
+        std::clog << " Pages [";
         for(size_t i = 0; i < pages.size(); ++i){
             os << pages[i];
+            std::clog << pages[i];
             if(i != pages.size() - 1){
                 os << ", ";
+                std::clog << ", ";
             } else {
                 os << "] ";
+                std::clog << "] ";
             }
         }
     } else {
         os << " Pages All ";
+        std::clog << " Pages All ";
     }
 
     if(file.get_checksums()) {
@@ -156,7 +161,7 @@ void write_incr_manifest_entry(std::ostream& os, const FileInfo& file,
     }
 
     os << std::endl;
-    std::cerr << std::endl;
+    std::clog << std::endl;
     //return os;
 
     return;
@@ -252,11 +257,6 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
 
         incrFile.seekp(12 * *it, incrFile.beg);
         PAGE * pagep = (PAGE *) pagebuf;
-
-        std::clog << "Writing " << LSN(pagep).file << " "
-                << LSN(pagep).offset << " "
-                << cksum << " to page " << *it
-                << " of " << incrFilename << std::endl;
 
         incrFile.write((char *) &(LSN(pagep).file), 4);
         incrFile.write((char *) &(LSN(pagep).offset), 4);

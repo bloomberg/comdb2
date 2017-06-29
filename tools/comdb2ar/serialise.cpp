@@ -987,15 +987,6 @@ void serialise_database(
             ssize_t data_size = 0;
 
             if(compare_checksum(*it, aug_incr_path, pages_list, &data_size, incr_files)) {
-                std::clog << "Difference found in file: " << (*it).get_filename()
-                    << " in pages ";
-                for(std::vector<uint32_t>::const_iterator
-                        it = pages_list.begin();
-                        it != pages_list.end();
-                        ++it){
-                    std::clog << *it << " ";
-                }
-                std::clog << std::endl;
                 incr_data_files.push_back(*it);
                 page_number_vec.push_back(pages_list);
                 write_incr_manifest_entry(manifest, *it, pages_list);
@@ -1014,7 +1005,22 @@ void serialise_database(
                 it = incr_files.begin();
                 it != incr_files.end();
                 ++it){
+            std::string true_filename = aug_incr_path + "/" + *it;
+            if(remove(true_filename.c_str()) != 0){
+                std::ostringstream ss;
+                ss << "error deleting file: " << true_filename;
+               throw Error(ss);
+            }
             write_del_manifest_entry(manifest, *it);
+        }
+
+        // Find a recovery point after the copy, and record it in the manifest
+        std::clog << "logdelete version " << log_holder->version() << std::endl;
+        if (log_holder->version() >= 3) {
+            std::string recovery_options = log_holder->recovery_options();
+            if (!recovery_options.empty()) {
+                manifest << "Option " << recovery_options <<std::endl;
+            }
         }
 
     }
@@ -1103,12 +1109,14 @@ void serialise_database(
                 }
 
                 // Ok, now serialise this file.
-                serialise_file(*it, iom, "", aug_incr_path, true);
+                serialise_file(*it, iom, "", aug_incr_path, incr_create);
             }
 
             // Serialise all remaining log files, including incomplete ones
             serialise_log_files(dbtxndir, dbdir, log_number, false);
         }
+
+    // Serialise files for incremental backup
     } else {
         struct stat st;
 
@@ -1117,6 +1125,14 @@ void serialise_database(
         st.st_gid = getgid();
         st.st_mtime = time(NULL);
         st.st_size = total_data_size;
+
+        // Grab the checkpoint file, pretend its a logfile
+        std::string absfile;
+        std::cerr<<"Serializing checkpoint"<<std::endl;
+        makeabs(absfile, dbtxndir, "checkpoint");
+        serialise_file(FileInfo(FileInfo::LOG_FILE, absfile, dbdir));
+
+        long long log_number(lowest_log);
 
         // Write the header
         TarHeader head;
@@ -1138,6 +1154,15 @@ void serialise_database(
         ssize_t data_written = 0;
 
         while(data_it != incr_data_files.end()){
+            // First, serialise any complete log files that are in the .txn
+            // directory and notify the running database that they can now be
+            // archived.
+            long long old_log_number(log_number);
+            serialise_log_files(dbtxndir, dbdir, log_number, true);
+            if(log_number != old_log_number && log_holder.get()) {
+                log_holder->release_log(log_number - 1);
+            }
+
             if((*page_it).empty()){
                 serialise_file(*data_it, iom, "", aug_incr_path, true);
             } else {
@@ -1147,6 +1172,9 @@ void serialise_database(
             ++data_it;
             ++page_it;
         }
+
+        // Serialise all remaining log files, including incomplete ones
+        serialise_log_files(dbtxndir, dbdir, log_number, false);
 
         if(data_written != total_data_size){
             ss <<"file sizes changed during incremental backup";
