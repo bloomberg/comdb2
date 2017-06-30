@@ -490,6 +490,7 @@ int main (int argc, char *argv[])
     }
 
     if (c_file) {
-        fprintf(c_file, "\n]");
+        fprintf(c_file, "]\n");
     }
+    return 0;
 }
