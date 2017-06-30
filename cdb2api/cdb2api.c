@@ -4311,11 +4311,11 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     }
 
 retry:
-    if (rc && num_retry < MAX_RETRIES){
-       num_retry++;
-       poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
+    if (rc && num_retry < MAX_RETRIES) {
+        num_retry++;
+        poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
     } else if (rc) {
-       return rc;
+        return rc;
     }
     if (hndl->num_hosts == 0) {
         int i = 0;
