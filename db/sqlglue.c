@@ -8963,6 +8963,28 @@ void cancel_sql_statement(int id)
         logmsg(LOGMSG_USER, "Query %d not found (finished?)\n", id);
 }
 
+void cancel_sql_statement_with_cnonce(const char *cnonce)
+{
+    int found = 0;
+    struct sql_thread *thd;
+
+    pthread_mutex_lock(&gbl_sql_lock);
+    LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
+    {
+        if (thd->sqlclntstate && thd->sqlclntstate->sql_query && 
+            strcmp(thd->sqlclntstate->sql_query->cnonce.data, cnonce) == 0) {
+            found = 1;
+            thd->sqlclntstate->stop_this_statement = 1;
+        }
+    }
+    pthread_mutex_unlock(&gbl_sql_lock);
+    if (found)
+        logmsg(LOGMSG_USER, "Query with cnonce %s was told to stop\n", cnonce);
+    else
+        logmsg(LOGMSG_USER, "Query with cnonce %s not found (finished?)\n", cnonce);
+}
+
+
 void sql_dump_running_statements(void)
 {
     struct sql_thread *thd;
@@ -8986,9 +9008,10 @@ void sql_dump_running_statements(void)
             } else
                 rqid[0] = 0;
 
-            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s %s\n", thd->id,
+            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s [%s] %s\n", thd->id,
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin,
+                   thd->sqlclntstate->sql_query->cnonce.data,
                    thd->sqlclntstate->sql);
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
