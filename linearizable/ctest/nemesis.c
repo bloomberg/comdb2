@@ -58,13 +58,20 @@ void fixnet(struct nemesis *n)
             strcat(cmd, c);
 
             for (int j = 0 ; j < n->numnodes; j++) {
-                sprintf(c, "sudo iptables -D INPUT -s %s -p tcp --destination-port %d -j DROP -w;", n->cluster[j], n->ports[j]);
+                if (n->flags & NEMESIS_VERBOSE)
+                    sprintf(c, "sudo iptables -D INPUT -s %s -p tcp --destination-port %d -j DROP -w;", n->cluster[j], n->ports[j]);
+                else
+                    sprintf(c, "sudo iptables -D INPUT -s %s -p tcp --destination-port %d -j DROP -w >/dev/null 2>&1;", n->cluster[j], n->ports[j]);
                 strcat(cmd, c);
-                sprintf(c, "sudo iptables -D INPUT -s %s -p udp --destination-port %d -j DROP -w;", n->cluster[j], n->ports[j]);
+                if (n->flags & NEMESIS_VERBOSE)
+                    sprintf(c, "sudo iptables -D INPUT -s %s -p udp --destination-port %d -j DROP -w;", n->cluster[j], n->ports[j]);
+                else
+                    sprintf(c, "sudo iptables -D INPUT -s %s -p udp --destination-port %d -j DROP -w >/dev/null 2>&1;", n->cluster[j], n->ports[j]);
                 strcat(cmd, c);
             }
             strcat(cmd, "\" < /dev/null");
-            printf("%s\n", cmd);
+            if (n->flags & NEMESIS_VERBOSE)
+                printf("%s\n", cmd);
             system(cmd);
         }
     }
@@ -79,7 +86,7 @@ void breaknet(struct nemesis *n)
 
     bzero(node, n->numnodes * sizeof(int));
 
-    if (n->master && (n->flags & PARTITION_MASTER))
+    if (n->master && (n->flags & NEMESIS_PARTITION_MASTER))
     {
         for(i=0;i<n->numnodes;i++)
         {
@@ -136,7 +143,7 @@ void signaldb(struct nemesis *n, int signal, int all)
     int n1 = -1, n2, i;
 
     if (!all) {
-        if (n->master && (n->flags & PARTITION_MASTER))
+        if (n->master && (n->flags & NEMESIS_PARTITION_MASTER))
         {
             for(i=0;i<n->numnodes;i++)
             {
@@ -163,19 +170,23 @@ void signaldb(struct nemesis *n, int signal, int all)
         node[n2] = 1;
     }
 
-    printf("signaling %d on ", signal);
+    if (n->flags & NEMESIS_VERBOSE)
+        printf("signaling %d on ", signal);
     for (int x = 0 ; x < n->numnodes ; x++) {
         if (node[x] || all) {
-            printf("%s ", n->cluster[x]);
+            if (n->flags & NEMESIS_VERBOSE)
+                printf("%s ", n->cluster[x]);
         }
     }
-    printf("\n");
+    if (n->flags & NEMESIS_VERBOSE)
+        printf("\n");
 
     for (int broken=0 ; broken < n->numnodes ; broken++) {
         if (node[broken] || all) {
             sprintf(cmd, "ssh %s \"sudo kill -%d \\$(cat /tmp/%s.pid)\""
                     " < /dev/null\n", n->cluster[broken], signal, n->dbname);
-            printf("%s", cmd);
+            if (n->flags & NEMESIS_VERBOSE)
+                printf("%s", cmd);
             fflush(stdout);
             system(cmd);
         }
@@ -190,7 +201,8 @@ void breakclocks(struct nemesis *n, int maxskew)
                      "newtime=\\$(( cur + (maxskew / 2) - (RANDOM %% maxskew) )) ; "
                      "sudo date \\\"+%%s\\\" -s \\@\\$newtime\" < /dev/null\n",
                      n->cluster[x], maxskew);
-        printf("%s", cmd);
+        if (n->flags & NEMESIS_VERBOSE)
+            printf("%s", cmd);
         system(cmd);
     }
 }
@@ -201,7 +213,8 @@ void fixclocks(struct nemesis *n)
     for (int x=0 ; x < n->numnodes ; x++) {
         sprintf(cmd, "ssh %s \"sudo service ntp stop ; sudo service ntp start\" < /dev/null\n", 
                 n->cluster[x]);
-        printf("%s", cmd);
+        if (n->flags & NEMESIS_VERBOSE)
+            printf("%s", cmd);
         fflush(stdout);
         system(cmd);
     }

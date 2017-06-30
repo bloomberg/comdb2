@@ -935,8 +935,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "NO TESTS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
     }
 
-    struct nemesis *n = nemesis_open(dbname, cltype, partition_master ? 
-            PARTITION_MASTER : 0);
+    uint32_t flags = 0;
+    if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
+    if (debug_trace) flags |= NEMESIS_VERBOSE;
+    struct nemesis *n = nemesis_open(dbname, cltype, flags);
     fixall(n);
 
     char *master_node = master(dbname, cltype);

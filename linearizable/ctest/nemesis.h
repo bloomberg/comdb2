@@ -14,7 +14,8 @@ struct nemesis {
 };
 
 /* Flags */
-#define PARTITION_MASTER 0x0001
+#define NEMESIS_PARTITION_MASTER 0x0001
+#define NEMESIS_VERBOSE          0x0002
 
 struct nemesis *nemesis_open(char *dbname, char *cltype, uint32_t flags);
 void nemesis_close(struct nemesis *n);
