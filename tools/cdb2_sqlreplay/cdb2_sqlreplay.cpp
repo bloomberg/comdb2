@@ -340,13 +340,20 @@ int main(int argc, char **argv) {
         filename = argv[2];
 
     /* TODO: tier should be an option */
-#if 0
-    if (cdb2_open(&cdb2h, dbname, "local", 0)) {
+    int rc;
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf) {
+        cdb2_set_comdb2db_config(conf);
+        rc = cdb2_open(&cdb2h, dbname, "default", 0);
+    }
+    else { 
+        rc = cdb2_open(&cdb2h, dbname, "local", 0);
+    }
+
+    if (rc) {
         std::cerr << "cdb2_open() failed: " << cdb2_errstr(cdb2h) << std::endl;
-        cdb2_close(cdb2h);
         exit(EXIT_FAILURE);
     }
-#endif
 
     if (filename == nullptr) {
         process_events(cdb2h, std::cin);

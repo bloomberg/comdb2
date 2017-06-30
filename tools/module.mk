@@ -32,8 +32,8 @@ cdb2sql: $(cdb2sql_OBJS)
 
 cdb2replay_OBJS:=tools/cdb2_sqlreplay/cdb2_sqlreplay.o
 cdb2replay_CFLAGS=-Icson
-cdb2replay_LDLIBS=-Lcson -lcson -Lcdb2api -l:libcdb2api.a -Lprotobuf   \
-                  -lssl -lcrypto -lz -lpthread
+cdb2replay_LDLIBS=-Lcson -lcson -Lcdb2api -l:libcdb2api.a -Lprotobuf \
+ 		  -lcdb2protobuf -lprotobuf-c -lssl -lcrypto -lz -lpthread
 
 $(cdb2replay_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(cdb2replay_CFLAGS) $(CXX11FLAGS) -c $< -o $@

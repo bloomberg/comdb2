@@ -399,8 +399,7 @@ for required in $vars; do
     fi
 done
 
-dbname=$1
-alterdbname=alter$DBNAME
+alterdbname=alter$dbnm
 dbdir=$DBDIR
 testdir=$TESTDIR
 cdb2config=$CDB2_CONFIG
@@ -426,7 +425,7 @@ done
 #setup remode db
 $TESTSROOTDIR/setup
 
-${SRCHOME}/cdb2_sqlreplay alterdbname $logflunziped
+${SRCHOME}/cdb2_sqlreplay $alterdbname $logflunziped
 cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1" > replayed.txt
 
 
