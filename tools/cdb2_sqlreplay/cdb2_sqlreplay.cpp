@@ -172,17 +172,20 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *val) {
 }
 
 void replay(cdb2_hndl_tp *db, cson_value *val) {
-    const char *fp = get_strprop(val, "fingerprint");
-    if (fp == nullptr) {
-        std::cerr << "No fingerprint logged?" << std::endl;
-        return;
+    const char *sql = get_strprop(val, "sql");
+    if(sql == nullptr) {
+	    const char *fp = get_strprop(val, "fingerprint");
+	    if (fp == nullptr) {
+		    std::cerr << "No fingerprint logged?" << std::endl;
+		    return;
+	    }
+	    auto s = sqltrack.find(fp);
+	    if (s == sqltrack.end()) {
+		    std::cerr << "Unknown fingerprint? " << fp << std::endl;
+		    return;
+	    }
+	    sql = (*s).second.c_str();
     }
-    auto s = sqltrack.find(fp);
-    if (s == sqltrack.end()) {
-        std::cerr << "Unknown fingerprint? " << fp << std::endl;
-        return;
-    }
-    const char *sql = (*s).second.c_str();
 
     bool ok = do_bindings(db, val);
     if (!ok)
