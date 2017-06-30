@@ -387,7 +387,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
             fputc('\'', stdout);
         } else {
             if (printmode == BINARY) {
-                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                write(1, val, cdb2_column_size(cdb2h, col));
                 exit(0);
             } else {
                 fprintf(f, "x'");

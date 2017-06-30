@@ -817,9 +817,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 *dbname_found = 1;
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
-            pthread_mutex_lock(&cdb2_sockpool_mutex);
             tok = strtok_r(NULL, " =:,", &last);
-            if (tok && strcasecmp("default_type", tok) == 0) {
+            if(tok == NULL) continue;
+            pthread_mutex_lock(&cdb2_sockpool_mutex);
+            if (strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
                     if (hndl) {
@@ -1441,7 +1442,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         sess = p->sess;
         p->sess = SSL_get1_session(sslio_get_ssl(sb));
         if (sess != NULL)
-            SSL_SESSION_free(p->sess);
+            SSL_SESSION_free(sess);
     }
     return 0;
 }
@@ -2065,9 +2066,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         }
     }
 
-    if (hndl &&
-        hndl->cnonce_len >
-            0) { /* Have a query id associated with each transaction/query */
+    if (hndl && hndl->cnonce_len > 0) { 
+        /* Have a query id associated with each transaction/query */
         sqlquery.has_cnonce = 1;
         sqlquery.cnonce.data = hndl->cnonce;
         sqlquery.cnonce.len = hndl->cnonce_len;
@@ -2472,12 +2472,12 @@ done:
 static void make_random_str(char *str, int *len)
 {
     static int PID = 0;
-    if (PID == 0) {
-        PID = getpid();
-        srandom(time(0));
-    }
     struct timeval tv;
     gettimeofday(&tv, NULL);
+    if (PID == 0) {
+        PID = getpid();
+        srandom(tv.tv_sec);
+    }
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
     *len = strlen(str);
     return;

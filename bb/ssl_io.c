@@ -434,7 +434,6 @@ static int sslio_accept_or_connect(SBUF2 *sb,
 {
     int rc, ioerr, fd, flags;
 
-    rc = 1;
     *unrecoverable = 1;
 
     /* If SSL does not exist, return an error. */
