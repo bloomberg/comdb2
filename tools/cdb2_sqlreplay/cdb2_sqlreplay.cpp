@@ -166,6 +166,7 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
     }
 }
 
+/* TODO: */
 bool do_bindings(cdb2_hndl_tp *db, cson_value *val) {
     return true;
 }
@@ -183,7 +184,6 @@ void replay(cdb2_hndl_tp *db, cson_value *val) {
     }
     const char *sql = (*s).second.c_str();
 
-    return;
     bool ok = do_bindings(db, val);
     if (!ok)
         return;
