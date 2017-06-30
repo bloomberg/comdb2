@@ -620,7 +620,7 @@ cnonce is client generated value which is used to uniquely identify a transactio
 
 Once the server detects that statements are being run in High Availability mode (sql.html#set-hasql), it starts sending snapshot info of transaction in its response to the client.
 
-To handle disconnects from server incase of no client transaction the client can resend the statement by setting cnonce field along with additional snapshot_info and skip_row fields, if client has already read some rows.
+To handle disconnects from server in case of no client transaction the client can resend the statement by setting cnonce field along with additional snapshot_info and skip_row fields, if client has already read some rows.
 * For write statements, if the previous try had already committed before disconnect then the server will resend previous value of CDB2_EFFECTS, otherwise server will run the statement.
 * For read statements, the server will use snapshot info to get database snapshot and skips the number of rows its asked to, before sending results to client.
 
