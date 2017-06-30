@@ -353,6 +353,7 @@ force_delay_master()
 echo "Test with insert, SC should not fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events detailed on")'
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 
@@ -431,4 +432,7 @@ cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1" > replayed.txt
 
 $TESTSROOTDIR/unsetup
 
+if ! diff orig.txt replayed.txt ; then
+        failexit "replayed.txt content is not the same as original.txt"
+fi
 echo "Success"
