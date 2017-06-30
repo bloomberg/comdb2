@@ -5353,6 +5353,12 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     sqlite3_stmt *stmt = rec->stmt;
 
+    /* skip stat and logging for index on expression internal queries */
+    if (clnt->verify_indexes) {
+        put_prepared_stmt(thd, clnt, rec, outrc, 0);
+        return;
+    }
+
     sql_statement_done(thd->sqlthd, thd->logger, clnt->osql.rqid, outrc);
 
     if (clnt->rawnodestats && thd->sqlthd) {
