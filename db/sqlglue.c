@@ -8972,6 +8972,7 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
     LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
     {
         if (thd->sqlclntstate && thd->sqlclntstate->sql_query && 
+            thd->sqlclntstate->sql_query->has_cnonce &&
             strcmp(thd->sqlclntstate->sql_query->cnonce.data, cnonce) == 0) {
             found = 1;
             thd->sqlclntstate->stop_this_statement = 1;
