@@ -900,10 +900,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                     cdb2_cache_ssl_sess = !!atoi(tok);
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
-                if (strncasecmp(tok, "true", 4) == 0) {
-                    allow_pmux_route = 1;
-                } else {
-                    allow_pmux_route = 0;
+                if(tok) {
+                    if (strncasecmp(tok, "true", 4) == 0) {
+                        allow_pmux_route = 1;
+                    } else {
+                        allow_pmux_route = 0;
+                    }
                 }
 #endif
             }
