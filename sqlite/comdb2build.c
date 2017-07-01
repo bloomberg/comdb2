@@ -55,15 +55,45 @@ int readIntFromToken(Token* t, int *rst)
     return 1;
 }
 
-static inline int isRemote(Token *t, Token *t2)
+/*
+  Check whether a remote schema name is specified.
+
+  If the schema name is specified and is either "main" or local
+  schema, we copy it to the first argument and return 0.
+*/
+static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
 {
-    return t->n > 0 && (t2 != NULL && t2->n > 0) ;
+    /* Check if the second token is empty. */
+    if ((*t2)->n == 0) {
+        /* No schema name. */
+        return 0;
+    } else {
+        /* We must have both the tokens set. */
+        assert((*t1)->n > 0 && (*t2)->n > 0);
+
+        /* t1 must be a local schema name. */
+        if ((strncasecmp((*t1)->z, thedb->envname, (*t1)->n) == 0) ||
+            (strncasecmp((*t1)->z, "main", (*t1)->n) == 0)) {
+            /*
+              Its a local schema. Let's move the table/index name in
+              t2 to t1. Doing so will ease the callers by allowing
+              them to simply refer to t1 for table/index name.
+            */
+            (*t1)->n = (*t2)->n;
+            (*t1)->z = (*t2)->z;
+            (*t2)->n = 0;
+            (*t2)->z = 0;
+            return 0;
+        }
+    }
+    return setError(pParse, SQLITE_MISUSE,
+                    "DDL commands operate only on local schema only.");
 }
 
 extern int gbl_allow_user_schema;
 
-static inline int chkAndCopyTable(Vdbe* v, Parse* pParse, char *dst,
-    const char* name, size_t max_length, int mustexist)
+static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
+                                  size_t max_length, int mustexist)
 {
     char tmp_dst[MAXTABLELEN];
     struct sql_thread *thd =pthread_getspecific(query_info_key);
@@ -178,21 +208,23 @@ static inline int copyNosqlToken(Vdbe* v, Parse *pParse, char** buf,
 }
 
 static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
-   Token *t1, Token *t2, int mustexist)
+                                        Token *t1, Token *t2, int mustexist)
 {
- 
     int rc;
     int max_size;
-    
+
+    assert(t1 && t2);
+
+    if ((rc = isRemote(pParse, &t1, &t2))) {
+        return rc;
+    }
+
     if (t1->n + 1 <= MAXTABLELEN)
         max_size = t1->n + 1;
     else
         return setError(pParse, SQLITE_MISUSE, "Tablename is too long");
 
-    if (isRemote(t1, t2))
-       return setError(pParse, SQLITE_MISUSE, "DDL commands operate only on local dbs");
-
-    if ((rc = chkAndCopyTable(v, pParse, dst, t1->z, max_size, mustexist)))
+    if ((rc = chkAndCopyTable(pParse, dst, t1->z, max_size, mustexist)))
         return rc;
 
     return SQLITE_OK;
@@ -486,6 +518,11 @@ void comdb2CreateTableCSC2(
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
     }
+
+    if ((isRemote(pParse, &pName1, &pName2))) {
+        return;
+    }
+
     TokenStr(table, pName1);
     if (noErr && getdbbyname(table))
         goto out;
@@ -567,7 +604,7 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         return;
     }
 
-    if (chkAndCopyTable(v, pParse, sc->table, pName->a[0].zName, MAXTABLELEN, 1))
+    if (chkAndCopyTable(pParse, sc->table, pName->a[0].zName, MAXTABLELEN, 1))
         goto out;
 
     if (authenticateSC(sc->table, pParse))
@@ -1014,8 +1051,7 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
         if (!tablename)
             goto err;
 
-        if (nm && lnm && chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) 
-        {
+        if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) {
             free(tablename);
             goto err;
         }
@@ -1225,7 +1261,7 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     arg->type = BPFUNC_ALIAS;
     alias_f->name = (char*) malloc(MAXTABLELEN);
 
-    if (name && chkAndCopyTableTokens(v,pParse, alias_f->name, name, NULL, 0)) 
+    if (chkAndCopyTableTokens(v, pParse, alias_f->name, name, NULL, 0))
         goto clean_arg;
 
     assert (*url->z == '\'' || *url->z == '\"');
@@ -1296,9 +1332,8 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
     if (permission == AUTH_USERSCHEMA) {
       if (create_string_from_token(v, pParse, &grant->userschema, nm))
         goto clean_arg;
-    } else {
-      if (nm && lnm && chkAndCopyTableTokens(v,pParse, grant->table, nm, lnm, 1))
-          goto clean_arg;
+    } else if (chkAndCopyTableTokens(v, pParse, grant->table, nm, lnm, 1)) {
+        goto clean_arg;
     }
 
     if (create_string_from_token(v, pParse, &grant->username, u))
@@ -1528,8 +1563,7 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (nm && lnm && chkAndCopyTableTokens(v,pParse, tablename, nm, lnm, 1)) 
-        goto clean;
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) goto clean;
     
     comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, (vdbeFuncArgFree)  &free, &stp);
 
@@ -1568,8 +1602,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (nm && lnm && chkAndCopyTableTokens(v,pParse, tablename, nm, lnm, 1)) 
-        goto clean;
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) goto clean;
     
     comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeThreshold, (vdbeFuncArgFree)  &free, &stp);
 
@@ -2641,9 +2674,7 @@ void comdb2AlterTableStart(
 {
     struct comdb2_ddl_context *ctx;
 
-    if (isRemote(pName1, pName2)) {
-        setError(pParse, SQLITE_MISUSE,
-                 "DDL commands operate only on local dbs.");
+    if (isRemote(pParse, &pName1, &pName2)) {
         return;
     }
 
@@ -2708,7 +2739,7 @@ void comdb2AlterTableEnd(Parse *pParse /* Parser context */
         goto cleanup;
     }
 
-    if ((chkAndCopyTable(v, pParse, sc->table, ctx->name, max_size, 1)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->name, max_size, 1)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
@@ -2765,9 +2796,7 @@ void comdb2CreateTableStart(
         return;
     }
 
-    if (isRemote(pName1, pName2)) {
-        setError(pParse, SQLITE_MISUSE,
-                 "DDL commands operate only on local dbs.");
+    if (isRemote(pParse, &pName1, &pName2)) {
         return;
     }
 
@@ -2846,7 +2875,7 @@ void comdb2CreateTableEnd(
         goto cleanup;
     }
 
-    if ((chkAndCopyTable(v, pParse, sc->table, ctx->name, max_size, 0)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->name, max_size, 0)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
@@ -3294,9 +3323,7 @@ void comdb2CreateIndex(
     assert(pName1.n != 0);
     assert(pList != 0);
 
-    if (isRemote(pName1, pName2)) {
-        setError(pParse, SQLITE_MISUSE,
-                 "DDL commands operate only on local dbs.");
+    if (isRemote(pParse, &pName1, &pName2)) {
         return;
     }
 
@@ -3411,7 +3438,7 @@ void comdb2CreateIndex(
         goto cleanup;
     }
 
-    if ((chkAndCopyTable(v, pParse, sc->table, ctx->name, max_size, 1)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->name, max_size, 1)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
@@ -3803,7 +3830,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct db *table,
         goto cleanup;
     }
 
-    if ((chkAndCopyTable(v, pParse, sc->table, ctx->name, max_size, 1)))
+    if ((chkAndCopyTable(pParse, sc->table, ctx->name, max_size, 1)))
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;

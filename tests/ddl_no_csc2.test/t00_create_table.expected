@@ -444,3 +444,4 @@ constraints
 	}
 ')
 [DROP TABLE t6] failed with rc -3 no such table: t6
+[CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate only on local schema only.
