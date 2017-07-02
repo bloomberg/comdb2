@@ -434,12 +434,20 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
-                release_locks("update shadows");
+                rc = release_locks("update shadows");
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
                        !(rand() % gbl_sql_random_release_interval)) {
-                release_locks("random release update shadows");
+                rc = release_locks("random release update shadows");
                 released_locks = 1;
+            }
+
+            /* Generation changed: ask client to retry */
+            if (rc != 0) {
+                logcur->close(logcur, 0);
+                logmsg(LOGMSG_ERROR, "%s release_locks %d %d\n", __func__, rc);
+                *bdberr = BDBERR_NOT_DURABLE;
+                return -1;
             }
         }
 
