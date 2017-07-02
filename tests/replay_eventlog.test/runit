@@ -383,7 +383,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("exit"
 sleep 10
 
 ls -ltr $TESTDIR/var/log/cdb2/ | grep events
-logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | tail -1`
+logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
 logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
 logflunziped=${logfl}.unzipped 
 wc $logfl
