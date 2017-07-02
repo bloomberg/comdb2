@@ -37,7 +37,7 @@ char *argv0 = NULL;
 uint32_t which_events = 0;
 int is_hasql = 1;
 int partition_master = 1;
-int max_retries = 10;
+int max_retries = 1000000;
 int debug_trace = 0;
 FILE *c_file;
 
@@ -292,7 +292,13 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
                     fprintf(c_file, "{:type :ok :f :read :process %d :value %d :uid %d :time %llu}\n", 
                             threadnum, foundval, founduid, endtm);
                 }
-            } else {
+            } 
+            else if (rc == -105) {
+                tdprintf(stderr, db, __func__, __LINE__, "Don't know the outcome here with rcode -105\n");
+                myexit(__func__, __LINE__, 1);
+            } 
+            else
+            {
                 fprintf(c_file, "{:type :fail :f :read :process %d :value %d :uid %d :time %llu}\n", 
                         threadnum, foundval, founduid, endtm);
             }
@@ -303,7 +309,12 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
             if (rc == 0) {
                 fprintf(c_file, "{:type :ok :f :write :process %d :value %d :uid %d :time %llu}\n",
                         threadnum, newval, newuid, endtm);
-            } else {
+            } 
+            else if (rc == -105) {
+                tdprintf(stderr, db, __func__, __LINE__, "Don't know the outcome here with rcode -105\n");
+                myexit(__func__, __LINE__, 1);
+            } 
+            else {
                 fprintf(c_file, "{:type :fail :f :write :process %d :value %d :uid %d :time %llu}\n", 
                         threadnum, newval, newuid, endtm);
             }
@@ -315,6 +326,10 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
                 fprintf(c_file, "{:type :ok :f :cas :process %d :value [%d %d] :uid %d :time %llu}\n", 
                         threadnum, curval, newval, newuid, endtm);
             }
+            else if (rc == -105) {
+                tdprintf(stderr, db, __func__, __LINE__, "Don't know the outcome here with rcode -105\n");
+                myexit(__func__, __LINE__, 1);
+            } 
             else {
                 fprintf(c_file, "{:type :fail :f :cas :process %d :value [%d %d] :uid %d :time %llu}\n", 
                         threadnum, curval, newval, newuid, endtm);
