@@ -180,6 +180,9 @@ int add_table_to_environment(char *table, const char *csc2,
         thedb->dbs[thedb->num_dbs++] = newdb;
     }
 
+    /* Add table to the hash. */
+    hash_add(thedb->db_hash, newdb);
+
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
         gbl_sc_commit_count--;

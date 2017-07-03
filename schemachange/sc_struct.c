@@ -816,7 +816,6 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     int rc;
     int bdberr;
     int foundix = -1;
-    int i;
     int bthashsz;
 
     /* regardless of success, the fact that we are getting asked to do this is
@@ -840,11 +839,9 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return rc;
         }
 
-        for (i = 0; i < thedb->num_dbs; i++) {
-            if (strcasecmp(thedb->dbs[i]->dbname, table) == 0) foundix = i;
-        }
+        foundix = getdbidxbyname(table);
         if (foundix == -1) {
-            logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", table);
+            logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
             exit(1);
         }
 

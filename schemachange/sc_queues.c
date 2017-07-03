@@ -145,6 +145,9 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
     thedb->qdbs[thedb->num_qdbs++] = newdb;
 
+    /* Add queue to the hash. */
+    hash_add(thedb->qdb_hash, newdb);
+
     return SC_OK;
 }
 
