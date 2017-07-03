@@ -2931,6 +2931,8 @@ int sqliteVdbeMemDecimalBasicArithmetics(
   decContext  ctx;
   void        *ret = NULL;
   int         rc = 0;
+  int         decimalfied = 0;
+  Mem         sav;
 
   bzero(res, sizeof(Mem));
   res->flags |= MEM_Interval;
@@ -2938,9 +2940,12 @@ int sqliteVdbeMemDecimalBasicArithmetics(
   switch( b->flags & MEM_TypeMask ){
     case MEM_Int:
     case MEM_Str: {
+      decimalfied = 1;
+      memcpy(&sav, b, sizeof(Mem));
       
-      rc = sqlite3VdbeMemDecimalfy( b);
+      rc = sqlite3VdbeMemDecimalfy(b);
       if( rc ){
+        decimalfied = 0;
         goto done;
       }
 
@@ -3021,6 +3026,8 @@ int sqliteVdbeMemDecimalBasicArithmetics(
   }
 
 done:
+   if( decimalfied )
+     memcpy(b, &sav, sizeof(Mem));
    return rc;
 }
 

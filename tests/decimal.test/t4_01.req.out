@@ -1,0 +1,23 @@
+[drop table if exists t4] rc 0
+[create table t4 {
+    tag ondisk {
+        int id
+        decimal32 dec
+        double num
+    }
+    keys {
+        "ID" = id
+    }
+}] rc 0
+(rows inserted=1)
+[insert into t4 values(1, 5, 10)] rc 0
+(id=1, dec='5', num=10.000000)
+[select * from t4] rc 0
+(rows updated=1)
+[update t4 set dec = dec * '2', num = num * '2' where id = 1] rc 0
+(id=1, dec='10', num=20.000000)
+[select * from t4] rc 0
+(rows updated=1)
+[update t4 set dec = dec * 2, num = num * 2 where id = 1] rc 0
+(id=1, dec='20', num=40.000000)
+[select * from t4] rc 0

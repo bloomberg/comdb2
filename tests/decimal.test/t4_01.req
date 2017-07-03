@@ -1,0 +1,17 @@
+drop table if exists t4
+create table t4 {
+    tag ondisk {
+        int id
+        decimal32 dec
+        double num
+    }
+    keys {
+        "ID" = id
+    }
+}$$
+insert into t4 values(1, 5, 10)
+select * from t4
+update t4 set dec = dec * '2', num = num * '2' where id = 1
+select * from t4
+update t4 set dec = dec * 2, num = num * 2 where id = 1
+select * from t4
