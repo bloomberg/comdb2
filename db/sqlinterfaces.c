@@ -7605,14 +7605,24 @@ retry:
         }
         if (rc == 0) { // descriptor not ready, write will block
             if (gbl_sql_release_locks_on_slow_reader && !released_locks) {
-                release_locks("slow reader");
+                rc = release_locks("slow reader");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,"%s release_locks generation changed\n", 
+                            __func__);
+                    return -(SQLITE_DEADLOCK);
+                }
                 released_locks = 1;
             }
 
             if (bdb_lock_desired(thedb->bdb_env)) {
                 struct sql_thread *thd = pthread_getspecific(query_info_key);
                 if (thd) {
-                    recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                    rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                    if (rc) {
+                        logmsg(LOGMSG_ERROR,"%s recover_deadlock generation changed\n", 
+                                __func__);
+                        return -(SQLITE_DEADLOCK);
+                    }
                 }
             }
 
