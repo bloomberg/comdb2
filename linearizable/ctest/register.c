@@ -519,7 +519,16 @@ int main (int argc, char *argv[])
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
-    struct nemesis *n = nemesis_open(dbname, cltype, flags);
+    struct nemesis *n = NULL;
+    for (int cnt = 0 ; cnt < 1000 && n == NULL; cnt++) {
+        n = nemesis_open(dbname, cltype, flags);
+        if (!n) sleep (1);
+    }
+
+    if (!n) {
+        fprintf(stderr, "Could not open nemesis for %s, exiting\n", dbname);
+        myexit(__func__, __LINE__, 1);
+    }
 
     fixall(n);
 

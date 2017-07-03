@@ -2780,6 +2780,10 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     }
 
     rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, &iq, 0);
+    if (bdberr == BDBERR_NOT_DURABLE) {
+        return SQLITE_CLIENT_CHANGENODE;
+    }
+
     if (bdberr == BDBERR_TRANTOOCOMPLEX) {
         return SQLITE_TRANTOOCOMPLEX;
     }
@@ -10032,8 +10036,8 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
 
     if (*bdberr == 0) {
        int rc2 = cursor_move_postop(pCur);
-       if (rc2 == SQLITE_CLIENT_CHANGENODE) {
-           rc = rc2;
+       if (rc2) {
+           rc = SQLITE_CLIENT_CHANGENODE;
            *bdberr = BDBERR_NOT_DURABLE;
        }
     }
