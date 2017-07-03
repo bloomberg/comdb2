@@ -5047,6 +5047,9 @@ static void register_all_int_switches()
     register_int_switch("early_verify",
                         "Give early verify errors for updates in SQLite layer",
                         &gbl_early_verify);
+    register_int_switch("new_indexes",
+                        "Let replicants send indexes values to master",
+                        &gbl_new_indexes);
 }
 
 static void getmyid(void)
