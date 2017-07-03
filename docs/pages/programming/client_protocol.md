@@ -600,3 +600,31 @@ Example in python:
   client_socket.send(byts)
   client_socket.send(send_data)
 ```
+
+High Availability Implementation
+---------------------------------
+To support High Availability, the client protocol supports optional snapshot_info field which can be used to start transaction with the snapshot of the database at particular lsn. There are three more fields which are used to support high availability: cnonce, skip_rows and retry.
+
+```
+  message snapshotinfo {
+    required int32  file    = 1;
+    required int32  offset  = 2;
+  }
+  optional snapshotinfo snapshot_info = 11;
+  optional bytes cnonce = 10;
+  optional int64 skip_rows = 12; // number of rows to be skipped, -1 (skip all rows)
+  optional int32 retry = 13  [default = 0];
+```
+
+cnonce is client generated value which is used to uniquely identify a transaction. The field skip_rows tells number of rows to be skipped before server can start sending results to client, and retry tells retry attempts of the transaction.
+
+Once the server detects that statements are being run in High Availability mode (sql.html#set-hasql), it starts sending snapshot info of transaction in its response to the client.
+
+To handle disconnects from server in case of no client transaction the client can resend the statement by setting cnonce field along with additional snapshot_info and skip_row fields, if client has already read some rows.
+* For write statements, if the previous try had already committed before disconnect then the server will resend previous value of CDB2_EFFECTS, otherwise server will run the statement.
+* For read statements, the server will use snapshot info to get database snapshot and skips the number of rows its asked to, before sending results to client.
+
+For sql statements inside client transaction, the client saves every protobuf it sends to the server after begin statement.
+* If the disconnect happens at the start of transaction just after begin statement but before getting snapshot info from server, the client can restart the transaction again by resending begin statement.
+* If the disconnect happens in the middle of transaction, the client can restart the transaction by sending begin statement with same cnonce, snapshot info of transaction (which it got from server) and retry value which is one more than its previous value. After begin statement, the client resends all but the last statement protobufs that it had previously sent in transaction and then sends last statement with retry value same as begin statement and skip_rows as the number of rows it had already read from that statement. The client can then continue with the transaction by sending rest of the statements with same retry number as was used in begin statement.
+* If the disconnect happens at the time of commit, the client first tries to resend commit, with same cnonce, if client gets successful response with CDB2_EFFECTS then that means the transaction has already committed. However, if client gets an error from server, then the client can restart the transaction like the previous case.
