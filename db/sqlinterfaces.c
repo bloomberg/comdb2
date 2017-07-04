@@ -3339,6 +3339,7 @@ int release_locks(const char *trace)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd ? thd->sqlclntstate : NULL;
+    int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
         extern int gbl_sql_release_locks_trace;
@@ -3346,9 +3347,9 @@ int release_locks(const char *trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
                    trace);
-        recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
+        rc = recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
     }
-    return 0;
+    return rc;
 }
 
 int release_locks_on_emit_row(struct sqlthdstate *thd,
