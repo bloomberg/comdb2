@@ -11,7 +11,8 @@
 
 #define FMTSZ 512
 
-void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line, const char *format, ...)
+void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line,
+              const char *format, ...)
 {
     va_list ap;
     char fmt[FMTSZ];
@@ -31,13 +32,12 @@ void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line, const char 
 
     snprintf(buf, sizeof(buf), "%s:%d ", func, line);
     strcat(fmt, buf);
-    
+
     snprintf(buf, sizeof(buf), "cnonce '%s' ", db ? cdb2_cnonce(db) : "(null)");
     strcat(fmt, buf);
 
     int file = -1, offset = -1;
-    if (db) 
-        cdb2_snapshot_file(db, &file, &offset);
+    if (db) cdb2_snapshot_file(db, &file, &offset);
     snprintf(buf, sizeof(buf), "snapshot_lsn [%d][%d] ", file, offset);
     strcat(fmt, buf);
 
@@ -47,7 +47,7 @@ void tdprintf(FILE *f, cdb2_hndl_tp *db, const char *func, int line, const char 
     va_end(ap);
 }
 
-char *master(const char *dbname, const char *cltype) 
+char *master(const char *dbname, const char *cltype)
 {
     int rc;
     char *s_master = NULL;
@@ -55,14 +55,15 @@ char *master(const char *dbname, const char *cltype)
 
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc,
+                 cdb2_errstr(db));
         cdb2_close(db);
         return NULL;
     }
 
     rc = cdb2_run_statement(db, "exec procedure sys.cmd.send('bdb cluster')");
     if (rc) {
-        fprintf(stderr, "exec procedure sys.cmd.send: %d %s\n", rc, 
+        fprintf(stderr, "exec procedure sys.cmd.send: %d %s\n", rc,
                 cdb2_errstr(db));
         cdb2_close(db);
         return NULL;
@@ -73,7 +74,8 @@ char *master(const char *dbname, const char *cltype)
         char *f, *s, *m;
         s = cdb2_column_value(db, 0);
         if (strstr(s, "MASTER")) {
-            while (*s && isspace(*s)) s++;
+            while (*s && isspace(*s))
+                s++;
             char *endptr;
             f = m = strdup(s);
             m = strtok_r(m, ":", &endptr);
@@ -94,29 +96,31 @@ char *master(const char *dbname, const char *cltype)
     return s_master;
 }
 
-char *read_node(cdb2_hndl_tp *db) 
+char *read_node(cdb2_hndl_tp *db)
 {
     char *host;
     int rc;
 
     rc = cdb2_run_statement(db, "select comdb2_host()");
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "run: don't know what node I'm on\n");
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "run: don't know what node I'm on\n");
         return NULL;
     }
     rc = cdb2_next_record(db);
     if (rc != CDB2_OK) {
-        tdprintf(stderr, db, __func__, __LINE__, "next: don't know what node I'm on\n");
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "next: don't know what node I'm on\n");
         return NULL;
     }
     host = cdb2_column_value(db, 0);
-    if (host)
-        host = strdup(host);
+    if (host) host = strdup(host);
     while (rc == CDB2_OK) {
         rc = cdb2_next_record(db);
     }
     if (rc != CDB2_OK_DONE) {
-        tdprintf(stderr, db, __func__, __LINE__, "next read node rc %d %s\n", rc, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__, "next read node rc %d %s\n",
+                 rc, cdb2_errstr(db));
         return NULL;
     }
 
@@ -125,14 +129,14 @@ char *read_node(cdb2_hndl_tp *db)
 
 void myexit(const char *func, int line, int status)
 {
-    printf("calling exit from thread %u function %s line %d with status %d\n", 
-            (uint32_t)pthread_self(), func, line, status);
+    printf("calling exit from thread %u function %s line %d with status %d\n",
+           (uint32_t)pthread_self(), func, line, status);
     fflush(stdout);
     fflush(stderr);
     exit(status);
 }
 
-uint64_t timems(void) 
+uint64_t timems(void)
 {
     int rc;
     struct timeval tv;
@@ -155,5 +159,3 @@ uint64_t timeus(void)
     }
     return (tv.tv_sec * 1000000000 + tv.tv_usec);
 }
-
-

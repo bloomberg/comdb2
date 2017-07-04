@@ -7608,8 +7608,8 @@ retry:
             if (gbl_sql_release_locks_on_slow_reader && !released_locks) {
                 rc = release_locks("slow reader");
                 if (rc) {
-                    logmsg(LOGMSG_ERROR,"%s release_locks generation changed\n", 
-                            __func__);
+                    logmsg(LOGMSG_ERROR,
+                           "%s release_locks generation changed\n", __func__);
                     return -(SQLITE_DEADLOCK);
                 }
                 released_locks = 1;
@@ -7620,8 +7620,9 @@ retry:
                 if (thd) {
                     rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
                     if (rc) {
-                        logmsg(LOGMSG_ERROR,"%s recover_deadlock generation changed\n", 
-                                __func__);
+                        logmsg(LOGMSG_ERROR,
+                               "%s recover_deadlock generation changed\n",
+                               __func__);
                         return -(SQLITE_DEADLOCK);
                     }
                 }

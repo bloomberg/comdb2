@@ -7,8 +7,8 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
-#include <stddef.h> 
-#include <poll.h> 
+#include <stddef.h>
+#include <poll.h>
 #include <stdint.h>
 #include <sys/time.h>
 #include <string.h>
@@ -20,9 +20,9 @@
 #include <cdb2api.h>
 
 enum eventtypes {
-    PARTITION_EVENT         = 0x00000001
-   ,SIGSTOP_EVENT           = 0x00000002
-   ,CLOCK_EVENT             = 0x00000004
+    PARTITION_EVENT = 0x00000001,
+    SIGSTOP_EVENT = 0x00000002,
+    CLOCK_EVENT = 0x00000004
 };
 
 int nthreads = 5;
@@ -45,9 +45,11 @@ void usage(FILE *f)
 {
     fprintf(f, "Usage: %s [ opts ]\n", argv0);
     fprintf(f, "        -d <dbname>         - set name of the test database\n");
-    fprintf(f, "        -G <event>          - add event type ('partition', 'sigstop', or 'clock')\n");
+    fprintf(f, "        -G <event>          - add event type ('partition', "
+               "'sigstop', or 'clock')\n");
     fprintf(f, "        -T <numthd>         - set the number of threads\n");
-    fprintf(f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
+    fprintf(
+        f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
     fprintf(f, "        -M                  - partition the master\n");
     fprintf(f, "        -m <max-retries>    - set max-retries in the api\n");
     fprintf(f, "        -D                  - enable debug trace\n");
@@ -56,10 +58,11 @@ void usage(FILE *f)
     fprintf(f, "        -j <output>         - set clojure-output file\n");
 }
 
-static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, int curval,
-        int newval, int newuid, int *foundval, int *founduid) 
+static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op,
+                      int curval, int newval, int newuid, int *foundval,
+                      int *founduid)
 {
-    int rc, count=0;
+    int rc, count = 0;
     cdb2_effects_tp effects;
     char sql[128];
 
@@ -68,45 +71,49 @@ static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, i
 
     rc = cdb2_run_statement(db, "begin");
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "begin failed, rc %d, %s\n", rc, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__, "begin failed, rc %d, %s\n",
+                 rc, cdb2_errstr(db));
         return rc;
-    }
-    else {
+    } else {
         if (debug_trace) {
-            tdprintf(stderr, db, __func__, __LINE__, "begin: read node %s (success)\n", readnode);
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "begin: read node %s (success)\n", readnode);
         }
     }
 
     rc = cdb2_run_statement(db, "select * from register where id = 1");
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "XXX select line %d: error %s\n",
-                __LINE__, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "XXX select line %d: error %s\n", __LINE__, cdb2_errstr(db));
         goto out;
     }
 
     rc = cdb2_next_record(db);
     while (rc == CDB2_OK) {
         count++;
-        int v = (int)*(long long*)cdb2_column_value(db, 0);
+        int v = (int)*(long long *)cdb2_column_value(db, 0);
         if (v != 1) {
-            tdprintf(stderr, db, __func__, __LINE__, "Unexpected value for column 0: %d\n", v);
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "Unexpected value for column 0: %d\n", v);
             myexit(__func__, __LINE__, 1);
         }
 
-        *foundval = (int)*(long long*)cdb2_column_value(db, 1);
-        *founduid = (int)*(long long*)cdb2_column_value(db, 2);
+        *foundval = (int)*(long long *)cdb2_column_value(db, 1);
+        *founduid = (int)*(long long *)cdb2_column_value(db, 2);
 
         rc = cdb2_next_record(db);
     }
 
     if (rc != CDB2_OK_DONE) {
         cdb2_run_statement(db, "commit");
-        tdprintf(stderr, db, __func__, __LINE__, "Unexpected error from cdb2_next_record, %d\n", rc);
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "Unexpected error from cdb2_next_record, %d\n", rc);
         goto out;
     }
 
     if (count > 1) {
-        tdprintf(stderr, db, __func__, __LINE__, "XXX invalid number of records: %d\n", count);
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "XXX invalid number of records: %d\n", count);
         myexit(__func__, __LINE__, 1);
     }
 
@@ -114,8 +121,10 @@ static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, i
     if (op == 0) {
         rc = cdb2_run_statement(db, "commit");
         if (rc) {
-            tdprintf(stderr, db, __func__, __LINE__, "Failure committing after a single select statement?  rc=%d %s\n", 
-                    rc, cdb2_errstr(db));
+            tdprintf(stderr, db, __func__, __LINE__, "Failure committing after "
+                                                     "a single select "
+                                                     "statement?  rc=%d %s\n",
+                     rc, cdb2_errstr(db));
         }
 
         /* This can't really fail - I've already read it */
@@ -125,57 +134,67 @@ static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, i
     /* Write */
     if (op == 1) {
         if (count == 0) {
-            snprintf(sql, sizeof(sql), "insert into register (id, val, uid) values (1, %d, %d)", newval, newuid);
+            snprintf(sql, sizeof(sql),
+                     "insert into register (id, val, uid) values (1, %d, %d)",
+                     newval, newuid);
             rc = cdb2_run_statement(db, sql);
             if (rc) {
-                tdprintf(stderr, db, __func__, __LINE__, "XXX insert returns %d, %s\n", rc, 
-                        cdb2_errstr(db));
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "XXX insert returns %d, %s\n", rc, cdb2_errstr(db));
                 goto out;
             }
 
             rc = cdb2_run_statement(db, "commit");
             if (rc) {
                 if (debug_trace)
-                    tdprintf(stderr, db, __func__, __LINE__, "XXX commit: insert into register(id, val, uid) values (1, %d, %d) rc = %d %s\n",
-                            newval, newuid, rc, cdb2_errstr(db));
+                    tdprintf(stderr, db, __func__, __LINE__,
+                             "XXX commit: insert into register(id, val, uid) "
+                             "values (1, %d, %d) rc = %d %s\n",
+                             newval, newuid, rc, cdb2_errstr(db));
                 goto out;
             }
 
             rc = cdb2_get_effects(db, &effects);
             if (rc) {
-                tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
                 myexit(__func__, __LINE__, 1);
             }
 
             if (effects.num_inserted != 1) {
                 if (debug_trace)
-                    tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects num_inserted = %d\n", effects.num_inserted);
+                    tdprintf(stderr, db, __func__, __LINE__,
+                             "XXX get_effects num_inserted = %d\n",
+                             effects.num_inserted);
                 rc = -1;
                 goto out;
             }
-        } 
-        else {
-            snprintf(sql, sizeof(sql), "update register set val = %d, uid = %d where 1 -- cur uid is %d", 
-                    newval, newuid, *founduid);
+        } else {
+            snprintf(sql, sizeof(sql), "update register set val = %d, uid = %d "
+                                       "where 1 -- cur uid is %d",
+                     newval, newuid, *founduid);
             rc = cdb2_run_statement(db, sql);
             if (rc) {
                 if (debug_trace)
-                    tdprintf(stderr, db, __func__, __LINE__, "update returns %d, %s\n", rc, 
-                            cdb2_errstr(db));
+                    tdprintf(stderr, db, __func__, __LINE__,
+                             "update returns %d, %s\n", rc, cdb2_errstr(db));
                 goto out;
             }
 
             rc = cdb2_run_statement(db, "commit");
             if (rc) {
                 if (debug_trace)
-                    tdprintf(stderr, db, __func__, __LINE__, "commit: update register set val = %d, uid = %d where 1 -- cur uid is %d : rc = %d %s\n",
-                            newval, newuid, *founduid, rc, cdb2_errstr(db));
+                    tdprintf(stderr, db, __func__, __LINE__,
+                             "commit: update register set val = %d, uid = %d "
+                             "where 1 -- cur uid is %d : rc = %d %s\n",
+                             newval, newuid, *founduid, rc, cdb2_errstr(db));
                 goto out;
             }
 
             rc = cdb2_get_effects(db, &effects);
             if (rc) {
-                tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
                 myexit(__func__, __LINE__, 1);
             }
 
@@ -188,29 +207,34 @@ static int update_int(cdb2_hndl_tp *db, char *readnode, int threadnum, int op, i
 
     /* Compare and Set */
     if (op == 2) {
-        snprintf(sql, sizeof(sql), "update register set val = %d, uid = %d where val = %d -- cur uid is %d", 
-                newval, newuid, curval, *founduid);
+        snprintf(sql, sizeof(sql), "update register set val = %d, uid = %d "
+                                   "where val = %d -- cur uid is %d",
+                 newval, newuid, curval, *founduid);
         rc = cdb2_run_statement(db, sql);
 
         if (rc) {
             if (debug_trace)
-                tdprintf(stderr, db, __func__, __LINE__, "XXX update returns %d, %s\n", rc, 
-                        cdb2_errstr(db));
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "XXX update returns %d, %s\n", rc, cdb2_errstr(db));
             goto out;
         }
 
         rc = cdb2_run_statement(db, "commit");
         if (rc) {
             if (debug_trace)
-                tdprintf(stderr, db, __func__, __LINE__, "XXX commit: update register set val = %d, uid = %d where val = %d -- "
-                        "cur uid is %d : rc = %d %s\n",
-                        newval, newuid, curval, *founduid, rc, cdb2_errstr(db));
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "XXX commit: update register set val = %d, uid = %d "
+                         "where val = %d -- "
+                         "cur uid is %d : rc = %d %s\n",
+                         newval, newuid, curval, *founduid, rc,
+                         cdb2_errstr(db));
             goto out;
         }
 
         rc = cdb2_get_effects(db, &effects);
         if (rc) {
-            tdprintf(stderr, db, __func__, __LINE__, "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "XXX get_effects rc %d %s\n", rc, cdb2_errstr(db));
             myexit(__func__, __LINE__, 1);
         }
 
@@ -225,28 +249,31 @@ out:
     return rc;
 }
 
-void update(cdb2_hndl_tp **indb, char *readnode, int threadnum) 
+void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
 {
     cdb2_hndl_tp *db = (*indb);
-    int rc, op, newval = (rand() % 5), curval = (rand() % 5), newuid = (rand() % 100000);
+    int rc, op, newval = (rand() % 5), curval = (rand() % 5),
+                newuid = (rand() % 100000);
     int foundval, founduid;
     unsigned long long begintm, endtm;
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
     op = (rand() % 3);
 
-    if (is_hasql)
-    {
+    if (is_hasql) {
         rc = cdb2_run_statement(db, "set hasql on");
         if (rc) {
-            tdprintf(stderr, db, __func__, __LINE__, "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
             return;
         }
     }
 
     rc = cdb2_run_statement(db, "set transaction serializable");
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "set transaction serializable, rc %d, %s\n", rc, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "set transaction serializable, rc %d, %s\n", rc,
+                 cdb2_errstr(db));
         return;
     }
 
@@ -257,24 +284,30 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
 
         /* Read */
         if (op == 0) {
-            fprintf(c_file, "{:type :invoke :f :read :value nil :process %d :time %llu}\n", threadnum, begintm);
+            fprintf(
+                c_file,
+                "{:type :invoke :f :read :value nil :process %d :time %llu}\n",
+                threadnum, begintm);
         }
 
         /* Write */
         if (op == 1) {
-            fprintf(c_file, "{:type :invoke :f :write :value %d :process %d :uid %d :time %llu}\n", 
+            fprintf(c_file, "{:type :invoke :f :write :value %d :process %d "
+                            ":uid %d :time %llu}\n",
                     newval, threadnum, newuid, begintm);
         }
 
         /* CAS */
         if (op == 2) {
-            fprintf(c_file, "{:type :invoke :f :cas :value [%d %d] :process %d :uid %d :time %llu}\n", 
+            fprintf(c_file, "{:type :invoke :f :cas :value [%d %d] :process %d "
+                            ":uid %d :time %llu}\n",
                     curval, newval, threadnum, newuid, begintm);
         }
         pthread_mutex_unlock(&lk);
     }
 
-    rc = update_int(db, readnode, threadnum, op, curval, newval, newuid, &foundval, &founduid);
+    rc = update_int(db, readnode, threadnum, op, curval, newval, newuid,
+                    &foundval, &founduid);
 
     endtm = timeus();
 
@@ -285,21 +318,21 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
         if (op == 0) {
             if (rc == 0) {
                 if (foundval == -1) {
-                    fprintf(c_file, "{:type :ok :f :read :process %d :value nil :uid nil :time %llu}\n", 
+                    fprintf(c_file, "{:type :ok :f :read :process %d :value "
+                                    "nil :uid nil :time %llu}\n",
                             threadnum, endtm);
-                }
-                else {
-                    fprintf(c_file, "{:type :ok :f :read :process %d :value %d :uid %d :time %llu}\n", 
+                } else {
+                    fprintf(c_file, "{:type :ok :f :read :process %d :value %d "
+                                    ":uid %d :time %llu}\n",
                             threadnum, foundval, founduid, endtm);
                 }
-            } 
-            else if (rc == -105) {
-                tdprintf(stderr, db, __func__, __LINE__, "Don't know the outcome here with rcode -105\n");
+            } else if (rc == -105) {
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "Don't know the outcome here with rcode -105\n");
                 myexit(__func__, __LINE__, 1);
-            } 
-            else
-            {
-                fprintf(c_file, "{:type :fail :f :read :process %d :value %d :uid %d :time %llu}\n", 
+            } else {
+                fprintf(c_file, "{:type :fail :f :read :process %d :value %d "
+                                ":uid %d :time %llu}\n",
                         threadnum, foundval, founduid, endtm);
             }
         }
@@ -307,15 +340,16 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
         /* Write */
         if (op == 1) {
             if (rc == 0) {
-                fprintf(c_file, "{:type :ok :f :write :process %d :value %d :uid %d :time %llu}\n",
+                fprintf(c_file, "{:type :ok :f :write :process %d :value %d "
+                                ":uid %d :time %llu}\n",
                         threadnum, newval, newuid, endtm);
-            } 
-            else if (rc == -105) {
-                tdprintf(stderr, db, __func__, __LINE__, "Don't know the outcome here with rcode -105\n");
+            } else if (rc == -105) {
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "Don't know the outcome here with rcode -105\n");
                 myexit(__func__, __LINE__, 1);
-            } 
-            else {
-                fprintf(c_file, "{:type :fail :f :write :process %d :value %d :uid %d :time %llu}\n", 
+            } else {
+                fprintf(c_file, "{:type :fail :f :write :process %d :value %d "
+                                ":uid %d :time %llu}\n",
                         threadnum, newval, newuid, endtm);
             }
         }
@@ -323,15 +357,16 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
         /* CAS */
         if (op == 2) {
             if (rc == 0) {
-                fprintf(c_file, "{:type :ok :f :cas :process %d :value [%d %d] :uid %d :time %llu}\n", 
+                fprintf(c_file, "{:type :ok :f :cas :process %d :value [%d %d] "
+                                ":uid %d :time %llu}\n",
                         threadnum, curval, newval, newuid, endtm);
-            }
-            else if (rc == -105) {
-                tdprintf(stderr, db, __func__, __LINE__, "Don't know the outcome here with rcode -105\n");
+            } else if (rc == -105) {
+                tdprintf(stderr, db, __func__, __LINE__,
+                         "Don't know the outcome here with rcode -105\n");
                 myexit(__func__, __LINE__, 1);
-            } 
-            else {
-                fprintf(c_file, "{:type :fail :f :cas :process %d :value [%d %d] :uid %d :time %llu}\n", 
+            } else {
+                fprintf(c_file, "{:type :fail :f :cas :process %d :value [%d "
+                                "%d] :uid %d :time %llu}\n",
                         threadnum, curval, newval, newuid, endtm);
             }
         }
@@ -340,27 +375,28 @@ void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
     }
 }
 
-void* thd(void *arg) 
+void *thd(void *arg)
 {
     int64_t now = timems(), end = now + runtime * 1000;
     char *readnode;
     cdb2_hndl_tp *db;
-    int rc, iter=0;
+    int rc, iter = 0;
     int threadnum = (unsigned long long)arg;
     fprintf(stdout, "Thread %d starting\n", threadnum);
 
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc,
+                 cdb2_errstr(db));
         cdb2_close(db);
         myexit(__func__, __LINE__, 1);
     }
 
-    if (is_hasql)
-    {
+    if (is_hasql) {
         rc = cdb2_run_statement(db, "set hasql on");
         if (rc) {
-            tdprintf(stderr, db, __func__, __LINE__, "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
             cdb2_close(db);
             myexit(__func__, __LINE__, 1);
         }
@@ -368,7 +404,8 @@ void* thd(void *arg)
 
     rc = cdb2_run_statement(db, "set transaction serializable");
     if (rc) {
-        fprintf(stderr, "Set transaction serializable failed, rc=%d %s\n", rc, cdb2_errstr(db));
+        fprintf(stderr, "Set transaction serializable failed, rc=%d %s\n", rc,
+                cdb2_errstr(db));
         exit(-1);
     }
 
@@ -379,11 +416,12 @@ void* thd(void *arg)
     }
 
     if (!(readnode = read_node(db))) {
-        tdprintf(stderr, db, __func__, __LINE__, "Couldn't determine read node for thread\n");
-    }
-    else {
+        tdprintf(stderr, db, __func__, __LINE__,
+                 "Couldn't determine read node for thread\n");
+    } else {
         if (debug_trace)
-            tdprintf(stderr, db, __func__, __LINE__, "read node is %s\n", readnode);
+            tdprintf(stderr, db, __func__, __LINE__, "read node is %s\n",
+                     readnode);
     }
 
     while (iter == 0 || now < end) {
@@ -402,16 +440,17 @@ static void empty_register_table(void)
     cdb2_hndl_tp *db;
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
     if (rc) {
-        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc, cdb2_errstr(db));
+        tdprintf(stderr, db, __func__, __LINE__, "thd: open rc %d %s\n", rc,
+                 cdb2_errstr(db));
         cdb2_close(db);
         myexit(__func__, __LINE__, 1);
     }
 
-    if (is_hasql)
-    {
+    if (is_hasql) {
         rc = cdb2_run_statement(db, "set hasql on");
         if (rc) {
-            tdprintf(stderr, db, __func__, __LINE__, "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "thd: set hasql on rc %d, %s\n", rc, cdb2_errstr(db));
             cdb2_close(db);
             myexit(__func__, __LINE__, 1);
         }
@@ -419,7 +458,8 @@ static void empty_register_table(void)
 
     rc = cdb2_run_statement(db, "set transaction serializable");
     if (rc) {
-        fprintf(stderr, "Set transaction serializable failed, rc=%d %s\n", rc, cdb2_errstr(db));
+        fprintf(stderr, "Set transaction serializable failed, rc=%d %s\n", rc,
+                cdb2_errstr(db));
         exit(-1);
     }
 
@@ -432,69 +472,51 @@ static void empty_register_table(void)
     rc = cdb2_run_statement(db, "delete from register where 1");
     if (rc) {
         if (debug_trace)
-            tdprintf(stderr, db, __func__, __LINE__, "delete from register where 1 failed: %d %s\n",
-                    rc, cdb2_errstr(db));
+            tdprintf(stderr, db, __func__, __LINE__,
+                     "delete from register where 1 failed: %d %s\n", rc,
+                     cdb2_errstr(db));
     }
 
     cdb2_close(db);
 }
 
-int main (int argc, char *argv[])
+int main(int argc, char *argv[])
 {
-    int rc, c, errors=0;
+    int rc, c, errors = 0;
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:"))!=EOF) {
-        switch(c) {
-            case 'd':
-                dbname = optarg;
-                break;
-            case 'G':
-                if (0 == strcasecmp(optarg, "partition")) {
-                    which_events |= PARTITION_EVENT;
-                }
-                else if (0 == strcasecmp(optarg, "sigstop")) {
-                    which_events |= SIGSTOP_EVENT;
-                }
-                else if (0 == strcasecmp(optarg, "clock")) {
-                    which_events |= CLOCK_EVENT;
-                }
-                else {
-                    fprintf(stderr, "Unknown test: %s\n", optarg);
-                    errors++;
-                }
-                break;
-            case 'T':
-                nthreads = atoi(optarg);
-                break;
-            case 't':
-                cltype = optarg;
-                break;
-            case 'M':
-                partition_master = 1;
-                break;
-            case 'm':
-                max_retries = atoi(optarg);
-                break;
-            case 'D':
-                debug_trace = 1;
-                break;
-            case 'o':
-                nthreads = 1;
-                break;
-            case 'r':
-                runtime = atoi(optarg);
-                break;
-            case 'j':
-                if ((c_file = fopen(optarg, "w")) == NULL) {
-                    fprintf(stderr, "Error opening clojure output file: %s\n",
-                            strerror(errno));
-                }
-                break;
-            default:
-                fprintf(stderr, "Unknown option, '%c'\n", c);
+    while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:")) != EOF) {
+        switch (c) {
+        case 'd': dbname = optarg; break;
+        case 'G':
+            if (0 == strcasecmp(optarg, "partition")) {
+                which_events |= PARTITION_EVENT;
+            } else if (0 == strcasecmp(optarg, "sigstop")) {
+                which_events |= SIGSTOP_EVENT;
+            } else if (0 == strcasecmp(optarg, "clock")) {
+                which_events |= CLOCK_EVENT;
+            } else {
+                fprintf(stderr, "Unknown test: %s\n", optarg);
                 errors++;
-                break;
+            }
+            break;
+        case 'T': nthreads = atoi(optarg); break;
+        case 't': cltype = optarg; break;
+        case 'M': partition_master = 1; break;
+        case 'm': max_retries = atoi(optarg); break;
+        case 'D': debug_trace = 1; break;
+        case 'o': nthreads = 1; break;
+        case 'r': runtime = atoi(optarg); break;
+        case 'j':
+            if ((c_file = fopen(optarg, "w")) == NULL) {
+                fprintf(stderr, "Error opening clojure output file: %s\n",
+                        strerror(errno));
+            }
+            break;
+        default:
+            fprintf(stderr, "Unknown option, '%c'\n", c);
+            errors++;
+            break;
         }
     }
 
@@ -510,7 +532,7 @@ int main (int argc, char *argv[])
         exit(1);
     }
 
-    if (which_events == 0){
+    if (which_events == 0) {
         fprintf(stderr, "NO TESTS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
     }
 
@@ -520,9 +542,9 @@ int main (int argc, char *argv[])
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
     struct nemesis *n = NULL;
-    for (int cnt = 0 ; cnt < 1000 && n == NULL; cnt++) {
+    for (int cnt = 0; cnt < 1000 && n == NULL; cnt++) {
         n = nemesis_open(dbname, cltype, flags);
-        if (!n) sleep (1);
+        if (!n) sleep(1);
     }
 
     if (!n) {
@@ -544,8 +566,7 @@ int main (int argc, char *argv[])
     }
 
     int sleeptime = (runtime / 2 - 1);
-    if (sleeptime > 0)
-        sleep(sleeptime);
+    if (sleeptime > 0) sleep(sleeptime);
 
     if (which_events & PARTITION_EVENT) {
         breaknet(n);
@@ -554,11 +575,10 @@ int main (int argc, char *argv[])
         signaldb(n, SIGSTOP, 0);
     }
     if (which_events & CLOCK_EVENT) {
-        breakclocks(n, max_clock_skew); 
-    } 
+        breakclocks(n, max_clock_skew);
+    }
 
-    if (sleeptime > 0)
-        sleep(sleeptime);
+    if (sleeptime > 0) sleep(sleeptime);
 
     if (which_events & PARTITION_EVENT) {
         fixnet(n);
