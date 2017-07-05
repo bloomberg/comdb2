@@ -2649,6 +2649,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         gbl_sqlite_sorter_mem = ii;
     }
 
+    else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        long long maxmmapsz = toknumll(tok, ltok);
+        logmsg(LOGMSG_INFO, "setting sqlsortermaxmmapsize to %ld bytes\n",
+               maxmmapsz);
+        sqlite3_config(SQLITE_CONFIG_MMAP_SIZE, SQLITE_DEFAULT_MMAP_SIZE,
+                       maxmmapsz);
+    }
+
     else if (tokcmp(tok, ltok, "sqlsortermult") == 0) {
         tok = segtok(line, len, &st, &ltok);
         ii = toknum(tok, ltok);
