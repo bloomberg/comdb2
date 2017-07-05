@@ -166,24 +166,27 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
     }
 }
 
+/* TODO: */
 bool do_bindings(cdb2_hndl_tp *db, cson_value *val) {
     return true;
 }
 
 void replay(cdb2_hndl_tp *db, cson_value *val) {
-    const char *fp = get_strprop(val, "fingerprint");
-    if (fp == nullptr) {
-        std::cerr << "No fingerprint logged?" << std::endl;
-        return;
+    const char *sql = get_strprop(val, "sql");
+    if(sql == nullptr) {
+	    const char *fp = get_strprop(val, "fingerprint");
+	    if (fp == nullptr) {
+		    std::cerr << "No fingerprint logged?" << std::endl;
+		    return;
+	    }
+	    auto s = sqltrack.find(fp);
+	    if (s == sqltrack.end()) {
+		    std::cerr << "Unknown fingerprint? " << fp << std::endl;
+		    return;
+	    }
+	    sql = (*s).second.c_str();
     }
-    auto s = sqltrack.find(fp);
-    if (s == sqltrack.end()) {
-        std::cerr << "Unknown fingerprint? " << fp << std::endl;
-        return;
-    }
-    const char *sql = (*s).second.c_str();
 
-    return;
     bool ok = do_bindings(db, val);
     if (!ok)
         return;
@@ -340,13 +343,20 @@ int main(int argc, char **argv) {
         filename = argv[2];
 
     /* TODO: tier should be an option */
-#if 0
-    if (cdb2_open(&cdb2h, dbname, "local", 0)) {
+    int rc;
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf) {
+        cdb2_set_comdb2db_config(conf);
+        rc = cdb2_open(&cdb2h, dbname, "default", 0);
+    }
+    else { 
+        rc = cdb2_open(&cdb2h, dbname, "local", 0);
+    }
+
+    if (rc) {
         std::cerr << "cdb2_open() failed: " << cdb2_errstr(cdb2h) << std::endl;
-        cdb2_close(cdb2h);
         exit(EXIT_FAILURE);
     }
-#endif
 
     if (filename == nullptr) {
         process_events(cdb2h, std::cin);
