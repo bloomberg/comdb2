@@ -683,9 +683,9 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     else
         nField = s->nmembers;
 
-    m = (Mem*) alloca (sizeof(Mem)* (nField+1)); // Extra 1 for genid
+    m = (Mem *)alloca(sizeof(Mem) * (nField + 1)); // Extra 1 for genid
 
-    type = (u32*) alloca(sizeof(u32) * (nField+1));
+    type = (u32 *)alloca(sizeof(u32) * (nField + 1));
 
 #ifdef debug_raw
     printf("convert => %s %s %d / %d\n", db->dbname, s->tag, nField,
@@ -699,7 +699,8 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
-        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
+        type[fnum] =
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
         hdrsz += sqlite3VarintLen(type[fnum]);
     }
@@ -712,7 +713,8 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         m[fnum].u.i = genid;
         m[fnum].flags = MEM_Int;
 
-        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
+        type[fnum] =
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
         hdrsz += sqlite3VarintLen(type[fnum]);
         ncols++;
@@ -748,7 +750,7 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         // TODO: verify that this works as before
         sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], type[fnum]);
         dtabuf += sz;
-        sz = sqlite3PutVarint( hdrbuf, type[fnum]);
+        sz = sqlite3PutVarint(hdrbuf, type[fnum]);
         hdrbuf += sz;
         assert(hdrbuf <= (out + hdrsz));
     }

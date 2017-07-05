@@ -1043,14 +1043,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     outrc = snapinfo_outrc;
                 } else {
                     switch (err.errcode) {
-                        case ERR_NULL_CONSTRAINT:
-                        case ERR_UNCOMMITABLE_TXN:
-                        case ERR_NOMASTER:
-                            outrc = err.errcode;
-                            break;
-                        default:
-                            outrc = ERR_BLOCK_FAILED;
-                            break;
+                    case ERR_NULL_CONSTRAINT:
+                    case ERR_UNCOMMITABLE_TXN:
+                    case ERR_NOMASTER: outrc = err.errcode; break;
+                    default: outrc = ERR_BLOCK_FAILED; break;
                     }
                 }
 

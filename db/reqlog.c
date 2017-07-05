@@ -638,8 +638,7 @@ static const char *help_text[] = {
     "reql stat               - status, print rules",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",
-    "   General commands:",
-    "       delete           - delete named rule",
+    "   General commands:", "       delete           - delete named rule",
     "       go               - start logging with rule",
     "       stop             - stop logging with this rule",
     "   Specify criteria:",
@@ -653,8 +652,7 @@ static const char *help_text[] = {
     "       stmt 'sql stmt'  - log requests where sql contains that text",
     "       vreplays <range> - log requests with given number of verify "
     "replays",
-    "   Specify what to log:",
-    "       trace            - log detailed trace",
+    "   Specify what to log:", "       trace            - log detailed trace",
     "       results          - log query results",
     "       cnt #            - log up to # before removing rule",
     "   Specify where to log:",
@@ -665,8 +663,7 @@ static const char *help_text[] = {
     "   #-                   - match any number <=#",
     "   #..#                 - match anything between the two numbers "
     "inclusive",
-    "<filename> must be a filename or the keyword '<stdout>'",
-    NULL};
+    "<filename> must be a filename or the keyword '<stdout>'", NULL};
 
 void reqlog_help(void)
 {

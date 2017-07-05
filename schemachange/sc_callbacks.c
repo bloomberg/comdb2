@@ -512,10 +512,11 @@ static int delete_table_rep(char *table, void *tran)
     }
 
     /* update the delayed deleted files */
-    rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
+    rc =
+        bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
     if (rc) {
-      logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
-             bdberr);
+        logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
+               bdberr);
     }
 
     delete_db(table);
@@ -686,10 +687,11 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
 
         /* update the delayed deleted files */
         assert(db && !add_new_db);
-        rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
+        rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr,
+                                        (char *)__func__);
         if (rc) {
-          logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
-                 bdberr);
+            logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
+                   bdberr);
         }
     }
 
@@ -698,12 +700,12 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
 
     /* if we just added the table, get a pointer for it */
     if (add_new_db) {
-      db = getdbbyname(table);
-      if (!db) {
-        logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
-               __func__, table);
-        exit(1);
-      }
+        db = getdbbyname(table);
+        if (!db) {
+            logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
+                   __func__, table);
+            exit(1);
+        }
     }
 
     set_odh_options_tran(db, tran);

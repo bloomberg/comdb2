@@ -3220,8 +3220,8 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
                     sizeof(unsigned long long), llldta, updop->old_dta_len);
             }
             if (irc)
-                printf("%s %d rc=%d lsn [%d][%d]\n", __FILE__,
-                        __LINE__, irc, lsn->file, lsn->offset);
+                printf("%s %d rc=%d lsn [%d][%d]\n", __FILE__, __LINE__, irc,
+                       lsn->file, lsn->offset);
             else {
                 printf("--dta   ");
                 for (iii = 0; iii < updop->old_dta_len; iii++) {
