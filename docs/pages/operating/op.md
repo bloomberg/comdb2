@@ -668,7 +668,7 @@ in the database" view.
 
 ### nowatch
 
-By default the database has a watchdog thread.  It's job is running quick sanity check: can the database perform
+By default the database has a watchdog thread.  Its job is running a quick sanity check: can the database perform
 basic operations like allocating memory, creating threads, etc.  A check failure causes the db to abort.  `nowatch`
 disables the watchdog.
 

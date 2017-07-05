@@ -375,7 +375,6 @@ int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
 int gbl_debug_verify_tran = 0;
-int gbl_fastdump_timeoutms = 5 * 1000;
 int gbl_readonly = 0;
 int gbl_use_bbipc = 1; /* on by default. lrl option disable_bbipc to turn off */
 int gbl_init_single_meta = 1;
@@ -3671,13 +3670,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return -1;
         free(name);
         free(jartok);
-    } else if (tokcmp(tok, ltok, "fstdumptimeout") == 0) {
-        tok = segtok(line, len, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected fast dump timeout time in seconds\n");
-            return -1;
-        }
-        gbl_fastdump_timeoutms = toknum(tok, ltok) * 1000;
     }
     else if (tokcmp(tok, ltok, "repchecksum") == 0) {
         logmsg(LOGMSG_INFO, "replication checksums enabled\n");

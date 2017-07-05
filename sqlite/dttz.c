@@ -369,7 +369,7 @@ err:
    /* TODO: figure out why we're memsetting this.  context->pOut is supposed to 
     * be re-used, and sqlite3VdbeMemSetDatetime doesn't allocate memory. For
     * now, just plug the memory leak. */
-   if (context->pOut->zMalloc)  {
+   if (context->pOut->szMalloc)  {
        sqlite3DbFree(context->pOut->db, context->pOut->zMalloc);
        context->pOut->szMalloc = 0;
        /* we bzero this below - if we stop, be sure to

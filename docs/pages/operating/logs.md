@@ -66,7 +66,7 @@ effect of logging all of the incoming sql requests.
 
 ## Status Log
 
-Comdb2 records global request status information for a database in it's 
+Comdb2 records global request status information for a database in its 
 `<dbname>.statreqs` file.  Unlike the long requests file, which reports its 
 information per-request, the statreqs file is updated every minute with 
 global information (i.e., the number of new requests, the number of

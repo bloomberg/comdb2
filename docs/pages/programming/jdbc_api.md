@@ -201,6 +201,10 @@ The parameters are as follows:
     * _trust_store_type_=String
 
       Type of the trusted CA keystore. The default is `"JKS"`.
+
+    *_allow_pmux_route_=Boolean
+
+      Allow connection forwarding via `pmux`. The default is `false`.
         
     \* _To define multiple options, separate them by ampersands._
 

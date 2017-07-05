@@ -89,7 +89,7 @@ static void printf_wrapper(void *userptr, const char *fmt, ...)
     if (!out)
         out = stderr;
     va_start(args, fmt);
-    logmsgf(LOGMSG_USER, out, fmt, args);
+    logmsgvf(LOGMSG_USER, out, fmt, args);
     va_end(args);
 }
 

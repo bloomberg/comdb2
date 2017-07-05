@@ -5,7 +5,8 @@ bash -n "$0" | exit 1
 set -x
 
 RESTART_DELAY=35
-NUMREC=400
+INITNUMREC=100
+NUMREC=300
 
 # Debug variable
 debug=0
@@ -175,7 +176,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  &>> $insfl)
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  2>> $insfl)
         if [ "$out" = "1" ]; then 
             let j=j+1
             continue
@@ -316,8 +317,8 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
-insert_records 1 200
-assertcnt 200
+insert_records 1 $INITNUMREC
+assertcnt $INITNUMREC
 
 #check via select * from t1 | make sure that a == b == c == 'test'$
 
@@ -329,7 +330,7 @@ cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.se
 node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 
 echo restart node with delay to make sure when it comes up the cluster is still allright
-insert_records 201 $NUMREC &
+insert_records $((INITNUMREC+1)) $NUMREC &
 pid=$!
 while ps -p $pid &> /dev/null ; do
     echo "insert running, killrestart all nodes"

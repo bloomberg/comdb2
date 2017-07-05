@@ -205,7 +205,6 @@ void appsock_stat(void)
     appsock_quick_stat();
     logmsg(LOGMSG_USER, "bad appsock commands    %llu\n", num_bad_toks);
     logmsg(LOGMSG_USER, "rejected appsock conns  %llu\n", total_appsock_rejections);
-    logmsg(LOGMSG_USER, "fastdump timeout ms     %d\n", gbl_fastdump_timeoutms);
     for (ii = 0; ii < num_commands; ii++) {
         if (commands[ii].num_uses) {
             logmsg(LOGMSG_USER, "  num %-16s  %llu\n", commands[ii].cmd,

@@ -67,6 +67,7 @@ public class Comdb2Handle extends AbstractConnection {
     boolean hasUserTcpSz;
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
+    boolean pmuxrte = false;
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
@@ -147,6 +148,16 @@ public class Comdb2Handle extends AbstractConnection {
         ret.dnssuffix = dnssuffix;
         ret.hasUserTcpSz = hasUserTcpSz;
         ret.tcpbufsz = tcpbufsz;
+        ret.age = age;
+        ret.pmuxrte = pmuxrte;
+        ret.sslmode = sslmode;
+        ret.sslcert = sslcert;
+        ret.sslcertpass = sslcertpass;
+        ret.sslcerttype = sslcerttype;
+        ret.sslca = sslca;
+        ret.sslcapass = sslcapass;
+        ret.sslcatype = sslcatype;
+        ret.peersslmode = peersslmode;
         return ret;
     }
 
@@ -204,6 +215,12 @@ public class Comdb2Handle extends AbstractConnection {
 
     public void setOverriddenPort(int port) {
         overriddenPort = port;
+    }
+
+    public void setAllowPmuxRoute(boolean val) {
+        pmuxrte = val;
+        if (val)
+            overriddenPort = portMuxPort;
     }
 
     void addHosts(List<String> hosts) {
@@ -1639,7 +1656,7 @@ readloop:
            we're not on it, connect to it. */
         if (prefIdx != -1 && dbHostIdx != prefIdx) {
             io = new SockIO(myDbHosts.get(prefIdx),
-                    myDbPorts.get(prefIdx), tcpbufsz);
+                    myDbPorts.get(prefIdx), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1676,7 +1693,7 @@ readloop:
                         || try_node == dbHostConnected)
                     continue;
 
-                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node), tcpbufsz);
+                io = new SockIO(myDbHosts.get(try_node), myDbPorts.get(try_node), tcpbufsz, pmuxrte ? myDbName : null);
                 if (io.open()) {
                     try {
                         io.write("newsql\n");
@@ -1713,7 +1730,7 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz);
+            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1742,7 +1759,7 @@ readloop:
                     || dbHostIdx == dbHostConnected)
                 continue;
 
-            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz);
+            io = new SockIO(myDbHosts.get(dbHostIdx), myDbPorts.get(dbHostIdx), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");
@@ -1769,7 +1786,7 @@ readloop:
          */
         if (masterIndexInMyDbHosts >= 0) {
             io = new SockIO(myDbHosts.get(masterIndexInMyDbHosts),
-                    myDbPorts.get(masterIndexInMyDbHosts), tcpbufsz);
+                    myDbPorts.get(masterIndexInMyDbHosts), tcpbufsz, pmuxrte ? myDbName : null);
             if (io.open()) {
                 try {
                     io.write("newsql\n");

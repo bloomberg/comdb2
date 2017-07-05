@@ -269,6 +269,12 @@ else
             sleep 2
             out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         done
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'comdb2_host()' 2>&1)
+        if [ $out != $node ] ; then
+            echo "comdb2_host() '$out' != expected '$node'"
+            sleep 1
+            exit 1
+        fi
     done
     for node in $CLUSTER; do
         cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
