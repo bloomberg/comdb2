@@ -606,8 +606,7 @@ again:
                 c.service = std::string(svc);
                 conn_printf(c, "ok\n");
             }
-        }
-        else {
+        } else {
             disallowed_write(c, cmd);
         }
     } else if (strcmp(cmd, "active") == 0) {

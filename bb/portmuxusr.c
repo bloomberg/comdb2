@@ -1766,30 +1766,27 @@ int set_portmux_bind_path(char *path)
     return rc;
 }
 
-int portmux_hello(char *host, char *name) {
+int portmux_hello(char *host, char *name)
+{
     struct in_addr addr;
     int port;
     int fd;
     int rc;
 
     rc = tcpresolve(host, &addr, &port);
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     fd = tcpconnect_to(addr, get_portmux_port(), 0, 5000);
-    if (fd == -1)
-        return 1;
+    if (fd == -1) return 1;
     portmux_denagle(fd);
 
     SBUF2 *sb = sbuf2open(fd, SBUF2_WRITE_LINE | SBUF2_NO_CLOSE_FD);
     sbuf2printf(sb, "hello %s\n", name);
     rc = sbuf2flush(sb);
-    if (rc < 0)
-        return 2;
+    if (rc < 0) return 2;
     sbuf2close(sb);
     return 0;
 }
-
 
 #ifdef PORTMUXUSR_TESTSUITE
 /* here's makefile

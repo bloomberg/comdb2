@@ -5707,8 +5707,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         return NULL;
     }
 
-    if (lrlname)
-        pre_read_lrl_file(dbenv, lrlname, dbname);
+    if (lrlname) pre_read_lrl_file(dbenv, lrlname, dbname);
 
     /* if we havn't been told not to load the /bb/bin/ config files */
     if (!gbl_nogbllrl) {
@@ -5753,7 +5752,8 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /* if env variable is set, process another lrl.. */
     const char *envlrlname = getenv("COMDB2_CONFIG");
-    if(envlrlname && !read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
+    if (envlrlname &&
+        !read_lrl_file(dbenv, envlrlname, dbname, 1 /*required*/)) {
         return 0;
     }
 
@@ -5767,10 +5767,8 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     /* switch to keyless mode as long as no mode has been selected yet */
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL && gbl_dbdir) 
-        dbenv->basedir = gbl_dbdir;
-    if (dbenv->basedir == NULL) 
-        dbenv->basedir = getenv("COMDB2_DB_DIR");
+    if (dbenv->basedir == NULL && gbl_dbdir) dbenv->basedir = gbl_dbdir;
+    if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
     if (dbenv->basedir == NULL)
         dbenv->basedir = comdb2_location("database", "%s", dbname);
 
@@ -5786,8 +5784,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
                 return 0;
             }
             lrlname = lrl;
-        }
-        else
+        } else
             free(lrlname);
     }
 
@@ -5795,15 +5792,16 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         /* make sure the database directory exists! */
         rc = mkdir(dbenv->basedir, 0774);
         if (rc && errno != EEXIST) {
-            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
+            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir,
+                   strerror(errno));
             /* continue, this will make us fail later */
         }
-    }
-    else {
+    } else {
         struct stat sb;
         stat(dbenv->basedir, &sb);
-        if (! S_ISDIR(sb.st_mode)) {
-            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
+        if (!S_ISDIR(sb.st_mode)) {
+            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
+                   dbenv->basedir);
             return 0;
         }
     }
