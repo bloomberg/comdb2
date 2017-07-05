@@ -85,7 +85,11 @@ int static remove_from_qdbs(struct db *db)
 {
     for (int i = 0; i < thedb->num_qdbs; i++) {
         if (db == thedb->qdbs[i]) {
-            // shift the rest down one slot
+
+            /* Remove the queue from the hash. */
+            hash_del(thedb->qdb_hash, db);
+
+            /* Shift the rest down one slot. */
             --thedb->num_qdbs;
             for (int j = i; j < thedb->num_qdbs; ++j) {
                 thedb->qdbs[j] = thedb->qdbs[j + 1];
@@ -205,6 +209,9 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         thedb->qdbs =
             realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
         thedb->qdbs[thedb->num_qdbs++] = db;
+
+        /* Add queue to the hash. */
+        hash_add(thedb->qdb_hash, db);
 
         /* TODO: needs locking */
         rc =
@@ -422,6 +429,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         thedb->qdbs =
             realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
         thedb->qdbs[thedb->num_qdbs++] = db;
+
+        /* Add queue to the hash. */
+        hash_add(thedb->qdb_hash, db);
 
         /* create a consumer for this guy */
         /* TODO: needs locking */

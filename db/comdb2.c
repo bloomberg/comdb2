@@ -875,16 +875,8 @@ struct db *getdbbynum(int num)
 int getdbidxbyname(const char *p_name)
 {
     struct db *db;
-    int idx = -1;
-
     db = hash_find_readonly(thedb->db_hash, &p_name);
-    for (int i = 0; i < thedb->num_dbs && db; ++i) {
-        if (thedb->dbs[i] == db) {
-            idx = i;
-            break;
-        }
-    }
-    return idx;
+    return (db) ? db->dbs_idx : -1;
 }
 
 struct db *getdbbyname(const char *p_name)
@@ -8861,6 +8853,12 @@ void replace_db_idx(struct db *p_db, int idx, int add)
                                          * from the schema anymore */
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
+
+    /* Add table to the hash. */
+    if (move == 1) {
+        hash_add(thedb->db_hash, p_db);
+    }
+
     pthread_rwlock_unlock(&thedb_lock);
 }
 
