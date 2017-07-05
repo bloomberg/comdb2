@@ -22,4 +22,15 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
 
 std::string getDTString();
 
+void incr_deserialise_database(
+    const std::string lrldestdir,
+    const std::string datadestdir,
+    std::set<std::string>& table_set,
+    unsigned percent_full,
+    bool force_mode,
+    bool legacy_mode,
+    bool& is_disk_full,
+    const std::string& incr_path
+);
+
 #endif

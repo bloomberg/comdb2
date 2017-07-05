@@ -111,7 +111,9 @@ void deserialise_database(
   bool force_mode,
   bool legacy_mode,
   bool& is_disk_full,
-  bool run_with_done_file
+  bool run_with_done_file,
+  bool incr_mode,
+  const std::string& incr_path
 );
 // Deserialise a database from serialised form received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -125,13 +127,6 @@ void deserialise_database(
 // halted.
 
 bool isDirectory(const std::string& file);
-
-void incr_deserialise_database(
-  const std::string *p_lrldestdir,
-  const std::string *p_datadest,
-  const std::string& incr_name,
-  const std::string& incr_path
-);
 
 /* this definition needs to agree with DBENV_MAP in berkdb */
 struct iomap {

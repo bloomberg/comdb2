@@ -973,6 +973,9 @@ void serialise_database(
                 }
             }
         }
+
+        // Serialise the manifest file
+        serialise_string("MANIFEST", manifest.str());
     } else {
         manifest << "# Manifest for serialisation of increment produced on "
             << getDTString() << std::endl;
@@ -1023,10 +1026,11 @@ void serialise_database(
             }
         }
 
+        // Serialise the manifest file
+        serialise_string("INCR_MANIFEST", manifest.str());
+
     }
 
-    // Serialise the manifest file
-    serialise_string("MANIFEST", manifest.str());
 
     std::string iomapfile;
     std::ostringstream ss;
@@ -1153,6 +1157,17 @@ void serialise_database(
 
         ssize_t data_written = 0;
 
+        // First, serialise any complete log files that are in the .txn
+        // directory and notify the running database that they can now be
+        // archived.
+        // TODO: Figure out how to serialise logs after each file without
+        // disrupting the page data file
+        long long old_log_number(log_number);
+        serialise_log_files(dbtxndir, dbdir, log_number, true);
+        if(log_number != old_log_number && log_holder.get()) {
+            log_holder->release_log(log_number - 1);
+        }
+
         while(data_it != incr_data_files.end()){
             // First, serialise any complete log files that are in the .txn
             // directory and notify the running database that they can now be
@@ -1172,6 +1187,12 @@ void serialise_database(
             ++data_it;
             ++page_it;
         }
+
+        // The length of the output must be a multiple of 512 bytes
+        bytesleft = total_data_size & (512 - 1);
+        bytesleft = 512 - bytesleft;
+        if(bytesleft > 0 && bytesleft < 512) {
+        writepadding(bytesleft);
 
         // Serialise all remaining log files, including incomplete ones
         serialise_log_files(dbtxndir, dbdir, log_number, false);

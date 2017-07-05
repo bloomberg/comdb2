@@ -100,11 +100,9 @@ int main(int argc, char *argv[])
     unsigned percent_full = 95;
     bool legacy_mode = false;
     bool do_direct_io = true;
-    bool incr_mode = false;
     bool incr_create = false;
     bool incr_gen = false;
-    bool incr_ex = true;
-    std::string incr_name = "";
+    bool incr_ex = false;
     std::string incr_path = "increment";
 
     // TODO: should really consider using comdb2file.c
@@ -191,19 +189,16 @@ int main(int argc, char *argv[])
                 break;
 
             case 'I':
-                incr_mode = true;
                 if(std::strcmp(optarg, "create") == 0) {
                     incr_create = true;
                 } else if(std::strcmp(optarg, "inc") == 0) {
                     incr_gen = true;
+                } else if(std::strcmp(optarg, "restore") == 0) {
+                    incr_ex = true;
                 } else {
-                    if(optarg != NULL) {
-                        incr_name = std::string(optarg);
-                    } else {
-                        std::cerr << "Restoration path must be specified" <<
-                            " for extraction" << std::endl;
-                        std::exit(2);
-                    }
+                    std::cerr << "Unrecognized parameter to -I: " << optarg
+                        << std::endl;
+                    std::exit(2);
                 }
                 break;
 
@@ -263,14 +258,6 @@ int main(int argc, char *argv[])
             std::exit(2);
         }
 
-        if(incr_mode && !(incr_gen || incr_create)) {
-
-            std::cerr << "Incremental mode must either create a new backup or"
-                << " generate an increment" << std::endl;
-            std::exit(2);
-        }
-
-
         const std::string lrlpath(argv[1]);
 
         try {
@@ -312,43 +299,27 @@ int main(int argc, char *argv[])
             std::exit(2);
         }
         bool is_disk_full = false;
-        if(!incr_ex) {
-            try {
-               deserialise_database(
-                 p_lrldest,
-                 p_datadest,
-                 strip_cluster_info,
-                 strip_consumer_info,
-                 comdb2_task,
-                 percent_full,
-                 force_mode,
-                 legacy_mode,
-                 is_disk_full,
-                 run_with_done_file
-               );
-            } catch(std::exception& e) {
-                std::cerr << e.what() << std::endl;
-                if (is_disk_full) {
-                  errexit(3);
-                } else {
-                  errexit();
-                }
-            }
-        } else {
-            try {
-                incr_deserialise_database(
-                  p_lrldest,
-                  p_datadest,
-                  incr_name,
-                  incr_path
-                );
-            } catch(std::exception& e) {
-                std::cerr << e.what() << std::endl;
-                if (is_disk_full) {
-                  errexit(3);
-                } else {
-                  errexit();
-                }
+        try {
+           deserialise_database(
+             p_lrldest,
+             p_datadest,
+             strip_cluster_info,
+             strip_consumer_info,
+             comdb2_task,
+             percent_full,
+             force_mode,
+             legacy_mode,
+             is_disk_full,
+             run_with_done_file,
+             incr_ex,
+             incr_path
+           );
+        } catch(std::exception& e) {
+            std::cerr << e.what() << std::endl;
+            if (is_disk_full) {
+              errexit(3);
+            } else {
+              errexit();
             }
         }
     }
