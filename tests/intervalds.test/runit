@@ -81,4 +81,14 @@ if [ "$res" != 60 ] ; then
    exit 1
 fi
 
+#Intervalds/Intervaldsus Arithmetics
+cdb2sql ${CDB2_OPTIONS} -f t1.sql $db default > t1.res
+res=$(cat t1.res)
+exp=$(cat t1.expected)
+if [[ "$res" != "$exp" ]]; then
+   diff t1.expected t1.res
+   echo "Intervalds/Intervaldsus Arithmetics fails"
+   exit 1
+fi
+
 echo "Success"
