@@ -187,16 +187,17 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
         int ret;
+
         if (strcmp(type, "int") ) {
             int64_t iv;
             bool succ = get_intprop(bp, "value", &iv);
             if (!succ) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
-                exit(1);
+                return false;
             }
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, &iv, sizeof(int64_t))) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                exit(1);
+                return false;
             }
             std::cout << "binding "<< type << " column " << name << " to value" << iv << std::endl;
         } 
@@ -204,11 +205,11 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
-                exit(1);
+                return false;
             }
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_CSTRING, &strp, strlen(strp) )) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                exit(1);
+                return false;
             }
             std::cout << "binding "<< type << " column " << name << " to value" << strp << std::endl;
         }
