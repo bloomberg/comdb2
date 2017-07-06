@@ -124,6 +124,17 @@ struct schema_change_type {
     int finalize;      /* Whether the schema change should be committed */
     int finalize_only; /* only commit the schema change */
 
+    int addseq; /* Flag for adding a sequence */
+    int dropseq; /* Flag for deleting a sequence */
+    int alterseq; /* Flag for altering a sequence */
+
+    long long seq_min_val;
+    long long seq_max_val;
+    long long seq_increment;
+    int seq_cycle;
+    long long seq_start_val;
+    long long seq_chunk_size;
+
     pthread_mutex_t mtx; /* mutex for thread sync */
     int sc_rc;
 

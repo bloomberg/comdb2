@@ -163,7 +163,7 @@ sequence_t *get_sequence(char *name)
     }
 
     for (i = 0; i < thedb->num_sequences; i++) {
-        if (strcmp(thedb->sequences[i]->name, name) == 0) {
+        if (strcasecmp(thedb->sequences[i]->name, name) == 0) {
             return thedb->sequences[i];
         }
     }
@@ -172,9 +172,9 @@ sequence_t *get_sequence(char *name)
 }
 
 /**
- * TODO: MOVE SOMEWHERE ELSE
  * TODO: Make Transactional
- *
+ * remove (moved to schema change)
+ * 
  * Adds sequence to llmeta and memory
  */
 int add_sequence(char *name, long long min_val, long long max_val,
@@ -255,8 +255,9 @@ int add_sequence(char *name, long long min_val, long long max_val,
 }
 
 /**
- * TODO: MOVE SOMEWHERE ELSE
  * TODO: Make Transactional
+ * remove (moved to schema change)
+ * 
  * Drops sequence from llmeta and memory
  */
 int drop_sequence(char *name)

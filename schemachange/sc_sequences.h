@@ -17,6 +17,9 @@
 #ifndef INCLUDE_SC_SEQUENCES_H
 #define INCLUDE_SC_SEQUENCES_H
 
-// TODO:
+int do_add_sequence_int(char *name, long long min_val, long long max_val,
+                 long long increment, int cycle, long long start_val,
+                 long long chunk_size);
+int do_drop_sequence_int(char *name);
 
 #endif

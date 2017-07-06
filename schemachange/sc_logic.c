@@ -34,6 +34,7 @@
 #include "sc_fastinit_table.h"
 #include "sc_stripes.h"
 #include "sc_drop_table.h"
+#include "sc_sequences.h"
 #include "analyze.h"
 #include "logmsg.h"
 
@@ -488,6 +489,32 @@ int do_alter_stripes(struct schema_change_type *s)
 
     return rc;
 }
+// TODO: Modify for sequences
+int do_add_sequence(struct schema_change_type *s)
+{
+    struct db *db;
+    int rc, bdberr;
+
+    // set_original_tablename(s);
+
+    if (!s->resume) set_sc_flgs(s);
+
+    rc = propose_sc(s);
+
+    if (rc == SC_OK) {
+        rc = do_add_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
+                                 s->seq_increment, s->seq_cycle,
+                                 s->seq_start_val, s->seq_chunk_size);
+    }
+    // if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
+
+    broadcast_sc_end(sc_seed);
+
+    // if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
+    //     push_next_log();
+
+    return rc;
+}
 
 int do_schema_change_tran(sc_arg_t *arg)
 {
@@ -533,6 +560,10 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
+    // TODO: Add sequences stuff
+    else if (s->type == DBTYPE_SEQUENCE && s->addseq)
+        rc = do_add_sequence(s);
+    
 
     reset_sc_thread(oldtype, s);
     if (s->resume != SC_NEW_MASTER_RESUME && rc != SC_COMMIT_PENDING &&
