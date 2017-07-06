@@ -1,7 +1,7 @@
 include $(TESTSROOTDIR)/testcase.mk
 export TEST_TIMEOUT=5m
 
-CDB2LIBS=$(SYSPATH) $(SRCHOME)/cdb2api/libcdb2api.a -L$(SRCHOME)/protobuf/ -lcdb2protobuf -lprotobuf-c -lpthread -lssl -lcrypto
+CDB2LIBS=$(SYSPATH) $(SRCHOME)/cdb2api/libcdb2api.a $(SRCHOME)/protobuf/libcdb2protobuf.a -lprotobuf-c -lpthread -lssl -lcrypto
 CFLAGS+=-D_GNU_SOURCE -Wall -I$(SRCHOME)/cdb2api -I$(SRCHOME)/bbinc
 
 tool: ssl_bench

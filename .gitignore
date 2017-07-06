@@ -3,6 +3,7 @@ comdb2rle/libcomdb2rle.a
 bb/libbb.a
 bdb/libbdblib.a
 protobuf/libcdb2protobuf.a
+protobuf/libcdb2protobuf.so
 cdb2api/libcdb2api.a
 cdb2api/libcdb2api.so
 csc2/libcsc2lib.a

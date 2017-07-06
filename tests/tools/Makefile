@@ -3,7 +3,7 @@ all:$(ALL)
 
 include ../../main.mk
 
-CDB2LIBS=$(SYSPATH) ../../cdb2api/libcdb2api.a -L../../protobuf/ -lcdb2protobuf -lprotobuf-c -lpthread -lssl -lcrypto
+CDB2LIBS=$(SYSPATH) ../../cdb2api/libcdb2api.a ../../protobuf/libcdb2protobuf.a -lprotobuf-c -lpthread -lssl -lcrypto
 
 CFLAGS+=-D_GNU_SOURCE $(CFLAGS_ARCHFLAGS)
 CXXFLAGS+=-I../../cdb2api -D__USE_XOPEN2K8
