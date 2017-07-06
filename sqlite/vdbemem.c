@@ -2149,22 +2149,7 @@ int sqlite3VdbeMemDecimalfy(Mem *pMem)
       }
    }
 
-   /* don't touch these 
-   if( pMem->flags & MEM_Dyn ){
-     sqlite3DbFree(pMem->db, pMem->z);
-   }
-
-
-   pMem->n = 0;
-   pMem->z = 0;
-   pMem->flags &= ~(MEM_Int|MEM_Str|MEM_Static|MEM_Dyn|MEM_Ephem);
-   */
-
-   if(pMem->flags & MEM_Dyn)
-   {
-      sqlite3DbFree(pMem->db, pMem->z);
-       pMem->z = 0;
-   }
+   sqlite3VdbeMemRelease(pMem);
    pMem->flags = MEM_Interval;
 
    return rc;
@@ -2931,21 +2916,20 @@ int sqliteVdbeMemDecimalBasicArithmetics(
   decContext  ctx;
   void        *ret = NULL;
   int         rc = 0;
-  int         decimalfied = 0;
-  Mem         sav;
+  Mem         bcopy;
 
+  bzero(&bcopy, sizeof(Mem));
   bzero(res, sizeof(Mem));
   res->flags |= MEM_Interval;
 
   switch( b->flags & MEM_TypeMask ){
     case MEM_Int:
     case MEM_Str: {
-      decimalfied = 1;
-      memcpy(&sav, b, sizeof(Mem));
+      sqlite3VdbeMemCopy(&bcopy, b);
+      b = &bcopy;
       
       rc = sqlite3VdbeMemDecimalfy(b);
       if( rc ){
-        decimalfied = 0;
         goto done;
       }
 
@@ -3026,8 +3010,7 @@ int sqliteVdbeMemDecimalBasicArithmetics(
   }
 
 done:
-   if( decimalfied )
-     memcpy(b, &sav, sizeof(Mem));
+   sqlite3VdbeMemRelease(&bcopy);
    return rc;
 }
 
