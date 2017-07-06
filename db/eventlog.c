@@ -443,6 +443,9 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "sql", cson_value_new_string(
                                         logger->stmt, strlen(logger->stmt)));
 
+    if (logger->iq && logger->iq->have_snap_info)
+        cson_object_set(obj, "cnonce",
+                        cson_value_new_string(logger->iq->snap_info.key, logger->iq->snap_info.keylen));
     if (logger->have_id)
         cson_object_set(obj, "id",
                         cson_value_new_string(logger->id, sizeof(logger->id)));

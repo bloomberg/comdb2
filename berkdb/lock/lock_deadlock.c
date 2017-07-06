@@ -864,11 +864,6 @@ dokill:
 			show_locker_info(dbenv, lt, region, idmap, killid);
 		}
 
-         char parm[2] = {0};
-         parm[0] = 'o';
-         __lock_dump_region_int_int(dbenv, parm, stdout, 1, 0);
-
-
 		if (found_tracked) {
 			__dd_print_tracked(idmap, *deadp, nlockers, killid);
 		}

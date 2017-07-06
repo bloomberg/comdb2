@@ -54,7 +54,7 @@ extern int verbose_deadlocks;
 extern int gbl_rowlocks;
 extern int gbl_page_latches;
 extern int gbl_replicant_latches;
-
+extern int gbl_print_deadlock_cycles;
 
 int gbl_berkdb_track_locks = 0;
 int gbl_lock_conflict_trace;
@@ -3925,9 +3925,11 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	if (sh_locker && create) {
 		sh_locker->tid = pthread_self();
 
-		extern pthread_key_t osql_snap_info;
-		const char *si = pthread_getspecific(osql_snap_info);
-		if(si) sh_locker->snap_info = si;
+        if (gbl_print_deadlock_cycles) {
+            extern pthread_key_t osql_snap_info;
+            const char *si = pthread_getspecific(osql_snap_info);
+            if(si) sh_locker->snap_info = si;
+        }
 	}
 
 	*retp = sh_locker;

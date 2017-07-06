@@ -3011,17 +3011,6 @@ struct genid_list {
 
 typedef LISTC_T(struct genid_list) genid_list_type;
 
-struct ptrans {
-    tranid_t tid;
-    int dbnum;
-    int start_time;
-    void *parent_trans;
-    genid_list_type modified_genids;
-    int done;
-    int waiting_for_commit;
-    struct ireq *iq; /* request/thread handling this transaction */
-};
-
 extern FILE *twophaselog;
 
 struct coherent_req {

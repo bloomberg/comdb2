@@ -222,6 +222,8 @@ void req_stats(struct db *db)
 
 extern pthread_mutex_t delay_lock;
 extern pthread_key_t osql_snap_info;
+extern int gbl_print_deadlock_cycles;
+
 int offload_net_send(int tonode, int usertype, void *data, int datalen,
                      int nodelay);
 
@@ -329,7 +331,8 @@ int handle_ireq(struct ireq *iq)
     iq->rawnodestats = get_raw_node_stats(iq->frommach);
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
-    pthread_setspecific(osql_snap_info, &iq->snap_info);
+    if (gbl_print_deadlock_cycles)
+        pthread_setspecific(osql_snap_info, &iq->snap_info);
 
     if (opcode_supported(iq->opcode)) {
         switch (iq->opcode) {
@@ -595,7 +598,8 @@ int handle_ireq(struct ireq *iq)
         osql_bplog_reqlog_queries(iq);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-    pthread_setspecific(osql_snap_info, NULL);
+    if (gbl_print_deadlock_cycles)
+        pthread_setspecific(osql_snap_info, NULL);
 
     if (iq->sorese.type) {
         if (iq->p_buf_out_start) {
