@@ -89,7 +89,6 @@ bool get_intprop(cson_value *objval, const char *key, int64_t *val) {
     cson_value *propval = cson_object_get(obj, key);
     if (propval == nullptr || !cson_value_is_integer(propval))
         return false;
-    cson_string *cstr;
     int rc = cson_value_fetch_integer(propval, (cson_int_t*) val);
     return true;
 }
@@ -188,30 +187,30 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         const char *type = get_strprop(bp, "type");
         int ret;
 
-        if (strcmp(type, "int") ) {
-            int64_t iv;
-            bool succ = get_intprop(bp, "value", &iv);
+        if (strcmp(type, "int") == 0) {
+            int64_t *iv = new int64_t;
+            bool succ = get_intprop(bp, "value", iv);
             if (!succ) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, &iv, sizeof(int64_t))) != 0) {
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, iv, sizeof(*iv))) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 return false;
             }
-            std::cout << "binding "<< type << " column " << name << " to value" << iv << std::endl;
+            std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
         } 
-        else if (strcmp(type, "char") ) {
+        else if (strcmp(type, "char") == 0) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_CSTRING, &strp, strlen(strp) )) != 0) {
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_CSTRING, strp, strlen(strp) )) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 return false;
             }
-            std::cout << "binding "<< type << " column " << name << " to value" << strp << std::endl;
+            std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
     }
 
