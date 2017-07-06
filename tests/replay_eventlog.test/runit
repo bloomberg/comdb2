@@ -23,7 +23,7 @@ if [ -z $comdb2task ] ; then
 fi
 
 # Number of insert_records function calls
-nins=0
+nout=0
 
 
 failexit()
@@ -165,12 +165,13 @@ update_records()
     done
 }
 
+
 insert_records()
 {
     j=$1
     nstop=$2
-    let nins=nins+1
-    insfl=insert${nins}.out
+    let nout=nout+1
+    insfl=insert${nout}.out
     echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
     echo "" > $insfl
 
@@ -190,15 +191,48 @@ insert_records()
         let j=j+1
         sleep 0.01
     done
-    echo "done inserting round $nins"
+    echo "done inserting round $nout"
+}
+
+insert_records_with_bind()
+{
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    insfl=insert${nout}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    while [[ $j -le $nstop ]]; do 
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  2>> $insfl)
+        if [ "$out" = "1" ]; then 
+            let j=j+1
+            continue
+        fi
+        
+        echo 
+        echo "
+@bind CDB2_INTEGER aa $j
+@bind CDB2_CSTRING bb test1$j
+@bind CDB2_INTEGER cc $j
+insert into t1(a,b,c) values (@aa, @bb, @cc)" | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
+        if [ $? -ne 0 ]; then 
+            sleep 1
+            continue
+        fi
+        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
+        let j=j+1
+        sleep 0.01
+    done
+    echo "done inserting round $nout"
 }
 
 update_records()
 {
     j=$1
     nstop=$2
-    let nins=nins+1
-    updfl=update${nins}.out
+    let nout=nout+1
+    updfl=update${nout}.out
     echo "Updating $((nstop-j+1)) records ($j to $nstop)."
     echo "" > $updfl
 
@@ -211,15 +245,41 @@ update_records()
         let j=j+1
         sleep 0.01
     done
-    echo "done updating round $nins"
+    echo "done updating round $nout"
 }
+
+update_records_with_bind()
+{
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    updfl=update${nout}.out
+    echo "Updating $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $updfl
+
+    while [[ $j -le $nstop ]]; do 
+        jpone=$j+1
+        echo "
+@bind CDB2_INTEGER aa $j+1)
+@bind CDB2_INTEGER cc $j
+update t1 set c=1+@cc where a=@aa" | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $updfl
+        if [ $? -ne 0 ]; then 
+            sleep 1
+            continue
+        fi
+        let j=j+1
+        sleep 0.01
+    done
+    echo "done updating round $nout"
+}
+
 
 delete_records()
 {
     j=$1
     nstop=$2
-    let nins=nins+1
-    delfl=delete${nins}.out
+    let nout=nout+1
+    delfl=delete${nout}.out
     echo "Updating $((nstop-j+1)) records ($j to $nstop)."
     echo "" > $delfl
 
@@ -232,7 +292,7 @@ delete_records()
         let j=j+1
         sleep 0.01
     done
-    echo "done updating round $nins"
+    echo "done updating round $nout"
 }
 
 
@@ -240,8 +300,8 @@ insert_records_oneshot()
 {
     j=$1
     nstop=$2
-    let nins=nins+1
-    insfl=insert${nins}.out
+    let nout=nout+1
+    insfl=insert${nout}.out
     echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
     echo "" > $insfl
 
@@ -250,7 +310,7 @@ insert_records_oneshot()
         echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" 
         let j=j+1
     done | cdb2sql ${CDB2_OPTIONS} $dbnm default -  &>> $insfl
-    echo "done inserting round $nins"
+    echo "done inserting round $nout"
 }
 
 
@@ -359,15 +419,26 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events 
 
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
-insert_records 1 $INITNUMREC
+
+let NEWNUMREC=$((2*INITNUMREC))
+insert_records 1 $NEWNUMREC
+assertcnt $NEWNUMREC
+
+update_records 1 $NEWNUMREC
+assertcnt $NEWNUMREC
+
+delete_records $((INITNUMREC+1)) $NEWNUMREC
 assertcnt $INITNUMREC
-update_records 1 $INITNUMREC
-assertcnt $INITNUMREC
+
+let NEWSTRT=$((INITNUMREC+1))
+insert_records_with_bind $NEWSTRT $NEWNUMREC
+assertcnt $NEWNUMREC
+
+update_records_with_bind $NEWSTRT $NEWNUMREC
+assertcnt $NEWNUMREC
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > orig.txt
 
-#delete_records 1 $INITNUMREC
-#assertcnt 0
 
 #make sure lsn is equal in all nodes
 #cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'exec procedure sys.cmd.send("bdb cluster")'

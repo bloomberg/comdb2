@@ -74,6 +74,15 @@ static const char *get_strprop(cson_value *objval, const char *key) {
     return cson_string_cstr(cstr);
 }
 
+static cson_array *get_arrprop(cson_value *objval, const char *key) {
+    cson_object *obj;
+    cson_value_fetch_object(objval, &obj);
+    cson_value *propval = cson_object_get(obj, key);
+    if (propval == nullptr || !cson_value_is_array(propval))
+        return nullptr;
+    return cson_value_get_array(propval);
+}
+
 bool get_intprop(cson_value *objval, const char *key, int64_t *val) {
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
@@ -98,10 +107,9 @@ bool is_transactional(cson_value *val) {
 
 bool is_replayable(cson_value *val) {
     int64_t nbound;
-    bool have_bindings;
 
     // Have an array of bound parameters?  Should be replayable.
-    have_bindings = have_json_key(val, "bindings");
+    bool have_bindings = have_json_key(val, "bound_parameters");
     if (have_bindings)
         return true;
     
@@ -167,14 +175,52 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
 }
 
 /* TODO: */
-bool do_bindings(cdb2_hndl_tp *db, cson_value *val) {
+bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
+    cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
+    if(bound_parameters == nullptr)
+        return true;
+
+    unsigned int len = cson_array_length_get(bound_parameters);
+    cdb2_clearbindings(cdb2h);
+    for (int i = 0; i < len; i++) {
+        cson_value *bp = cson_array_get(bound_parameters, i);
+        const char *name = get_strprop(bp, "name");
+        const char *type = get_strprop(bp, "type");
+        int ret;
+        if (strcmp(type, "int") ) {
+            int64_t iv;
+            bool succ = get_intprop(bp, "value", &iv);
+            if (!succ) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                exit(1);
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, &iv, sizeof(int64_t))) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                exit(1);
+            }
+            std::cout << "binding "<< type << " column " << name << " to value" << iv << std::endl;
+        } 
+        else if (strcmp(type, "char") ) {
+            const char *strp = get_strprop(bp, "value");
+            if (strp == nullptr) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                exit(1);
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_CSTRING, &strp, strlen(strp) )) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                exit(1);
+            }
+            std::cout << "binding "<< type << " column " << name << " to value" << strp << std::endl;
+        }
+    }
+
     return true;
 }
 
-void replay(cdb2_hndl_tp *db, cson_value *val) {
-    const char *sql = get_strprop(val, "sql");
+void replay(cdb2_hndl_tp *db, cson_value *event_val) {
+    const char *sql = get_strprop(event_val, "sql");
     if(sql == nullptr) {
-	    const char *fp = get_strprop(val, "fingerprint");
+	    const char *fp = get_strprop(event_val, "fingerprint");
 	    if (fp == nullptr) {
 		    std::cerr << "No fingerprint logged?" << std::endl;
 		    return;
@@ -187,7 +233,7 @@ void replay(cdb2_hndl_tp *db, cson_value *val) {
 	    sql = (*s).second.c_str();
     }
 
-    bool ok = do_bindings(db, val);
+    bool ok = do_bindings(db, event_val);
     if (!ok)
         return;
 
@@ -218,7 +264,7 @@ void replay(cdb2_hndl_tp *db, cson_value *val) {
      eliminate it.
   */
 
-void handle_sql(cdb2_hndl_tp *db, cson_value *val) {
+void handle_sql(cdb2_hndl_tp *db, cson_value *event_val) {
     int rc;
     /* We can only replay if we have the full SQL, including parameters.
        That means
@@ -236,20 +282,20 @@ void handle_sql(cdb2_hndl_tp *db, cson_value *val) {
 
        */ 
 
-    if (!is_replayable(val)) {
-        cson_free_value(val);
+    if (!is_replayable(event_val)) {
+        cson_free_value(event_val);
         return;
     }
 
 #if 0
-    if (is_transactional(val)) {
-        add_to_transaction(db, val);
+    if (is_transactional(event_val)) {
+        add_to_transaction(db, event_val);
         return;
     }
 #endif
     
-    replay(db, val);
-    cson_free_value(val);
+    replay(db, event_val);
+    cson_free_value(event_val);
 }
 
 /* TODO: error messages? */
@@ -288,14 +334,14 @@ void init_handlers(void) {
     handlers.insert(std::pair<std::string, event_handler>("txn", handle_txn));
 }
 
-void handle(cdb2_hndl_tp *db, const char *event, cson_value *val) {
+void handle(cdb2_hndl_tp *db, const char *event, cson_value *event_val) {
     auto h = handlers.find(event);
     if (h == handlers.end()) {
-        cson_free_value(val);
+        cson_free_value(event_val);
         return;
     }
     else
-        h->second(db, val);
+        h->second(db, event_val);
 }
 
 void process_events(cdb2_hndl_tp *db, std::istream &in) {
@@ -306,24 +352,24 @@ void process_events(cdb2_hndl_tp *db, std::istream &in) {
         int rc;
         linenum++;
 
-        cson_value *obj;
+        cson_value *event_val;
         cson_parse_info pinfo = cson_parse_info_empty_m;
 
-        rc = cson_parse_string(&obj, line.c_str(), line.length(), &cson_parse_opt_empty, &pinfo);
+        rc = cson_parse_string(&event_val, line.c_str(), line.length(), &cson_parse_opt_empty, &pinfo);
         if (rc) {
             std::cerr << "Malformed input on line " << linenum << std::endl;
             continue;
         }
-        if (!cson_value_is_object(obj)) {
+        if (!cson_value_is_object(event_val)) {
             std::cerr << "Not an object  on line " << linenum << std::endl;
             continue;
         }
-        const char *type = get_strprop(obj, "type");
+        const char *type = get_strprop(event_val, "type");
 
         if (type != nullptr)
-            handle(cdb2h, type, obj);
+            handle(cdb2h, type, event_val);
         else
-            cson_free_value(obj);
+            cson_free_value(event_val);
     }
     std::cout << "got " << linenum  << " lines" << std::endl;
 }
