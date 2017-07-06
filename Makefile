@@ -31,8 +31,9 @@ modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
 lua tools db sockpool
 include $(addsuffix /module.mk,$(modules))
 
-# The following object files make into cdb2api static (libcdb2api.a & libcdb2protobuf.a)
-# as well as dynamic (libcdb2api.so & libcdb2protobuf.so) libraries and thus,
+# The following object files make into cdb2api static
+# (libcdb2api.a & libcdb2protobuf.a) as well as dynamic
+# (libcdb2api.so & libcdb2protobuf.so) libraries and thus,
 # need an additional -fPIC (large model) flag.
 SPECIAL_OBJS:= cdb2api/cdb2api.o protobuf/%.o
 ifeq ($(arch),Linux)
