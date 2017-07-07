@@ -22,7 +22,6 @@ if [ -z $comdb2task ] ; then
    failexit '$comdb2task is not set'
 fi
 
-# Number of insert_records function calls
 nout=0
 
 
@@ -176,13 +175,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  2>> $insfl)
-        if [ "$out" = "1" ]; then 
-            let j=j+1
-            continue
-        fi
-        
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c) values ($j,'test1$j',$j)"  &>> $insfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,now() ,now() ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))00000000$j ,$((1-2*(j%2)))0000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -415,14 +408,16 @@ echo "Test with insert, SC should not fail"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events detailed on")'
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
 
 assert_vers t1 0
-assert_schema t1 t1_1.csc2
+assert_schema t1 t1.csc2
 
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
 assertcnt $NEWNUMREC
+
+failexit "inserted so far"
 
 update_records 1 $NEWNUMREC
 assertcnt $NEWNUMREC
