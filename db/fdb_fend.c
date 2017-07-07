@@ -461,7 +461,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
 
     fdb = calloc(1, sizeof(*fdb));
     if (!fdb) {
-        logmsg(LOGMSG_ERROR, "%s: OOM %d bytes!\n", __func__, sizeof(fdb));
+        logmsg(LOGMSG_ERROR, "%s: OOM %d bytes!\n", __func__, sizeof(*fdb));
         goto done;
     }
 
@@ -762,7 +762,7 @@ retry_find_table:
 
         *version = fdb_table_version(found_ent->_version);
     } else {
-        *version == 0;
+        *version = 0;
     }
 
     if (initial) {
@@ -2248,8 +2248,9 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
 
     if (isuuid) {
         comdb2uuid(fdbc->ciduuid);
+        memcpy(fdbc->tid, tid, sizeof(uuid_t));
     } else {
-        *((unsigned long long *)fdbc->ciduuid) = comdb2fastseed();
+        *((unsigned long long *)fdbc->cid) = comdb2fastseed();
         memcpy(fdbc->tid, tid, sizeof(unsigned long long));
     }
     fdbc->flags = flags;
@@ -2347,7 +2348,7 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
 
     if (ent && is_sqlite_stat(ent->name)) {
         pCur->fdbc = fdbc_if =
-            fdb_sqlstat_cache_cursor_open(clnt, fdb, (ent) ? ent->name : NULL);
+            fdb_sqlstat_cache_cursor_open(clnt, fdb, ent->name);
         if (!fdbc_if) {
             logmsg(LOGMSG_ERROR, "%s: failed to open fdb cursor\n", __func__);
 
@@ -3175,8 +3176,9 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 
     /* this should be an sql thread */
     thd = pthread_getspecific(query_info_key);
-    if (thd)
-        clnt = thd->sqlclntstate;
+    if (!thd) return NULL;
+
+    clnt = thd->sqlclntstate;
 
     /* remote sql stats are implemented as a critical region
        I was told that mutex is faster, lul
@@ -3888,6 +3890,9 @@ int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
         return FDB_ERR_GENERIC;
     }
     op = tokdup(tok, ltok);
+    if (!op) {
+        return FDB_ERR_MALLOC;
+    }
 
     tok = segtok(line, llen, &st, &ltok);
     if (ltok == 0)
@@ -4656,8 +4661,7 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
         iarr =
             (int *)realloc(fdb_state->fdb_last_status,
                            (fdb_state->n_fdb_affinities + 1) * sizeof(char *));
-        if (!arr)
-            return FDB_ERR_MALLOC;
+        if (!iarr) return FDB_ERR_MALLOC;
 
         fdb_state->fdb_last_status = iarr;
 

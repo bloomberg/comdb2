@@ -305,12 +305,11 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
                     p, found_uuid);
         }
 
-        abort();
         if (lock) {
             theosql_pthread_rwlock_unlock(&theosql->hshlck);
         }
 
-        return -2;
+        abort();
     }
     else {
         memcpy(uuid_list[current_uuid], sess->uuid, sizeof(uuid_list[0]));

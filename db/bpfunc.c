@@ -31,6 +31,7 @@ static int empty(void *tran, bpfunc_t *func, char *err) { return 0; }
 
 void free_bpfunc(bpfunc_t *func)
 {
+    if (unlikely(!func)) return;
     free_bpfunc_arg(func->arg);
     if (func)
         free(func);
@@ -43,7 +44,7 @@ void free_bpfunc_arg(BpfuncArg *arg)
 
 static int init_bpfunc(bpfunc_t *bpf)
 {
-    memset(bpf, 0, sizeof(bpf));
+    memset(bpf, 0, sizeof(*bpf));
     return 0;
 }
 

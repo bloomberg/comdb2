@@ -468,6 +468,8 @@ int analyze_get_nrecs(int iTable)
     /* retrieve table pointer  */
     if (tblnum < thedb->num_dbs) {
         db = thedb->dbs[tblnum];
+    } else {
+        return -1;
     }
 
     /* grab sampled table descriptor */
@@ -554,7 +556,7 @@ again:
     }
 
     if (gbl_replicate_local_concurrent) {
-        unsigned int useqno;
+        unsigned long long useqno;
         useqno = bdb_get_timestamp(thedb->bdb_env);
         memcpy(&seqno, &useqno, sizeof(seqno));
     } else
