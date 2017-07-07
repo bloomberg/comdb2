@@ -170,19 +170,16 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             }
             break;
         case CLIENT_REAL: {
-            double dval;
-
             /* set type */
             switch (dlen) {
-            case 4: strtype = "smallfloat"; break;
-            case 8: strtype = "float"; break;
+            case 4: strtype = "float"; break;
+            case 8: strtype = "doublefloat"; break;
             }
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
-            /* set value */
-            if (get_real_field(f, buf, &dval) == 0)
-                cson_object_set(bobj, "value", cson_value_new_double(dval));
+            double dval = *(double *)(buf + f->offset);
+            cson_object_set(bobj, "value", cson_value_new_double(dval));
             break;
         }
         case CLIENT_CSTR:

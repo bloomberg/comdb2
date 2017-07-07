@@ -93,6 +93,16 @@ bool get_intprop(cson_value *objval, const char *key, int64_t *val) {
     return true;
 }
 
+bool get_doubleprop(cson_value *objval, const char *key, double *val) {
+    cson_object *obj;
+    cson_value_fetch_object(objval, &obj);
+    cson_value *propval = cson_object_get(obj, key);
+    if (propval == nullptr || !cson_value_is_integer(propval))
+        return false;
+    int rc = cson_value_fetch_double(propval, (cson_double_t*) val);
+    return true;
+}
+
 bool have_json_key(cson_value *objval, const char *key) {
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
@@ -200,6 +210,19 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             }
             std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
         } 
+        else if (strcmp(type, "float") == 0) {
+            double *iv = new double;
+            bool succ = get_doubleprop(bp, "value", iv);
+            if (!succ) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                return false;
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, iv, sizeof(*iv))) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+            std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
+        }
         else if (strcmp(type, "char") == 0) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
@@ -212,6 +235,8 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             }
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
+        else
+            std::cout << "binding unknown "<< type << " column " << name << std::endl;
     }
 
     return true;
