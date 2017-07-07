@@ -128,43 +128,6 @@ do_verify()
 }
 
 
-# Update all records in the table
-update_all_records()
-{
-    typeset prmsg=$1
-    typeset iter=0
-
-    [[ "$debug" == 1 ]] && set -x
-
-    while :; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
-        let iter=iter+1
-
-        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
-
-            echo "Updated all of table t1 $iter times."
-
-        fi
-
-    done
-}
-
-
-update_records()
-{
-    j=0
-    nrecs=$1
-    echo "Updating $nrecs records."
-    echo "" > update.out
-
-    while [[ $j -lt $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=c+100000 where a = $j" >> update.out 
-        let j=j+1
-    done
-}
-
-
 insert_records()
 {
     j=$1
@@ -175,7 +138,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,now() ,now() ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))00000000$j ,$((1-2*(j%2)))0000000000000000$j )"  &>> $insfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))00000000$j ,$((1-2*(j%2)))000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -195,25 +158,34 @@ insert_records_with_bind()
     insfl=insert${nout}.out
     echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
     echo "" > $insfl
-
+#{ CDB2_INTEGER = 1, CDB2_REAL = 2, CDB2_CSTRING = 3, CDB2_BLOB = 4, CDB2_DATETIME = 6, CDB2_INTERVALYM = 7, CDB2_INTERVALDS = 8, CDB2_DATETIMEUS = 9, CDB2_INTERVALDSUS = 10 }
     while [[ $j -le $nstop ]]; do 
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select 1 from t1 where a=$j"  2>> $insfl)
-        if [ "$out" = "1" ]; then 
-            let j=j+1
-            continue
-        fi
-        
-        echo 
+        echo $j
         echo "
-@bind CDB2_INTEGER aa $j
-@bind CDB2_CSTRING bb test1$j
-@bind CDB2_INTEGER cc $j
-insert into t1(a,b,c) values (@aa, @bb, @cc)" | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
+@bind CDB2_INTEGER v_alltypes_short $((1-2*(j%2)))$j
+@bind CDB2_INTEGER v_alltypes_u_short $j
+@bind CDB2_INTEGER v_alltypes_int $((1-2*(j%2)))0000$j
+@bind CDB2_INTEGER v_alltypes_u_int 10000$j
+@bind CDB2_INTEGER v_alltypes_longlong $((1-2*(j%2)))000000000$j
+@bind CDB2_REAL    v_alltypes_float $((1-2*(j%2)))00.00$j
+@bind CDB2_REAL    v_alltypes_double $((1-2*(j%2)))0000$j.0000$j
+@bind CDB2_CSTRING    v_alltypes_byte x'$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))'
+@bind CDB2_CSTRING v_alltypes_cstring my cstring $j
+@bind CDB2_CSTRING v_alltypes_pstring my pstring $j
+@bind CDB2_CSTRING    v_alltypes_blob x'$((j%2))$((j%3))$((j%4))$((j%5))'
+@bind CDB2_CSTRING v_alltypes_datetime $(date +'%Y-%m-%dT%H:%M:%S')
+@bind CDB2_CSTRING v_alltypes_datetimeus $(date +'%Y-%m-%dT%H:%M:%S')
+@bind CDB2_CSTRING    v_alltypes_vutf8 x'$((j%2))$((j%3))$((j%4))$((j%5))'
+@bind CDB2_CSTRING v_alltypes_intervalym $((1-2*(j%2)))$j
+@bind CDB2_CSTRING v_alltypes_intervalds $((1-2*(j%2)))0000$j
+@bind CDB2_CSTRING v_alltypes_decimal32 $((1-2*(j%2)))0000$j
+@bind CDB2_CSTRING v_alltypes_decimal64 $((1-2*(j%2)))0000000$j
+@bind CDB2_CSTRING v_alltypes_decimal128 $((1-2*(j%2)))000000000000000$j
+insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values (@v_alltypes_short, @v_alltypes_u_short, @v_alltypes_int, @v_alltypes_u_int, @v_alltypes_longlong, @v_alltypes_float, @v_alltypes_double, @v_alltypes_byte, @v_alltypes_cstring, @v_alltypes_pstring, @v_alltypes_blob, @v_alltypes_datetime, @v_alltypes_datetimeus, @v_alltypes_vutf8, @v_alltypes_intervalym, @v_alltypes_intervalds, @v_alltypes_decimal32, @v_alltypes_decimal64, @v_alltypes_decimal128)" | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
         fi
-        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
         sleep 0.01
     done
@@ -230,7 +202,7 @@ update_records()
     echo "" > $updfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=$j+1 where a=$j"  &>> $updfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -277,7 +249,7 @@ delete_records()
     echo "" > $delfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where a=$j"  &>> $delfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where alltypes_u_short=$j"  &>> $delfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -417,8 +389,6 @@ let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
 assertcnt $NEWNUMREC
 
-failexit "inserted so far"
-
 update_records 1 $NEWNUMREC
 assertcnt $NEWNUMREC
 
@@ -429,8 +399,8 @@ let NEWSTRT=$((INITNUMREC+1))
 insert_records_with_bind $NEWSTRT $NEWNUMREC
 assertcnt $NEWNUMREC
 
-update_records_with_bind $NEWSTRT $NEWNUMREC
-assertcnt $NEWNUMREC
+#update_records_with_bind $NEWSTRT $NEWNUMREC
+#assertcnt $NEWNUMREC
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > orig.txt
 
