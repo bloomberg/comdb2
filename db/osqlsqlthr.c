@@ -452,8 +452,6 @@ retry:
     }
 
     /* register the session */
-    osql->host = bdb_whoismaster(thedb->bdb_env);
-
     osql->host = thedb->master;
 
     /* protect against no master */
@@ -1178,11 +1176,12 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
     int i;
     int idx;
     int ncols;
+    int actualblobs;
 
     /* override maxblobs to the max # blobs we'll actually need to send */
-    maxblobs = pCur->db->schema->numblobs;
+    actualblobs = pCur->db->schema->numblobs;
 
-    for (i = 0; i < maxblobs; i++) {
+    for (i = 0; i < actualblobs; i++) {
 
         if (blobs[i].exists) {
 

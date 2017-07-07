@@ -739,18 +739,6 @@ static int reterr_withfree(struct ireq *iq, int do_inline, int rc)
         } else {
             /* we don't do this anymore for sorese requests */
             abort();
-            iq->errstat.errval = iq->sorese.rcout = rc;
-            if (iq->sorese.rqid == 0)
-                abort();
-            strncpy(iq->errstat.errstr, "master queue full",
-                    sizeof(iq->errstat.errstr));
-
-            /* NOTE: lower in this function we free iq, and we had to remove
-               bplog and its
-               sessions;  reader_thread trying to save in bplog should be aware
-               session is
-               not around anymore */
-            osql_bplog_clearonerror(iq, rc);
         }
         if (iq->p_buf_out_start) {
             free(iq->p_buf_out_start);

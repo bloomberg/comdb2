@@ -294,6 +294,7 @@ void dump_client_query_stats(SBUF2 *sb, struct client_query_stats *st)
 #define RETURN_DBGLOG_ERROR(errstr)                                            \
     {                                                                          \
         int errstr_len = strlen(errstr) + 1;                                   \
+        int irc;                                                               \
         rsp.rcode = -1;                                                        \
         rsp.followlen = errstr_len;                                            \
         if (!(fsqlresp_put(&rsp, p_fsqlresp, p_fsqlresp_end))) {               \
@@ -302,10 +303,10 @@ void dump_client_query_stats(SBUF2 *sb, struct client_query_stats *st)
             rc = -1;                                                           \
             goto done;                                                         \
         }                                                                      \
-        rc =                                                                   \
+        irc =                                                                   \
             sbuf2fwrite((char *)&fsqlrespbuf, sizeof(struct fsqlresp), 1, sb); \
-        if (rc == 1)                                                           \
-            rc = sbuf2fwrite((char *)errstr, errstr_len, 1, sb);               \
+        if (irc == 1)                                                           \
+            sbuf2fwrite((char *)errstr, errstr_len, 1, sb);               \
         sbuf2flush(sb);                                                        \
         rc = -1;                                                               \
         goto done;                                                             \

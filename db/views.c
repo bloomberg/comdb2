@@ -460,7 +460,7 @@ int timepart_free_view(timepart_view_t *view)
     int i;
 
     if (view->shards) {
-        for (i = 0; (view->shards != NULL) && (i < view->nshards); i++) {
+        for (i = 0; i < view->nshards; i++) {
             if (view->shards[i].tblname)
                 free(view->shards[i].tblname);
         }
