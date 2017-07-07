@@ -8452,7 +8452,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         unsigned char *fnddta = malloc(32768 * sizeof(unsigned char));
 
         if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %u failed\n", od_len);
+            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %u failed\n",
+                   od_len);
             exit(1);
         }
         iq.usedb = req->db;

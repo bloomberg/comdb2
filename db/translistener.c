@@ -1166,14 +1166,14 @@ int javasp_load_procedure_int(const char *name, const char *param,
     }
 
     p = malloc(sizeof(struct stored_proc));
-    if(!p) {
+    if (!p) {
         logmsg(LOGMSG_ERROR, "OOM %s\n", __func__);
         rc = -1;
         goto done;
     }
     p->name = strdup(name);
-    if(!p->name) {
-oom:
+    if (!p->name) {
+    oom:
         logmsg(LOGMSG_ERROR, "OOM %s\n", __func__);
         free(p);
         rc = -1;
@@ -1181,13 +1181,13 @@ oom:
     }
     if (paramvalue) {
         p->qname = strdup(name);
-        if(!p->qname) goto oom;
+        if (!p->qname) goto oom;
     }
     if (param)
         p->param = strdup(param);
     else
         p->param = strdup("<sc>");
-    if(!p->param) goto oom;
+    if (!p->param) goto oom;
 
     listc_init(&p->tables, offsetof(struct sp_table, lnk));
 

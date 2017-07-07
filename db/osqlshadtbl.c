@@ -1970,9 +1970,10 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         }
 
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
-        if(rc) {
-            logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                    __func__, __LINE__, rc, *bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
+                   __func__, __LINE__, rc, *bdberr);
             break;
         }
     }

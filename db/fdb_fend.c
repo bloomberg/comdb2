@@ -3176,8 +3176,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 
     /* this should be an sql thread */
     thd = pthread_getspecific(query_info_key);
-    if (!thd)
-        return NULL;
+    if (!thd) return NULL;
 
     clnt = thd->sqlclntstate;
 
@@ -4662,8 +4661,7 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
         iarr =
             (int *)realloc(fdb_state->fdb_last_status,
                            (fdb_state->n_fdb_affinities + 1) * sizeof(char *));
-        if (!iarr)
-            return FDB_ERR_MALLOC;
+        if (!iarr) return FDB_ERR_MALLOC;
 
         fdb_state->fdb_last_status = iarr;
 

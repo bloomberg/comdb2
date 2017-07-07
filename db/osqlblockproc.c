@@ -200,7 +200,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     tran = calloc(sizeof(blocksql_tran_t), 1);
     if (!tran) {
         logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
-                sizeof(blocksql_tran_t));
+               sizeof(blocksql_tran_t));
         free(info);
         return -1;
     }
@@ -223,7 +223,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
     if (!tran->db || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
-                __func__, bdberr);
+               __func__, bdberr);
         free(tran);
         free(info);
         return -1;

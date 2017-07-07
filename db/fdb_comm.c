@@ -3449,7 +3449,7 @@ int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, int isuuid, SBUF2 *sb)
 
     msg->hd.type = FDB_MSG_HBEAT;
 
-    msg->hb.tid = (char*)msg->hb.tiduuid;
+    msg->hb.tid = (char *)msg->hb.tiduuid;
 
     if (isuuid) {
         memmove(msg->hb.tiduuid, tid, sizeof(uuid_t));

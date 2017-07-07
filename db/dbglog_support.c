@@ -298,15 +298,15 @@ void dump_client_query_stats(SBUF2 *sb, struct client_query_stats *st)
         rsp.rcode = -1;                                                        \
         rsp.followlen = errstr_len;                                            \
         if (!(fsqlresp_put(&rsp, p_fsqlresp, p_fsqlresp_end))) {               \
-            logmsg(LOGMSG_ERROR, "%s line %d: error writing fsqlresp header\n",\
-                    __func__, __LINE__);                                       \
+            logmsg(LOGMSG_ERROR,                                               \
+                   "%s line %d: error writing fsqlresp header\n", __func__,    \
+                   __LINE__);                                                  \
             rc = -1;                                                           \
             goto done;                                                         \
         }                                                                      \
-        irc =                                                                   \
+        irc =                                                                  \
             sbuf2fwrite((char *)&fsqlrespbuf, sizeof(struct fsqlresp), 1, sb); \
-        if (irc == 1)                                                           \
-            sbuf2fwrite((char *)errstr, errstr_len, 1, sb);               \
+        if (irc == 1) sbuf2fwrite((char *)errstr, errstr_len, 1, sb);          \
         sbuf2flush(sb);                                                        \
         rc = -1;                                                               \
         goto done;                                                             \

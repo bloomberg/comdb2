@@ -564,7 +564,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
         goto error;
     }
 
-    /* check to see if the name exists either as a table, or part of a 
+    /* check to see if the name exists either as a table, or part of a
        different partition */
     rc = comdb2_partition_check_name_reuse(first_shard, &err_partname, 
                                            &err_shardidx);
