@@ -112,7 +112,7 @@ void comdb2CreateSequence(Parse *pParse, char *name, long long min_val,
                           long long max_val, long long inc, bool cycle,
                           long long start_val, long long chunk_size, bool err);
 void comdb2AlterSequence(Parse *, Token *, Token *, int, Token *, int dryrun);
-void comdb2DropSequence(Parse *pParse, SrcList *pName);
+void comdb2DropSequence(Parse *pParse, char *name);
 
 int  comdb2genidcontainstime(void);
 void comdb2schemachangeCommitsleep(Parse* pParse, int num);

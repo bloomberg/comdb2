@@ -516,6 +516,46 @@ int do_add_sequence(struct schema_change_type *s)
     return rc;
 }
 
+// TODO: Modify for sequences
+int do_drop_sequence(struct schema_change_type *s)
+{
+    struct db *db;
+    int rc, bdberr;
+
+    // set_original_tablename(s);
+
+    if (!s->resume) set_sc_flgs(s);
+
+    rc = propose_sc(s);
+
+    if (rc == SC_OK) {
+        rc = do_drop_sequence_int(s->table);
+    }
+    // if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
+
+    broadcast_sc_end(sc_seed);
+
+    // if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
+    //     push_next_log();
+
+    return rc;
+}
+
+// TODO: Modify for sequences
+int do_alter_sequence(struct schema_change_type *s)
+{
+    int rc = 0;
+
+    // TODO: Make alter smarter, would reset values and possibly dispense duplicates
+    rc = do_drop_sequence(s);
+    if (rc)
+        return rc;
+
+    rc = do_add_sequence(s);
+
+    return rc;
+}
+
 int do_schema_change_tran(sc_arg_t *arg)
 {
     struct ireq *iq = arg->iq;
@@ -563,7 +603,10 @@ int do_schema_change_tran(sc_arg_t *arg)
     // TODO: Add sequences stuff
     else if (s->type == DBTYPE_SEQUENCE && s->addseq)
         rc = do_add_sequence(s);
-    
+    else if (s->type == DBTYPE_SEQUENCE && s->alterseq)
+        rc = do_alter_sequence(s);
+    else if (s->type == DBTYPE_SEQUENCE && s->dropseq)
+        rc = do_drop_sequence(s);
 
     reset_sc_thread(oldtype, s);
     if (s->resume != SC_NEW_MASTER_RESUME && rc != SC_COMMIT_PENDING &&
