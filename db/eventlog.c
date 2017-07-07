@@ -125,8 +125,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
     for (int i = 0; i < nfields; i++) {
         cson_value *binding = cson_value_new_object();
         cson_object *bobj = cson_value_get_object(binding);
-        cson_value *value = cson_value_new_object();
-        cson_object *vobj = cson_value_get_object(value);
 
         struct field c_fld;
         struct field *f;
@@ -144,8 +142,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         cson_object_set(bobj, "name",
                         cson_value_new_string(f->name, strlen(f->name)));
 
-        /* bind value = {type, value} to sql binding  */
-        cson_object_set(bobj, "value", value);
         /* bind binding to array of bindings */
         cson_array_append(arr, binding);
 
@@ -161,22 +157,16 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             case 4: strtype = "int"; break;
             case 8: strtype = "largeint"; break;
             }
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
             /* set value */
             if (f->type == CLIENT_UINT) {
-                unsigned long long uival;
-                if (get_uint_field(f, buf, (uint64_t *)&uival) == 0) {
-                    cson_object_set(vobj, "value",
-                                    cson_value_new_integer(uival));
-                }
+                uint64_t uival = *(uint64_t *)(buf + f->offset);
+                cson_object_set(bobj, "value", cson_value_new_integer(uival));
             } else {
-                long long ival;
-                if (get_int_field(f, buf, (uint64_t *)&ival) == 0) {
-                    cson_object_set(vobj, "value",
-                                    cson_value_new_integer(ival));
-                }
+                int64_t ival = *(int64_t *)(buf + f->offset);
+                cson_object_set(bobj, "value", cson_value_new_integer(ival));
             }
             break;
         case CLIENT_REAL: {
@@ -187,12 +177,12 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             case 4: strtype = "smallfloat"; break;
             case 8: strtype = "float"; break;
             }
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
             /* set value */
             if (get_real_field(f, buf, &dval) == 0)
-                cson_object_set(vobj, "value", cson_value_new_double(dval));
+                cson_object_set(bobj, "value", cson_value_new_double(dval));
             break;
         }
         case CLIENT_CSTR:
@@ -203,12 +193,12 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "char";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
             /* set value */
             if (get_str_field(f, buf, &str, &datalen) == 0)
-                cson_object_set(vobj, "value",
+                cson_object_set(bobj, "value",
                                 cson_value_new_string(str, datalen));
             break;
         }
@@ -222,7 +212,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             /* set type */
             strtype = "blob";
             if (f->type == CLIENT_VUTF8) strtype = "varchar";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
             /* set value */
@@ -235,7 +225,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                 }
             }
             if (rc == 0)
-                cson_object_set(vobj, "value",
+                cson_object_set(bobj, "value",
                                 cson_value_new_string(byteval, datalen));
             break;
         }
@@ -244,13 +234,13 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "datetime";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
             /* set value */
             if (structdatetime2string_ISO((void *)buf, strtime,
                                           sizeof(strtime)) == 0)
-                cson_object_set(vobj, "value", cson_value_new_string(
+                cson_object_set(bobj, "value", cson_value_new_string(
                                                    strtime, sizeof(strtime)));
             break;
         }
@@ -259,29 +249,29 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "datetimeus";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
             /* set value */
             if (structdatetime2string_ISO((void *)buf, strtime,
                                           sizeof(strtime)) == 0)
-                cson_object_set(vobj, "value", cson_value_new_string(
+                cson_object_set(bobj, "value", cson_value_new_string(
                                                    strtime, sizeof(strtime)));
             break;
         }
         case CLIENT_INTVYM:
             strtype = "interval month";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
         case CLIENT_INTVDS:
             strtype = "interval sec";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
         case CLIENT_INTVDSUS:
             strtype = "interval usec";
-            cson_object_set(vobj, "type",
+            cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
         }
