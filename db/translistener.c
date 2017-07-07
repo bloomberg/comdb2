@@ -1175,7 +1175,7 @@ int javasp_load_procedure_int(const char *name, const char *param,
     if (!p->name) {
     oom:
         logmsg(LOGMSG_ERROR, "OOM %s\n", __func__);
-        if(p->qname) free(p->qname);
+        if (p->qname) free(p->qname);
         free(p);
         rc = -1;
         goto done;
