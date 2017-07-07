@@ -34,4 +34,8 @@ int validate_ix_names(struct db *db);
 
 int sc_via_ddl_only();
 
+int init_history_sc(struct schema_change_type *s, struct db *db,
+                    struct schema_change_type *scopy);
+char *generate_history_csc2(struct db *db);
+
 #endif

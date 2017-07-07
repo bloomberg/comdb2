@@ -50,7 +50,10 @@ static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
         } else {
             sc_printf(s, "Using plan.\n");
             newdb->plan = theplan;
-            if (newdb->plan->dta_plan) changed = SC_TAG_CHANGE;
+            if (newdb->plan->dta_plan)
+                changed = SC_TAG_CHANGE;
+            else if (newdb->plan->plan_convert == SC_KEYVER_CONVERT)
+                changed = SC_KEY_CHANGE;
         }
         s->retry_bad_genids = 0;
     }
@@ -297,6 +300,38 @@ static inline void wait_to_resume(struct schema_change_type *s)
     }
 }
 
+int do_alter_history(struct ireq *iq, tran_type *tran)
+{
+    struct schema_change_type *s = iq->sc;
+    struct db *db = s->newdb;
+    struct schema_change_type *scopy = new_schemachange_type();
+    if (init_history_sc(s, db, scopy)) {
+        reqerrstr(iq, ERR_SC, "History table name too long");
+        return SC_CSC2_ERROR;
+    }
+    scopy->alteronly = 1;
+    scopy->use_plan = 1;
+    scopy->scanmode = SCAN_PARALLEL;
+    scopy->newcsc2 = generate_history_csc2(db);
+
+    iq->sc = scopy;
+    s->history_rc = do_alter_table_int(iq, tran);
+    iq->sc = s;
+    if (s->history_rc != SC_OK && s->history_rc != SC_COMMIT_PENDING) {
+        reqerrstr(iq, ERR_SC, "Failed to alter history table");
+        sc_errf(s, "error altering history table\n");
+        logmsg(LOGMSG_ERROR, "%s failed with rc %d\n", __func__, s->history_rc);
+        return s->history_rc;
+    }
+
+    scopy->newdb->is_history_table = 1;
+    s->newdb->history_db = scopy->newdb;
+    scopy->newdb->orig_db = s->newdb;
+
+    sc_printf(s, "Alter history table %s ok\n", scopy->table);
+    return SC_OK;
+}
+
 int do_alter_table_int(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
@@ -349,6 +384,14 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         sc_errf(s, "Failed to process schema!\n");
         return -1;
     }
+
+    /* enable system versioning */
+    if (!db->periods[PERIOD_SYSTEM].enable &&
+        newdb->periods[PERIOD_SYSTEM].enable) {
+        newdb->overwrite_systime = 1;
+    }
+    newdb->is_history_table = db->is_history_table;
+    if (newdb->is_history_table) newdb->orig_db = s->orig_db;
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
@@ -473,6 +516,19 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
     schema_change = changed = prepare_sc_plan(s, changed, db, newdb, &s->plan);
     print_schemachange_info(s, db, newdb);
 
+    if (s->is_history == 0 && db && db->periods[PERIOD_SYSTEM].enable &&
+        newdb->periods[PERIOD_SYSTEM].enable &&
+        (changed == SC_TAG_CHANGE || !newdb->odh ||
+         !newdb->instant_schema_change || !s->use_plan ||
+         s->plan.dta_plan == -1)) {
+        backout(newdb);
+        cleanup_newdb(newdb);
+        sc_errf(s, "Only instant schema change is allowed on temporal tables");
+        reqerrstr(iq, ERR_SC,
+                  "Only instant schema change is allowed on temporal tables");
+        return -1;
+    }
+
     /*************** open  tables ********************************************/
 
     /* create temporary tables.  to try to avoid strange issues always
@@ -595,6 +651,23 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         return rc;
     }
     newdb->iq = NULL;
+
+    int pre_is_temproal, post_is_temproal;
+    pre_is_temproal = post_is_temproal = 0;
+    if (s->is_history == 0 && s->db && s->db->periods[PERIOD_SYSTEM].enable)
+        pre_is_temproal = 1;
+    if (s->is_history == 0 && s->newdb &&
+        s->newdb->periods[PERIOD_SYSTEM].enable)
+        post_is_temproal = 1;
+    if (pre_is_temproal || post_is_temproal) {
+        if (!pre_is_temproal && post_is_temproal)
+            s->add_history = 1;
+        else if (pre_is_temproal && !post_is_temproal)
+            s->drop_history = 1;
+        else
+            s->alter_history = 1;
+    }
+
     return SC_OK;
 }
 
@@ -744,6 +817,8 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
         newdb->plan = NULL;
         db->schema = clone_schema(newdb->schema);
+
+        db->overwrite_systime = newdb->overwrite_systime = 0;
 
         pnew_bdb_handle[indx] = newdb->handle;
         pold_bdb_handle[indx] = db->handle;

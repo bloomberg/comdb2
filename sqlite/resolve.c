@@ -1226,6 +1226,16 @@ static int resolveSelectStep(Walker *pWalker, Select *p){
         sqlite3ResolveExprNames(&sNC, p->pOffset) ){
       return WRC_Abort;
     }
+    if( p->pTemporal ){
+      if( sqlite3ResolveExprNames(&sNC, p->pTemporal->a[0].pFrom) ||
+          sqlite3ResolveExprNames(&sNC, p->pTemporal->a[0].pTo) ){
+        return WRC_Abort;
+      }
+      if( sqlite3ResolveExprNames(&sNC, p->pTemporal->a[1].pFrom) ||
+          sqlite3ResolveExprNames(&sNC, p->pTemporal->a[1].pTo) ){
+        return WRC_Abort;
+      }
+    }
 
     /* If the SF_Converted flags is set, then this Select object was
     ** was created by the convertCompoundSelectToSubquery() function.

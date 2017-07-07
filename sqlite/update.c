@@ -95,6 +95,8 @@ void sqlite3Update(
   SrcList *pTabList,     /* The table in which we should change things */
   ExprList *pChanges,    /* Things to be changed */
   Expr *pWhere,          /* The WHERE clause.  May be null */
+  /* COMDB2 MODIFICATION */
+  Temporal *pTemporal,   /* The BUSINESS_TIME clause.  May be null */
   int onError            /* How to handle constraint errors */
 ){
   int i, j;              /* Loop counters */
@@ -145,6 +147,13 @@ void sqlite3Update(
   int regRowSet = 0;     /* Rowset of rows to be updated */
   int regKey = 0;        /* composite PRIMARY KEY value */
 
+  Expr *pBusTimeFrom = 0;
+  Expr *pBusTimeTo = 0;
+  if( pTemporal ){
+    pBusTimeFrom = pTemporal->a[1].pFrom;
+    pBusTimeTo = pTemporal->a[1].pTo;
+  }
+
   memset(&sContext, 0, sizeof(sContext));
   db = pParse->db;
   if( pParse->nErr || db->mallocFailed ){
@@ -162,7 +171,12 @@ void sqlite3Update(
   ** updated is a view.
   */
 #ifndef SQLITE_OMIT_TRIGGER
-  pTrigger = sqlite3TriggersExist(pParse, pTab, TK_UPDATE, pChanges, &tmask);
+  /* COMDB2 MODIFICATION */
+  if( pBusTimeFrom && pBusTimeTo )
+    pTrigger = sqlite3TriggersExist(pParse, pTab, TK_BUSINESS_TIME, pChanges,
+                                    &tmask);
+  else
+    pTrigger = sqlite3TriggersExist(pParse, pTab, TK_UPDATE, pChanges, &tmask);
   isView = pTab->pSelect!=0;
   assert( pTrigger || tmask==0 );
 #else
@@ -261,6 +275,12 @@ void sqlite3Update(
       }
     }
 #endif
+  }
+  /* COMDB2 MODIFICATION */
+  for(i=0; i<pTab->nCol; i++){
+    if( (pTab->aCol[i].colTime & COLTIME_SYSSTART) ||
+        (pTab->aCol[i].colTime & COLTIME_SYSEND) )
+      aXRef[i] = pChanges->nExpr;
   }
   assert( (chngRowid & chngPk)==0 );
   assert( chngRowid==0 || chngRowid==1 );
@@ -529,6 +549,13 @@ void sqlite3Update(
     if( i==pTab->iPKey ){
       sqlite3VdbeAddOp2(v, OP_Null, 0, regNew+i);
     }else{
+      if( pTab->aCol[i].colTime & COLTIME_SYSSTART ){
+        sqlite3VdbeAddOp2(v, OP_SystimeStart, 0, regNew+i);
+        continue;
+      }else if( pTab->aCol[i].colTime & COLTIME_SYSEND ){
+        sqlite3VdbeAddOp2(v, OP_SystimeEnd, 0, regNew+i);
+        continue;
+      }
       j = aXRef[i];
       if( j>=0 ){
         sqlite3ExprCode(pParse, pChanges->a[j].pExpr, regNew+i);
@@ -554,6 +581,10 @@ void sqlite3Update(
     sqlite3TableAffinity(v, pTab, regNew);
     sqlite3CodeRowTrigger(pParse, pTrigger, TK_UPDATE, pChanges, 
         TRIGGER_BEFORE, pTab, regOldRowid, onError, labelContinue);
+
+    /* COMDB2 MODIFICATION */
+    sqlite3CodeBusTimeRowTrigger(pParse, pChanges, pTab, pBusTimeFrom,
+        pBusTimeTo, regOldRowid, onError, labelContinue);
 
     /* The row-trigger may have deleted the row being updated. In this
     ** case, jump to the next row. No updates or AFTER triggers are 
@@ -711,6 +742,7 @@ update_cleanup:
   sqlite3SrcListDelete(db, pTabList);
   sqlite3ExprListDelete(db, pChanges);
   sqlite3ExprDelete(db, pWhere);
+  if( pTemporal ) sqlite3TemporalDelete(db, pTemporal);
   return;
 }
 /* Make sure "isView" and other macros defined above are undefined. Otherwise
@@ -794,6 +826,13 @@ static void updateVirtualTable(
   }
   for(i=0; i<pTab->nCol; i++){
     if( aXRef[i]>=0 ){
+      if( pTab->aCol[i].colTime & COLTIME_SYSSTART ){
+        sqlite3VdbeAddOp2(v, OP_SystimeStart, 0, regArg+2+i);
+        continue;
+      }else if( pTab->aCol[i].colTime & COLTIME_SYSEND ){
+        sqlite3VdbeAddOp2(v, OP_SystimeEnd, 0, regArg+2+i);
+        continue;
+      }
       sqlite3ExprCode(pParse, pChanges->a[aXRef[i]].pExpr, regArg+2+i);
     }else{
       sqlite3VdbeAddOp3(v, OP_VColumn, iCsr, i, regArg+2+i);

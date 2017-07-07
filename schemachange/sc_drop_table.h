@@ -19,6 +19,7 @@
 
 struct ireq;
 int do_drop_table(struct ireq *, tran_type *);
+int do_drop_history(struct ireq *, tran_type *);
 int finalize_drop_table(struct ireq *, tran_type *);
 
 #endif

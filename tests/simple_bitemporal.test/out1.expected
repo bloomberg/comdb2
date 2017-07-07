@@ -1,0 +1,13 @@
+[set timezone UTC] rc 0
+(id=0, coverage=0, bus_start=NULL, bus_end=NULL)
+(id=1, coverage=1, bus_start="2008-01-01T000000.000000 UTC", bus_end="2009-01-01T000000.000000 UTC")
+(id=1, coverage=2, bus_start="2010-01-01T000000.000000 UTC", bus_end="2011-01-01T000000.000000 UTC")
+(id=1, coverage=3, bus_start="2012-01-01T000000.000000 UTC", bus_end="2013-01-01T000000.000000 UTC")
+(id=1, coverage=4, bus_start="2014-01-01T000000.000000 UTC", bus_end="2015-01-01T000000.000000 UTC")
+(id=1, coverage=5, bus_start="2015-01-01T000000.000000 UTC", bus_end="2016-01-01T000000.000000 UTC")
+(id=2, coverage=101, bus_start="2008-01-01T000000.000000 UTC", bus_end="2009-01-01T000000.000000 UTC")
+(id=2, coverage=102, bus_start="2010-01-01T000000.000000 UTC", bus_end="2011-01-01T000000.000000 UTC")
+(id=2, coverage=103, bus_start="2012-01-01T000000.000000 UTC", bus_end="2013-01-01T000000.000000 UTC")
+(id=2, coverage=104, bus_start="2014-01-01T000000.000000 UTC", bus_end="2015-01-01T000000.000000 UTC")
+(id=2, coverage=105, bus_start="2015-01-01T000000.000000 UTC", bus_end="2016-01-01T000000.000000 UTC")
+[select id, coverage, bus_start, bus_end from t1 order by id, bus_start] rc 0

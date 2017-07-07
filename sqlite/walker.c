@@ -84,6 +84,12 @@ int sqlite3WalkSelectExpr(Walker *pWalker, Select *p){
   if( sqlite3WalkExprList(pWalker, p->pGroupBy) ) return WRC_Abort;
   if( sqlite3WalkExpr(pWalker, p->pHaving) ) return WRC_Abort;
   if( sqlite3WalkExprList(pWalker, p->pOrderBy) ) return WRC_Abort;
+  if( p->pTemporal ){
+    if( sqlite3WalkExpr(pWalker, p->pTemporal->a[0].pFrom) ) return WRC_Abort;
+    if( sqlite3WalkExpr(pWalker, p->pTemporal->a[0].pTo) ) return WRC_Abort;
+    if( sqlite3WalkExpr(pWalker, p->pTemporal->a[1].pFrom) ) return WRC_Abort;
+    if( sqlite3WalkExpr(pWalker, p->pTemporal->a[1].pTo) ) return WRC_Abort;
+  }
   if( sqlite3WalkExpr(pWalker, p->pLimit) ) return WRC_Abort;
   if( sqlite3WalkExpr(pWalker, p->pOffset) ) return WRC_Abort;
   return WRC_Continue;

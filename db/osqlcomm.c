@@ -1592,6 +1592,132 @@ osqlcomm_usedb_rpl_uuid_type_get(osql_usedb_rpl_uuid_t *p_osql_usedb_uuid_rpl,
     return p_buf;
 }
 
+typedef struct osql_timespec {
+    struct timespec tstart;
+} osql_timespec_t;
+
+enum { OSQLCOMM_TIMESPEC_TYPE_LEN = sizeof(struct timespec) };
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_timespec_type_len,
+                       sizeof(osql_timespec_t) == OSQLCOMM_TIMESPEC_TYPE_LEN);
+
+static uint8_t *
+osqlcomm_timespec_type_put(const osql_timespec_t *p_osql_timespec,
+                           uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || OSQLCOMM_TIMESPEC_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_put(&(p_osql_timespec->tstart), sizeof(p_osql_timespec->tstart),
+                    p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *
+osqlcomm_timespec_type_get(osql_timespec_t *p_osql_timespec,
+                           const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    uint8_t *p;
+    if (p_buf_end < p_buf || OSQLCOMM_TIMESPEC_TYPE_LEN > p_buf_end - p_buf)
+        return NULL;
+
+    p_buf = buf_get(&(p_osql_timespec->tstart), sizeof(p_osql_timespec->tstart),
+                    p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_timespec_rpl {
+    osql_rpl_t hd;
+    osql_timespec_t dt;
+} osql_timespec_rpl_t;
+
+enum {
+    OSQLCOMM_TIMESPEC_RPL_TYPE_LEN =
+        OSQLCOMM_RPL_TYPE_LEN + OSQLCOMM_TIMESPEC_TYPE_LEN
+};
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_timespec_rpl_type_len,
+                       sizeof(osql_timespec_rpl_t) ==
+                           OSQLCOMM_TIMESPEC_RPL_TYPE_LEN);
+
+static uint8_t *
+osqlcomm_timespec_rpl_type_put(const osql_timespec_rpl_t *p_osql_timespec_rpl,
+                               uint8_t *p_buf, uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_TIMESPEC_RPL_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_rpl_type_put(&(p_osql_timespec_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_timespec_type_put(&(p_osql_timespec_rpl->dt), p_buf,
+                                       p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *
+osqlcomm_timespec_rpl_type_get(osql_timespec_rpl_t *p_osql_timespec_rpl,
+                               const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_TIMESPEC_RPL_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_rpl_type_get(&(p_osql_timespec_rpl->hd), p_buf, p_buf_end);
+    p_buf = osqlcomm_timespec_type_get(&(p_osql_timespec_rpl->dt), p_buf,
+                                       p_buf_end);
+
+    return p_buf;
+}
+
+typedef struct osql_timespec_rpl_uuid {
+    osql_uuid_rpl_t hd;
+    osql_timespec_t dt;
+} osql_timespec_rpl_uuid_t;
+
+enum {
+    OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN =
+        OSQLCOMM_UUID_RPL_TYPE_LEN + OSQLCOMM_TIMESPEC_TYPE_LEN
+};
+
+BB_COMPILE_TIME_ASSERT(osqlcomm_timespec_rpl_uuid_type_len,
+                       sizeof(osql_timespec_rpl_uuid_t) ==
+                           OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN);
+
+static uint8_t *osqlcomm_timespec_uuid_rpl_type_put(
+    const osql_timespec_rpl_uuid_t *p_osql_timespec_uuid_rpl, uint8_t *p_buf,
+    uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_uuid_rpl_type_put(&(p_osql_timespec_uuid_rpl->hd), p_buf,
+                                       p_buf_end);
+    p_buf = osqlcomm_timespec_type_put(&(p_osql_timespec_uuid_rpl->dt), p_buf,
+                                       p_buf_end);
+
+    return p_buf;
+}
+
+static const uint8_t *osqlcomm_timespec_rpl_uuid_type_get(
+    osql_timespec_rpl_uuid_t *p_osql_timespec_uuid_rpl, const uint8_t *p_buf,
+    const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf ||
+        OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = osqlcomm_uuid_rpl_type_get(&(p_osql_timespec_uuid_rpl->hd), p_buf,
+                                       p_buf_end);
+    p_buf = osqlcomm_timespec_type_get(&(p_osql_timespec_uuid_rpl->dt), p_buf,
+                                       p_buf_end);
+
+    return p_buf;
+}
+
 typedef struct osql_index {
     unsigned long long seq;
     int ixnum;
@@ -3305,6 +3431,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
     }
     switch (type) {
     case OSQL_USEDB:
+    case OSQL_TIMESPEC:
     case OSQL_INSREC:
     case OSQL_INSERT:
     case OSQL_INSIDX:
@@ -3538,6 +3665,79 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     return rc;
 }
 
+/**
+ * Send TIMESPEC op
+ * It handles remote/local connectivity
+ *
+ */
+int osql_send_timespec(char *tohost, unsigned long long rqid, uuid_t uuid,
+                       struct timespec *tstart, int type, SBUF2 *logsb)
+{
+    netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
+    int msglen;
+    int rc = 0;
+
+    uint8_t
+        buf[OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN > OSQLCOMM_TIMESPEC_RPL_TYPE_LEN
+                ? OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN
+                : OSQLCOMM_TIMESPEC_RPL_TYPE_LEN];
+
+    if (check_master(tohost)) return OSQL_SEND_ERROR_WRONGMASTER;
+
+    if (rqid == OSQL_RQID_USE_UUID) {
+        osql_timespec_rpl_uuid_t timespec_uuid_rpl = {0};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN);
+
+        msglen = OSQLCOMM_TIMESPEC_RPL_UUID_TYPE_LEN;
+
+        timespec_uuid_rpl.hd.type = OSQL_TIMESPEC;
+        comdb2uuidcpy(timespec_uuid_rpl.hd.uuid, uuid);
+        memcpy(&timespec_uuid_rpl.dt.tstart, tstart,
+               sizeof(timespec_uuid_rpl.dt.tstart));
+
+        if (!(p_buf = osqlcomm_timespec_uuid_rpl_type_put(&timespec_uuid_rpl,
+                                                          p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                   "osqlcomm_timespec_uuid_rpl_type_put");
+            return -1;
+        }
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SOCK_RPL);
+    } else {
+        osql_timespec_rpl_t timespec_rpl = {0};
+        uint8_t *p_buf = buf;
+        uint8_t *p_buf_end = (p_buf + OSQLCOMM_TIMESPEC_RPL_TYPE_LEN);
+        int rc = 0;
+
+        if (check_master(tohost)) return OSQL_SEND_ERROR_WRONGMASTER;
+
+        msglen = OSQLCOMM_TIMESPEC_RPL_TYPE_LEN;
+
+        /* allocate and set reply */
+        timespec_rpl.hd.type = OSQL_TIMESPEC;
+        timespec_rpl.hd.sid = rqid;
+        memcpy(&timespec_rpl.dt.tstart, tstart, sizeof(timespec_rpl.dt.tstart));
+
+        if (!(p_buf = osqlcomm_timespec_rpl_type_put(&timespec_rpl, p_buf,
+                                                     p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
+                   "osqlcomm_timespec_rpl_type_put");
+            return -1;
+        }
+    }
+
+    if (logsb) {
+        uuidstr_t us;
+        sbuf2printf(
+            logsb, "[%llu %s] send OSQL_TIMESPEC tv_sec %lld, tv_nsec %lld\n",
+            rqid, comdb2uuidstr(uuid, us), tstart->tv_sec, tstart->tv_nsec);
+        sbuf2flush(logsb);
+    }
+
+    rc = offload_net_send(tohost, type, &buf, msglen, 0);
+
+    return rc;
+}
 /**
  * Send UPDCOLS op
  * It handles remote/local connectivity
@@ -6436,6 +6636,22 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                      tablename, 0);
         }
     } break;
+    case OSQL_TIMESPEC: {
+        osql_timespec_t dt;
+        p_buf_end = (uint8_t *)p_buf + sizeof(osql_timespec_t);
+
+        osqlcomm_timespec_type_get(&dt, p_buf, p_buf_end);
+
+        if (logsb) {
+            sbuf2printf(logsb,
+                        "[%llu %s] OSQL_TIMESPEC tv_sec %lld, tv_nsec %lld\n",
+                        rqid, comdb2uuidstr(uuid, us), dt.tstart.tv_sec,
+                        dt.tstart.tv_nsec);
+            sbuf2flush(logsb);
+        }
+
+        memcpy(&(iq->tstart), &(dt.tstart), sizeof(iq->tstart));
+    } break;
     case OSQL_DBQ_CONSUME: {
         genid_t *genid = (genid_t *)p_buf;
         if ((rc = dbq_consume_genid(iq, trans, 0, *genid)) != 0) {
@@ -7048,6 +7264,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (rc != SC_COMMIT_PENDING) {
             iq->sc = NULL;
         } else {
+            if (rc == SC_COMMIT_PENDING)
+                iq->sc = sc;
+            else if (sc->history_rc == SC_COMMIT_PENDING)
+                iq->sc = sc->history_s;
             iq->sc->sc_next = iq->sc_pending;
             iq->sc_pending = iq->sc;
             bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
@@ -7624,6 +7844,14 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         sbuf2printf(logsb, "[%llx us] OSQL_USEDB \"%s\"\n", id, us, tablename);
     } break;
+    case OSQL_TIMESPEC: {
+        osql_timespec_t dt;
+        p_buf_end = p_buf + sizeof(osql_timespec_t);
+        osqlcomm_timespec_type_get(&dt, p_buf, p_buf_end);
+        sbuf2printf(logsb,
+                    "[%llx us] OSQL_TIMESPEC tv_sec %lld, tv_nsec %lld\n", id,
+                    dt.tstart.tv_sec, dt.tstart.tv_nsec);
+    }
     case OSQL_DELREC:
     case OSQL_DELETE: {
         osql_del_t dt;

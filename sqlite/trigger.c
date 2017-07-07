@@ -332,6 +332,8 @@ void sqlite3FinishTrigger(
       assert( pTab!=0 );
       pLink->pNext = pTab->pTrigger;
       pTab->pTrigger = pLink;
+      if( pLink->op==TK_BUSINESS_TIME )
+        pTab->pBusTimeTrigger = pLink;
     }
   }
 
@@ -712,7 +714,7 @@ static int codeTriggerProgram(
         sqlite3Update(pParse, 
           targetSrcList(pParse, pStep),
           sqlite3ExprListDup(db, pStep->pExprList, 0), 
-          sqlite3ExprDup(db, pStep->pWhere, 0), 
+          sqlite3ExprDup(db, pStep->pWhere, 0), NULL,
           pParse->eOrconf
         );
         break;
@@ -729,7 +731,7 @@ static int codeTriggerProgram(
       case TK_DELETE: {
         sqlite3DeleteFrom(pParse, 
           targetSrcList(pParse, pStep),
-          sqlite3ExprDup(db, pStep->pWhere, 0)
+          sqlite3ExprDup(db, pStep->pWhere, 0), NULL
         );
         break;
       }
@@ -946,7 +948,11 @@ void sqlite3CodeRowTriggerDirect(
 ){
   Vdbe *v = sqlite3GetVdbe(pParse); /* Main VM */
   TriggerPrg *pPrg;
-  pPrg = getRowTrigger(pParse, p, pTab, orconf);
+  /* COMDB2 MODIFICATION */
+  if( p->op==TK_BUSINESS_TIME )
+    pPrg = codeRowTrigger(pParse, p, pTab, orconf);
+  else
+    pPrg = getRowTrigger(pParse, p, pTab, orconf);
   assert( pPrg || pParse->nErr || pParse->db->mallocFailed );
 
   /* Code the OP_Program opcode in the parent VDBE. P4 of the OP_Program 
@@ -1021,7 +1027,8 @@ void sqlite3CodeRowTrigger(
 ){
   Trigger *p;          /* Used to iterate through pTrigger list */
 
-  assert( op==TK_UPDATE || op==TK_INSERT || op==TK_DELETE );
+  assert( op==TK_UPDATE || op==TK_INSERT || op==TK_DELETE
+       || op==TK_BUSINESS_TIME );
   assert( tr_tm==TRIGGER_BEFORE || tr_tm==TRIGGER_AFTER );
   assert( (op==TK_UPDATE)==(pChanges!=0) );
 
@@ -1043,6 +1050,109 @@ void sqlite3CodeRowTrigger(
       sqlite3CodeRowTriggerDirect(pParse, p, pTab, reg, orconf, ignoreJump);
     }
   }
+}
+
+/* COMDB2 MODIFICATION
+**
+** Trigger to split business time periods for UPDATEs and DELETEs with
+** FOR PORTION BUSINESS_TIME FROM ... TO ... clause
+*/
+void sqlite3CodeBusTimeRowTrigger(
+  Parse *pParse,
+  ExprList *pChanges,
+  Table *pTab,
+  Expr *pBusTimeFrom,   /* The BUSINESS_TIME FROM clause.  May be null */
+  Expr *pBusTimeTo,     /* The BUSINESS_TIME To clause.  May be null */
+  int reg,
+  int orconf,
+  int ignoreJump
+){
+  sqlite3 *db = pParse->db;
+  Trigger *pBusTimeTrigger;
+  int i;
+  Token tOld;
+  Token tCol;
+
+  if( pBusTimeFrom==0 && pBusTimeTo==0 )
+    return;
+
+  assert( pBusTimeFrom && pBusTimeTo );
+
+  sqlite3TokenInit(&tOld, "old");
+  pBusTimeTrigger = (Trigger*)sqlite3DbMallocZero(db, sizeof(Trigger));
+  pBusTimeTrigger->zName = sqlite3DbStrDup(db, pTab->pBusTimeTrigger->zName);
+  pBusTimeTrigger->table = sqlite3DbStrDup(db, pTab->pBusTimeTrigger->table);
+  pBusTimeTrigger->pSchema = pTab->pBusTimeTrigger->pSchema;
+  pBusTimeTrigger->pTabSchema = pTab->pBusTimeTrigger->pTabSchema;
+  pBusTimeTrigger->op = pTab->pBusTimeTrigger->op;
+  pBusTimeTrigger->tr_tm = pTab->pBusTimeTrigger->tr_tm;
+  pBusTimeTrigger->pColumns =
+      sqlite3IdListDup(db, pTab->pBusTimeTrigger->pColumns);
+  pBusTimeTrigger->pWhen = sqlite3ExprDup(db, pTab->pBusTimeTrigger->pWhen, 0);
+  pBusTimeTrigger->step_list = sqlite3DbMallocZero(db, sizeof(TriggerStep));
+  pBusTimeTrigger->step_list->op = TK_INSERT;
+  pBusTimeTrigger->step_list->orconf = OE_Default;
+  pBusTimeTrigger->step_list->pTrig = pBusTimeTrigger;
+  pBusTimeTrigger->step_list->zTarget =
+      sqlite3DbStrDup(db, pTab->pBusTimeTrigger->step_list->zTarget);
+  pBusTimeTrigger->step_list->pSelect =
+      sqlite3SelectDup(db, pTab->pBusTimeTrigger->step_list->pSelect, 0);
+
+  /* when (START < FROM OR START IS NULL) AND (END > FROM OR END IS NULL),
+  ** set END = FROM and others = old.*
+  */
+  sqlite3ExprDelete(db, pBusTimeTrigger->pWhen->pLeft->pLeft->pRight);
+  pBusTimeTrigger->pWhen->pLeft->pLeft->pRight =
+      sqlite3ExprDup(db, pBusTimeFrom, 0);
+  sqlite3ExprDelete(db, pBusTimeTrigger->pWhen->pRight->pLeft->pRight);
+  pBusTimeTrigger->pWhen->pRight->pLeft->pRight =
+      sqlite3ExprDup(db, pBusTimeFrom, 0);
+  for(i=0; i<pTab->nCol; i++){
+    if( pTab->aCol[i].colTime & COLTIME_BUSSTART){
+      sqlite3ExprDelete(
+          db, pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr);
+      sqlite3TokenInit(&tCol, pTab->aCol[i].zName);
+      pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr =
+          sqlite3PExpr(pParse, TK_DOT, sqlite3ExprAlloc(db, TK_ID, &tOld, 0),
+                       sqlite3ExprAlloc(db, TK_ID, &tCol, 0), 0);
+    }else if( pTab->aCol[i].colTime & COLTIME_BUSEND ){
+      sqlite3ExprDelete(
+          db, pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr);
+      pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr =
+          sqlite3ExprDup(db, pBusTimeFrom, 0);
+    }
+  }
+  sqlite3CodeRowTrigger(pParse, pBusTimeTrigger, TK_BUSINESS_TIME, pChanges,
+      TRIGGER_BEFORE, pTab, reg, orconf, ignoreJump);
+
+  /* when (START < TO OR START IS NULL) AND (END > TO OR END IS NULL),
+  ** set START = TO and others = old.*
+  */
+  sqlite3ExprDelete(db, pBusTimeTrigger->pWhen->pLeft->pLeft->pRight);
+  pBusTimeTrigger->pWhen->pLeft->pLeft->pRight =
+      sqlite3ExprDup(db, pBusTimeTo, 0);
+  sqlite3ExprDelete(db, pBusTimeTrigger->pWhen->pRight->pLeft->pRight);
+  pBusTimeTrigger->pWhen->pRight->pLeft->pRight =
+      sqlite3ExprDup(db, pBusTimeTo, 0);
+  for(i=0; i<pTab->nCol; i++){
+    if( pTab->aCol[i].colTime & COLTIME_BUSSTART){
+      sqlite3ExprDelete(
+          db, pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr);
+      pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr =
+          sqlite3ExprDup(db, pBusTimeTo, 0);
+    }else if( pTab->aCol[i].colTime & COLTIME_BUSEND ){
+      sqlite3ExprDelete(
+          db, pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr);
+      sqlite3TokenInit(&tCol, pTab->aCol[i].zName);
+      pBusTimeTrigger->step_list->pSelect->pEList->a[i].pExpr =
+          sqlite3PExpr(pParse, TK_DOT, sqlite3ExprAlloc(db, TK_ID, &tOld, 0),
+                       sqlite3ExprAlloc(db, TK_ID, &tCol, 0), 0);
+    }
+  }
+  sqlite3CodeRowTrigger(pParse, pBusTimeTrigger, TK_BUSINESS_TIME, pChanges,
+      TRIGGER_BEFORE, pTab, reg, orconf, ignoreJump);
+
+  sqlite3DeleteTrigger(db, pBusTimeTrigger);
 }
 
 /*
@@ -1085,7 +1195,7 @@ u32 sqlite3TriggerColmask(
 
   assert( isNew==1 || isNew==0 );
   for(p=pTrigger; p; p=p->pNext){
-    if( p->op==op && (tr_tm&p->tr_tm)
+    if( (p->op==op || p->op==TK_BUSINESS_TIME) && (tr_tm&p->tr_tm)
      && checkColumnOverlap(p->pColumns,pChanges)
     ){
       TriggerPrg *pPrg;

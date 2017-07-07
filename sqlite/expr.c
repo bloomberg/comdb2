@@ -1422,6 +1422,8 @@ Select *sqlite3SelectDup(sqlite3 *db, Select *p, int flags){
   pNew->pNext = 0;
   pNew->pLimit = sqlite3ExprDup(db, p->pLimit, flags);
   pNew->pOffset = sqlite3ExprDup(db, p->pOffset, flags);
+  /* COMDB2 MODIFICATION */
+  pNew->pTemporal = sqlite3TemporalDup(db, p->pTemporal);
   pNew->iLimit = 0;
   pNew->iOffset = 0;
   pNew->selFlags = p->selFlags & ~SF_UsesEphemeral;

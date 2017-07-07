@@ -283,6 +283,10 @@ static void clearSelect(sqlite3 *db, Select *p, int bFree){
     sqlite3ExprDelete(db, p->pLimit);
     sqlite3ExprDelete(db, p->pOffset);
     if( p->pWith ) sqlite3WithDelete(db, p->pWith);
+    if( p->pTemporal ){
+      sqlite3TemporalDelete(db, p->pTemporal);
+      p->pTemporal = NULL;
+    }
     if( bFree ) sqlite3DbFree(db, p);
     p = pPrior;
     bFree = 1;
@@ -351,6 +355,7 @@ Select *sqlite3SelectNew(
   pNew->pOffset = pOffset;
   /* COMDB2 MODIFICATION */
   pNew->recording = 0;
+  pNew->pTemporal = 0;
   pNew->pWith = 0;
   assert( pOffset==0 || pLimit!=0 || pParse->nErr>0 || db->mallocFailed!=0 );
   if( db->mallocFailed ) {
@@ -2055,7 +2060,6 @@ Vdbe *sqlite3GetVdbe(Parse *pParse){
   Vdbe *v = pParse->pVdbe;
   return v ? v : allocVdbe(pParse);
 }
-
 
 /*
 ** Compute the iLimit and iOffset fields of the SELECT based on the
@@ -4236,6 +4240,8 @@ static int convertCompoundSelectToSubquery(Walker *pWalker, Select *p){
   pNew->pPrior->pNext = pNew;
   pNew->pLimit = 0;
   pNew->pOffset = 0;
+  /* COMDB2 MODIFICATION */
+  pNew->pTemporal = 0;
   return WRC_Continue;
 }
 
@@ -4498,7 +4504,12 @@ static int selectExpander(Walker *pWalker, Select *p){
   ** the FROM clause of the SELECT statement.
   */
   /* COMDB2 MODIFICATION */
-  sqlite3SrcListAssignCursors(pParse, pTabList, p->op == TK_SELECTV || p->recording);
+  if( sqlite3SrcListAssignCursors(pParse,
+        pTabList, p->op == TK_SELECTV || p->recording, p) ){
+    sqlite3ErrorMsg(pParse,
+      "no subquery is allowed in FROM clause of temporal queries");
+    return WRC_Abort;
+  }
 
   /* Look up every table named in the FROM clause of the select.  If
   ** an entry of the FROM clause is a subquery instead of a table or view,
@@ -5044,6 +5055,311 @@ static void explainSimpleCount(
 # define explainSimpleCount(a,b,c)
 #endif
 
+int is_comdb2_temporal_table(const char *tbl, char **start, char **end, int pd);
+
+/* COMDB2 MODIFICATION */
+static void computeTemporalRegisters(
+  Parse *pParse,
+  Temporal *pTemporal,
+  int type,
+  int *iEnd
+){
+  sqlite3 *db = pParse->db;
+  Vdbe *v = 0;
+  int iFrom = 0;
+  int iTo = 0;
+  int n;
+  Expr *pTemporalFrom = 0;
+  Expr *pTemporalTo = 0;
+  int iTemporalAll = 0;
+  int iIsBusiness = 0;
+
+  if( pTemporal==0 ) return;
+  pTemporalFrom = pTemporal->a[type].pFrom;
+  pTemporalTo = pTemporal->a[type].pTo;
+  iTemporalAll = pTemporal->a[type].iAll;
+  iIsBusiness = pTemporal->a[type].iBus;
+
+  if( pTemporalFrom==0 && iTemporalAll==0 ) return;
+  if( iTemporalAll ) return;
+
+  sqlite3ExprCacheClear(pParse);
+  v = sqlite3GetVdbe(pParse);
+  assert( v!=0 );
+
+  if( *iEnd!=0 )
+    *iEnd = sqlite3VdbeMakeLabel(v);
+  iFrom = ++pParse->nMem;
+  sqlite3ExprCode(pParse, pTemporalFrom, iFrom);
+  sqlite3VdbeAddOp1(v, OP_MustBeDatetime, iFrom); VdbeCoverage(v);
+  VdbeComment((v, "FOR %s", iIsBusiness ? "BUSINESS_TIME" : "SYSTEM_TIME"));
+  sqlite3ExprDelete(db, pTemporalFrom);
+  pTemporalFrom = sqlite3Expr(db, TK_REGISTER, 0);
+  pTemporalFrom->iTable = iFrom;
+  pTemporalFrom->affinity = SQLITE_AFF_DATETIME;
+  pTemporal->a[type].pFrom = pTemporalFrom;
+  if( pTemporalTo ){
+    iTo = ++pParse->nMem;
+    sqlite3ExprCode(pParse, pTemporalTo, iTo);
+    sqlite3VdbeAddOp1(v, OP_MustBeDatetime, iTo); VdbeCoverage(v);
+    VdbeComment((v, "FOR %s", iIsBusiness ? "BUSINESS_TIME" : "SYSTEM_TIME"));
+    sqlite3VdbeAddOp3(v, OP_Gt, iTo, *iEnd, iFrom); VdbeCoverage(v);
+    sqlite3ExprDelete(db, pTemporalTo);
+    pTemporalTo = sqlite3Expr(db, TK_REGISTER, 0);
+    pTemporalTo->iTable = iTo;
+    pTemporalTo->affinity = SQLITE_AFF_DATETIME;
+    pTemporal->a[type].pTo = pTemporalTo;
+  }
+}
+
+extern void comdb2_get_temporal_opt(char **from, char **to, int *incl, int *all,
+                                    int isBus, void *pCaller);
+/* COMDB2 MODIFICATION
+** Modify the SELECT structure to reflect the system time logic
+*/
+static int sqlite3SelectTemporalLoop(
+  Parse *pParse,         /* The parser context */
+  Select *p,             /* The SELECT statement being coded. */
+  int *iEnd
+){
+  Vdbe *v = 0;
+  SrcList *pTabList;     /* List of tables to select from */
+  Expr *pWhere;          /* The WHERE clause.  May be NULL */
+  sqlite3 *db = pParse->db;
+  struct SrcList_item *pItem;
+  Table *pTab;
+  int i;
+  int got_from_clnt = 0;
+
+  int type; /* 0: system_time; 1: business_time */
+  Expr *pTemporalFrom = 0;
+  Expr *pTemporalTo = 0;
+  int iTemporalIncl = 0;
+  int iTemporalAll = 0;
+  int iIsBusiness = 0;
+
+  if( p->pTemporal==0 ||
+      (p->pTemporal->a[0].pFrom==0 && p->pTemporal->a[0].iAll==0) ){
+    /* get system_time from set command */
+    char *from = 0;
+    char *to = 0;
+    int incl = 0;
+    int all = 0;
+    comdb2_get_temporal_opt(&from, &to, &incl, &all, 0, pParse);
+    if( from!=0 || all!=0 ){
+      pTemporalFrom = NULL;
+      pTemporalTo= NULL;
+      if( from )
+        pTemporalFrom = sqlite3Expr(db, TK_STRING, from);
+      if( to )
+        pTemporalTo = sqlite3Expr(db, TK_STRING, to);
+      p->pTemporal = sqlite3TemporalAdd(pParse, p->pTemporal, pTemporalFrom,
+                                        pTemporalTo, incl, all, 0);
+    }
+  }
+  if( p->pTemporal==0 ||
+      (p->pTemporal->a[1].pFrom==0 && p->pTemporal->a[1].iAll==0) ){
+    /* get business_time from set command */
+    char *from = 0;
+    char *to = 0;
+    int incl = 0;
+    int all = 0;
+    comdb2_get_temporal_opt(&from, &to, &incl, &all, 1, pParse);
+    if( from!=0 || all!=0 ){
+      pTemporalFrom = NULL;
+      pTemporalTo= NULL;
+      if( from )
+        pTemporalFrom = sqlite3Expr(db, TK_STRING, from);
+      if( to )
+        pTemporalTo = sqlite3Expr(db, TK_STRING, to);
+      p->pTemporal = sqlite3TemporalAdd(pParse, p->pTemporal, pTemporalFrom,
+                                        pTemporalTo, incl, all, 1);
+    }
+  }
+
+  if( p->pTemporal==0 ) return 0;
+
+  /* do business time first */
+  type = 1;
+do_temporal:
+  if( p->pTemporal->a[type].pFrom==0 && p->pTemporal->a[type].iAll==0 ){
+    if( type==1 ){
+      type = 0;
+      goto do_temporal;
+    }
+    return 0;
+  }
+
+  computeTemporalRegisters(pParse, p->pTemporal, type, iEnd);
+  pTemporalFrom = p->pTemporal->a[type].pFrom;
+  pTemporalTo = p->pTemporal->a[type].pTo;
+  iTemporalIncl = p->pTemporal->a[type].iIncl;
+  iTemporalAll = p->pTemporal->a[type].iAll;
+  iIsBusiness = p->pTemporal->a[type].iBus;
+
+  v = sqlite3GetVdbe(pParse);
+  assert( v!=0 );
+
+  pTabList = p->pSrc;
+  pWhere = p->pWhere;
+  for( i=0, pItem=pTabList->a; i<pTabList->nSrc; i++, pItem++ ){
+    char *zName = 0;
+    char *start = 0;
+    char *end = 0;
+    Token tTable;
+    Token tStart;
+    Token tEnd;
+    Expr *pLhs = 0;
+    Expr *pRhs = 0;
+    With *pWith;
+    if( pItem->zName==0 ){
+      if( got_from_clnt )
+          continue;
+      if( pItem->pSelect )
+        sqlite3ErrorMsg(pParse, "subquery in temporal queries");
+      else
+        sqlite3ErrorMsg(pParse, "no table name in temporal queries");
+      return 1;
+    }
+    if( got_from_clnt && searchWith(p->pWith, pItem, &pWith) )
+        continue;
+
+    if( !is_comdb2_temporal_table(pItem->zName, &start, &end, iIsBusiness) ){
+      sqlite3ErrorMsg(
+            pParse, "'%s' does not support temporal queries", pItem->zName
+      );
+      return 1;
+    }
+    if( iIsBusiness==0 ){
+      /* FOR SYSTEM_TIME */
+      /* Redirect query to the view of all records */
+      zName = sqlite3MPrintf(db, "%s_systime", pItem->zName);
+      if( iTemporalAll==0 )
+          sqlite3VdbeAddOp4(v, OP_SystimeCheck, pTemporalFrom->iTable, 0, 0,
+                            sqlite3DbStrDup(db, pItem->zName), P4_DYNAMIC);
+      if( pItem->zAlias==0 ) pItem->zAlias = sqlite3DbStrDup(db, pItem->zName);
+      sqlite3DbFree(db, pItem->zName);
+      pItem->zName = zName;
+    }
+    /* Translate temporal query into predicates */
+    if( iTemporalAll==0 ){
+      sqlite3TokenInit(&tTable, pItem->zAlias ? pItem->zAlias : pItem->zName);
+      sqlite3TokenInit(&tStart, start);
+      sqlite3TokenInit(&tEnd, end);
+      /* tbl.start */
+      pLhs = sqlite3PExpr(pParse, TK_DOT,
+          sqlite3ExprAlloc(db, TK_ID, &tTable, 0),
+          sqlite3ExprAlloc(db, TK_ID, &tStart, 0),
+          0);
+      if( pTemporalTo==0 ){
+        /* AS OF: tbl.start <= from */
+        pLhs = sqlite3PExpr(pParse, TK_LE,
+            pLhs,
+            sqlite3ExprDup(db, pTemporalFrom, 0),
+            0);
+      }else if( iTemporalIncl==0 ){
+        /* FROM...TO...: tbl.start < to */
+        pLhs = sqlite3PExpr(pParse, TK_LT,
+            pLhs,
+            sqlite3ExprDup(db, pTemporalTo, 0),
+            0);
+      }else{
+        /* BETWEEN...AND...: tbl.start <= to */
+        pLhs = sqlite3PExpr(pParse, TK_LE,
+            pLhs,
+            sqlite3ExprDup(db, pTemporalTo, 0),
+            0);
+      }
+      /* ... OR tbl.start is null */
+      pLhs = sqlite3PExpr(pParse, TK_OR,
+          pLhs,
+          sqlite3PExpr(pParse, TK_ISNULL,
+            sqlite3PExpr(pParse, TK_DOT,
+              sqlite3ExprAlloc(db, TK_ID, &tTable, 0),
+              sqlite3ExprAlloc(db, TK_ID, &tStart, 0)
+            , 0),
+            0, 0)
+      , 0);
+      /* Upto here:
+      ** FOR SYSTEM_TIME/BUSINESS_TIME AS OF from:
+      ** pLhs = (tbl.start <= from OR tbl.start is null)
+      **
+      ** FOR SYSTEM_TIME/BUSINESS_TIME FROM from TO to:
+      ** pLhs = (tbl.start < to OR tbl.start is null)
+      **
+      ** FOR SYSTEM_TIME/BUSINESS_TIME BETWEEN from AND to:
+      ** pLhs = (tbl.start <= to OR tbl.start is null)
+      */
+
+      /* tbl.end > from */
+      pRhs = sqlite3PExpr(pParse, TK_GT,
+          sqlite3PExpr(pParse, TK_DOT,
+            sqlite3ExprAlloc(db, TK_ID, &tTable, 0),
+            sqlite3ExprAlloc(db, TK_ID, &tEnd, 0)
+          , 0),
+          sqlite3ExprDup(db, pTemporalFrom, 0)
+      , 0);
+      /* tbl.end > from OR tbl.end is null */
+      pRhs = sqlite3PExpr(pParse, TK_OR,
+          pRhs,
+          sqlite3PExpr(pParse, TK_ISNULL,
+            sqlite3PExpr(pParse, TK_DOT,
+              sqlite3ExprAlloc(db, TK_ID, &tTable, 0),
+              sqlite3ExprAlloc(db, TK_ID, &tEnd, 0)
+            , 0),
+            0, 0)
+      , 0);
+      /* Upto here:
+      ** FOR SYSTEM_TIME/BUSINESS_TIME:
+      ** pRhs = (tbl.end > from OR tbl.end is null)
+      */
+
+      /* Append system time predicates to WHERE clause */
+      /* WHERE clause: where ... AND (pLhs AND pRhs) */
+      pWhere = sqlite3ExprAnd(db, pWhere, sqlite3ExprAnd(db, pLhs, pRhs));
+    }
+  }
+  p->pWhere = pWhere;
+
+  if( type==1 ){
+    type = 0;
+    goto do_temporal;
+  }
+
+  /* Clear system time clause */
+  if( p->pTemporal ){
+    sqlite3TemporalDelete(db, p->pTemporal);
+    p->pTemporal = NULL;
+  }
+
+  return 0;
+}
+
+static int sqlite3SelectTemporal(
+  Parse *pParse,         /* The parser context */
+  Select *p,             /* The SELECT statement being coded. */
+  int *iEnd
+){
+  sqlite3 *db = pParse->db;
+  struct SrcList_item *pItem;
+  int i;
+
+  if( db->mallocFailed ) return 1;
+  if( p->selFlags & SF_HasTypeInfo ) return 0;
+
+  while( p ){
+    if( sqlite3SelectTemporalLoop(pParse, p, iEnd) ) return 1;
+    for( i=0, pItem=p->pSrc->a; i<p->pSrc->nSrc; i++, pItem++ ){
+      if( pItem->zName==0 && pItem->pSelect ){
+          if( sqlite3SelectTemporal(pParse, pItem->pSelect, iEnd) ) return 1;
+      }
+    }
+    p = p->pPrior;
+  }
+
+  return 0;
+}
+
 /*
 ** Generate code for the SELECT statement given in the p argument.  
 **
@@ -5077,6 +5393,7 @@ int sqlite3Select(
   AggInfo sAggInfo;      /* Information used by aggregate queries */
   int iEnd;              /* Address of the end of the query */
   sqlite3 *db;           /* The database connection */
+  int iTemporalLable = 0;
 
 #ifndef SQLITE_OMIT_EXPLAIN
   int iRestoreSelectId = pParse->iSelectId;
@@ -5112,6 +5429,10 @@ int sqlite3Select(
     p->pOrderBy = 0;
     p->selFlags &= ~SF_Distinct;
   }
+
+  /* COMDB2 MODIFICATION */
+  if( sqlite3SelectTemporal(pParse, p, &iTemporalLable) ) return 1;
+
   sqlite3SelectPrep(pParse, p, 0);
   memset(&sSort, 0, sizeof(sSort));
   sSort.pOrderBy = p->pOrderBy;
@@ -5179,6 +5500,8 @@ int sqlite3Select(
     SELECTTRACE(1,pParse,p,("end compound-select processing\n"));
     pParse->nSelectIndent--;
 #endif
+    if( iTemporalLable!= 0)
+      sqlite3VdbeResolveLabel(v, iTemporalLable);
     return rc;
   }
 #endif
@@ -5919,6 +6242,8 @@ int sqlite3Select(
   /* Jump here to skip this query
   */
   sqlite3VdbeResolveLabel(v, iEnd);
+  if( iTemporalLable!= 0)
+    sqlite3VdbeResolveLabel(v, iTemporalLable);
 
   /* The SELECT has been coded. If there is an error in the Parse structure,
   ** set the return code to 1. Otherwise 0. */
@@ -5943,4 +6268,70 @@ select_end:
   pParse->nSelectIndent--;
 #endif
   return rc;
+}
+
+Temporal *sqlite3TemporalAdd(
+  Parse *pParse,          /* Parsing context */
+  Temporal *pTemporal,    /* Existing Temporal clause, or NULL */
+  Expr *pFrom,            /* Lower timm boundary */
+  Expr *pTo,              /* Upper timm boundary */
+  int iIncl,              /* Inclusive */
+  int iAll,               /* For all */
+  int iBus                /* Business time */
+){
+  sqlite3 *db = pParse->db;
+  if( pTemporal==0 ){
+    pTemporal = sqlite3DbMallocZero(db, sizeof(*pTemporal));
+  }
+  if( db->mallocFailed ){
+    if( pFrom ) sqlite3ExprDelete(db, pFrom);
+    if( pTo ) sqlite3ExprDelete(db, pTo);
+    return NULL;
+  }
+
+  assert( iBus==0 || iBus==1 );
+  if( pTemporal->a[iBus].pFrom )
+    sqlite3ExprDelete(db, pTemporal->a[iBus].pFrom);
+  if( pTemporal->a[iBus].pTo )
+    sqlite3ExprDelete(db, pTemporal->a[iBus].pTo);
+  pTemporal->a[iBus].pFrom = pFrom;
+  pTemporal->a[iBus].pTo = pTo;
+  pTemporal->a[iBus].iIncl = iIncl;
+  pTemporal->a[iBus].iAll = iAll;
+  pTemporal->a[iBus].iBus = iBus;
+
+  return pTemporal;
+}
+
+Temporal *sqlite3TemporalDup(sqlite3 *db, Temporal *pTemporal){
+  Temporal *pNew = 0;
+  if( pTemporal ){
+    pNew = sqlite3DbMallocZero(db, sizeof(*pTemporal));
+    if( db->mallocFailed ) return NULL;
+    pNew->a[0].pFrom = sqlite3ExprDup(db, pTemporal->a[0].pFrom, 0);
+    pNew->a[0].pTo = sqlite3ExprDup(db, pTemporal->a[0].pTo, 0);
+    pNew->a[0].iIncl = pTemporal->a[0].iIncl;
+    pNew->a[0].iAll = pTemporal->a[0].iAll;
+    pNew->a[0].iBus = pTemporal->a[0].iBus;
+    pNew->a[1].pFrom = sqlite3ExprDup(db, pTemporal->a[1].pFrom, 0);
+    pNew->a[1].pTo = sqlite3ExprDup(db, pTemporal->a[1].pTo, 0);
+    pNew->a[1].iIncl = pTemporal->a[1].iIncl;
+    pNew->a[1].iAll = pTemporal->a[1].iAll;
+    pNew->a[1].iBus = pTemporal->a[1].iBus;
+  }
+  return pNew;
+}
+
+void sqlite3TemporalDelete(sqlite3 *db, Temporal *pTemporal){
+  if( pTemporal ){
+    if( pTemporal->a[0].pFrom )
+      sqlite3ExprDelete(db, pTemporal->a[0].pFrom);
+    if( pTemporal->a[0].pTo )
+      sqlite3ExprDelete(db, pTemporal->a[0].pTo);
+    if( pTemporal->a[1].pFrom )
+      sqlite3ExprDelete(db, pTemporal->a[1].pFrom);
+    if( pTemporal->a[1].pTo )
+      sqlite3ExprDelete(db, pTemporal->a[1].pTo);
+    sqlite3DbFree(db, pTemporal);
+  }
 }

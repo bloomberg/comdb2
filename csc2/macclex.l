@@ -227,7 +227,6 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <INITIAL>datacopy               { return T_DATAKEY; }
 <INITIAL>primary                { return T_PRIMARY; }
 
-
 <RECTYPE>dbpad                  { return T_FLD_PADDING; }
 <RECTYPE>dbstore                { return T_FLD_STRDEFAULT;}
 <RECTYPE>dbload                 { return T_FLD_LDDEFAULT;}
@@ -249,6 +248,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
                                   } }
 <RECTYPE>default                { return T_DEFAULT; }
 <RECTYPE>ondisk                 { return T_ONDISK; }
+<INITIAL>periods			    { return T_PERIODS; }
 <INITIAL>constraints            { BEGIN CONSTRAINTS; return T_CONSTRAINTS; }
 <INITIAL,RECTYPE>{where}      { char *p = yytext;
                                 char *end= NULL;
@@ -285,14 +285,15 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <INITIAL,CONSTRAINTS>"<"			{ return T_LT; }
 <INITIAL,CONSTRAINTS>">"			{ return T_GT; }
 
-<INITIAL>"<ASCEND>"		{ return T_ASCEND; }
-<INITIAL>"<DESCEND>"	        { return T_DESCEND; }
+<INITIAL>"<ASCEND>"             { return T_ASCEND; }
+<INITIAL>"<DESCEND>"            { return T_DESCEND; }
 
 <CONSTRAINTS>cascade            { return T_CASCADE; }
 <CONSTRAINTS>restrict            { return T_RESTRICT; }
 <CONSTRAINTS>on                 { return T_CON_ON; }
 <CONSTRAINTS>update             { return T_CON_UPDATE; }
 <CONSTRAINTS>delete             { return T_CON_DELETE; }
+<CONSTRAINTS>"no_overlap"       { return T_CON_NOOVERLAP; }
 <CONSTRAINTS>[\-:]              { return yytext[0];;  }
 <CONSTRAINTS>{varname}          { yylval.varname=yytext; return T_VARNAME; }
 <INITIAL,RECTYPE,CONSTRAINTS>[\{]                   { rectplvl++; return yytext[0]; }

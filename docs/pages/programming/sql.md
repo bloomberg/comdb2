@@ -98,6 +98,9 @@ The UPDATE statement is used to change the value of columns in selected rows of 
 The expressions may use the values of other columns. All expressions are evaluated before any assignments are 
 made. A ```WHERE``` clause can be used to restrict which rows are updated.
 
+An optional `FOR PORTION OF BUSINESS_TIME FROM ... TO ...` clause can be used to restrict the update to a specific
+business time period for [Business-Versioned Tables](bitemporal.html#business-versioned-temporal-tables).
+
 See also:
 
 [with-clause](#with-clause)
@@ -116,6 +119,9 @@ keywords followed by the name of the table from which records are to be removed.
 If the ```WHERE``` clause is omitted, all rows will be deleted.  Note that in this case, the ```DELETE``` statement
 will traverse all rows and remove them individually.  This makes it a less efficient option than the ```TRUNCATE```
 statement, but has the advantage that it will work on tables with foreign key constraints.
+
+An optional `FOR PORTION OF BUSINESS_TIME FROM ... TO ...` clause can be used to restrict the update to a specific
+business time period for [Business-Versioned Tables](bitemporal.html#business-versioned-temporal-tables).
 
 See also:
 
@@ -218,6 +224,10 @@ the database receiving the query.  One can create an alias to a foreign table an
 it's in a local database, see the [```PUT ALIAS```](#put) statement.  This has the advantage of being able to move
 tables between databases without changing SQL statements used to query them.
 
+#### Temporal tables
+[temporal-clause](#temporal-clause) can be used to query system/business-versioned tables and bi-temporal tables.
+For more information, see [Temporal Tables](bitemporal.html).
+
 See also:
 
 [common-table-expression](#common-table-expression)
@@ -235,6 +245,8 @@ See also:
 [compound-operator](#compound-operator)
 
 [ordering-term](#ordering-term)
+
+[temporal-clause](#temporal-clause)
 
 ## Stored procedures
 
@@ -602,6 +614,16 @@ Sets a tunable that determines how hard the query planner will work to estimate 
 setting is a number from 1 (least effort, quickly formed plans) to 10 (most effort, possibly better plans).  The 
 default setting is 1.
 
+### SET TEMPORAL
+
+Sets temporal period specifications in registers to avoid typing the long [`temporal-clause`](sql.html#temporal-clause). This feature enables you to run existing applications against data from a certain point in time or a range of time  without changing the application itself. Use `DISABLE` keyword to erase previous temporal settings.
+
+See also:
+
+[Temporal Tables](bitemporal.html)
+
+[Setting Temporal Registers](bitemporal.html#setting-temporal-registers)
+
 ## Common syntax rules
 
 ### qualified-table-name
@@ -709,6 +731,10 @@ Both simple and aggregate functions are supported. A simple function can be used
 ### table-options
 
 ![table-options](images/table-options.gif)
+
+### temporal-clause
+
+![temporal-clause](images/temporal-clause.gif)
 
 ## Built-in SQL functions
 

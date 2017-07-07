@@ -976,6 +976,14 @@ void sqlite3Insert(
         sqlite3VdbeAddOp1(v, OP_SoftNull, iRegStore);
         continue;
       }
+      /* COMDB2 MODIFICATION */
+      if( pTab->aCol[i].colTime & COLTIME_SYSSTART ){
+        sqlite3VdbeAddOp2(v, OP_SystimeStart, 0, iRegStore);
+        continue;
+      }else if( pTab->aCol[i].colTime & COLTIME_SYSEND ){
+        sqlite3VdbeAddOp2(v, OP_SystimeEnd, 0, iRegStore);
+        continue;
+      }
       if( pColumn==0 ){
         if( IsHiddenColumn(&pTab->aCol[i]) ){
           j = -1;
@@ -1463,7 +1471,7 @@ void sqlite3GenerateConstraintChecks(
         if( pTrigger || sqlite3FkRequired(pParse, pTab, 0, 0) ){
           sqlite3MultiWrite(pParse);
           sqlite3GenerateRowDelete(pParse, pTab, pTrigger, iDataCur, iIdxCur,
-                regNewData, 1, 0, OE_Replace, ONEPASS_SINGLE, -1);
+                regNewData, 1, 0, OE_Replace, ONEPASS_SINGLE, -1, 0, 0);
         }else{
 #ifdef SQLITE_ENABLE_PREUPDATE_HOOK
           if( HasRowid(pTab) ){
@@ -1659,7 +1667,7 @@ void sqlite3GenerateConstraintChecks(
         }
         sqlite3GenerateRowDelete(pParse, pTab, pTrigger, iDataCur, iIdxCur,
             regR, nPkField, 0, OE_Replace,
-            (pIdx==pPk ? ONEPASS_SINGLE : ONEPASS_OFF), -1);
+            (pIdx==pPk ? ONEPASS_SINGLE : ONEPASS_OFF), -1, 0, 0);
         seenReplace = 1;
         break;
       }

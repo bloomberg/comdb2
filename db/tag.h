@@ -52,6 +52,14 @@ struct field {
     int blob_index; /* index of this blob, -1 for non blobs */
 };
 
+enum pd_flags { PERIOD_SYSTEM = 0, PERIOD_BUSINESS = 1, PERIOD_MAX = 2 };
+
+typedef struct {
+    int enable;
+    int start;
+    int end;
+} period_t;
+
 /* A schema for a tag or index.  The schema for the .ONDISK tag will have
  * an array of ondisk index schemas too. */
 struct schema {
@@ -71,6 +79,7 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
+    period_t periods[PERIOD_MAX];
     uint8_t disableskipscan;
     LINKC_T(struct schema) lnk;
 };
@@ -93,7 +102,14 @@ enum {
                          reverse ondisk sort */
     ,
     NO_NULL = 2 /* do not allow nulls */
+    ,
+    SYSTEM_START = 4,
+    SYSTEM_END = 8,
+    BUSINESS_START = 16,
+    BUSINESS_END = 32
 };
+
+enum { MEMBER_PERIOD_MASK = 0x0000003c };
 
 /* flags for schema conversion */
 enum {
@@ -173,6 +189,14 @@ enum {
     SC_BAD_NEW_FIELD = -3,
     SC_BAD_INDEX_CHANGE = -4,
     SC_BAD_INDEX_NAME = -5
+};
+
+enum {
+    /* plan_convert */
+    SC_NO_CONVERT = 0,
+    SC_PLAN_CONVERT,
+    /* no overlap constraint verification */
+    SC_KEYVER_CONVERT
 };
 
 extern char gbl_ver_temp_table[];
