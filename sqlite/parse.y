@@ -367,6 +367,15 @@ create_sequence_chunk(A) ::= NO CHUNK. {
   A.type = -1;
 }
 
+cmd ::= DROP SEQUENCE nm(N). {
+  // Null terminate string
+  char name[N.n + 1];
+  memcpy(name, N.z, N.n);
+  name[N.n] = '\0';
+
+  comdb2DropSequence(pParse,name);
+}
+
 // Define operator precedence early so that this is the first occurrence
 // of the operator tokens in the grammer.  Keeping the operators together
 // causes them to be assigned integer values that are close together,

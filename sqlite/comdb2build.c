@@ -169,7 +169,7 @@ static inline int chkAndCopySequence(Vdbe* v, Parse* pParse, char *dst,
     const char* name, size_t max_length, int mustexist)
 {
     char tmp_dst[MAXTABLELEN];
-    struct sql_thread *thd =pthread_getspecific(query_info_key);
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
 
     /* Remove quotes if any. */
     if ((name[0] == '\'') && (name[max_length-2] == '\'')) {
@@ -1609,17 +1609,6 @@ void comdb2CreateSequence(
     bool noErr
 )
 {
-    logmsg(LOGMSG_USER,"------ Sequence ------\nName: %s\nIf Not Exists: %s\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nStart Val: %lld\n",
-        name,
-        noErr ? "true": "false",
-        min_val,
-        max_val,
-        inc,
-        cycle ? "true": "false",
-        chunk_size,
-        start_val
-    );
-
     sqlite3 *db = pParse->db;
     Vdbe *v = sqlite3GetVdbe(pParse);
 
@@ -1711,9 +1700,8 @@ out:
 }
 
 // TODO: Modify for sequences
-void comdb2DropSequence(Parse *pParse, SrcList *pName)
+void comdb2DropSequence(Parse *pParse, char *name)
 {
-
     sqlite3 *db = pParse->db;
     Vdbe *v = sqlite3GetVdbe(pParse);
 
@@ -1723,23 +1711,25 @@ void comdb2DropSequence(Parse *pParse, SrcList *pName)
         return;
     }
 
-    if (chkAndCopyTable(v, pParse, sc->table, pName->a[0].zName, MAXTABLELEN,
-                        1))
+    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 1))
         goto out;
 
-    if (authenticateSC(sc->table, pParse)) goto out;
+    // TODO: is this needed without user tables?
+    // if (authenticateSC(sc->sequence, pParse)) goto out;
 
+    comdb2WriteTransaction(pParse);
+
+    // TODO: Modify for sequences
     v->readOnly = 0;
-    sc->same_schema = 1;
-    sc->drop_table = 1;
-    sc->fastinit = 1;
-    sc->nothrevent = 1;
+    sc->type = DBTYPE_SEQUENCE;
+    sc->dropseq = 1;
 
-    if (get_csc2_file(sc->table, -1, &sc->newcsc2, NULL)) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: \n", sc->table);
-        setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
-        goto out;
-    }
+
+    // if (get_csc2_file(sc->table, -1, &sc->newcsc2, NULL)) {
+    //     logmsg(LOGMSG_ERROR, "%s: table schema not found: \n", sc->table);
+    //     setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
+    //     goto out;
+    // }
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                         (vdbeFuncArgFree)&free_schema_change_type);
