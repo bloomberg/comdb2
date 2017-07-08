@@ -34,6 +34,7 @@
 #include <list>
 #include <map>
 #include <algorithm>
+#include <unistd.h>
 
 #include "cdb2api.h"
 #include "cson_amalgamation_core.h"
@@ -190,7 +191,6 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         return true;
 
     unsigned int len = cson_array_length_get(bound_parameters);
-    cdb2_clearbindings(cdb2h);
     for (int i = 0; i < len; i++) {
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
@@ -242,6 +242,141 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
     return true;
 }
 
+enum {
+    DEFAULT = 0x0000, /* default output */
+    TABS    = 0x0001, /* separate columns by tabs */
+    BINARY  = 0x0002,  /* output binary */
+    GENSQL  = 0x0004,  /* generate insert statements */
+    /* flags */
+    STDERR  = 0x1000
+};
+
+static void hexdump(FILE *f, void *datap, int len)
+{
+    u_char *data = (u_char *)datap;
+    int i;
+    for (i = 0; i < len; i++)
+        fprintf(f, "%02x", (unsigned int)data[i]);
+}
+
+void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
+{
+    if (quotes)
+        fprintf(f, "'");
+    while (*s) {
+        if (*s == '\'' && quote_quotes)
+            fprintf(f, "''");
+        else
+            fprintf(f, "%c", *s);
+        s++;
+    }
+    if (quotes)
+        fprintf(f, "'");
+}
+
+void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
+{
+    int string_blobs = 1;
+    switch (cdb2_column_type(cdb2h, col)) {
+    case CDB2_INTEGER:
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
+                    *(long long *)val);
+        else
+            fprintf(f, "%lld", *(long long *)val);
+        break;
+    case CDB2_REAL:
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "%f", *(double *)val);
+        break;
+    case CDB2_CSTRING:
+        if (printmode == DEFAULT) {
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            dumpstring(f, (char *)val, 1, 0);
+        } else if (printmode & TABS)
+            dumpstring(f, (char *)val, 0, 0);
+        else
+            dumpstring(f, (char *)val, 1, 1);
+        break;
+    case CDB2_BLOB:
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        if (string_blobs) {
+            char *c = (char*) val;
+            int len = cdb2_column_size(cdb2h, col);
+            fputc('\'', stdout);
+            while (len > 0) {
+                if (isprint(*c) || *c == '\n' || *c == '\t') {
+                    fputc(*c, stdout);
+                } else {
+                    fprintf(f, "\\x%02x", (int)*c);
+                }
+                len--;
+                c++;
+            }
+            fputc('\'', stdout);
+        } else {
+            if (printmode == BINARY) {
+                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                exit(0);
+            } else {
+                fprintf(f, "x'");
+                hexdump(f, val, cdb2_column_size(cdb2h, col));
+                fprintf(f, "'");
+            }
+        }
+        break;
+    case CDB2_DATETIME: {
+        cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
+                cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
+                cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->msec,
+                cdt->tzname);
+        break;
+    }
+    case CDB2_DATETIMEUS: {
+        cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
+                cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
+                cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->usec,
+                cdt->tzname);
+        break;
+    }
+    case CDB2_INTERVALYM: {
+        cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
+                ym->months);
+        break;
+    }
+    case CDB2_INTERVALDS: {
+        cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
+                (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
+                ds->sec, ds->msec);
+        break;
+    }
+    case CDB2_INTERVALDSUS: {
+        cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
+                (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
+                ds->sec, ds->usec);
+        break;
+    }
+    }
+}
+
+
 void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     const char *sql = get_strprop(event_val, "sql");
     if(sql == nullptr) {
@@ -262,14 +397,29 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     if (!ok)
         return;
 
+    std::cout << sql << std::endl;
     int rc = cdb2_run_statement(db, sql);
-    if (rc) {
+    cdb2_clearbindings(db);
+
+    if (rc != CDB2_OK) {
         std::cerr << "run rc " << rc << ": " << cdb2_errstr(db) << std::endl;
         return;
     }
-    rc = cdb2_next_record(db);
-    while (rc == CDB2_OK) {
-        rc = cdb2_next_record(db);
+
+    /* TODO: have switch to print or not results */
+    int ncols = cdb2_numcolumns(db);
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        for (int col = 0; col < ncols; col++) {
+            void *val = cdb2_column_value(db, col);
+            if (val == NULL) {
+                fprintf(stdout, "%s=NULL", cdb2_column_name(db, col));
+            } else {
+                printCol(stdout, db, val, col, DEFAULT);
+            }
+            if (col != ncols - 1) {
+                fprintf(stdout, ", ");
+            }
+        }
     }
     if (rc != CDB2_OK_DONE) {
         std::cerr << "next rc " << rc << ": " << cdb2_errstr(db) << std::endl;
