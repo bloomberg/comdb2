@@ -11551,10 +11551,12 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     Btree *s = &src->aDb[1].pBt[0];
     comdb2_use_tmptbl_lk(1);
     tmptbl_kludge = &s->temp_tables[rootpg];
+    dest->force_sqlite_impl = 1;
     if ((rc = sqlite3_exec(dest, sql, NULL, NULL, &err)) != 0) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n", __func__, rc, err, sql);
         abort();
     }
+    dest->force_sqlite_impl = 0;
     comdb2_use_tmptbl_lk(0);
     tmptbl_kludge = NULL;
 }

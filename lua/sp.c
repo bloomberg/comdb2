@@ -1078,7 +1078,10 @@ static const char *create_temp_table(Lua lua, pthread_mutex_t *lk)
 
     char *err = NULL;
     comdb2_set_tmptbl_lk(lk);
-    rc = sqlite3_exec(getdb(sp), strbuf_buf(sql), NULL, NULL, &err);
+    sqlite3 *db = getdb(sp);
+    db->force_sqlite_impl = 1;
+    rc = sqlite3_exec(db, strbuf_buf(sql), NULL, NULL, &err);
+    db->force_sqlite_impl = 0;
     comdb2_set_tmptbl_lk(NULL);
     if (rc == SQLITE_OK)
         rc = 0;

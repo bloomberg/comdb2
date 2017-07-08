@@ -213,9 +213,13 @@ static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
     int rc;
     int max_size;
 
-    assert(t1 && t2);
+    if (t1 == NULL)
+    {
+        return SQLITE_OK;
+    }
 
-    if ((rc = isRemote(pParse, &t1, &t2))) {
+    /* Check for remote request only if both the tokens are set. */
+    if (t2 && (rc = isRemote(pParse, &t1, &t2))) {
         return rc;
     }
 
@@ -2665,6 +2669,15 @@ cleanup:
     return 1;
 }
 
+static inline int use_sqlite_impl(Parse *pParse)
+{
+    if (pParse->db->init.busy || IN_DECLARE_VTAB ||
+        pParse->db->force_sqlite_impl) {
+        return 1;
+    }
+    return 0;
+}
+
 void comdb2AlterTableStart(
     Parse *pParse, /* Parser context */
     Token *pName1, /* First part of the name of the table. */
@@ -2788,8 +2801,9 @@ void comdb2CreateTableStart(
 {
     struct comdb2_ddl_context *ctx;
 
-    if (isTemp || pParse->db->init.busy || IN_DECLARE_VTAB) {
-        /* Sqlite table */
+    if (isTemp) pParse->db->force_sqlite_impl = 1;
+
+    if (use_sqlite_impl(pParse)) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -2839,8 +2853,7 @@ void comdb2CreateTableEnd(
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy || IN_DECLARE_VTAB) {
-        /* Sqlite table */
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3EndTable(pParse, pCons, pEnd, tabOpts, 0);
         return;
@@ -2915,7 +2928,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy || IN_DECLARE_VTAB) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         if ((pParse->pNewTable) == 0) assert(0);
         sqlite3AddColumn(pParse, pName, pType);
@@ -2988,7 +3001,7 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddDefaultValue(pParse, pSpan);
         return;
@@ -3024,7 +3037,7 @@ void comdb2AddNull(Parse *pParse)
     struct comdb2_ddl_context *ctx;
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
     }
@@ -3055,7 +3068,7 @@ void comdb2AddNotNull(Parse *pParse, int onError)
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddNotNull(pParse, onError);
     }
@@ -3082,7 +3095,7 @@ void comdb2AddDbpad(Parse *pParse, int dbpad)
     struct comdb2_ddl_context *ctx;
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
     }
@@ -3115,7 +3128,7 @@ void comdb2AddPrimaryKey(
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddPrimaryKey(pParse, pList, onError, autoInc, sortOrder);
         return;
@@ -3211,7 +3224,7 @@ void comdb2AddIndex(
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
                            idxType);
@@ -3312,7 +3325,7 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);
@@ -3515,7 +3528,7 @@ void comdb2CreateForeignKey(
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateForeignKey(pParse, pFromCol, pTo, pToCol, flags);
         return;
@@ -3628,7 +3641,7 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
         return;
@@ -3780,7 +3793,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct db *table,
     struct comdb2_ddl_context *ctx;
     int max_size;
 
-    assert(pParse->db->init.busy == 0);
+    assert(use_sqlite_impl(pParse) == 0);
 
     v = sqlite3GetVdbe(pParse);
 
@@ -3873,7 +3886,7 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
     struct db *parent_table;
     int index_count = 0;
 
-    if (pParse->db->init.busy) {
+    if (use_sqlite_impl(pParse)) {
         sqlite3DropIndex(pParse, pName, ifExists);
         return;
     }
