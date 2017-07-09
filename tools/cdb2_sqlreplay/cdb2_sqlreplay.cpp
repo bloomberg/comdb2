@@ -98,7 +98,7 @@ bool get_doubleprop(cson_value *objval, const char *key, double *val) {
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
     cson_value *propval = cson_object_get(obj, key);
-    if (propval == nullptr || !cson_value_is_integer(propval))
+    if (propval == nullptr || !cson_value_is_double(propval))
         return false;
     int rc = cson_value_fetch_double(propval, (cson_double_t*) val);
     return true;
@@ -197,7 +197,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         const char *type = get_strprop(bp, "type");
         int ret;
 
-        if (strcmp(type, "int") == 0) {
+        if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
             int64_t *iv = new int64_t;
             bool succ = get_intprop(bp, "value", iv);
             if (!succ) {
@@ -210,18 +210,18 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             }
             std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
         } 
-        else if (strcmp(type, "float") == 0) {
-            double *iv = new double;
-            bool succ = get_doubleprop(bp, "value", iv);
+        else if (strcmp(type, "float") == 0 || strcmp(type, "doublefloat") == 0) {
+            double *dv = new double;
+            bool succ = get_doubleprop(bp, "value", dv);
             if (!succ) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, iv, sizeof(*iv))) != 0) {
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_REAL, dv, sizeof(*dv))) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 return false;
             }
-            std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
+            std::cout << "binding "<< type << " column " << name << " to value " << *dv << std::endl;
         }
         else if (strcmp(type, "char") == 0) {
             const char *strp = get_strprop(bp, "value");
@@ -420,6 +420,7 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
                 fprintf(stdout, ", ");
             }
         }
+        std::cout << std::endl;
     }
     if (rc != CDB2_OK_DONE) {
         std::cerr << "next rc " << rc << ": " << cdb2_errstr(db) << std::endl;

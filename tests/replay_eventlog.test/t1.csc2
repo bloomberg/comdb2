@@ -5,7 +5,7 @@
 
 schema
 {
-    short       alltypes_short                  null=yes     //$((1-2*(j%2)))$j
+    short       alltypes_short                  null=yes     //$(((1-2*(j%2))*$j))
     u_short     alltypes_u_short                null=yes     //$j
     int         alltypes_int                    null=no      //$((1-2*(j%2)))0000$j
     u_int       alltypes_u_int                  null=yes     //10000$j

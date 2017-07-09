@@ -162,7 +162,7 @@ insert_records_with_bind()
     while [[ $j -le $nstop ]]; do 
         echo $j
         echo "
-@bind CDB2_INTEGER v_alltypes_short $((1-2*(j%2)))$j
+@bind CDB2_INTEGER v_alltypes_short $(((1-2*(j%2))*$j))
 @bind CDB2_INTEGER v_alltypes_u_short $j
 @bind CDB2_INTEGER v_alltypes_int $((1-2*(j%2)))0000$j
 @bind CDB2_INTEGER v_alltypes_u_int 10000$j
@@ -461,7 +461,7 @@ done
 $TESTSROOTDIR/setup
 
 ${SRCHOME}/cdb2_sqlreplay $alterdbname $logflunziped > sqlreplay.out
-cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u" > replayed.txt
+cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
 
 
 $TESTSROOTDIR/unsetup
