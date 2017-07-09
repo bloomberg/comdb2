@@ -31,9 +31,6 @@
 #define REBUILD_DATA    2
 #define REBUILD_BLOB    4
 
-
-#define SET_OPT_ON(opt,val) val |= opt;
-#define SET_OPT_OFF(opt,val) val = (val | opt) ^ opt; 
 #define OPT_ON(opt, val) (val & opt)
 
 #define SET_ANALYZE_SUMTHREAD(opt, val) opt += ((val & 0xFFFF) << 16)
@@ -45,14 +42,28 @@
 
 
 int  readIntFromToken(Token* t, int *rst);
-
-
-void fillTableOption(struct schema_change_type*, int);
-
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
-void comdb2CreateTable(Parse*, Token*, Token*, int, Token*, int, int);
-void comdb2AlterTable(Parse*, Token*, Token*, int, Token*, int dryrun);
+void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
+void comdb2AlterTableCSC2(Parse *, Token *, Token *, int, Token *, int dryrun);
 void comdb2DropTable(Parse *pParse, SrcList *pName);
+void comdb2AlterTableStart(Parse *, Token *, Token *, int);
+void comdb2AlterTableEnd(Parse *);
+void comdb2CreateTableStart(Parse *, Token *, Token *, int, int, int, int);
+void comdb2CreateTableEnd(Parse *, Token *, Token *, u8, int);
+void comdb2AddColumn(Parse *, Token *, Token *);
+void comdb2AddDefaultValue(Parse *, ExprSpan *);
+void comdb2AddNull(Parse *);
+void comdb2AddNotNull(Parse *, int);
+void comdb2AddPrimaryKey(Parse *, ExprList *, int, int, int);
+void comdb2AddIndex(Parse *, ExprList *, int, u8);
+void comdb2AddDbpad(Parse *, int);
+void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
+                       Token *, ExprSpan *, int, int, u8, int);
+void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
+void comdb2DeferForeignKey(Parse *, int);
+void comdb2DropColumn(Parse *, Token *);
+void comdb2DropIndex(Parse *, SrcList *, int);
+void comdb2DropIndexExtn(Parse *, Token *, Token *, int);
 
 void comdb2enableGenid48(Parse*, int);
 void comdb2enableRowlocks(Parse*, int);

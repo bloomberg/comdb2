@@ -1,0 +1,76 @@
+[ALTER TABLE t1 ADD COLUMN k INT NOT NULL] failed with rc 304 OP #3 BLOCK_SEQ(800): 
+[ALTER TABLE t2 DROP COLUMN doesnotexist] failed with rc -3 Column 'doesnotexist' not found.
+[ALTER TABLE t2 DROP COLUMN `j`] failed with rc -3 Table must have at least one column.
+(tablename='t1')
+(tablename='t2')
+(tablename='t3')
+(tablename='t4')
+(tablename='t5')
+(tablename='t6')
+(tablename='t7')
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='l', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='m', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='1', dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='n', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='1', dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='o', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='1', dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', keyname='$KEY_FF23FD33', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "l" int, "m" int DEFAULT 1, "n" int DEFAULT 1, "o" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int l null = yes 
+		int m dbstore = 1 null = yes 
+		int n dbstore = 1 null = yes 
+		int o null = yes 
+	}
+')
+(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("j" int);', csc2='schema
+	{
+		int j null = yes 
+	}
+')
+(type='table', name='t3', tbl_name='t3', rootpage=6, sql='create table "t3"("j" int);', csc2='schema
+	{
+		int j null = yes 
+	}
+')
+(type='table', name='t4', tbl_name='t4', rootpage=7, sql='create table "t4"("j" int, "k" int);', csc2='schema
+	{
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		"$KEY_FF23FD33" = j 
+	}
+')
+(type='index', name='$$KEY_FF23FD33_BAF4622F', tbl_name='t4', rootpage=8, sql='create index "$$KEY_FF23FD33_BAF4622F" on "t4" (j);', csc2=NULL)
+(type='table', name='t5', tbl_name='t5', rootpage=9, sql='create table "t5"("i" int, "j" int DEFAULT 1);', csc2='schema
+	{
+		int i null = yes 
+		int j dbstore = 1 null = yes 
+	}
+')
+(type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+')
+(type='table', name='t7', tbl_name='t7', rootpage=11, sql='create table "t7"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+')
