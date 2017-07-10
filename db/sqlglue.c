@@ -2634,6 +2634,9 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 
     bdberr = 0;
     rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, NULL, 0);
+    if (bdberr == BDBERR_NOT_DURABLE) {
+        return SQLITE_CLIENT_CHANGENODE;
+    }
     if (bdberr == BDBERR_TRANTOOCOMPLEX) {
         return SQLITE_TRANTOOCOMPLEX;
     }
@@ -2782,6 +2785,9 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     }
 
     rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, &iq, 0);
+    if (bdberr == BDBERR_NOT_DURABLE) {
+        return SQLITE_CLIENT_CHANGENODE;
+    }
     if (bdberr == BDBERR_TRANTOOCOMPLEX) {
         return SQLITE_TRANTOOCOMPLEX;
     }
@@ -3204,19 +3210,21 @@ static int cursor_move_postop(BtCursor *pCur)
     struct sqlclntstate *clnt = thd->sqlclntstate;
     extern int gbl_sql_release_locks_on_si_lockwait;
     extern int gbl_locks_check_waiters;
+    int rc = 0;
 
     if (gbl_locks_check_waiters && gbl_sql_release_locks_on_si_lockwait &&
         (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
          clnt->dbtran.mode == TRANLEVEL_SERIAL)) {
         extern int gbl_sql_random_release_interval;
-        if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran))
-            release_locks("replication is waiting on si-session");
-        else if (gbl_sql_random_release_interval &&
-                 !(rand() % gbl_sql_random_release_interval))
-            release_locks("random release cursor_move_postop");
+        if (bdb_curtran_has_waiters(thedb->bdb_env, clnt->dbtran.cursor_tran)) {
+            rc = release_locks("replication is waiting on si-session");
+        } else if (gbl_sql_random_release_interval &&
+                   !(rand() % gbl_sql_random_release_interval)) {
+            rc = release_locks("random release cursor_move_postop");
+        }
     }
 
-    return 0;
+    return rc;
 }
 
 int temp_table_cmp(KeyInfo *pKeyInfo, int k1len, const void *key1, int k2len,
@@ -10029,8 +10037,13 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
         rc = IX_PASTEOF;
     }
 
-    if (*bdberr == 0)
-        cursor_move_postop(pCur);
+    if (*bdberr == 0) {
+        int rc2 = cursor_move_postop(pCur);
+        if (rc2) {
+            rc = SQLITE_CLIENT_CHANGENODE;
+            *bdberr = BDBERR_NOT_DURABLE;
+        }
+    }
 
     return rc;
 }
