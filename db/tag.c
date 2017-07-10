@@ -1527,7 +1527,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
 char *indexes_expressions_unescape(char *expr);
 extern int gbl_new_indexes;
 /* create keys for each schema */
-int create_key_schema(struct db *db, struct schema *schema, int alt)
+static int create_key_schema(struct db *db, struct schema *schema, int alt)
 {
     char buf[MAXCOLNAME + 1];
     int ix;
@@ -6297,15 +6297,13 @@ struct schema *clone_schema(struct schema *from)
     sc->ixnum = from->ixnum;
     sc->recsize = from->recsize;
     sc->numblobs = from->numblobs;
+
     if (from->csctag)
         sc->csctag = strdup(from->csctag);
-    else
-        sc->csctag = NULL;
+
     if (from->datacopy) {
         sc->datacopy = malloc(from->nmembers * sizeof(int));
         memcpy(sc->datacopy, from->datacopy, from->nmembers * sizeof(int));
-    } else {
-        sc->datacopy = NULL;
     }
     return sc;
 }

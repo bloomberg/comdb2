@@ -32,8 +32,8 @@ cdb2sql: $(cdb2sql_OBJS)
 
 cdb2replay_OBJS:=tools/cdb2_sqlreplay/cdb2_sqlreplay.o
 cdb2replay_CFLAGS=-Icson
-cdb2replay_LDLIBS=-Lcson -lcson -Lcdb2api -l:libcdb2api.a -Lprotobuf   \
-                  -lssl -lcrypto -lz -lpthread
+cdb2replay_LDLIBS=-Lcson -lcson $(CDB2API) $(PROTOBUF) \
+                  -lprotobuf-c -lssl -lcrypto -lz -lpthread
 
 $(cdb2replay_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(cdb2replay_CFLAGS) $(CXX11FLAGS) -c $< -o $@
@@ -77,7 +77,7 @@ tools/comdb2ar/serialise.o: tools_CPPFLAGS+=$(db_wrap_FLAGS)
 # Pmux - Use flag for C++11 standard
 pmux_LDFLAGS=$(CXX11LDFLAGS) -L$(SRCHOME)/cdb2api       \
 -L$(SRCHOME)/protobuf -L$(SRCHOME)/bb $(OPTBBRPATH)
-pmux_LDLIBS=$(CDB2API_BIN) -lbb -lcdb2protobuf $(BBLDPREFIX)$(BBSTATIC) \
+pmux_LDLIBS=$(CDB2API) $(PROTOBUF) -lbb $(BBLDPREFIX)$(BBSTATIC) \
 -lsqlite3 -lprotobuf-c -L$(SRCHOME)/dlmalloc -ldlmalloc $(BBLDPREFIX)$(BBDYN) -lpthread -ldl -lssl -lcrypto
 ifeq ($(arch),Linux)
     pmux_LDLIBS+=-lrt

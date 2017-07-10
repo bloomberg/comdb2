@@ -45,9 +45,6 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    if (!iq->usedb->do_local_replication)
-        return 0;
-
     s = find_tag_schema(iq->usedb->dbname, ".ONDISK_CLIENT");
     if (s == NULL) {
         return OP_FAILED_INTERNAL;
@@ -63,7 +60,6 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
         iq->usedb->dbname, ".ONDISK", od_dta, -1, ".ONDISK_CLIENT", client_buf,
         (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
 
-    sz = 0;
     /* We send down an array of comdb2_field_types.  The offset field is the
        field in the
        offset of the data value in the buffer.  This is a bit wasteful but
@@ -276,9 +272,6 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    if (!iq->usedb->do_local_replication)
-        return 0;
-
     recsz = get_size_of_schema(iq->usedb->schema);
     tmpbuf = malloc(recsz);
     if (!tmpbuf) {
@@ -327,9 +320,6 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
         long long id;
     } delop;
     int rc;
-
-    if (!iq->usedb->do_local_replication)
-        return 0;
 
     if (!iq->usedb->do_local_replication)
         return 0;
@@ -425,7 +415,6 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
         iq->usedb->dbname, ".ONDISK", server_buf, -1, ".ONDISK_CLIENT",
         client_buf, (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
 
-    sz = 0;
     /* We send down an array of comdb2_field_types.  The offset field is the
        field in the
        offset of the data value in the buffer.  This is a bit wasteful but

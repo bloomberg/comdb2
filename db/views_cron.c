@@ -134,9 +134,8 @@ static void _insert_ordered_event(cron_sched_t * sched, cron_event_t *event)
 
     /* NOTE: make sure the event is unique, i.e. only one set
        of parameters */
-    if(!sched->events.top || 
-            (memcmp(event, sched->events.top, sizeof(event))!=0))
-    {
+    if (!sched->events.top ||
+        (memcmp(event, sched->events.top, sizeof(*event)) != 0)) {
         /* add new event, anything left in sched queue follows new event */
         listc_atl(&sched->events, event);
     }

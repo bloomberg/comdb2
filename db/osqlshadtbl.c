@@ -491,11 +491,6 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     tbl->delidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
                                    sizeof(unsigned long long));
 
-    tbl->addidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
-                                   sizeof(unsigned long long));
-    tbl->delidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
-                                   sizeof(unsigned long long));
-
     listc_abl(&clnt->osql.shadtbls, tbl);
     pCur->shadtbl = tbl;
 
@@ -698,13 +693,11 @@ int osql_get_shadowdata(BtCursor *pCur, unsigned long long genid, void **buf,
 
 static shad_tbl_t *get_shadtbl(struct BtCursor *pCur)
 {
-    shad_tbl_t *tbl;
     struct sql_thread *thd;
     struct sqlclntstate *clnt;
 
     /* we keep the shadow with the pCur, if any */
     if (pCur && pCur->shadtbl) {
-        shad_tbl_t *tbl = (shad_tbl_t *)pCur->shadtbl;
         return (shad_tbl_t *)pCur->shadtbl;
     }
 
@@ -714,9 +707,7 @@ static shad_tbl_t *get_shadtbl(struct BtCursor *pCur)
     thd = pthread_getspecific(query_info_key);
     clnt = thd->sqlclntstate;
 
-    tbl = osql_get_shadow_bydb(clnt, pCur->db);
-
-    return tbl;
+    return osql_get_shadow_bydb(clnt, pCur->db);
 }
 
 static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
@@ -1975,16 +1966,19 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             rc = SQLITE_INTERNAL;
             logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode!\n",
                     __func__);
+            break;
         }
 
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
+                   __func__, __LINE__, rc, *bdberr);
+            break;
+        }
     }
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                __func__, __LINE__, rc, *bdberr);
-        /* fall-through */
     }
 
     return rc;

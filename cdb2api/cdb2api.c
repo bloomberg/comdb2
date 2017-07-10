@@ -2090,7 +2090,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         sqlquery.skip_rows = skip_nrows;
     }
 
-    if (hndl && hndl->context_msgs.has_changed == 1 && hndl->context_msgs.count > 0) {
+    if (hndl && hndl->context_msgs.has_changed == 1 &&
+        hndl->context_msgs.count > 0) {
         sqlquery.n_context = hndl->context_msgs.count;
         sqlquery.context = hndl->context_msgs.message;
         /* Reset the has_changed flag. */
@@ -4330,6 +4331,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     int comdb2db_ports[MAX_NODES];
     int num_comdb2db_hosts;
     int master = 0, rc = 0;
+    int num_retry = 0;
     int comdb2db_num = COMDB2DB_NUM;
     char comdb2db_name[32] = COMDB2DB;
 
@@ -4380,6 +4382,13 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         }
     }
 
+retry:
+    if (rc && num_retry < MAX_RETRIES) {
+        num_retry++;
+        poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
+    } else if (rc) {
+        return rc;
+    }
     if (hndl->num_hosts == 0) {
         int i = 0;
         if (!master) {
@@ -4397,7 +4406,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         if (rc != 0) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: can't do dbinfo "
                                   "query on comdb2db hosts.");
-            return -1;
+            goto retry;
         }
 
         rc = -1;
@@ -4423,7 +4432,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
             sprintf(hndl->errstr,
                     "cdb2_get_dbhosts: can't do newsql query on %s hosts.",
                     comdb2db_name);
-            return -1;
+            goto retry;
         }
     }
 
@@ -4450,7 +4459,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);
-        return rc;
+        goto retry;
     }
     return rc;
 }

@@ -38,14 +38,15 @@ rm -rf $RPM_BUILD_ROOT
 /opt/bb/include
 /opt/bb/include/cdb2api.h
 /opt/bb/lib/libcdb2api.a
+/opt/bb/lib/libcdb2api.so
 /opt/bb/lib/libcdb2protobuf.a
+/opt/bb/lib/libcdb2protobuf.so
 /opt/bb/lib/systemd/system/pmux.service
 /opt/bb/lib/systemd/system/cdb2sockpool.service
 /opt/bb/lib/systemd/system/supervisor_cdb2.service
 /opt/bb/usr/local/lib/pkgconfig/cdb2api.pc
 /opt/bb/bin/comdb2admin
 /opt/bb/etc/supervisord_cdb2.conf
-/opt/bb/lib/libcdb2api.so
 /opt/bb/bin/comdb2dumpcsc
 
 %doc

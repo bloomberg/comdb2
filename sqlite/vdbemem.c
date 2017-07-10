@@ -2340,18 +2340,16 @@ int sqlite3VdbeMemIntervalAndInterval(
     }
     case INTV_DS_TYPE: {
       if( b->du.tv.type == INTV_DS_TYPE ){
-        aa = a->du.tv.sign*(int)(
-                                 a->du.tv.u.ds.frac +
-                                 1000*           a->du.tv.u.ds.sec +
-                                 1000*60*        a->du.tv.u.ds.mins +
-                                 1000*3600*      a->du.tv.u.ds.hours +
-                                 1000*3600*24*   a->du.tv.u.ds.days);
-        bb = b->du.tv.sign*(int)(
-                                 b->du.tv.u.ds.frac +
-                                 1000*           b->du.tv.u.ds.sec +
-                                 1000*60*        b->du.tv.u.ds.mins +
-                                 1000*3600*      b->du.tv.u.ds.hours +
-                                 1000*3600*24*   b->du.tv.u.ds.days);
+        aa = a->du.tv.sign*(long long)(a->du.tv.u.ds.frac +
+                                       1000LL*           a->du.tv.u.ds.sec +
+                                       1000LL*60*        a->du.tv.u.ds.mins +
+                                       1000LL*3600*      a->du.tv.u.ds.hours +
+                                       1000LL*3600*24*   a->du.tv.u.ds.days);
+        bb = b->du.tv.sign*(long long)(b->du.tv.u.ds.frac +
+                                       1000LL*           b->du.tv.u.ds.sec +
+                                       1000LL*60*        b->du.tv.u.ds.mins +
+                                       1000LL*3600*      b->du.tv.u.ds.hours +
+                                       1000LL*3600*24*   b->du.tv.u.ds.days);
 
         if( opcode == OP_Add ){
           aa += bb;
@@ -2364,7 +2362,7 @@ int sqlite3VdbeMemIntervalAndInterval(
         aa = aa*res->du.tv.sign;
         _setIntervalDS(&res->du.tv.u.ds,
                        (((long long)aa)*res->du.tv.sign)/1000,
-                       (((int)aa)*res->du.tv.sign)%1000);
+                       (int)((aa*res->du.tv.sign)%1000));
       }else{ // promote operand a to microsecond resolution
         aa = a->du.tv.sign*(long long)(
                                        1000LL*            a->du.tv.u.ds.frac +
@@ -2391,7 +2389,7 @@ int sqlite3VdbeMemIntervalAndInterval(
         aa = aa*res->du.tv.sign;
         _setIntervalDSUS(&res->du.tv.u.ds,
                          (((long long)aa)*res->du.tv.sign)/1000000,
-                         (((int)aa)*res->du.tv.sign)%1000000);
+                         (int)((aa*res->du.tv.sign)%1000000));
       }
 
       break;
@@ -2424,7 +2422,7 @@ int sqlite3VdbeMemIntervalAndInterval(
         aa = aa*res->du.tv.sign;
         _setIntervalDSUS(&res->du.tv.u.ds,
                          (((long long)aa)*res->du.tv.sign)/1000000,
-                         (((int)aa)*res->du.tv.sign)%1000000);
+                         (int)((aa*res->du.tv.sign)%1000000));
       }else{
         aa = a->du.tv.sign*(long long)(
                                        a->du.tv.u.ds.frac +
@@ -2450,7 +2448,7 @@ int sqlite3VdbeMemIntervalAndInterval(
         aa = aa*res->du.tv.sign;
         _setIntervalDSUS(&res->du.tv.u.ds,
                          (((long long)aa)*res->du.tv.sign)/1000000,
-                         (((int)aa)*res->du.tv.sign)%1000000);
+                         (int)((aa*res->du.tv.sign)%1000000));
       }
 
       break;
@@ -2498,11 +2496,11 @@ int sqlite3VdbeMemIntervalAndInt(
       break;
     }
     case INTV_DS_TYPE: {
-      aa = a->du.tv.sign*(int)(a->du.tv.u.ds.frac +
-                               1000*           a->du.tv.u.ds.sec +
-                               1000*60*        a->du.tv.u.ds.mins +
-                               1000*3600*      a->du.tv.u.ds.hours +
-                               1000*3600*24*   a->du.tv.u.ds.days);
+      aa = a->du.tv.sign*(long long)(a->du.tv.u.ds.frac +
+                                     1000LL*           a->du.tv.u.ds.sec +
+                                     1000LL*60*        a->du.tv.u.ds.mins +
+                                     1000LL*3600*      a->du.tv.u.ds.hours +
+                                     1000LL*3600*24*   a->du.tv.u.ds.days);
       bb = b->u.i;
 
       if( opcode == OP_Multiply)  {
@@ -2516,7 +2514,7 @@ int sqlite3VdbeMemIntervalAndInt(
       aa = aa*res->du.tv.sign;
       _setIntervalDS(&res->du.tv.u.ds,
                      (((long long)aa)*res->du.tv.sign)/1000,
-                     (((int)aa)*res->du.tv.sign)%1000);
+                     (int)((aa*res->du.tv.sign)%1000));
       break;
     }
     case INTV_DSUS_TYPE: {
@@ -2539,7 +2537,7 @@ int sqlite3VdbeMemIntervalAndInt(
       aa = aa*res->du.tv.sign;
       _setIntervalDSUS(&res->du.tv.u.ds,
                        (((long long)aa)*res->du.tv.sign)/1000000,
-                       (((int)aa)*res->du.tv.sign)%1000000);
+                       (int)((aa*res->du.tv.sign)%1000000));
       break;
     }
     case INTV_DECIMAL_TYPE: {
@@ -2584,11 +2582,11 @@ int sqlite3VdbeMemIntAndInterval(
     }
     case INTV_DS_TYPE: {
       aa = a->u.i;
-      bb = b->du.tv.sign*(int)(b->du.tv.u.ds.frac +
-                               1000*           b->du.tv.u.ds.sec +
-                               1000*60*        b->du.tv.u.ds.mins +
-                               1000*3600*      b->du.tv.u.ds.hours +
-                               1000*3600*24*   b->du.tv.u.ds.days);
+      bb = b->du.tv.sign*(long long)(b->du.tv.u.ds.frac +
+                                     1000LL*           b->du.tv.u.ds.sec +
+                                     1000LL*60*        b->du.tv.u.ds.mins +
+                                     1000LL*3600*      b->du.tv.u.ds.hours +
+                                     1000LL*3600*24*   b->du.tv.u.ds.days);
 
       if( opcode == OP_Multiply ){
         aa *= bb;
@@ -2599,7 +2597,7 @@ int sqlite3VdbeMemIntAndInterval(
       aa = aa*res->du.tv.sign;
       _setIntervalDS(&res->du.tv.u.ds,
                      (((long long)aa)*res->du.tv.sign)/1000,
-                     (((int)aa)*res->du.tv.sign)%1000);
+                     (int)((aa*res->du.tv.sign)%1000));
       break;
     }
     case INTV_DSUS_TYPE: {
@@ -2619,7 +2617,7 @@ int sqlite3VdbeMemIntAndInterval(
       aa = aa*res->du.tv.sign;
       _setIntervalDSUS(&res->du.tv.u.ds,
                        (((long long)aa)*res->du.tv.sign)/1000000,
-                       (((int)aa)*res->du.tv.sign)%1000000);
+                       (int)((aa*res->du.tv.sign)%1000000));
       break;
     }
     case INTV_DECIMAL_TYPE: {

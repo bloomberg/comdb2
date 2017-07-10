@@ -718,8 +718,7 @@ static uint8_t *osqlcomm_schemachange_type_get(struct schema_change_type *sc,
     uint8_t *tmp_buf =
         buf_get_schemachange(sc, (void *)p_buf, (void *)p_buf_end);
 
-    if (sc->table_len == -1 || sc->fname_len == -1 || sc->aname_len == -1 ||
-        sc->newcsc2_len < 0)
+    if (sc->table_len == -1 || sc->fname_len == -1 || sc->aname_len == -1)
         return NULL;
 
     return tmp_buf;
@@ -6032,7 +6031,7 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
                 "%s: master running out of memory! unable to alloc %d bytes\n",
                 __func__, dtalen + tailen);
         abort();
-        rc = NET_SEND_FAIL_MALLOC_FAIL;
+        /*rc = NET_SEND_FAIL_MALLOC_FAIL;*/
     } else {
 
         memmove(dup, dtap, dtalen);
@@ -8452,34 +8451,32 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         unsigned long long genid = 0;
         unsigned char *fnddta = malloc(32768 * sizeof(unsigned char));
 
+        if (fnddta == NULL) {
+            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %u failed\n",
+                   od_len);
+            exit(1);
+        }
         iq.usedb = req->db;
 
         od_len_int = getdatsize(iq.usedb);
         if (od_len_int <= 0) {
-            if (fnddta)
-                free(fnddta);
+            free(fnddta);
             break;
         }
         od_len = (size_t)od_len_int;
 
         step += 1;
         if (step <= gbl_osqlpf_step[req->i].step) {
-            if (fnddta)
-                free(fnddta);
+            free(fnddta);
             break;
         }
 
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %u failed\n", od_len);
-            exit(1);
-        }
 
         rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
                                                &fndlen, od_len);
 
         if ((is_bad_rc(rc)) || (od_len != fndlen)) {
-            if (fnddta)
-                free(fnddta);
+            free(fnddta);
             break;
         }
 
@@ -8509,8 +8506,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                                          req->rqid, req->seq);
         }
 
-        if (fnddta)
-            free(fnddta);
+        free(fnddta);
 
         /* enqueue faults for new keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
