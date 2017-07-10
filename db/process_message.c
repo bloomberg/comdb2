@@ -698,11 +698,10 @@ void *handle_exit_thd(void *arg)
     pthread_mutex_unlock(&exiting_lock);
 
     struct dbenv *dbenv = arg;
-    int qid, dbnum, alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
+    int qid, alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
     /* this defaults to 5 minutes */
     alarm(alarmtime);
-
 
     if (bdb_is_an_unconnected_master(dbenv->dbs[0]->handle)) {
        logmsg(LOGMSG_INFO, "This was standalone\n");
@@ -736,8 +735,6 @@ void *handle_exit_thd(void *arg)
         for (ii = 0; ii < thedb->num_qdbs; ii++)
             dbqueue_stat(thedb->qdbs[ii], 0, 0, 1 /*(blocking call)*/);
     }
-
-    dbnum = dbenv->dbnum;
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     flush_db();

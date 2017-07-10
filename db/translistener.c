@@ -1262,17 +1262,13 @@ int javasp_load_procedure_int(const char *name, const char *param,
                 logmsg(LOGMSG_ERROR, 
                         "queue parameter ignored for new queue definition\n");
             } else {
-
                 queue = strtok_r(NULL, toksep, &endp);
                 if (queue == NULL) {
                     logmsg(LOGMSG_ERROR, "queue takes one argument (%s)\n", argv[0]);
                     rc = -1;
                     goto done;
                 }
-                for (i = 0; i < thedb->num_qdbs; i++)
-                    if (strcasecmp(thedb->qdbs[i]->dbname, queue) == 0)
-                        break;
-                if (i == thedb->num_qdbs) {
+                if ((getqueuebyname(queue)) == NULL) {
                     logmsg(LOGMSG_ERROR, "queue '%s' does not exist\n", queue);
                     rc = -1;
                     goto done;
