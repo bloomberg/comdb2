@@ -1,2 +1,2 @@
 include $(TESTSROOTDIR)/testcase.mk
-export TEST_TIMEOUT=6m
+export TEST_TIMEOUT=10m

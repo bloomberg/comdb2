@@ -14,23 +14,23 @@ function process_node() {
     currused=$2
 
     #set threshold to something low 
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node  "exec procedure sys.cmd.send('analyze thresh 1000')" &> t4_01.req.res.1
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node  "exec procedure sys.cmd.send('analyze thresh 1000')" &> t04_01.req.res.1
 
     #set headroom to current disk headroom
     headroom=$((100-currused+1))
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('analyze headroom $headroom')" &> t4_01.req.res.2
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('analyze headroom $headroom')" &> t04_01.req.res.2
 
     #run analyze
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.analyze('t1')"  &> t4_01.req.res.3
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.analyze('t1')"  &> t04_01.req.res.3
 
-    if ! diff t4_01.req.out.3 t4_01.req.res.3 ; then
-        echo FAIL: diff t4_01.req.out.3 t4_01.req.res.3 not what it should be, node $node, headroom $headroom
+    if ! diff t04_01.req.out.3 t04_01.req.res.3 ; then
+        echo FAIL: diff t04_01.req.out.3 t04_01.req.res.3 not what it should be, node $node, headroom $headroom
         exit 0
     fi
 
     #set it back to large, in case we have other tests after this one
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('analyze thresh 1000000')" &> t4_01.req.res.4
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('analyze headroom 6')" &> t4_01.req.res.5
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('analyze thresh 1000000')" &> t04_01.req.res.4
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('analyze headroom 6')" &> t04_01.req.res.5
 }
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
