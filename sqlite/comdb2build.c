@@ -1658,10 +1658,16 @@ out:
 // TODO: Modify for sequences
 void comdb2AlterSequence(
     Parse *pParse, /* Parser context */
-    Token *pName1, /* First part of the name of the table or view */
-    Token *pName2, /* Second part of the name of the table or view */
-    int opt,       /* Various options for alter (compress, etc) */
-    Token *csc2, int dryrun)
+    char *name, /* Name of sequence */
+    long long min_val,
+    long long max_val,
+    long long inc,
+    bool cycle,
+    long long start_val,
+    long long chunk_size,
+    int flags,
+    int dryrun
+)
 {
     sqlite3 *db = pParse->db;
     Vdbe *v = sqlite3GetVdbe(pParse);
@@ -1672,28 +1678,28 @@ void comdb2AlterSequence(
         return;
     }
 
-    if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 1))
+    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 0))
         goto out;
 
-    if (authenticateSC(sc->table, pParse)) goto out;
+    // if (authenticateSC(sc->table, pParse)) goto out;
 
-    v->readOnly = 0;
-    sc->alteronly = 1;
-    sc->nothrevent = 1;
-    sc->live = 1;
-    sc->use_plan = 1;
-    sc->scanmode = SCAN_PARALLEL;
-    sc->dryrun = dryrun;
-    fillTableOption(sc, opt);
+    // v->readOnly = 0;
+    // sc->alteronly = 1;
+    // sc->nothrevent = 1;
+    // sc->live = 1;
+    // sc->use_plan = 1;
+    // sc->scanmode = SCAN_PARALLEL;
+    // sc->dryrun = dryrun;
+    // fillTableOption(sc, opt);
 
-    copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
-    if (dryrun)
-        comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
-                             (vdbeFuncArgFree)&free_schema_change_type);
-    else
-        comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                            (vdbeFuncArgFree)&free_schema_change_type);
-    return;
+    // copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
+    // if (dryrun)
+    //     comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
+    //                          (vdbeFuncArgFree)&free_schema_change_type);
+    // else
+    //     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+    //                         (vdbeFuncArgFree)&free_schema_change_type);
+    // return;
 
 out:
     free_schema_change_type(sc);

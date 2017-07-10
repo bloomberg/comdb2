@@ -647,11 +647,11 @@ typedef struct {
     /* Basic Attributes */
     long long min_val; /* Values dispensed must be greater than or equal to min_val */
     long long max_val; /* Values dispensed must be less than or equal to max_val */
+    long long start_val; /* Start value for the sequence*/
     long long increment; /* Normal difference between two consecutively dispensed values */
     bool cycle; /* If cycling values is permitted */
 
     /* Dispensing */
-    long long prev_val; /* Previously dispensed value */
     long long next_val; /* Next value to be dispensed */
 
     /* Synchronization with llmeta */
@@ -2377,9 +2377,10 @@ int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
 int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
 
-sequence_t *new_sequence (char* name, long long min_val, long long max_val, 
-    long long increment, bool cycle, long long start_val, long long chunk_size, 
-    char flags, long long remaining_vals, long long next_start_val) ;
+sequence_t *new_sequence(char *name, long long min_val, long long max_val,
+                         long long next_val, long long increment, bool cycle,
+                         long long start_val, long long chunk_size, char flags,
+                         long long remaining_vals, long long next_start_val);
 
 int put_db_odh(struct dbtable *db, tran_type *, int odh);
 int get_db_odh(struct dbtable *db, int *odh);

@@ -1846,39 +1846,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok = segtok(line, lline, &st, &ltok);
         char *name = "tst";
 
-        if (tokcmp(tok, ltok, "add") == 0) {
-            name = segtok(line, lline, &st, &ltok);
-
-            if (!add_sequence(name, 0, 11, -1, true, 0, 5, 0)) {
-                logmsg(LOGMSG_USER, "Created sequence \"%s\"\n", name);
-            } else {
-                logmsg(LOGMSG_USER, "Failed to create sequence\n");
-            }
-        }
-
-        else if (tokcmp(tok, ltok, "drop") == 0) {
-            name = segtok(line, lline, &st, &ltok);
-            
-            if (!drop_sequence(name)) {
-                logmsg(LOGMSG_USER, "Deleted sequence \"%s\"\n", name);
-            } else {
-                logmsg(LOGMSG_USER, "Failed to delete sequence\n");
-            }
-        }
-
-        else if (tokcmp(tok, ltok, "dropall") == 0) {
-            while (thedb->num_sequences > 0) {
-                sequence_t *seq = thedb->sequences[0];
-
-                if (!drop_sequence(seq->name)) {
-                    logmsg(LOGMSG_USER, "Deleted sequence \"%s\"\n", seq->name);
-                } else {
-                    logmsg(LOGMSG_USER, "Failed to delete sequence\n");
-                }
-            }
-        }
-
-        else if (tokcmp(tok, ltok, "next_val") == 0) {
+        if (tokcmp(tok, ltok, "next_val") == 0) {
             name = segtok(line, lline, &st, &ltok);
             long long *val = (long long *) malloc(sizeof(long long));
 
@@ -1891,28 +1859,15 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             free(val);
         }
 
-        else if (tokcmp(tok, ltok, "prev_val") == 0) {
-            name = segtok(line, lline, &st, &ltok);
-            long long *val = (long long *) malloc(sizeof(long long));
-
-            if (seq_prev_val(name, val) == 0) {
-                logmsg(LOGMSG_USER, "Value: %d\n", *val);
-            } else {
-                logmsg(LOGMSG_USER, "Failed to obtain prev value");
-            }
-            
-            free(val);
-        }
-
         else if (tokcmp(tok, ltok, "print") == 0) {
             int idx;
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
-                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %lld\nPrev Val: %lld\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nRemaining Vals: %lld\nNext Start Val: %lld\nSequence Exhausted?: %s\n",
+                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %lld\nStart Val: %lld\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nRemaining Vals: %lld\nNext Start Val: %lld\nSequence Exhausted?: %s\n",
                     idx+1,
                     seq->name,
                     seq->next_val,
-                    seq->prev_val,
+                    seq->start_val,
                     seq->min_val,
                     seq->max_val,
                     seq->increment,

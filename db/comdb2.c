@@ -871,6 +871,12 @@ struct dbtable *getqueuebyname(const char *name)
     return hash_find_readonly(thedb->qdb_hash, &name);
 }
 
+/**
+ *  Helper to return a pointer to a sequence by name. Returns NULL if it cannot
+ *  be found.
+ *
+ *  @param name char * Name of the sequence
+ */
 sequence_t *getsequencebyname(const char *name)
 {
     int i;
@@ -1514,20 +1520,24 @@ static int lrllinecmp(char *lrlline, char *cmpto)
 /**
  * Creates a sequence_t object from parameters passed to this function
  *
- * @param name char*
- * @param min_val long long
- * @param max_val long long
- * @param increment long long
- * @param cycle bool
- * @param start_val long long
- * @param chunk_size long long
- * @param flags char
- * @param remaining_vals long long
- * @param next_start_val long long
+ * @param name char* Name of sequence
+ * @param min_val long long Minimum Value
+ * @param max_val long long Maximum Value
+ * @param next_val long long Next value to be dispensed by the sequence
+ * @param increment long long Increment that the sequence changes by each time a
+ * value is requested
+ * @param cycle bool Flag for cyclic sequence behaviour
+ * @param start_val long long Start value for sequence
+ * @param chunk_size long long Number of sequence values to allocate into memory
+ * @param flags char Flags for sequences
+ * @param remaining_vals long long Remaining values before needing to allocated
+ * more values to memory
+ * @param next_start_val long long Start value of the next set of values to be
+ * allocated to memory
  */
 sequence_t *new_sequence(char *name, long long min_val, long long max_val,
-                         long long increment, bool cycle, long long start_val,
-                         long long chunk_size, char flags,
+                         long long next_val, long long increment, bool cycle,
+                         long long start_val, long long chunk_size, char flags,
                          long long remaining_vals, long long next_start_val)
 {
     sequence_t *new_seq = malloc(sizeof(sequence_t));
@@ -1539,10 +1549,10 @@ sequence_t *new_sequence(char *name, long long min_val, long long max_val,
     strcpy(new_seq->name, name);
     new_seq->min_val = min_val;
     new_seq->max_val = max_val;
+    new_seq->start_val = start_val;
     new_seq->increment = increment;
     new_seq->cycle = cycle;
-    new_seq->prev_val = start_val;
-    new_seq->next_val = start_val;
+    new_seq->next_val = next_val;
     new_seq->chunk_size = chunk_size;
     new_seq->flags = flags;
     new_seq->remaining_vals = remaining_vals;
@@ -2226,16 +2236,18 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         char *name = seq_names[i];
         long long min_val;
         long long max_val;
+        long long next_val;
         long long increment;
         bool cycle;
         long long start_val;
+        long long next_start_val;
         long long remaining_vals;
         long long chunk_size;
         char flags;
 
         // Get sequence configuration from llmeta
         rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment,
-                                     &cycle, &start_val, &chunk_size, &flags,
+                                     &cycle, &start_val, &next_start_val, &chunk_size, &flags,
                                      &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't get information for sequence \"%s\"\n",
@@ -2244,10 +2256,11 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         }
 
         // Get new chunk of sequence values from llmeta
-        long long next_start_val = start_val;
+        next_val = next_start_val;
+
         rc = bdb_llmeta_get_sequence_chunk(
             NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags,
-            &remaining_vals, &next_start_val, &bdberr);
+            &remaining_vals, start_val, &next_start_val, &bdberr);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -2256,7 +2269,7 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         }
 
         // Create new sequence in memory
-        seq = new_sequence(name, min_val, max_val, increment, cycle, start_val,
+        seq = new_sequence(name, min_val, max_val, next_val, increment, cycle, start_val,
                            chunk_size, flags, remaining_vals, next_start_val);
 
         if (seq == NULL) {

@@ -191,19 +191,10 @@ columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
 columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 
-///////////////////// COMDB2 CREATE SEQUENCE statement ////////////////////////////
+///////////////////// COMDB2 SEQUENCE arguments ////////////////////////////
 
 %include {
   #include <limits.h>
-
-  enum {
-    SEQ_MIN_VAL = 1,
-    SEQ_MAX_VAL = 2,
-    SEQ_INC = 4,
-    SEQ_CYCLE = 8,
-    SEQ_START_VAL = 16,
-    SEQ_CHUNK_SIZE = 32
-  };
 
   typedef struct {
     int type;
@@ -216,20 +207,11 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
     long long max_val; /* Values dispensed must be less than or equal to max_val */
     long long increment; /* Normal difference between two consecutively dispensed values */
     long long cycle; /* If cycling values is permitted */
-    long long start_val;
+    long long start_val; /* Value from START WITH from CREATE*/
+    long long restart_val; /* Value from RESTART WITH from ALTER  */
     long long chunk_size; /* Number of values to allocate from llmeta */
-    int modified;
+    int modified; /* Flags indicating which fields were modified */
   } seq_args;
-}
-
-cmd ::= create_sequence.
-create_sequence::= createkw SEQUENCE ifnotexists(E) nm(N) create_sequence_args(A). {
-  // Null terminate string
-  char name[N.n + 1];
-  memcpy(name, N.z, N.n);
-  name[N.n] = '\0';
-
-  comdb2CreateSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,E);
 }
 
 // Rule for long long ints
@@ -256,8 +238,8 @@ ulonglong(A) ::= INTEGER(B). {
   A = strtoll(out, NULL, 10);
 }
 
-%type create_sequence_args {seq_args}
-create_sequence_args(A) ::= create_sequence_arg(B) create_sequence_args(C). {
+%type sequence_args {seq_args}
+sequence_args(A) ::= sequence_arg(B) sequence_args(C). {
   // Copy previous set of options
   A = C;
 
@@ -298,7 +280,7 @@ create_sequence_args(A) ::= create_sequence_arg(B) create_sequence_args(C). {
   // Mark field as modified from default
   A.modified |= B.type;
 }
-create_sequence_args(A) ::= . {
+sequence_args(A) ::= . {
   // Defaults
   A.min_val = 1;
   A.max_val = LLONG_MAX;
@@ -310,62 +292,79 @@ create_sequence_args(A) ::= . {
   A.modified = 0;
 }
 
-%type create_sequence_arg {seq_arg}
-create_sequence_arg(A) ::= create_sequence_start_with(A).
-create_sequence_arg(A) ::= create_sequence_increment_by(A).
-create_sequence_arg(A) ::= create_sequence_min_value(A).
-create_sequence_arg(A) ::= create_sequence_max_value(A).
-create_sequence_arg(A) ::= create_sequence_cycle(A).
-create_sequence_arg(A) ::= create_sequence_chunk(A).
+%type sequence_arg {seq_arg}
+sequence_arg(A) ::= sequence_start_with(A).
+sequence_arg(A) ::= sequence_increment_by(A).
+sequence_arg(A) ::= sequence_min_value(A).
+sequence_arg(A) ::= sequence_max_value(A).
+sequence_arg(A) ::= sequence_cycle(A).
+sequence_arg(A) ::= sequence_chunk(A).
 
-%type create_sequence_start_with {seq_arg}
-create_sequence_start_with(A) ::= START WITH longlong(B). {
+%type sequence_start_with {seq_arg}
+sequence_start_with(A) ::= START WITH longlong(B). {
+  A.type = SEQ_START_VAL;
+  A.data = B;
+}
+sequence_start_with(A) ::= START longlong(B). {
   A.type = SEQ_START_VAL;
   A.data = B;
 }
 
-%type create_sequence_increment_by {seq_arg}
-create_sequence_increment_by(A) ::= INCREMENT BY longlong(B). {
+%type sequence_increment_by {seq_arg}
+sequence_increment_by(A) ::= INCREMENT BY longlong(B). {
   A.type = SEQ_INC;
   A.data = B;
 }
 
-%type create_sequence_min_value {seq_arg}
-create_sequence_min_value(A) ::= MINVALUE longlong(B). {
+%type sequence_min_value {seq_arg}
+sequence_min_value(A) ::= MINVALUE longlong(B). {
   A.type = SEQ_MIN_VAL;
   A.data = B;
 }
-create_sequence_min_value(A) ::= NO MINVALUE. {
+sequence_min_value(A) ::= NO MINVALUE. {
   A.type = -1;
 }
 
-%type create_sequence_max_value {seq_arg}
-create_sequence_max_value(A) ::= MAXVALUE longlong(B). {
+%type sequence_max_value {seq_arg}
+sequence_max_value(A) ::= MAXVALUE longlong(B). {
   A.type = SEQ_MAX_VAL;
   A.data = B;
 }
-create_sequence_max_value(A) ::= NO MAXVALUE. {
+sequence_max_value(A) ::= NO MAXVALUE. {
   A.type = -1;
 }
 
-%type create_sequence_cycle {seq_arg}
-create_sequence_cycle(A) ::= CYCLE. {
+%type sequence_cycle {seq_arg}
+sequence_cycle(A) ::= CYCLE. {
   A.type = SEQ_CYCLE;
   A.data = 1;
 }
-create_sequence_cycle(A) ::= NO CYCLE. {
+sequence_cycle(A) ::= NO CYCLE. {
   A.type = SEQ_CYCLE;
   A.data = 0;
 }
 
-%type create_sequence_chunk {seq_arg}
-create_sequence_chunk(A) ::= CHUNK ulonglong(B). {
+%type sequence_chunk {seq_arg}
+sequence_chunk(A) ::= CHUNK ulonglong(B). {
   A.type = SEQ_CHUNK_SIZE ;
   A.data = B;
 }
-create_sequence_chunk(A) ::= NO CHUNK. {
+sequence_chunk(A) ::= NO CHUNK. {
   A.type = -1;
 }
+
+///////////////////// COMDB2 CREATE SEQUENCE statement ////////////////////////////
+
+cmd ::= createkw SEQUENCE ifnotexists(E) nm(N) sequence_args(A). {
+  // Null terminate string
+  char name[N.n + 1];
+  memcpy(name, N.z, N.n);
+  name[N.n] = '\0';
+
+  comdb2CreateSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,E);
+}
+
+///////////////////// COMDB2 DROP SEQUENCE statement ////////////////////////////
 
 cmd ::= DROP SEQUENCE nm(N). {
   // Null terminate string
@@ -374,6 +373,76 @@ cmd ::= DROP SEQUENCE nm(N). {
   name[N.n] = '\0';
 
   comdb2DropSequence(pParse,name);
+}
+
+///////////////////// COMDB2 ALTER SEQUENCE statement ////////////////////////////
+
+cmd ::= dryrun(D) ALTER SEQUENCE nm(N) alter_sequence_args(A). {
+  // Null terminate string
+  char name[N.n + 1];
+  memcpy(name, N.z, N.n);
+  name[N.n] = '\0';
+
+  // TODO: Figure out everything with restart value
+  // comdb2AlterSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,A.modified,D);
+}
+
+%type sequence_restart_with {seq_arg}
+sequence_restart_with(A) ::= RESTART WITH longlong(B). {
+  A.type = SEQ_RESTART_VAL;
+  A.data = B;
+}
+sequence_restart_with(A) ::= RESTART longlong(B). {
+  A.type = SEQ_RESTART_VAL;
+  A.data = B;
+}
+sequence_restart_with(A) ::= RESTART. {
+  A.type = SEQ_RESTART_TO_START_VAL;
+}
+
+%type alter_sequence_arg {seq_arg}
+alter_sequence_arg(A) ::= sequence_arg(A). // All other sequence options
+alter_sequence_arg(A) ::= sequence_restart_with(A).
+
+
+// Alter sequence adds RESTART option
+%type alter_sequence_args {seq_args}
+alter_sequence_args(A) ::= alter_sequence_arg(B) alter_sequence_args(C). {
+  // Copy previous set of options
+  A = C;
+
+  if (B.type < 0){
+    return;
+  }
+
+  switch(B.type) {
+    case SEQ_MIN_VAL:
+      A.min_val = B.data;
+      break;
+    case SEQ_MAX_VAL:
+      A.max_val = B.data;
+      break;
+    case SEQ_INC:
+      A.increment = B.data;
+      break;
+    case SEQ_CYCLE:
+      A.cycle = B.data;
+      break;
+    case SEQ_START_VAL:
+      A.start_val = B.data;
+      break;
+    case SEQ_CHUNK_SIZE:
+      A.chunk_size = B.data;
+      break;
+    case SEQ_RESTART_VAL:
+      A.restart_val = B.data;
+  }
+
+  // Mark field as modified from default
+  A.modified |= B.type;
+}
+alter_sequence_args(A) ::= . {
+  A.modified = 0;
 }
 
 // Define operator precedence early so that this is the first occurrence
