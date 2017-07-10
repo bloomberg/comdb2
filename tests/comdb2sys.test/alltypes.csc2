@@ -12,6 +12,7 @@ schema
     pstring     alltypes_pstring[16]            null=yes
     blob        alltypes_blob                   null=yes
     datetime    alltypes_datetime               null=yes
+    datetimeus  alltypes_datetimeus             null=yes
     vutf8       alltypes_vutf8[16]              null=yes
     intervalym  alltypes_intervalym             null=yes
     intervalds  alltypes_intervalds             null=yes

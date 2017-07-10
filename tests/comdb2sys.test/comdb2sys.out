@@ -13,6 +13,7 @@
 (tablename='alltypes', columnname='alltypes_byte', type='byte', size=17, sqltype='blob(16)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='alltypes', columnname='alltypes_cstring', type='cstring', size=16, sqltype='char(15)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='alltypes', columnname='alltypes_datetime', type='datetime', size=11, sqltype='datetime', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='alltypes', columnname='alltypes_datetimeus', type='datetimeus', size=13, sqltype='datetimeus', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='alltypes', columnname='alltypes_decimal128', type='decimal128', size=22, sqltype='decimal', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='alltypes', columnname='alltypes_decimal32', type='decimal32', size=7, sqltype='decimal', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='alltypes', columnname='alltypes_decimal64', type='decimal64', size=13, sqltype='decimal', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
