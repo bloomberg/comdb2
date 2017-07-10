@@ -1140,7 +1140,7 @@ void serialise_database(
 
         // Write the header
         TarHeader head;
-        head.set_filename("data.tmp");
+        head.set_filename(getDTString() + ".data");
         head.set_attrs(st);
         head.set_checksum();
 
@@ -1156,7 +1156,6 @@ void serialise_database(
             page_it = page_number_vec.begin();
 
         ssize_t data_written = 0;
-
         // First, serialise any complete log files that are in the .txn
         // directory and notify the running database that they can now be
         // archived.
@@ -1189,10 +1188,11 @@ void serialise_database(
         }
 
         // The length of the output must be a multiple of 512 bytes
-        bytesleft = total_data_size & (512 - 1);
+        size_t bytesleft = total_data_size & (512 - 1);
         bytesleft = 512 - bytesleft;
         if(bytesleft > 0 && bytesleft < 512) {
-        writepadding(bytesleft);
+            writepadding(bytesleft);
+        }
 
         // Serialise all remaining log files, including incomplete ones
         serialise_log_files(dbtxndir, dbdir, log_number, false);
@@ -1213,14 +1213,4 @@ void serialise_database(
     writepadding(2 * 512);
 
     // Success, all done!
-}
-
-void incr_deserialise_database(
-  const std::string *p_lrldestdir,
-  const std::string *p_datadest,
-  const std::string& incr_name,
-  const std::string& incr_path
-)
-{
-    return;
 }

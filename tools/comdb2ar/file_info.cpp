@@ -1,6 +1,7 @@
 #include "file_info.h"
 
 #include "comdb2ar.h"
+#include "error.h"
 
 #include <iostream>
 #include <sstream>
@@ -177,8 +178,71 @@ bool read_FileInfo(const std::string& line, FileInfo& file)
                 f.set_checksums();
 
             } else if(tok == "Sparse") {
-               fprintf(stderr, "tok=Sparse, calling set_sparse\n");
+                fprintf(stderr, "tok=Sparse, calling set_sparse\n");
                 f.set_sparse();
+
+            } else if(tok == "New") {
+                continue;
+
+            } else {
+                return false;
+            }
+        }
+        file = f;
+        return true;
+    }
+    return false;
+}
+
+bool read_incr_FileInfo(const std::string& line, FileInfo& file,
+        std::vector<uint32_t>& incr_pages)
+// Attempt to deserialise a FileInfo object from the provided string.
+// Returns true and populates file if this is possible, otherwise returns
+// false.
+{
+    std::istringstream ss(line);
+    std::string tok;
+
+    if(ss >> tok && tok == "File" && ss >> tok) {
+        FileInfo f;
+        f.set_filename(tok);
+        while(ss >> tok) {
+            if(tok == "Type") {
+                if(!(ss >> tok)) return false;
+                f.set_type(tok);
+
+            } else if(tok == "PageSize") {
+                size_t pagesize;
+                if(!(ss >> pagesize)) return false;
+                f.set_pagesize(pagesize);
+
+            } else if(tok == "Checksums") {
+                f.set_checksums();
+
+            } else if(tok == "Sparse") {
+                fprintf(stderr, "tok=Sparse, calling set_sparse\n");
+                f.set_sparse();
+
+            } else if(tok == "New") {
+                continue;
+
+            } else if(tok == "Updated") {
+                continue;
+
+            } else if(tok == "Deleted") {
+                continue;
+
+            } else if(tok == "Pages") {
+                if(!(ss >> tok)) return false;
+                if(tok != "[") return false;
+                while(ss >> tok){
+                    if (tok == "]") break;
+                    try {
+                        incr_pages.push_back(std::stoi(tok));
+                    } catch (Error &e) {
+                        return false;
+                    }
+                }
 
             } else {
                 return false;

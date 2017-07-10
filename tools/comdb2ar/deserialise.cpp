@@ -7,6 +7,7 @@
 #include "lrlerror.h"
 #include "tar_header.h"
 #include "riia.h"
+#include "increment.h"
 
 #include <cstdlib>
 #include <map>
@@ -216,7 +217,7 @@ static void remove_old_files(const std::list<std::string>& dirlist,
 
 
 
-static bool read_octal_ull(const char *str, size_t len, unsigned long long& number)
+bool read_octal_ull(const char *str, size_t len, unsigned long long& number)
 {
     if(*str == '\200') {
         /* This is encoded in base 256 as per the GNU extensions */
@@ -613,8 +614,8 @@ void deserialise_database(
         // If the block is entirely blank then we're done
         if(std::memcmp(head.c, zero_head, 512) == 0) {
             if(incr_mode){
-                restore_increments(
-                    lrldestdir
+                incr_deserialise_database(
+                    lrldestdir,
                     datadestdir,
                     table_set,
                     percent_full,
@@ -665,10 +666,6 @@ void deserialise_database(
         if(filename == "MANIFEST") {
             is_manifest = true;
         }
-
-        if(filename == "INCR_MANIFEST) {
-
-
 
         // Gather the text of the file for lrls and manifests
         std::string text;

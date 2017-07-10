@@ -208,5 +208,3 @@ bool isDirectory(const std::string& file) {
     else
         return false;
 }
-
-

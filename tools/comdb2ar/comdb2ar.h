@@ -79,6 +79,7 @@ ssize_t readall(int fd, void *buf, size_t nbytes);
 // Read all the bytes requested from the given fd.  Returns the number of bytes
 // read, or -1 on error or 0 on eof.
 
+bool read_octal_ull(const char *str, size_t len, unsigned long long& number);
 
 void serialise_database(
   std::string lrlpath,

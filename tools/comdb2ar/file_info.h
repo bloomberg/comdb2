@@ -1,16 +1,16 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
-   
+
        http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and 
+   See the License for the specific language governing permissions and
    limitations under the License.
  */
 
@@ -21,6 +21,7 @@
 #include <ostream>
 #include <iostream>
 #include <stdio.h>
+#include <vector>
 
 class FileInfo {
 // This stores info about a file that is going to be serialised
@@ -40,7 +41,7 @@ private:
 
     std::string m_filepath;
     // Path to the file e.g. /bb/bin/mydb.lrl or /bb/data/mydb/mydb.dta
-    
+
     std::string m_filename;
     // The relative filename that will be recorded in the serialised stream
     // e.g. mydb.lrl or mydb/mydb.dta
@@ -86,7 +87,7 @@ public:
 
     FileInfo& operator=(const FileInfo& rhs);
     // Assignment operator
-    
+
     void reset();
 
 
@@ -103,15 +104,15 @@ public:
     // type will be set to unknown.
 
 
-    void set_sparse(bool sparse = true) 
+    void set_sparse(bool sparse = true)
     {
        fprintf(stderr, "set_sparse fileinfo called...\n");
-          
+
        if (sparse)
           fprintf(stderr, "set_sparse fileinfo called with sparse true\n");
-       
-       m_sparse = sparse; 
-    } 
+
+       m_sparse = sparse;
+    }
 
     // Getters
     const std::string& get_filepath() const { return m_filepath; }
@@ -139,6 +140,9 @@ bool read_FileInfo(const std::string& line, FileInfo& file);
 // Attempt to deserialise a FileInfo object from the provided string.
 // Returns true and populates file if this is possible, otherwise returns
 // false.
+
+bool read_incr_FileInfo(const std::string& line, FileInfo& file,
+        std::vector<uint32_t>& incr_pages);
 
 
 bool recognise_data_file(const std::string& filename, bool llmeta_mode,
