@@ -3337,6 +3337,7 @@ int release_locks(const char *trace)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd ? thd->sqlclntstate : NULL;
+    int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
         extern int gbl_sql_release_locks_trace;
@@ -3344,9 +3345,9 @@ int release_locks(const char *trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
                    trace);
-        recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
+        rc = recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
     }
-    return 0;
+    return rc;
 }
 
 int release_locks_on_emit_row(struct sqlthdstate *thd,
@@ -7605,14 +7606,25 @@ retry:
         }
         if (rc == 0) { // descriptor not ready, write will block
             if (gbl_sql_release_locks_on_slow_reader && !released_locks) {
-                release_locks("slow reader");
+                rc = release_locks("slow reader");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s release_locks generation changed\n", __func__);
+                    return -(SQLITE_DEADLOCK);
+                }
                 released_locks = 1;
             }
 
             if (bdb_lock_desired(thedb->bdb_env)) {
                 struct sql_thread *thd = pthread_getspecific(query_info_key);
                 if (thd) {
-                    recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                    rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                    if (rc) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s recover_deadlock generation changed\n",
+                               __func__);
+                        return -(SQLITE_DEADLOCK);
+                    }
                 }
             }
 
