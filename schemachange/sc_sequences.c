@@ -55,7 +55,7 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     int rc, bdberr;
 
     rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle,
-                                 start_val, chunk_size, flags, &bdberr);
+                                 start_val, start_val, chunk_size, flags, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't create new sequence \"%s\"\n", name);
@@ -69,7 +69,7 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
 
     rc = bdb_llmeta_get_sequence_chunk(
         NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags,
-        &remaining_vals, &next_start_val, &bdberr);
+        &remaining_vals, start_val, &next_start_val, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n",
@@ -87,7 +87,7 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     }
 
     // Create new sequence in memory
-    seq = new_sequence(name, min_val, max_val, increment, cycle, start_val,
+    seq = new_sequence(name, min_val, max_val, start_val, increment, cycle, start_val,
                        chunk_size, flags, remaining_vals, next_start_val);
 
     if (seq == NULL) {

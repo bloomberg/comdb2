@@ -39,7 +39,17 @@
 #define SET_ANALYZE_THREAD(opt, val) opt += (val & 0xFFFF)
 #define GET_ANALYZE_THREAD(opt) (opt & 0xFFFF)
 
-
+/* Enum for sequence options (type member)*/
+enum {
+    SEQ_MIN_VAL = 1, // Minimum Value
+    SEQ_MAX_VAL = 2, // Maximum Value
+    SEQ_INC = 4, // Increment by Value
+    SEQ_CYCLE = 8, // Flag for cyclic sequence
+    SEQ_START_VAL = 16, // Start Value
+    SEQ_CHUNK_SIZE = 32, // Size of chunk to dispense
+    SEQ_RESTART_VAL = 64, // Value to restart a sequence to
+    SEQ_RESTART_TO_START_VAL = 128 // Flag to restart sequence to start val
+};
 
 int  readIntFromToken(Token* t, int *rst);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
@@ -111,7 +121,9 @@ void comdb2deletePassword(Parse* pParse, Token* nm);
 void comdb2CreateSequence(Parse *pParse, char *name, long long min_val,
                           long long max_val, long long inc, bool cycle,
                           long long start_val, long long chunk_size, bool err);
-void comdb2AlterSequence(Parse *, Token *, Token *, int, Token *, int dryrun);
+void comdb2AlterSequence(Parse *pParse, char *name, long long min_val,
+                         long long max_val, long long inc, bool cycle,
+                         long long start_val, long long chunk_size, int flags, int dryrun);
 void comdb2DropSequence(Parse *pParse, char *name);
 
 int  comdb2genidcontainstime(void);
