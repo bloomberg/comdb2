@@ -745,53 +745,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             sbuf2printf(sb, "?Invalid genid48 command.\nFAILED\n");
             sbuf2flush(sb);
             continue;
-        } else if (cmd == cmd_disableskipscan) {
-            tok = segtok(line, rc, &st, &ltok);
-            if (ltok <= 0) {
-                sbuf2printf(sb, "?No tablename specified.\nFAILED\n");
-                sbuf2flush(sb);
-                continue;
-            }
-
-            char table[80] = {0};
-            /* grab the table */
-            tokcpy0(tok, ltok, table, sizeof(table));
-
-#ifdef DEBUG
-            printf("cmd_disableskipscan table '%s'\n", table);
-#endif
-
-            struct db *tbl = getdbbyname(table);
-            if (!tbl) {
-                sbuf2printf(sb, ">Cannot find table '%s'\nFAILED\n", table);
-                sbuf2flush(sb);
-                continue;
-            }
-            if (thedb->master != gbl_mynode) {
-                sbuf2printf(sb, ">Must be run on the master\nFAILED\n");
-                sbuf2flush(sb);
-                continue;
-            }
-
-            tok = segtok(line, rc, &st, &ltok);
-            if (ltok && strncmp(tok, "clear", 5) == 0) {
-                bdb_clear_table_parameter(NULL, table, "disableskipscan");
-            } else {
-                const char *value = "true";
-                bdb_set_table_parameter(NULL, table, "disableskipscan", value);
-            }
-
-            char *setval = NULL;
-            bdb_get_table_parameter(table, "disableskipscan", &setval);
-
-            if (setval) {
-                sbuf2printf(sb, ">disableskipscan set %s\n", setval);
-                free(setval);
-            } else
-                sbuf2printf(sb, ">disableskipscan cleared\n");
-            sbuf2printf(sb, "SUCCESS\n");
-            sbuf2flush(sb);
-            bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
         } else if (cmd == cmd_testcompr) {
             char table[128];
             tok = segtok(line, rc, &st, &ltok);
