@@ -325,10 +325,13 @@ cmd ::= REVOKE userschema(P) nm(U1) TO nm(U2). {
 //////////////////// COMDB2 TRUNCATE TABLE statement /////////////////////////
 
 cmd ::= truncate.
-truncate ::= TRUNCATE nm(T) dbnm(Y).
+truncate ::= TRUNCATE table_opt nm(T) dbnm(Y).
 {
     comdb2truncate(pParse, &T, &Y);
 }
+
+table_opt ::= .
+table_opt ::= TABLE.
 
 cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
     comdb2bulkimport(pParse, &A, &B, &C, &D);
