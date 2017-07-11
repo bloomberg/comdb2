@@ -59,7 +59,7 @@ void stack_me(char *location);
 typedef struct {
 	DB_LOCKOBJ *last_obj;
 	pthread_t tid;
-	const char *snap_info; /* contains cnonce */
+	snap_uid_t *snap_info; /* contains cnonce */
 	roff_t last_lock;
 	u_int32_t count;
 	u_int32_t id;
@@ -420,7 +420,7 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_USER, "*");
-		extern void log_snap_info_key(const char *);
+		extern void log_snap_info_key(snap_uid_t *);
 		log_snap_info_key(idmap[j].snap_info);
 		logmsg(LOGMSG_USER, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}

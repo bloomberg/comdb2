@@ -2470,6 +2470,15 @@ done:
     return 0;
 }
 
+/* make_random_str() will return a randomly generated string
+ * this is used to get a cnonce, composed of four components:
+ * the first part is the id of this host machine
+ * the second part is the PID of this client process
+ * the third part is the current time usec portion
+ * the fourth part is a [pseudo]random number
+ * NB: we try to make sure for the components to be nonzero
+ * this way the random str is printable
+ */
 static void make_random_str(char *str, int *len)
 {
     static int PID = 0;
@@ -2479,6 +2488,11 @@ static void make_random_str(char *str, int *len)
     }
     struct timeval tv;
     gettimeofday(&tv, NULL);
+    while (tv.tv_usec == 0) 
+        gettimeofday(&tv, NULL);
+    int rand = random();
+    while(rand == 0)
+        rand = random();
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
     *len = strlen(str);
     return;
