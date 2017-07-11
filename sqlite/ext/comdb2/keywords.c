@@ -23,7 +23,7 @@
 
 #include <assert.h>
 #include "comdb2systbl.h"
-#include "comdb2.h"
+#include "comdb2systblInt.h"
 
 #define INCLUDE_KEYWORDHASH_H
 #include "keywordhash.h" /* SQLITE_N_KEYWORD */
@@ -137,9 +137,8 @@ static int systblKeywordsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     case KEYWORDS_COLUMN_RESERVED:
         sqlite3_result_text(
             ctx,
-            (f_keywords[((systbl_keywords_cursor *)cur)->rowid].reserved == 1)
-                ? "YES"
-                : "NO",
+            YESNO(f_keywords[((systbl_keywords_cursor *)cur)->rowid].reserved ==
+                  1),
             -1, NULL);
         break;
     default: assert(0);
