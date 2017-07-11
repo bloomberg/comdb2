@@ -10662,6 +10662,8 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
             pCur->nmove += count;
             thd->had_tablescans = 1;
             thd->cost += pCur->find_cost + (pCur->move_cost * count);
+        } else if (rc == BDBERR_DEADLOCK) {
+            rc = SQLITE_DEADLOCK;
         }
     } else {
         int res;

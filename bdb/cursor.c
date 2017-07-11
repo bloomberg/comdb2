@@ -8087,7 +8087,16 @@ static void *db_count(void *varg)
         return NULL;
     }
     int64_t count = 0;
-    while ((rc = dbc->c_get(dbc, &k, &v, DB_NEXT | DB_MULTIPLE_KEY)) == 0) {
+    extern int gbl_move_deadlk_max_attempt;
+    int max_retries =
+        gbl_move_deadlk_max_attempt >= 0 ? gbl_move_deadlk_max_attempt : 500;
+    int nretries = 0;
+    while (1) {
+        rc = dbc->c_get(dbc, &k, &v, DB_NEXT | DB_MULTIPLE_KEY);
+        while (rc == DB_LOCK_DEADLOCK && nretries++ < max_retries) {
+            rc = dbc->c_get(dbc, &k, &v, DB_NEXT | DB_MULTIPLE_KEY);
+        }
+        if (rc != 0) break;
         uint8_t *kk, *vv;
         uint32_t ks, vs;
         void *bulk;
@@ -8151,5 +8160,6 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         pthread_attr_destroy(&attr);
     }
     *rcnt = count;
+    if (rc == DB_LOCK_DEADLOCK) return BDBERR_DEADLOCK;
     return rc == DB_NOTFOUND ? 0 : -1;
 }
