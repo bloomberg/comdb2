@@ -2047,16 +2047,16 @@ struct malloc_state {
 #  error "HIST_LEN is invalid."
 #endif
 
-#define ZERO_HIST(m) do {                           \
-  m->histindx = 0;                                  \
-  memset((m)->hist, 0, sizeof(void*) * HIST_LEN);   \
+#define ZERO_HIST(m) do {                               \
+  m->histindx = 0;                                      \
+  memset((m)->hist, 0, sizeof(void*) * HIST_LEN);       \
 } while (0)
 
-#define UPD_HIST(sz, m, mem) do {                   \
-  if (sz <= (1ULL << 20)) {                         \
-    m->hist[m->histindx] = mem;                     \
-    m->histindx = (m->histindx+1) & (HIST_LEN-1);   \
-  }                                                 \
+#define UPD_HIST(sz, m, mem) do {                       \
+  if (sz <= (1ULL << 20)) {                             \
+    m->hist[m->histindx] = mem;                         \
+    m->histindx = (m->histindx + 1) & (HIST_LEN - 1);   \
+  }                                                     \
 } while (0)
 
   void*      hist[HIST_LEN];
@@ -3627,7 +3627,6 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
       if (mp == NULL)
           tbase = CMFAIL;
       else {
-          UPD_HIST(rsize, m, mp);
           tbase = mp;
           tsize = rsize;
           mmap_flag = ALLOCFUNC_BIT;
@@ -3657,36 +3656,34 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
     }
 
     else {
-      /* Try to merge with an existing segment - See "Segments" section */
+      /* Try to merge with an existing segment */
       msegmentptr sp = &m->seg;
-      /* dlmalloc sweeps the segment list twice to determine
-         the consolidation scheme. We compact them into 1 scan
-         to speed up segment processing. */
-      while (sp != 0 &&
-             (tbase != sp->base + sp->size ||
-              sp->base != tbase + tsize))
+      while (sp != 0 && tbase != sp->base + sp->size)
         sp = sp->next;
-
-      if (sp == 0 || is_extern_segment(sp) ||
-          (sp->sflags & IS_MMAPPED_BIT) == mmap_flag) { /* noncontiguous */
-        if (tbase < m->least_addr)
-          m->least_addr = tbase;
-        add_segment(m, tbase, tsize, mmap_flag);
-      } else if ((tbase == sp->base + sp->size) &&
-                 segment_holds(sp, m->top)) { /* append */
+      if (sp != 0 &&
+          !is_extern_segment(sp) &&
+          (sp->sflags & IS_MMAPPED_BIT) == mmap_flag &&
+          segment_holds(sp, m->top)) { /* append */
         sp->size += tsize;
         init_top(m, m->top, m->topsize + tsize);
-      } else if (sp->base == tbase + tsize) { /* prepend */
+      }
+      else {
+        UPD_HIST(tsize, m, tbase);
         if (tbase < m->least_addr)
           m->least_addr = tbase;
-        char* oldbase = sp->base;
-        sp->base = tbase;
-        sp->size += tsize;
-        return prepend_alloc(m, tbase, oldbase, nb);
-      } else { /* old segment is holding `top' */
-        if (tbase < m->least_addr)
-          m->least_addr = tbase;
-        add_segment(m, tbase, tsize, mmap_flag);
+        sp = &m->seg;
+        while (sp != 0 && sp->base != tbase + tsize)
+          sp = sp->next;
+        if (sp != 0 &&
+            !is_extern_segment(sp) &&
+            (sp->sflags & IS_MMAPPED_BIT) == mmap_flag) {
+          char* oldbase = sp->base;
+          sp->base = tbase;
+          sp->size += tsize;
+          return prepend_alloc(m, tbase, oldbase, nb);
+        }
+        else
+          add_segment(m, tbase, tsize, mmap_flag);
       }
     }
 
