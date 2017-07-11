@@ -1417,7 +1417,7 @@ void sql_dump_hist_statements(void)
 /* Save copy of sql statement and performance data.  If any other code
    should run after a sql statement is completed it should end up here. */
 static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
-                               unsigned long long rqid, int stmt_rc)
+                               int stmt_rc)
 {
     struct sql_hist *h;
     LISTC_T(struct sql_hist) lst;
@@ -1426,6 +1426,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     int rc;
     int cost;
     int timems;
+    unsigned long long rqid = 0;
 
     if (thd == NULL)
         return;
@@ -1471,6 +1472,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
             if (!comdb2uuid_is_zero(clnt->osql.uuid))
                 reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
         }
+        rqid = clnt->osql.rqid; 
     }
 
     listc_init(&lst, offsetof(struct sql_hist, lnk));
@@ -5335,7 +5337,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     sqlite3_stmt *stmt = rec->stmt;
 
-    sql_statement_done(thd->sqlthd, thd->logger, clnt->osql.rqid, outrc);
+    sql_statement_done(thd->sqlthd, thd->logger, outrc);
 
     if (clnt->rawnodestats && thd->sqlthd) {
         clnt->rawnodestats->sql_steps +=
@@ -8682,7 +8684,7 @@ done_here:
         parameters_to_bind = NULL;
     }
 
-    sql_statement_done(thd, poolthd->logger, clnt->osql.rqid, rc);
+    sql_statement_done(thd, poolthd->logger, rc);
 
     if (clnt->rawnodestats && thd) {
         clnt->rawnodestats->sql_steps += thd->nmove + thd->nfind + thd->nwrite;

@@ -2488,11 +2488,6 @@ static void make_random_str(char *str, int *len)
     }
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    while (tv.tv_usec == 0) 
-        gettimeofday(&tv, NULL);
-    int rand = random();
-    while(rand == 0)
-        rand = random();
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
     *len = strlen(str);
     return;
