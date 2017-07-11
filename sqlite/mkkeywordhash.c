@@ -260,7 +260,7 @@ static Keyword aKeywordTable[] = {
   { "VIEW",             "TK_VIEW",         VIEW,                   0},
   { "VIRTUAL",          "TK_VIRTUAL",      VTAB,                   0},
   { "WITH",             "TK_WITH",         ALWAYS,                 1},
-  { "WITHOUT",          "TK_WITHOUT",      ALWAYS,                 1},
+//  { "WITHOUT",          "TK_WITHOUT",      ALWAYS,                 1},
   { "WHEN",             "TK_WHEN",         ALWAYS,                 1},
   { "WHERE",            "TK_WHERE",        ALWAYS,                 1},
 
