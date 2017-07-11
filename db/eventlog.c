@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#include <comdb2.h>
 #include <zlib.h>
 
 #include "reqlog_int.h"
@@ -526,6 +527,24 @@ void eventlog_add(const struct reqlogger *logger)
 
     cson_value_free(val);
 }
+
+void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
+{
+    if(obj && snap_info)
+        cson_object_set(obj, "cnonce", cson_value_new_string(snap_info->key, snap_info->keylen));
+}
+
+void eventlog_deadlock_loop(cson_value *val)
+{
+    if (eventlog == NULL) return;
+    if (!eventlog_enabled) return;
+
+    pthread_mutex_lock(&eventlog_lk);
+    cson_output(val, write_json, eventlog, &opt);
+    pthread_mutex_unlock(&eventlog_lk);
+}
+
+
 
 static void eventlog_roll(void)
 {

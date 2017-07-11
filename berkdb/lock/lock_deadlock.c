@@ -426,6 +426,46 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 	}
 	logmsg(LOGMSG_USER, "\n");
 }
+    
+#include "cson_amalgamation_core.h"
+static void
+__dd_log_deadlock_cycle(idmap, deadmap, nlockers, victim)
+	locker_info *idmap;
+	u_int32_t *deadmap;
+	u_int32_t nlockers, victim;
+{
+    cson_value *dval = cson_value_new_object();
+    cson_object *obj = cson_value_get_object(dval);
+
+    cson_value *dd_list = cson_value_new_array();
+    int64_t time_epochus(void);
+    uint64_t startus = time_epochus();
+    cson_object_set(obj, "time", cson_new_int(startus));
+    extern char *gbl_mynode;
+    cson_object_set(obj, "host",
+                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+    cson_object_set(obj, "deadlock_cycle", dd_list);
+    cson_array *arr = cson_value_get_array(dd_list);
+    cson_array_reserve(arr, nlockers);
+
+	for (int j = 0; j < nlockers; j++) {
+		if (!ISSET_MAP(deadmap, j)) continue;
+
+        cson_value *lobj = cson_value_new_object();
+        cson_object *vobj = cson_value_get_object(lobj);
+
+        void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
+		cson_snap_info_key(vobj, idmap[j].snap_info);
+        cson_object_set(vobj, "lid", cson_value_new_integer(idmap[j].id));
+        cson_object_set(vobj, "count", cson_value_new_integer(idmap[j].count));
+		if (j == victim)
+            cson_object_set(vobj, "victim", cson_value_new_bool(1));
+        cson_array_append(arr, lobj);
+	}
+	logmsg(LOGMSG_USER, "\n");
+    void eventlog_deadlock_loop(cson_value *val);
+    eventlog_deadlock_loop(dval);
+}
 
 
 static void
@@ -870,6 +910,9 @@ dokill:
 
 		if (gbl_print_deadlock_cycles)
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
+
+		if (gbl_print_deadlock_cycles)
+			__dd_log_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
 		/* Kill the locker with lockid idmap[killid]. */
 		if ((ret = __dd_abort(dbenv, &idmap[killid]))!=0) {
