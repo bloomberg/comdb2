@@ -620,7 +620,6 @@ void deserialise_database(
                     table_set,
                     percent_full,
                     force_mode,
-                    legacy_mode,
                     is_disk_full,
                     incr_path
                 );

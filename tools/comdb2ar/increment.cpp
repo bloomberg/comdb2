@@ -6,8 +6,6 @@
 #include "serialiseerror.h"
 #include "error.h"
 #include "tar_header.h"
-#include "fdostream.h"
-#include "file_info.h"
 
 #include <sys/stat.h>
 #include <fstream>
@@ -15,7 +13,6 @@
 #include <sstream>
 #include <iostream>
 #include <cassert>
-#include <memory>
 
 #include <vector>
 #include <set>
@@ -24,7 +21,6 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-
 
 bool is_not_incr_file(std::string filename){
     return(filename.substr(filename.length() - 5) != ".incr");
@@ -253,12 +249,19 @@ void incr_deserialise_database(
     std::set<std::string>& table_set,
     unsigned percent_full,
     bool force_mode,
-    bool legacy_mode,
     bool& is_disk_full,
     const std::string& incr_path
 )
 {
     static const char zero_head[512] = {0};
+
+    bool manifest_read = false;
+
+    std::map<std::string, FileInfo> new_files;
+    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>> updated_files;
+    std::set<std::string> deleted_files;
+    std::vector<std::string> file_order;
+    std::vector<std::string> options;
 
     while(true) {
 
@@ -277,11 +280,8 @@ void incr_deserialise_database(
             throw Error(ss);
         }
 
-        std::clog << bytes_read << std::endl;
-
         // If the block is entirely blank then we're done with the increment
         if(std::memcmp(head.c, zero_head, 512) == 0) {
-            std::clog << "blank" << std::endl;
             continue;
         }
 
@@ -290,15 +290,14 @@ void incr_deserialise_database(
             throw Error("Bad block: filename is not null terminated");
         }
         const std::string filename(head.h.filename);
-        std::clog << filename << ": ";
+        std::clog << "filename : " << filename << " | ";
 
         // Get the file size
         unsigned long long filesize;
         if(!read_octal_ull(head.h.size, sizeof(head.h.size), filesize)) {
             throw Error("Bad block: bad size");
         }
-        unsigned long long nblocks = (filesize + 511ULL) >> 9;
-        std::clog << filesize << std::endl;
+        std::clog << "filesize: " << filesize << std::endl;
 
         bool is_manifest = false;
         if(filename == "INCR_MANIFEST") {
@@ -310,22 +309,42 @@ void incr_deserialise_database(
         if(dot_pos != std::string::npos) {
             ext = filename.substr(dot_pos + 1);
         }
-        bool is_data = false;
+
+        bool is_incr_data = false;
+        bool is_data_file = false;
+        bool is_queue_file = false;
+        bool is_queuedb_file = false;
+
         if(ext == "data") {
-            is_data = true;
+            is_incr_data = true;
+        } else {
+            // If it's not a text file then look at the extension to see if it looks
+            // like a data file.  If it does then add it to our list of tables if
+            // not already present.  I was going to trust the lrl file for this
+            // (and use the dbname_file_vers_map for llmeta dbs) but the old
+            // comdb2backup script doesn't serialise the file_vers_map, so I can't
+            // do that yet. This way the onus is on the serialising side to get
+            // the list of files right.
+            if(filename.find_first_of('/') == std::string::npos) {
+                std::string table_name;
+
+                if(recognise_data_file(filename, false, is_data_file,
+                            is_queue_file, is_queuedb_file, table_name) ||
+                   recognise_data_file(filename, true, is_data_file,
+                            is_queue_file, is_queuedb_file, table_name)) {
+                    if(table_set.insert(table_name).second) {
+                        std::clog << "Discovered table " << table_name
+                            << " from data file " << filename << std::endl;
+                    }
+                }
+            }
         }
 
         // Gather the text of the file for lrls and manifests
 
-        std::unique_ptr<fdostream> of_ptr;
-
-        std::map<std::string, FileInfo> new_files;
-        std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>> updated_files;
-        std::set<std::string> deleted_files;
-        std::vector<std::string> file_order;
-        std::vector<std::string> options;
 
         if(is_manifest) {
+            manifest_read = true;
             std::string manifest_text = read_incr_manifest(filesize);
             if(!process_incr_manifest(manifest_text, datadestdir,
                     updated_files, new_files, deleted_files,
@@ -335,17 +354,29 @@ void incr_deserialise_database(
                 ss << "Error reading manifest";
                 throw Error(ss);
             }
-            for(std::vector<std::string>::const_iterator
-                    it = file_order.begin();
-                    it != file_order.end();
-                    ++it){
-                std::clog << *it << " ";
+        } else if(is_incr_data) {
+            unpack_incr_data(file_order, updated_files, datadestdir);
+        } else if (is_data_file || is_queue_file || is_queuedb_file) {
+            std::map<std::string, FileInfo>::iterator file_it = new_files.find(filename);
+
+            if(file_it == new_files.end()){
+                std::ostringstream ss;
+                ss << "Unable to locate file " << filename
+                   << " in manifest map during incremental update" << std::endl;
+                throw Error(ss);
             }
-            std::clog << std::endl;
+
+            unpack_full_file(&(file_it->second), filename, filesize, datadestdir,
+                   true, percent_full, is_disk_full);
+
 
         } else {
-            // TODO: UNPACK
-            // unupack_incr_data(file_order,
+            // ASSUMING THIS IS LOG OR CHECKPOINT FILE
+            unpack_full_file(NULL, filename, filesize, datadestdir, false,
+                    percent_full, is_disk_full);
         }
     }
+
+    handle_deleted_files(deleted_files, datadestdir, table_set);
+    recalc_incr_files(incr_path, datadestdir);
 }

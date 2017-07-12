@@ -32,7 +32,6 @@ void incr_deserialise_database(
     std::set<std::string>& table_set,
     unsigned percent_full,
     bool force_mode,
-    bool legacy_mode,
     bool& is_disk_full,
     const std::string& incr_path
 );
@@ -49,5 +48,29 @@ bool process_incr_manifest(
     std::vector<std::string>& file_order,
     std::vector<std::string>& options
 );
+
+void unpack_incr_data(
+    const std::vector<std::string>& file_order,
+    const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>& updated_files,
+    const std::string& datadestdir
+);
+
+void handle_deleted_files(
+    const std::set<std::string>& deleted_files,
+    const std::string& datadestdir,
+    std::set<std::string>& table_set
+);
+
+void unpack_full_file(
+    FileInfo *file_info_pt,
+    std::string filename,
+    unsigned long long filesize,
+    std::string datadestdir,
+    bool is_data_file,
+    unsigned percent_full,
+    bool& is_disk_full
+);
+
+void recalc_incr_files(std::string incr_path, std::string datadestdir);
 
 #endif

@@ -607,13 +607,11 @@ void serialise_database(
     }
 
     // Create the directory for incremental backups if needed
-    std::string aug_incr_path = dbdir + "/" + incr_path;
-
     if (incr_create) {
         struct stat sb;
 
-        if(!(stat(aug_incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
-            std::string cmd("mkdir -p " + aug_incr_path);
+        if(!(stat(incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
+            std::string cmd("mkdir -p " + incr_path);
             system(cmd.c_str());
         }
     }
@@ -720,7 +718,7 @@ void serialise_database(
     std::list<std::string> incr_files_list;
     std::set<std::string> incr_files;
     if(incr_gen) {
-        listdir(incr_files_list, aug_incr_path);
+        listdir(incr_files_list, incr_path);
         incr_files_list.remove_if(is_not_incr_file);
         incr_files = std::set<std::string>(incr_files_list.begin(), incr_files_list.end());
     }
@@ -784,6 +782,7 @@ void serialise_database(
 
     // Vector of files that need to be backed up in incremental mode
     std::vector<FileInfo> incr_data_files;
+    std::vector<FileInfo> new_files;
 
     // Vector of pages index aligned with each file to serialise
     std::vector<std::vector<uint32_t>> page_number_vec;
@@ -989,11 +988,17 @@ void serialise_database(
             std::vector<uint32_t> pages_list;
             ssize_t data_size = 0;
 
-            if(compare_checksum(*it, aug_incr_path, pages_list, &data_size, incr_files)) {
-                incr_data_files.push_back(*it);
-                page_number_vec.push_back(pages_list);
-                write_incr_manifest_entry(manifest, *it, pages_list);
-                total_data_size += data_size;
+            if(compare_checksum(*it, incr_path, pages_list, &data_size, incr_files)) {
+                // If pages list is empty but compare_checksum returned true, it's a new file
+                if(pages_list.empty()){
+                    new_files.push_back(*it);
+                    write_incr_manifest_entry(manifest, *it, pages_list);
+                } else {
+                    incr_data_files.push_back(*it);
+                    page_number_vec.push_back(pages_list);
+                    write_incr_manifest_entry(manifest, *it, pages_list);
+                    total_data_size += data_size;
+                }
             }
         }
 
@@ -1008,7 +1013,7 @@ void serialise_database(
                 it = incr_files.begin();
                 it != incr_files.end();
                 ++it){
-            std::string true_filename = aug_incr_path + "/" + *it;
+            std::string true_filename = incr_path + "/" + *it;
             if(remove(true_filename.c_str()) != 0){
                 std::ostringstream ss;
                 ss << "error deleting file: " << true_filename;
@@ -1113,7 +1118,7 @@ void serialise_database(
                 }
 
                 // Ok, now serialise this file.
-                serialise_file(*it, iom, "", aug_incr_path, incr_create);
+                serialise_file(*it, iom, "", incr_path, incr_create);
             }
 
             // Serialise all remaining log files, including incomplete ones
@@ -1168,19 +1173,10 @@ void serialise_database(
         }
 
         while(data_it != incr_data_files.end()){
-            // First, serialise any complete log files that are in the .txn
-            // directory and notify the running database that they can now be
-            // archived.
-            long long old_log_number(log_number);
-            serialise_log_files(dbtxndir, dbdir, log_number, true);
-            if(log_number != old_log_number && log_holder.get()) {
-                log_holder->release_log(log_number - 1);
-            }
-
             if((*page_it).empty()){
-                serialise_file(*data_it, iom, "", aug_incr_path, true);
+                serialise_file(*data_it, iom, "", incr_path, true);
             } else {
-                data_written += write_incr_file(*data_it, *page_it, aug_incr_path);
+                data_written += write_incr_file(*data_it, *page_it, incr_path);
             }
 
             ++data_it;
@@ -1194,13 +1190,33 @@ void serialise_database(
             writepadding(bytesleft);
         }
 
-        // Serialise all remaining log files, including incomplete ones
-        serialise_log_files(dbtxndir, dbdir, log_number, false);
-
         if(data_written != total_data_size){
             ss <<"file sizes changed during incremental backup";
             throw Error(ss);
         }
+
+        // Serialise new files
+        for(std::vector<FileInfo>::const_iterator new_it = new_files.begin();
+                new_it != new_files.end();
+                *new_it++
+        ) {
+
+            // First, serialise any complete log files that are in the .txn
+            // directory and notify the running database that they can now be
+            // archived.
+            long long old_log_number(log_number);
+            serialise_log_files(dbtxndir, dbdir, log_number, true);
+            if(log_number != old_log_number && log_holder.get()) {
+                log_holder->release_log(log_number - 1);
+            }
+
+            // Ok, now serialise this file.
+            serialise_file(*new_it, iom, "", incr_path, incr_create);
+        }
+
+
+        // Serialise all remaining log files, including incomplete ones
+        serialise_log_files(dbtxndir, dbdir, log_number, false);
     }
 
     // Release the database for log file deletion.

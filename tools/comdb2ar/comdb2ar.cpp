@@ -45,6 +45,7 @@ const char *help_text[] = {
 "  -C preserve  preserve cluster nodes lines in lrl file",
 "  -I create    create the incremental meta files while serialising",
 "  -I inc       create an increment for the incremental backup",
+"  -I restore   restore from a sequence of base_backup | increments",
 "  -I <path>    deserialise from a specified incremental backup",
 "  -b <path>    location to store/load the incremental backup",
 "  -x <path>    path to comdb2 binary to use for full recovery",
@@ -103,7 +104,8 @@ int main(int argc, char *argv[])
     bool incr_create = false;
     bool incr_gen = false;
     bool incr_ex = false;
-    std::string incr_path = "increment";
+    std::string incr_path;
+    bool incr_path_specified = false;
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -117,7 +119,7 @@ int main(int argc, char *argv[])
     ss << root << "/bin/comdb2";
     std::string comdb2_task(ss.str());
 
-    while((c = getopt(argc, argv, "hsSLC:I:b::x:u:rRSKfOD")) != EOF) {
+    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSKfOD")) != EOF) {
         switch(c) {
             case 'O':
                 legacy_mode = true;
@@ -203,11 +205,10 @@ int main(int argc, char *argv[])
                 break;
 
             case 'b':
-                if(!(optarg == NULL)){
-                    incr_path = std::string(optarg);
-                    if(incr_path[incr_path.length() - 1] == '/'){
-                        incr_path.resize(incr_path.length() - 1);
-                    }
+                incr_path_specified = true;
+                incr_path = std::string(optarg);
+                if(incr_path[incr_path.length() - 1] == '/'){
+                    incr_path.resize(incr_path.length() - 1);
                 }
                 break;
 
@@ -223,6 +224,12 @@ int main(int argc, char *argv[])
 
     if(argc < 1) {
         usage();
+        std::exit(2);
+    }
+
+    if((incr_gen || incr_create || incr_ex) && !incr_path_specified){
+        std::cerr << "If running in incremental mode, a path to the directory where the"
+            << " incremental files will be stored is required" << std::endl;
         std::exit(2);
     }
 
