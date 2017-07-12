@@ -10654,9 +10654,21 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
     } else if (pCur->cursor_count) {
         rc = pCur->cursor_count(pCur, &count);
     } else if (gbl_direct_count && !pCur->clnt->intrans &&
+               pCur->clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
+               pCur->clnt->dbtran.mode != TRANLEVEL_SERIAL &&
                (pCur->cursor_class == CURSORCLASS_TABLE ||
                 pCur->cursor_class == CURSORCLASS_INDEX)) {
-        rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count);
+        int nretries = 0;
+        int max_retries = gbl_move_deadlk_max_attempt >= 0
+                              ? gbl_move_deadlk_max_attempt
+                              : 500;
+        do {
+            rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count);
+            if (rc == BDBERR_DEADLOCK &&
+                recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
+                break;
+            }
+        } while (rc == BDBERR_DEADLOCK && nretries++ < max_retries);
         if (rc == 0) {
             pCur->nfind++;
             pCur->nmove += count;
