@@ -1,0 +1,12 @@
+This tests runs two transactions which deadlock with each other 
+by inserting into two tables in opposite order:
+T1: insert into t1 then t2
+T2: insert into t2 then t1
+
+and checks that we report the deadlock in the events log of the db
+allowing us to identify the two deadlocking transactions, thus the 
+sql stmts in those transactions, by means of their cnonce. Notice
+that transactions will deadlock in the master node, and the sql 
+will be logged in the replicant nodes, thus one would need to find
+the sql stmts in replicant node by using cnonce retrieved from 
+transaction cnonce on master node.

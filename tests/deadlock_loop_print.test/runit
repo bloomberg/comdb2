@@ -1,6 +1,7 @@
 #!/bin/bash
 bash -n "$0" | exit 1
 
+set -e
 set -x
 ################################################################################
 
@@ -57,20 +58,21 @@ f2 &
 wait
 
 master=`getmaster`
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")'
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reql events roll')"
-
-ls -ltr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm
-cnt=`ls -ltr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | wc -l`
-if [ $cnt != 3 ]; then
-    failexit "expected two events log files, but $cnt found"
+logfl=`cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" | cut -f2 -d ':'`
+if [ "x$logfl" == "x" ]; then
+    cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')"
+    failexit "cant find events logfile in reql stat on $master"
 fi
 
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reql events roll')"
 
-logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
-logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
+sleep 4
+
+if [ $master != `hostname` ]; then
+    scp $master:$logfl $logfl
+fi
+
 logflunziped=${logfl}.unzipped 
-wc $logfl
 zcat $logfl > $logflunziped
 
 cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
