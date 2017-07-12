@@ -43,6 +43,7 @@ struct quantize {
 struct quantize *quantize_new(int step, int qmax, char *units_name)
 {
     struct quantize *q = (struct quantize *)malloc(sizeof(*q));
+    if (!q) return NULL;
     q->step = step;
     q->qmax = qmax;
     q->qnum = qmax / step;

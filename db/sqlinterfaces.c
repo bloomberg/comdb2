@@ -1873,8 +1873,7 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 static void log_client_context(struct reqlogger *logger,
                                struct sqlclntstate *clnt)
 {
-    if (clnt->sql_query == NULL)
-        return;
+    if (clnt->sql_query == NULL) return;
 
     if (clnt->sql_query->n_context > 0) {
         int i = 0;
@@ -1889,9 +1888,8 @@ static void log_client_context(struct reqlogger *logger,
         /* Latch the context - client only re-sends context if
            it changes.  TODO: this seems needlessly expensive. */
         clnt->ncontext = clnt->sql_query->n_context;
-        if (clnt->context)
-            free(clnt->context);
-        clnt->context = malloc(sizeof(char*) * clnt->sql_query->n_context);
+        if (clnt->context) free(clnt->context);
+        clnt->context = malloc(sizeof(char *) * clnt->sql_query->n_context);
         for (int i = 0; i < clnt->sql_query->n_context; i++)
             clnt->context[i] = strdup(clnt->sql_query->context[i]);
     }
@@ -3101,17 +3099,23 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     extern volatile int analyze_running_flag;
     if (analyze_running_flag)
         return 0;
-    int rc;
-    if ((rc = get_curtran(thedb->bdb_env, clnt)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s get_curtran rc:%d\n", __func__, rc);
-        return SQLITE_INTERNAL;
+    int rc, got_curtran;
+    rc = got_curtran = 0;
+    if (!clnt->dbtran.cursor_tran) {
+        if ((rc = get_curtran(thedb->bdb_env, clnt)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s get_curtran rc:%d\n", __func__, rc);
+            return SQLITE_INTERNAL;
+        }
+        got_curtran = 1;
     }
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
         thd->analyze_gen = gbl_analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
-    put_curtran(thedb->bdb_env, clnt);
+    if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s failed to put_curtran\n", __func__);
+    }
     return rc;
 }
 
@@ -3510,7 +3514,8 @@ void thr_set_current_sql(const char *sql)
     }
 }
 
-static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void setup_reqlog_new_sql(struct sqlthdstate *thd,
+                                 struct sqlclntstate *clnt)
 {
     char info_nvreplays[40];
     info_nvreplays[0] = '\0';
@@ -3526,7 +3531,8 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *c
     log_queue_time(thd->logger, clnt);
 }
 
-static void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void query_stats_setup(struct sqlthdstate *thd,
+                              struct sqlclntstate *clnt)
 {
     /* debug */
     thr_set_current_sql(clnt->sql);
@@ -5419,7 +5425,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
-            if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY) {
+            if (irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY) {
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));

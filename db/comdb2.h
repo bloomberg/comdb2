@@ -918,8 +918,10 @@ struct dbenv {
     /* tables and queues */
     int num_dbs;
     struct db **dbs;
+    hash_t *db_hash;
     int num_qdbs;
     struct db **qdbs;
+    hash_t *qdb_hash;
 
     /* Special SPs */
     int num_lua_sfuncs;
@@ -2356,7 +2358,6 @@ struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
-void replace_db(struct db *db, int add);
 void replace_db_idx(struct db *p_db, int idx, int add);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);

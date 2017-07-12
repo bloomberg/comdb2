@@ -174,7 +174,7 @@ retry:
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
         entry->master = clnt->osql.host = thedb->master;
-        if (entry->master <= 0) {
+        if (!entry->master) {
             if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
                 logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
                 return -1;

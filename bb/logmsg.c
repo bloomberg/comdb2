@@ -71,9 +71,9 @@ static char *logmsg_level_str(int lvl)
     }
 }
 
-static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args) 
+static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
 {
-    if(!fmt) return 0;
+    if (!fmt) return 0;
 
     char *msg;
     char timestamp[200];

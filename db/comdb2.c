@@ -861,7 +861,6 @@ struct db *getdbbynum(int num)
     int ii;
     struct db *p_db = NULL;
     pthread_rwlock_rdlock(&thedb_lock);
-    /*should be changed to a hash table*/
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
             p_db = thedb->dbs[ii];
@@ -875,26 +874,17 @@ struct db *getdbbynum(int num)
 
 int getdbidxbyname(const char *p_name)
 {
-    int idx;
-
-    /*should be changed to a hash table*/
-    for (idx = 0; idx < thedb->num_dbs; ++idx) {
-        if (strcasecmp(thedb->dbs[idx]->dbname, p_name) == 0)
-            return idx;
-    }
-
-    return -1;
+    struct db *db;
+    db = hash_find_readonly(thedb->db_hash, &p_name);
+    return (db) ? db->dbs_idx : -1;
 }
 
 struct db *getdbbyname(const char *p_name)
 {
-    int idx;
     struct db *p_db = NULL;
 
     pthread_rwlock_rdlock(&thedb_lock);
-    if (likely((idx = getdbidxbyname(p_name)) >= 0)) {
-        p_db = thedb->dbs[idx];
-    }
+    p_db = hash_find_readonly(thedb->db_hash, &p_name);
     pthread_rwlock_unlock(&thedb_lock);
 
     return p_db;
@@ -902,12 +892,7 @@ struct db *getdbbyname(const char *p_name)
 
 struct db *getqueuebyname(const char *name)
 {
-    int ii;
-    /*should be changed to a hash table*/
-    for (ii = 0; ii < thedb->num_qdbs; ii++)
-        if (thedb->qdbs[ii] && strcasecmp(thedb->qdbs[ii]->dbname, name) == 0)
-            return thedb->qdbs[ii];
-    return NULL;
+    return hash_find_readonly(thedb->qdb_hash, &name);
 }
 
 int get_max_reclen(struct dbenv *dbenv)
@@ -2649,6 +2634,15 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         gbl_sqlite_sorter_mem = ii;
     }
 
+    else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        long long maxmmapsz = toknumll(tok, ltok);
+        logmsg(LOGMSG_INFO, "setting sqlsortermaxmmapsize to %ld bytes\n",
+               maxmmapsz);
+        sqlite3_config(SQLITE_CONFIG_MMAP_SIZE, SQLITE_DEFAULT_MMAP_SIZE,
+                       maxmmapsz);
+    }
+
     else if (tokcmp(tok, ltok, "sqlsortermult") == 0) {
         tok = segtok(line, len, &st, &ltok);
         ii = toknum(tok, ltok);
@@ -3257,6 +3251,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
 
         dbenv->qdbs = realloc(dbenv->qdbs, (dbenv->num_qdbs + 1) * sizeof(struct db *));
         dbenv->qdbs[dbenv->num_qdbs++] = db;
+
+        /* Add queue to the hash. */
+        hash_add(dbenv->qdb_hash, db);
+
     } else if (tokcmp(tok, ltok, "consumer") == 0) {
         char *qname;
         int consumer;
@@ -3285,10 +3283,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
         method = tokdup(tok, ltok);
 
-        db = NULL;
-        for (ii = 0; ii < dbenv->num_qdbs; ii++)
-            if (strcasecmp(dbenv->qdbs[ii]->dbname, qname) == 0)
-                db = dbenv->qdbs[ii];
+        db = getqueuebyname(qname);
         if (!db) {
             logmsg(LOGMSG_ERROR, "No such queue '%s'\n", qname);
             return -1;
@@ -3419,6 +3414,9 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
 
             db->dbs_idx = dbenv->num_dbs;
             dbenv->dbs[dbenv->num_dbs++] = db;
+
+            /* Add table to the hash. */
+            hash_add(dbenv->db_hash, db);
 
             /* just got a bunch of data. remember it so key forming
                routines and SQL can get at it */
@@ -5245,6 +5243,9 @@ static int llmeta_load_queues(struct dbenv *dbenv)
         }
         dbenv->qdbs[dbenv->num_qdbs++] = db;
 
+        /* Add queue the hash. */
+        hash_add(dbenv->qdb_hash, db);
+
         rc = bdb_llmeta_get_queue(qnames[i], &config, &ndests, &dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't get information for queue \"%s\"\n",
@@ -5354,6 +5355,9 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
         db->shmflags = 0;
         db->dbs_idx = i;
         dbenv->dbs[i] = db;
+
+        /* Add table to the hash. */
+        hash_add(dbenv->db_hash, db);
 
         /* just got a bunch of data. remember it so key forming
            routines and SQL can get at it */
@@ -5702,13 +5706,20 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     init_deferred_options(dbenv);
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
 
+    /* Initialize the table/queue hashes. */
+    dbenv->db_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct db, dbname), 0);
+    dbenv->qdb_hash =
+        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
+                       offsetof(struct db, dbname), 0);
+
     if ((rc = pthread_mutex_init(&dbenv->dbqueue_admin_lk, NULL)) != 0) {
         logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
         return NULL;
     }
 
-    if (lrlname)
-        pre_read_lrl_file(dbenv, lrlname, dbname);
+    if (lrlname) pre_read_lrl_file(dbenv, lrlname, dbname);
 
     /* if we havn't been told not to load the /bb/bin/ config files */
     if (!gbl_nogbllrl) {
@@ -5753,7 +5764,8 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /* if env variable is set, process another lrl.. */
     const char *envlrlname = getenv("COMDB2_CONFIG");
-    if(envlrlname && !read_lrl_file(dbenv, envlrlname, dbname, 1/*required*/)) {
+    if (envlrlname &&
+        !read_lrl_file(dbenv, envlrlname, dbname, 1 /*required*/)) {
         return 0;
     }
 
@@ -5767,10 +5779,8 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     /* switch to keyless mode as long as no mode has been selected yet */
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL && gbl_dbdir) 
-        dbenv->basedir = gbl_dbdir;
-    if (dbenv->basedir == NULL) 
-        dbenv->basedir = getenv("COMDB2_DB_DIR");
+    if (dbenv->basedir == NULL && gbl_dbdir) dbenv->basedir = gbl_dbdir;
+    if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
     if (dbenv->basedir == NULL)
         dbenv->basedir = comdb2_location("database", "%s", dbname);
 
@@ -5786,8 +5796,7 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
                 return 0;
             }
             lrlname = lrl;
-        }
-        else
+        } else
             free(lrlname);
     }
 
@@ -5795,15 +5804,16 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
         /* make sure the database directory exists! */
         rc = mkdir(dbenv->basedir, 0774);
         if (rc && errno != EEXIST) {
-            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir, strerror(errno));
+            logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", dbenv->basedir,
+                   strerror(errno));
             /* continue, this will make us fail later */
         }
-    }
-    else {
+    } else {
         struct stat sb;
         stat(dbenv->basedir, &sb);
-        if (! S_ISDIR(sb.st_mode)) {
-            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n", dbenv->basedir);
+        if (!S_ISDIR(sb.st_mode)) {
+            logmsg(LOGMSG_FATAL, "DB directory '%s' does not exist\n",
+                   dbenv->basedir);
             return 0;
         }
     }
@@ -6410,6 +6420,10 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     db->dbs_idx = dbenv->num_dbs;
     db->csc2_schema = strdup(schema);
     dbenv->dbs[dbenv->num_dbs++] = db;
+
+    /* Add table to the hash. */
+    hash_add(dbenv->db_hash, db);
+
     if (add_cmacc_stmt(db, 0)) {
         logmsg(LOGMSG_ERROR, "Can't init table structures %s from schema\n", table);
         return -1;
@@ -8805,38 +8819,16 @@ void delete_db(char *db_name)
         exit(1);
     }
 
+    /* Remove the table from hash. */
+    hash_del(thedb->db_hash, thedb->dbs[idx]);
+
     for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
         thedb->dbs[i]->dbs_idx = i;
     }
 
     thedb->num_dbs -= 1;
-    pthread_rwlock_unlock(&thedb_lock);
-}
 
-void replace_db(struct db *p_db, int add)
-{
-    int idx;
-
-    pthread_rwlock_wrlock(&thedb_lock);
-    idx = getdbidxbyname(p_db->dbname);
-    if (!add && idx < 0) {
-        logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n", __func__,
-                p_db->dbname);
-        exit(1);
-    }
-
-    if (idx < 0) {
-        thedb->dbs =
-            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
-        idx = thedb->num_dbs;
-        thedb->num_dbs++;
-    }
-
-    p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
-                                         * from the schema anymore */
-    p_db->dbs_idx = idx;
-    thedb->dbs[idx] = p_db;
     pthread_rwlock_unlock(&thedb_lock);
 }
 
@@ -8868,6 +8860,12 @@ void replace_db_idx(struct db *p_db, int idx, int add)
                                          * from the schema anymore */
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
+
+    /* Add table to the hash. */
+    if (move == 1) {
+        hash_add(thedb->db_hash, p_db);
+    }
+
     pthread_rwlock_unlock(&thedb_lock);
 }
 

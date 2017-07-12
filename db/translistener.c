@@ -1166,21 +1166,31 @@ int javasp_load_procedure_int(const char *name, const char *param,
     }
 
     p = malloc(sizeof(struct stored_proc));
+    if (!p) {
+        logmsg(LOGMSG_ERROR, "OOM %s\n", __func__);
+        rc = -1;
+        goto done;
+    }
     p->name = strdup(name);
-    if (paramvalue)
+    if (!p->name) {
+    oom:
+        logmsg(LOGMSG_ERROR, "OOM %s\n", __func__);
+        if (p->qname) free(p->qname);
+        free(p);
+        rc = -1;
+        goto done;
+    }
+    if (paramvalue) {
         p->qname = strdup(name);
+        if (!p->qname) goto oom;
+    }
     if (param)
         p->param = strdup(param);
     else
         p->param = strdup("<sc>");
+    if (!p->param) goto oom;
 
     listc_init(&p->tables, offsetof(struct sp_table, lnk));
-
-    if (p == NULL) {
-        logmsg(LOGMSG_ERROR, "Unknown stored procedure %s???\n", name);
-        rc = -1;
-        goto done;
-    }
 
     if (param) {
         paramcpy = strdup(param);
@@ -1252,17 +1262,13 @@ int javasp_load_procedure_int(const char *name, const char *param,
                 logmsg(LOGMSG_ERROR, 
                         "queue parameter ignored for new queue definition\n");
             } else {
-
                 queue = strtok_r(NULL, toksep, &endp);
                 if (queue == NULL) {
                     logmsg(LOGMSG_ERROR, "queue takes one argument (%s)\n", argv[0]);
                     rc = -1;
                     goto done;
                 }
-                for (i = 0; i < thedb->num_qdbs; i++)
-                    if (strcasecmp(thedb->qdbs[i]->dbname, queue) == 0)
-                        break;
-                if (i == thedb->num_qdbs) {
+                if ((getqueuebyname(queue)) == NULL) {
                     logmsg(LOGMSG_ERROR, "queue '%s' does not exist\n", queue);
                     rc = -1;
                     goto done;

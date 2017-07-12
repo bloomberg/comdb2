@@ -404,6 +404,7 @@ FKEY
 HH
 FS
 sqlsortermem
+sqlsortermaxmmapsize
 ie
 ioqueue
 foreigntablename

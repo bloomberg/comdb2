@@ -1406,7 +1406,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     if (isuuid) {
         comdb2uuidcpy(fdb_tran->tid, (unsigned char *)tid);
     } else {
-        memcpy(fdb_tran->tid, tid, sizeof(fdb_tran->tid));
+        memcpy(fdb_tran->tid, tid, sizeof(unsigned long long));
     }
     listc_atl(&trans->dtran->fdb_trans, fdb_tran);
     listc_init(&fdb_tran->cursors, offsetof(svc_cursor_t, lnk));

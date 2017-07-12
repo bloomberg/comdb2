@@ -178,12 +178,18 @@ int add_table_to_environment(char *table, const char *csc2,
             realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
         newdb->dbs_idx = thedb->num_dbs;
         thedb->dbs[thedb->num_dbs++] = newdb;
+
+        /* Add table to the hash. */
+        hash_add(thedb->db_hash, newdb);
     }
 
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
         gbl_sc_commit_count--;
-        thedb->dbs[--thedb->num_dbs] = NULL;
+        --thedb->num_dbs;
+        /* Remove table from the hash. */
+        hash_del(thedb->db_hash, thedb->dbs[thedb->num_dbs]);
+        thedb->dbs[thedb->num_dbs] = NULL;
         if (rc == SC_CSC2_ERROR) sc_errf(s, "New indexes syntax error\n");
         goto err;
     }

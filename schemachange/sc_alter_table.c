@@ -421,6 +421,8 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
             thedb->dbs =
                 realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
             thedb->dbs[thedb->num_dbs++] = temp_newdb;
+            /* Add table to the hash. */
+            hash_add(thedb->db_hash, temp_newdb);
             create_sqlmaster_records(tran);
             create_master_tables(); /* create sql statements */
             ret = new_indexes_syntax_check(iq);

@@ -157,12 +157,12 @@ int load_auto_analyze_counters(void)
     return 0;
 }
 
-static int get_num_rows_from_stat1(struct db *tbldb)
+static long long get_num_rows_from_stat1(struct db *tbldb)
 {
     char fnd_txt[64] = {0};
     char ix_txt[128] = {0};
     char *rec = NULL;
-    int val = 0;
+    long long val = 0;
     struct ireq iq;
     tran_type *trans = NULL;
 

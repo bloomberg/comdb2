@@ -195,7 +195,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     ixschema = db->ixschema[ixnum];
 
     /* already datacopy indexes are ok */
-    if (ixschema->flags & SCHEMA_DATACOPY == 0) {
+    if (ixschema->flags & SCHEMA_DATACOPY) {
         return 0;
     }
 
@@ -203,7 +203,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
     /* get the sql create */
     pMem = &upr->aMem[4];
-    if (unlikely(pMem->flags & MEM_Str == 0)) {
+    if (unlikely((pMem->flags & MEM_Str) == 0)) {
         logmsg(LOGMSG_ERROR, "%s: wrong type sql string %x\n", __func__,
                 pMem->flags);
         return -1;

@@ -14,6 +14,7 @@ const sqlite3_module systblSPsModule;
 const sqlite3_module systblUsersModule;
 const sqlite3_module systblTablePermissionsModule;
 const sqlite3_module systblTriggersModule;
+const sqlite3_module systblKeywordsModule;
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

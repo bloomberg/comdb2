@@ -683,9 +683,9 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
     else
         nField = s->nmembers;
 
-    m = (Mem*) alloca (sizeof(Mem)* (nField+1)); // Extra 1 for genid
+    m = (Mem *)alloca(sizeof(Mem) * (nField + 1)); // Extra 1 for genid
 
-    type = (u32*) alloca(sizeof(u32) * (nField+1));
+    type = (u32 *)alloca(sizeof(u32) * (nField + 1));
 
 #ifdef debug_raw
     printf("convert => %s %s %d / %d\n", db->dbname, s->tag, nField,
@@ -698,7 +698,8 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
-        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
+        type[fnum] =
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
         hdrsz += sqlite3VarintLen(type[fnum]);
     }
@@ -711,7 +712,8 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         m[fnum].u.i = genid;
         m[fnum].flags = MEM_Int;
 
-        type[fnum] = sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
+        type[fnum] =
+            sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz);
         datasz += sz;
         hdrsz += sqlite3VarintLen(type[fnum]);
         ncols++;
@@ -747,7 +749,7 @@ static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
         // TODO: verify that this works as before
         sz = sqlite3VdbeSerialPut(dtabuf, &m[fnum], type[fnum]);
         dtabuf += sz;
-        sz = sqlite3PutVarint( hdrbuf, type[fnum]);
+        sz = sqlite3PutVarint(hdrbuf, type[fnum]);
         hdrbuf += sz;
         assert(hdrbuf <= (out + hdrsz));
     }
@@ -11567,10 +11569,12 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     Btree *s = &src->aDb[1].pBt[0];
     comdb2_use_tmptbl_lk(1);
     tmptbl_kludge = &s->temp_tables[rootpg];
+    dest->force_sqlite_impl = 1;
     if ((rc = sqlite3_exec(dest, sql, NULL, NULL, &err)) != 0) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n", __func__, rc, err, sql);
         abort();
     }
+    dest->force_sqlite_impl = 0;
     comdb2_use_tmptbl_lk(0);
     tmptbl_kludge = NULL;
 }

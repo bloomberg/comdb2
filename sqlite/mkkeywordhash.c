@@ -52,11 +52,7 @@ struct Keyword {
 /*
 ** Define masks used to determine which keywords are allowed
 */
-#ifdef SQLITE_OMIT_ALTERTABLE
-#  define ALTER      0
-#else
-#  define ALTER      0x00000001
-#endif
+#define ALTER        0x00000001
 #define ALWAYS       0x00000002
 #ifdef SQLITE_OMIT_ANALYZE
 #  define ANALYZE    0
@@ -93,11 +89,7 @@ struct Keyword {
 #else
 #  define EXPLAIN    0x00000100
 #endif
-#ifdef SQLITE_OMIT_FOREIGN_KEY
-#  define FKEY       0
-#else
-#  define FKEY       0x00000200
-#endif
+#define FKEY         0x00000200
 #ifdef SQLITE_OMIT_PRAGMA
 #  define PRAGMA     0
 #else
@@ -267,7 +259,7 @@ static Keyword aKeywordTable[] = {
   { "VALUES",           "TK_VALUES",       ALWAYS,                 1},
   { "VIEW",             "TK_VIEW",         VIEW,                   0},
   { "VIRTUAL",          "TK_VIRTUAL",      VTAB,                   0},
-  { "WITH",             "TK_WITH",         CTE,                    1},
+  { "WITH",             "TK_WITH",         ALWAYS,                 1},
   { "WITHOUT",          "TK_WITHOUT",      ALWAYS,                 1},
   { "WHEN",             "TK_WHEN",         ALWAYS,                 1},
   { "WHERE",            "TK_WHERE",        ALWAYS,                 1},
@@ -289,6 +281,8 @@ static Keyword aKeywordTable[] = {
   { "DATA",             "TK_DATA",          ALWAYS,                 0},
   { "DRYRUN",           "TK_DRYRUN",        ALWAYS,                 1},
   { "DATABLOB",         "TK_DATABLOB",      ALWAYS,                 0},
+  { "DATACOPY",         "TK_DATACOPY",      ALWAYS,                 0},
+  { "DBPAD",            "TK_DBPAD",         ALWAYS,                 0},
   { "DISABLE",          "TK_DISABLE",       ALWAYS,                 0},
   { "ENABLE",           "TK_ENABLE",        ALWAYS,                 0},
   { "FUNCTION",         "TK_FUNCTION",      ALWAYS,                 0},

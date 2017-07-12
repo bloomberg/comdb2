@@ -164,13 +164,6 @@ int osql_throttle_session(struct ireq *);
 void osql_set_delayed(struct ireq *iq);
 
 /**
- * On failed dispatch, we need special clear procedure
- * since things are dropped on the floor
- *
- */
-void osql_bplog_clearonerror(struct ireq *iq, int rc);
-
-/**
  * Throw bplog to /dev/null, sql does not need this
  *
  */

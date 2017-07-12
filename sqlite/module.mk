@@ -34,6 +34,7 @@ sqlite/ext/comdb2/procedures.o      \
 sqlite/ext/comdb2/users.o           \
 sqlite/ext/comdb2/tablepermissions.o\
 sqlite/ext/comdb2/triggers.o        \
+sqlite/ext/comdb2/keywords.o        \
 sqlite/ext/misc/series.o            \
 sqlite/ext/misc/json1.o
 

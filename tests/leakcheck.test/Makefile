@@ -6,7 +6,7 @@ CFLAGS+=-D_GNU_SOURCE
 
 # Oh hi references:
 # sqlcache.c -> time_epochms() -> logmsg() -> segtok() -> segstring.o -> tokdup() -> per-subsystem malloc() -> dlmalloc().
-CDB2LIBS=$(SYSPATH) -L$(SRCHOME)/cdb2api -l:libcdb2api.a -L$(SRCHOME)/protobuf/ -lcdb2protobuf -lprotobuf-c -lpthread -L$(SRCHOME)/bb -lbb -L$(SRCHOME)/dlmalloc -ldlmalloc -lssl -lcrypto
+CDB2LIBS=$(SYSPATH) $(SRCHOME)/cdb2api/libcdb2api.a $(SRCHOME)/protobuf/libcdb2protobuf.a -lprotobuf-c -lpthread -L$(SRCHOME)/bb -lbb -L$(SRCHOME)/dlmalloc -ldlmalloc -lssl -lcrypto
 
 tool:
 	make sqlcache
