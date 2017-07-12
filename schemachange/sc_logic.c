@@ -490,68 +490,51 @@ int do_alter_stripes(struct schema_change_type *s)
     return rc;
 }
 // TODO: Modify for sequences
-int do_add_sequence(struct schema_change_type *s)
+int do_add_sequence(struct schema_change_type *s, tran_type *trans)
 {
-    struct db *db;
-    int rc, bdberr;
-
-    // set_original_tablename(s);
-
-    if (!s->resume) set_sc_flgs(s);
-
-    rc = propose_sc(s);
-
-    if (rc == SC_OK) {
-        rc = do_add_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
+    wrlock_schema_lk();
+    int rc = do_add_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
                                  s->seq_increment, s->seq_cycle,
-                                 s->seq_start_val, s->seq_chunk_size);
+                                 s->seq_start_val, s->seq_chunk_size, trans);
+    if (rc) {
+        return rc;
     }
-    // if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
-
-    broadcast_sc_end(sc_seed);
-
-    // if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
-    //     push_next_log();
-
-    return rc;
+    
+    int bdberr;
+    bdb_llog_scdone(db->handle, llmeta_sequence_add, 1, &bdberr);
+    
+    unlock_schema_lk();
+    return 0;
 }
 
 // TODO: Modify for sequences
-int do_drop_sequence(struct schema_change_type *s)
+int do_drop_sequence(struct schema_change_type *s, tran_type *trans)
 {
-    struct db *db;
-    int rc, bdberr;
+    wrlock_schema_lk();
+    int rc = do_drop_sequence_int(s->table, trans);
 
-    // set_original_tablename(s);
-
-    if (!s->resume) set_sc_flgs(s);
-
-    rc = propose_sc(s);
-
-    if (rc == SC_OK) {
-        rc = do_drop_sequence_int(s->table);
+    if (rc) {
+        return rc;
     }
-    // if (master_downgrading(s)) return SC_MASTER_DOWNGRADE;
-
-    broadcast_sc_end(sc_seed);
-
-    // if ((s->type != DBTYPE_TAGGED_TABLE) && gbl_pushlogs_after_sc)
-    //     push_next_log();
-
-    return rc;
+    
+    int bdberr;
+    bdb_llog_scdone(db->handle, llmeta_sequence_add, 1, &bdberr);
+    
+    unlock_schema_lk();
+    return 0;
 }
 
 // TODO: Modify for sequences
-int do_alter_sequence(struct schema_change_type *s)
+int do_alter_sequence(struct schema_change_type *s, tran_type *trans)
 {
     int rc = 0;
 
     // TODO: Make alter smarter, would reset values and possibly dispense duplicates
-    rc = do_drop_sequence(s);
+    rc = do_drop_sequence(s, trans);
     if (rc)
         return rc;
 
-    rc = do_add_sequence(s);
+    rc = do_add_sequence(s, trans);
 
     return rc;
 }
@@ -602,11 +585,11 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_stripes(s);
     // TODO: Add sequences stuff
     else if (s->type == DBTYPE_SEQUENCE && s->addseq)
-        rc = do_add_sequence(s);
+        rc = do_add_sequence(s, trans);
     else if (s->type == DBTYPE_SEQUENCE && s->alterseq)
-        rc = do_alter_sequence(s);
+        rc = do_alter_sequence(s, trans);
     else if (s->type == DBTYPE_SEQUENCE && s->dropseq)
-        rc = do_drop_sequence(s);
+        rc = do_drop_sequence(s, trans);
 
     reset_sc_thread(oldtype, s);
     if (s->resume != SC_NEW_MASTER_RESUME && rc != SC_COMMIT_PENDING &&

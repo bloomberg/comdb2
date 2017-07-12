@@ -57,6 +57,7 @@ int seq_next_val(char *name, long long *val)
 
     // Dispense next_val
     *val = seq->next_val;
+    seq->remaining_vals--;
 
     // Increment Value for next request
     long long next_val = seq->next_val;
@@ -68,20 +69,20 @@ int seq_next_val(char *name, long long *val)
                 seq->next_val = seq->min_val;
             else
                 seq->next_val = seq->max_val;
+
+            seq->remaining_vals = 1;
         } else {
             // No more sequence values to dispense. Value of next_val is now
             // undefined behaviour (unreliable)
             seq->flags |= SEQUENCE_EXHAUSTED;
+            seq->remaining_vals = 0;
         }
 
         pthread_mutex_unlock(&seq->seq_lk);
         return 0;
     }
 
-    // Decrement remaining values if no overflow occurs
-    seq->remaining_vals--;
-
-    // Apply increment
+    // Apply increment, no overflow can occur
     seq->next_val += seq->increment;
 
     // Check for cycle conditions

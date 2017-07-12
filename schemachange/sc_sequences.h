@@ -19,7 +19,7 @@
 
 int do_add_sequence_int(char *name, long long min_val, long long max_val,
                  long long increment, int cycle, long long start_val,
-                 long long chunk_size);
-int do_drop_sequence_int(char *name);
+                 long long chunk_size, tran_type *trans);
+int do_drop_sequence_int(char *name, tran_type *trans);
 
 #endif
