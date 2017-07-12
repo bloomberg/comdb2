@@ -2125,8 +2125,7 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
     pthread_t thread_id;
     pthread_attr_t thd_attr;
 
-    if(gbl_exit)
-        return;
+    if (gbl_exit) return;
 
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
