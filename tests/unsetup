@@ -30,7 +30,7 @@ function kill_by_pidfile() {
     fi
 }
 
-function check_pid_from_pidfile() {
+function build_pidfilelist() {
     pidfile=$1
     if [[ -f $pidfile ]]; then
         local pid=$(cat $pidfile)
@@ -85,7 +85,7 @@ else
     for node in $CLUSTER; do
         cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")'
         cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")'
-        check_pid_from_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+        build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
     done
 
     # for clustered, killing ssh session which is running comdb2 cmd 

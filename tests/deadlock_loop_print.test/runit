@@ -4,24 +4,35 @@ bash -n "$0" | exit 1
 set -x
 ################################################################################
 
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+
 
 # debug=1
 
 # args
-a_dbn=$1
+dbnm=$1
 
-cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 for node in $cluster ; do
-    cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('debg 500')"
-    cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 1000000')"
-    cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
-    cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('on verbose_deadlocks')"
-    cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('on print_deadlock_cycles')"
-    cdb2sql ${CDB2_OPTIONS} $a_dbn --host $node "exec procedure sys.cmd.send('reql events detailed on')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('debg 500')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 1000000')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb verbdeadlock 1')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('on verbose_deadlocks')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('on print_deadlock_cycles')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('reql events detailed on')"
 done
 
 f1() {
-    cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<"EOF"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
 insert into t1 values (1, x'11')
 insert into t2 values (1, x'11')
@@ -30,7 +41,7 @@ EOF
 }
 
 f2() {
-    cdb2sql ${CDB2_OPTIONS} $a_dbn default - <<"EOF"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
 insert into t2 values (2, x'22')
 insert into t1 values (2, x'22')
@@ -45,6 +56,27 @@ f2 &
 
 wait
 
-exit 1
+master=`getmaster`
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")'
+cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('reql events roll')"
+
+ls -ltr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm
+cnt=`ls -ltr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | wc -l`
+if [ $cnt != 3 ]; then
+    failexit "expected two events log files, but $cnt found"
+fi
+
+
+logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep $dbnm | tail -1`
+logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
+logflunziped=${logfl}.unzipped 
+wc $logfl
+zcat $logfl > $logflunziped
+
+cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
+
+if [ $cnt != 2 ]; then
+    failexit 'expected two cnonces reported part of deadlock_cycle in eventslog'
+fi
 
 echo "Testcase passed."

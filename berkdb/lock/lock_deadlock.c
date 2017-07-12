@@ -456,8 +456,10 @@ __dd_log_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
         void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
 		cson_snap_info_key(vobj, idmap[j].snap_info);
-        cson_object_set(vobj, "lid", cson_value_new_integer(idmap[j].id));
-        cson_object_set(vobj, "count", cson_value_new_integer(idmap[j].count));
+        char hex[11];
+        sprintf(hex, "0x%x",idmap[j].id);
+        cson_object_set(vobj, "lid", cson_value_new_string(hex, strlen(hex)));
+        cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].count));
 		if (j == victim)
             cson_object_set(vobj, "victim", cson_value_new_bool(1));
         cson_array_append(arr, lobj);
