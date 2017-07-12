@@ -170,21 +170,29 @@ void eventlog_init()
 }
 
 /*
-** Convert a 128-bit MD5 digest into a 32-digit base-16 number.
-** From md5.c
+** Convert an arbitray length bit string into a 32-digit base-16 number.
 */
-static void MD5DigestToBase16(unsigned char *digest, char *zBuf){
-  static char const zEncode[] = "0123456789abcdef";
-  int i, j;
+static void BitStringToBase16(unsigned char *bitstring, size_t len, char *zBuf){
+    static char const zEncode[] = "0123456789abcdef";
+    int i, j;
 
-  for(j=i=0; i<16; i++){
-    int a = digest[i];
-    zBuf[j++] = zEncode[(a>>4)&0xf];
-    zBuf[j++] = zEncode[a & 0xf];
-  }
-  zBuf[j] = 0;
+    for(j=i=0; i<len; i++){
+        int a = bitstring[i];
+        zBuf[j++] = zEncode[(a>>4)&0xf];
+        zBuf[j++] = zEncode[a & 0xf];
+    }
+    zBuf[j] = 0;
 }
 
+/*
+** Convert a 128-bit MD5 digest into a 32-digit base-16 number.
+*/
+static void MD5DigestToBase16(unsigned char *digest, char *zBuf){
+    BitStringToBase16(digest, 16, zBuf);
+}
+
+
+/* cson options */
 static cson_output_opt opt = {.indentation = 0,
                               .maxDepth = 4096,
                               .addNewline = 1,
@@ -192,12 +200,28 @@ static cson_output_opt opt = {.indentation = 0,
                               .indentSingleMemberValues = 0,
                               .escapeForwardSlashes = 1};
 
+/*
+ * Helper functions to check if we should log, or we should log detailed.
+ */
+static int eventlog_chk_enabled() {
+    if (eventlog == NULL) return 0;
+    if (eventlog_enabled) return 1;
+    return 0;
+}
+
+static int eventlog_chk_detailed() {
+    if (eventlog == NULL) return 0;
+    if (eventlog_enabled && eventlog_detailed) return 1;
+    return 0;
+}
+
+/*
+ * Log bound parameters associated with this request.
+ */
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
-    if (!eventlog_detailed) return;
+    if (!eventlog_chk_detailed()) return;
 
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
@@ -361,6 +385,25 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
     }
 }
 
+/*
+ * Log this tag request.
+ */
+void eventlog_tag(struct reqlogger *logger, struct sqlclntstate *clnt) {
+    if (!eventlog_chk_enabled()) return;
+
+    cson_value *tag_request = cson_value_new_object();
+    logger->tag_request_cson = tag_request;
+    cson_object *obj = cson_value_get_object(tag_request);
+
+    cson_object_set(obj, "tag", cson_value_new_string(clnt->tag,
+                                                      strlen(clnt->tag)));
+
+    char *tagbuf_hex = alloca(clnt->tagbufsz * 2 + 1);
+    BitStringToBase16(clnt->tag, clnt->tagbufsz, tagbuf_hex);
+    cson_object_set(obj, "tagbuf", cson_value_new_string(clnt->tag,
+                                                         clnt->tagbufsz * 2));
+}
+
 void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
 {
     if (logger->ntables == 0) return;
@@ -439,9 +482,7 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
-
+    if (!eventlog_chk_detailed()) return;
     if (!logger->path || logger->path->n_components == 0) return;
 
     cson_value *components = cson_value_new_array();
@@ -465,10 +506,9 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(obj, "path", components);
 }
 
-static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
+static void eventlog_add_int(cson_object *obj, struct reqlogger *logger)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
+    if (!eventlog_chk_enabled()) return;
 
     pthread_mutex_lock(&eventlog_lk);
     if (logger->event_type && strcmp(logger->event_type, "sql") == 0 &&
@@ -492,7 +532,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(newobj, "sql", cson_value_new_string(
                                            logger->stmt, strlen(logger->stmt)));
 
-        char fingerprint[32];
+        char fingerprint[33];
         MD5DigestToBase16((unsigned char*)logger->fingerprint, fingerprint);
         cson_object_set(
             newobj, "fingerprint",
@@ -536,7 +576,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
                     cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
 
     if (logger->have_fingerprint) {
-        char fingerprint[32];
+        char fingerprint[33];
         MD5DigestToBase16((unsigned char*) logger->fingerprint, fingerprint);
         cson_object_set(obj, "fingerprint",
                         cson_value_new_string(fingerprint, 32));
@@ -546,22 +586,27 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
 
     eventlog_context(obj, logger);
-    if (eventlog_detailed)
+    if (eventlog_detailed && logger->bound_param_cson) {
         cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
+        logger->bound_param_cson = NULL;
+    }
+    if (eventlog_detailed && logger->tag_request_cson) {
+        cson_object_set(obj, "tag", logger->tag_request_cson);
+        logger->tag_request_cson = NULL;
+    }
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);
     eventlog_path(obj, logger);
 }
 
-void eventlog_add(const struct reqlogger *logger)
+void eventlog_add(struct reqlogger *logger)
 {
+    if (!eventlog_chk_enabled()) return;
+
     int sz = 0;
     char *fname;
     cson_value *val;
     cson_object *obj;
-
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
 
     pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
