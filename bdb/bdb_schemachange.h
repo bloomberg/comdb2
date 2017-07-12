@@ -44,6 +44,9 @@ typedef enum scdone {
     genid48_disable,
     lua_sfunc,
     lua_afunc,
+    llmeta_sequence_add,
+    llmeta_sequence_alter,
+    llmeta_sequence_drop,
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,

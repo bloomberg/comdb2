@@ -1562,6 +1562,7 @@ sequence_t *new_sequence(char *name, long long min_val, long long max_val,
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to initialize lock for sequence\n");
+        free(new_seq);
         return NULL;
     }
 
@@ -2217,38 +2218,31 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         return rc;
     };
 
-    if (num_found_sequences == 0) {
-        logmsg(LOGMSG_DEBUG, "---------------------- No Sequences found in "
-                             "llmeta ----------------------\n");
-        return 0;
-    }
-
     dbenv->sequences =
         realloc(dbenv->sequences, (num_found_sequences) * sizeof(sequence_t));
-
     if (dbenv->sequences == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for sequences list\n");
         return -1;
     }
 
     for (i = 0; i < num_found_sequences; i++) {
-        sequence_t *seq;
+        long long min_val; // Minimum value 
+        long long max_val; // Maximum value
+        long long next_val; // Next valid value to be dispensed
+        long long increment; // Value to increment by for dispensed values
+        long long start_val; // Start value for the sequence
+        long long next_start_val; // First valid value of the next allocated chunk
+        long long remaining_vals; // Remaining valid values in the allocated chunk
+        long long chunk_size; // Size of allocated chunk
+        bool cycle; // Flag for cyclic behaviour in sequence
+        char flags; // Flags for sequence (cdb2_constants.h)
+
         char *name = seq_names[i];
-        long long min_val;
-        long long max_val;
-        long long next_val;
-        long long increment;
-        bool cycle;
-        long long start_val;
-        long long next_start_val;
-        long long remaining_vals;
-        long long chunk_size;
-        char flags;
 
         // Get sequence configuration from llmeta
         rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment,
-                                     &cycle, &start_val, &next_start_val, &chunk_size, &flags,
-                                     &bdberr);
+                                     &cycle, &start_val, &next_start_val,
+                                     &chunk_size, &flags, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't get information for sequence \"%s\"\n",
                    name);
@@ -2269,18 +2263,15 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         }
 
         // Create new sequence in memory
-        seq = new_sequence(name, min_val, max_val, next_val, increment, cycle, start_val,
-                           chunk_size, flags, remaining_vals, next_start_val);
+        sequence_t *seq = new_sequence(name, min_val, max_val, next_val,
+                                       increment, cycle, start_val, chunk_size,
+                                       flags, remaining_vals, next_start_val);
 
         if (seq == NULL) {
             logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
             return -1;
         }
         dbenv->sequences[dbenv->num_sequences++] = seq;
-
-        logmsg(LOGMSG_DEBUG, "---------------------- Loaded Sequence '%s' "
-                             "----------------------\n",
-               name);
     }
 
     return 0;

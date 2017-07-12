@@ -24,10 +24,8 @@
  */
 int do_add_sequence_int(char *name, long long min_val, long long max_val,
                  long long increment, int cycle, long long start_val,
-                 long long chunk_size)
+                 long long chunk_size, tran_type *trans)
 {
-    char flags = 0;
-
     // Check that name is valid
     if (strlen(name) > MAXTABLELEN - 1) {
         logmsg(LOGMSG_ERROR,
@@ -53,8 +51,9 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
 
     // Add sequence to llmeta
     int rc, bdberr;
+    char flags = 0;
 
-    rc = bdb_llmeta_add_sequence(NULL, name, min_val, max_val, increment, cycle,
+    rc = bdb_llmeta_add_sequence(trans, name, min_val, max_val, increment, cycle,
                                  start_val, start_val, chunk_size, flags, &bdberr);
 
     if (rc) {
@@ -65,10 +64,9 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     // Allocate value chunk
     long long next_start_val = start_val;
     long long remaining_vals;
-    sequence_t *seq;
 
     rc = bdb_llmeta_get_sequence_chunk(
-        NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags,
+        trans, name, min_val, max_val, increment, cycle, chunk_size, &flags,
         &remaining_vals, start_val, &next_start_val, &bdberr);
 
     if (rc) {
@@ -80,14 +78,13 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     // Make space in memory
     thedb->sequences = realloc(thedb->sequences,
                                (thedb->num_sequences + 1) * sizeof(sequence_t));
-
     if (thedb->sequences == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for sequences list\n");
         return 1;
     }
 
     // Create new sequence in memory
-    seq = new_sequence(name, min_val, max_val, start_val, increment, cycle, start_val,
+    sequence_t *seq = new_sequence(name, min_val, max_val, start_val, increment, cycle, start_val,
                        chunk_size, flags, remaining_vals, next_start_val);
 
     if (seq == NULL) {
@@ -105,7 +102,7 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
  * TODO: Make Transactional
  * Drops sequence from llmeta and memory
  */
-int do_drop_sequence_int(char *name)
+int do_drop_sequence_int(char *name, tran_type *trans)
 {
     int rc;
     int bdberr;
@@ -133,7 +130,7 @@ int do_drop_sequence_int(char *name)
             thedb->sequences[thedb->num_sequences] = NULL;
 
             // Remove llmeta record
-            rc = bdb_llmeta_drop_sequence(NULL, name, &bdberr);
+            rc = bdb_llmeta_drop_sequence(trans, name, &bdberr);
 
             if (rc) return rc;
 
