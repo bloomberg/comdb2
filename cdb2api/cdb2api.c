@@ -2476,8 +2476,6 @@ done:
  * the second part is the PID of this client process
  * the third part is the current time usec portion
  * the fourth part is a [pseudo]random number
- * NB: we try to make sure for the components to be nonzero
- * this way the random str is printable
  */
 static void make_random_str(char *str, int *len)
 {

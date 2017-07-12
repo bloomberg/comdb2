@@ -253,8 +253,8 @@ static void dump(struct reqlogger *logger, struct output *out, const char *s,
    malloc/free a buffer large enough to fit the size and preserve
    the output string (and its termination)
  */
-static void dumpf(struct reqlogger *logger, struct output *out, 
-                  const char *fmt, ...)
+static void dumpf(struct reqlogger *logger, struct output *out, const char *fmt,
+                  ...)
 {
     va_list args;
     char buf[256], *buf_slow = NULL;

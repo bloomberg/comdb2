@@ -1472,7 +1472,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
             if (!comdb2uuid_is_zero(clnt->osql.uuid))
                 reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
         }
-        rqid = clnt->osql.rqid; 
+        rqid = clnt->osql.rqid;
     }
 
     listc_init(&lst, offsetof(struct sql_hist, lnk));

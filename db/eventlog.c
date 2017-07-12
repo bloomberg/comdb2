@@ -68,11 +68,9 @@ void eventlog_init(const char *dbname)
     if (eventlog_enabled) eventlog = eventlog_open();
 }
 
-static inline 
-void free_gbl_eventlog_fname()
+static inline void free_gbl_eventlog_fname()
 {
-    if(gbl_eventlog_fname == NULL)
-        return;
+    if (gbl_eventlog_fname == NULL) return;
     free(gbl_eventlog_fname);
     gbl_eventlog_fname = NULL;
 }
@@ -457,12 +455,13 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
     if (logger->iq && logger->iq->have_snap_info) /* for txn type */
         cson_object_set(obj, "cnonce",
-                        cson_value_new_string(logger->iq->snap_info.key, 
-                        logger->iq->snap_info.keylen));
-    else if(logger->request != NULL && logger->request->has_cnonce) /* for sql*/
+                        cson_value_new_string(logger->iq->snap_info.key,
+                                              logger->iq->snap_info.keylen));
+    else if (logger->request != NULL &&
+             logger->request->has_cnonce) /* for sql*/
         cson_object_set(obj, "cnonce",
                         cson_value_new_string(logger->request->cnonce.data,
-                        logger->request->cnonce.len));
+                                              logger->request->cnonce.len));
     if (logger->have_id)
         cson_object_set(obj, "id",
                         cson_value_new_string(logger->id, sizeof(logger->id)));
@@ -541,8 +540,9 @@ void eventlog_add(const struct reqlogger *logger)
 
 void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
 {
-    if(obj && snap_info)
-        cson_object_set(obj, "cnonce", cson_value_new_string(snap_info->key, snap_info->keylen));
+    if (obj && snap_info)
+        cson_object_set(obj, "cnonce", cson_value_new_string(
+                                           snap_info->key, snap_info->keylen));
 }
 
 void eventlog_deadlock_loop(cson_value *val)
@@ -555,10 +555,9 @@ void eventlog_deadlock_loop(cson_value *val)
     pthread_mutex_unlock(&eventlog_lk);
 }
 
-
 void eventlog_status(void)
 {
-    if(eventlog_enabled == 1)
+    if (eventlog_enabled == 1)
         logmsg(LOGMSG_USER, "Eventlog enabled, file:%s\n", gbl_eventlog_fname);
     else
         logmsg(LOGMSG_USER, "Eventlog disabled\n");
@@ -569,7 +568,6 @@ static void eventlog_roll(void)
     eventlog_close();
     eventlog = eventlog_open();
 }
-
 
 static void eventlog_enable(void)
 {

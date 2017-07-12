@@ -3231,7 +3231,7 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
 
 void log_snap_info_key(snap_uid_t *snap_info)
 {
-    if(snap_info)
+    if (snap_info)
         logmsg(LOGMSG_USER, "%*s", snap_info->keylen, snap_info->key);
 }
 
