@@ -3925,11 +3925,11 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	if (sh_locker && create) {
 		sh_locker->tid = pthread_self();
 
-        if (gbl_print_deadlock_cycles) {
-            extern pthread_key_t osql_snap_info;
-            snap_uid_t *si = pthread_getspecific(osql_snap_info);
-            if(si) sh_locker->snap_info = si;
-        }
+		if (gbl_print_deadlock_cycles) {
+			extern pthread_key_t osql_snap_info;
+			snap_uid_t *si = pthread_getspecific(osql_snap_info);
+			if(si) sh_locker->snap_info = si;
+		}
 	}
 
 	*retp = sh_locker;
