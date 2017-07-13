@@ -5720,14 +5720,15 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
     }
 
     int debug_appsock = 0;
-    if (unlikely(!thd->sqldb) || 
-            (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
+    if (unlikely(!thd->sqldb) ||
+        (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
         /* unplausable, but anyway */
-        logmsg(LOGMSG_ERROR, "%s line %d: exiting on null thd->sqldb\n", __func__, 
-                __LINE__);
+        logmsg(LOGMSG_ERROR, "%s line %d: exiting on null thd->sqldb\n",
+               __func__, __LINE__);
         if (debug_appsock) {
-            logmsg(LOGMSG_ERROR, "%s line %d: testing null thd->sqldb codepath\n", 
-                    __func__, __LINE__);
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d: testing null thd->sqldb codepath\n", __func__,
+                   __LINE__);
         }
         clnt->query_rc = -1;
         pthread_mutex_lock(&clnt->wait_mutex);
@@ -5769,19 +5770,22 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
 
     /* Set whatever mode this client needs */
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode);
-    if (rc || (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
-        logmsg(LOGMSG_ERROR, "%s line %d: unable to set_transaction_mode rc=%d!\n",
-                __func__, __LINE__, rc);
+    if (rc ||
+        (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
+        logmsg(LOGMSG_ERROR,
+               "%s line %d: unable to set_transaction_mode rc=%d!\n", __func__,
+               __LINE__, rc);
         if (debug_appsock) {
             logmsg(LOGMSG_ERROR, "%s line %d: testing failed set-transaction "
-                    "codepath\n", __func__, __LINE__);
+                                 "codepath\n",
+                   __func__, __LINE__);
         }
         send_prepare_error(clnt, "Failed to set transaction mode.", 0);
         reqlog_logf(thd->logger, REQL_TRACE,
                     "Failed to set transaction mode.\n");
         if (put_curtran(thedb->bdb_env, clnt)) {
-            logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                    __func__);
+            logmsg(LOGMSG_ERROR,
+                   "%s: unable to destroy a CURSOR transaction!\n", __func__);
         }
         clnt->query_rc = 0;
         pthread_mutex_lock(&clnt->wait_mutex);
@@ -6160,9 +6164,10 @@ static void sqlengine_thd_end(struct thdpool *pool, void *thddata)
          * thread's stack that will not be valid at this point. */
 
         if (sqlthd->sqlclntstate) {
-            logmsg(LOGMSG_ERROR, "%s:%d sqlthd->sqlclntstate set in thd-teardown\n", 
-                    __FILE__, __LINE__);
-            if(gbl_abort_invalid_query_info_key) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d sqlthd->sqlclntstate set in thd-teardown\n", __FILE__,
+                   __LINE__);
+            if (gbl_abort_invalid_query_info_key) {
                 abort();
             }
             sqlthd->sqlclntstate = NULL;
@@ -7652,7 +7657,7 @@ retry:
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s release_locks generation changed\n", __func__);
-                    return -(SQLITE_DEADLOCK);
+                    return -1;
                 }
                 released_locks = 1;
             }
@@ -7665,7 +7670,7 @@ retry:
                         logmsg(LOGMSG_ERROR,
                                "%s recover_deadlock generation changed\n",
                                __func__);
-                        return -(SQLITE_DEADLOCK);
+                        return -1;
                     }
                 }
             }
