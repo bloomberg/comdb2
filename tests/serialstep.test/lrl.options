@@ -8,7 +8,6 @@ table receipt receipt.csc2
 table rollover rollover.csc2
 table t1 t1.csc2
 table intv intv.csc2
-enable_true_serializable
 enable_snapshot_isolation
 #on extended_sql_debug_trace
 #on enable_osql_logging
