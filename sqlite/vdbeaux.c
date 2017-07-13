@@ -5367,3 +5367,8 @@ void sqlite3VdbePreUpdateHook(
   }
 }
 #endif /* SQLITE_ENABLE_PREUPDATE_HOOK */
+
+void comdb2SetRecording(Vdbe *v)
+{
+  v->recording = 1;
+}

@@ -12475,16 +12475,3 @@ uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
     Vdbe *v = (Vdbe *)stmt;
     return v->numTables;
 }
-
-void comdb2SetRecording()
-{
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->sqlclntstate;
-    clnt->has_recording = 1;
-}
-
-int read_only_stmt(sqlite3_stmt *stmt)
-{
-    Vdbe *v = (Vdbe *)stmt;
-    return v->readOnly;
-}

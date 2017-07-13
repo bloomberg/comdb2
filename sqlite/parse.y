@@ -553,7 +553,6 @@ oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
   A = sqlite3SelectNew(pParse,W,X,Y.pExpr,P,Q,Z,D,L.pLimit,L.pOffset);
   A->op = TK_SELECTV;
   A->recording = 1;
-  comdb2SetRecording();
 }
 
 
