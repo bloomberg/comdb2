@@ -978,13 +978,17 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
             outrc = ERR_BLOCK_FAILED;
             break;
         }
+        case FSTBLK_SNAP_INFO_VERIFYRETRYON:
+printf("GOT FSTBLK_SNAP_INFO\n");
+            int verifyretryon = 1; /* fallthrough */
 
         case FSTBLK_SNAP_INFO:
 printf("GOT FSTBLK_SNAP_INFO\n");
-            snapinfo = 1;
+            snapinfo = 1; /* fallthrough */
 
         case FSTBLK_RSPKL: 
         {
+            abort();
 printf("GOT FSTBLK_RSPKL\n");
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
             struct fstblk_rspkl fstblk_rspkl;
@@ -2684,7 +2688,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
-printf("AZ: would call do_replay_case\n");
+printf("AZ: would call do_replay_case, iq->retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->have_blkseq);
 /* TODO: change here to say && iq->verifretryon == 0 because we don't want to do 
  * replay if verifyretry is on replicant */
         if (got_osql && iq->have_snap_info) {
@@ -2732,6 +2736,7 @@ printf("AZ: would call do_replay_case\n");
             }
         }
     } else {
+printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->have_blkseq);
         have_blkseq = iq->have_blkseq;
     }
 
@@ -5402,7 +5407,11 @@ add_blkseq:
             struct fstblk_header fstblk_header;
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
 
-            fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
+            if (iq->verifretryon) {
+                fstblk_header.type = (short)(FSTBLK_SNAP_INFO_VERIFYRETRYON);
+            } else { 
+                fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
+            }
             fstblk_pre_rspkl.fluff = (short)0;
 
             if (!(p_buf_fstblk = fstblk_header_put(&fstblk_header, p_buf_fstblk,
