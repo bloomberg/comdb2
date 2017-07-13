@@ -1,0 +1,6 @@
+(rows inserted=2)
+(COUNT(*) = 2=1)
+(COUNT(*) = 0=1)
+(rows inserted=2)
+(COUNT(*) = 2=1)
+(COUNT(*) = 0=1)

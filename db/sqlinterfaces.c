@@ -3099,17 +3099,23 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     extern volatile int analyze_running_flag;
     if (analyze_running_flag)
         return 0;
-    int rc;
-    if ((rc = get_curtran(thedb->bdb_env, clnt)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s get_curtran rc:%d\n", __func__, rc);
-        return SQLITE_INTERNAL;
+    int rc, got_curtran;
+    rc = got_curtran = 0;
+    if (!clnt->dbtran.cursor_tran) {
+        if ((rc = get_curtran(thedb->bdb_env, clnt)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s get_curtran rc:%d\n", __func__, rc);
+            return SQLITE_INTERNAL;
+        }
+        got_curtran = 1;
     }
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
         thd->analyze_gen = gbl_analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
-    put_curtran(thedb->bdb_env, clnt);
+    if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s failed to put_curtran\n", __func__);
+    }
     return rc;
 }
 
