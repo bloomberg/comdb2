@@ -434,7 +434,7 @@ void *thd(void *arg)
     return NULL;
 }
 
-static void empty_register_table(void)
+static int empty_register_table(void)
 {
     int rc;
     cdb2_hndl_tp *db;
@@ -469,23 +469,21 @@ static void empty_register_table(void)
         cdb2_set_debug_trace(db);
     }
 
-    do {
-        rc = cdb2_run_statement(db, "delete from register where 1");
-        if (rc) {
-            if (debug_trace)
-                tdprintf(stderr, db, __func__, __LINE__,
-                        "delete from register where 1 failed: %d %s\n", rc,
-                        cdb2_errstr(db));
-            sleep(1);
-        }
-    } while (rc);
+    rc = cdb2_run_statement(db, "delete from register where 1");
+    if (rc) {
+        if (debug_trace)
+            tdprintf(stderr, db, __func__, __LINE__,
+                    "delete from register where 1 failed: %d %s\n", rc,
+                    cdb2_errstr(db));
+    }
 
     cdb2_close(db);
+    return rc;
 }
 
 int main(int argc, char *argv[])
 {
-    int rc, c, errors = 0;
+    int rc, c, errors = 0, cnt;
     argv0 = argv[0];
 
     while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:")) != EOF) {
@@ -545,7 +543,7 @@ int main(int argc, char *argv[])
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
     struct nemesis *n = NULL;
-    for (int cnt = 0; cnt < 1000 && n == NULL; cnt++) {
+    for (cnt = 0; cnt < 1000 && n == NULL; cnt++) {
         n = nemesis_open(dbname, cltype, flags);
         if (!n) sleep(1);
     }
@@ -561,7 +559,13 @@ int main(int argc, char *argv[])
         fprintf(c_file, "[\n");
     }
 
-    empty_register_table();
+    cnt = 0;
+    while ((rc = empty_register_table())) {
+        cnt++;
+        fprintf(stderr, "Error emptying register table count %d retrying\n", 
+                cnt);
+        sleep(1);
+    }
 
     threads = malloc(sizeof(pthread_t) * nthreads);
     for (unsigned long long i = 0; i < nthreads; i++) {
