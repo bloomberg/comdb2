@@ -469,13 +469,16 @@ static void empty_register_table(void)
         cdb2_set_debug_trace(db);
     }
 
-    rc = cdb2_run_statement(db, "delete from register where 1");
-    if (rc) {
-        if (debug_trace)
-            tdprintf(stderr, db, __func__, __LINE__,
-                     "delete from register where 1 failed: %d %s\n", rc,
-                     cdb2_errstr(db));
-    }
+    do {
+        rc = cdb2_run_statement(db, "delete from register where 1");
+        if (rc) {
+            if (debug_trace)
+                tdprintf(stderr, db, __func__, __LINE__,
+                        "delete from register where 1 failed: %d %s\n", rc,
+                        cdb2_errstr(db));
+            sleep(1);
+        }
+    } while (rc);
 
     cdb2_close(db);
 }
