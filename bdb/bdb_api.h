@@ -536,10 +536,6 @@ int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state);
 int bdb_handle_dbp_hash_stat_reset(bdb_state_type *bdb_state);
 int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr);
 
-void *bdb_allocate_locks(int nTables);
-int bdb_lock_table(bdb_state_type *bdb_state, int lid, void *locks, int index);
-int bdb_unlock_table(bdb_state_type *bdb_state, void *locks, int index);
-
 /* get file sizes for indexes and data files */
 uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum);
 uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum);

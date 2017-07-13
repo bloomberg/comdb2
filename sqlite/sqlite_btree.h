@@ -97,7 +97,6 @@ int sqlite3BtreeSchemaLocked(Btree *pBtree);
 #ifndef SQLITE_OMIT_SHARED_CACHE
 int sqlite3BtreeLockTable(Btree *pBtree, int iTab, u8 isWriteLock);
 #endif
-int sqlite3UnlockBerkTables(int nTables, void *locks); /* COMDB2 */
 int sqlite3BtreeSavepoint(Btree *, int, int);
 
 const char *sqlite3BtreeGetFilename(Btree *);

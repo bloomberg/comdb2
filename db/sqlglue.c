@@ -95,6 +95,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "locks.h"
 
 unsigned long long get_id(bdb_state_type *);
 
@@ -7641,7 +7642,6 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     int prev = -1;
     Table **tbls = p->tbls;
     int nTables = p->numTables;
-    void **locks = &p->lockInfo;
     int iTable;
     int nRemoteTables = 0;
     int remote_schema_changed = 0;
@@ -7657,8 +7657,6 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
     }
-
-    *locks = bdb_allocate_locks(nTables);
 
     /* sort and dedup */
     qsort(tbls, nTables, sizeof(Table *), rootpcompare);
@@ -7738,9 +7736,8 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
-        bdb_lock_table(db->handle,
-                       bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
-                       *locks, i);
+        bdb_lock_table_read_fromlid(db->handle, bdb_get_lid_from_cursortran
+                                    (clnt->dbtran.cursor_tran));
 
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
@@ -8022,16 +8019,6 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_unlock(&clnt->dtran_mtx);
 
-    return 0;
-}
-
-int sqlite3UnlockBerkTables(int nTables, void *locks)
-{
-    int i;
-    void *handle = thedb->bdb_env;
-    for (i = 0; i < nTables; ++i) {
-        bdb_unlock_table(handle, locks, i);
-    }
     return 0;
 }
 
