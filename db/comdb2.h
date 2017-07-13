@@ -2358,7 +2358,7 @@ struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
-void replace_db_idx(struct db *p_db, int idx, int add);
+void replace_db_idx(struct db *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,

@@ -7080,7 +7080,7 @@ static int load_new_ondisk(struct db *db, tran_type *tran)
     fix_constraint_pointers(db, newdb);
     memset(newdb, 0xff, sizeof(struct db));
     free(newdb);
-    replace_db_idx(db, foundix, 1);
+    replace_db_idx(db, foundix);
     fix_lrl_ixlen_tran(tran);
     free(csc2);
     return 0;

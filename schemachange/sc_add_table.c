@@ -170,9 +170,9 @@ int add_table_to_environment(char *table, const char *csc2,
 
     gbl_sc_commit_count++;
     if (s && s->fastinit && s->db) {
-        replace_db_idx(newdb, s->db->dbs_idx, 1);
+        replace_db_idx(newdb, s->db->dbs_idx);
         free(s->db->handle);
-        free_db_and_replace(s->db, NULL);
+        freedb(s->db);
     } else {
         thedb->dbs =
             realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
