@@ -818,7 +818,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
-            if(tok == NULL) continue;
+            if (tok == NULL) continue;
             pthread_mutex_lock(&cdb2_sockpool_mutex);
             if (strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -900,7 +900,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                     cdb2_cache_ssl_sess = !!atoi(tok);
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
-                if(tok) {
+                if (tok) {
                     if (strncasecmp(tok, "true", 4) == 0) {
                         allow_pmux_route = 1;
                     } else {
@@ -1443,8 +1443,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         p = &(hndl->sess_list->list[indx]);
         sess = p->sess;
         p->sess = SSL_get1_session(sslio_get_ssl(sb));
-        if (sess != NULL)
-            SSL_SESSION_free(sess);
+        if (sess != NULL) SSL_SESSION_free(sess);
     }
     return 0;
 }
@@ -2068,7 +2067,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         }
     }
 
-    if (hndl && hndl->cnonce_len > 0) { 
+    if (hndl && hndl->cnonce_len > 0) {
         /* Have a query id associated with each transaction/query */
         sqlquery.has_cnonce = 1;
         sqlquery.cnonce.data = hndl->cnonce;
