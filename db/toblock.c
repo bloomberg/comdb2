@@ -811,6 +811,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
 {
+    printf("AZ: do_replay_case\n");
     struct block_rsp errrsp;
     int rc, outrc, snapinfo_outrc, jj, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
@@ -979,10 +980,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         }
 
         case FSTBLK_SNAP_INFO:
+printf("GOT FSTBLK_SNAP_INFO\n");
             snapinfo = 1;
 
         case FSTBLK_RSPKL: 
         {
+printf("GOT FSTBLK_RSPKL\n");
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
             struct fstblk_rspkl fstblk_rspkl;
             struct block_rspkl rspkl;
@@ -1001,6 +1004,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     blkseq_line = __LINE__;
                     goto replay_error;
                 }
+printf("AZ: get outrc=%d\n",snapinfo_outrc);
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
                     abort();
@@ -2680,6 +2684,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
+printf("AZ: would call do_replay_case\n");
+/* TODO: change here to say && iq->verifretryon == 0 because we don't want to do 
+ * replay if verifyretry is on replicant */
         if (got_osql && iq->have_snap_info) {
             void *replay_data = NULL;
             int replay_len = 0;
@@ -5411,6 +5418,7 @@ add_blkseq:
             }
 
             if (iq->have_snap_info) {
+printf("AZ: set outrc=%d\n",outrc);
                 if (!(p_buf_fstblk = buf_put(&(outrc), sizeof(outrc), p_buf_fstblk, 
                                 p_buf_fstblk_end))) {
                             return ERR_INTERNAL;
@@ -5514,8 +5522,8 @@ add_blkseq:
                                 num_reqs, 0, replay_data, replay_len, __LINE__);
                     }
                     else {
-                        outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
-                                replay_data, replay_len, __LINE__);
+                        outrc = do_replay_case(iq, iq->seq, iq->seqlen,
+                                num_reqs, 0, replay_data, replay_len, __LINE__);
                     }
                     did_replay = 1;
                     logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
@@ -5611,8 +5619,8 @@ add_blkseq:
                             num_reqs, 0, replay_data, replay_len, __LINE__);
                 }
                 else {
-                    outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
-                            replay_data, replay_len, __LINE__);
+                    outrc = do_replay_case(iq, iq->seq, iq->seqlen,
+                            num_reqs, 0, replay_data, replay_len, __LINE__);
                 }
                 did_replay = 1;
                 logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
