@@ -372,6 +372,18 @@ static const uint8_t *sqlfield_get(struct sqlfield *p_sqlfield,
     return p_buf;
 }
 
+static inline void comdb2_set_sqlite_vdbe_tzname_int(Vdbe *p,
+                                                     struct sqlclntstate *clnt)
+{
+    memcpy(p->tzname, clnt->tzname, TZNAME_MAX);
+}
+
+static inline void comdb2_set_sqlite_vdbe_dtprec_int(Vdbe *p,
+                                                     struct sqlclntstate *clnt)
+{
+    p->dtprec = clnt->dtprec;
+}
+
 static inline int disable_server_sql_timeouts(void)
 {
     extern int gbl_sql_release_locks_on_slow_reader;
@@ -4947,16 +4959,18 @@ static int flush_row(struct sqlclntstate *clnt)
     return 0;
 }
 
-static void run_stmt_setup(struct sqlclntstate *clnt, struct sql_state *rec)
+void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    clnt->isselect = sqlite3_stmt_readonly(rec->stmt);
-    comdb2_set_sqlite_vdbe_tzname((Vdbe *)rec->stmt);
-    comdb2_set_sqlite_vdbe_dtprec((Vdbe *)rec->stmt);
+    Vdbe *v = (Vdbe *)stmt;
+    clnt->isselect = sqlite3_stmt_readonly(stmt);
+    clnt->has_recording |= v->recording;
+    comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
+    comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
     clnt->iswrite = 0; /* reset before step() */
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        fprintf(stderr, "%s () sql: '%s'\n", __func__, rec->sql);
+        fprintf(stderr, "%s () sql: '%s'\n", __func__, v->zSql);
     }
 #endif
 }
@@ -5154,7 +5168,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc;
 
     reqlog_set_event(thd->logger, "sql");
-    run_stmt_setup(clnt, rec);
+    run_stmt_setup(clnt, rec->stmt);
 
     new_row_data_type = is_new_row_data(clnt);
     ncols = sqlite3_column_count(rec->stmt);
@@ -9635,23 +9649,17 @@ done:
 void comdb2_set_sqlite_vdbe_tzname(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (!sqlthd)
         return;
-
-    /*prepare the timezone info*/
-    memcpy(p->tzname, sqlthd->sqlclntstate->tzname, TZNAME_MAX);
+    comdb2_set_sqlite_vdbe_tzname_int(p, sqlthd->sqlclntstate);
 }
 
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (!sqlthd)
         return;
-
-    /*prepare the datetime precision*/
-    p->dtprec = sqlthd->sqlclntstate->dtprec;
+    comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->sqlclntstate);
 }
 
 void run_internal_sql(char *sql)

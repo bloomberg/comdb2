@@ -2107,9 +2107,6 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
         return luabb_error(L, sp, "%s in stmt: %s", errstr, sql);
     }
 
-    strcpy(stmt_tzname(*stmt), sp->clnt->tzname);
-    stmt_set_dtprec(*stmt, sp->clnt->dtprec);
-
     return 0;
 }
 
@@ -3211,6 +3208,14 @@ static int dbstmt_bind(Lua L)
     return dbstmt_bind_int(L, lua_touserdata(L, 1));
 }
 
+static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt)
+{
+    if (!dbstmt->fetched) {
+        run_stmt_setup(sp->clnt, dbstmt->stmt);
+    }
+    dbstmt->fetched = 1;
+}
+
 static int dbstmt_exec(Lua lua)
 {
     SP sp = getsp(lua);
@@ -3219,6 +3224,7 @@ static int dbstmt_exec(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -3241,7 +3247,7 @@ static int dbstmt_fetch(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    dbstmt->fetched = 1;
+    setup_first_sqlite_step(getsp(lua), dbstmt);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
     donate_stmt(getsp(lua), dbstmt);
@@ -3253,7 +3259,7 @@ static int dbstmt_emit(Lua L)
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
-    dbstmt->fetched = 1;
+    setup_first_sqlite_step(getsp(L), dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
     no_active_stmt_but_me(L, stmt);
     int cols = sqlite3_column_count(stmt);
@@ -3311,13 +3317,14 @@ static int db_exec(Lua lua)
 
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
 
-    if (read_only_stmt(stmt)) {
+    if (sqlite3_stmt_readonly(stmt)) {
         // dbstmt:fetch() will run it
         lua_pushinteger(lua, 0);
         return 2;
     }
 
     // a write stmt - run it now
+    setup_first_sqlite_step(sp, dbstmt);
     sqlite3 *sqldb = getdb(sp);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
@@ -3373,15 +3380,10 @@ static int db_prepare(Lua lua)
     errstat_clr(&clnt->osql.xerr);
     db_reset(lua);
     if (stmt == NULL) {
-        const char *rest_of_sql = NULL;
         if (lua_prepare_sql(lua, sp, sql, &stmt) != 0) {
             return 2;
         }
     }
-
-    /*prepare the timezone info*/
-    strcpy(stmt_tzname(stmt), sp->clnt->tzname);
-    stmt_set_dtprec(stmt, sp->clnt->dtprec);
 
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
     dbstmt->has_cached_stmt = has_cached_stmt;
