@@ -9138,6 +9138,8 @@ int sqlite3BtreeLockTable(Btree *p, int iTab, u8 isWriteLock) { return 0; }
 int osql_check_shadtbls(bdb_state_type *bdb_env, struct sqlclntstate *clnt,
                         char *file, int line);
 
+int gbl_random_get_curtran_failures;
+
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 {
     cursor_tran_t *curtran_out = NULL;
@@ -9156,6 +9158,11 @@ int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
 
     if (clnt->dbtran.cursor_tran) {
         logmsg(LOGMSG_ERROR, "%s called when we have a curtran\n", __func__);
+        return -1;
+    }
+
+    if (gbl_random_get_curtran_failures && !(rand() % 1000)) {
+        logmsg(LOGMSG_ERROR, "%s forcing a random curtran failure\n", __func__);
         return -1;
     }
 

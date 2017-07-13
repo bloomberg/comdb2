@@ -5669,6 +5669,8 @@ static void sqlengine_work_lua_thread(struct thdpool *pool, void *work,
     thrman_setid(thrman_self(), "[done]");
 }
 
+int gbl_debug_sqlthd_failures;
+
 static void sqlengine_work_appsock(struct thdpool *pool, void *work,
                                    void *thddata)
 {
@@ -5711,9 +5713,16 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
         unlock_schema_lk();
     }
 
-
-    if (unlikely(!thd->sqldb)) {
+    int debug_appsock = 0;
+    if (unlikely(!thd->sqldb) || 
+            (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
         /* unplausable, but anyway */
+        logmsg(LOGMSG_ERROR, "%s line %d: exiting on null thd->sqldb\n", __func__, 
+                __LINE__);
+        if (debug_appsock) {
+            logmsg(LOGMSG_ERROR, "%s line %d: testing null thd->sqldb codepath\n", 
+                    __func__, __LINE__);
+        }
         clnt->query_rc = -1;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
@@ -5754,10 +5763,20 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
 
     /* Set whatever mode this client needs */
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode);
-    if (rc) {
+    if (rc || (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
+        logmsg(LOGMSG_ERROR, "%s line %d: unable to set_transaction_mode rc=%d!\n",
+                __func__, __LINE__, rc);
+        if (debug_appsock) {
+            logmsg(LOGMSG_ERROR, "%s line %d: testing failed set-transaction "
+                    "codepath\n", __func__, __LINE__);
+        }
         send_prepare_error(clnt, "Failed to set transaction mode.", 0);
         reqlog_logf(thd->logger, REQL_TRACE,
                     "Failed to set transaction mode.\n");
+        if (put_curtran(thedb->bdb_env, clnt)) {
+            logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
+                    __func__);
+        }
         clnt->query_rc = 0;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
@@ -6121,11 +6140,28 @@ static void sqlengine_thd_start(struct thdpool *pool, void *thddata)
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_PGSZ));
 }
 
+int gbl_abort_invalid_query_info_key;
+
 static void sqlengine_thd_end(struct thdpool *pool, void *thddata)
 {
     void rcache_destroy(void);
     rcache_destroy();
     struct sqlthdstate *thd = thddata;
+    struct sql_thread *sqlthd;
+
+    if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
+        /* sqlclntstate shouldn't be set: sqlclntstate is memory on another
+         * thread's stack that will not be valid at this point. */
+
+        if (sqlthd->sqlclntstate) {
+            logmsg(LOGMSG_ERROR, "%s:%d sqlthd->sqlclntstate set in thd-teardown\n", 
+                    __FILE__, __LINE__);
+            if(gbl_abort_invalid_query_info_key) {
+                abort();
+            }
+            sqlthd->sqlclntstate = NULL;
+        }
+    }
 
     if (thd->stmt_table)
         delete_stmt_table(thd->stmt_table);

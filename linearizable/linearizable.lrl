@@ -69,6 +69,15 @@ init_with_compr_blobs none
 # Dump blkseq additions
 on dump_blkseq
 
+# Force work_appsock_failures
+on debug_sqlthd_failures
+
+# Force random get_curtran failures
+on random_get_curtran_failures
+
+# Abort on invalid query info key
+# on abort_invalid_query_info_key
+
 # Make sure that the blkseq code works correctly
 #on test_blkseq_replay
 

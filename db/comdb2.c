@@ -818,6 +818,9 @@ extern int gbl_uses_password;
 
 extern int gbl_direct_count;
 extern int gbl_parallel_count;
+extern int gbl_debug_sqlthd_failures;
+extern int gbl_random_get_curtran_failures;
+extern int gbl_abort_invalid_query_info_key;
 
 int gbl_bbenv;
 
@@ -8534,6 +8537,15 @@ static void register_all_int_switches()
     register_int_switch("parallel_count",
                         "When 'direct_count' is on, enable thread-per-stripe",
                         &gbl_parallel_count);
+    register_int_switch("debug_sqlthd_failures",
+                        "Force sqlthd failures in unusual places",
+                        &gbl_debug_sqlthd_failures);
+    register_int_switch("random_get_curtran_failures",
+                        "Force random get_curtran failures",
+                        &gbl_random_get_curtran_failures);
+    register_int_switch("abort_invalid_query_info_key",
+                        "Abort in thread-teardown for invalid query_info_key",
+                        &gbl_abort_invalid_query_info_key);
 }
 
 static void getmyid(void)
