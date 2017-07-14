@@ -87,6 +87,7 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
 
         uint8_t *new_pagebuf = NULL;
         uint8_t old_pagebuf[12];
+        bool file_expanded = false;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
         posix_memalign((void**) &new_pagebuf, 512, pagesize);
@@ -99,10 +100,23 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
             ssize_t old_bytesread = read(old_fd, &old_pagebuf[0], 12);
-            if(new_bytesread <= 0 || old_bytesread <= 0) {
+            std::clog << filename << ": " << new_bytesread << " " << old_bytesread << std::endl;
+            if(new_bytesread <= 0) {
                 std::ostringstream ss;
-                ss << "read error after " << bytesleft << " bytes";
+                ss << "read error after " << new_bytesread << " bytes";
                 throw SerialiseError(filename, ss.str());
+            }
+
+            if(old_bytesread < 0){
+                std::ostringstream ss;
+                ss << "read error after " << new_bytesread << " bytes";
+                throw SerialiseError(filename, ss.str());
+            }
+
+            if(old_bytesread == 0) {
+                ret = true;
+                handle_expanded_file();
+                break;
             }
 
             if (assert_cksum_lsn(new_pagebuf, old_pagebuf, pagesize)) {
@@ -124,6 +138,8 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
 ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
                             std::string incr_path){
     const std::string& filename = file.get_filename();
+    const std::string& filepath = file.get_filepath();
+    std::clog << filepath << std::endl;
 
     int flags;
     bool skip_iomap = false;
@@ -133,7 +149,7 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
     assert(sizeof(off_t) == 8);
 
     struct stat st;
-    if(stat(filename.c_str(), &st) == -1) {
+    if(stat(filepath.c_str(), &st) == -1) {
         ss << "cannot stat file: " << std::strerror(errno);
         throw SerialiseError(filename, ss.str());
     }
@@ -143,7 +159,7 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
         pagesize = 4096;
     }
 
-    std::ifstream ifs (filename, std::ifstream::in | std::ifstream::binary);
+    std::ifstream ifs (filepath, std::ifstream::in | std::ifstream::binary);
 
     char *char_pagebuf = NULL;
     uint8_t *pagebuf = NULL;
@@ -282,6 +298,12 @@ void incr_deserialise_database(
 
         // If the block is entirely blank then we're done with the increment
         if(std::memcmp(head.c, zero_head, 512) == 0) {
+            std::clog << "done with increment" << std::endl;
+            new_files.clear();
+            updated_files.clear();
+            deleted_files.clear();
+            file_order.clear();
+            options.clear();
             continue;
         }
 

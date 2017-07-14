@@ -1173,11 +1173,7 @@ void serialise_database(
         }
 
         while(data_it != incr_data_files.end()){
-            if((*page_it).empty()){
-                serialise_file(*data_it, iom, "", incr_path, true);
-            } else {
-                data_written += write_incr_file(*data_it, *page_it, incr_path);
-            }
+            data_written += write_incr_file(*data_it, *page_it, incr_path);
 
             ++data_it;
             ++page_it;
