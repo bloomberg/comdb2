@@ -319,6 +319,7 @@ static Keyword aKeywordTable[] = {
   { "THREADS",          "TK_THREADS",       ALWAYS,                 0},
   { "THRESHOLD",        "TK_THRESHOLD",     ALWAYS,                 0},
   { "TIME",             "TK_TIME",          ALWAYS,                 0},
+  { "TUNABLE",          "TK_TUNABLE",       ALWAYS,                 0},
   { "VERSION",          "TK_VERSION",       ALWAYS,                 0},
   { "TRUNCATE",         "TK_TRUNCATE",      ALWAYS,                 0},
   { "WRITE",            "TK_WRITE",         ALWAYS,                 0},

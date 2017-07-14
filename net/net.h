@@ -358,7 +358,7 @@ void net_enable_test(netinfo_type *netinfo_ptr, int testno);
 void net_disable_test(netinfo_type *netinfo_ptr);
 
 /* used by comdb2 to add subnet suffices for replication */
-void net_add_nondedicated_subnet();
+int net_add_nondedicated_subnet(void *, void *);
 int net_add_to_subnets(const char *suffix, const char *lrlname);
 void net_cleanup_subnets();
 
