@@ -8834,19 +8834,15 @@ void delete_db(char *db_name)
     }
 
     thedb->num_dbs -= 1;
+    thedb->dbs[thedb->num_dbs] = NULL;
 
     pthread_rwlock_unlock(&thedb_lock);
 }
 
-void replace_db_idx(struct db *p_db, int idx, int add)
+void replace_db_idx(struct db *p_db, int idx)
 {
     int move = 0;
     pthread_rwlock_wrlock(&thedb_lock);
-    if (!add && idx < 0) {
-        logmsg(LOGMSG_FATAL, "%s: failed to find db for replacement: %s\n",
-               __func__, p_db->dbname);
-        exit(1);
-    }
 
     if (idx < 0 || idx >= thedb->num_dbs ||
         strcasecmp(thedb->dbs[idx]->dbname, p_db->dbname) != 0) {
@@ -8862,8 +8858,8 @@ void replace_db_idx(struct db *p_db, int idx, int add)
         thedb->dbs[i]->dbs_idx = i;
     }
 
-    p_db->dbnum = thedb->dbs[idx]->dbnum; /* save dbnum since we can't load if
-                                         * from the schema anymore */
+    if (!move) p_db->dbnum = thedb->dbs[idx]->dbnum;
+
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
 
