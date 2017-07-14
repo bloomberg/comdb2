@@ -100,8 +100,7 @@ int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
     /* berkeley page lock */
     if (lklen == 28) {
         berk_page_lock = lkname;
-        rc = __dbreg_get_name(dbenv,
-                              (u_int8_t *)berk_page_lock->fileid, &file);
+        rc = __dbreg_get_name(dbenv, (u_int8_t *)berk_page_lock->fileid, &file);
         if (rc)
             snprintf(out, outlen, "%s lock unknown file page %d",
                      (berk_page_lock->type == 1) ? "handle" : "page",
@@ -225,7 +224,7 @@ extern int gbl_rep_lockid;
 extern int gbl_simulate_rowlock_deadlock_interval;
 
 /* Wrapper around berkeley lock call.  Makes debugging easier. */
-int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode, 
+int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode,
                 DB_LOCK *lk)
 {
     int rc;
@@ -453,8 +452,7 @@ static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
     char name[STRIPELOCK_KEY_SIZE];
 
     /* parent transaction inherits the locks */
-    if (tran->parent)
-        tran = tran->parent;
+    if (tran->parent) tran = tran->parent;
 
     /* bdb_state is the table that we're locking */
     assert(bdb_state->parent);
@@ -480,9 +478,8 @@ static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
         return BDBERR_BADARGS;
     }
 
-    rc =
-        berkdb_lock(bdb_state->dbenv, resolve_locker_id(tran), 0, &lk, 
-                    lockmode, &dblk);
+    rc = berkdb_lock(bdb_state->dbenv, resolve_locker_id(tran), 0, &lk,
+                     lockmode, &dblk);
 
     if (rc != 0 && rc != BDBERR_DEADLOCK) {
         logmsg(LOGMSG_ERROR, "berkdb_lock %d\n", rc);
@@ -518,8 +515,8 @@ static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
     rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
 
 #ifdef DEBUG
-    fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", 
-            pthread_self(), __func__, how, name, lid);
+    fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", pthread_self(),
+            __func__, how, name, lid);
 #endif
 
     return rc;
@@ -680,7 +677,7 @@ int bdb_lock_stripe_write(bdb_state_type *bdb_state, int stripe,
 
 int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
 {
-    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid, 
+    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
                               BDB_LOCK_READ);
 }
 
@@ -716,10 +713,9 @@ int bdb_lock_tablename_write(DB_ENV *dbenv, const char *name, tran_type *tran)
 {
     int rc;
 
-    if (tran->parent)
-        tran = tran->parent;
+    if (tran->parent) tran = tran->parent;
 
-    rc = bdb_lock_table_int(dbenv, name, resolve_locker_id(tran), 
+    rc = bdb_lock_table_int(dbenv, name, resolve_locker_id(tran),
                             BDB_LOCK_WRITE);
     return rc;
 }
