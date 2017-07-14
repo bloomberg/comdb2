@@ -83,9 +83,6 @@ static int istty = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
-int sigaction(int signum, const struct sigaction *act,
-              struct sigaction *oldact);
-
 static void hexdump(FILE *f, void *datap, int len)
 {
     u_char *data = (u_char *)datap;
@@ -890,8 +887,6 @@ static void replace_args(int argc, char *argv[])
     }
 }
 
-static int int_handler_cnt = 0;
-
 /* If ctrl_c was pressed to clear existing line and go to new line
  * If we see two ctrl_c in a row we exit.
  * However, after a ctrl_c if user typed something
@@ -899,8 +894,6 @@ static int int_handler_cnt = 0;
  */
 static void int_handler(int signum)
 {
-    if (strlen(rl_line_buffer) > 0) int_handler_cnt = 0;
-    if (++int_handler_cnt > 1) exit(1);
     printf("\n");
     rl_on_new_line();
     rl_replace_line("", 0);
