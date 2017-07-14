@@ -8852,8 +8852,7 @@ void replace_db_idx(struct db *p_db, int idx)
         thedb->dbs[i]->dbs_idx = i;
     }
 
-    if(!move)
-        p_db->dbnum = thedb->dbs[idx]->dbnum;
+    if (!move) p_db->dbnum = thedb->dbs[idx]->dbnum;
 
     p_db->dbs_idx = idx;
     thedb->dbs[idx] = p_db;
