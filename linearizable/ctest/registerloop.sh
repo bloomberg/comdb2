@@ -1,16 +1,11 @@
 #!/bin/bash
 
-select_test=0
 clock_test=0
 debug_trace_flags=""
 remove_good_test=0
 
 while [[ -n "$1" ]]; do
     case $1 in
-        -s)
-            select_test=1
-            shift
-            ;;
         -c)
             echo "THIS WILL RUN THE CLOCK TEST PERIODICALLY"
             clock_test=1
@@ -42,24 +37,21 @@ fi
 pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
 runbase=$pathbase/linearizable/ctest/
 scripts=$pathbase/linearizable/scripts
+knossos=$pathbase/linearizable/filetest
 . $scripts/setvars
 outbase=${COMDB2_OUTBASE:-/db/testout}
 
 # add to comdb2db
 $scripts/addmach_comdb2db $db
 
-
 iter=0
-insper=0
 select_test_flag=""
-if [[ "$select_test" == "1" ]]; then
-    select_test_flag="-s"
-    echo "Adding initial records for select-test (this could take a while)"
-    $runbase/test -d $db -Y
-fi
 
 while :; do 
-    outfile=$outbase/test.$db.$iter.out
+    outfile=$outbase/register.$db.$iter.out
+    clojout=$outbase/register.$db.$iter.cloj
+    knosout=$outbase/register.$db.$iter.knossos
+
     if [[ $(( iter % 2 )) == 0 ]]; then
         mflag="-M"
     else
@@ -98,51 +90,25 @@ while :; do
 
     # Do each test with each value
     modval=$(( (iter / count_test) % 4 ))
-    insper=$(( 10 ** modval ))
 
-    echo "$(date) running test iteration $iter for $db using $insper records per insert"
+    echo "$(date) running test iteration $iter for $db"
     echo "$descr"
 
     # -D = enable debug-trace flags, -i <#> = number of inserts per txn
-    echo "$runbase/test $debug_trace_flags -i $insper $runtest $select_test_flag -d $db $mflag"
-    $runbase/test $debug_trace_flags -i $insper $runtest $select_test_flag -d $db $mflag > $outfile 2>&1
-    grep "lost value" $outfile 
+    echo "$runbase/register $debug_trace_flags -r 20 $runtest -d $db $mflag -j $clojout"
+    $runbase/register $debug_trace_flags -r 20 $runtest -d $db $mflag -j $clojout > $outfile 2>&1
+
+    (
+        cd $knossos
+        lein run $clojout > $knosout 2>&1
+    )
+
+    egrep "^{:valid\? false" $knosout >/dev/null 2>&1 
     if [[ $? == 0 ]]; then
-        echo "!!! LOST VALUE IN ITERATION $iter !!!"
+        echo "!!! INVALID ANALYSIS FOR REGISTER TEST ITERATION $iter !!!"
         break 2
     fi
 
-    grep "^XXX " $outfile
-    if [[ $? == 0 ]]; then
-        echo "XXX FAILURE IN ITERATION $iter !!!"
-        break 2
-    fi
-
-    grep "THIS SHOULD HAVE RETURNED DUP" $outfile
-    if [[ $? == 0 ]]; then
-        echo "DUP BLKSEQ FAILURE IN ITERATION $iter !!!"
-        break 2
-    fi
- 
-    grep "FAIL THIS TEST" $outfile
-    if [[ $? == 0 ]]; then
-        echo "!!! DUP VALUE IN ITERATION $iter !!!"
-        break 2
-    fi
-
-    # Make sure that the lsn appears only once per cnonce
-    cnonce=$(egrep cnonce $outfile | egrep cdb2_ | awk '{print $7,$8}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1" | egrep -v '2 -s' | wc -l)
-    if [[ "$cnonce" != 0 ]]; then
-        echo "!!! CNONCE HAS MORE THAN ONE LSN !!!"
-        egrep cnonce $outfile | egrep cdb2_ | awk '{print $7,$8}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1"  | egrep -v '2 -s'
-        break 2
-    fi
-
-    grep "handle state" $outfile
-    if [[ $? == 0 ]]; then
-        echo "!!! HANDLE STATE ERROR IN ITERATION $iter !!!"
-        break 2
-    fi
 
     let iter=iter+1
 
@@ -169,6 +135,8 @@ while :; do
     if [[ "$remove_good_test" = "1" ]]; then
         echo "removing good test run"
         rm -f $outfile
+        rm -f $clojout
+        rm -f $knosout
     fi
 
 done
