@@ -37,7 +37,6 @@
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
-
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
@@ -233,9 +232,12 @@ enum {
 
 /* See attr.h for attribute definitions */
 enum {
-#define DEF_ATTR(NAME, name, type, dflt) BDB_ATTR_##NAME,
+#define DEF_ATTR(NAME, name, type, dflt, desc) BDB_ATTR_##NAME,
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    BDB_ATTR_##NAME,
 #include "attr.h"
 #undef DEF_ATTR
+#undef DEF_ATTR_2
     BDB_ATTR_MAX
 };
 

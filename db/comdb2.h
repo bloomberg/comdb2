@@ -105,6 +105,7 @@ typedef long long tranid_t;
 #include "queue.h"
 #include "comdb2_legacy.h"
 #include "machclass.h"
+#include "tunables.h"
 #ifndef LUASP
 #include <mem_uncategorized.h>
 #include <mem_override.h>
@@ -1022,6 +1023,7 @@ struct dbenv {
 };
 
 extern struct dbenv *thedb;
+extern comdb2_tunables *gbl_tunables;
 
 extern pthread_key_t unique_tag_key;
 extern pthread_key_t sqlite3VDBEkey;
@@ -2689,7 +2691,6 @@ const char *breq2a(int req);
 void epoch2a(int epoch, char *buf, size_t buflen);
 int check_current_schemas(void);
 void showdbenv(struct dbenv *dbenv);
-void set_sbuftimeout(int timeout);
 
 void clean_exit(void);
 
@@ -3663,4 +3664,10 @@ int set_rowlocks(void *trans, int enable);
 /* 0: Return null constraint error for not-null constraint violation on updates
    1: Return conversion error instead */
 extern int gbl_upd_null_cstr_return_conv_err;
-#endif
+
+/* Update the tunable at runtime. */
+int handle_runtime_tunable(const char *name, const char *value);
+/* Update the tunable read from lrl file. */
+int handle_lrl_tunable(char *name, int name_len, char *value, int value_len);
+
+#endif /* !INCLUDED_COMDB2_H */

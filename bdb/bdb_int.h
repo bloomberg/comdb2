@@ -66,6 +66,7 @@
 
 #include "mem_bdb.h"
 #include "mem_override.h"
+#include "tunables.h"
 
 /* Public ODH constants */
 enum {
@@ -650,9 +651,13 @@ struct deferred_berkdb_option {
 };
 
 struct bdb_attr_tag {
-#define DEF_ATTR(NAME, name, type, dflt) int name;
+#define DEF_ATTR(NAME, name, type, dflt, desc) int name;
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    int name;
 #include "attr.h"
 #undef DEF_ATTR
+#undef DEF_ATTR_2
+
     LISTC_T(struct deferred_berkdb_option) deferred_berkdb_options;
 };
 
@@ -1881,5 +1886,8 @@ int bdb_durable_block(bdb_state_type *bdb_state, DB_LSN *commit_lsn,
 void populate_deleted_files(bdb_state_type *bdb_state);
 
 int has_low_headroom(const char *path, int threshold, int debug);
+
+const char *deadlock_policy_str(int policy);
+int deadlock_policy_max();
 
 #endif /* __bdb_int_h__ */

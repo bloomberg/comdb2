@@ -1042,9 +1042,9 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
         return;       
   
     if (threads > 0)
-        analyze_set_max_table_threads(threads);
+        analyze_set_max_table_threads(NULL, &threads);
     if (sum_threads)
-        analyze_set_max_sampling_threads(sum_threads);
+        analyze_set_max_sampling_threads(NULL, &sum_threads);
 
     if (nm == NULL)
     {
@@ -3976,5 +3976,26 @@ void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
 
     comdb2DropIndexInt(pParse, table, index_name);
 
+    return;
+}
+
+void comdb2putTunable(Parse *pParse, Token *name, Token *value)
+{
+    char *t_name;
+    char *t_value;
+    int rc;
+
+    rc = create_string_from_token(NULL, pParse, &t_name, name);
+    if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
+    rc = create_string_from_token(NULL, pParse, &t_value, value);
+    if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
+
+    if ((handle_runtime_tunable(t_name, t_value))) {
+        setError(pParse, SQLITE_ERROR, "Failed to update tunable.");
+    }
+
+cleanup:
+    free(t_name);
+    free(t_value);
     return;
 }

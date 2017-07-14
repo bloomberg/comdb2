@@ -35,18 +35,15 @@
 /* XXX stupid chicken/egg.  this variable cannot live in the bdb_state
    cause it needs to get set before we have a bdb_state */
 extern bdb_state_type *gbl_bdb_state;
-static int gbl_bdblock_debug = 0;
 extern int gbl_rowlocks;
-
 extern pthread_t gbl_invalid_tid;
+
+int gbl_bdblock_debug = 0;
+
 void comdb2_cheap_stack_trace_file(FILE *f);
 
 /* Defined in tran.c */
 int bdb_abort_logical_waiters(bdb_state_type *bdb_state);
-
-void bdb_bdblock_debug(void) { gbl_bdblock_debug = 1; }
-
-int bdb_bdblock_debug_enabled(void) { return gbl_bdblock_debug; }
 
 enum bdb_lock_type { NOLOCK = 0, READLOCK = 1, WRITELOCK = 2 };
 

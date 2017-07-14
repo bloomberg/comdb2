@@ -48,13 +48,13 @@ static int analyze_abort_requested = 0;
 static int sampled_tables_enabled = 1;
 
 /* sampling threshold defaults to 100 Mb */
-static long long sampling_threshold = 104857600;
+long long sampling_threshold = 104857600;
 
 /* hard-maximum number of analyze-table threads */
 static int analyze_hard_max_table_threads = 15;
 
 /* maximum number of analyze-table threads */
-static int analyze_max_table_threads = 5;
+int analyze_max_table_threads = 5;
 
 /* current number of analyze-sampling threads */
 static int analyze_cur_table_threads = 0;
@@ -63,7 +63,7 @@ static int analyze_cur_table_threads = 0;
 static int analyze_hard_max_comp_threads = 40;
 
 /* maximum number of analyze-sampling threads */
-static int analyze_max_comp_threads = 10;
+int analyze_max_comp_threads = 10;
 
 /* current number of analyze-sampling threads */
 static int analyze_cur_comp_threads = 0;
@@ -1143,13 +1143,16 @@ void analyze_enable_sampled_indicies(void) { sampled_tables_enabled = 1; }
 void analyze_disable_sampled_indicies(void) { sampled_tables_enabled = 0; }
 
 /* set sampling threshold */
-int analyze_set_sampling_threshold(long long thresh)
+int analyze_set_sampling_threshold(void *context, void *thresh)
 {
-    if (thresh < 0) {
-        logmsg(LOGMSG_ERROR, "%s: invalid value for sampling threshold\n", __func__);
-        return -1;
+    long long _thresh = *(int *)thresh;
+
+    if (_thresh < 0) {
+        logmsg(LOGMSG_ERROR, "%s: Invalid value for sampling threshold\n",
+               __func__);
+        return 1;
     }
-    sampling_threshold = thresh;
+    sampling_threshold = _thresh;
     return 0;
 }
 
@@ -1157,38 +1160,42 @@ int analyze_set_sampling_threshold(long long thresh)
 long long analyze_get_sampling_threshold(void) { return sampling_threshold; }
 
 /* set maximum analyze threads */
-int analyze_set_max_table_threads(int maxthd)
+int analyze_set_max_table_threads(void *context, void *maxthd)
 {
+    int _maxthd = *(int *)maxthd;
+
     /* must have at least 1 */
-    if (maxthd < 1) {
+    if (_maxthd < 1) {
         logmsg(LOGMSG_ERROR, "%s: invalid value for maxthd\n", __func__);
-        return -1;
+        return 1;
     }
     /* can have no more than hard-max */
-    if (maxthd > analyze_hard_max_table_threads) {
+    if (_maxthd > analyze_hard_max_table_threads) {
         logmsg(LOGMSG_ERROR, "%s: hard-maximum is %d\n", __func__,
                analyze_hard_max_table_threads);
-        return -1;
+        return 1;
     }
-    analyze_max_table_threads = maxthd;
+    analyze_max_table_threads = _maxthd;
     return 0;
 }
 
-/* set maximum analyze sampling threads */
-int analyze_set_max_sampling_threads(int maxthd)
+/* Set maximum analyze sampling threads */
+int analyze_set_max_sampling_threads(void *context, void *maxthd)
 {
+    int _maxthd = *(int *)maxthd;
+
     /* must have at least 1 */
-    if (maxthd < 1) {
+    if (_maxthd < 1) {
         logmsg(LOGMSG_ERROR, "%s: invalid value for maxthd\n", __func__);
-        return -1;
+        return 1;
     }
     /* can have no more than hard-max */
-    if (maxthd > analyze_hard_max_comp_threads) {
+    if (_maxthd > analyze_hard_max_comp_threads) {
         logmsg(LOGMSG_ERROR, "%s: hard-maximum is %d\n", __func__,
                analyze_hard_max_comp_threads);
-        return -1;
+        return 1;
     }
-    analyze_max_comp_threads = maxthd;
+    analyze_max_comp_threads = _maxthd;
     return 0;
 }
 
