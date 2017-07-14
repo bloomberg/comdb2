@@ -34,10 +34,9 @@
 struct limit_t {
     const char *name;
     const char *descr;
-    int limit;
+    int value;
 } limits[] = {
-    /* COMDB2_LIMIT(COMDB2_MAX_RECORD_SIZE, "????"), */
-    /* COMDB2_LIMIT(LONG_REQMS, "????"), */
+    COMDB2_LIMIT(COMDB2_MAX_RECORD_SIZE, "Maximum record size"),
     COMDB2_LIMIT(MAXBLOBLENGTH, "Maximum blob length"),
     COMDB2_LIMIT(MAXBLOBS, "Maximum number of blobs"),
     COMDB2_LIMIT(MAXCOLNAME, "Maximum column name length"),
@@ -47,10 +46,9 @@ struct limit_t {
     COMDB2_LIMIT(MAXCUSTOPNAME, "Maximum length of a custom operation name"),
     COMDB2_LIMIT(MAX_DBNAME_LENGTH, "Maximum length of database name"),
     COMDB2_LIMIT(MAXDTASTRIPE, "Maximum number of data stripes"),
-    /* COMDB2_LIMIT(MAXDYNTAGCOLUMNS, "????"), */
+    COMDB2_LIMIT(MAXDYNTAGCOLUMNS, "Maximum number of bounded parameters per prepared statement"),
     COMDB2_LIMIT(MAXINDEX, "Maximum number of indices"),
     COMDB2_LIMIT(MAXKEYLEN, "Maximum key length"),
-    COMDB2_LIMIT(MAXLRL, "Maximum data lrl size"),
     COMDB2_LIMIT(MAXNETS, "Maximum number of networks"),
     COMDB2_LIMIT(MAXNODES, "Maximum number of nodes"),
     COMDB2_LIMIT(MAX_QUEUE_HITS_PER_TRANS, "Maximum number of queues that "
@@ -74,7 +72,7 @@ typedef struct {
 } systbl_limits_cursor;
 
 /* Column numbers (always keep the below table definition in sync). */
-enum { LIMITS_COLUMN_NAME, LIMITS_COLUMN_DESCR, LIMITS_COLUMN_LIMIT };
+enum { LIMITS_COLUMN_NAME, LIMITS_COLUMN_DESCR, LIMITS_COLUMN_VALUE };
 
 static int systblLimitsConnect(sqlite3 *db, void *pAux, int argc,
                                const char *const *argv, sqlite3_vtab **ppVtab,
@@ -83,7 +81,7 @@ static int systblLimitsConnect(sqlite3 *db, void *pAux, int argc,
     int rc;
 
     rc = sqlite3_declare_vtab(
-        db, "CREATE TABLE comdb2_limits(\"name\", \"description\", \"limit\")");
+        db, "CREATE TABLE comdb2_limits(\"name\", \"description\", \"value\")");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -158,9 +156,9 @@ static int systblLimitsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         sqlite3_result_text(
             ctx, limits[((systbl_limits_cursor *)cur)->rowid].descr, -1, NULL);
         break;
-    case LIMITS_COLUMN_LIMIT:
+    case LIMITS_COLUMN_VALUE:
         sqlite3_result_int(ctx,
-                           limits[((systbl_limits_cursor *)cur)->rowid].limit);
+                           limits[((systbl_limits_cursor *)cur)->rowid].value);
         break;
     default: assert(0);
     };
