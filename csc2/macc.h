@@ -75,7 +75,7 @@ extern char *maccfuncpath;
 
 /* MAXINDEX HAS BECOME OBSOLETE - FOR NOW, JUST KLUDGE TO FIX */
 #define MAXKEYS 256  /* maximum # of keys with cases */
-#define MAXINDEX 256 /* max # of indices */
+//#define MAXINDEX 256 /* max # of indices */
 
 #define EXPRMAX 1024    /* maximum pieces of an expression */
 #define EXPRTABMAX 1024 /* maximum number of expressions */
