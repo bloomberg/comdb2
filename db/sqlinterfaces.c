@@ -5719,7 +5719,7 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
         unlock_schema_lk();
     }
 
-    int debug_appsock = 0;
+    int debug_appsock;
     if (unlikely(!thd->sqldb) ||
         (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
         /* unplausable, but anyway */
