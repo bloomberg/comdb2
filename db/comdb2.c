@@ -1871,14 +1871,10 @@ static int pre_read_option(struct dbenv *dbenv, char *line,
 
     if (tokcmp(tok, ltok, "disable_direct_writes") == 0) {
         dbenv->enable_direct_writes = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "morecolumns") == 0) {
+    } else if (tokcmp(tok, ltok, "morecolumns") == 0) {
         logmsg(LOGMSG_INFO, "allowing 1024 columns per table\n");
         gbl_morecolumns = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "nullfkey") == 0) {
+    } else if (tokcmp(tok, ltok, "nullfkey") == 0) {
         gbl_nullfkey = 1;
     } else if (tokcmp(tok, ltok, "disallow_portmux_route") == 0) {
         gbl_pmux_route_enabled = 0;
@@ -1918,9 +1914,7 @@ static int pre_read_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "dont_optimize_repdb_truncate") == 0) {
        logmsg(LOGMSG_INFO, "Will use unoptimized repdb truncate code.\n");
         gbl_optimize_truncate_repdb = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "lk_part") == 0) {
+    } else if (tokcmp(tok, ltok, "lk_part") == 0) {
         tok = segtok(line, llen, &st, &ltok);
         int parts = toknum(tok, ltok);
         if (parts > 0 && parts < 2049) {
