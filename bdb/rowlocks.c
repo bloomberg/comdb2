@@ -2152,7 +2152,6 @@ static char *opstr(db_recops op)
     }
 }
 
-#define MAXBLOBLENGTH (256 * 1024 * 1024)
 unsigned char *printmemarg1(void)
 {
     static unsigned char *u = NULL;

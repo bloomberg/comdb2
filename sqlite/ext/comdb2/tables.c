@@ -231,6 +231,8 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_triggers", &systblTriggersModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_keywords", &systblKeywordsModule, 0);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_limits", &systblLimitsModule, 0);
 #endif
   return rc;
 }
