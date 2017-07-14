@@ -5730,6 +5730,11 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
                    "%s line %d: testing null thd->sqldb codepath\n", __func__,
                    __LINE__);
         }
+        /* Tell newsql client to CHANGENODE */
+        if (clnt->is_newsql) {
+            char *errstr = "Client api should change nodes";
+            client_sql_api.send_run_error(clnt, errstr, CDB2ERR_CHANGENODE);
+        }
         clnt->query_rc = -1;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
