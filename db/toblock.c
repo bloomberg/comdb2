@@ -1176,7 +1176,7 @@ static int tolongblock_req_pre_hdr_int(struct ireq *iq,
         return ERR_BADREQ;
     }
 
-    iq->errstrused = req.flags & BLKF_ERRSTAT;
+    iq->errstrused = (req.flags & BLKF_ERRSTAT ? 1 : 0);
     iq->transflags = req.flags;
 
     p_blkstate->source_host = NULL;
@@ -4479,7 +4479,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     BACKOUT;
                 }
 
-                iq->have_limits = 1;
                 if (req.have_max_cost) {
                     iq->__limits.maxcost = req.max_cost;
                 }

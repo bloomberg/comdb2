@@ -1254,18 +1254,14 @@ struct ireq {
     /* REGION 1 */
     /************/
     char *frommach; /* machine that the buffer came from */
-    int frompid;
     const char *where;
     char *gluewhere; /*backend code where*/
-    int debug;
     uint64_t debug_now;
     uint64_t nowus; /*received.*/
     struct query_limits __limits;
-    int opcode;
     struct dbenv *dbenv;
     struct db *origdb;
     struct db *usedb;
-    int usedbtablevers;
 
     /* these usually refer to diffent points in the same fstsnd buffer, as such
      * p_buf_in and p_buf_in_end should be set to NULL once writing to p_buf_out
@@ -1277,6 +1273,10 @@ struct ireq {
     uint8_t *p_buf_out;           /* pointer to current pos in output buf */
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
+    int usedbtablevers;
+    int frompid;
+    int debug;
+    int opcode;
     int luxref;
     unsigned long long rqid;
     uint8_t osql_rowlocks_enable;
@@ -1298,27 +1298,11 @@ struct ireq {
     uint8_t region3; /* used for offsetof */
 
     uint64_t startus; /*thread handling*/
-    int is_fake;
-    int is_dumpresponse;
-    int is_fromsocket;
-    int is_socketrequest;
-    int is_block2positionmode;
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
     void *use_handle; /* for fake ireqs, so I can start a transaction */
-    int transflags;   /* per-transaction flags */
 
-/* Wow!! no one is using this stuff */
-#if 0
-    int debug_lbuf;
-    int debug_n_prefixes;
-    char debug_prefix[64];
-    int debug_prefix_pos;
-    int debug_prefix_len[IREQ_MAX_PREFIXES];
-#endif
-
-    int errstrused;
     errstat_t errstat;
     struct javasp_trans_state *jsph;
     struct block_state *blkstate;
@@ -1326,13 +1310,69 @@ struct ireq {
 
     bpfunc_list_t bpfunc_lst;
 
-    int isinternal; /* internal request, don't sndbak */
-
     struct thread_info *thdinfo;
 
-    /* if we rpelicated then these get updated */
-    int reptimems, timeoutms;
+    struct db *queues_hit[MAX_QUEUE_HITS_PER_TRANS];
+
+    /* List of replication objects associated with the ireq/transaction
+     * which other subsystems (i.e. queues) may need to wait for. */
+    struct repl_object *repl_list;
+
+    SBUF2 *sb; /*NULL, or valid for socket requests */
+
+    /* if this is not NULL then we might want logging for this request.. */
+    struct reqlogger *reqlogger;
+
+    /* The stats for the origin node of this request (can be NULL) */
+    struct rawnodestats *rawnodestats;
+
+    /* copy of blkseq */
+    uint8_t seq[MAX_SEQ_LEN];
+
+    /* for blocksql purposely we want to have the list of sql
+       queries submitted;
+       the field is not null if we have any BLOCK2_SQL requests
+       THIS IS USED IN BLOCKSQL, WOULD BE NICE TO UNIFY -later-
+     */
+    void *blocksql_tran;
+
+    /* socksql/recom storage */
+    sorese_info_t sorese;
+
+    /* debug osql */
+    osql_bp_timings_t timings;
+
+    /* Support for //DBSTATS. */
+    SBUF2 *dbglog_file;
+    int *nwrites;
+    char *sqlhistory_ptr;
+    /* List of genids that we've written to detect uncommitable txn's */
+    hash_t *vfy_genid_hash;
+    pool_t *vfy_genid_pool;
+
+    /* read-set validation */
+    CurRangeArr *arr;
+    CurRangeArr *selectv_arr;
+
+    /* indexes on expressions */
+    uint8_t **idxInsert;
+    uint8_t **idxDelete;
+
+    /* osql prefault step index */
+    int *osql_step_ix;
+    /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
+
+    struct schema_change_type *sc_pending;
+    double cost;
+    uint64_t sc_seed;
     uint64_t txnsize;
+    /* if we replicated then these get updated */
+    int reptimems;
+    int timeoutms;
+    int transflags;   /* per-transaction flags */
+
+    /* more stats - number of retries done under this request */
+    int retries;
 
     /* count the number of updates and deletes done by this transaction in
      * a live schema change behind the cursor.  This helps us know how many
@@ -1349,94 +1389,34 @@ struct ireq {
      * threads).  num_queues_hit==MAX_QUEUE_HITS_PER_TRANS+1 means that
      * we'll have to wake up all queues on commit - oh well. */
     unsigned num_queues_hit;
-    struct db *queues_hit[MAX_QUEUE_HITS_PER_TRANS];
-
-    /* List of replication objects associated with the ireq/transaction
-     * which other subsystems (i.e. queues) may need to wait for. */
-    struct repl_object *repl_list;
-
-    SBUF2 *sb; /*NULL, or valid for socket requests */
-
-    /* more stats - number of retries done under this request */
-    int retries;
-
-    /* if this is not NULL then we might want logging for this request.. */
-    struct reqlogger *reqlogger;
-
-    int helper_thread;
-
-    /* The stats for the origin node of this request (can be NULL) */
-    struct rawnodestats *rawnodestats;
-
-    /* copy of blkseq */
-    uint8_t seq[MAX_SEQ_LEN];
-    int seqlen;
-
-    /* for blocksql purposely we want to have the list of sql
-       queries submitted;
-       the field is not null if we have any BLOCK2_SQL requests
-       THIS IS USED IN BLOCKSQL, WOULD BE NICE TO UNIFY -later-
-     */
-    void *blocksql_tran;
-
-    /* socksql/recom storage */
-    sorese_info_t sorese;
-
-    /* debug osql */
-    osql_bp_timings_t timings;
-
-    /* Number of oplog operations logged as part of this transaction */
-    int oplog_numops;
-
-    /* Support for //DBSTATS. */
-    SBUF2 *dbglog_file;
-    int *nwrites;
-    int queryid;
-
-    unsigned char have_limits;
-    double readcost;
-    double cost;
-
-    int osql_flags;
-
-    char *sqlhistory_ptr;
-    int sqlhistory_len;
 
     unsigned long long last_genid;
+    /* Number of oplog operations logged as part of this transaction */
+    int oplog_numops;
+    int seqlen;
+    int helper_thread;
+    int queryid;
+    int osql_flags;
+    int priority;
+    int sqlhistory_len;
 
-    /* List of genids that we've written to detect uncommitable txn's */
-    int vfy_genid_track;
-    hash_t *vfy_genid_hash;
-    pool_t *vfy_genid_pool;
+    uint8_t is_fake;
+    uint8_t is_dumpresponse;
+    uint8_t is_fromsocket;
+    uint8_t is_socketrequest;
+    uint8_t is_block2positionmode;
 
-    unsigned char is_sorese;
-    unsigned char have_blkseq;
+    uint8_t errstrused;
+    uint8_t vfy_genid_track;
+    uint8_t is_sorese;
+    uint8_t have_blkseq;
 
     /* Client endian flags. */
-    unsigned char have_client_endian;
-    int client_endian;
-
-    int priority;
-
-    int failed_to_dispatch;
-
-    /* read-set validation */
-    CurRangeArr *arr;
-    CurRangeArr *selectv_arr;
-
-    /* indexes on expressions */
-    uint8_t **idxInsert;
-    uint8_t **idxDelete;
-
-    /* osql prefault step index */
-    int *osql_step_ix;
-    /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
-
-    unsigned char have_snap_info;
-    uint64_t sc_seed;
-    struct schema_change_type *sc_pending;
-    int sc_locked;
-    int tranddl;
+    uint8_t have_client_endian;
+    uint8_t client_endian;
+    uint8_t sc_locked;
+    uint8_t have_snap_info;
+    uint8_t tranddl;
 };
 
 /* comdb array struct */
