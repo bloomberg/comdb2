@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 set -e
+set -x
 
 # Debug variable
 debug=0
@@ -17,13 +18,13 @@ fi
 nins=0
 
 
-function failexit
+failexit()
 {
     echo "Failed $1"
     exit -1
 }
 
-function assertcnt 
+assertcnt ()
 {
     target=$1
     cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
@@ -38,7 +39,7 @@ function assertcnt
 }
 
 
-function do_verify
+do_verify()
 {
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
 
@@ -48,7 +49,7 @@ function do_verify
 }
 
 # Do schema changes
-function do_schema_changes
+do_schema_changes()
 {
     typeset max=$1
     typeset iter=0
@@ -75,7 +76,7 @@ function do_schema_changes
 }
 
 # Update all records in the table
-function update_all_records
+update_all_records()
 {
     typeset prmsg=$1
     typeset iter=0
@@ -96,7 +97,7 @@ function update_all_records
     done
 }
 
-function update_records
+update_records()
 {
     j=0
     echo "Updating $nrecs records."
@@ -108,7 +109,7 @@ function update_records
     done
 }
 
-function insert_records
+insert_records()
 {
     j=$1
     nstop=$2
@@ -124,9 +125,12 @@ function insert_records
 }
 
 
-function assertres 
+assertres ()
 {
-    res=$2
+    if [ $# != 2 ] ; then 
+        failexit "res is $res, target is $target, one or more is blank"
+    fi
+    res=$1
     target=$2
     if [ "$res" != "$target" ] ; then
         failexit "res is $res but should be $target"
@@ -143,16 +147,31 @@ assertres $res 1
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_dbname()"`
 assertres $res $dbnm
+cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
-for node in $CLUSTER ; do
+for node in $cluster ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_host()"`
     assertres $res $node
 
 
     port=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_port()"`
-    echo "connect with wrong db name"
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @$node:port=$port "select comdb2_port()"
+    echo "connect to db with direct port info"
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
+
+    echo "connect with wrong db name"
+    set +e
+    cdb2sql --tabs ${CDB2_OPTIONS} badname @$node:port=$port "select comdb2_dbname()" &> out.txt
+    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch" > out.exp
+    rc=$?
+    set -e
+#    TODO: this returns rc=0 even though error and can't run query!!
+#    if [ $rc -eq 0 ]; then
+#        failexit "Expected bad rc when connecting with the wrong db name"
+#    fi
+    if [ diff out.txt out.exp ]; then
+        failexit "Expected failure when connecting with the wrong db name"
+    fi
 done
 
 
