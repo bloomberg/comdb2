@@ -3160,6 +3160,9 @@ int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return SQLITE_OK;
 }
 
+/* Instrument to core if I see this in my testing */
+int gbl_abort_high_availability_failure;
+
 static int is_snap_uid_retry(struct sqlclntstate *clnt)
 {
     if (gbl_extended_sql_debug_trace) {
@@ -3218,6 +3221,10 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
         if (gbl_extended_sql_debug_trace) {
             logmsg(LOGMSG_USER, "%s line %d returning -1, high_availability=0\n");
         }
+
+        if (gbl_abort_high_availability_failure)
+            abort();
+
         return -1;
     }
 

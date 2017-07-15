@@ -821,6 +821,7 @@ extern int gbl_parallel_count;
 extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
+extern int gbl_abort_high_availability_failure;
 
 int gbl_bbenv;
 
@@ -8546,6 +8547,9 @@ static void register_all_int_switches()
     register_int_switch("abort_invalid_query_info_key",
                         "Abort in thread-teardown for invalid query_info_key",
                         &gbl_abort_invalid_query_info_key);
+    register_int_switch("abort_server_high_availability_failure",
+                        "Abort if we do not think we are high availability",
+                        &gbl_abort_high_availability_failure);
 }
 
 static void getmyid(void)
