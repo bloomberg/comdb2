@@ -1360,7 +1360,6 @@ struct ireq {
 
     /* osql prefault step index */
     int *osql_step_ix;
-    /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 
     struct schema_change_type *sc_pending;
     double cost;
@@ -1417,6 +1416,7 @@ struct ireq {
     uint8_t sc_locked;
     uint8_t have_snap_info;
     uint8_t tranddl;
+    /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
 /* comdb array struct */
