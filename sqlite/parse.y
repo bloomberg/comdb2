@@ -1942,9 +1942,6 @@ rle_compress_type(A) ::= CRLE. {A = REC_CRLE;}
 rle_compress_type(A) ::= ZLIB. {A = REC_ZLIB;}
 rle_compress_type(A) ::= LZ4. {A = REC_LZ4;}
 
-/////////////////// COMDB2 DRYRUN COMMAND  //////////////////////////////
-
-
 //////////////////// COMDB2 STORED PROCEDURES /////////////////////////////////
 
 cmd ::= createkw PROCEDURE nm(N) NOSQL(X). {

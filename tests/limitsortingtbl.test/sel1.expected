@@ -307,7 +307,7 @@
 (Plan='  1 [  SorterOpen]: Open sorter new table with 5 field(s) and cursor [1] to operate on it sort order (asc)')
 (Plan='  2 [    OpenRead]: Open read cursor [0] on table "t1"  (cmnt:t1)')
 (Plan='  3 [ ColumnsUsed]: Cursor [0] using column mask 1110000000000000000000000000000000000000000000000000000000000000')
-(Plan='  4 [     Explain]: No-op (169)')
+(Plan='  4 [     Explain]: No-op (168)')
 (Plan='  5 [      Rewind]: Move cursor [0] to first entry. If no entries exist, go to 13')
 (Plan='  6 [      Column]:     R2 = "i" from cursor [0] on table "t1"  (cmnt:t1.i)')
 (Plan='  7 [      Column]:     R3 = "j" from cursor [0] on table "t1"  (cmnt:t1.j)')
