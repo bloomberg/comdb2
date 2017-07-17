@@ -106,6 +106,7 @@ typedef long long tranid_t;
 #include "comdb2_legacy.h"
 #include "machclass.h"
 #include "tunables.h"
+
 #ifndef LUASP
 #include <mem_uncategorized.h>
 #include <mem_override.h>
@@ -1068,17 +1069,17 @@ typedef struct sorese_info {
     unsigned long long rqid; /* not null means active */
     uuid_t uuid;
     char *host; /* sql machine, 0 is local */
-    SBUF2 *osqllog;     /* used to track sorese requests */
+    SBUF2 *osqllog; /* used to track sorese requests */
     int type;   /* type, socksql or recom */
     int nops;   /* if no error, how many updated rows were performed */
     int rcout;  /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool use_blkseq;     /* used to force a blkseq, for locally retried txn */
-    bool osql_retry;     /* if this is osql transaction, once sql part
-                           finished successful, we set this to one
-                           to avoid repeating it if the transaction is reexecuted
-                        */
+    bool use_blkseq;    /* used to force a blkseq, for locally retried txn */
+    bool osql_retry;    /* if this is osql transaction, once sql part
+                          finished successful, we set this to one
+                          to avoid repeating it if the transaction is reexecuted
+                       */
 
 } sorese_info_t;
 
@@ -1371,7 +1372,7 @@ struct ireq {
     /* if we replicated then these get updated */
     int reptimems;
     int timeoutms;
-    int transflags;   /* per-transaction flags */
+    int transflags; /* per-transaction flags */
 
     /* more stats - number of retries done under this request */
     int retries;
