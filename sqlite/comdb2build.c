@@ -1924,7 +1924,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
                 (*size)++;
             }
 
-            if (errno == EINVAL || errno == ERANGE) {
+            if (errno == EINVAL || errno == ERANGE || *size < 0) {
                 /* Malformed size. */
                 return -1;
             }
@@ -1988,7 +1988,6 @@ static int fix_type_and_len(int *type, int *len)
         *type = 8;
         *len = in_len - 1;
         break;
-    case SERVER_BLOB: goto err;
     case SERVER_DATETIME: *type = 9; break;
     case SERVER_INTVYM: *type = 13; break;
     case SERVER_INTVDS: *type = 11; break;
@@ -2004,6 +2003,7 @@ static int fix_type_and_len(int *type, int *len)
         default: goto err;
         }
         break;
+    case SERVER_BLOB: /* fallthrough */
     case SERVER_BLOB2:
         *type = 7;
         *len = in_len - 5;
