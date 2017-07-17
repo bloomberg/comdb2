@@ -2213,7 +2213,6 @@ static int bdb_fetch_prefault_int(
 {
     u_int32_t lockerid = 0;
     DB_LOCKREQ request;
-    DB_LOCK lk;
     int rc;
     int llrc;
 
@@ -2224,7 +2223,7 @@ static int bdb_fetch_prefault_int(
         return -1;
     }
 
-    rc = bdb_lock_table_read_fromlid(bdb_state, lockerid, &lk);
+    rc = bdb_lock_table_read_fromlid(bdb_state, lockerid);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         return -1;

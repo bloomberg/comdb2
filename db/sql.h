@@ -429,7 +429,6 @@ struct sqlclntstate {
 
     int iswrite;    /* track each query if it is a read or a write */
     int isselect;   /* track if the query is a select query.*/
-    void *lockInfo; /* pointer to pointer of lock info. */
     int isUnlocked;
     int writeTransaction; /* different from iswrite above */
     int want_query_effects;

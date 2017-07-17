@@ -6520,9 +6520,6 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
         if (thedb->stopped)
             goto done;
 
-        /* Reset lock info, maybe required in the case of deadlock. */
-        clnt->lockInfo = NULL;
-
         switch (clnt->req.request) {
         case FSQL_EXECUTE_INLINE_PARAMS_TZ:
             rc = sbuf2fread(clnt->tzname, sizeof(clnt->tzname), 1, clnt->sb);

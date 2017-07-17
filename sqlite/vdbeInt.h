@@ -510,7 +510,6 @@ struct Vdbe {
   /* COMDB2 MODIFICATION */
   int *updCols;           /* list of columns modified in this update */
   Table **tbls;           /* list of tables to be open. */ 
-  void *lockInfo;         /* Information on locks. */
   u16 numTables;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
   u8 doExplainTrace;

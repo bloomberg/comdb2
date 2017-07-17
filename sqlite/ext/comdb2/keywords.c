@@ -21,6 +21,7 @@
 #define SQLITE_CORE 1
 #endif
 
+#include <string.h>
 #include <assert.h>
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"

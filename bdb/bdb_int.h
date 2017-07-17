@@ -1723,11 +1723,9 @@ int bdb_release_lock(bdb_state_type *bdb_state, DB_LOCK *rowlock);
 
 int bdb_release_row_lock(bdb_state_type *bdb_state, DB_LOCK *rowlock);
 
-int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
-                          int outlen);
+int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen);
 
-int bdb_describe_lock(bdb_state_type *bdb_state, DB_LOCK *lk, char *out,
-                      int outlen);
+int bdb_describe_lock(DB_ENV *dbenv, DB_LOCK *lk, char *out, int outlen);
 
 int bdb_lock_row_fromlid(bdb_state_type *bdb_state, int lid, int idx,
                          unsigned long long genid, int how, DB_LOCK *dblk,
