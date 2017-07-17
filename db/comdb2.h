@@ -80,11 +80,7 @@ typedef long long tranid_t;
 
 #include <list.h>
 #include <queue.h>
-#include <list.h>
 #include <compile_time_assert.h>
-#include "tag.h"
-#include "errstat.h"
-#include "comdb2_rcodes.h"
 #include <history.h>
 #include <comdb2_info.h>
 #include <comdb2_dbinfo.h>
@@ -92,9 +88,14 @@ typedef long long tranid_t;
 #include <sqlthdpool.h>
 #include <prefault.h>
 #include <quantize.h>
+#include <dlmalloc.h>
+#include <stdbool.h>
+
+#include "tag.h"
+#include "errstat.h"
+#include "comdb2_rcodes.h"
 #include "sqlquery.pb-c.h"
 #include "repl_wait.h"
-#include <dlmalloc.h>
 #include "types.h"
 #include "thread_util.h"
 #include "request_stats.h"
@@ -102,7 +103,6 @@ typedef long long tranid_t;
 #include "thdpool.h"
 #include "thrman.h"
 #include "comdb2uuid.h"
-#include "queue.h"
 #include "comdb2_legacy.h"
 #include "machclass.h"
 #include "tunables.h"
@@ -1399,23 +1399,24 @@ struct ireq {
     int priority;
     int sqlhistory_len;
 
-    uint8_t is_fake;
-    uint8_t is_dumpresponse;
-    uint8_t is_fromsocket;
-    uint8_t is_socketrequest;
-    uint8_t is_block2positionmode;
-
-    uint8_t errstrused;
-    uint8_t vfy_genid_track;
-    uint8_t is_sorese;
-    uint8_t have_blkseq;
-
     /* Client endian flags. */
-    uint8_t have_client_endian;
     uint8_t client_endian;
-    uint8_t sc_locked;
-    uint8_t have_snap_info;
-    uint8_t tranddl;
+
+    bool have_client_endian : 1;
+    bool is_fake : 1;
+    bool is_dumpresponse : 1;
+    bool is_fromsocket : 1;
+    bool is_socketrequest : 1;
+    bool is_block2positionmode : 1;
+
+    bool errstrused : 1;
+    bool vfy_genid_track : 1;
+    bool is_sorese : 1;
+    bool have_blkseq : 1;
+
+    bool sc_locked : 1;
+    bool have_snap_info : 1;
+    bool tranddl : 1;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 

@@ -1176,7 +1176,7 @@ static int tolongblock_req_pre_hdr_int(struct ireq *iq,
         return ERR_BADREQ;
     }
 
-    iq->errstrused = (req.flags & BLKF_ERRSTAT ? 1 : 0);
+    iq->errstrused = req.flags & BLKF_ERRSTAT;
     iq->transflags = req.flags;
 
     p_blkstate->source_host = NULL;
