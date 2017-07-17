@@ -445,3 +445,35 @@ constraints
 ')
 [DROP TABLE t6] failed with rc -3 no such table: t6
 [CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate only on local schema only.
+[CREATE TABLE t2(b blob[1])] failed with rc -3 Invalid type specified.
+[CREATE TABLE t6(b blob(-100))] failed with rc -3 Invalid type specified.
+(tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='b', type='blob', size=6, sqltype='blob', varinlinesize='1', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='b', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+[CREATE TABLE t4(b blob(0))] failed with rc -3 Table already exists
+[CREATE TABLE t5(b blob(-100))] failed with rc -3 Invalid type specified.
+(tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='b', type='blob', size=6, sqltype='blob', varinlinesize='1', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='b', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("b" blob);', csc2='schema
+	{
+		blob b null = yes 
+	}
+')
+(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("b" blob);', csc2='schema
+	{
+		blob b[1] null = yes 
+	}
+')
+(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("b" blob);', csc2='schema
+	{
+		blob b[100] null = yes 
+	}
+')
+(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("b" blob);', csc2='schema
+	{
+		blob b null = yes 
+	}
+')
