@@ -4452,7 +4452,7 @@ struct Cdb2TrigTables {
 Cdb2TrigEvents *comdb2AddTriggerEvent(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
 void comdb2DropTrigger(Parse*,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
-void comdb2CreateTrigger(Parse*,int dynamic, SrcList *,Cdb2TrigTables*);
+void comdb2CreateTrigger(Parse *, int dynamic, SrcList *, Cdb2TrigTables *);
 
 void comdb2CreateScalarFunc(Parse *, Token *);
 void comdb2DropScalarFunc(Parse *, Token *);

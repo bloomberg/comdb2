@@ -34,8 +34,6 @@ ifeq ($(arch),Linux)
   POSTCOMPILE = mv -f $(@:.o=.Td) $(@:.o=.d)
   SHARED=-shared
   OPT_CFLAGS=-O3
-  CC=gcc -pg
-  CXX=g++
 else
 ifeq ($(arch),SunOS)
   CC=/bb/util/common/SS12_3-20131030/SUNWspro/bin/cc
