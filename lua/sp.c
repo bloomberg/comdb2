@@ -2616,6 +2616,7 @@ static const char *db_commit_int(Lua L, int *rc)
         if (db_begin_int(L, &tmp) == 0) sp->in_parent_trans = 1;
     }
     sp->clnt->osql.tran_ops = 0;
+    sp->clnt->iswrite = 0;
     return NULL;
 }
 
@@ -6615,6 +6616,91 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
     } else {
         reset_sp(clnt->sp);
     }
+}
+
+extern char gbl_remote_cluster[128];
+extern char gbl_remote_database[128];
+
+void *exec_repsp()
+{
+    struct sqlclntstate clnt;
+    reset_clnt(&clnt, NULL, 1);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    char sql[128];
+    snprintf(sql, sizeof(sql), "exec procedure sys.applylocal()");
+    clnt.sql = sql;
+    char *err = NULL;
+
+    struct sql_thread *sqlthd = start_sql_thread();
+    sqlthd->sqlclntstate = &clnt;
+
+    struct sqlthdstate thd = {0};
+    thd.sqlthd = sqlthd;
+    thd.thr_self = thrman_register(THRTYPE_TRIGGER);
+    thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+
+    int new_vm;
+    int rc = setup_sp("sys.applylocal", &thd, &clnt, &new_vm, &err);
+    if (rc != 0) return NULL;
+    SP sp = clnt.sp;
+    Lua L = sp->lua;
+
+    if (new_vm) {
+        if ((rc = process_src(L, sp->src, &err)) != 0) return NULL;
+    }
+
+    if ((rc = get_func_by_name(L, "main", &err)) != 0) return NULL;
+
+    update_tran_funcs(L, 0);
+
+    luabb_pushcstringlen(L, gbl_remote_cluster, strlen(gbl_remote_cluster));
+    luabb_pushcstringlen(L, gbl_remote_database, strlen(gbl_remote_database));
+    thread_memcreate(128 * 1024);
+    sql_mem_init(NULL);
+
+    while (1) {
+        get_curtran(thedb->bdb_env, &clnt);
+        SP sp = clnt.sp;
+        Lua L = sp->lua;
+       if ((rc = begin_sp(&clnt, &err)) != 0) {
+            err = strdup(sp->error);
+            goto bad;
+        }
+        if ((rc = run_sp(&clnt, 2, &err)) != 0) {
+        rollback:
+            db_rollback_int(L, &rc);
+        bad:
+            if (err) {
+              puts(err);
+              free(err);
+            }
+            sleep(5); // slow down buggy sp from spinning
+            break;
+        }
+        if (lua_gettop(L) != 1 || !lua_isnumber(L, 1) ||
+            (rc = lua_tonumber(L, 1)) != 0) {
+#if 0
+            logmsg(LOGMSG_ERROR, "trigger:%s rc:%s\n", sp->spname,
+                   lua_tostring(L, 1));
+            err = strdup("trigger returned bad rc");
+#endif
+            goto rollback;
+        }
+        if ((rc = commit_sp(L, &err)) != 0) {
+            logmsg(LOGMSG_ERROR, "trigger:%s commit failed rc:%d -- %s\n",
+                   sp->spname, rc, sp->error);
+            goto bad;
+        }
+        put_curtran(thedb->bdb_env, &clnt);
+        printf("\n SUCCESS");
+    }
+    put_curtran(thedb->bdb_env, &clnt);
+    close_sp(&clnt);
+    sql_mem_shutdown(NULL);
+    done_sql_thread();
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    return NULL;
 }
 
 void *exec_trigger(trigger_reg_t *reg)

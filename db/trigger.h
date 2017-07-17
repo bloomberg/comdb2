@@ -30,6 +30,7 @@ enum consumer_t consumer_type(struct consumer *c);
 int trigger_register(trigger_reg_t *);
 int trigger_unregister(trigger_reg_t *);
 void trigger_start(const char *);
+void rep_start();
 int trigger_register_req(trigger_reg_t *);
 int trigger_unregister_req(trigger_reg_t *);
 int trigger_unregister_node(const char *node);

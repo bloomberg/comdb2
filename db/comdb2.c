@@ -408,6 +408,10 @@ int gbl_maxblockops = 25000;
 int gbl_replicate_local = 0;
 int gbl_replicate_local_concurrent = 0;
 
+int gbl_poll_rep_remote = 0;
+char gbl_remote_database[128];
+char gbl_remote_cluster[128];
+
 /* TMP BROKEN DATETIME */
 int gbl_allowbrokendatetime = 1;
 int gbl_sort_nulls_correctly = 1;

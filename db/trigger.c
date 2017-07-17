@@ -191,6 +191,23 @@ void trigger_start(const char *name)
     pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
 }
 
+static void *rep_start_int()
+{
+    exec_repsp();
+    return NULL;
+}
+
+extern int gbl_poll_rep_remote;
+
+void rep_start()
+{
+    if (!gbl_ready) return;
+    if (gbl_poll_rep_remote) {
+        pthread_t t;
+        pthread_create(&t, &gbl_pthread_attr_detached, rep_start_int, NULL);
+    }
+}
+
 // FIXME TODO XXX: KEEP TWO HASHES (1) by qname (2) by node num
 static int trigger_unregister_node_int(const char *host)
 {

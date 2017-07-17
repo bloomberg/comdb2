@@ -142,17 +142,21 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 }
 
 // dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables *tbl)
+void comdb2CreateTrigger(Parse *parse, int dynamic, SrcList *T, Cdb2TrigTables *tbl)
 {
-	TokenStr(spname, proc);
+        char spname[256];
+        if (T->a[0].zDatabase) {
+            snprintf(spname,256, "%s.%s", T->a[0].zDatabase, T->a[0].zName);
+        } else {
+            snprintf(spname,256, "%s", T->a[0].zName);
+	    if (comdb2LocateSP(parse, spname) != 0) {
+     		return;
+            }
+        }
 	Q4SP(qname, spname);
 
 	if (getqueuebyname(qname)) {
 		sqlite3ErrorMsg(parse, "trigger already exists: %s", spname);
-		return;
-	}
-
-	if (comdb2LocateSP(parse, spname) != 0) {
 		return;
 	}
 

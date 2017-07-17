@@ -1908,12 +1908,12 @@ cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= createkw LUA TRIGGER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,&Q,T);
+cmd ::= createkw LUA TRIGGER fullname(Q) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,0,Q,T);
 }
 
-cmd ::= createkw LUA CONSUMER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,&Q,T);
+cmd ::= createkw LUA CONSUMER fullname(Q) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,1, Q,T);
 }
 
 table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
