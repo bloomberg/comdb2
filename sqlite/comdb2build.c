@@ -1068,7 +1068,7 @@ void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
         return;
 
     if (newscale < -1 || newscale > 100) {
-        setError(pParse, SQLITE_ERROR, "Coverage must be between -1 and 100");
+        setError(pParse, SQLITE_ERROR, "Coverage must be between 0 and 100");
         return;
     }
 
@@ -1208,7 +1208,7 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
         return;
 
     if (newthreshold < -1 || newthreshold > 100) {
-        setError(pParse, SQLITE_ERROR, "Threshold must be between -1 and 100");
+        setError(pParse, SQLITE_ERROR, "Threshold must be between 0 and 100");
         return;
     }
     
@@ -1582,14 +1582,11 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) goto clean;
-    
-    comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, (vdbeFuncArgFree)  &free, &stp);
-
-    return;
-
-clean:
-    free(tablename);
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) 
+        free(tablename);
+    else
+        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, 
+                            (vdbeFuncArgFree)  &free, &stp);
 }
 
 static int produceAnalyzeThreshold(OpFunc *f)
