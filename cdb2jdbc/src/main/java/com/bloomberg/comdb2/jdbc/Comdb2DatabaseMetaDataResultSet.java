@@ -126,7 +126,7 @@ public class Comdb2DatabaseMetaDataResultSet implements ResultSet {
             return java.sql.Types.BLOB;
         if (type.equalsIgnoreCase("varchar"))
             return java.sql.Types.VARCHAR;
-        if (type.equalsIgnoreCase("datetime"))
+        if (type.startsWith("datetime"))
             return java.sql.Types.TIMESTAMP;
         if (type.equalsIgnoreCase("decimal"))
             return java.sql.Types.DECIMAL;
