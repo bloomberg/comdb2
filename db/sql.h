@@ -820,5 +820,6 @@ int sqlserver2sqlclient_error(int rc);
 uint16_t stmt_num_tbls(sqlite3_stmt *);
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl);
 void init_cursor(BtCursor *, Vdbe *, Btree *);
+int read_only_stmt(sqlite3_stmt *);
 
 #endif

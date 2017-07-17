@@ -1993,7 +1993,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
 
     clnt->intrans = 0;
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
 
@@ -2516,7 +2516,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 done:
 
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
     return outrc;
@@ -2962,21 +2962,6 @@ static int is_with_statement(char *sql)
     sql = skipws(sql);
     if (strncasecmp(sql, "with", 4) == 0)
         return 1;
-    return 0;
-}
-
-static int is_sql_read(char *sql)
-{
-    if (!sql)
-        return 1;
-
-    sql = skipws(sql);
-
-    if (strncasecmp(sql, "select", 6))
-        return 1;
-    if (strncasecmp(sql, "with", 4))
-        return 1;
-
     return 0;
 }
 
@@ -6325,7 +6310,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->file = 0;
     clnt->offset = 0;
     clnt->enque_timeus = clnt->deque_timeus = 0;
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
@@ -6339,6 +6324,12 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     free(clnt->context);
     clnt->context = NULL;
     clnt->ncontext = 0;
+}
+
+void reset_clnt_flags(struct sqlclntstate *clnt)
+{
+    clnt->writeTransaction = 0;
+    clnt->has_recording = 0;
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
