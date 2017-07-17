@@ -1068,17 +1068,18 @@ typedef struct sorese_info {
     unsigned long long rqid; /* not null means active */
     uuid_t uuid;
     char *host; /* sql machine, 0 is local */
+    SBUF2 *osqllog;     /* used to track sorese requests */
     int type;   /* type, socksql or recom */
     int nops;   /* if no error, how many updated rows were performed */
     int rcout;  /* store here the block proc main error */
 
-    int osql_retry;     /* if this is osql transaction, once sql part
+    int verify_retries; /* how many times we verify retried this one */
+    bool use_blkseq;     /* used to force a blkseq, for locally retried txn */
+    bool osql_retry;     /* if this is osql transaction, once sql part
                            finished successful, we set this to one
                            to avoid repeating it if the transaction is reexecuted
                         */
-    int verify_retries; /* how many times we verify retried this one */
-    SBUF2 *osqllog;     /* used to track sorese requests */
-    int use_blkseq;     /* used to force a blkseq, for locally retried txn */
+
 } sorese_info_t;
 
 /* Query cost stats as they go down to the client */
@@ -1273,12 +1274,12 @@ struct ireq {
     uint8_t *p_buf_out;           /* pointer to current pos in output buf */
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
+    unsigned long long rqid;
     int usedbtablevers;
     int frompid;
     int debug;
     int opcode;
     int luxref;
-    unsigned long long rqid;
     uint8_t osql_rowlocks_enable;
     uint8_t osql_genid48_enable;
 
@@ -1365,6 +1366,8 @@ struct ireq {
     double cost;
     uint64_t sc_seed;
     uint64_t txnsize;
+    unsigned long long last_genid;
+
     /* if we replicated then these get updated */
     int reptimems;
     int timeoutms;
@@ -1389,7 +1392,6 @@ struct ireq {
      * we'll have to wake up all queues on commit - oh well. */
     unsigned num_queues_hit;
 
-    unsigned long long last_genid;
     /* Number of oplog operations logged as part of this transaction */
     int oplog_numops;
     int seqlen;
