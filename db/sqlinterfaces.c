@@ -3128,7 +3128,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
     }
 }
 
-// Call with tag_api_lk held and no_transaction == 1
+// Call with schema_lk held and no_transaction == 1
 int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     if (gbl_fdb_track)
