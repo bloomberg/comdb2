@@ -159,7 +159,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, SrcList *T,
     if (getqueuebyname(qname)) {
         sqlite3ErrorMsg(parse, "trigger already exists: %s", spname);
         return;
-	}
+        }
 
 	strbuf *s = strbuf_new();
 	while (tbl) {

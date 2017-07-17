@@ -18,6 +18,7 @@
 #include <net_types.h>
 #include <dbqueue.h>
 #include <trigger.h>
+#include <views_cron.h>
 
 #include "intern_strings.h"
 
@@ -191,21 +192,25 @@ void trigger_start(const char *name)
     pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
 }
 
-static void *rep_start_int()
+extern int gbl_poll_rep_remote;
+cron_sched_t *rep_sched;
+void local_rep_sched();
+
+static void *local_rep_event(void *arg1, void *arg2, void *arg3, void *arg4,
+                             struct errstat *err)
 {
-    exec_repsp();
+    if (gbl_poll_rep_remote) {
+        if (gbl_ready) exec_repsp();
+        local_rep_sched();
+    }
     return NULL;
 }
 
-extern int gbl_poll_rep_remote;
-
-void rep_start()
+void local_rep_sched()
 {
-    if (!gbl_ready) return;
-    if (gbl_poll_rep_remote) {
-        pthread_t t;
-        pthread_create(&t, &gbl_pthread_attr_detached, rep_start_int, NULL);
-    }
+    int tm = time_epoch() + 5; 
+    struct errstat err;
+    cron_add_event(rep_sched, NULL, tm, (FCRON) local_rep_event, NULL, NULL, NULL, NULL, &err);
 }
 
 // FIXME TODO XXX: KEEP TWO HASHES (1) by qname (2) by node num

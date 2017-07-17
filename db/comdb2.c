@@ -409,7 +409,7 @@ int gbl_replicate_local = 0;
 int gbl_replicate_local_concurrent = 0;
 
 int gbl_poll_rep_remote = 0;
-char gbl_remote_database[128];
+char gbl_remote_database[MAX_DBNAME_LENGTH];
 char gbl_remote_cluster[128];
 
 /* TMP BROKEN DATETIME */
@@ -2705,6 +2705,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         gbl_default_sc_scanmode = SCAN_PARALLEL;
         logmsg(LOGMSG_INFO,
                "using parallel scan mode for schema changes by default\n");
+    } else if (tokcmp(tok, ltok, "rep_remote") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (tok != NULL) {
+            strncpy0(gbl_remote_cluster, tok, ltok + 1);
+        }
+        tok = segtok(line, len, &st, &ltok);
+        if (tok != NULL) {
+            strncpy0(gbl_remote_database, tok, ltok + 1);
+        }
+        gbl_poll_rep_remote = 1;
     } else if (tokcmp(tok, ltok, "use_llmeta") == 0) {
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_LLMETA, 1);
         logmsg(LOGMSG_INFO, "using low level meta table\n");
@@ -6740,6 +6750,7 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
+    local_rep_sched();
     if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
                                  deferred_do_commands)) {
         logmsg(LOGMSG_FATAL, "failed to process deferred options\n");

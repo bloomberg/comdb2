@@ -409,7 +409,6 @@ static struct sp_source syssps[] = {
      "	chg.tbl = chg.name\n"
      "	chg.name = nil\n"
      "	chg.id = MAX\n"
-     "       mbus:send(name, chg)\n"
      "	return audit:insert(chg)\n"
      "end"},
     {"sys.applylocal",

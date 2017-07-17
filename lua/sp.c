@@ -6619,7 +6619,7 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
 }
 
 extern char gbl_remote_cluster[128];
-extern char gbl_remote_database[128];
+extern char gbl_remote_database[MAX_DBNAME_LENGTH];
 
 void *exec_repsp()
 {
