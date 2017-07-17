@@ -1,0 +1,49 @@
+# Compose file for comsb2 development standalone
+version: "3"
+
+services:
+  comdb2-node1:
+    container_name: node1
+    hostname: node1
+    image: comdb2-standalone:7.0.0pre
+    entrypoint: ./cluster-entrypoint.sh
+    volumes:
+      - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
+      - ./volumes/node1:/db
+    expose: [5105]
+  comdb2-node2:
+    container_name: node2
+    hostname: node2
+    image: comdb2-standalone:7.0.0pre
+    entrypoint: ./cluster-entrypoint.sh
+    volumes:
+      - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
+      - ./volumes/node2:/db
+    expose: [5105]
+  comdb2-node3:
+    container_name: node3
+    hostname: node3
+    image: comdb2-standalone:7.0.0pre
+    entrypoint: ./cluster-entrypoint.sh
+    volumes:
+      - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
+      - ./volumes/node3:/db
+    expose: [5105]
+  comdb2-node4:
+    container_name: node4
+    hostname: node4
+    image: comdb2-standalone:7.0.0pre
+    entrypoint: ./cluster-entrypoint.sh
+    volumes:
+      - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
+      - ./volumes/node4:/db
+    expose: [5105]
+  comdb2-node5:
+    container_name: node5
+    hostname: node5
+    image: comdb2-standalone:7.0.0pre
+    entrypoint: ./cluster-entrypoint.sh
+    volumes:
+      - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
+      - ./volumes/node5:/db
+    expose: [5105]
