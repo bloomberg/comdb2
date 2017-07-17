@@ -178,7 +178,6 @@ create_table_args ::= AS select(S). {
 
 %type table_options {int}
 table_options(A) ::= .    {A = 0;}
-/*
 table_options(A) ::= WITHOUT nm(X). {
   if( X.n==5 && sqlite3_strnicmp(X.z,"rowid",5)==0 ){
     A = TF_WithoutRowid | TF_NoVisibleRowid;
@@ -187,7 +186,6 @@ table_options(A) ::= WITHOUT nm(X). {
     sqlite3ErrorMsg(pParse, "unknown table option: %.*s", X.n, X.z);
   }
 }
-*/
 
 columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
