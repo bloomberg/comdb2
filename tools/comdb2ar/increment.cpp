@@ -95,17 +95,26 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
         new_pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
 
+        size_t original_size = new_st.st_size;
         off_t bytesleft = new_st.st_size;
 
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
-            ssize_t old_bytesread = read(old_fd, &old_pagebuf[0], 12);
-            std::clog << filename << ": " << new_bytesread << " " << old_bytesread << std::endl;
+
             if(new_bytesread <= 0) {
                 std::ostringstream ss;
                 ss << "read error after " << new_bytesread << " bytes";
                 throw SerialiseError(filename, ss.str());
             }
+
+            // File has expamded by a small amount, so add all remaining pages
+            if(file_expanded) {
+                pages.push_back(PGNO(new_pagebuf));
+                *data_size += pagesize;
+                continue;
+            }
+
+            ssize_t old_bytesread = read(old_fd, &old_pagebuf[0], 12);
 
             if(old_bytesread < 0){
                 std::ostringstream ss;
@@ -114,8 +123,14 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
             }
 
             if(old_bytesread == 0) {
-                ret = true;
-                handle_expanded_file();
+                // If the size has more than doubled, just treat it as a new file
+                if ((float) bytesleft / (float) original_size > .5) {
+                    pages.clear();
+                    return true;
+                // otherwise just add the remaining pages
+                } else {
+                    file_expanded = true;
+                }
                 break;
             }
 
@@ -132,8 +147,6 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
     }
     return ret;
 }
-
-
 
 ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
                             std::string incr_path){

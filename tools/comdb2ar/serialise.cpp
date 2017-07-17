@@ -287,6 +287,7 @@ reopen:
                         incrFile.write((char *) &(LSN(pagep).offset), 4);
                         incrFile.write((char *) &verify_cksum, 4);
                     }
+
                     continue;
                 }
 
@@ -1207,7 +1208,7 @@ void serialise_database(
             }
 
             // Ok, now serialise this file.
-            serialise_file(*new_it, iom, "", incr_path, incr_create);
+            serialise_file(*new_it, iom, "", incr_path, true);
         }
 
 
