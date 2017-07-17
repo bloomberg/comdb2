@@ -399,8 +399,10 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
     int bdberr = 0;
 
     iq->gluewhere = "bdb_tran_begin_socksql";
-    out_trans =
-        bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
+    if (gbl_extended_sql_debug_trace) {
+        logmsg(LOGMSG_USER, "%s called\n", __func__);
+    }
+    out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
 
     if (out_trans == NULL) {

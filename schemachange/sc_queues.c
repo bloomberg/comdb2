@@ -561,7 +561,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 done:
     if (tran) trans_abort(&iq, tran);
 
-    logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
+    }
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
     // This function does not have the "finalize" behaviour but it needs to
     // return a proper return code

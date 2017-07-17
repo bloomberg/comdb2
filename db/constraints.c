@@ -1183,7 +1183,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                           get_keynm_from_db_idx(iq->usedb, doidx),
                           iq->usedb->dbname, doidx);
 
-                logmsg(LOGMSG_ERROR, "%s line %d add key constraints\n", __func__, __LINE__);
                 *blkpos = curop->blkpos;
                 *errout = OP_FAILED_UNIQ;
                 *ixout = doidx;

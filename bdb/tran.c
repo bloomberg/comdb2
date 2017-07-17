@@ -1411,9 +1411,11 @@ tran_type *bdb_tran_begin_readcommitted(bdb_state_type *bdb_state, int trak,
                                      bdberr, 0, 0, 0);
 }
 
-tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state, int trak, int *bdberr)
+tran_type *bdb_tran_begin_socksql(bdb_state_type *bdb_state, int trak,
+                                  int *bdberr)
 {
-    return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SOSQL, trak, bdberr, 0, 0, 0);
+    return bdb_tran_begin_shadow_int(bdb_state, TRANCLASS_SOSQL, trak, bdberr,
+                                     0, 0, 0);
 }
 
 tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,

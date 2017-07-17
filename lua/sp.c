@@ -3311,14 +3311,14 @@ static int db_exec(Lua lua)
 
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
 
-    sqlite3 *sqldb = getdb(sp);
-    if (strncasecmp(sql, "select", 6) == 0 ||
-        strncasecmp(sql, "with", 4) == 0) {
-        lua_pushinteger(lua, 0); /* Success return code. */
+    if (read_only_stmt(stmt)) {
+        // dbstmt:fetch() will run it
+        lua_pushinteger(lua, 0);
         return 2;
     }
 
-    // a write stmt - run it
+    // a write stmt - run it now
+    sqlite3 *sqldb = getdb(sp);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
     if (rc == SQLITE_DONE) {
