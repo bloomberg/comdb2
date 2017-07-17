@@ -22,6 +22,16 @@
 #ifndef INCLUDED_CDB2API_H
 #define INCLUDED_CDB2API_H
 
+#if defined(_WIN32)
+#  define _WINSOCKAPI_   
+#  define _WINSOCK_DEPRECATED_NO_WARNINGS
+#  include <winsock2.h>
+#else 
+typedef int SOCKET;
+#define INVALID_SOCKET -1
+#endif
+
+
 #include <stdio.h>
 #include <stdlib.h>
 

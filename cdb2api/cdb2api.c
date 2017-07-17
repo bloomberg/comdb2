@@ -39,6 +39,52 @@
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
 
+#if defined(_WIN32)
+typedef WSAPOLLFD pollfd;
+static int poll(pollfd fds[], size_t nfds, int timeout) {
+    return (int) WSAPoll(fds, (ULONG) nfds, (INT) timeout);
+}
+
+static int getLastError() {
+    return WSAGetLastError();
+}
+
+static int wouldBlock() {
+    return WSAGetLastError() == WSAEWOULDBLOCK;
+}
+
+static unsigned int random() {
+    unsigned int r;
+    rand_s(&r);
+    return r;
+}
+
+static void srandom(unsigned int seed) {
+    srand(seed);
+}
+
+static int gettimeofday(struct timeval * tp, struct timezone * tzp) {
+    // Note: some broken versions only have 8 trailing zero's, the correct epoch has 9 trailing zero's
+    static const uint64_t EPOCH = ((uint64_t) 116444736000000000ULL);
+
+    SYSTEMTIME  system_time;
+    FILETIME    file_time;
+    uint64_t    time;
+
+    GetSystemTime(&system_time);
+    SystemTimeToFileTime(&system_time, &file_time);
+    time = ((uint64_t) file_time.dwLowDateTime);
+    time += ((uint64_t) file_time.dwHighDateTime) << 32;
+
+    tp->tv_sec = (long) ((time - EPOCH) / 10000000L);
+    tp->tv_usec = (long) (system_time.wMilliseconds * 1000);
+    return 0;
+}
+
+#define BB_BIN "c:/bb/bin/"
+#define OPT_BB_ETC "c:/opt/bb/etc/"
+#endif
+
 static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
 /* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
 static char CDB2DBCONFIG_NOBBENV_PATH[] = "/etc/cdb2/config.d/";
@@ -86,6 +132,20 @@ static int allow_pmux_route = 0;
 #define MAX_NODES 16
 #define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
 #define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
+
+#if defined(_WIN32)
+static CRITICAL_SECTION cdb2_sockpool_mutex;
+
+static void __cdecl Initialize(void) {
+    InitializeCriticalSection(&cdb2_sockpool_mutex);
+}
+#pragma section(".CRT$XCU", read)
+__declspec(allocate(".CRT$XCU"))
+const void(__cdecl *pInitialize)(void) = Initialize;
+
+#define CDB2_SOCKPOOL_MUTEX_LOCK EnterCriticalSection(&cdb2_sockpool_mutex)
+#define CDB2_SOCKPOOL_MUTEX_UNLOCK LeaveCriticalSection(&cdb2_sockpool_mutex)
+#endif
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -179,7 +239,7 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
         msg.msg_controllen = sizeof(control_un.control);
         msg.msg_flags = 0;
 #else
-        msg.msg_accrights = (caddr_t)&recvfd;
+        msg.msg_accrights = (caddr_t) &recvfd;
         msg.msg_accrightslen = sizeof(int);
 #endif
         msg.msg_name = NULL;
@@ -241,7 +301,7 @@ static int recv_fd_int(int sockfd, void *data, size_t nbytes, int *fd_recvd)
         }
 #endif
     }
-
+#endif // _WIN32
     return PASSFD_SUCCESS;
 }
 
@@ -327,7 +387,7 @@ static int send_fd_to(int sockfd, const void *data, size_t nbytes,
         msg.msg_namelen = 0;
         msg.msg_iov = iov;
         msg.msg_iovlen = 1;
-        iov[0].iov_base = (caddr_t)cdata;
+        iov[0].iov_base = (caddr_t) cdata;
         iov[0].iov_len = bytesleft;
 
         rc = sendmsg(sockfd, &msg, 0);
@@ -418,6 +478,22 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
 #endif
     if (timeoutms <= 0)
         return connect(s, name, namelen); /*no timeout specified*/
+#if defined(_WIN32)
+    {
+        unsigned long arg = 1;
+        int sz = 64 * 1024;
+        if(ioctlsocket(s, FIONBIO, &arg) == SOCKET_ERROR) {
+            closesocket(s);
+            return -1;
+        }
+
+        setsockopt(s, SOL_SOCKET, SO_SNDBUF, (char*) &sz, (int) (sizeof(int)));
+        WSAEVENT event = WSACreateEvent();
+        if(event != WSA_INVALID_EVENT) {
+            WSAEventSelect(s, event, FD_CONNECT);
+        }
+    }
+#endif
     flags = fcntl(s, F_GETFL, 0);
     if (flags < 0)
         return -1;
@@ -447,6 +523,17 @@ static int lclconn(int s, const struct sockaddr *name, int namelen,
         /*connect failed?*/
         return -1;
     }
+#if defined(_WIN32)
+    {
+        unsigned long arg = 0;
+
+        WSAEventSelect(s, NULL, 0);
+        if(ioctlsocket(s, FIONBIO, &arg) == SOCKET_ERROR) {
+            closesocket(s);
+            return -1;
+        }
+    }
+#endif
     if (fcntl(s, F_SETFL, flags) < 0) {
         return -1;
     }
@@ -1999,7 +2086,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         sql++;
     sqlquery.sql_query = sql;
     sqlquery.little_endian = 0;
-#if _LINUX_SOURCE
+#if _LINUX_SOURCE || defined(_WIN32)
     sqlquery.little_endian = 1;
 #endif
 
@@ -2482,7 +2569,18 @@ static void make_random_str(char *str, int *len)
     }
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
     *len = strlen(str);
-    return;
+#if defined(_WIN32)
+    UUID uuid = { 0 };
+    UuidCreate(&uuid);
+    RPC_CSTR szUuid = NULL;
+    if(UuidToStringA(&uuid, (RPC_CSTR*) &szUuid) == RPC_S_OK) {
+        strcpy(str, (const char*) szUuid);
+        RpcStringFreeA((RPC_CSTR*) &szUuid);
+        *len = (int) strlen(str);
+    } else {
+        *len = 0;
+    }
+#else
 }
 
 #define SQLCACHEHINT "/*+ RUNCOMDB2SQL "
