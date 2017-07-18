@@ -1191,10 +1191,11 @@ typedef struct snap_uid {
     int rqtype;  /* add/check */
     struct query_effects effects;
     int keylen;
-    char key[MAX_SNAP_KEY_LEN];
+    char key[MAX_SNAP_KEY_LEN]; /* cnonce */
+    uint8_t client_can_retry; /* verifyretry is on && !snapshot_iso or above */
 } snap_uid_t;
 
-enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
+enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 + 4};
 
 /*
    lrl tunables that control this:

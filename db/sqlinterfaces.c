@@ -2068,6 +2068,13 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
+int replicant_can_retry(clnt)
+{
+    return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
+           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
+           clnt->verifyretry_off == 0;
+}
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -2457,10 +2464,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
            snapshot/serializable mode, repeat this request ad nauseam
            (Alex and Sam made me do it) */
         if (rc == CDB2ERR_VERIFY_ERROR &&
-            clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-            clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-            clnt->osql.replay != OSQL_RETRY_LAST && !clnt->has_recording &&
-            (clnt->verifyretry_off == 0)) {
+            replicant_can_retry(clnt) &&
+            clnt->osql.replay != OSQL_RETRY_LAST && !clnt->has_recording) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER, 
                         "Fail to add commit to transaction replay session\n");

@@ -983,12 +983,11 @@ printf("GOT FSTBLK_SNAP_INFO\n");
             int verifyretryon = 1; /* fallthrough */
 
         case FSTBLK_SNAP_INFO:
-printf("GOT FSTBLK_SNAP_INFO\n");
+printf("AZ: GOT FSTBLK_SNAP_INFO (server?)\n");
             snapinfo = 1; /* fallthrough */
 
         case FSTBLK_RSPKL: 
         {
-            abort();
 printf("GOT FSTBLK_RSPKL\n");
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
             struct fstblk_rspkl fstblk_rspkl;
@@ -5407,11 +5406,14 @@ add_blkseq:
             struct fstblk_header fstblk_header;
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
 
+printf("AZ: SENDING FSTBLK_SNAP_INFO (replicant?)\n");
+/*
             if (iq->verifretryon) {
                 fstblk_header.type = (short)(FSTBLK_SNAP_INFO_VERIFYRETRYON);
             } else { 
-                fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
             }
+            */
+                fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
             fstblk_pre_rspkl.fluff = (short)0;
 
             if (!(p_buf_fstblk = fstblk_header_put(&fstblk_header, p_buf_fstblk,

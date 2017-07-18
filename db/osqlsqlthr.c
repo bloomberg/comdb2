@@ -1315,13 +1315,15 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
 
     if (clnt->sql_query && clnt->sql_query->has_cnonce &&
-        /*AZ: enable always sending cnonce: */     clnt->high_availability && 
+        /*AZ: enable always sending cnonce:      clnt->high_availability && */
             /* pass to master the state of verify retry. 
              * if verify retry is on and error is retryable, don't write to 
              * blkseq on master because replicant will retry */
         (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN)) {
 
         if (osql->rqid == OSQL_RQID_USE_UUID) {
+printf("AZ: clnt->verifyretry_off=%d \n", clnt->verifyretry_of, );
+            snap_info.client_can_retry = !clnt->verifyretry_off &&
             snap_info.keylen = clnt->sql_query->cnonce.len;
             memcpy(snap_info.key, clnt->sql_query->cnonce.data,
                    clnt->sql_query->cnonce.len);
