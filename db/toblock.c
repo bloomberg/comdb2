@@ -5461,7 +5461,7 @@ add_blkseq:
             }
             /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry\n");
+                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");
                 rc = RC_INTERNAL_RETRY;
             }
 
@@ -5554,11 +5554,11 @@ add_blkseq:
         {
             /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry in rowlocks\n");
+                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry in rowlocks\n");
                 if (hascommitlock) {
                     irc = pthread_rwlock_unlock(&commit_lock);
                     if (irc != 0) {
-                        logmsg(LOGMSG_USER,
+                        logmsg(LOGMSG_FATAL,
                                "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
                         exit(1);
                     }
