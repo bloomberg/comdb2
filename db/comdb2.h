@@ -2838,6 +2838,7 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
 int local_replicant_write_clear(struct db *db);
 long long get_record_unique_id(struct db *db, void *rec);
 void cancel_sql_statement(int id);
+void cancel_sql_statement_with_cnonce(const char *cnonce);
 
 struct client_query_stats *get_query_stats_from_thd();
 
