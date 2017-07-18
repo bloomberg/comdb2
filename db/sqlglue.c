@@ -8963,19 +8963,42 @@ void cancel_sql_statement(int id)
         logmsg(LOGMSG_USER, "Query %d not found (finished?)\n", id);
 }
 
+/* cancel sql statement with the given hex representation of cnonce */
 void cancel_sql_statement_with_cnonce(const char *cnonce)
 {
-    int found = 0;
+    if(!cnonce) return;
+
     struct sql_thread *thd;
+    int found;
 
     pthread_mutex_lock(&gbl_sql_lock);
     LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
     {
+        found = 1;
         if (thd->sqlclntstate && thd->sqlclntstate->sql_query && 
-            thd->sqlclntstate->sql_query->has_cnonce &&
-            strcmp(thd->sqlclntstate->sql_query->cnonce.data, cnonce) == 0) {
-            found = 1;
-            thd->sqlclntstate->stop_this_statement = 1;
+            thd->sqlclntstate->sql_query->has_cnonce) {
+            const char *sptr = cnonce;
+            int cnt = 0;
+            void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
+            while(*sptr) {
+                uint8_t num;
+                luabb_fromhex(&num, sptr, 2);
+                sptr+=2;
+
+                if (cnt > thd->sqlclntstate->sql_query->cnonce.len || 
+                        thd->sqlclntstate->sql_query->cnonce.data[cnt] != num) {
+                    found = 0;
+                    break;
+                }
+                cnt++;
+            }
+            if (found && cnt != thd->sqlclntstate->sql_query->cnonce.len)
+                found = 0;
+
+            if (found) {
+                thd->sqlclntstate->stop_this_statement = 1;
+                break;
+            }
         }
     }
     pthread_mutex_unlock(&gbl_sql_lock);
@@ -8985,6 +9008,16 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
         logmsg(LOGMSG_USER, "Query with cnonce %s not found (finished?)\n", cnonce);
 }
 
+/* log binary cnonce in hex format 
+ * ex. 1234 will become x'31323334' 
+ */
+static void log_cnonce(const char * cnonce, int len)
+{
+    logmsg(LOGMSG_USER, " [");
+    for(int i = 0; i < len; i++) 
+        logmsg(LOGMSG_USER, "%2x", cnonce[i]);
+    logmsg(LOGMSG_USER, "] ");
+}
 
 void sql_dump_running_statements(void)
 {
@@ -9009,11 +9042,13 @@ void sql_dump_running_statements(void)
             } else
                 rqid[0] = 0;
 
-            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s [%s] %s\n", thd->id,
+            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s\n", thd->id,
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin,
-                   thd->sqlclntstate->sql_query->cnonce.data,
-                   thd->sqlclntstate->sql);
+                   tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin);
+            log_cnonce(thd->sqlclntstate->sql_query->cnonce.data,
+                thd->sqlclntstate->sql_query->cnonce.len);
+            logmsg(LOGMSG_USER, "%s\n", thd->sqlclntstate->sql);
+
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
                 {
