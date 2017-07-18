@@ -782,26 +782,25 @@ extern int gbl_verbose_net;
 static void create_service_file(const char *lrlname);
 
 static const char *help_text = {
-  "usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
-  "              [--recovertolsn FILE:OFFSET]\n"
-  "              [--fullrecovery] NAME\n"
-  "\n"
-  "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
-  "\n"
-  "        --lrl                      specify alternate lrl file\n"
-  "        --fullrecovery             runs full recovery after a hot copy\n"
-  "        --recovertolsn             recovers database to file:offset\n"
-  "        --recovertotime            recovers database to epochtime\n"
-  "        --create                   creates a new database\n"
-  "        --dir                      specify path to database directory\n"
-  "\n"
-  "        NAME                       database name\n"
-  "        LRLFILE                    lrl configuration file\n"
-  "        FILE                       ID of a database file\n"
-  "        OFFSET                     offset within FILE\n"
-  "        EPOCH                      time in seconds since 1970\n"
-  "        PATH                       path to database directory\n"
-};
+    "usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
+    "              [--recovertolsn FILE:OFFSET]\n"
+    "              [--fullrecovery] NAME\n"
+    "\n"
+    "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
+    "\n"
+    "        --lrl                      specify alternate lrl file\n"
+    "        --fullrecovery             runs full recovery after a hot copy\n"
+    "        --recovertolsn             recovers database to file:offset\n"
+    "        --recovertotime            recovers database to epochtime\n"
+    "        --create                   creates a new database\n"
+    "        --dir                      specify path to database directory\n"
+    "\n"
+    "        NAME                       database name\n"
+    "        LRLFILE                    lrl configuration file\n"
+    "        FILE                       ID of a database file\n"
+    "        OFFSET                     offset within FILE\n"
+    "        EPOCH                      time in seconds since 1970\n"
+    "        PATH                       path to database directory\n"};
 
 /* FOR PAGE COMPACTION.
    The threshold should be kept under 0.5. By default, we make it lg(2)/2
@@ -1302,8 +1301,8 @@ static void *purge_old_files_thread(void *arg)
             }
         } else {
             logmsg(LOGMSG_ERROR,
-                    "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
-                    __func__, rc, bdberr);
+                   "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
             trans_abort(&iq, trans);
             sleep(empty_pause);
             continue;
@@ -6976,15 +6975,15 @@ static void create_service_file(const char *lrlname)
         comdb2_asprintf("%s/%s.service", thedb->basedir, thedb->envname);
     char lrl[PATH_MAX];
     if (lrlname) {
-       if (realpath(lrlname, lrl) == NULL) {
-          logmsg(LOGMSG_ERROR, "can't resolve path to lrl file\n");
-       }
+        if (realpath(lrlname, lrl) == NULL) {
+            logmsg(LOGMSG_ERROR, "can't resolve path to lrl file\n");
+        }
     }
 
     struct passwd *pw = getpwuid(getuid());
     if (pw == NULL) {
         logmsg(LOGMSG_ERROR, "can't resolve current user: %d %s\n", errno,
-                strerror(errno));
+               strerror(errno));
         return;
     }
 
@@ -6992,7 +6991,7 @@ static void create_service_file(const char *lrlname)
     free(service_file);
     if (f == NULL) {
         logmsg(LOGMSG_ERROR, "can't create service file: %d %s\n", errno,
-                strerror(errno));
+               strerror(errno));
         return;
     }
 
