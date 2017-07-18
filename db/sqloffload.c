@@ -723,6 +723,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 
@@ -738,6 +744,12 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 
