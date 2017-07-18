@@ -413,7 +413,7 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
     return;
   }
   for(int i = 0; i < n; i++) {
-    rc = sleep(1);
+    sleep(1);
     if( comdb2_sql_tick() )
       break;
   }
