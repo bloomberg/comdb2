@@ -3594,7 +3594,7 @@ int llmeta_dump_mapping_table(struct dbenv *dbenv, const char *table, int err)
     return llmeta_dump_mapping_table_tran(NULL, dbenv, table, err);
 }
 
-static struct dbenv *newdbenv(char *dbname, const char *lrlname)
+static struct dbenv *newdbenv(char *dbname, char *lrlname)
 {
     int rc;
     struct dbenv *dbenv = calloc(1, sizeof(struct dbenv));
