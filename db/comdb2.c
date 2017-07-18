@@ -6985,7 +6985,7 @@ static void create_service_file(const char *lrlname)
     if (pw == NULL) {
         logmsg(LOGMSG_ERROR, "can't resolve current user: %d %s\n", errno,
                 strerror(errno));
-        return; /* TODO: Do we want to return here ? */
+        return;
     }
 
     FILE *f = fopen(service_file, "w");
