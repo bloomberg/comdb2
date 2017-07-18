@@ -412,12 +412,13 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
     sqlite3_result_int(context, -1);
     return;
   }
-  for(int i = 0; i < n; i++) {
+  int i;
+  for(i = 0; i < n; i++) {
     sleep(1);
     if( comdb2_sql_tick() )
       break;
   }
-  sqlite3_result_int(context, n);
+  sqlite3_result_int(context, i);
 }
 
 /*
