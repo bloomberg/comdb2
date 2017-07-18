@@ -1,0 +1,36 @@
+(out='set default log level to DEBUG')
+[exec procedure sys.cmd.send("logmsg level debug")] rc 0
+(Threshold=-1)
+[put analyze threshold t1 123] failed with rc -3 Threshold must be between 0 and 100
+[get analyze threshold t1] rc 0
+(Threshold=-1)
+[get analyze threshold t1] rc 0
+[put analyze threshold t1 100] rc 0
+(Threshold=100)
+[get analyze threshold t1] rc 0
+[put analyze threshold t1 50] rc 0
+(Threshold=50)
+[get analyze threshold t1] rc 0
+[put analyze threshold t1 0] rc 0
+(Threshold=0)
+[put analyze threshold t1 -1] failed with rc -3 near "-": syntax error
+[get analyze threshold t1] rc 0
+(Threshold=0)
+[get analyze threshold t1] rc 0
+(Coverage=-1)
+[put analyze coverage t1 123] failed with rc -3 Coverage must be between 0 and 100
+[get analyze coverage t1] rc 0
+(Coverage=-1)
+[get analyze coverage t1] rc 0
+[put analyze coverage t1 100] rc 0
+(Coverage=100)
+[get analyze coverage t1] rc 0
+[put analyze coverage t1 50] rc 0
+(Coverage=50)
+[get analyze coverage t1] rc 0
+[put analyze coverage t1 0] rc 0
+(Coverage=0)
+[put analyze coverage t1 -1] failed with rc -3 near "-": syntax error
+[get analyze coverage t1] rc 0
+(Coverage=0)
+[get analyze coverage t1] rc 0

@@ -4039,6 +4039,7 @@ void set_skipscan_for_table_indices(struct db *tbl, int val)
     }
 }
 
+
 static void get_disable_skipscan(struct db *tbl)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
@@ -4047,18 +4048,31 @@ static void get_disable_skipscan(struct db *tbl)
 
     char *str = NULL;
     int rc = bdb_get_table_parameter(tbl->dbname, "disableskipscan", &str);
-    if (rc != 0)
+    if (rc != 0) {
+        set_skipscan_for_table_indices(tbl, 0);
         return;
+    }
 
-    int isTrue = (strncmp(str, "true", 4) != 0);
+    int disable = (strncmp(str, "true", 4) == 0);
     free(str);
 
-    if (isTrue)
-        return;
-
-    // set to 1 the in-memory parameter for the indices
-    set_skipscan_for_table_indices(tbl, 1);
+    // set the in-memory parameter for the indices
+    set_skipscan_for_table_indices(tbl, disable);
 }
+
+
+void get_disable_skipscan_all() 
+{
+#if DEBUG
+    logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
+#endif
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        struct db *d = thedb->dbs[ii];
+        get_disable_skipscan(d);
+    }
+}
+ 
+
 
 /* open the db files, etc */
 int backend_open(struct dbenv *dbenv)

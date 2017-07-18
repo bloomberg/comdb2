@@ -3561,8 +3561,6 @@ void stat4dump(int more, char *table, int istrace);
 
 int net_allow_node(struct netinfo_struct *netinfo_ptr, const char *host);
 
-void set_skipscan_for_table_indices(struct db *, int);
-
 extern int gbl_ctrace_dbdir;
 int gbl_private_blkseq;
 int gbl_use_blkseq;

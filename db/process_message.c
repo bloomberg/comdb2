@@ -4989,7 +4989,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                    "Default 300,000\n");
         }
 
-       logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
+        logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
                gbl_testcompr_percent);
         if (gbl_testcompr_max) {
            logmsg(LOGMSG_USER, ", upto a max of %d", gbl_testcompr_max);

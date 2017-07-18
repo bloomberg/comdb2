@@ -82,6 +82,6 @@ void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct db *db);
 void reset_sc_stat();
 int reload_lua();
-int replicant_reload_analyze();
+int replicant_reload_analyze_stats();
 
 #endif
