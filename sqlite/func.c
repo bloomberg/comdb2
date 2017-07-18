@@ -395,6 +395,7 @@ static void substrFunc(
   }
 }
 
+extern int comdb2_sql_tick();
 /* COMDB2 MODIFICATION */
 /*
 ** Implementation of the sleep() function
@@ -411,7 +412,11 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
     sqlite3_result_int(context, -1);
     return;
   }
-  rc = sleep(n);
+  for(int i = 0; i < n; i++) {
+    rc = sleep(1);
+    if( comdb2_sql_tick() )
+      break;
+  }
   sqlite3_result_int(context, n);
 }
 

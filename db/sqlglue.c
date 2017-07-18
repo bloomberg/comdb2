@@ -556,15 +556,11 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
         clnt->deadlock_recovered++;
     }
 
-    if (gbl_epoch_time) {
-        if (gbl_epoch_time - clnt->last_check_time > 5) {
-            clnt->last_check_time = gbl_epoch_time;
-            if (!gbl_notimeouts) {
-                if (peer_dropped_connection(clnt)) {
-                    logmsg(LOGMSG_INFO, "Peer dropped connection \n");
-                    return SQLITE_BUSY;
-                }
-            }
+    if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
+        clnt->last_check_time = gbl_epoch_time;
+        if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
+            logmsg(LOGMSG_INFO, "Peer dropped connection \n");
+            return SQLITE_BUSY;
         }
     }
 
@@ -577,6 +573,12 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
 
 pthread_key_t query_info_key;
 static int query_id = 1;
+
+int comdb2_sql_tick()
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    return sql_tick(thd, 0);
+}
 
 void sql_get_query_id(struct sql_thread *thd)
 {
