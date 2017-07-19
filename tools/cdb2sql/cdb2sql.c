@@ -919,6 +919,7 @@ void send_cancel_cnonce(const char *cnonce)
     if (rc && debug_trace)
         fprintf(stderr, "failed to cancel with '%s'\n", sql);
     cdb2_close(cdb2h_2);
+    gbl_in_stmt = 0;
 }
 
 /* If ctrl_c was pressed to clear existing line and go to new line

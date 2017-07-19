@@ -416,7 +416,7 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   for(i = 0; i < n; i++) {
     sleep(1);
     if( comdb2_sql_tick() )
-      break;
+      break;  /* COMDB2: we could also return error sqlite3_result_error(context, "Interrupted", -1); */
   }
   sqlite3_result_int(context, i);
 }

@@ -3700,6 +3700,7 @@ struct client_comm_if {
                      const char *func, int line);
     int (*send_dummy)(struct sqlclntstate *clnt);
 };
+
 struct client_comm_if client_sql_api = {
     &send_ret_column_info,
     &send_row,
@@ -4959,6 +4960,7 @@ static int flush_row(struct sqlclntstate *clnt)
     return 0;
 }
 
+ /* will do a tiny cleanup of clnt */
 void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
@@ -4967,6 +4969,7 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
     clnt->iswrite = 0; /* reset before step() */
+    clnt->stop_this_statement = 0;
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
