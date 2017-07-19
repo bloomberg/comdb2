@@ -38,7 +38,7 @@ Describes all of the keys in the database.
 
 * `tablename` - Name of the table.
 * `keyname` - Name of the key.
-* `isunique` - `Y` if this column is unique.
+* `isunique` - `Y` if this key is unique.
 * `isdatacopy` - `Y` if the data is inlined with this key.
 * `isrecnum` - `Y` if this key has recnums.
 * `condition` - Where condition for this index.
@@ -52,9 +52,9 @@ Describe all the components of the keys.
 
 * `tablename` - Name of the table.
 * `keyname` - Name of the key.
-* `columnnumber` - Number of a the column `keyname` comprises.
-* `columnname` - Name of a column that `keyname` comprises.
-* `isdescending` - `Y` if this key is descending.
+* `columnnumber` - Position of `columnname` in `keyname`.
+* `columnname` - Name of a column in `keyname`.
+* `isdescending` - `Y` if this column is descending.
 
 ## comdb2_constraints
 
