@@ -2315,13 +2315,18 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     rc = selectv_range_commit(clnt);
                     rcline = __LINE__;
                 }
-                if (rc) {
+                if (rc || clnt->early_retry) {
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
                         logmsg(LOGMSG_ERROR, 
                                 "%s: failed to abort sorese transactin irc=%d\n",
                                 __func__, irc);
+                    }
+                    if (clnt->early_retry) {
+                        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                        clnt->early_retry = 0;
+                        rc = SQLITE_ABORT;
                     }
                 } else {
                     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
@@ -6297,6 +6302,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->get_cost = 0;
     clnt->snapshot = 0;
     clnt->num_retry = 0;
+    clnt->early_retry = 0;
     clnt->sql_query = NULL;
     clnt_reset_cursor_hints(clnt);
 

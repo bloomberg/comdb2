@@ -334,6 +334,7 @@ struct sqlclntstate {
                    STATE OF A CLIENT TRANSACTION IS KEPT HERE
                  */
     struct convert_failure fail_reason; /* detailed error */
+    int early_retry;
 
     /* analyze variables */
     int n_cmp_idx;
