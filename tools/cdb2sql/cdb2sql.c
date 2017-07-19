@@ -894,14 +894,31 @@ void send_cancel_cnonce(const char *cnonce)
 {
     if (!gbl_in_stmt) return;
     //new db handle
-    //open
+    cdb2_hndl_tp *cdb2h_2 = NULL;
+    int rc;
+    if (dbhostname) {
+        rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
+    } else {
+        rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+    }
+    if(rc) { 
+        if (debug_trace)
+            printf("Open db to cancel sql failed\n");
+        cdb2_close(cdb2h_2);
+        return;
+    }
     char expanded[256];
     for(int i = 0; i < 256/2 && cnonce[i] != '\0'; i++) {
         sprintf(&expanded[i*2], "%2x", cnonce[i]);
     }
     char sql[256]; 
     snprintf(sql, 255, "exec procedure sys.cmd.send('sql cancelcnonce %s')", expanded);
-    printf("Cancel sql %s\n", sql);
+    if (debug_trace)
+        printf("Cancel sql string '%s'\n", sql);
+    rc = cdb2_run_statement(cdb2h_2, sql);
+    if (rc && debug_trace)
+        fprintf(stderr, "failed to cancel with '%s'\n", sql);
+    cdb2_close(cdb2h_2);
 }
 
 /* If ctrl_c was pressed to clear existing line and go to new line
