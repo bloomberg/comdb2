@@ -25,7 +25,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/uio.h>
 #include <unistd.h>
 
 #if SBUF2_SERVER
@@ -47,7 +46,7 @@
 #endif
 
 struct sbuf2 {
-    int fd;
+    SOCKET fd;
     int flags;
 
     int readtimeout;
@@ -62,8 +61,8 @@ struct sbuf2 {
     int ungetc_buf_len;
 #endif
 
-    sbuf2writefn write;
-    sbuf2readfn read;
+    sbuf2writefn writefn;
+    sbuf2readfn readfn;
 
     unsigned int lbuf;
     unsigned char *rbuf;
@@ -84,10 +83,10 @@ struct sbuf2 {
 #endif
 };
 
-int SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb)
+SOCKET SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb)
 {
     if (sb == NULL)
-        return -1;
+        return INVALID_SOCKET;
     return sb->fd;
 }
 
@@ -102,7 +101,7 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
        fd re-usable. */
     sslio_close(sb, 1);
 #endif
-    sb->fd = -1;
+    sb->fd = INVALID_SOCKET;
     if (sb->rbuf) {
         free(sb->rbuf);
         sb->rbuf = NULL;
@@ -156,7 +155,6 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
 int SBUF2_FUNC(sbuf2flush)(SBUF2 *sb)
 {
     int cnt = 0, rc, len;
-    void *ssl;
 
     if (sb == 0)
         return -1;
@@ -168,22 +166,23 @@ int SBUF2_FUNC(sbuf2flush)(SBUF2 *sb)
         }
 
 #if SBUF2_SERVER && WITH_SSL
+        void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
-        rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len);
+        rc = sb->writefn(sb, (char *)&sb->wbuf[sb->wtl], len);
         if (rc == 0 && sb->ssl != ssl) {
             /* Fall back to plaintext if client donates
                the socket to sockpool. */
             goto ssl_downgrade;
         }
 #else
-        rc = sb->write(sb, (char *)&sb->wbuf[sb->wtl], len);
+        rc = sb->writefn(sb, (char *)&sb->wbuf[sb->wtl], len);
 #endif
         if (rc <= 0)
             return -1 + rc;
         cnt += rc;
         sb->wtl += rc;
-        if (sb->wtl >= sb->lbuf)
+        if ((unsigned int)sb->wtl >= sb->lbuf)
             sb->wtl = 0;
     }
 
@@ -197,14 +196,15 @@ int SBUF2_FUNC(sbuf2putc)(SBUF2 *sb, char c)
     int rc;
     if (sb == 0)
         return -1;
-    if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) || (sb->whd == sb->wtl - 1)) {
+    if (((unsigned int)sb->whd == sb->lbuf - 1 && sb->wtl == 0) ||
+        (sb->whd == sb->wtl - 1)) {
         rc = sbuf2flush(sb);
         if (rc < 0)
             return rc;
     }
     sb->wbuf[sb->whd] = c;
     sb->whd++;
-    if (sb->whd >= sb->lbuf)
+    if ((unsigned int)sb->whd >= sb->lbuf)
         sb->whd = 0;
     if ((sb->flags & SBUF2_WRITE_LINE) && c == '\n') {
         rc = sbuf2flush(sb);
@@ -235,7 +235,7 @@ int SBUF2_FUNC(sbuf2puts)(SBUF2 *sb, char *string)
 /* returns num items written || <0 for error*/
 int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
 {
-    int rc, ii, off, left, written = 0;
+    int rc, off, left, written = 0;
     if (sb == 0)
         return -1;
     off = 0;
@@ -243,7 +243,7 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
     while (left > 0) {
         int towrite = 0;
 
-        if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) ||
+        if (((unsigned int)sb->whd == sb->lbuf - 1 && sb->wtl == 0) ||
             (sb->whd == sb->wtl - 1)) {
             rc = sbuf2flush(sb);
             if (rc < 0)
@@ -268,9 +268,9 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
         off += towrite;
         left -= towrite;
         written += towrite;
-        if (sb->wtl == 0 && sb->whd >= (sb->lbuf - 1)) {
+        if (sb->wtl == 0 && (unsigned int)sb->whd >= sb->lbuf - 1) {
             continue;
-        } else if (sb->whd >= sb->lbuf)
+        } else if ((unsigned int)sb->whd >= sb->lbuf)
             sb->whd = 0;
     }
 
@@ -301,7 +301,6 @@ int SBUF2_FUNC(sbuf2fwrite)(char *ptr, int size, int nitems, SBUF2 *sb)
 int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
 {
     int rc, cc;
-    void *ssl;
     if (sb == 0)
         return -1;
 
@@ -317,13 +316,14 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
         sb->rtl = 0;
         sb->rhd = 0;
 #if SBUF2_SERVER && WITH_SSL
+        void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
-        rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
+        rc = sb->readfn(sb, (char *)sb->rbuf, sb->lbuf - 1);
         if (rc == 0 && sb->ssl != ssl)
             goto ssl_downgrade;
 #else
-        rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
+        rc = sb->readfn(sb, (char *)sb->rbuf, sb->lbuf - 1);
 #endif
         if (rc <= 0)
             return -1 + rc;
@@ -331,7 +331,7 @@ ssl_downgrade:
     }
     cc = sb->rbuf[sb->rtl];
     sb->rtl++;
-    if (sb->rtl >= sb->lbuf)
+    if ((unsigned int)sb->rtl >= sb->lbuf)
         sb->rtl = 0;
     return cc;
 }
@@ -367,7 +367,7 @@ int SBUF2_FUNC(sbuf2gets)(char *out, int lout, SBUF2 *sb)
                 return cc; /*return error if first char*/
             break;
         }
-        out[ii] = cc;
+        out[ii] = (char)cc;
         ii++;
         if (cc == '\n')
             break;
@@ -387,7 +387,6 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
 {
     int need = size * nitems;
     int done = 0;
-    void *ssl;
 
 #if SBUF2_UNGETC
     if (sb->ungetc_buf_len > 0) {
@@ -421,13 +420,14 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
             sb->rtl = 0;
             sb->rhd = 0;
 #if SBUF2_SERVER && WITH_SSL
+            void *ssl;
 ssl_downgrade:
             ssl = sb->ssl;
-            rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
+            rc = sb->readfn(sb, (char *)sb->rbuf, sb->lbuf - 1);
             if (rc == 0 && sb->ssl != ssl)
                 goto ssl_downgrade;
 #else
-            rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
+            rc = sb->readfn(sb, (char *)sb->rbuf, sb->lbuf - 1);
 #endif
             if (rc <= 0) {
                 if (rc == 0) { /* this is a timeout */
@@ -500,7 +500,7 @@ static int swrite_unsecure(SBUF2 *sb, const char *cc, int len)
             pol.fd = sb->fd;
             pol.events = POLLOUT;
             rc = poll(&pol, 1, sb->writetimeout);
-        } while (rc == -1 && errno == EINTR);
+        } while (rc == SOCKET_ERROR && errno == EINTR);
 
         if (rc <= 0)
             return rc; /*timed out or error*/
@@ -527,10 +527,11 @@ static int swrite(SBUF2 *sb, const char *cc, int len)
 
 int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len)
 {
-    int n, ioerr;
+    int n;
 #if !WITH_SSL
     n = write(sb->fd, cc, len);
 #else
+    int ioerr;
 ssl_downgrade:
     if (sb->ssl == NULL)
         n = write(sb->fd, cc, len);
@@ -541,10 +542,10 @@ ssl_downgrade:
             ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
-                errno = EAGAIN;
+                seterrno(EAGAIN);
                 break;
             case SSL_ERROR_WANT_WRITE:
-                errno = EAGAIN;
+                seterrno(EAGAIN);
                 break;
             case SSL_ERROR_ZERO_RETURN:
                 /* Peer has done a clean shutdown. */
@@ -558,10 +559,10 @@ ssl_downgrade:
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
                 if (n == 0)
-                    errno = ECONNRESET;
+                    seterrno(ECONNRESET);
                 break;
             default:
-                errno = EIO;
+                seterrno(EIO);
                 break;
             }
         }
@@ -581,7 +582,7 @@ static int sread_unsecure(SBUF2 *sb, char *cc, int len)
             pol.fd = sb->fd;
             pol.events = POLLIN;
             rc = poll(&pol, 1, sb->readtimeout);
-        } while (rc == -1 && errno == EINTR);
+        } while (rc == SOCKET_ERROR && errno == EINTR);
 
         if (rc <= 0)
             return rc; /*timed out or error*/
@@ -608,10 +609,11 @@ static int sread(SBUF2 *sb, char *cc, int len)
 
 int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len)
 {
-    int n, ioerr;
+    int n;
 #if !WITH_SSL
     n = read(sb->fd, cc, len);
 #else
+    int ioerr;
 ssl_downgrade:
     if (sb->ssl == NULL)
         n = read(sb->fd, cc, len);
@@ -622,10 +624,10 @@ ssl_downgrade:
             ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
-                errno = EAGAIN;
+                seterrno(EAGAIN);
                 break;
             case SSL_ERROR_WANT_WRITE:
-                errno = EAGAIN;
+                seterrno(EAGAIN);
                 break;
             case SSL_ERROR_ZERO_RETURN:
                 /* Peer has done a clean shutdown. */
@@ -639,10 +641,10 @@ ssl_downgrade:
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
                 if (n == 0)
-                    errno = ECONNRESET;
+                    seterrno(ECONNRESET);
                 break;
             default:
-                errno = EIO;
+                seterrno(EIO);
                 break;
             }
         }
@@ -663,30 +665,30 @@ void SBUF2_FUNC(sbuf2gettimeout)(SBUF2 *sb, int *readtimeout, int *writetimeout)
     *writetimeout = sb->writetimeout;
 }
 
-void SBUF2_FUNC(sbuf2setrw)(SBUF2 *sb, sbuf2readfn read, sbuf2writefn write)
+void SBUF2_FUNC(sbuf2setrw)(SBUF2 *sb, sbuf2readfn readfn, sbuf2writefn writefn)
 {
-    sb->read = read;
-    sb->write = write;
+    sb->readfn = readfn;
+    sb->writefn = writefn;
 }
 
-void SBUF2_FUNC(sbuf2setr)(SBUF2 *sb, sbuf2readfn read)
+void SBUF2_FUNC(sbuf2setr)(SBUF2 *sb, sbuf2readfn readfn)
 {
-    sb->read = read;
+    sb->readfn = readfn;
 }
 
-void SBUF2_FUNC(sbuf2setw)(SBUF2 *sb, sbuf2writefn write)
+void SBUF2_FUNC(sbuf2setw)(SBUF2 *sb, sbuf2writefn writefn)
 {
-    sb->write = write;
+    sb->writefn = writefn;
 }
 
 sbuf2readfn SBUF2_FUNC(sbuf2getr)(SBUF2 *sb)
 {
-    return sb->read;
+    return sb->readfn;
 }
 
 sbuf2writefn SBUF2_FUNC(sbuf2getw)(SBUF2 *sb)
 {
-    return sb->write;
+    return sb->writefn;
 }
 
 int SBUF2_FUNC(sbuf2setbufsize)(SBUF2 *sb, unsigned int size)
@@ -717,7 +719,7 @@ void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags)
     sb->flags |= flags;
 }
 
-SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
+SBUF2 *SBUF2_FUNC(sbuf2open)(SOCKET fd, int flags)
 {
     if (fd < 0) {
         return NULL;
@@ -748,8 +750,8 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
 #endif
     /* default writer/reader */
-    sb->write = swrite;
-    sb->read = sread;
+    sb->writefn = swrite;
+    sb->readfn = sread;
     if (sbuf2setbufsize(sb, SBUF2_DFL_SIZE) == 0) {
         return sb;
     }
@@ -787,7 +789,7 @@ int SBUF2_FUNC(sbuf2eof)(SBUF2 *sb)
     if (sb == NULL)
         return -2;
 
-    errno = 0;
+    seterrno(0);
     i = sbuf2getc(sb);
 
     if (i >= 0) {

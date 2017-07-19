@@ -22,22 +22,21 @@
 #ifndef INCLUDED_CDB2API_H
 #define INCLUDED_CDB2API_H
 
-#if defined(_WIN32)
-#  define _WINSOCKAPI_   
-#  define _WINSOCK_DEPRECATED_NO_WARNINGS
-#  include <winsock2.h>
-#else 
-typedef int SOCKET;
-#define INVALID_SOCKET -1
-#endif
-
-
 #include <stdio.h>
-#include <stdlib.h>
 
 #if defined __cplusplus
 extern "C" {
 #endif
+
+#if defined(_WIN32) && !defined(CDB2API_STATIC_LIBRARY)
+#ifdef BUILD_DLL
+#define CDB2API __declspec(dllexport)
+#else
+#define CDB2API __declspec(dllimport)
+#endif /* BUILDING_DLL */
+#else
+#define CDB2API
+#endif /* _WIN32 */
 
 enum cdb2_hndl_alloc_flags {
     CDB2_READ_INTRANS_RESULTS = 2,
@@ -196,61 +195,62 @@ typedef struct cdb2_effects_type cdb2_effects_tp;
 typedef struct cdb2_effects_type effects_tp;
 #endif
 
-void cdb2_set_comdb2db_config(const char *cfg_file);
-void cdb2_set_comdb2db_info(const char *cfg_info);
+CDB2API void cdb2_set_comdb2db_config(const char *cfg_file);
+CDB2API void cdb2_set_comdb2db_info(const char *cfg_info);
 
-int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type,
-              int flags);
-int cdb2_clone(cdb2_hndl_tp **hndl, cdb2_hndl_tp *c_hndl);
+CDB2API int cdb2_open(cdb2_hndl_tp **hndl, const char *dbname, const char *type,
+                      int flags);
+CDB2API int cdb2_clone(cdb2_hndl_tp **hndl, cdb2_hndl_tp *c_hndl);
 
-int cdb2_next_record(cdb2_hndl_tp *hndl);
+CDB2API int cdb2_next_record(cdb2_hndl_tp *hndl);
 
-int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
+CDB2API int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
 
-int cdb2_close(cdb2_hndl_tp *hndl);
+CDB2API int cdb2_close(cdb2_hndl_tp *hndl);
 
-int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql);
-int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
-                             int *types);
+CDB2API int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql);
+CDB2API int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql,
+                                     int ntypes, int *types);
 
-int cdb2_numcolumns(cdb2_hndl_tp *hndl);
-const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col);
-int cdb2_column_type(cdb2_hndl_tp *hndl, int col);
-int cdb2_column_size(cdb2_hndl_tp *hndl, int col);
-void *cdb2_column_value(cdb2_hndl_tp *hndl, int col);
-const char *cdb2_errstr(cdb2_hndl_tp *hndl);
-const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
-void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
-void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
-void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports, int max, int *count);
-int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
-void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql);
-void cdb2_set_max_retries(int max_retries);
-void cdb2_set_min_retries(int min_retries);
-void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
-void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
+CDB2API int cdb2_numcolumns(cdb2_hndl_tp *hndl);
+CDB2API const char *cdb2_column_name(cdb2_hndl_tp *hndl, int col);
+CDB2API int cdb2_column_type(cdb2_hndl_tp *hndl, int col);
+CDB2API int cdb2_column_size(cdb2_hndl_tp *hndl, int col);
+CDB2API void *cdb2_column_value(cdb2_hndl_tp *hndl, int col);
+CDB2API const char *cdb2_errstr(cdb2_hndl_tp *hndl);
+CDB2API const char *cdb2_cnonce(cdb2_hndl_tp *hndl);
+CDB2API void cdb2_set_debug_trace(cdb2_hndl_tp *hndl);
+CDB2API void cdb2_dump_ports(cdb2_hndl_tp *hndl, FILE *out);
+CDB2API void cdb2_cluster_info(cdb2_hndl_tp *hndl, char **cluster, int *ports,
+                               int max, int *count);
+CDB2API int cdb2_snapshot_file(cdb2_hndl_tp *hndl, int *file, int *offset);
+CDB2API void cdb2_getinfo(cdb2_hndl_tp *hndl, int *intrans, int *hasql);
+CDB2API void cdb2_set_max_retries(int max_retries);
+CDB2API void cdb2_set_min_retries(int min_retries);
+CDB2API void cdb2_hndl_set_max_retries(cdb2_hndl_tp *hndl, int max_retries);
+CDB2API void cdb2_hndl_set_min_retries(cdb2_hndl_tp *hndl, int min_retries);
 
-void cdb2_use_hint(cdb2_hndl_tp *hndl);
+CDB2API void cdb2_use_hint(cdb2_hndl_tp *hndl);
 
-int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
-                    const void *varaddr, int length);
-int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
-                    const void *varaddr, int length);
-int cdb2_clearbindings(cdb2_hndl_tp *hndl);
+CDB2API int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
+                            const void *varaddr, int length);
+CDB2API int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
+                            const void *varaddr, int length);
+CDB2API int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
-const char *cdb2_dbname(cdb2_hndl_tp *hndl);
+CDB2API const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 
-void cdb2_enable_sockpool();
-void cdb2_disable_sockpool();
+CDB2API void cdb2_enable_sockpool();
+CDB2API void cdb2_disable_sockpool();
 
-int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg);
-int cdb2_pop_context(cdb2_hndl_tp *hndl);
-int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
+CDB2API int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg);
+CDB2API int cdb2_pop_context(cdb2_hndl_tp *hndl);
+CDB2API int cdb2_clear_contexts(cdb2_hndl_tp *hndl);
 
 /* We keep the functions but make them no-op if not compiled
    with WITH_SSL. */
-int cdb2_init_ssl(int init_libssl, int init_libcrypto);
-int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
+CDB2API int cdb2_init_ssl(int init_libssl, int init_libcrypto);
+CDB2API int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl);
 #if defined __cplusplus
 }
 #endif

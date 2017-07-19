@@ -19,7 +19,7 @@
 
 /* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255
 
-/* WARNING - don't incude this in other header files that will be widely used
+ * WARNING - don't incude this in other header files that will be widely used
  * (e.g. comdb2_api.h) - the symbol sbuf2 conflicts with many fortran common
  * area names */
 
@@ -46,6 +46,19 @@
 extern "C" {
 #endif
 
+#if SBUF2_SERVER
+/* Server code is not ported to Windows yet. */
+typedef int SOCKET;
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR -1
+#define seterrno(err)                                                          \
+    do {                                                                       \
+        errno = err;                                                           \
+    } while (0)
+#else
+#include <os.h>
+#endif
+
 typedef struct sbuf2 SBUF2;
 
 enum SBUF2_FLAGS {
@@ -65,7 +78,7 @@ typedef int (*sbuf2readfn)(SBUF2 *sb, char *buf, int nbytes);
 typedef int (*sbuf2writefn)(SBUF2 *sb, const char *buf, int nbytes);
 
 /* retrieve underlying fd */
-int SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb);
+SOCKET SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb);
 #define sbuf2fileno SBUF2_FUNC(sbuf2fileno)
 
 /* set flags on an SBUF2 after opening */
@@ -73,7 +86,7 @@ void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags);
 #define sbuf2setflags SBUF2_FUNC(sbuf2setflags)
 
 /* open SBUF2 for file descriptor.  returns SBUF2 handle or 0 if error.*/
-SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags);
+SBUF2 *SBUF2_FUNC(sbuf2open)(SOCKET fd, int flags);
 #define sbuf2open SBUF2_FUNC(sbuf2open)
 
 /* flush output, close fd, and free SBUF2. 0==success */
@@ -194,6 +207,9 @@ int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len);
 
 #ifndef WITH_SSL
 #  define WITH_SSL 1
+#endif
+
+#if WITH_SSL
 /* SSL routines. */
 #  include <ssl_support.h>
 #  include <ssl_io.h>

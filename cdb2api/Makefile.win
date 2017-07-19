@@ -1,0 +1,195 @@
+#
+# Usage: NMAKE /f Makefile.win
+# The command produces `libcdb2api.dll' and `libcdb2api.lib' under the current working directory.
+# Please make sure that
+# 1) protoc-c compiler is included in PATH;
+# 2) protobuf-c and OpenSSL headers are inclued in INCLUDE;
+# 3) protobuf-c and OpenSSL libraries are inclued in LIB;
+#
+# To produce a DEBUG build, use:
+#   NMAKE /f Makefile.win CONFIG=Debug
+#
+# To produce a static library, use:
+#   NMAKE /f Makefile.win CDB2API_STATIC_LIBRARY=1
+# and then you could statically link your application to `libcdb2api.a'.
+#
+# To build without SSL support, use:
+#   NMAKE /f Makefile.win WITH_SSL=0
+#
+# To change comdb2 root, use:
+#   NMAKE /f Makefile.win COMDB2_ROOT=/path/to/comdb2/root
+#
+# To manually set compiler version, use:
+#   NMAKE /f Makefile.win _MSC_VER=version
+#
+# To clean the directory, use:
+#   NMAKE /f Makefile.win clean
+#
+
+############################ General config ##########################
+
+# Build with optimization unless instructed otherwise.
+!IFNDEF CONFIG
+CONFIG=Release
+!ENDIF
+
+# Build with SSL support unless instructed otherwise.
+!IFNDEF WITH_SSL
+WITH_SSL=1
+!ENDIF
+
+# Build a DLL unless instructed otherwise.
+!IFNDEF CDB2API_STATIC_LIBRARY
+CDB2API_STATIC_LIBRARY=0
+!ENDIF
+
+# Defaults to C:\opt\bb.
+!IFNDEF COMDB2_ROOT
+COMDB2_ROOT=\\opt\\bb
+!ENDIF
+
+# My dumb way of detecting MSVC version in NMAKE.
+!IFNDEF _MSC_VER
+!IF ([$(CC) /? 2>&1 | findstr /C:"Version 10" > nul] == 0)
+_MSC_VER=1000
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 11" > nul] == 0)
+_MSC_VER=1100
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 12" > nul] == 0)
+_MSC_VER=1200
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 13" > nul] == 0)
+_MSC_VER=1300
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 14" > nul] == 0)
+_MSC_VER=1400
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 15" > nul] == 0)
+_MSC_VER=1500
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 16" > nul] == 0)
+_MSC_VER=1600
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 17" > nul] == 0)
+_MSC_VER=1700
+!ELSEIF ([$(CC) /? 2>&1 | findstr /C:"Version 18" > nul] == 0)
+_MSC_VER=1800
+!ELSE
+_MSC_VER=1900
+!ENDIF
+!ENDIF
+
+############################ CC config ##########################
+
+CC=cl.exe
+CFLAGS=/nologo $(CFLAGS_CFG) $(CFLAGS_INC) $(CFLAGS_DEF) /c
+
+CFLAGS_DEF=/DCOMDB2_ROOT=$(COMDB2_ROOT)
+
+!IF $(WITH_SSL) == 0
+CFLAGS_DEF=$(CFLAGS_DEF) /DWITH_SSL=0
+!ELSE
+CFLAGS_DEF=$(CFLAGS_DEF) /DWITH_SSL=1
+!ENDIF
+
+!IFDEF OPENSSL_INC
+CFLAGS_INC=$(CFLAGS_INC) /I"$(OPENSSL_INC)"
+!ENDIF
+!IFDEF PROTOC_INC
+CFLAGS_INC=$(CFLAGS_INC) /I"$(PROTOC_INC)"
+!ENDIF
+
+!IF "$(CONFIG)" == "Release"
+CFLAGS_CFG=/MT /O2 /W4 /wd4100 /wd4127 /wd4201
+!ELSE
+CFLAGS_CFG=/MTd /Zi /Od /W4 /wd4127 /wd4201 /Fd"libcdb2api_src" /FD
+LDFLAGS_CFG=/debug
+!ENDIF
+
+CFLAGS_INC=/I..\bbinc /I..\bb $(CFLAGS_INC) /Iport\inc /Iport\inc\win32
+CFLAGS_DEF=$(CFLAGS_DEF) -DSBUF2_SERVER=0
+
+!IF $(CDB2API_STATIC_LIBRARY) == 0
+CFLAGS_DEF=$(CFLAGS_DEF) -DBUILD_DLL
+!ELSE
+CFLAGS_DEF=$(CFLAGS_DEF) -DCDB2API_STATIC_LIBRARY
+!ENDIF
+
+############################ LD config ##########################
+DLL=libcdb2api.dll
+LD=link.exe /DLL /incremental:no
+
+LDLIBS_3RD_PARTY=protobuf-c.lib
+!IF $(WITH_SSL) != 0
+LDLIBS_3RD_PARTY=$(LDLIBS_3RD_PARTY) ssleay32.lib libeay32.lib
+!ENDIF
+LDLIBS_WIN_CORE=user32.lib uuid.lib wsock32.lib ws2_32.lib libcmt.lib /nodefaultlib:msvcrt.lib
+LDLIBS=$(LDLIBS_3RD_PARTY) $(LDLIBS_WIN_CORE)
+
+!IFDEF PROTOC_LIB
+LDLIBPATH=/LIBPATH:"$(PROTOC_LIB)"
+!ENDIF
+!IFDEF OPENSSL_LIB
+LDLIBPATH=$(LDLIBPATH) /LIBPATH:"$(OPENSSL_LIB)"
+!ENDIF
+
+!IF $(_MSC_VER) >= 1900
+DOWNLEVEL=WindowsApp_downlevel.lib OneCore_downlevel.lib
+LDLIBS=$(LDLIBS) legacy_stdio_definitions.lib $(DOWNLEVEL)
+!ENDIF
+
+LDFLAGS=$(LDFLAGS) $(LDLIBS) $(LDLIBPATH) $(LDFLAGS_CFG)
+
+LIBNAME=libcdb2api.a
+AR=lib.exe
+ARFLAGS=
+
+PROTOC_OBJECTS=sqlquery.pb-c.obj sqlresponse.pb-c.obj
+CORE_OBJECTS=cdb2api.obj
+PORT_OBJECTS=gethostid.obj gettimeofday.obj poll.obj pthread.obj strndup.obj WSAStrError.obj
+OBJECTS=$(PROTOC_OBJECTS) $(CORE_OBJECTS) $(PORT_OBJECTS)
+
+############################ TARGETS ##########################
+
+!IF $(CDB2API_STATIC_LIBRARY) == 0
+ALL: "$(LIBNAME)" "$(DLL)"
+!ELSE
+ALL: "$(LIBNAME)"
+!ENDIF
+
+.c.obj::
+	$(CC) @<<
+	$(CFLAGS) $<
+<<
+
+{port\impl\win32\}.c.obj::
+	$(CC) @<<
+	$(CFLAGS) $<
+<<
+
+.PHONY: ALL CLEAN
+
+sqlquery.pb-c.c: ..\protobuf\sqlquery.proto
+	protoc-c -I..\protobuf --c_out=. $**
+
+sqlresponse.pb-c.c: ..\protobuf\sqlresponse.proto
+	protoc-c -I..\protobuf --c_out=. $**
+
+sqlquery.pb-c.obj: sqlquery.pb-c.c
+sqlresponse.pb-c.obj: sqlresponse.pb-c.c
+
+"$(DLL)": $(OBJECTS)
+	$(LD) @<<
+	$(LDFLAGS) $(OBJECTS) /pdb:$*.pdb /implib:$*.lib /out:$@
+<<
+	
+"$(LIBNAME)": $(OBJECTS)
+	$(AR) @<<
+	$(ARFLAGS) $(OBJECTS) /out:$@
+<<
+
+CLEAN:
+	-@ERASE /Q *.obj
+	-@ERASE /Q *.dll
+	-@ERASE /Q *.lib
+	-@ERASE /Q *.exp
+	-@ERASE /Q *.exe
+	-@ERASE /Q *.idb
+	-@ERASE /Q *.pdb
+	-@ERASE /Q *.a
+	-@ERASE /Q sqlquery.pb-c.*
+	-@ERASE /Q sqlresponse.pb-c.*
