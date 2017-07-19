@@ -1855,6 +1855,7 @@ static int pre_read_option(struct dbenv *dbenv, char *line,
     char *tok;
     int st = 0;
     int ltok;
+    int rc = 0;
 
     tok = segtok(line, llen, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
@@ -1862,6 +1863,18 @@ static int pre_read_option(struct dbenv *dbenv, char *line,
     /* if this is an "if" statement that evaluates to false, skip */
     if (!lrl_if(&tok, line, llen, &st, &ltok)) {
         return 0;
+    }
+
+    /*
+      Handle global tunables.
+
+      rc == -1 : non-registered tunable, fallthrough
+      rc ==  0 : tunable updated successfully, return
+      rc ==  1 : error while updating the tunable, return
+    */
+    rc = handle_lrl_tunable(tok, ltok, line + st, llen - st);
+    if (rc != -1) {
+        return rc;
     }
 
     if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
