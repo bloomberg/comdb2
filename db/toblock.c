@@ -811,7 +811,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
 {
-    printf("AZ: do_replay_case\n");
+    printf("AZ: do_replay_case, from line %d\n", line);
     struct block_rsp errrsp;
     int rc, outrc, snapinfo_outrc, jj, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
@@ -978,9 +978,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
             outrc = ERR_BLOCK_FAILED;
             break;
         }
-        case FSTBLK_SNAP_INFO_VERIFYRETRYON:
-printf("GOT FSTBLK_SNAP_INFO\n");
-            int verifyretryon = 1; /* fallthrough */
 
         case FSTBLK_SNAP_INFO:
 printf("AZ: GOT FSTBLK_SNAP_INFO (server?)\n");
@@ -2682,7 +2679,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
-printf("AZ: would call do_replay_case, iq->retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->have_blkseq);
 /* TODO: change here to say && iq->verifretryon == 0 because we don't want to do 
  * replay if verifyretry is on replicant */
         if (got_osql && iq->have_snap_info) {
@@ -2690,6 +2686,7 @@ printf("AZ: would call do_replay_case, iq->retries=%d, iq->have_blkseq=%d\n", iq
             int replay_len = 0;
             int findout;
 
+printf("AZ: looking in blkseq for snap info\n");
             if ((findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
                         iq->snap_info.keylen, &replay_data, &replay_len)) == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
@@ -5400,14 +5397,8 @@ add_blkseq:
             struct fstblk_header fstblk_header;
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
 
-printf("AZ: SENDING FSTBLK_SNAP_INFO (replicant?)\n");
-/*
-            if (iq->verifretryon) {
-                fstblk_header.type = (short)(FSTBLK_SNAP_INFO_VERIFYRETRYON);
-            } else { 
-            }
-            */
-                fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
+printf("AZ: SENDING FSTBLK_SNAP_INFO iq->s.repl_can_retry=%d\n", iq->snap_info.replicant_can_retry);
+            fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
             fstblk_pre_rspkl.fluff = (short)0;
 
             if (!(p_buf_fstblk = fstblk_header_put(&fstblk_header, p_buf_fstblk,
@@ -5457,7 +5448,12 @@ printf("AZ: set outrc=%d\n",outrc);
             bskeylen = iq->seqlen;
         }
 
-        if (!rowlocks && !iq->snap_info.replicant_can_retry) {
+        /*
+        if (!rowlocks && iq->snap_info.replicant_can_retry) {
+            trans_abort(iq, parent_trans);
+            parent_trans = NULL;
+        }
+        else */if (!rowlocks) {
             int t = time_epoch();
             char *buf; 
             memcpy(p_buf_fstblk, &t, sizeof(int));
@@ -5556,7 +5552,7 @@ printf("AZ: set outrc=%d\n",outrc);
                 fromline = __LINE__;
                 goto cleanup;
             }
-        } else if( rowlocks )
+        } else /* rowlocks */
         {
             /* commit or abort the trasaction as appropriate,
                and write the blkseq */

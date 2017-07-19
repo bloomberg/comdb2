@@ -720,7 +720,6 @@ retry:
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
                     __func__, __LINE__, rcout, rc);
         }
-
         else {
 
             /* we got a return from block processor \
@@ -748,8 +747,7 @@ retry:
                         if (rc != SQLITE_TOOBIG) goto retry;
                     }
                 }
-                /* transaction failed on the master,
-                   abort here as well */
+                /* transaction failed on the master, abort here as well */
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
 
@@ -1315,7 +1313,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
 
     if (clnt->sql_query && clnt->sql_query->has_cnonce &&
-        /*AZ: enable always sending cnonce:      clnt->high_availability && */
+        /*AZ: enable always sending cnonce:   */   clnt->high_availability && 
             /* pass to master the state of verify retry. 
              * if verify retry is on and error is retryable, don't write to 
              * blkseq on master because replicant will retry */

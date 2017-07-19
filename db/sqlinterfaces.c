@@ -2470,6 +2470,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                 logmsg(LOGMSG_USER, 
                         "Fail to add commit to transaction replay session\n");
 
+printf("replicant replaying 1\n");
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
 
             reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retrying\n",
@@ -5002,10 +5003,10 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
             if (irc == DB_ERR_TRN_VERIFY &&
-                clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-                clnt->dbtran.mode != TRANLEVEL_SERIAL && !clnt->has_recording &&
-                clnt->osql.replay == OSQL_RETRY_NONE &&
-                (clnt->verifyretry_off == 0)) {
+                replicant_can_retry(clnt) &&
+                !clnt->has_recording &&
+                clnt->osql.replay == OSQL_RETRY_NONE) {
+printf("replicant setting status of replay 2\n");
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }
         }
@@ -6586,6 +6587,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
                 rc = dispatch_sql_query(clnt);
             }
             if (clnt->osql.replay == OSQL_RETRY_DO) {
+printf("calling srs_tran_replay 3\n");
                 rc = srs_tran_replay(clnt, thd->thr_self);
             } else {
                 /* if this transaction is done (marked by
@@ -6767,6 +6769,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
                 rc = dispatch_sql_query(clnt);
             }
             if (clnt->osql.replay == OSQL_RETRY_DO) {
+printf("calling srs_tran_replay 1\n");
                 rc = srs_tran_replay(clnt, thd->thr_self);
             } else {
                 /* if this transaction is done (marked by
@@ -7339,6 +7342,8 @@ retry_read:
     return query;
 }
 
+/* process sql query if it is a set command
+ */
 static int process_set_commands(struct sqlclntstate *clnt)
 {
     CDB2SQLQUERY *sql_query = NULL;
@@ -7894,6 +7899,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
 
         if (clnt.osql.replay == OSQL_RETRY_DO) {
             if (clnt.trans_has_sp == 0) {
+printf("calling srs_tran_replay 2\n");
                 srs_tran_replay(&clnt, thr_self);
             } else {
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
