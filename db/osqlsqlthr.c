@@ -1322,8 +1322,8 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
         (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN)) {
 
         if (osql->rqid == OSQL_RQID_USE_UUID) {
-printf("AZ: clnt->verifyretry_off=%d \n", clnt->verifyretry_of, );
-            snap_info.client_can_retry = !clnt->verifyretry_off &&
+            snap_info.replicant_can_retry = replicant_can_retry(clnt);
+printf("AZ: snap_info.replicant_can_retry=%d \n", snap_info.replicant_can_retry);
             snap_info.keylen = clnt->sql_query->cnonce.len;
             memcpy(snap_info.key, clnt->sql_query->cnonce.data,
                    clnt->sql_query->cnonce.len);

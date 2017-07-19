@@ -2068,7 +2068,7 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
-int replicant_can_retry(clnt)
+int replicant_can_retry(struct sqlclntstate *clnt)
 {
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
            clnt->dbtran.mode != TRANLEVEL_SERIAL &&

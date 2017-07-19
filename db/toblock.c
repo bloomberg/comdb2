@@ -2469,12 +2469,8 @@ void handle_postabort_bpfunc(struct ireq *iq)
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
-    struct timespec start_time;
     int did_replay = 0;
     int rowlocks = gbl_rowlocks;
-#if 0
-    clock_gettime(CLOCK_REALTIME, &start_time);
-#endif
     int fromline = -1;
     int opnum, jj, num_reqs;
     int rc, ixkeylen, rrn;
@@ -2500,10 +2496,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
     int is_block2sqlmode = 0; /* set this for all osql modes */
-    int is_block2sqlmode_blocksql =
-        0; /* enable this only for blocksql to handle verify errors*/
+    /* enable this only for blocksql to handle verify errors */
+    int is_block2sqlmode_blocksql = 0; 
     int osql_needtransaction = OSQL_BPLOG_NONE;
-    int i = 0;
     int blkpos = -1, ixout = -1, errout = 0;
     int backed_out = 0;
     struct thr_handle *thr_self = thrman_self();
@@ -4692,7 +4687,6 @@ printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->hav
     /* do all previously not done ADD key ops here--they were delayed due
      * to necessity of constraint checks */
     thrman_wheref(thr_self, "%s [constraints]", req2a(iq->opcode));
-    i = 0;
     blkpos = -1;
     ixout = -1;
     errout = 0;
@@ -5451,26 +5445,26 @@ printf("AZ: set outrc=%d\n",outrc);
         void *replay_data = NULL;
         int replay_len = 0;
 
-        if (!rowlocks) {
+        void *bskey;
+        int bskeylen;
+        /* Snap_info is our blkseq key */
+        if (iq->have_snap_info) {
+            bskey = iq->snap_info.key;
+            bskeylen = iq->snap_info.keylen;
+        }
+        else {
+            bskey = iq->seq;
+            bskeylen = iq->seqlen;
+        }
+
+        if (!rowlocks && !iq->snap_info.replicant_can_retry) {
             int t = time_epoch();
             char *buf; 
             memcpy(p_buf_fstblk, &t, sizeof(int));
 
-            /* Snap_info is our blkseq key */
-            if (iq->have_snap_info)
-            {
-                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, iq->snap_info.key,
-                        iq->snap_info.keylen, buf_fstblk,
-                        p_buf_fstblk - buf_fstblk + sizeof(int),
-                        &replay_data, &replay_len);
-            }
-            else
-            {
-                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, iq->seq,
-                        iq->seqlen, buf_fstblk,
-                        p_buf_fstblk - buf_fstblk + sizeof(int),
-                        &replay_data, &replay_len);
-            }
+            rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
+                    buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
+                    &replay_data, &replay_len);
 
             if (iq->seqlen == sizeof(uuid_t)) {
                 uuidstr_t us;
@@ -5528,14 +5522,8 @@ printf("AZ: set outrc=%d\n",outrc);
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(),
                            __FILE__, __LINE__);
-                    if (iq->have_snap_info) {
-                        outrc = do_replay_case(iq, iq->snap_info.key, iq->snap_info.keylen, 
-                                num_reqs, 0, replay_data, replay_len, __LINE__);
-                    }
-                    else {
-                        outrc = do_replay_case(iq, iq->seq, iq->seqlen,
-                                num_reqs, 0, replay_data, replay_len, __LINE__);
-                    }
+                    outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
+                                           replay_len, __LINE__);
                     did_replay = 1;
                     logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                            __FILE__, __LINE__, outrc);
@@ -5568,7 +5556,7 @@ printf("AZ: set outrc=%d\n",outrc);
                 fromline = __LINE__;
                 goto cleanup;
             }
-        } else /* rowlocks */
+        } else if( rowlocks )
         {
             /* commit or abort the trasaction as appropriate,
                and write the blkseq */
@@ -5625,14 +5613,8 @@ printf("AZ: set outrc=%d\n",outrc);
             if (rc == IX_DUP) {
                 logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(), __FILE__,
                        __LINE__);
-                if (iq->have_snap_info) {
-                    outrc = do_replay_case(iq, iq->snap_info.key, iq->snap_info.keylen, 
-                            num_reqs, 0, replay_data, replay_len, __LINE__);
-                }
-                else {
-                    outrc = do_replay_case(iq, iq->seq, iq->seqlen,
-                            num_reqs, 0, replay_data, replay_len, __LINE__);
-                }
+                outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
+                                       replay_len, __LINE__);
                 did_replay = 1;
                 logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                        __FILE__, __LINE__, outrc);
@@ -5789,7 +5771,6 @@ printf("AZ: set outrc=%d\n",outrc);
                   trans, iq->txnsize, iq->timeoutms, iq->reptimems, rate);
     }
 
-    struct timespec end_time;
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
     pthread_mutex_lock(&commit_stat_lk);
