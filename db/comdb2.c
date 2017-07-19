@@ -2249,23 +2249,10 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
             return -1;
         }
 
-        // Get new chunk of sequence values from llmeta
-        next_val = next_start_val;
-
-        rc = bdb_llmeta_get_sequence_chunk(
-            NULL, name, min_val, max_val, increment, cycle, chunk_size, &flags,
-            &remaining_vals, start_val, &next_start_val, &bdberr);
-
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "can't retrive new chunk for sequence \"%s\"\n", name);
-            return -1;
-        }
-
         // Create new sequence in memory
         sequence_t *seq = new_sequence(name, min_val, max_val, next_val,
                                        increment, cycle, start_val, chunk_size,
-                                       flags, remaining_vals, next_start_val);
+                                       flags, 0, start_val);
 
         if (seq == NULL) {
             logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);

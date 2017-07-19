@@ -247,6 +247,8 @@ sequence_args(A) ::= sequence_arg(B) sequence_args(C). {
 
   if (B.type < 0){
     return;
+  } else if (A.modified & B.type) {
+    return sqlite3ErrorMsg(pParse, "conflicting or redundant options");
   }
 
   switch(B.type) {
@@ -379,14 +381,13 @@ cmd ::= DROP SEQUENCE nm(N). {
 
 ///////////////////// COMDB2 ALTER SEQUENCE statement ////////////////////////////
 
-cmd ::= dryrun(D) ALTER SEQUENCE nm(N) alter_sequence_args(A). {
+cmd ::= ALTER SEQUENCE nm(N) alter_sequence_args(A). {
   // Null terminate string
   char name[N.n + 1];
   memcpy(name, N.z, N.n);
   name[N.n] = '\0';
 
-  // TODO: Figure out everything with restart value
-  // comdb2AlterSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,A.modified,D);
+  comdb2AlterSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,A.restart_val,A.modified);
 }
 
 %type sequence_restart_with {seq_arg}
@@ -399,6 +400,7 @@ sequence_restart_with(A) ::= RESTART longlong(B). {
   A.data = B;
 }
 sequence_restart_with(A) ::= RESTART. {
+  // Will be marked in A.modified
   A.type = SEQ_RESTART_TO_START_VAL;
 }
 
@@ -415,6 +417,8 @@ alter_sequence_args(A) ::= alter_sequence_arg(B) alter_sequence_args(C). {
 
   if (B.type < 0){
     return;
+  } else if (A.modified & B.type) {
+    return sqlite3ErrorMsg(pParse, "conflicting or redundant options");
   }
 
   switch(B.type) {
@@ -437,6 +441,9 @@ alter_sequence_args(A) ::= alter_sequence_arg(B) alter_sequence_args(C). {
       A.chunk_size = B.data;
       break;
     case SEQ_RESTART_VAL:
+      if (A.modified & SEQ_RESTART_TO_START_VAL) {
+        return sqlite3ErrorMsg(pParse, "conflicting or redundant options");
+      }
       A.restart_val = B.data;
   }
 
@@ -2322,8 +2329,14 @@ cmd ::= DROP LUA CONSUMER nm(A). {
 
 /* ALTER TABLE (CSC2) */
 cmd ::= comdb2_alter_table_csc2.
-comdb2_alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
-  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
+
+/* DRYRUN could not be reduced to two non-terminal rules because (DRYRUN and empty).
+Parser fails in that case*/
+comdb2_alter_table_csc2 ::= DRYRUN ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,1);
+}
+comdb2_alter_table_csc2 ::= ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,0);
 }
 
 /* ALTER TABLE (Comdb2) */
@@ -2331,8 +2344,14 @@ cmd ::= alter_table alter_table_action_list. {
   comdb2AlterTableEnd(pParse);
 }
 
-alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
+/* DRYRUN could not be reduced to two non-terminal rules because (DRYRUN and empty).
+Parser fails in that case*/
+alter_table ::= DRYRUN ALTER TABLE nm(Y) dbnm(Z) . {
+  comdb2AlterTableStart(pParse,&Y,&Z,1);
+}
+
+alter_table ::= ALTER TABLE nm(Y) dbnm(Z) . {
+  comdb2AlterTableStart(pParse,&Y,&Z,0);
 }
 
 alter_table_action_list ::= .
@@ -2351,8 +2370,4 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
 %endif
-
-%type dryrun {int}
-dryrun(D) ::= DRYRUN.  {D=1;}
-dryrun(D) ::= . {D=0;}
 /* vim: set ft=lemon: */

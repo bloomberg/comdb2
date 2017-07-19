@@ -12,7 +12,7 @@ SQLITE_FLAGS=                           \
 -DSQLITE_OMIT_ALTERTABLE                \
 -DSQLITE_OMIT_AUTHORIZATION             \
 -DSQLITE_OMIT_AUTOINCREMENT             \
--DSQLITE_OMIT_AUTOVACUM                 \
+-DSQLITE_OMIT_AUTOVACUUM                \
 -DSQLITE_OMIT_BUILTIN_TEST              \
 -DSQLITE_OMIT_FOREIGN_KEY               \
 -DSQLITE_OMIT_INCRBLOB                  \
