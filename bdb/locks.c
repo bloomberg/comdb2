@@ -709,13 +709,14 @@ int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
     return rc;
 }
 
-int bdb_lock_tablename_write(DB_ENV *dbenv, const char *name, tran_type *tran)
+int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
+                             tran_type *tran)
 {
     int rc;
 
     if (tran->parent) tran = tran->parent;
 
-    rc = bdb_lock_table_int(dbenv, name, resolve_locker_id(tran),
+    rc = bdb_lock_table_int(bdb_state->dbenv, name, resolve_locker_id(tran),
                             BDB_LOCK_WRITE);
     return rc;
 }

@@ -4,6 +4,7 @@ sc_MEMGENOBJ=$(patsubst %.c,%.o)
 sc_OBJS=			\
 schemachange/schemachange.o	\
 schemachange/sc_alter_table.o	\
+schemachange/sc_rename_table.o  \
 schemachange/sc_add_table.o	\
 schemachange/sc_callbacks.o	\
 schemachange/sc_csc2.o		\

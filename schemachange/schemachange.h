@@ -183,6 +183,10 @@ struct schema_change_type {
     size_t aname_len;
     size_t spname_len;
     size_t newcsc2_len;
+
+    /* table rename support */
+    int rename; /* new table name */
+    char newtable[MAXTABLELEN]; /* rename table */
 };
 
 struct ireq;

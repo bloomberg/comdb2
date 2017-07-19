@@ -126,6 +126,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                     int create, DB_TXN *tid);
+static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
 
 void berkdb_set_recovery(DB_ENV *dbenv);
@@ -792,35 +793,18 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
 }
 
 /*moves an entire table over to the new versioning database*/
-int bdb_start_file_versioning_table(bdb_state_type *bdb_state,
-                                    tran_type *input_trans, int *bdberr)
+int bdb_rename_file_versioning_table(bdb_state_type *bdb_state,
+                                     tran_type *input_trans, char *newtblname,
+                                     int *bdberr)
 {
     int dtanum, ixnum, retries = 0;
     unsigned long long version_num;
+    unsigned long long new_version_num;
     char oldname[80], newname[80];
     tran_type *tran;
+    char *orig_name;
 
-    /*fail if the db isn't open*/
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: low level meta table"
-                        " not yet open, you must run bdb_llmeta_open\n");
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    /*find out if this table has been versioned*/
-    if (!bdb_get_file_version_table(bdb_state, input_trans, &version_num,
-                                    bdberr) &&
-        *bdberr == BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: table already using "
-                        "version numbers\n");
-        *bdberr = BDBERR_NOERROR;
-        return 0;
-    } else if (*bdberr != BDBERR_FETCH_DTA) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: failed to look up "
-                        "table version number\n");
-        return -1;
-    }
+    orig_name = bdb_state->name;
 
 retry:
     if (++retries >= 500 /*gbl_maxretries*/) {
@@ -846,17 +830,36 @@ retry:
 
     /* set table version num, this is used to test if the table is using file
      * versions */
-    version_num = bdb_get_cmp_context(bdb_state);
-    if (bdb_new_file_version_table(bdb_state, tran, version_num, bdberr) ||
+    bdb_state->name = newtblname; 
+    new_version_num = bdb_get_cmp_context(bdb_state);
+    if (bdb_new_file_version_table(bdb_state, tran, new_version_num, bdberr) ||
         *bdberr != BDBERR_NOERROR)
         goto backout;
+
+    /* get existing name version */
+    bdb_state->name = orig_name;
+    if (bdb_get_file_version_table(bdb_state, tran, &version_num, bdberr) &&
+        *bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "failed to retrieve existing table version\n");
+        *bdberr = BDBERR_MISC;
+        goto backout;
+    }
 
     /* update data files */
     for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
         int strnum, num_stripes = bdb_get_datafile_num_files(bdb_state, dtanum),
                     isstriped = 0;
 
-        version_num = bdb_get_cmp_context(bdb_state);
+        new_version_num = bdb_get_cmp_context(bdb_state);
+
+        /* get data versioning existing table */
+        if (bdb_get_file_version_data(bdb_state, tran, dtanum, &version_num, 
+                                      bdberr) && *bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "failed to retrieve existing index version\n");
+            *bdberr = BDBERR_MISC;
+            goto backout;
+        }
+
 
         /*find out if this datafile is striped*/
         if (dtanum > 0) {
@@ -869,44 +872,60 @@ retry:
         /*save all of the stripe's names*/
         for (strnum = 0; strnum < num_stripes; ++strnum) {
             /*get the old filename*/
-            form_datafile_name(bdb_state, tran->tid, dtanum, strnum, oldname,
-                               sizeof(oldname));
-            /*get the new filename*/
             form_file_name_ex(bdb_state, 1 /*is_data_file*/, dtanum,
                               1 /*add_prefix*/, isstriped, strnum, version_num,
-                              newname, sizeof(newname));
+                              oldname, sizeof(oldname));
+            /*get the new filename*/
+            bdb_state->name = newtblname;
+            form_file_name_ex(bdb_state, 1 /*is_data_file*/, dtanum,
+                              1 /*add_prefix*/, isstriped, strnum, 
+                              new_version_num, newname, sizeof(newname));
+            bdb_state->name = orig_name;
 
             /*rename the file*/
-           logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n", oldname,
-                   newname);
+            logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n",
+                  oldname, newname);
             if (bdb_rename_file(bdb_state, tran->tid, oldname, newname,
-                                bdberr) ||
-                *bdberr != BDBERR_NOERROR)
+                                bdberr) || *bdberr != BDBERR_NOERROR)
                 goto backout;
         }
 
         /*update the file's version*/
-        if (bdb_new_file_version_data(bdb_state, tran, dtanum, version_num,
-                                      bdberr) ||
-            *bdberr != BDBERR_NOERROR)
+        bdb_state->name = newtblname;
+        if (bdb_new_file_version_data(bdb_state, tran, dtanum, new_version_num,
+                                      bdberr) || *bdberr != BDBERR_NOERROR) {
+            bdb_state->name = orig_name;
             goto backout;
+        }
+        bdb_state->name = orig_name;
     }
-
+    
     /* update the index files */
     for (ixnum = 0; ixnum < bdb_state->numix; ixnum++) {
-        version_num = bdb_get_cmp_context(bdb_state);
+        new_version_num = bdb_get_cmp_context(bdb_state);
+
+        /* get index versioning existing table */
+        if (bdb_get_file_version_index(bdb_state, tran, ixnum, &version_num, 
+                                       bdberr) && *bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "failed to retrieve existing index version\n");
+            *bdberr = BDBERR_MISC;
+            goto backout;
+        }
 
         /*get old name*/
-        form_indexfile_name(bdb_state, tran->tid, ixnum, oldname,
-                            sizeof(oldname));
-        /*get new name*/
         form_file_name_ex(bdb_state, 0 /*is_data_file*/, ixnum,
                           1 /*add_prefix*/, 0 /*isstriped*/, 0 /*strnum*/,
-                          version_num, newname, sizeof(newname));
+                          version_num, oldname, sizeof(oldname));
+        /*get new name*/
+        bdb_state->name = newtblname;
+        form_file_name_ex(bdb_state, 0 /*is_data_file*/, ixnum,
+                          1 /*add_prefix*/, 0 /*isstriped*/, 0 /*strnum*/,
+                          new_version_num, newname, sizeof(newname));
+        bdb_state->name = orig_name;
 
         /*rename*/
-       logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n", oldname,
-               newname);
+        logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n", 
+               oldname, newname);
         if (bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr) ||
             *bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: ERROR converting %s to %s. Check FILE PERMISSIONS\n",
@@ -915,10 +934,13 @@ retry:
         }
 
         /*update version*/
-        if (bdb_new_file_version_index(bdb_state, tran, ixnum, version_num,
-                                       bdberr) ||
-            *bdberr != BDBERR_NOERROR)
+        bdb_state->name = newtblname;
+        if (bdb_new_file_version_index(bdb_state, tran, ixnum, version_num, 
+                                       bdberr) || *bdberr != BDBERR_NOERROR) {
+            bdb_state->name = orig_name;
             goto backout;
+        }
+        bdb_state->name = orig_name;
     }
 
     /*commit if we created our own transaction*/
@@ -954,6 +976,39 @@ backout:
                 *bdberr);
     }
     return -1;
+}
+
+int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
+                     int *bdberr)
+{
+    DB_TXN *tid = tran ? tran->tid : NULL;
+    char *orig_name;
+    int rc;
+
+    rc = close_dbs(bdb_state, tid);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        return -1;
+    }
+
+    rc = bdb_rename_file_versioning_table(bdb_state, tran, newname, bdberr);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        return -1;
+    }
+    
+    orig_name = bdb_state->name;
+    bdb_state->name = newname;
+    rc = open_dbs(bdb_state, 1, 1, 0, tid);
+    if (rc != 0) {
+        bdb_state->name = orig_name;
+        logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        return -1;
+    }
+    bdb_state->name = orig_name;
+    bdb_state->isopen = 1;
+
+    return 0;
 }
 
 struct del_list_item {
@@ -1409,17 +1464,15 @@ static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
  * Hence this function will now never fail - although it may spit out errors.
  * After this is called, the db is closed.
  */
-static int closedbs_int(bdb_state_type *bdb_state, int nosync)
+static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
 
 {
     int rc;
     int i;
     int dtanum, strnum;
+    int flags = DB_NOSYNC;
 
-    int flags = 0;
-    if (nosync) flags = DB_NOSYNC;
-
-    print(bdb_state, "in closedbs(name=%s)\n", bdb_state->name);
+    print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
     if (!bdb_state->isopen) {
         print(bdb_state, "%s not open, not closing\n", bdb_state->name);
@@ -1433,7 +1486,7 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
                     bdb_state->dbp_data[dtanum][strnum], NULL, flags);
                 if (0 != rc) {
                     logmsg(LOGMSG_ERROR,
-                           "closedbs: error closing %s[%d][%d]: %d %s\n",
+                           "%s: error closing %s[%d][%d]: %d %s\n", __func__,
                            bdb_state->name, dtanum, strnum, rc,
                            db_strerror(rc));
                 }
@@ -1447,7 +1500,7 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
             rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR,
-                       "closedbs: error closing %s->dbp_ix[%d] %d %s\n",
+                       "%s: error closing %s->dbp_ix[%d] %d %s\n", __func__,
                        bdb_state->name, i, rc, db_strerror(rc));
             }
         }
@@ -1462,11 +1515,6 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     bdb_state->isopen = 0;
 
     return 0;
-}
-
-static int closedbs(bdb_state_type *bdb_state)
-{
-    return closedbs_int(bdb_state, 1);
 }
 
 int bdb_isopen(bdb_state_type *bdb_handle) { return bdb_handle->isopen; }
@@ -1590,7 +1638,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     /* close all database files.   doesn't fail. */
     if (!envonly) {
-        rc = closedbs(bdb_state);
+        rc = close_dbs(bdb_state, NULL);
     }
 
     /* now do it for all of our children */
@@ -1600,7 +1648,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         /* close all of our databases.  doesn't fail. */
         if (child) {
-            rc = closedbs(child);
+            rc = close_dbs(child, NULL);
             bdb_access_destroy(child);
         }
     }
@@ -1655,7 +1703,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = closedbs(bdb_state);
+    int rc = close_dbs(bdb_state, NULL);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -4622,9 +4670,9 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
 
     if (!bdb_state->envonly) {
         /* close all of our databases.  doesn't fail */
-        rc = closedbs(bdb_state);
+        rc = close_dbs(bdb_state, NULL);
 
-        /* fprintf(stderr, "back from closedbs\n"); */
+        /* fprintf(stderr, "back from close_dbs\n"); */
 
         /* now reopen them as a client */
         rc = open_dbs(bdb_state, 0, 1, 0, tid);
@@ -4645,9 +4693,9 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             child->read_write = 0;
 
             /* close all of our databases.  doesn't fail */
-            rc = closedbs(child);
+            rc = close_dbs(child, NULL);
 
-            /* fprintf(stderr, "back from closedbs\n"); */
+            /* fprintf(stderr, "back from close_dbs\n"); */
 
             /* now reopen them as a client */
             rc = open_dbs(child, 0, 1, 0, tid);
@@ -6665,22 +6713,11 @@ int bdb_rename_ix(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-int bdb_rename_name(bdb_state_type *bdb_state, char newtablename[], int *bdberr)
+void bdb_state_rename(bdb_state_type *bdb_state, char *newname)
 {
-    int rc = 0;
-    char *p = strdup(newtablename);
-    if (!p) {
-        logmsg(LOGMSG_ERROR, "bdb_rename_name: strdup failed for '%s'\n",
-                newtablename);
-        *bdberr = BDBERR_MALLOC;
-        return -1;
-    }
-    *bdberr = BDBERR_NOERROR;
-    BDB_READLOCK("bdb_rename_name");
-    free(bdb_state->name);
-    bdb_state->name = p;
-    BDB_RELLOCK();
-    return rc;
+    char *old = bdb_state->name;
+    bdb_state->name = newname;
+    free(old);
 }
 
 static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -6751,7 +6788,7 @@ int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    rc = closedbs(bdb_state);
+    rc = close_dbs(bdb_state, NULL);
 
     return rc;
 }
@@ -6794,7 +6831,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    closedbs(bdb_state);
+    close_dbs(bdb_state, NULL);
 
     /* now remove myself from my parents list of children */
 
@@ -8346,4 +8383,10 @@ done:
     if (prev_fs) free_file_set(prev_fs);
 
     logc->close(logc, 0);
+}
+
+void rename_bdb_state(bdb_state_type *bdb_state, const char *newname)
+{
+    if(bdb_state->name) free(bdb_state->name);
+    bdb_state->name = strdup(newname);
 }

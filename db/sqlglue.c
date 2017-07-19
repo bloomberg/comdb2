@@ -3424,12 +3424,6 @@ void sqlite3AlterFunctions(void)
     exit(1);
 }
 
-void sqlite3AlterRenameTable(Parse *pParse, SrcList *pSrc, Token *pName)
-{
-    logmsg(LOGMSG_FATAL, "STUB sqlite3AlterRenameTable called\n");
-    exit(1);
-}
-
 /*
  ** This call is a no-op if no write-transaction is currently active on pBt.
  **

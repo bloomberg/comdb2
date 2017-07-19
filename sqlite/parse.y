@@ -733,8 +733,14 @@ sortlist(A) ::= expr(Y) sortorder(Z). {
   sqlite3ExprListSetSortOrder(A,Z);
 }
 
-%type sortorder {int}
+cmd ::= rename_comdb2table.
 
+rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
+    comdb2WriteTransaction(pParse);
+    sqlite3AlterRenameTable(pParse,&X,&Y,D);
+}
+
+%type sortorder {int}
 sortorder(A) ::= ASC.           {A = SQLITE_SO_ASC;}
 sortorder(A) ::= DESC.          {A = SQLITE_SO_DESC;}
 sortorder(A) ::= .              {A = SQLITE_SO_UNDEFINED;}

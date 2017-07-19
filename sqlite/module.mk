@@ -1,6 +1,6 @@
 # Local defs
 SQLITE_MEMGEN:=sqlite/mem_sqlite.h
-SQLITE_OBJS:=sqlite/analyze.o sqlite/attach.o sqlite/auth.o		\
+SQLITE_OBJS:=sqlite/analyze.o sqlite/alter.o sqlite/attach.o sqlite/auth.o		\
 	 sqlite/bitvec.o sqlite/btmutex.o sqlite/build.o		\
 	 sqlite/callback.o sqlite/complete.o sqlite/ctime.o		\
 	 sqlite/decimal.o sqlite/dbstat.o sqlite/delete.o		\

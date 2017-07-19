@@ -388,6 +388,7 @@ struct dbenv;
 void free_db_record(struct dbrecord *db);
 
 void delete_schema(const char *dbname);
+void rename_schema(const char *oldname, char *newname);
 
 void freeschema(struct schema *schema);
 void freeschema_internals(struct schema *schema);

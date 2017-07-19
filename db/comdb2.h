@@ -2337,6 +2337,7 @@ void resume_threads(struct dbenv *env);
 void replace_db_idx(struct db *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
+int rename_db(struct db *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
                            void *fnddta, int *fndlen, int *recnum, int maxlen);
@@ -2388,8 +2389,6 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
                                const char *table, const char *csc2_text);
 int load_new_table_schema(struct dbenv *dbenv, const char *table,
                           const char *csc2_text);
-int load_new_table_schema_trans(void *tran, struct dbenv *dbenv,
-                                const char *table, const char *csc2_text);
 int dump_all_csc2_to_disk();
 int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname);
 int dump_table_csc2_to_disk(const char *table);
@@ -3642,5 +3641,7 @@ extern int gbl_upd_null_cstr_return_conv_err;
 int handle_runtime_tunable(const char *name, const char *value);
 /* Update the tunable read from lrl file. */
 int handle_lrl_tunable(char *name, int name_len, char *value, int value_len);
+
+int rename_table_options(void *tran, struct db *db, const char *newname);
 
 #endif /* !INCLUDED_COMDB2_H */
