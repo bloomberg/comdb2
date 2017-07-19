@@ -372,6 +372,18 @@ static const uint8_t *sqlfield_get(struct sqlfield *p_sqlfield,
     return p_buf;
 }
 
+static inline void comdb2_set_sqlite_vdbe_tzname_int(Vdbe *p,
+                                                     struct sqlclntstate *clnt)
+{
+    memcpy(p->tzname, clnt->tzname, TZNAME_MAX);
+}
+
+static inline void comdb2_set_sqlite_vdbe_dtprec_int(Vdbe *p,
+                                                     struct sqlclntstate *clnt)
+{
+    p->dtprec = clnt->dtprec;
+}
+
 static inline int disable_server_sql_timeouts(void)
 {
     extern int gbl_sql_release_locks_on_slow_reader;
@@ -603,8 +615,6 @@ static char *fsql_respcode_str(int rsp)
 char *tranlevel_tostr(int lvl)
 {
     switch (lvl) {
-    case TRANLEVEL_OSQL:
-        return "TRANLEVEL_OSQL";
     case TRANLEVEL_SOSQL:
         return "TRANLEVEL_SOSQL";
     case TRANLEVEL_RECOM:
@@ -1995,7 +2005,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
 
     clnt->intrans = 0;
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
 
@@ -2518,7 +2528,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 done:
 
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
     return outrc;
@@ -2967,21 +2977,6 @@ static int is_with_statement(char *sql)
     return 0;
 }
 
-static int is_sql_read(char *sql)
-{
-    if (!sql)
-        return 1;
-
-    sql = skipws(sql);
-
-    if (strncasecmp(sql, "select", 6))
-        return 1;
-    if (strncasecmp(sql, "with", 4))
-        return 1;
-
-    return 0;
-}
-
 static void compare_estimate_cost(sqlite3_stmt *stmt)
 {
     int showScanStat =
@@ -3133,7 +3128,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
     }
 }
 
-// Call with tag_api_lk held and no_transaction == 1
+// Call with schema_lk held and no_transaction == 1
 int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     if (gbl_fdb_track)
@@ -4964,16 +4959,18 @@ static int flush_row(struct sqlclntstate *clnt)
     return 0;
 }
 
-static void run_stmt_setup(struct sqlclntstate *clnt, struct sql_state *rec)
+void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    clnt->isselect = sqlite3_stmt_readonly(rec->stmt);
-    comdb2_set_sqlite_vdbe_tzname((Vdbe *)rec->stmt);
-    comdb2_set_sqlite_vdbe_dtprec((Vdbe *)rec->stmt);
+    Vdbe *v = (Vdbe *)stmt;
+    clnt->isselect = sqlite3_stmt_readonly(stmt);
+    clnt->has_recording |= v->recording;
+    comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
+    comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
     clnt->iswrite = 0; /* reset before step() */
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        fprintf(stderr, "%s () sql: '%s'\n", __func__, rec->sql);
+        fprintf(stderr, "%s () sql: '%s'\n", __func__, v->zSql);
     }
 #endif
 }
@@ -5171,7 +5168,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc;
 
     reqlog_set_event(thd->logger, "sql");
-    run_stmt_setup(clnt, rec);
+    run_stmt_setup(clnt, rec->stmt);
 
     new_row_data_type = is_new_row_data(clnt);
     ncols = sqlite3_column_count(rec->stmt);
@@ -6196,9 +6193,6 @@ static void sqlengine_thd_end(struct thdpool *pool, void *thddata)
 static inline int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
-    case SQL_TDEF_BLOCK:
-        return TRANLEVEL_OSQL;
-
     case SQL_TDEF_SOCK:
         return TRANLEVEL_SOSQL;
 
@@ -6330,7 +6324,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->file = 0;
     clnt->offset = 0;
     clnt->enque_timeus = clnt->deque_timeus = 0;
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
@@ -6344,6 +6338,12 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     free(clnt->context);
     clnt->context = NULL;
     clnt->ncontext = 0;
+}
+
+void reset_clnt_flags(struct sqlclntstate *clnt)
+{
+    clnt->writeTransaction = 0;
+    clnt->has_recording = 0;
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
@@ -6519,9 +6519,6 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
 
         if (thedb->stopped)
             goto done;
-
-        /* Reset lock info, maybe required in the case of deadlock. */
-        clnt->lockInfo = NULL;
 
         switch (clnt->req.request) {
         case FSQL_EXECUTE_INLINE_PARAMS_TZ:
@@ -9652,23 +9649,17 @@ done:
 void comdb2_set_sqlite_vdbe_tzname(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (!sqlthd)
         return;
-
-    /*prepare the timezone info*/
-    memcpy(p->tzname, sqlthd->sqlclntstate->tzname, TZNAME_MAX);
+    comdb2_set_sqlite_vdbe_tzname_int(p, sqlthd->sqlclntstate);
 }
 
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (!sqlthd)
         return;
-
-    /*prepare the datetime precision*/
-    p->dtprec = sqlthd->sqlclntstate->dtprec;
+    comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->sqlclntstate);
 }
 
 void run_internal_sql(char *sql)

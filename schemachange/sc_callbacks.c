@@ -568,10 +568,14 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
                     scdone_t type)
 {
     switch (type) {
-    case luareload: return reload_lua();
-    case analyze: return replicant_reload_analyze();
-    case bthash: return bthash_callback(table);
-    case views: return replicant_reload_views(table);
+    case luareload:
+        return reload_lua();
+    case sc_analyze:
+        return replicant_reload_analyze_stats();
+    case bthash:
+        return bthash_callback(table);
+    case views:
+        return replicant_reload_views(table);
     case rowlocks_on:
     case rowlocks_on_master_only:
     case rowlocks_off: return reload_rowlocks(thedb->bdb_env, type);

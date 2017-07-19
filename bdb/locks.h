@@ -133,9 +133,7 @@ void bdb_checklock(bdb_state_type *bdb_state);
 
 int bdb_lock_table_read(bdb_state_type *, tran_type *);
 
-struct __db_lock_u;
-int bdb_lock_table_read_fromlid(bdb_state_type *, int lid,
-                                struct __db_lock_u *);
+int bdb_lock_table_read_fromlid(bdb_state_type *, int lid);
 int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
                                void *lkname, int mode, void *lk);
 int berkdb_lock_rowlock(bdb_state_type *bdb_state, int lid, int flags,

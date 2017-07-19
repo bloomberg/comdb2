@@ -31,7 +31,7 @@ typedef enum scdone {
     bulkimport,
     setcompr,
     luareload,
-    analyze,
+    sc_analyze,
     bthash,
     rowlocks_on,
     rowlocks_on_master_only,

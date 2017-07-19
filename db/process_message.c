@@ -254,7 +254,8 @@ static const char *HELP_SQL[] = {
     "dump               - dump currently running statements and cursor info",
     "keep N             - keep stats on last N statements",
     "hist               - show recently run statements",
-    "cancel N           - cancel running statement",
+    "cancel N           - cancel running statement with id N",
+    "cancelcnonce N      - cancel running statement with cnonce N",
     "rdtimeout N        - set read timeout in ms",
     "wrtimeout N        - set write timeout in ms",
     "help               - this information", NULL,
@@ -3562,6 +3563,15 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                        "\"sql dump\".\n");
             else
                 cancel_sql_statement(qid);
+        } else if (tokcmp(tok, ltok, "cancelcnonce") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0)
+                logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
+                       "\"sql dump\".\n");
+            else {
+                char * cnonce = strdup(tok);
+                cancel_sql_statement_with_cnonce(cnonce);
+            }
         } else if (tokcmp(tok, ltok, "rdtimeout") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             gbl_sqlrdtimeoutms = toknum(tok, ltok);
@@ -4989,7 +4999,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                    "Default 300,000\n");
         }
 
-       logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
+        logmsg(LOGMSG_USER, "Current tunables:\nCompress %d%% of the records",
                gbl_testcompr_percent);
         if (gbl_testcompr_max) {
            logmsg(LOGMSG_USER, ", upto a max of %d", gbl_testcompr_max);

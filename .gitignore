@@ -251,6 +251,8 @@ cdb2jdbc/maven.m2/**
 
 # generated docs
 _site/
+Comdb2.docset
+Gemfile.lock
 
 # test tools
 tests/tools/overflow_blobtest

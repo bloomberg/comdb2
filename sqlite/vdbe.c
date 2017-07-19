@@ -4037,8 +4037,7 @@ case OP_OpenEphemeral: {
   rc = sqlite3BtreeOpen(db->pVfs, 0, db, &pCx->pBt, 
                         BTREE_OMIT_JOURNAL | BTREE_SINGLE | pOp->p5, vfsFlags);
   if( rc==SQLITE_OK ){
-    /* COMDB2 MODIFICATION- don't toggle wrflag in sqlglue. */
-    rc = sqlite3BtreeBeginTransNoflag(p, pCx->pBt);
+    rc = sqlite3BtreeBeginTrans(p, pCx->pBt, 0);
   }
   if( rc==SQLITE_OK ){
     /* If a transient index is required, create it by calling
@@ -5892,13 +5891,9 @@ case OP_IdxGE:  {       /* jump */
 #endif
   res = 0;  /* Not needed.  Only used to silence a warning. */
   rc = sqlite3VdbeIdxKeyCompare(db, pC, &r, &res);
-  /*
-    TODO: NC - Find why did the opcodes change by the addition
-    of a new token.
-  */
-  //assert( (OP_IdxLE&1)==(OP_IdxLT&1) && (OP_IdxGE&1)==(OP_IdxGT&1) );
-  if((pOp->opcode == OP_IdxLT) || (pOp->opcode == OP_IdxLE)){
-    //assert( pOp->opcode==OP_IdxLE || pOp->opcode==OP_IdxLT );
+  assert( (OP_IdxLE&1)==(OP_IdxLT&1) && (OP_IdxGE&1)==(OP_IdxGT&1) );
+  if( (pOp->opcode&1)==(OP_IdxLT&1) ){
+    assert( pOp->opcode==OP_IdxLE || pOp->opcode==OP_IdxLT );
     res = -res;
   }else{
     assert( pOp->opcode==OP_IdxGE || pOp->opcode==OP_IdxGT );

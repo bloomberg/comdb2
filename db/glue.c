@@ -392,8 +392,7 @@ int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
     return rc;
 }
 
-tran_type *trans_start_socksql(struct ireq *iq, int ignore_newer_updates,
-                               int trak)
+tran_type *trans_start_socksql(struct ireq *iq, int trak)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
@@ -401,11 +400,9 @@ tran_type *trans_start_socksql(struct ireq *iq, int ignore_newer_updates,
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with ignore_newer_updates=%d\n", __func__,
-                ignore_newer_updates);
+        logmsg(LOGMSG_USER, "%s called\n", __func__);
     }
-    out_trans =
-        bdb_tran_begin_socksql(bdb_handle, ignore_newer_updates, trak, &bdberr);
+    out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
 
     if (out_trans == NULL) {
@@ -415,21 +412,14 @@ tran_type *trans_start_socksql(struct ireq *iq, int ignore_newer_updates,
     return out_trans;
 }
 
-tran_type *trans_start_readcommitted(struct ireq *iq, int ignore_newer_updates,
-                                     int trak)
+tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 {
     void *bdb_handle = bdb_handle_from_ireq(iq);
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
-    if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with ignore_newer_updates=%d\n", __func__,
-                ignore_newer_updates);
-    }
-
-    out_trans = bdb_tran_begin_readcommitted(bdb_handle, ignore_newer_updates,
-                                             trak, &bdberr);
+    out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_readcommitted done";
 
     if (out_trans == NULL) {
@@ -527,55 +517,6 @@ int trans_abort_shadow(void **trans, int *bdberr)
     rc = bdb_tran_abort(thedb->bdb_env, *trans, bdberr);
 
     *trans = NULL;
-
-    return rc;
-}
-
-/**
- * Same as shadow, but have only a startgenid as usefull info
- *
- */
-tran_type *trans_start_queryisolation(struct ireq *iq, int trak)
-{
-    void *bdb_handle = bdb_handle_from_ireq(iq);
-    tran_type *out_trans = NULL;
-    int bdberr = 0;
-
-    iq->gluewhere = "bdb_tran_begin";
-    out_trans = bdb_tran_begin_queryisolation(bdb_handle, trak, &bdberr);
-    iq->gluewhere = "bdb_tran_begin done";
-
-    if (out_trans == NULL) {
-        logmsg(LOGMSG_ERROR, "*ERROR* %s:failed err %d\n", __func__, bdberr);
-        return NULL;
-    }
-    return out_trans;
-}
-
-/**
- * Same as shadow, but have only a startgenid as usefull info
- *
- */
-int trans_commit_queryisolation(void *trans, int *bdberr)
-{
-    int rc = 0;
-
-    *bdberr = 0;
-    rc = bdb_tran_commit_queryisolation(thedb->bdb_env, trans, bdberr);
-
-    return rc;
-}
-
-/**
- * Same as shadow, but have only a startgenid as usefull info
- *
- */
-int trans_abort_queryisolation(void *trans, int *bdberr)
-{
-    int rc = 0;
-
-    *bdberr = 0;
-    rc = bdb_tran_abort_queryisolation(thedb->bdb_env, trans, bdberr);
 
     return rc;
 }
@@ -4098,6 +4039,7 @@ void set_skipscan_for_table_indices(struct db *tbl, int val)
     }
 }
 
+
 static void get_disable_skipscan(struct db *tbl)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
@@ -4106,18 +4048,31 @@ static void get_disable_skipscan(struct db *tbl)
 
     char *str = NULL;
     int rc = bdb_get_table_parameter(tbl->dbname, "disableskipscan", &str);
-    if (rc != 0)
+    if (rc != 0) {
+        set_skipscan_for_table_indices(tbl, 0);
         return;
+    }
 
-    int isTrue = (strncmp(str, "true", 4) != 0);
+    int disable = (strncmp(str, "true", 4) == 0);
     free(str);
 
-    if (isTrue)
-        return;
-
-    // set to 1 the in-memory parameter for the indices
-    set_skipscan_for_table_indices(tbl, 1);
+    // set the in-memory parameter for the indices
+    set_skipscan_for_table_indices(tbl, disable);
 }
+
+
+void get_disable_skipscan_all() 
+{
+#if DEBUG
+    logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
+#endif
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        struct db *d = thedb->dbs[ii];
+        get_disable_skipscan(d);
+    }
+}
+ 
+
 
 /* open the db files, etc */
 int backend_open(struct dbenv *dbenv)

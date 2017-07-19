@@ -111,3 +111,35 @@ Table of triggers in the database.
 * `tbl_name` - Name of the table.
 * `event` - Event to trigger on.
 * `col` - Column to trigger on.
+
+## comdb2_keywords
+
+Describes all the keywords used in the database. A reserved keyword needs to be
+quoted when used as an identifier.
+
+    comdb2_keywords(name, reserved)
+
+* `name` - Name of the keyword.
+* `reserved` - 'Y' if the keyword is reserved, 'N' otherwise.
+
+## comdb2_limits
+
+Describes all the hard limits in the database.
+
+    comdb2_limits(name, description, value)
+
+* `name` - Name of the limit.
+* `description` - Description of the limit.
+* `value` - Value of the limit.
+
+## comdb2_tunables
+
+Describes all the tunables in the database.
+
+    comdb2_tunables(name, description, type, value, read_only)
+
+* `name` - Name of the tunable.
+* `description` - Description of the tunable.
+* `type` - Type of the tunable.
+* `value` - Current value of the tunable.
+* `read_only` - 'Y' if the tunable is READ-ONLY, 'N' otherwise.

@@ -1,0 +1,74 @@
+#!/bin/bash
+
+bash -n "$0" | exit 1
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+dbnm=$1
+table=t1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $table " 
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $table { 
+schema { 
+    int a
+    int b 
+    datetime c
+} 
+
+keys
+{
+    dup \"AB\" = a + b
+    dup \"AC\" = a + c
+}
+}
+"
+
+
+for i in `seq 1 25` ; do
+    for j in `seq 1 200` ; do
+        echo "insert into $table (a,b,c) values($i, $j, now())"
+    done
+done | cdb2sql ${CDB2_OPTIONS} $dbnm default - > /dev/null
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "analyze $table"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "explain query plan select a from $table where b < 34"
+
+
+echo "set explain on
+select a from $table where b < 34" | cdb2sql ${CDB2_OPTIONS} $dbnm default - > out1.txt
+
+if ! grep "begin skip-scan" out1.txt > /dev/null ; then
+    failexit "not using skipscan in out1"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "put skipscan disable $table"
+sleep 1
+
+echo "set explain on
+select a from $table where b < 34" | cdb2sql ${CDB2_OPTIONS} $dbnm default -  > out2.txt
+
+if diff out1.txt out2.txt > /dev/null ; then
+    failexit "out2 should be different from out1"
+fi
+
+if grep "begin skip-scan" out2.txt > /dev/null ; then
+    failexit "out2 should have no skipscan"
+fi
+
+# recent code in analyze.c does not allow skipscan to be turned off
+# in a #running server--if ever finds a solution can enable the below:
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "put skipscan enable $table"
+#sleep 1
+
+#echo "set explain on
+#select a from $table where b < 34" | cdb2sql ${CDB2_OPTIONS} $dbnm default - > out3.txt
+
+#if ! diff out1.txt out3.txt > /dev/null ; then
+#    failexit "out3 should be same as out1"
+#fi
+

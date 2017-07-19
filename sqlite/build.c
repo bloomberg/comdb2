@@ -4163,6 +4163,8 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList, int is_recording
       if (pItem->iCursor < (MAX_CURSOR_IDS/sizeof(int))) {
         /* COMDB2 MODIFICATION */
         if( is_recording ){
+          Vdbe *v = sqlite3GetVdbe(pParse);
+          comdb2SetRecording(v);
           SET_CURSOR_RECORDING(pParse, pItem->iCursor);
         }else{
           CLR_CURSOR_RECORDING(pParse, pItem->iCursor);
