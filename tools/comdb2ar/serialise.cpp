@@ -544,7 +544,6 @@ void serialise_database(
   bool strip_cluster_info,
   bool support_files_only,
   bool run_with_done_file,
-  bool kludge_write,
   bool do_direct_io,
   bool incr_create,
   bool incr_gen,

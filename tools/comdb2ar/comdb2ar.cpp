@@ -30,12 +30,21 @@ extern "C" {
 
 const char *help_text[] = {
 "To serialise a db: comdb2ar [opts] c /bb/bin/mydb.lrl >output",
+"To serialise a db incrementally:",
+"  First, create a full backup in incremental mode-",
+"       comdb2ar c -I create -b /bb/bin/increment [opts] /bb/bin/mydb.lrl > output",
+"  Then, create an increment-",
+"       comdb2ar c -I inc -b /bb/bin/increment [opt] /bb/bin/mydb.lrl > output",
 "",
 "  Database mydb is serialised into tape archive format on to stdout.",
 "  -s   serialise support files only (lrl, csc2 etc, no data or log files)",
 "  -L   do not disable log file deletion (dangerous)",
 "",
 "To deserialise a db: comdb2ar.tsk [opts] x [/bb/bin /bb/data/mydb] <input",
+"To deserialise a db incrementally:",
+"  comdb2ar x -I restore -b /bb/bin/restore_increment [/bb/bin/ /bb/data/mydb] < input",
+"Where input is each increment concatenated together",
+"  i.e. cat mydb.tar mydb_incr1.tar mydb_incr2.tar",
 "",
 "  The serialised database read from stdin is deserialised.  You can",
 "  optionally specify destination directories for the lrl file and data",
@@ -46,8 +55,8 @@ const char *help_text[] = {
 "  -I create    create the incremental meta files while serialising",
 "  -I inc       create an increment for the incremental backup",
 "  -I restore   restore from a sequence of base_backup | increments",
-"  -I <path>    deserialise from a specified incremental backup",
 "  -b <path>    location to store/load the incremental backup",
+"  -k/K         do-not/do keep all logs in an incremental restoration",
 "  -x <path>    path to comdb2 binary to use for full recovery",
 "  -r/R         do/do-not run full recovery after extracting",
 "  -u %         do not allow disk usage to exceed this percentage",
@@ -96,7 +105,6 @@ int main(int argc, char *argv[])
     bool strip_consumer_info = false;
     bool run_full_recovery = true;
     bool run_with_done_file = false;
-    bool kludge_write = true;
     bool force_mode = false;
     unsigned percent_full = 95;
     bool legacy_mode = false;
@@ -106,6 +114,7 @@ int main(int argc, char *argv[])
     bool incr_ex = false;
     std::string incr_path;
     bool incr_path_specified = false;
+    bool keep_all_logs = false;
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -178,10 +187,6 @@ int main(int argc, char *argv[])
                 run_with_done_file = true;
                 break;
 
-            case 'K':
-                kludge_write = true;
-                break;
-
             case 'f':
                 force_mode = true;
                 break;
@@ -210,6 +215,14 @@ int main(int argc, char *argv[])
                 if(incr_path[incr_path.length() - 1] == '/'){
                     incr_path.resize(incr_path.length() - 1);
                 }
+                break;
+
+            case 'k':
+                keep_all_logs = false;
+                break;
+
+            case 'K':
+                keep_all_logs = true;
                 break;
 
             case '?':
@@ -275,7 +288,6 @@ int main(int argc, char *argv[])
                 strip_cluster_info,
                 support_files_only,
                 run_with_done_file,
-                kludge_write,
                 do_direct_io,
                 incr_create,
                 incr_gen,
@@ -319,7 +331,8 @@ int main(int argc, char *argv[])
              is_disk_full,
              run_with_done_file,
              incr_ex,
-             incr_path
+             incr_path,
+             keep_all_logs
            );
         } catch(std::exception& e) {
             std::cerr << e.what() << std::endl;

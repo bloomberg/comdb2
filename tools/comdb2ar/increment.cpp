@@ -50,11 +50,11 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
     std::string filename = file.get_filename();
     std::string incr_file_name = incr_path + "/" + filename + ".incr";
 
-    std::set<std::string>::const_iterator it = incr_files.find(filename + ".incr");
+    std::set<std::string>::iterator it = incr_files.find(filename + ".incr");
     if(it == incr_files.end()){
         std::ostringstream ss;
-        std::clog << "new incr file found mid backup of file: " << filename << std::endl;
-        // throw SerialiseError(filename, ss.str());
+        ss << "new incr file found mid backup of file: " << filename << std::endl;
+        throw SerialiseError(filename, ss.str());
     } else {
         incr_files.erase(it);
     }
@@ -123,8 +123,8 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
             }
 
             if(old_bytesread == 0) {
-                // If the size has more than doubled, just treat it as a new file
-                if ((float) bytesleft / (float) original_size > .5) {
+                // If the size has more than multiplied by a factor of 10, just treat it as a new file
+                if ((float) bytesleft / (float) original_size > .9) {
                     pages.clear();
                     return true;
                 // otherwise just add the remaining pages
@@ -152,7 +152,6 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
                             std::string incr_path){
     const std::string& filename = file.get_filename();
     const std::string& filepath = file.get_filepath();
-    std::clog << filepath << std::endl;
 
     int flags;
     bool skip_iomap = false;
@@ -199,7 +198,7 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
     std::ofstream incrFile(incrFilename, std::ofstream::out |
                             std::ofstream::in | std::ofstream::binary);
 
-    for(std::vector<uint32_t>::const_iterator
+    for(std::vector<uint32_t>::iterator
             it = pages.begin();
             it != pages.end();
             ++it){
@@ -273,18 +272,21 @@ std::string getDTString() {
 }
 
 void incr_deserialise_database(
-    const std::string lrldestdir,
-    const std::string datadestdir,
+    const std::string& lrldestdir,
+    const std::string& datadestdir,
+    const std::string& dbname,
     std::set<std::string>& table_set,
     unsigned percent_full,
     bool force_mode,
     bool& is_disk_full,
-    const std::string& incr_path
+    const std::string& incr_path,
+    bool keep_all_logs
 )
 {
     static const char zero_head[512] = {0};
 
     bool manifest_read = false;
+    bool done_with_incr = true;
 
     std::map<std::string, FileInfo> new_files;
     std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>> updated_files;
@@ -311,28 +313,35 @@ void incr_deserialise_database(
 
         // If the block is entirely blank then we're done with the increment
         if(std::memcmp(head.c, zero_head, 512) == 0) {
-            std::clog << "done with increment" << std::endl;
-            new_files.clear();
-            updated_files.clear();
-            deleted_files.clear();
-            file_order.clear();
-            options.clear();
+            if(!done_with_incr){
+                std::clog << "done with increment" << std::endl << std::endl;
+                done_with_incr = true;
+
+                new_files.clear();
+                updated_files.clear();
+                deleted_files.clear();
+                file_order.clear();
+                options.clear();
+            }
             continue;
+        }
+
+        done_with_incr = false;
+        if(!keep_all_logs) {
+            clear_log_folder(datadestdir, dbname);
         }
 
         // Get the file name
         if(head.h.filename[sizeof(head.h.filename) - 1] != '\0') {
             throw Error("Bad block: filename is not null terminated");
         }
-        const std::string filename(head.h.filename);
-        std::clog << "filename : " << filename << " | ";
+        std::string filename(head.h.filename);
 
         // Get the file size
         unsigned long long filesize;
         if(!read_octal_ull(head.h.size, sizeof(head.h.size), filesize)) {
             throw Error("Bad block: bad size");
         }
-        std::clog << "filesize: " << filesize << std::endl;
 
         bool is_manifest = false;
         if(filename == "INCR_MANIFEST") {

@@ -24,6 +24,9 @@
 
 #include <list>
 #include <string>
+#include <memory>
+
+#include "fdostream.h"
 
 
 const size_t MAX_BUF_SIZE = 4 * 1024 * 1024;
@@ -81,6 +84,15 @@ ssize_t readall(int fd, void *buf, size_t nbytes);
 
 bool read_octal_ull(const char *str, size_t len, unsigned long long& number);
 
+std::unique_ptr<fdostream> output_file(
+  const std::string& filename,
+  bool make_sav, bool direct
+);
+
+void make_dirs(const std::string& dirname);
+
+void remove_all_old_files(std::string& datadir);
+
 void serialise_database(
   std::string lrlpath,
   const std::string& comdb2_task,
@@ -88,7 +100,6 @@ void serialise_database(
   bool strip_cluster_info,
   bool support_files_only,
   bool run_with_done_file,
-  bool kludge_write,
   bool do_direct_io,
   bool incr_create,
   bool incr_gen,
@@ -114,7 +125,8 @@ void deserialise_database(
   bool& is_disk_full,
   bool run_with_done_file,
   bool incr_mode,
-  const std::string& incr_path
+  const std::string& incr_path,
+  bool keep_all_logs
 );
 // Deserialise a database from serialised form received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
