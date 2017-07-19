@@ -1772,7 +1772,26 @@ struct CollSeq {
 ** operator is NULL.  It is added to certain comparison operators to
 ** prove that the operands are always NOT NULL.
 */
-#define SQLITE_KEEPNULL     0x08  /* Used by vector == or <> */
+/* COMDB2 MODIFICATION
+** SQLite source:
+** #define SQLITE_KEEPNULL     0x08
+**
+** However, Comdb2 has more affinity types than SQLite and we are using 0x4F as
+** the SQLITE_AFF_MASK whereas SQLite is currently using 0x47.
+** So, using 0x08 for SQLITE_KEEPNULL is ok for SQLite but not with Comdb2 as
+** it will overlap with Comdb2's affinity bits.
+**
+** Comdb2 changes SQLITE_KEEPNULL to be a combination of STOREP2 and JUMPIFNULL.
+** KEEPNULL is checked only when comparison results are stored to P2
+** (i.e. STOREP2 is set)
+** Jump is only taken when STOREP2 is not set and JUMPIFNULL is only checked
+** when we actually jump insteaed of storing result to P2. In other words,
+** STOREP2 and JUMPIFNULL are mutually exclusive. Therefore, it should be ok to
+** combine these two for SQLITE_KEEPNULL and use 0x30.
+**
+** -- Lingzhi Deng
+*/
+#define SQLITE_KEEPNULL     0x30  /* Used by vector == or <> */
 #define SQLITE_JUMPIFNULL   0x10  /* jumps if either operand is NULL */
 #define SQLITE_STOREP2      0x20  /* Store result in reg[P2] rather than jump */
 #define SQLITE_NULLEQ       0x80  /* NULL=NULL */
