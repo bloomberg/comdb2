@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=811)
+(TUNABLES_COUNT=812)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -236,6 +236,7 @@
 (name='durable_set_trace', description='Print trace set durable and commit lsn trace', type='BOOLEAN', value='OFF', read_only='N')
 (name='durable_wait_seqnum_test', description='Enables periodic durable failures in wait-for-seqnum', type='BOOLEAN', value='OFF', read_only='N')
 (name='early', description='When set, replicants will ack a transaction as soon as they acquire locks - not that replication must succeed at that point, and reads on that node will either see the records or block. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
+(name='early_verify', description='Give early verify errors for updates in SQLite layer', type='BOOLEAN', value='ON', read_only='N')
 (name='elect_disable_netsplit_patch', description='When false, on a net split, the side with the master keeps it instead of downgrading. New masters still can't be elected without a quorum.', type='BOOLEAN', value='ON', read_only='N')
 (name='elect_highest_committed_gen', description='Bias election by the highest generation in the logfile', type='BOOLEAN', value='ON', read_only='N')
 (name='elect_on_mismatched_master', description='', type='BOOLEAN', value='ON', read_only='N')
