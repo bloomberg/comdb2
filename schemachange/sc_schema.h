@@ -84,6 +84,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
 int remove_constraint_pointers(struct dbtable *db);
 
 void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
+int rename_constraint_pointers(struct dbtable *db, const char *newname);
 
 void change_schemas_recover(char *table);
 

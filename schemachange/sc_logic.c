@@ -34,6 +34,7 @@
 #include "sc_fastinit_table.h"
 #include "sc_stripes.h"
 #include "sc_drop_table.h"
+#include "sc_rename_table.h"
 #include "analyze.h"
 #include "logmsg.h"
 
@@ -480,6 +481,8 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_ddl(do_fastinit, finalize_fastinit_table, iq, trans, fastinit);
     else if (s->addonly)
         rc = do_ddl(do_add_table, finalize_add_table, iq, trans, add);
+    else if (s->rename)
+        rc = do_ddl(do_rename_table, finalize_rename_table, iq, trans, rename_table);
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)
@@ -553,6 +556,8 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_fastinit_table, iq, trans, fastinit);
     else if (s->addonly)
         rc = do_finalize(finalize_add_table, iq, trans, add);
+    else if (s->rename)
+        rc = do_finalize(finalize_rename_table, iq, trans, rename_table);
     else if (s->type == DBTYPE_TAGGED_TABLE)
         rc = do_finalize(finalize_alter_table, iq, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)
