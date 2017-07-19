@@ -313,6 +313,7 @@ static Keyword aKeywordTable[] = {
   { "REBUILD",          "TK_REBUILD",       ALWAYS,                 0},
   { "REC",              "TK_REC",           ALWAYS,                 0},
   { "RESERVED",         "TK_RESERVED",      ALWAYS,                 0},
+  { "RESTART",          "TK_RESTART",       ALWAYS,                 0},
   { "RETENTION",        "TK_RETENTION",     ALWAYS,                 0},
   { "REVOKE",           "TK_REVOKE",        ALWAYS,                 0},
   { "RLE",              "TK_RLE",           ALWAYS,                 0},

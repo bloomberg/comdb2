@@ -31,7 +31,8 @@ extern struct dbenv *thedb;
 int seq_next_val(char *name, long long *val)
 {
     sequence_t *seq = getsequencebyname(name);
-    int rc, bdberr;
+    int rc = 0;
+    int bdberr = 0;
 
     if (seq == NULL) {
         // Failed to find sequence with specified name
@@ -52,7 +53,23 @@ int seq_next_val(char *name, long long *val)
     if (seq->flags & SEQUENCE_EXHAUSTED) {
         // Check again in lock
         logmsg(LOGMSG_ERROR, "End of sequence. No more values to dispense.");
+        pthread_mutex_unlock(&seq->seq_lk);
         return -1;
+    }
+
+    // Check for remaining values
+    if (seq->remaining_vals == 0) {
+        rc = bdb_llmeta_get_sequence_chunk(
+            NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
+            seq->chunk_size, &seq->flags, &seq->remaining_vals, seq->start_val,
+            &seq->next_start_val, &bdberr);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "can't retrive new chunk for sequence \"%s\"\n", name);
+            pthread_mutex_unlock(&seq->seq_lk);
+            return rc;
+        }
     }
 
     // Dispense next_val
@@ -104,20 +121,6 @@ int seq_next_val(char *name, long long *val)
         }
     }
 
-    // Check for remaining values
-    if (seq->remaining_vals == 0) {
-        rc = bdb_llmeta_get_sequence_chunk(
-            NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
-            seq->chunk_size, &seq->flags, &seq->remaining_vals, seq->start_val,
-            &seq->next_start_val, &bdberr);
-
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "can't retrive new chunk for sequence \"%s\"\n", name);
-            return -1;
-        }
-    }
-
     pthread_mutex_unlock(&seq->seq_lk);
-    return 0;
+    return rc;
 }

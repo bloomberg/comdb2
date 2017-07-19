@@ -18,13 +18,11 @@
 #include "logmsg.h"
 
 /**
- * TODO: Make Transactional
- *
  * Adds sequence to llmeta and memory
  */
 int do_add_sequence_int(char *name, long long min_val, long long max_val,
-                 long long increment, int cycle, long long start_val,
-                 long long chunk_size, tran_type *trans)
+                        long long increment, int cycle, long long start_val,
+                        long long chunk_size, tran_type *trans)
 {
     // Check that name is valid
     if (strlen(name) > MAXTABLELEN - 1) {
@@ -53,25 +51,12 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     int rc, bdberr;
     char flags = 0;
 
-    rc = bdb_llmeta_add_sequence(trans, name, min_val, max_val, increment, cycle,
-                                 start_val, start_val, chunk_size, flags, &bdberr);
+    rc = bdb_llmeta_add_sequence(trans, name, min_val, max_val, increment,
+                                 cycle, start_val, start_val, chunk_size, flags,
+                                 &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "can't create new sequence \"%s\"\n", name);
-        return -1;
-    }
-
-    // Allocate value chunk
-    long long next_start_val = start_val;
-    long long remaining_vals;
-
-    rc = bdb_llmeta_get_sequence_chunk(
-        trans, name, min_val, max_val, increment, cycle, chunk_size, &flags,
-        &remaining_vals, start_val, &next_start_val, &bdberr);
-
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n",
-               name);
         return -1;
     }
 
@@ -84,8 +69,9 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     }
 
     // Create new sequence in memory
-    sequence_t *seq = new_sequence(name, min_val, max_val, start_val, increment, cycle, start_val,
-                       chunk_size, flags, remaining_vals, next_start_val);
+    sequence_t *seq =
+        new_sequence(name, min_val, max_val, start_val, increment, cycle,
+                     start_val, chunk_size, flags, 0, start_val);
 
     if (seq == NULL) {
         logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
@@ -99,7 +85,6 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
 }
 
 /**
- * TODO: Make Transactional
  * Drops sequence from llmeta and memory
  */
 int do_drop_sequence_int(char *name, tran_type *trans)
@@ -116,10 +101,7 @@ int do_drop_sequence_int(char *name, tran_type *trans)
 
     for (i = 0; i < thedb->num_sequences; i++) {
         if (strcasecmp(thedb->sequences[i]->name, name) == 0) {
-            // TOOD: add checks for usage in tables
-
-            // TODO: Crit section?
-
+            // TODO: add checks for usage in tables
             // Remove sequence from dbenv
             thedb->num_sequences--;
 
@@ -140,4 +122,93 @@ int do_drop_sequence_int(char *name, tran_type *trans)
 
     logmsg(LOGMSG_ERROR, "sequence with name \"%s\" does not exists\n", name);
     return 1;
+}
+
+/**
+ * Alters the sequence definition in llmeta and updates in memory
+ * representations on the master and replicants
+ */
+int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in,
+                          long long increment_in, int cycle_in, long long start_val_in,
+                          long long restart_val_in, long long chunk_size_in,
+                          int modified, tran_type *trans)
+{
+    if (thedb->num_sequences == 0) {
+        // No Sequences Defined
+        logmsg(LOGMSG_ERROR, "No sequences defined\n");
+        return 1;
+    }
+
+    sequence_t *seq = getsequencebyname(name);
+    if (seq == NULL) {
+        // Failed to find sequence with specified name
+        // TODO: error out another way
+        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found", name);
+        return -1;
+    }
+
+    // Min Val
+    long long min_val = seq->min_val;
+    if (modified & SEQ_MIN_VAL) {
+        min_val = min_val_in;
+    }
+
+    // Max Val
+    long long max_val = seq->max_val;
+    if (modified & SEQ_MAX_VAL) {
+        max_val = max_val_in;
+    }
+
+    // Increment
+    long long increment = seq->increment;
+    if (modified & SEQ_INC) {
+        increment = increment_in;
+    }
+
+    // Cycle
+    long long cycle = seq->cycle;
+    if (modified & SEQ_CYCLE) {
+        cycle = cycle_in;
+    }
+
+    // Start Val
+    long long start_val = seq->start_val;
+    if (modified & SEQ_START_VAL) {
+        start_val = start_val_in;
+    }
+
+    // Restart Val
+    long long restart_val = seq->next_start_val;
+    if (modified & SEQ_RESTART_TO_START_VAL) {
+        restart_val = seq->start_val;
+    } else if (modified & SEQ_RESTART_VAL) {
+        restart_val = restart_val_in;
+    }
+
+    // Chunk Size
+    long long chunk_size = seq->chunk_size;
+    if (modified & SEQ_CHUNK_SIZE) {
+        chunk_size = chunk_size_in;
+    }
+
+    // Write change to llmeta
+    int rc, bdberr;
+    rc = bdb_llmeta_alter_sequence(trans, name, min_val, max_val, increment,
+                                   cycle, start_val, restart_val, chunk_size,
+                                   (seq->flags & ~SEQUENCE_EXHAUSTED), &bdberr);
+    if (rc) {
+        return rc;
+    }
+
+    // Update environment
+    seq->min_val = min_val;
+    seq->max_val = max_val;
+    seq->increment = increment;
+    seq->cycle = cycle;
+    seq->start_val = start_val;
+    seq->next_start_val = restart_val;
+    seq->chunk_size = chunk_size;
+    seq->remaining_vals = 0;
+
+    return 0;
 }

@@ -1596,7 +1596,7 @@ clean_arg:
  * ------------------------------------------------------------------------------
  */
 /****************************** SEQUENCES *******************************/
-// TODO: Modify for sequences
+// TODO: Modify for sequences 
 void comdb2CreateSequence(
     Parse *pParse, /* Parser context */
     char *name, /* Name of sequence */
@@ -1665,8 +1665,8 @@ void comdb2AlterSequence(
     bool cycle,
     long long start_val,
     long long chunk_size,
-    int flags,
-    int dryrun
+    long long restart_val,
+    int modified
 )
 {
     sqlite3 *db = pParse->db;
@@ -1678,28 +1678,28 @@ void comdb2AlterSequence(
         return;
     }
 
-    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 0))
+    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 1))
         goto out;
 
-    // if (authenticateSC(sc->table, pParse)) goto out;
+    comdb2WriteTransaction(pParse);
 
-    // v->readOnly = 0;
-    // sc->alteronly = 1;
-    // sc->nothrevent = 1;
-    // sc->live = 1;
-    // sc->use_plan = 1;
-    // sc->scanmode = SCAN_PARALLEL;
-    // sc->dryrun = dryrun;
-    // fillTableOption(sc, opt);
+    // TODO: Modify for sequences
+    v->readOnly = 0;
+    sc->type = DBTYPE_SEQUENCE;
+    sc->alterseq = 1;
 
-    // copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
-    // if (dryrun)
-    //     comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
-    //                          (vdbeFuncArgFree)&free_schema_change_type);
-    // else
-    //     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-    //                         (vdbeFuncArgFree)&free_schema_change_type);
-    // return;
+    sc->seq_min_val = min_val;
+    sc->seq_max_val = max_val;
+    sc->seq_increment = inc;
+    sc->seq_cycle = cycle;
+    sc->seq_chunk_size = chunk_size;
+    sc->seq_start_val = start_val;
+    sc->seq_restart_val = restart_val;
+    sc->seq_modified = modified;
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
 
 out:
     free_schema_change_type(sc);

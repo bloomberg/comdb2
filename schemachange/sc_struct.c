@@ -139,7 +139,8 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->dropseq) + sizeof(s->alterseq) + sizeof(s->seq_min_val) +
         sizeof(s->seq_max_val) + sizeof(s->seq_increment) +
         sizeof(s->seq_cycle) + sizeof(s->seq_start_val) +
-        sizeof(s->seq_chunk_size);
+        sizeof(s->seq_chunk_size) + sizeof(s->seq_restart_val) +
+        sizeof(s->seq_modified);
 
     return s->packed_len;
 }
@@ -295,6 +296,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf =
         buf_put(&s->seq_start_val, sizeof(s->seq_start_val), p_buf, p_buf_end);
     p_buf = buf_put(&s->seq_chunk_size, sizeof(s->seq_chunk_size), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&s->seq_restart_val, sizeof(s->seq_restart_val), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&s->seq_modified, sizeof(s->seq_modified), p_buf,
                     p_buf_end);
 
     return p_buf;
@@ -515,6 +520,10 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->seq_start_val, sizeof(s->seq_start_val),
                                p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->seq_chunk_size, sizeof(s->seq_chunk_size),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_restart_val, sizeof(s->seq_restart_val),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_modified, sizeof(s->seq_modified),
                                p_buf, p_buf_end);
 
     return p_buf;

@@ -496,15 +496,8 @@ int do_add_sequence(struct schema_change_type *s, tran_type *trans)
     int rc = do_add_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
                                  s->seq_increment, s->seq_cycle,
                                  s->seq_start_val, s->seq_chunk_size, trans);
-    if (rc) {
-        return rc;
-    }
-    
-    int bdberr;
-    bdb_llog_scdone(db->handle, llmeta_sequence_add, 1, &bdberr);
-    
     unlock_schema_lk();
-    return 0;
+    return rc;
 }
 
 // TODO: Modify for sequences
@@ -512,30 +505,19 @@ int do_drop_sequence(struct schema_change_type *s, tran_type *trans)
 {
     wrlock_schema_lk();
     int rc = do_drop_sequence_int(s->table, trans);
-
-    if (rc) {
-        return rc;
-    }
-    
-    int bdberr;
-    bdb_llog_scdone(db->handle, llmeta_sequence_add, 1, &bdberr);
-    
     unlock_schema_lk();
-    return 0;
+    return rc;
 }
 
 // TODO: Modify for sequences
 int do_alter_sequence(struct schema_change_type *s, tran_type *trans)
 {
-    int rc = 0;
-
-    // TODO: Make alter smarter, would reset values and possibly dispense duplicates
-    rc = do_drop_sequence(s, trans);
-    if (rc)
-        return rc;
-
-    rc = do_add_sequence(s, trans);
-
+    wrlock_schema_lk();
+    int rc = do_alter_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
+                                   s->seq_increment, s->seq_cycle,
+                                   s->seq_start_val, s->seq_restart_val,
+                                   s->seq_chunk_size, s->seq_modified, trans);
+    unlock_schema_lk();
     return rc;
 }
 
@@ -583,7 +565,6 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_alter_queues(s);
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
-    // TODO: Add sequences stuff
     else if (s->type == DBTYPE_SEQUENCE && s->addseq)
         rc = do_add_sequence(s, trans);
     else if (s->type == DBTYPE_SEQUENCE && s->alterseq)
