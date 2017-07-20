@@ -27,9 +27,9 @@ int main(int argc, char *argv[])
         return rc;
     }
 
-    int64_t id = 0;
+    long long int id = 0;
 
-    rc = cdb2_bind_param(hndl, "id", CDB2_INTEGER, &id,  sizeof(int64_t));
+    rc = cdb2_bind_param(hndl, "id", CDB2_INTEGER, &id,  sizeof(long long int));
     if(rc!=0) {
         fprintf(stderr, "error binding id rc=%d \n", rc);
          return rc;
@@ -48,13 +48,13 @@ int main(int argc, char *argv[])
        }
        long long *val = cdb2_column_value(hndl, 0);
        if (*val != id) {
-           fprintf(stderr, "error got:%lld expected:%ld\n", *val, id);
+           fprintf(stderr, "error got:%lld expected:%lld\n", *val, id);
            return -1;
        }
     }
     cdb2_clearbindings(hndl);
 
-    rc = cdb2_bind_index(hndl, 1, CDB2_INTEGER, &id,  sizeof(int64_t));
+    rc = cdb2_bind_index(hndl, 1, CDB2_INTEGER, &id,  sizeof(long long int));
     if(rc!=0) {
         fprintf(stderr, "error binding id rc=%d \n", rc);
          return rc;
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
        }
        long long *val = cdb2_column_value(hndl, 0);
        if (*val != id) {
-           fprintf(stderr, "error got:%lld expected:%ld\n", *val, id);
+           fprintf(stderr, "error got:%lld expected:%lld\n", *val, id);
            return -1;
        }
     }
