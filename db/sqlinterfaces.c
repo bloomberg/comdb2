@@ -4960,7 +4960,7 @@ static int flush_row(struct sqlclntstate *clnt)
     return 0;
 }
 
- /* will do a tiny cleanup of clnt */
+/* will do a tiny cleanup of clnt */
 void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
