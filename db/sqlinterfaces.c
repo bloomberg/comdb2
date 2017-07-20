@@ -7715,26 +7715,50 @@ retry:
     return written;
 }
 
-int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
-                           int *keepsocket)
+static int do_query_on_master_check(struct sqlclntstate *clnt, 
+        CDB2SQLQUERY *sql_query)
+{
+    int allow_master_exec = 0;
+    int allow_master_dbinfo = 0;
+    for (int ii = 0; ii < sql_query->n_features; ii++) {
+        if (CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC ==
+            sql_query->features[ii]) {
+            allow_master_exec = 1;
+        } else if (CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO ==
+                   sql_query->features[ii]) {
+            allow_master_dbinfo = 1;
+        } else if (CDB2_CLIENT_FEATURES__ALLOW_QUEUING ==
+                   sql_query->features[ii]) {
+            clnt->req.flags |= SQLF_QUEUE_ME;
+        }
+    }
+
+    int do_master_check;
+    if (thedb->rep_sync == REP_SYNC_NONE || sbuf_is_local(clnt->sb))
+        do_master_check = 0;
+    else
+        do_master_check = 1;
+
+    if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
+            allow_master_exec == 0) {
+        logmsg(LOGMSG_ERROR, 
+                "%s line %d td %u new query on master, dropping socket\n",
+                __func__, __LINE__, (uint32_t)pthread_self());
+        if (allow_master_dbinfo)
+            send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
+        return 1;
+    }
+    return 0;
+}
+
+int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
 {
     int rc = 0;
-    int do_master_check = 1;
-
     struct sqlclntstate clnt;
+
     reset_clnt(&clnt, sb, 1);
     clnt.tzname[0] = '\0';
-
     clnt.is_newsql = 1;
-
-    if (keepsocket)
-        *keepsocket = 1;
-
-    if (thedb->rep_sync == REP_SYNC_NONE)
-        do_master_check = 0;
-
-    if (do_master_check && sbuf_is_local(clnt.sb))
-        do_master_check = 0;
 
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
@@ -7751,62 +7775,26 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
         goto done;
     }
 
-    /* avoid new accepting new queries/transaction on opened connections
-       if we are incoherent (and not in a transaction). */
-    if (!bdb_am_i_coherent(thedb->bdb_env) &&
-        (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
+    if (!bdb_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR, 
-               "%s line %d td %u new query on incoherent node, dropping socket\n",
+               "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
         goto done;
     }
 
     CDB2QUERY *query = read_newsql_query(&clnt, sb);
-
-    if (query == NULL) {
+    if (query == NULL)
         goto done;
-    }
-
     assert(query->sqlquery);
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
-    int allow_master_exec = 0;
-    int allow_master_dbinfo = 0;
-    for (int ii = 0; ii < sql_query->n_features; ii++) {
-        if (CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC ==
-            sql_query->features[ii]) {
-            allow_master_exec = 1;
-        } else if (CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO ==
-                   sql_query->features[ii]) {
-            allow_master_dbinfo = 1;
-        } else if (CDB2_CLIENT_FEATURES__ALLOW_QUEUING ==
-                   sql_query->features[ii]) {
-            clnt.req.flags |= SQLF_QUEUE_ME;
-        }
-    }
+    if (do_query_on_master_check(&clnt, sql_query))
+        goto done;
 
-    if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
-        (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
-        if (allow_master_exec == 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "%s line %d td %u new query on master, dropping socket\n",
-                   __func__, __LINE__, (uint32_t)pthread_self());
-            if (allow_master_dbinfo) {
-                send_dbinforesponse(sb);
-            }
-            /* Send sql response with dbinfo. */
-            goto done;
-        }
-    }
-
-    /*printf("\n Query %s length %d" , sql_query->sql_query.data,
-     * sql_query->sql_query.len);*/
-
-    int wrtimeoutsec;
-    int notimeout = disable_server_sql_timeouts();
-
-    /* these connections shouldn't time out */
-    sbuf2settimeout(clnt.sb, 0, 0);
+#if DEBUG
+    printf("\n Query %s length %d" , sql_query->sql_query.data,
+           sql_query->sql_query.len);
+#endif
 
     pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
@@ -7817,12 +7805,18 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     clnt.high_availability = 0;
 
+
+    /* these connections shouldn't time out */
+    sbuf2settimeout(clnt.sb, 0, 0);
+
+    int notimeout = disable_server_sql_timeouts();
     sbuf2settimeout(
         sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) * 1000,
         notimeout ? 0 : gbl_sqlwrtimeoutms);
     sbuf2flush(sb);
     net_set_writefn(sb, fsql_writer);
 
+    int wrtimeoutsec;
     if (gbl_sqlwrtimeoutms == 0 || notimeout)
         wrtimeoutsec = 0;
     else
@@ -7843,8 +7837,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
     while (query) {
         assert(query->sqlquery);
         sql_query = query->sqlquery;
-
+        clnt.sql_query = sql_query;
         clnt.sql = sql_query->sql_query;
+        clnt.query = query;
+        clnt.added_to_hist = 0;
+
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
@@ -7856,7 +7853,6 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
         }
         clnt.osql.sent_column_data = 0;
         clnt.stop_this_statement = 0;
-        clnt.sql_query = sql_query;
 
         if ((clnt.tzname[0] == '\0') && sql_query->tzname)
             strncpy(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
@@ -7875,31 +7871,24 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
             goto done;
         }
 
-        if (clnt.sql_query->client_info) {
+        if (sql_query->client_info) {
             if (clnt.conninfo.pid &&
-                clnt.conninfo.pid != clnt.sql_query->client_info->pid) {
+                clnt.conninfo.pid != sql_query->client_info->pid) {
                 /* Different pid is coming without reset. */
                 logmsg(LOGMSG_WARN, "Multiple processes using same socket PID 1 %d "
                                 "PID 2 %d Host %.8x\n",
-                        clnt.conninfo.pid, clnt.sql_query->client_info->pid,
-                        clnt.sql_query->client_info->host_id);
+                        clnt.conninfo.pid, sql_query->client_info->pid,
+                        sql_query->client_info->host_id);
             }
-            clnt.conninfo.pid = clnt.sql_query->client_info->pid;
-            clnt.conninfo.node = clnt.sql_query->client_info->host_id;
+            clnt.conninfo.pid = sql_query->client_info->pid;
+            clnt.conninfo.node = sql_query->client_info->host_id;
         }
 
-        rc = process_set_commands(&clnt);
-        if (rc) {
-            /*
-            fprintf(stderr, "%s line %d td %u process_set_commands error\n",
-                    __func__, __LINE__, (uint32_t) pthread_self());
-                    */
+        if (process_set_commands(&clnt))
             goto done;
-        }
 
-        if (gbl_rowlocks && clnt.dbtran.mode != TRANLEVEL_SERIAL) {
+        if (gbl_rowlocks && clnt.dbtran.mode != TRANLEVEL_SERIAL)
             clnt.dbtran.mode = TRANLEVEL_SNAPISOL;
-        }
 
         if (sql_query->little_endian) {
             clnt.have_endian = 1;
@@ -7907,9 +7896,6 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
         } else {
             clnt.have_endian = 0;
         }
-
-        clnt.query = query;
-        clnt.added_to_hist = 0;
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */

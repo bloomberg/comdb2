@@ -521,7 +521,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
              * function will dispatch to a pooled sql engine for performing
              * queries. */
             thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
-            handle_newsql_requests(thr_self, sb, keepsocket);
+            *keepsocket = 1;
+            handle_newsql_requests(thr_self, sb);
 
             break;
         } else if (cmd == cmd_remcur) {
