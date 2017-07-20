@@ -4969,7 +4969,6 @@ void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
     comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
     clnt->iswrite = 0; /* reset before step() */
-    clnt->stop_this_statement = 0;
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
@@ -7850,6 +7849,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
         }
         clnt.osql.sent_column_data = 0;
+        clnt.stop_this_statement = 0;
         clnt.sql_query = sql_query;
 
         if ((clnt.tzname[0] == '\0') && sql_query->tzname)
