@@ -7715,8 +7715,8 @@ retry:
     return written;
 }
 
-static int do_query_on_master_check(struct sqlclntstate *clnt, 
-        CDB2SQLQUERY *sql_query)
+static int do_query_on_master_check(struct sqlclntstate *clnt,
+                                    CDB2SQLQUERY *sql_query)
 {
     int allow_master_exec = 0;
     int allow_master_dbinfo = 0;
@@ -7740,10 +7740,10 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
         do_master_check = 1;
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
-            allow_master_exec == 0) {
-        logmsg(LOGMSG_ERROR, 
-                "%s line %d td %u new query on master, dropping socket\n",
-                __func__, __LINE__, (uint32_t)pthread_self());
+        allow_master_exec == 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s line %d td %u new query on master, dropping socket\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
         return 1;
@@ -7763,8 +7763,8 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
         logmsg(LOGMSG_WARN,
-                "%s: Exhausted appsock connections, total %d connections \n",
-                __func__, active_appsock_conns);
+               "%s: Exhausted appsock connections, total %d connections \n",
+               __func__, active_appsock_conns);
         char *err = "Exhausted appsock connections.";
         struct fsqlresp resp;
         bzero(&resp, sizeof(resp));
@@ -7776,7 +7776,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     }
 
     if (!bdb_am_i_coherent(thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
         goto done;
@@ -7792,7 +7792,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         goto done;
 
 #if DEBUG
-    printf("\n Query %s length %d" , sql_query->sql_query.data,
+    printf("\n Query %s length %d", sql_query->sql_query.data,
            sql_query->sql_query.len);
 #endif
 
@@ -7804,7 +7804,6 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     clnt.high_availability = 0;
-
 
     /* these connections shouldn't time out */
     sbuf2settimeout(clnt.sb, 0, 0);
@@ -7875,10 +7874,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
             if (clnt.conninfo.pid &&
                 clnt.conninfo.pid != sql_query->client_info->pid) {
                 /* Different pid is coming without reset. */
-                logmsg(LOGMSG_WARN, "Multiple processes using same socket PID 1 %d "
-                                "PID 2 %d Host %.8x\n",
-                        clnt.conninfo.pid, sql_query->client_info->pid,
-                        sql_query->client_info->host_id);
+                logmsg(LOGMSG_WARN,
+                       "Multiple processes using same socket PID 1 %d "
+                       "PID 2 %d Host %.8x\n",
+                       clnt.conninfo.pid, sql_query->client_info->pid,
+                       sql_query->client_info->host_id);
             }
             clnt.conninfo.pid = sql_query->client_info->pid;
             clnt.conninfo.node = sql_query->client_info->host_id;
