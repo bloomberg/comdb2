@@ -1,0 +1,18 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table "t1"("i" int);'
+
+./forktst $dbnm default ${CDB2_CONFIG} 2>&1 | sort > test.out
+
+./forktst $dbnm default ${CDB2_CONFIG} parent 2>&1 | sort >> test.out
+
+if ! diff test.out test.expected ; then
+    echo "Output does not match expected"
+    exit 1
+fi
+
+echo "Success"

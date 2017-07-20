@@ -1,0 +1,10 @@
+cdb2_next_record failed for CHILD: rc = -1
+CHILD 1
+INSERT failed for CHILD: rc = -1
+PARENT 1
+cdb2_next_record failed for PARENT: rc = -1
+CHILD 1
+CHILD 1
+CHILD 2
+INSERT failed for PARENT: rc = -1
+PARENT 1

@@ -1,0 +1,6 @@
+This test checks that we can pass the cdb2 handle from a parent to a child
+process when issuing fork() by using flag CDB2_INVALIDATE_PARENT_FORK when
+opening db connection.
+
+By default, if such flag is not provided, parent only is allowed to use
+cdb2 handle and child should get errors.
