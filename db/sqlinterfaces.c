@@ -7860,10 +7860,9 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
 
         if (sql_query->dbname && thedb->envname &&
             strcasecmp(sql_query->dbname, thedb->envname)) {
-            logmsg(LOGMSG_ERROR, "DB name mismatch query:'%s' actual:'%s' \n",
-                    sql_query->dbname, thedb->envname);
             char errstr[64+(2*MAX_DBNAME_LENGTH)];
             snprintf(errstr, sizeof(errstr), "DB name mismatch query:%s actual:%s", sql_query->dbname, thedb->envname);
+            logmsg(LOGMSG_ERROR, "%s\n", errstr);
             struct fsqlresp resp;
 
             resp.response = FSQL_COLUMN_DATA;
