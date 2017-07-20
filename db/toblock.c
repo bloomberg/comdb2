@@ -5457,9 +5457,10 @@ add_blkseq:
                 uuid_t u;
                 memcpy(&u, iq->seq, iq->seqlen);
                 comdb2uuidstr(u, us);
-            }             /* force a parent-deadlock for cdb2tcm */
+            }
+            /* force a parent-deadlock for cdb2tcm */
             if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry\n");
+                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");
                 rc = RC_INTERNAL_RETRY;
             }
 
@@ -5550,6 +5551,25 @@ add_blkseq:
             }
         } else /* rowlocks */
         {
+            /* force a parent-deadlock for cdb2tcm */
+            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
+                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry in rowlocks\n");
+                if (hascommitlock) {
+                    irc = pthread_rwlock_unlock(&commit_lock);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL,
+                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
+                        exit(1);
+                    }
+                    hascommitlock = 0;
+                }
+                trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
+                rc = RC_INTERNAL_RETRY;
+                if (block_state_restore(iq, p_blkstate)) return ERR_INTERNAL;
+                outrc = RC_INTERNAL_RETRY;
+                fromline = __LINE__;
+                goto cleanup;
+            }
             /* commit or abort the trasaction as appropriate,
                and write the blkseq */
             if (!backed_out) {
@@ -5590,12 +5610,6 @@ add_blkseq:
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;
-            }
-
-            /* force a parent-deadlock for cdb2tcm */
-            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry in rowlocks\n");
-                rc = RC_INTERNAL_RETRY;
             }
         }
 
@@ -5734,15 +5748,8 @@ add_blkseq:
             sbuf2close(iq->dbglog_file);
             iq->dbglog_file = NULL;
         }
-        osql_postcommit_handle(iq);
     } else {
         iq->dbenv->txns_aborted++;
-        osql_postabort_handle(iq);
-    }
-
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
     }
 
     /* update stats (locklessly so we may get gibberish - I know this
@@ -5863,12 +5870,11 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
-    if(rc == 0) 
-    {
+    if (rc == 0) {
+        osql_postcommit_handle(iq);
         handle_postcommit_bpfunc(iq);
-    }
-    else
-    {
+    } else {
+        osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
     }
 
