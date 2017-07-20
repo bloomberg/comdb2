@@ -333,7 +333,7 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type, const void *varaddr
 
 Description:
 
-This routine is used to bind value pointers to replaceable params in sql statement. The index starts from 1, and increases for every new parameter in the statement. This version of cdb2_bind_* is faster than cdb2_bind_param.
+This routine is used to bind value pointers to named or unnamed replaceable params in sql statement. The index starts from 1, and increases for every new parameter in the statement. This version of cdb2_bind_* is faster than cdb2_bind_param.
 
 For example:
 
