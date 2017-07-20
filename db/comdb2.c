@@ -819,6 +819,8 @@ extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
 
+int gbl_early_verify = 1;
+
 int gbl_bbenv;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
@@ -6471,6 +6473,9 @@ static void register_all_int_switches()
     register_int_switch("abort_invalid_query_info_key",
                         "Abort in thread-teardown for invalid query_info_key",
                         &gbl_abort_invalid_query_info_key);
+    register_int_switch("early_verify",
+                        "Give early verify errors for updates in SQLite layer",
+                        &gbl_early_verify);
 }
 
 static void getmyid(void)
