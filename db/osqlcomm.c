@@ -3276,6 +3276,8 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
                                 &snap_info, NULL);
 }
 
+int gbl_disable_cnonce_blkseq;
+
 /**
  * If "rpl" is a done packet, set xerr to error if any and return 1
  * If "rpl" is a recognizable packet, returns the length of the data type is
@@ -3323,7 +3325,8 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
-            iq->have_snap_info = 1;
+
+            iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
         }
 
     case OSQL_DONE:
