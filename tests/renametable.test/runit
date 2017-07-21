@@ -2,7 +2,7 @@
 
 dbnm=$1
 #cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
-cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm local - > output.txt 2>&1
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
 insert into t values (40)
 insert into t values (20)
 insert into t values (30)
