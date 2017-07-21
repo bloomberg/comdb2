@@ -807,6 +807,16 @@ static void block_state_free(block_state_t *p_blkstate)
 
 extern int gbl_dump_blkseq;
 
+unsigned long long blkseq_replay_count = 0;
+unsigned long long blkseq_replay_error_count = 0;
+
+void replay_stat(void)
+{
+    logmsg(LOGMSG_USER, "Blkseq-replay-count: %llu\n", blkseq_replay_count);
+    logmsg(LOGMSG_USER, "Blkseq-replay-error-count: %llu\n",
+           blkseq_replay_error_count);
+}
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -1137,7 +1147,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
-
+    blkseq_replay_count++;
     return outrc;
 
 replay_error:
@@ -1151,6 +1161,7 @@ replay_error:
     iq->p_buf_out = block_rsp_put(&errrsp, iq->p_buf_out, iq->p_buf_out_end);
 
     outrc = ERR_BLOCK_FAILED;
+    blkseq_replay_error_count++;
     return outrc;
 }
 
@@ -2688,8 +2699,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if ((findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
                         iq->snap_info.keylen, &replay_data, &replay_len)) == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
-                outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0, replay_data, 
-                        replay_len, __LINE__);
+                outrc = do_replay_case(iq, iq->snap_info.key,
+                                       iq->snap_info.keylen, num_reqs, 0,
+                                       replay_data, replay_len, __LINE__);
                 did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;

@@ -1,0 +1,71 @@
+#!/bin/bash
+
+dbname=$1
+error=0
+
+if [[ -z "$dbname" ]]; then
+    echo dbname missing
+    exit 1
+fi
+
+function replay_count
+{
+    master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+    echo $(cdb2sql -tabs ${CDB2_OPTIONS} $dbname --host $master default 'exec procedure sys.cmd.send("stat replay")' | egrep 'Blkseq-replay-count:' | awk '{print $2}')
+}
+
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("master_swing_osql_verbose")'
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t1 { schema { int a } }'
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t2 { schema { int a } keys { "a" = a } }'
+
+rcount=$(replay_count) ; i=0
+echo "Replay count is $rcount"
+while [[ $i -lt 1000 ]]; do
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbname default - < insert.t1 2>&1)
+    echo "$out" | egrep "insert into t1 values \(1\)] rc 0" >/dev/null 2>&1
+
+    if [[ $? != 0 ]]; then
+        echo "Unexpected output inserting a row into t1"
+        echo "$out"
+        error=1
+        break 2
+    fi
+
+    echo $out ; let i=i+1
+done
+
+if [[ "$(replay_count)" == "$rcount" ]]; then
+    echo "Didn't trip replay in table t1, failing test"
+    error=1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbname default - < insert.t2 >/dev/null 2>&1
+
+rcount=$(replay_count) ; i=0
+echo "Replay count is $rcount"
+while [[ $i -lt 1000 ]]; do
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbname default - < insert.t2 2>&1)
+    echo "$out" | egrep "failed with rc 299" >/dev/null 2>&1
+
+    if [[ $? != 0 ]]; then
+        echo "Unexpected output inserting a row into t2"
+        echo "$out"
+        error=1
+        break 2
+    fi
+
+    let i=i+1
+done
+
+if [[ "$(replay_count)" == "$rcount" ]]; then
+    echo "Didn't trip replay in table t2, failing test"
+    error=1
+fi
+
+if [[ "$error" == 0 ]]; then
+    echo "success"
+    exit 0
+else
+    echo "failed"
+    exit 1
+fi

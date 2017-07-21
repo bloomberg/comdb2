@@ -152,6 +152,7 @@ void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
+void replay_stat(void);
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -2015,6 +2016,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (thedb->bdb_env == NULL)
                 return -1;
             backend_cmd(dbenv, line, llinesav, stsav);
+        } else if (tokcmp(tok, ltok, "replay") == 0) {
+            replay_stat();
         } else if (tokcmp(tok, ltok, "osql") == 0) {
             osql_repository_printcrtsessions();
         } else if (tokcmp(tok, ltok, "net") == 0) {
