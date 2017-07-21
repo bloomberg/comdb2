@@ -3638,6 +3638,7 @@ extern int gbl_upd_null_cstr_return_conv_err;
 /* Update the tunable at runtime. */
 int handle_runtime_tunable(const char *name, const char *value);
 /* Update the tunable read from lrl file. */
-int handle_lrl_tunable(char *name, int name_len, char *value, int value_len);
+int handle_lrl_tunable(char *name, int name_len, char *value, int value_len,
+                       int flags);
 
 #endif /* !INCLUDED_COMDB2_H */

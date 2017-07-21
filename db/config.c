@@ -45,7 +45,6 @@ extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;
-extern int gbl_pmux_route_enabled;
 
 extern char *gbl_recovery_options;
 extern char *gbl_dbdir;
@@ -331,6 +330,7 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
     char *tok;
     int st = 0;
     int ltok;
+    int rc;
 
     tok = segtok(line, llen, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
@@ -344,44 +344,19 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
         add_legacy_default_options(dbenv);
     }
 
-    if (tokcmp(tok, ltok, "disable_direct_writes") == 0) {
-        dbenv->enable_direct_writes = 0;
-    } else if (tokcmp(tok, ltok, "morecolumns") == 0) {
-        logmsg(LOGMSG_INFO, "allowing 1024 columns per table\n");
-        gbl_morecolumns = 1;
-    } else if (tokcmp(tok, ltok, "nullfkey") == 0) {
-        gbl_nullfkey = 1;
-    } else if (tokcmp(tok, ltok, "disallow_portmux_route") == 0) {
-        gbl_pmux_route_enabled = 0;
-        logmsg(LOGMSG_INFO, "Won't allow portmux route\n");
-    } else if (tokcmp(tok, ltok, "allow_portmux_route") == 0) {
-        gbl_pmux_route_enabled = 1;
-        logmsg(LOGMSG_INFO, "Will allow portmux route\n");
-    } else if (tokcmp(tok, ltok, "portmux_port") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        int portmux_port = toknum(tok, ltok);
-        logmsg(LOGMSG_WARN, "Using portmux port %d\n", portmux_port);
-        set_portmux_port(portmux_port);
-    } else if (tokcmp(tok, ltok, "portmux_bind_path") == 0) {
-        char path[108];
-        tok = segtok(line, llen, &st, &ltok);
-        tokcpy(tok, ltok, path);
-        if (set_portmux_bind_path(path)) {
-            logmsg(LOGMSG_ERROR, "Failed in setting portmux bind path %s\n",
-                   path);
-        } else {
-            logmsg(LOGMSG_INFO, "Using portmux bind path %s\n", path);
-        }
-    } else if (tokcmp(line, ltok, "hostname") == 0) {
-        tok = segtok(line, llen, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_INFO,
-                   "Expected hostname for 'hostname' directive.\n");
-            return -1;
-        }
-        gbl_mynode = internn(tok, ltok);
-        getmyaddr();
-    } else if (tokcmp(line, ltok, "logmsg") == 0) {
+    /*
+      Handle global tunables which are supposed to be read early.
+
+      rc == -1 : non-registered tunable, fallthrough
+      rc ==  0 : tunable updated successfully, return
+      rc ==  1 : error while updating the tunable, return
+    */
+    rc = handle_lrl_tunable(tok, ltok, line + st, llen - st, READEARLY);
+    if (rc != -1) {
+        return rc;
+    }
+
+    if (tokcmp(line, ltok, "logmsg") == 0) {
         logmsg_process_message(line, llen);
     }
     return 0;
@@ -563,7 +538,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
       rc ==  0 : tunable updated successfully, return
       rc ==  1 : error while updating the tunable, return
     */
-    rc = handle_lrl_tunable(tok, ltok, line + st, len - st);
+    rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
     if (rc != -1) {
         return rc;
     }
