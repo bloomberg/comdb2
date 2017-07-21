@@ -1967,7 +1967,7 @@ static char *prhexval(char str[], void *val, int nbytes)
 }
 
 static int stack_flush_min = 50;
-static int explicit_flush_trace = 0;
+int explicit_flush_trace = 0;
 
 void net_enable_explicit_flush_trace(void) { explicit_flush_trace = 1; }
 
@@ -4628,15 +4628,16 @@ done:
 // MAXSUBNETS + Slot for the Non-dedicated net
 static char *subnet_suffices[MAXSUBNETS + 1] = {0};
 static uint8_t num_dedicated_subnets = 0;
+uint8_t _non_dedicated_subnet = 0;
 
-void net_add_nondedicated_subnet()
+int net_add_nondedicated_subnet(void *context, void *value)
 {
-    static uint8_t _non_dedicated_subnet = 0;
     // increment num_dedicated_subnets only once for non dedicated subnet
     if (0 == _non_dedicated_subnet) {
         _non_dedicated_subnet = 1;
         num_dedicated_subnets++;
     }
+    return 0;
 }
 
 int net_add_to_subnets(const char *suffix, const char *lrlname)

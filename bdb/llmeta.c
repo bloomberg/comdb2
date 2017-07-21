@@ -5813,6 +5813,9 @@ static uint8_t *llmeta_analyzecoverage_key_type_put(
     return p_buf;
 }
 
+/* returns -1 if coverage is not set for this table 
+ * so analyze should use default coverage values
+ */
 int bdb_get_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
                                   int *coveragevalue, int *bdberr)
 {

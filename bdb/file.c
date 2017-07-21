@@ -97,6 +97,7 @@
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
 
+extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
 extern int gbl_exit;
@@ -5220,7 +5221,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->origname = NULL;
 
     if (!parent_bdb_state) {
-        if (bdb_bdblock_debug_enabled()) {
+        if (gbl_bdblock_debug) {
             bdb_bdblock_debug_init(bdb_state);
         }
 

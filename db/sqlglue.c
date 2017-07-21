@@ -95,6 +95,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "locks.h"
 
 unsigned long long get_id(bdb_state_type *);
 
@@ -555,17 +556,11 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
         clnt->deadlock_recovered++;
     }
 
-    if (gbl_epoch_time) {
-        /* this does not make sense for blocksql */
-        if (!(clnt->dbtran.mode == TRANLEVEL_OSQL && clnt->osql.rqid) &&
-            (gbl_epoch_time - clnt->last_check_time) > 5) {
-            clnt->last_check_time = gbl_epoch_time;
-            if (!gbl_notimeouts) {
-                if (peer_dropped_connection(clnt)) {
-                    logmsg(LOGMSG_INFO, "Peer dropped connection \n");
-                    return SQLITE_BUSY;
-                }
-            }
+    if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
+        clnt->last_check_time = gbl_epoch_time;
+        if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
+            logmsg(LOGMSG_INFO, "Peer dropped connection \n");
+            return SQLITE_BUSY;
         }
     }
 
@@ -578,6 +573,12 @@ static int sql_tick(struct sql_thread *thd, int uses_bdb_locking)
 
 pthread_key_t query_info_key;
 static int query_id = 1;
+
+int comdb2_sql_tick()
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    return sql_tick(thd, 0);
+}
 
 void sql_get_query_id(struct sql_thread *thd)
 {
@@ -4677,8 +4678,6 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     int rc = SQLITE_OK;
     struct ireq iq;
     int bdberr;
-    int ignore_newer_updates =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SQL_QUERY_IGNORE_NEWER_UPDATES);
     int error = 0;
     int snapshot_file = 0;
     int snapshot_offset = 0;
@@ -4753,8 +4752,8 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     case TRANLEVEL_RECOM:
         /* create our special bdb transaction
          * (i.e. w/out berkdb transaction */
-        clnt->dbtran.shadow_tran = trans_start_readcommitted(
-            &iq, ignore_newer_updates, clnt->bdb_osql_trak);
+        clnt->dbtran.shadow_tran =
+            trans_start_readcommitted(&iq, clnt->bdb_osql_trak);
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_readcommitted error\n", __func__);
@@ -4769,7 +4768,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
         /* this is the first update of the transaction, open a
          * block processor on the master */
         clnt->dbtran.shadow_tran =
-            trans_start_socksql(&iq, ignore_newer_updates, clnt->bdb_osql_trak);
+            trans_start_socksql(&iq, clnt->bdb_osql_trak);
 
         if (!clnt->dbtran.shadow_tran) {
            logmsg(LOGMSG_ERROR, "%s:trans_start_socksql error\n", __func__);
@@ -4782,19 +4781,6 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
             osql_query_dbglog(thd, clnt->queryid);
         break;
 
-    case TRANLEVEL_OSQL:
-        if (ignore_newer_updates) {
-            clnt->dbtran.shadow_tran =
-                trans_start_queryisolation(&iq, clnt->bdb_osql_trak);
-
-            if (!clnt->dbtran.shadow_tran) {
-                logmsg(LOGMSG_ERROR, "%s: trans_start_queryisolation error\n",
-                        __func__);
-                rc = SQLITE_INTERNAL;
-                goto done;
-            }
-        }
-        break;
     }
 
 done:
@@ -4828,21 +4814,16 @@ done:
  ** when it is created..
  */
 
-static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
-                                      int haveflag)
+int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
 {
     int rc = SQLITE_OK;
-    int bdberr;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
-    int ignore_newer_updates =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SQL_QUERY_IGNORE_NEWER_UPDATES);
-    char rqidinfo[40];
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_ERROR, "sqlite3BtreeBeginTrans_int %d %d\n", clnt->intrans,
-                clnt->ctrl_sqlengine);
+        logmsg(LOGMSG_ERROR, "%s %d %d\n", __func__, clnt->intrans,
+               clnt->ctrl_sqlengine);
     }
 #endif
 
@@ -4854,7 +4835,7 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
         goto done;
     }
 
-    if (haveflag && wrflag != 0 && clnt->origin) {
+    if (wrflag && clnt->origin) {
         if (gbl_check_sql_source && !allow_write_from_remote(clnt->origin)) {
             sqlite3VdbeError(vdbe, "write from node %d not allowed",
                              clnt->conninfo.node);
@@ -4870,7 +4851,7 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
      * - SQLENG_NORMAL_PROCESS (singular requests)
      *
      * once out of it, sql state is:
-     * - unchanged, if "select"
+     * - unchanged, if read-only stmt
      * - SQLENG_INTRANS_STATE otherwise
      * (this will block any more access here until after a commit/rollback)
      */
@@ -4887,8 +4868,6 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
             goto done;
         }
     }
-
-    clnt->has_recording = 0;
 
     if (clnt->arr) {
         currangearr_free(clnt->arr);
@@ -4912,47 +4891,22 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
     clnt->ddl_tables = hash_init_str(0);
     clnt->dml_tables = hash_init_str(0);
 
-    switch (clnt->dbtran.mode) {
-    case TRANLEVEL_SOSQL:
-    case TRANLEVEL_RECOM:
-        /* if the query is a select, punt here
-         * SELECTV inside after BEGIN creates a transaction (is_recording)
-         */
-        assert(clnt->sql);
+    if (pBt->is_temporary) {
+        goto done;
+    }
 
-        if (!strncasecmp(clnt->sql, "select", 6) && !ignore_newer_updates &&
-            !(toupper(clnt->sql[6]) == 'V' &&
-              clnt->ctrl_sqlengine == SQLENG_STRT_STATE)) {
+    if (clnt->dbtran.mode <= TRANLEVEL_RECOM && wrflag == 0) { // read-only
+        if (clnt->has_recording == 0 ||                        // not selectv
+            clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) { // singular selectv
             rc = SQLITE_OK;
             goto done;
-        } else if (strncasecmp(clnt->sql, "with", 4) == 0 && !wrflag) {
-            // treat WITH as a read
-            rc = SQLITE_OK;
-            goto done;
-        } else if (strncasecmp(clnt->sql, "exec ", 5) == 0) {
-            const char *sql = vdbe ? vdbe->zSql : NULL;
-            if (pBt->is_temporary || sql == NULL ||
-                strncasecmp(sql, "select ", 7) == 0 // intentional ' ' (selectv)
-                || strncasecmp(sql, "create", 6) == 0 // is_temporary above
-                || strncasecmp(sql, "drop", 4) == 0   // should catch these?
-                ) {
-                rc = SQLITE_OK;
-                goto done;
-            }
         }
-        break;
     }
-    if (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
-        clnt->dbtran.mode == TRANLEVEL_RECOM ||
-        clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-        clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-        if (haveflag)
-            clnt->iswrite =
-                wrflag; /* cache here the nature of the query;
-                           only works because each sql is a standalone
-                           sqlite transaction */
+    if (wrflag) {
+        // cache here the nature of the query; only works because each sql
+        // is a standalone sqlite transaction
+        clnt->iswrite = wrflag;
     }
-
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE)
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
 
@@ -4969,6 +4923,7 @@ static int sqlite3BtreeBeginTrans_int(Vdbe *vdbe, Btree *pBt, int wrflag,
         goto done;
 
     uuidstr_t us;
+    char rqidinfo[40];
     snprintf(rqidinfo, sizeof(rqidinfo), "rqid=%016llx %s appsock %u",
              clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
              clnt->appsock_id);
@@ -4979,28 +4934,6 @@ done:
                 "BeginTrans(pBt %d, wrflag %d)      = %s (rc=%d)\n",
                 pBt->btreeid, wrflag, sqlite3ErrStr(rc), rc);
     return rc;
-}
-
-/*
- ** This is the actual 'BeginTrans' which is invoked from OP_Transaction.
- */
-int sqlite3BtreeBeginTrans(Vdbe *v, Btree *pBt, int wrflag)
-{
-    return sqlite3BtreeBeginTrans_int(v, pBt, wrflag, 1);
-}
-
-/*
- ** This is the version of 'BeginTrans' which is invoked from
- ** OP_Ephemeral.  Previously sqlite would call the normal
- ** sqlite3BtreeBeginTrans, and always set the wrflag. We use this flag
- ** in snapshot/serializable mode to sniff out writes, and defer returning
- ** information about how many rows were written until after we've finished
- ** retrying. Opening an ephemeral table shouldn't affect this, so ignore
- ** the wrflag in this case.
- */
-int sqlite3BtreeBeginTransNoflag(Vdbe *v, Btree *pBt)
-{
-    return sqlite3BtreeBeginTrans_int(v, pBt, 0, 0);
 }
 
 /*
@@ -5036,7 +4969,6 @@ int sqlite3BtreeCommit(Btree *pBt)
     if (!clnt->intrans || clnt->no_transaction ||
         (!clnt->no_transaction && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
-
         rc = SQLITE_OK;
         goto done;
     }
@@ -5119,13 +5051,18 @@ int sqlite3BtreeCommit(Btree *pBt)
     case TRANLEVEL_SOSQL:
         if (gbl_selectv_rangechk)
             rc = selectv_range_commit(clnt);
-        if (rc) {
+        if (rc || clnt->early_retry) {
             int irc = 0;
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
             if (irc) {
                 logmsg(LOGMSG_ERROR, 
                         "%s: failed to abort sorese transactin irc=%d\n",
                        __func__, irc);
+            }
+            if (clnt->early_retry) {
+                clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                clnt->early_retry = 0;
+                rc = SQLITE_ABORT;
             }
         } else {
             rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
@@ -5136,17 +5073,6 @@ int sqlite3BtreeCommit(Btree *pBt)
         }
         break;
 
-    case TRANLEVEL_OSQL:
-        if (clnt->dbtran.shadow_tran) {
-            // assert(tran_type)clnt->dbtran.shadow_tran->ignore_newer_updates);
-            int irc =
-                trans_commit_queryisolation(clnt->dbtran.shadow_tran, &bdberr);
-            if (irc)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: trans_commit_queryisolation rc=%d bdberr=%d\n",
-                        __func__, irc, bdberr);
-        }
-        break;
     }
 
     clnt->ins_keys = 0ULL;
@@ -5167,8 +5093,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         clnt->selectv_arr = NULL;
     }
 
-    /* we need to reset this here */
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     if (clnt->ddl_tables) {
         hash_free(clnt->ddl_tables);
@@ -5262,18 +5187,6 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
         rc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
         break;
 
-    case TRANLEVEL_OSQL:
-        if (clnt->dbtran.shadow_tran) {
-            /*assert(clnt->dbtran.shadow_tran.ignore_newer_updates);*/
-            int irc =
-                trans_abort_queryisolation(clnt->dbtran.shadow_tran, &bdberr);
-            if (irc)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: trans_commit_queryisolation rc=%d bdberr=%d\n",
-                        __func__, irc, bdberr);
-            clnt->dbtran.shadow_tran = NULL;
-        }
-        break;
     }
 
     clnt->ins_keys = 0ULL;
@@ -5294,8 +5207,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
         clnt->selectv_arr = NULL;
     }
 
-    /* we need to reset this here */
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     if (clnt->ddl_tables) {
         hash_free(clnt->ddl_tables);
@@ -5727,10 +5639,19 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     int bdberr;
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+    int verify = 0;
 
     if (debug_switch_pause_moveto()) {
         logmsg(LOGMSG_USER, "Waiting 15 sec\n");
         poll(NULL, 0, 15000);
+    }
+
+    /* verification error if not found */
+    extern int gbl_early_verify;
+    if (gbl_early_verify && (bias == OP_NotExists || bias == OP_NotFound) &&
+        *pRes != 0) {
+        verify = 1;
+        *pRes = 0;
     }
 
     /* check authentication */
@@ -6265,6 +6186,12 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
 done:
+    /* early verification error */
+    if (verify && !pCur->bt->is_temporary &&
+        pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
+        pCur->vdbe->readOnly == 0 && pCur->ixnum == -1)
+        clnt->early_retry = 1;
+
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Moveto(pCur %d, found %s)     = %s\n", pCur->cursorid,
                 *pRes == 0 ? "yes" : *pRes < 0 ? "less" : "more",
@@ -6591,8 +6518,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
             goto done;
         }
 
-        if (clnt->dbtran.mode == TRANLEVEL_OSQL ||
-            clnt->dbtran.mode == TRANLEVEL_SOSQL ||
+        if (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
             clnt->dbtran.mode == TRANLEVEL_RECOM ||
             clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
             clnt->dbtran.mode == TRANLEVEL_SERIAL) {
@@ -7649,7 +7575,6 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     int prev = -1;
     Table **tbls = p->tbls;
     int nTables = p->numTables;
-    void **locks = &p->lockInfo;
     int iTable;
     int nRemoteTables = 0;
     int remote_schema_changed = 0;
@@ -7665,8 +7590,6 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
     }
-
-    *locks = bdb_allocate_locks(nTables);
 
     /* sort and dedup */
     qsort(tbls, nTables, sizeof(Table *), rootpcompare);
@@ -7746,9 +7669,8 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
-        bdb_lock_table(db->handle,
-                       bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
-                       *locks, i);
+        bdb_lock_table_read_fromlid(
+            db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
 
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
@@ -8030,16 +7952,6 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         pthread_mutex_unlock(&clnt->dtran_mtx);
 
-    return 0;
-}
-
-int sqlite3UnlockBerkTables(int nTables, void *locks)
-{
-    int i;
-    void *handle = thedb->bdb_env;
-    for (i = 0; i < nTables; ++i) {
-        bdb_unlock_table(handle, locks, i);
-    }
     return 0;
 }
 
@@ -9073,6 +8985,62 @@ void cancel_sql_statement(int id)
         logmsg(LOGMSG_USER, "Query %d not found (finished?)\n", id);
 }
 
+/* cancel sql statement with the given hex representation of cnonce */
+void cancel_sql_statement_with_cnonce(const char *cnonce)
+{
+    if(!cnonce) return;
+
+    struct sql_thread *thd;
+    int found;
+
+    pthread_mutex_lock(&gbl_sql_lock);
+    LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
+    {
+        found = 1;
+        if (thd->sqlclntstate && thd->sqlclntstate->sql_query && 
+            thd->sqlclntstate->sql_query->has_cnonce) {
+            const char *sptr = cnonce;
+            int cnt = 0;
+            void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
+            while(*sptr) {
+                uint8_t num;
+                luabb_fromhex(&num, sptr, 2);
+                sptr+=2;
+
+                if (cnt > thd->sqlclntstate->sql_query->cnonce.len || 
+                        thd->sqlclntstate->sql_query->cnonce.data[cnt] != num) {
+                    found = 0;
+                    break;
+                }
+                cnt++;
+            }
+            if (found && cnt != thd->sqlclntstate->sql_query->cnonce.len)
+                found = 0;
+
+            if (found) {
+                thd->sqlclntstate->stop_this_statement = 1;
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&gbl_sql_lock);
+    if (found)
+        logmsg(LOGMSG_USER, "Query with cnonce %s was told to stop\n", cnonce);
+    else
+        logmsg(LOGMSG_USER, "Query with cnonce %s not found (finished?)\n", cnonce);
+}
+
+/* log binary cnonce in hex format 
+ * ex. 1234 will become x'31323334' 
+ */
+static void log_cnonce(const char * cnonce, int len)
+{
+    logmsg(LOGMSG_USER, " [");
+    for(int i = 0; i < len; i++) 
+        logmsg(LOGMSG_USER, "%2x", cnonce[i]);
+    logmsg(LOGMSG_USER, "] ");
+}
+
 void sql_dump_running_statements(void)
 {
     struct sql_thread *thd;
@@ -9096,10 +9064,13 @@ void sql_dump_running_statements(void)
             } else
                 rqid[0] = 0;
 
-            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s %s\n", thd->id,
+            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s\n", thd->id,
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin,
-                   thd->sqlclntstate->sql);
+                   tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin);
+            log_cnonce(thd->sqlclntstate->sql_query->cnonce.data,
+                thd->sqlclntstate->sql_query->cnonce.len);
+            logmsg(LOGMSG_USER, "%s\n", thd->sqlclntstate->sql);
+
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
                 {
@@ -10058,18 +10029,13 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
 /* these transaction modes can perform sql writes */
 static int is_sql_update_mode(int mode)
 {
-    if (mode == TRANLEVEL_OSQL)
-        return 1;
-    if (mode == TRANLEVEL_SOSQL)
-        return 1;
-    if (mode == TRANLEVEL_RECOM)
-        return 1;
-    if (mode == TRANLEVEL_SNAPISOL)
-        return 1;
-    if (mode == TRANLEVEL_SERIAL)
-        return 1;
-
-    return 0;
+    switch (mode) {
+    case TRANLEVEL_SOSQL:
+    case TRANLEVEL_RECOM:
+    case TRANLEVEL_SNAPISOL:
+    case TRANLEVEL_SERIAL: return 1;
+    default: return 0;
+    }
 }
 
 int sqlglue_release_genid(unsigned long long genid, int *bdberr)
@@ -10520,16 +10486,9 @@ int sqlite3BtreeSetRecording(BtCursor *pCur, int flag)
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
 
-    /* BLOCKSQL is not supported, not yet */
-    if (flag && clnt->dbtran.mode == TRANLEVEL_OSQL) {
-        logmsg(LOGMSG_ERROR, "SELECTV is not supported for blocksql mode! Disabling.\n");
-        pCur->is_recording = 0;
-    }
-
     pCur->is_recording = flag;
 
     if (pCur->is_recording) {
-        clnt->has_recording = 1;
         if (gbl_selectv_rangechk) {
             pCur->range = currange_new();
             if (pCur->db) {

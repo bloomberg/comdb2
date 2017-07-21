@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 #ifndef INC__SWITCHES_H
 #define INC__SWITCHES_H
+
+#include "tunables.h"
 
 /* Called to turn a switch on.  The switch may already be on.  The
  * implementation doesn't have to turn the switch on (it may not be safe to

@@ -131,8 +131,6 @@ int osql_delidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
     if (!gbl_expressions_indexes || !pCur->db->ix_expr)
         return SQLITE_OK;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_delidx_logic(pCur, thd, NET_OSQL_BLOCK_RPL);
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_index(pCur, thd, is_update, 1);
         if (rc) {
@@ -162,9 +160,7 @@ int osql_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if (rc != SQLITE_OK)
         return rc;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_delrec_logic(pCur, thd, NET_OSQL_BLOCK_RPL);
-    else if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_delrec(pCur, thd);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -204,8 +200,6 @@ int osql_insidx(struct BtCursor *pCur, struct sql_thread *thd, int is_update)
     if (!gbl_expressions_indexes || !pCur->db->ix_expr)
         return SQLITE_OK;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_insidx_logic(pCur, thd, NET_OSQL_BLOCK_RPL);
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_index(pCur, thd, is_update, 0);
         if (rc) {
@@ -240,9 +234,6 @@ int osql_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
     if (rc != SQLITE_OK)
         return rc;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_insrec_logic(pCur, thd, pData, nData,
-                                      NET_OSQL_BLOCK_RPL);
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_insrec(pCur, thd, pData, nData);
         if (rc) {
@@ -290,9 +281,6 @@ int osql_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
             return rc;
     }
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_updrec_logic(pCur, thd, pData, nData,
-                                      NET_OSQL_BLOCK_RPL);
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_updrec(pCur, thd, pData, nData);
         if (rc) {
@@ -1232,8 +1220,6 @@ static int osql_updcols(struct BtCursor *pCur, struct sql_thread *thd,
 {
     int rc = 0;
 
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_updcols_logic(pCur, thd, updCols, NET_OSQL_BLOCK_RPL);
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
         rc = osql_save_updcols(pCur, thd, updCols);
         if (rc) {
@@ -1251,13 +1237,8 @@ static int osql_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
                        int *updCols, blob_buffer_t *blobs, int maxblobs,
                        int is_update)
 {
-    int rc = 0;
-
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return osql_send_qblobs_logic(pCur, thd, updCols, blobs, maxblobs,
-                                      NET_OSQL_BLOCK_RPL);
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
+        int rc = osql_save_qblobs(pCur, thd, blobs, maxblobs, is_update);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s:%d %s - failed to cache socksql row rc=%d\n",
@@ -1487,20 +1468,13 @@ int osql_cleartable(struct sql_thread *thd, char *dbname) {
 int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
                       unsigned long long genid)
 {
-    int rc = 0;
-
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL) {
-        logmsg(LOGMSG_ERROR, "SELECTV is not supported for BLOCKSQL\n");
-        return -1;
-    }
-
     /* skip synthetic genids */
     if (is_genid_synthetic(genid)) {
         return 0;
     }
 
     if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
-        rc = osql_save_recordgenid(pCur, thd, genid);
+        int rc = osql_save_recordgenid(pCur, thd, genid);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s:%d %s - failed to cache socksql row rc=%d\n",
@@ -1564,10 +1538,6 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
     int rc = 0;
     int bdberr = 0;
 
-    /* blocksql mode is tested on the master */
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return 0;
-
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->dbname,
@@ -1613,10 +1583,6 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 {
     int rc = 0;
     int bdberr = 0;
-
-    /* blocksql mode is tested on the master */
-    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL)
-        return 0;
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
@@ -1672,8 +1638,6 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     osqlstate_t *osql = &clnt->osql;
     char *host = thd->sqlclntstate->osql.host;
     unsigned long long rqid = thd->sqlclntstate->osql.rqid;
-    int rc = 0;
-
     char *tblname = strdup(sc->table);
     void strupper(char *c);
     strupper(tblname);
@@ -1690,20 +1654,12 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     } else {
         free(tblname);
     }
-
-    // At this moment I have no idea of what to do at any other transaction
-    // level
-    if (1 /*thd->sqlclntstate->dbtran.mode == TRANLEVEL_OSQL*/) {
-        rc = osql_save_schemachange(thd, sc);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
-                   __FILE__, __LINE__, __func__, rc);
-        }
-        return osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,
-                                      sc, NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
-    } else if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
-        return -1;
-    } else
-        return -1;
+    int rc = osql_save_schemachange(thd, sc);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
+               __FILE__, __LINE__, __func__, rc);
+    }
+    return osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid, sc,
+                                  NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
 }

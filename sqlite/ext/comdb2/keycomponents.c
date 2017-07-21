@@ -167,7 +167,7 @@ static int systblFieldsColumn(
       break;
     }
     case STFIELD_COLNO: {
-      sqlite3_result_int64(ctx, (sqlite3_int64)pField->idx);
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->iFieldid);
       break;
     }
     case STFIELD_COLNAME: {

@@ -216,50 +216,41 @@ int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
     return 0;
 }
 
-static char *deadlock_policy_str(int policy)
+const char *deadlock_policy_str(int policy)
 {
-    char *str = "UNKNOWN-POLICY";
     switch (policy) {
-    case DB_LOCK_DEFAULT:
-        return "DB_LOCK_DEFAULT";
-        break;
+    case DB_LOCK_NORUN: return "DB_LOCK_NORUN";
+    case DB_LOCK_DEFAULT: return "DB_LOCK_DEFAULT";
     case DB_LOCK_EXPIRE:
         return "DB_LOCK_EXPIRE";
-        break;
     case DB_LOCK_MAXLOCKS:
         return "DB_LOCK_MAXLOCKS";
-        break;
     case DB_LOCK_MINLOCKS:
         return "DB_LOCK_MINLOCKS";
-        break;
     case DB_LOCK_MINWRITE:
         return "DB_LOCK_MINWRITE";
-        break;
     case DB_LOCK_OLDEST:
         return "DB_LOCK_OLDEST";
-        break;
     case DB_LOCK_RANDOM:
         return "DB_LOCK_RANDOM";
-        break;
     case DB_LOCK_YOUNGEST:
         return "DB_LOCK_YOUNGEST";
-        break;
     case DB_LOCK_MAXWRITE:
         return "DB_LOCK_MAXWRITE";
-        break;
     case DB_LOCK_MINWRITE_NOREAD:
         return "DB_LOCK_MINWRITE_NOREAD";
-        break;
     case DB_LOCK_YOUNGEST_EVER:
         return "DB_LOCK_YOUNGEST_EVER";
-        break;
     case DB_LOCK_MINWRITE_EVER:
         return "DB_LOCK_MINWRITE_EVER";
-        break;
     default:
         return "UNKNOWN_DEADLOCK_POLICY";
-        break;
     }
+}
+
+int deadlock_policy_max()
+{
+    return DB_LOCK_MAX;
 }
 
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)

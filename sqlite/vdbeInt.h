@@ -491,6 +491,7 @@ struct Vdbe {
   bft readOnly:1;         /* True for statements that do not write */
   bft bIsReader:1;        /* True for statements that read */
   bft isPrepareV2:1;      /* True if prepared with prepare_v2() */
+  bft recording:1;        /* COMDB2 MODIFICATION */
   yDbMask btreeMask;      /* Bitmask of db->aDb[] entries referenced */
   yDbMask lockMask;       /* Subset of btreeMask that requires a lock */
   u32 aCounter[5];        /* Counters used by sqlite3_stmt_status() */
@@ -510,7 +511,6 @@ struct Vdbe {
   /* COMDB2 MODIFICATION */
   int *updCols;           /* list of columns modified in this update */
   Table **tbls;           /* list of tables to be open. */ 
-  void *lockInfo;         /* Information on locks. */
   u16 numTables;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
   u8 doExplainTrace;
