@@ -3613,9 +3613,6 @@ enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
 
 void check_access_controls(struct dbenv *dbenv);
 
-int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl, char *option, int len, int line);
-int process_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl, void *usrdata, int (*callback)(struct dbenv *envc, char *option, void *p, int len));
-
 /* Blob mem. */
 extern comdb2bma blobmem; // blobmem for db layer
 extern size_t gbl_blobmem_cap;
