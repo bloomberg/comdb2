@@ -2,7 +2,6 @@
 
 dbname=$1
 error=0
-set -x
 
 if [[ -z "$dbname" ]]; then
     echo dbname missing
