@@ -59,6 +59,15 @@ typedef enum {
 
     /* Set this flag if no argument has been specified. */
     EMPTY = 1 << 8,
+
+    /* Set this flag if the tunable needs to be read early during startup. */
+    READEARLY = 1 << 9,
+
+    /*
+      This flag is used to allow handle_lrl_tunable() to update only dynamic
+      (non READONLY) tunables via process_command().
+    */
+    DYNAMIC = 1 << 10,
 } comdb2_tunable_flag;
 
 /*

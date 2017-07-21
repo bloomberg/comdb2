@@ -36,8 +36,8 @@ REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                  TUNABLE_BOOLEAN, &gbl_allow_lua_print, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_portmux_route", NULL, TUNABLE_BOOLEAN,
-                 &gbl_pmux_route_enabled, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_pmux_route_enabled, READONLY | NOARG | READEARLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_user_schema",
                  "Enable to allow per-user schemas. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_allow_user_schema, READONLY | NOARG,
@@ -76,8 +76,8 @@ REGISTER_TUNABLE("blobstripe", NULL, TUNABLE_BOOLEAN, &gbl_blobstripe,
 REGISTER_TUNABLE("blocksql_grace",
                  "Let block transactions run this long if db is exiting before "
                  "being killed (and returning an error). (Default: 10sec)",
-                 TUNABLE_INTEGER, &gbl_blocksql_grace, READONLY, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_blocksql_grace, 0, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("blocksql_over_sockets", NULL, TUNABLE_BOOLEAN,
                  &gbl_upgrade_blocksql_to_socksql, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -88,8 +88,8 @@ REGISTER_TUNABLE("broken_max_rec_sz", NULL, TUNABLE_INTEGER,
                  &gbl_broken_max_rec_sz, READONLY, NULL, NULL,
                  broken_max_rec_sz_update, NULL);
 REGISTER_TUNABLE("broken_num_parser", NULL, TUNABLE_BOOLEAN,
-                 &gbl_broken_num_parser, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_broken_num_parser, READONLY | NOARG | READEARLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("buffers_per_context", NULL, TUNABLE_INTEGER,
                  &gbl_buffers_per_context, READONLY | NOZERO, NULL, NULL, NULL,
                  NULL);
@@ -143,7 +143,7 @@ REGISTER_TUNABLE("deadlock_policy_override", NULL, TUNABLE_INTEGER,
                  &gbl_deadlock_policy_override, READONLY, NULL, NULL,
                  deadlock_policy_override_update, NULL);
 REGISTER_TUNABLE("debug_rowlocks", NULL, TUNABLE_BOOLEAN, &gbl_debug_rowlocks,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 NOARG, NULL, NULL, NULL, NULL);
 /*
 REGISTER_TUNABLE("decimal_rounding", NULL, TUNABLE_INTEGER,
                  &gbl_decimal_rounding, READONLY, NULL, NULL, NULL, NULL);
@@ -184,7 +184,8 @@ REGISTER_TUNABLE("disable_datetime_truncation",
                  NULL, NULL);
 REGISTER_TUNABLE("disable_direct_writes", "Disables 'enable_direct_writes'",
                  TUNABLE_BOOLEAN, &db->enable_direct_writes,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("disable_good_sql_return_codes",
                  "Disables 'enable_good_sql_return_codes'", TUNABLE_BOOLEAN,
                  &gbl_enable_good_sql_return_codes,
@@ -211,8 +212,8 @@ REGISTER_TUNABLE("disable_osql_blob_optimization",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_overflow_page_trace",
                  "Disables 'enable_overflow_page_trace'", TUNABLE_BOOLEAN,
-                 &gbl_disable_overflow_page_trace, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+                 &gbl_disable_overflow_page_trace, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("disable_page_compact", "Sets 'page_compact_thresh_ff' to 0.",
                  TUNABLE_BOOLEAN, &gbl_pg_compact_thresh,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -227,8 +228,8 @@ REGISTER_TUNABLE("disable_partial_indexes", "Disables 'enable_partial_indexes'",
                  TUNABLE_BOOLEAN, &gbl_partial_indexes,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_prefault_udp", "Disables 'enable_prefault_udp'",
-                 TUNABLE_BOOLEAN, &gbl_prefault_udp,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_prefault_udp, INVERSE_VALUE | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'",
                  TUNABLE_BOOLEAN, &gbl_replicant_latches,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -252,8 +253,8 @@ REGISTER_TUNABLE("disable_sql_dlmalloc",
                  TUNABLE_BOOLEAN, &gbl_disable_sql_dlmalloc, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disable_tagged_api", "Disables 'enable_tagged_api'",
-                 TUNABLE_BOOLEAN, &gbl_disable_tagged_api, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_disable_tagged_api, NOARG, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("disable_temptable_pool", "Sets 'temptable_limit' to 0.",
                  TUNABLE_BOOLEAN, &gbl_temptable_pool_capacity,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -262,7 +263,8 @@ REGISTER_TUNABLE("disable_upgrade_ahead", "Sets 'enable_upgrade_ahead' to 0.",
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("disallow_portmux_route", "Disables 'allow_portmux_route'",
                  TUNABLE_BOOLEAN, &gbl_pmux_route_enabled,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("dont_abort_on_in_use_rqid", "Disable 'abort_on_in_use_rqid'",
                  TUNABLE_BOOLEAN, &gbl_abort_on_clear_inuse_rqid,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -272,7 +274,8 @@ REGISTER_TUNABLE("dont_abort_on_missing_session",
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_forbid_ulonglong", "Disables 'forbid_ulonglong'",
                  TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("dont_init_with_inplace_updates",
                  "Disables 'init_with_inplace_updates'", TUNABLE_BOOLEAN,
                  &gbl_init_with_ipu, INVERSE_VALUE | READONLY | NOARG, NULL,
@@ -287,8 +290,9 @@ REGISTER_TUNABLE("dont_init_with_ondisk_header",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_optimize_repdb_truncate",
                  "Disable 'optimize_repdb_truncate'", TUNABLE_BOOLEAN,
-                 &gbl_optimize_truncate_repdb, INVERSE_VALUE | READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 &gbl_optimize_truncate_repdb,
+                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("dont_prefix_foreign_keys", "Disables 'prefix_foreign_keys'",
                  TUNABLE_BOOLEAN, &gbl_fk_allow_prefix_keys,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -379,7 +383,7 @@ REGISTER_TUNABLE("enable_overflow_page_trace",
                  "If set, warn when a page order table scan encounters an "
                  "overflow page. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_overflow_page_trace,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_page_compact_backward_scan", NULL, TUNABLE_INTEGER,
                  &gbl_disable_backward_scan, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
@@ -394,13 +398,17 @@ REGISTER_TUNABLE("enable_position_apis",
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_prefault_udp",
                  "Send lossy prefault requests to replicants. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_prefault_udp, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_prefault_udp, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("enable_selectv_range_check",
                  "If set, SELECTV will send ranges for verification, not every "
                  "touched record. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_selectv_rangechk, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_selectv_rangechk, NOARG, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("disable_selectv_range_check",
+                 "Disables 'enable_selectv_range_check'", TUNABLE_BOOLEAN,
+                 &gbl_selectv_rangechk, INVERSE_VALUE | NOARG, NULL, NULL, NULL,
+                 NULL);
 /*
 REGISTER_TUNABLE("enable_snapshot_isolation",
                  "Enable to allow SNAPSHOT level transactions to run against "
@@ -428,8 +436,8 @@ REGISTER_TUNABLE("enable_sql_stmt_caching",
                  enable_sql_stmt_caching_update, NULL);
 REGISTER_TUNABLE("enable_tagged_api",
                  "Enables tagged api requests. (Default: on)", TUNABLE_BOOLEAN,
-                 &gbl_disable_tagged_api, INVERSE_VALUE | READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 &gbl_disable_tagged_api, INVERSE_VALUE | NOARG, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("enable_upgrade_ahead",
                  "Occasionally update read records to the newest schema "
                  "version (saves some processing when reading them later). "
@@ -470,16 +478,16 @@ REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
 REGISTER_TUNABLE("fkrcode", NULL, TUNABLE_INTEGER, &gbl_fkrcode,
                  READONLY | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_forbid_ulonglong, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
+                 READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("force_highslot", NULL, TUNABLE_BOOLEAN, &gbl_force_highslot,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_allow_cross_class", NULL, TUNABLE_BOOLEAN,
-                 &gbl_fdb_allow_cross_classes, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+                 &gbl_fdb_allow_cross_classes, READONLY | NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_resolve_local", NULL, TUNABLE_BOOLEAN,
-                 &gbl_fdb_resolve_local, READONLY | NOARG, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_fdb_resolve_local, READONLY | NOARG | READEARLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("fullrecovery", "Attempt to run database "
                                  "recovery from the beginning of "
                                  "available logs. (Default : off)",
@@ -490,8 +498,10 @@ REGISTER_TUNABLE("gbl_exit_on_pthread_create_fail",
                  "create threads. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_exit_on_pthread_create_fail, READONLY,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, NOARG, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("gofast", NULL, TUNABLE_BOOLEAN, &gbl_goslow,
+                 INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("heartbeat_check_time",
                  "Raise an error if no heartbeat for this amount of time (in "
                  "secs). (Default: 10 secs)",
@@ -501,8 +511,8 @@ REGISTER_TUNABLE("heartbeat_send_time",
                  "Send heartbeats this often. (Default: 5secs)",
                  TUNABLE_INTEGER, &gbl_heartbeat_send, READONLY | NOZERO, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_mynode, READONLY, NULL,
-                 NULL, hostname_update, NULL);
+REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_mynode,
+                 READONLY | READEARLY, NULL, NULL, hostname_update, NULL);
 REGISTER_TUNABLE("incoherent_alarm_time", NULL, TUNABLE_INTEGER,
                  &gbl_incoherent_alarm_time, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("incoherent_msg_freq", NULL, TUNABLE_INTEGER,
@@ -569,18 +579,18 @@ REGISTER_TUNABLE("largepages", "Enables large pages. (Default: off)",
                  NULL, NULL);
 REGISTER_TUNABLE("lclpooledbufs", NULL, TUNABLE_INTEGER, &gbl_lclpooled_buffers,
                  READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("lk_hash", NULL, TUNABLE_INTEGER, &gbl_lk_hash, READONLY, NULL,
-                 lk_verify, NULL, NULL);
-REGISTER_TUNABLE("lk_part", NULL, TUNABLE_INTEGER, &gbl_lk_parts, READONLY,
-                 NULL, lk_verify, NULL, NULL);
-REGISTER_TUNABLE("lkr_hash", NULL, TUNABLE_INTEGER, &gbl_lkr_hash, READONLY,
-                 NULL, lk_verify, NULL, NULL);
-REGISTER_TUNABLE("lkr_part", NULL, TUNABLE_INTEGER, &gbl_lkr_parts, READONLY,
-                 NULL, lk_verify, NULL, NULL);
+REGISTER_TUNABLE("lk_hash", NULL, TUNABLE_INTEGER, &gbl_lk_hash,
+                 READONLY | READEARLY, NULL, lk_verify, NULL, NULL);
+REGISTER_TUNABLE("lk_part", NULL, TUNABLE_INTEGER, &gbl_lk_parts,
+                 READONLY | READEARLY, NULL, lk_verify, NULL, NULL);
+REGISTER_TUNABLE("lkr_hash", NULL, TUNABLE_INTEGER, &gbl_lkr_hash,
+                 READONLY | READEARLY, NULL, lk_verify, NULL, NULL);
+REGISTER_TUNABLE("lkr_part", NULL, TUNABLE_INTEGER, &gbl_lkr_parts,
+                 READONLY | READEARLY, NULL, lk_verify, NULL, NULL);
 REGISTER_TUNABLE("lock_conflict_trace",
                  "Dump count of lock conflicts every second. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_lock_conflict_trace, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_lock_conflict_trace, NOARG, NULL, NULL,
+                 NULL, NULL);
 /* TODO(Nirbhay): Merge the following 3 into a single (enum?) tunable. */
 REGISTER_TUNABLE("log_delete_after_backup",
                  "Set log deletion policy to disable log deletion (can be set "
@@ -619,6 +629,10 @@ REGISTER_TUNABLE("master_swing_osql_verbose",
                  "change. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_master_swing_osql_verbose,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("master_swing_osql_verbose_off",
+                 "Disables 'master_swing_osql_verbose'", TUNABLE_BOOLEAN,
+                 &gbl_master_swing_osql_verbose, INVERSE_VALUE | NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("maxblobretries", NULL, TUNABLE_INTEGER, &gbl_maxblobretries,
                  READONLY, NULL, maxretries_verify, NULL, NULL);
 REGISTER_TUNABLE("maxblockops", NULL, TUNABLE_INTEGER, &gbl_maxblockops,
@@ -645,8 +659,7 @@ REGISTER_TUNABLE("max_lua_instructions",
                  TUNABLE_INTEGER, &gbl_max_lua_instructions, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("max_num_compact_pages_per_txn", NULL, TUNABLE_INTEGER,
-                 &gbl_max_num_compact_pages_per_txn, READONLY, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_max_num_compact_pages_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("maxq",
                  "Maximum queue depth for write requests. (Default: 192)",
                  TUNABLE_INTEGER, &gbl_maxqueue, READONLY, NULL, NULL,
@@ -681,11 +694,10 @@ REGISTER_TUNABLE("memstat_autoreport_freq",
                  "secs). (Default: 180 secs)",
                  TUNABLE_INTEGER, &gbl_memstat_freq, READONLY, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_INTEGER, &gbl_morecolumns,
-                 READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("morecolumns", NULL, TUNABLE_BOOLEAN, &gbl_morecolumns,
+                 READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("move_deadlock_max_attempt", NULL, TUNABLE_INTEGER,
-                 &gbl_move_deadlk_max_attempt, READONLY, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_move_deadlk_max_attempt, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("name", NULL, TUNABLE_STRING, &name, DEPRECATED | READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("natural_types", "Same as 'nosurprise'", TUNABLE_BOOLEAN,
@@ -706,8 +718,7 @@ REGISTER_TUNABLE(
     TUNABLE_BOOLEAN, &explicit_flush_trace, READONLY | NOARG, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("net_lmt_upd_incoherent_nodes", NULL, TUNABLE_INTEGER,
-                 &gbl_net_lmt_upd_incoherent_nodes, READONLY, NULL, NULL, NULL,
-                 NULL);
+                 &gbl_net_lmt_upd_incoherent_nodes, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("net_max_mem",
                  "Maximum size (in MB) of items keep on replication network "
                  "queue before dropping (per replicant). (Default: 0)",
@@ -753,8 +764,8 @@ REGISTER_TUNABLE("no_compress_page_compact_log",
 REGISTER_TUNABLE("nocrc32c", "Disables 'crc32c'", TUNABLE_BOOLEAN, &gbl_crc32c,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nodebug_rowlocks", "Disables 'debug_rowlocks'",
-                 TUNABLE_BOOLEAN, &gbl_debug_rowlocks,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_debug_rowlocks, INVERSE_VALUE | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nodeid", NULL, TUNABLE_INTEGER, &gbl_mynodeid, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("noearly", "Disables 'early'", TUNABLE_BOOLEAN, &gbl_early,
@@ -773,9 +784,9 @@ REGISTER_TUNABLE("nokeycompr", "Disables 'keycompr'", TUNABLE_BOOLEAN,
                  NULL, NULL);
 REGISTER_TUNABLE("no_lock_conflict_trace", "Disables 'lock_conflict_trace'",
                  TUNABLE_BOOLEAN, &gbl_lock_conflict_trace,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("nonames", NULL, TUNABLE_BOOLEAN, &gbl_nonames,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("no_net_explicit_flush_trace",
                  "Disables 'net_explicit_flush_trace'", TUNABLE_BOOLEAN,
                  &explicit_flush_trace, INVERSE_VALUE | READONLY | NOARG, NULL,
@@ -808,8 +819,8 @@ REGISTER_TUNABLE("no_static_tag_blob_fix", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("nosurprise", NULL, TUNABLE_BOOLEAN, &gbl_surprise,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("notimeout", "Turns off SQL timeouts. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_notimeouts, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_notimeouts, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("no_toblock_net_throttle", "Disables 'toblock_net_throttle'",
                  TUNABLE_BOOLEAN, &gbl_toblock_net_throttle,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -830,7 +841,8 @@ REGISTER_TUNABLE("null_blob_fix", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE(
     "nullfkey",
     "Do not enforce foreign key constraints for null keys. (Default: off)",
-    TUNABLE_BOOLEAN, &gbl_nullfkey, READONLY | NOARG, NULL, NULL, NULL, NULL);
+    TUNABLE_BOOLEAN, &gbl_nullfkey, READONLY | NOARG | READEARLY, NULL, NULL,
+    NULL, NULL);
 /*
 REGISTER_TUNABLE("nullsort", NULL, TUNABLE_ENUM,
                  &placeholder, READONLY, NULL, NULL, NULL, NULL);
@@ -851,7 +863,7 @@ REGISTER_TUNABLE("oldrangexlim", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("optimize_repdb_truncate",
                  "Enables use of optimized repdb truncate code. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_optimize_truncate_repdb,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_bkoff_netsend", NULL, TUNABLE_INTEGER,
                  &gbl_osql_bkoff_netsend, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("osql_bkoff_netsend_lmt", NULL, TUNABLE_INTEGER,
@@ -896,7 +908,7 @@ REGISTER_TUNABLE("override_cachekb", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("page_compact_latency_ms", NULL, TUNABLE_INTEGER,
                  &gbl_pg_compact_latency_ms, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("page_compact_target_ff", NULL, TUNABLE_DOUBLE,
-                 &gbl_pg_compact_target_ff, READONLY | NOARG, NULL, NULL,
+                 &gbl_pg_compact_target_ff, NOARG, NULL, NULL,
                  page_compact_target_ff_update, NULL);
 REGISTER_TUNABLE("page_compact_thresh_ff", NULL, TUNABLE_DOUBLE,
                  &gbl_pg_compact_thresh, READONLY | NOARG, NULL, NULL,
@@ -919,9 +931,10 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
-                 &gbl_portmux_unix_socket, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port, READONLY,
-                 NULL, NULL, NULL, NULL);
+                 &gbl_portmux_unix_socket, READONLY | READEARLY, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port,
+                 READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
                  &gbl_prefaulthelper_blockops, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -996,8 +1009,14 @@ REGISTER_TUNABLE("replicate_local_concurrent", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("report_deadlock_verbose",
                  "If set, dump the current thread's stack for every deadlock. "
                  "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_disable_deadlock_trace, READONLY | NOARG,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_disable_deadlock_trace, NOARG, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("deadlkon", "Same as 'report_deadlock_verbose'",
+                 TUNABLE_BOOLEAN, &gbl_disable_deadlock_trace, NOARG, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("deadlkoff", "Disables 'report_deadlock_verbose'",
+                 TUNABLE_BOOLEAN, &gbl_disable_deadlock_trace,
+                 INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("rep_process_txn_trace",
                  "If set, report processing time on replicant for all "
                  "transactions. (Default: off)",
@@ -1030,7 +1049,7 @@ REGISTER_TUNABLE("signal_net_portmux_register_interval", NULL, TUNABLE_INTEGER,
                  &gbl_signal_net_portmux_register_interval, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("simulate_rowlock_deadlock", NULL, TUNABLE_INTEGER,
-                 &gbl_simulate_rowlock_deadlock_interval, READONLY, NULL, NULL,
+                 &gbl_simulate_rowlock_deadlock_interval, 0, NULL, NULL,
                  simulate_rowlock_deadlock_update, NULL);
 REGISTER_TUNABLE("singlemeta", NULL, TUNABLE_INTEGER, &gbl_init_single_meta,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -1138,8 +1157,8 @@ REGISTER_TUNABLE("updategenids",
 REGISTER_TUNABLE("update_shadows_interval",
                  "Set to higher than 0 to update snaphots on every Nth "
                  "operation. (Default: 0, update on for every operation)",
-                 TUNABLE_INTEGER, &gbl_update_shadows_interval, READONLY, NULL,
-                 NULL, NULL, NULL);
+                 TUNABLE_INTEGER, &gbl_update_shadows_interval, 0, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("upd_null_cstr_return_conv_err", NULL, TUNABLE_INTEGER,
                  &gbl_upd_null_cstr_return_conv_err, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
@@ -1156,7 +1175,8 @@ REGISTER_TUNABLE("use_llmeta", NULL, TUNABLE_INTEGER,
                  &gbl_use_llmeta, READONLY, NULL, NULL, NULL, NULL);
 */
 REGISTER_TUNABLE("usenames", NULL, TUNABLE_BOOLEAN, &gbl_nonames,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("use_node_priority",
                  "Sets node priority for the db. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_use_node_pri, READONLY | NOARG, NULL,
@@ -1203,9 +1223,9 @@ REGISTER_TUNABLE(
     TUNABLE_BOOLEAN, &dump_resources_on_thread_exit, READONLY, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("stack_disable", NULL, TUNABLE_BOOLEAN, &gbl_walkback_enabled,
-                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("stack_enable", NULL, TUNABLE_BOOLEAN, &gbl_walkback_enabled,
-                 READONLY | NOARG, NULL, NULL, NULL, NULL);
+                 NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("stack_warn_threshold", NULL, TUNABLE_INTEGER, &gbl_warnthresh,
                  READONLY | NOZERO, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("ack_trace",

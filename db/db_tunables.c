@@ -1131,7 +1131,8 @@ int handle_runtime_tunable(const char *name, const char *value)
 }
 
 /*
-  Update the tunable read from lrl file.
+  Update the tunable read from lrl file or updated at runtime via
+  process_command().
 
   @return
     0           Success
@@ -1139,7 +1140,8 @@ int handle_runtime_tunable(const char *name, const char *value)
     -1          Not a registered tunable
 */
 
-int handle_lrl_tunable(char *name, int name_len, char *value, int value_len)
+int handle_lrl_tunable(char *name, int name_len, char *value, int value_len,
+                       int flags)
 {
     comdb2_tunable *t;
     char buf[MAX_TUNABLE_VALUE_SIZE];
@@ -1157,6 +1159,17 @@ int handle_lrl_tunable(char *name, int name_len, char *value, int value_len)
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
         logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", name);
         return -1;
+    }
+
+    /* Only proceed if we were asked to process READEARLY tunables. */
+    if ((flags & READEARLY) && ((t->flags & READEARLY) == 0)) {
+        return 0;
+    }
+
+    if ((flags & DYNAMIC) && ((t->flags & READONLY) != 0)) {
+        logmsg(LOGMSG_ERROR, "Attempt to update a READ-ONLY tunable '%s'.\n",
+               name);
+        return 1;
     }
 
     /* Check if we have a value specified after the name. */
