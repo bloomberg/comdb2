@@ -105,6 +105,19 @@ typedef enum {
     TUNABLE_INVALID,
 } comdb2_tunable_type;
 
+typedef enum {
+    /* Success */
+    TUNABLE_ERR_OK = 0,
+    /* Internal error on updating the tunable. */
+    TUNABLE_ERR_INTERNAL,
+    /* Invalid (non-registered) tunable. */
+    TUNABLE_ERR_INVALID_TUNABLE,
+    /* Invalid value for tunable. */
+    TUNABLE_ERR_INVALID_VALUE,
+    /* Attempt to update a read-only tunable at runtime. */
+    TUNABLE_ERR_READONLY,
+} comdb2_tunable_err;
+
 struct comdb2_tunable {
     /* Name of the tunable. (Mandatory) */
     char *name;
@@ -177,5 +190,8 @@ const char *tunable_type(comdb2_tunable_type type);
 
 /* Verify whether the given value is in [0-100] range. */
 int percent_verify(void *context, void *percent);
+
+/* Return error string. */
+const char *tunable_error(comdb2_tunable_err code);
 
 #endif /* _TUNABLES_H */

@@ -29,7 +29,7 @@ extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
 /******************* Utility ****************************/
 
-static inline int setError(Parse *pParse, int rc, char *msg)
+static inline int setError(Parse *pParse, int rc, const char *msg)
 {
     pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
@@ -3996,14 +3996,15 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     char *t_name;
     char *t_value;
     int rc;
+    comdb2_tunable_err err;
 
     rc = create_string_from_token(NULL, pParse, &t_name, name);
     if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
     rc = create_string_from_token(NULL, pParse, &t_value, value);
     if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
 
-    if ((handle_runtime_tunable(t_name, t_value))) {
-        setError(pParse, SQLITE_ERROR, "Failed to update tunable.");
+    if ((err = handle_runtime_tunable(t_name, t_value))) {
+        setError(pParse, SQLITE_ERROR, tunable_error(err));
     }
 
 cleanup:
