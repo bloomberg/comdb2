@@ -5,13 +5,40 @@ set -e
 dbnm=$1
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table "t1"("i" int);'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table "t2"("j" int);'
 
-./forktst $dbnm default ${CDB2_CONFIG} 2>&1 | sort > test.out
+./forktst $dbnm default ${CDB2_CONFIG} 2>&1 | sort -n > r1.err.res
 
-./forktst $dbnm default ${CDB2_CONFIG} parent 2>&1 | sort >> test.out
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1 order by i' > r1.out.res
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2 order by j' >> r1.out.res
 
-if ! diff test.out test.expected ; then
-    echo "Output does not match expected"
+if ! diff r1.err.res r1.err.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r1.err.res,r1.err.expected}"
+    exit 1
+fi
+
+if ! diff r1.out.res r1.out.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r1.out.res,r1.out.expected}"
+    exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t1 where 1'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t2 where 1'
+
+# passing extra parameter makes forktst give ownership 
+# of the db handle to child process
+./forktst $dbnm default ${CDB2_CONFIG} parent 2>&1 | sort -n > r2.err.res
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1 order by i' > r2.out.res
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2 order by j' >> r2.out.res
+
+if ! diff r2.err.res r2.err.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r2.err.res,r2.err.expected}"
+    exit 1
+fi
+
+if ! diff r2.out.res r2.out.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r2.out.res,r2.out.expected}"
     exit 1
 fi
 

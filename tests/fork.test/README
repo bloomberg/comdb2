@@ -4,3 +4,6 @@ opening db connection.
 
 By default, if such flag is not provided, parent only is allowed to use
 cdb2 handle and child should get errors.
+
+Also, this test makes sure that we can open a new db connection and make
+queries via it, after a fork(). 
