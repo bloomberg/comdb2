@@ -715,7 +715,7 @@ retry:
 
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
                 logmsg(LOGMSG_ERROR, "%s line %d forcing random blkseq retry\n",
-                        __func__, __LINE__);
+                       __func__, __LINE__);
                 osql->xerr.errval = ERR_NOMASTER;
             }
             /* we got a return from block processor \
