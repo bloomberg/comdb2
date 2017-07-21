@@ -50,6 +50,7 @@ static char *dbname = NULL;
 static char *dbtype = NULL;
 static char *dbhostname = NULL;
 static char main_prompt[MAX_DBNAME_LENGTH + 2];
+static char gbl_in_stmt = 0;
 
 /* display mode */
 enum {
@@ -694,7 +695,9 @@ static void process_line(char *sql, int ntypes, int *types)
     sqlstr[len] = '\0';
 
     int start_time_ms, run_time_ms;
+    gbl_in_stmt = 1;
     rc = run_statement(sqlstr, ntypes, types, &start_time_ms, &run_time_ms);
+    gbl_in_stmt = 0;
 
     if (rc != 0) {
         error++;
@@ -887,6 +890,37 @@ static void replace_args(int argc, char *argv[])
     }
 }
 
+void send_cancel_cnonce(const char *cnonce)
+{
+    if (!gbl_in_stmt) return;
+    cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
+    int rc;
+    if (dbhostname) {
+        rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
+    } else {
+        rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+    }
+    if (rc) {
+        if (debug_trace)
+            fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
+        cdb2_close(cdb2h_2);
+        return;
+    }
+    char expanded[256];
+    for (int i = 0; i < 256 / 2 && cnonce[i] != '\0'; i++) {
+        sprintf(&expanded[i * 2], "%2x", cnonce[i]);
+    }
+    char sql[256];
+    snprintf(sql, 255, "exec procedure sys.cmd.send('sql cancelcnonce %s')",
+             expanded);
+    if (debug_trace) printf("Cancel sql string '%s'\n", sql);
+    rc = cdb2_run_statement(cdb2h_2, sql);
+    if (rc && debug_trace)
+        fprintf(stderr, "failed to cancel rc %d with '%s'\n", rc, sql);
+    cdb2_close(cdb2h_2);
+    gbl_in_stmt = 0;
+}
+
 /* If ctrl_c was pressed to clear existing line and go to new line
  * If we see two ctrl_c in a row we exit.
  * However, after a ctrl_c if user typed something
@@ -898,6 +932,7 @@ static void int_handler(int signum)
     rl_on_new_line();
     rl_replace_line("", 0);
     rl_redisplay();
+    send_cancel_cnonce(cdb2_cnonce(cdb2h));
 }
 
 int main(int argc, char *argv[])
