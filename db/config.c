@@ -330,7 +330,7 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
     char *tok;
     int st = 0;
     int ltok;
-    int rc;
+    comdb2_tunable_err rc;
 
     tok = segtok(line, llen, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
@@ -344,15 +344,10 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
         add_legacy_default_options(dbenv);
     }
 
-    /*
-      Handle global tunables which are supposed to be read early.
-
-      rc == -1 : non-registered tunable, fallthrough
-      rc ==  0 : tunable updated successfully, return
-      rc ==  1 : error while updating the tunable, return
-    */
+    /* Handle global tunables which are supposed to be read early. */
     rc = handle_lrl_tunable(tok, ltok, line + st, llen - st, READEARLY);
-    if (rc != -1) {
+    /* Follow through, if the tunable is not found. */
+    if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
         return rc;
     }
 
@@ -531,15 +526,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     tok = segtok(line, len, &st, &ltok);
     if (ltok == 0 || tok[0] == '#') return 0;
 
-    /*
-      Handle global tunables.
-
-      rc == -1 : non-registered tunable, fallthrough
-      rc ==  0 : tunable updated successfully, return
-      rc ==  1 : error while updating the tunable, return
-    */
+    /* Handle global tunables. */
     rc = handle_lrl_tunable(tok, ltok, line + st, len - st, 0);
-    if (rc != -1) {
+    if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
+        /* Follow through, if the tunable is not found. */
         return rc;
     }
 

@@ -1,7 +1,22 @@
+# Update read-only tunable
 SELECT name, read_only FROM comdb2_tunables WHERE name = 'dir';
 PUT TUNABLE dir '/tmp';
+SELECT value AS 'nowatch' FROM comdb2_tunables WHERE name = 'nowatch';
+PUT TUNABLE nowatch 1;
+SELECT value AS 'nowatch' FROM comdb2_tunables WHERE name = 'nowatch';
 
+# Invalid tunable
 PUT TUNABLE nonexistent 100;
+
+# Invalid tunable value
+SELECT value AS 'allow_broken_datetimes' FROM comdb2_tunables WHERE name = 'allow_broken_datetimes';
+PUT TUNABLE allow_broken_datetimes;
+SELECT value AS 'allow_broken_datetimes' FROM comdb2_tunables WHERE name = 'allow_broken_datetimes';
+PUT TUNABLE allow_broken_datetimes 100;
+SELECT value AS 'allow_broken_datetimes' FROM comdb2_tunables WHERE name = 'allow_broken_datetimes';
+PUT TUNABLE allow_broken_datetimes 'onn';
+SELECT value AS 'allow_broken_datetimes' FROM comdb2_tunables WHERE name = 'allow_broken_datetimes';
+PUT TUNABLE allow_broken_datetimes 'of';
 
 SELECT name, value, read_only FROM comdb2_tunables WHERE name = 'latch_max_poll';
 

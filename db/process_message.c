@@ -5154,26 +5154,20 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
     } else {
-        int rc;
+        comdb2_tunable_err rc;
 
         /*
           As we are here, it could be a dynamic tunable. Let's try looking
           it up in the global tunables' list and updating it, if found.
-
-          @return,
-          -1 : non-registered tunable
-          0  : tunable updated successfully
-          1  : error while updating the tunable
         */
         rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
         switch (rc) {
-        case -1:
+        case TUNABLE_ERR_OK: break;
+        case TUNABLE_ERR_INVALID_TUNABLE:
             logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
             break;
-        case 1:
-            logmsg(LOGMSG_ERROR, "Error updating the tunable <%.*s>\n", ltok,
-                   tok);
-            break;
+        default:
+            logmsg(LOGMSG_ERROR, tunable_error(rc));
         }
         return rc;
     }
