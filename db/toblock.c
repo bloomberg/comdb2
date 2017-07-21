@@ -2686,9 +2686,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             int replay_len = 0;
             int findout;
 
-printf("AZ: looking in blkseq for snap info\n");
             if ((findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
                         iq->snap_info.keylen, &replay_data, &replay_len)) == 0) {
+printf("AZ: fourd in blkseq for snap info %s\n", iq->snap_info.key);
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0, replay_data, 
                         replay_len, __LINE__);
@@ -5448,16 +5448,15 @@ printf("AZ: set outrc=%d\n",outrc);
             bskeylen = iq->seqlen;
         }
 
-        /*
         if (!rowlocks && iq->snap_info.replicant_can_retry) {
             trans_abort(iq, parent_trans);
             parent_trans = NULL;
         }
-        else */if (!rowlocks) {
+        else if (!rowlocks) {
             int t = time_epoch();
             char *buf; 
             memcpy(p_buf_fstblk, &t, sizeof(int));
-
+printf("Inserting into blkseq\n");
             rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
                     buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
                     &replay_data, &replay_len);

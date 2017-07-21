@@ -333,6 +333,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     }
 
     do {
+fprintf(stderr, "srs_tran_replay: Replicant doing replay\n");
         reset_query_effects(clnt); /* Reset it for each retry*/
         if (!osql->history) {
             fprintf(stderr, "Trying to replay, but no history?\n");
@@ -405,6 +406,8 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         }
         if (rc == 0)
             tnq = nq;
+        else
+            fprintf(stderr, "srs_tran_replay: Replicant doing replay cnonce %s got rc=%d\n", clnt->sql_query->cnonce.data, rc);
 
         /* don't repeat if we fail with unexplicable error, i.e. not a logical
          * error */

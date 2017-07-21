@@ -1313,7 +1313,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
 
     if (clnt->sql_query && clnt->sql_query->has_cnonce &&
-        /*AZ: enable always sending cnonce:   */   clnt->high_availability && 
+        /*AZ: enable always sending cnonce:     clnt->high_availability && */ 
             /* pass to master the state of verify retry. 
              * if verify retry is on and error is retryable, don't write to 
              * blkseq on master because replicant will retry */
@@ -1321,7 +1321,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
 
         if (osql->rqid == OSQL_RQID_USE_UUID) {
             snap_info.replicant_can_retry = replicant_can_retry(clnt);
-printf("AZ: snap_info.replicant_can_retry=%d \n", snap_info.replicant_can_retry);
+printf("AZ: snap_info.replicant_can_retry=%d cnonce=%s\n", snap_info.replicant_can_retry, clnt->sql_query->cnonce.data);
             snap_info.keylen = clnt->sql_query->cnonce.len;
             memcpy(snap_info.key, clnt->sql_query->cnonce.data,
                    clnt->sql_query->cnonce.len);
