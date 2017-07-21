@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
     ss << root << "/bin/comdb2";
     std::string comdb2_task(ss.str());
 
-    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSKfOD")) != EOF) {
+    while((c = getopt(argc, argv, "hsSLC:I:b:x:u:rRSkKfOD")) != EOF) {
         switch(c) {
             case 'O':
                 legacy_mode = true;

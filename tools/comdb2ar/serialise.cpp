@@ -35,6 +35,8 @@ extern "C" {
 #include <poll.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <openssl/sha.h>
+#include <iomanip>
 
 #include <stdlib.h>
 
@@ -370,6 +372,8 @@ reopen:
     if(head.used_gnu()) {
         std::clog << " (encoded using gnu extension)";
     }
+
+
     std::clog << std::endl;
     if (pagebuf)
         free(pagebuf);
@@ -1008,16 +1012,22 @@ void serialise_database(
             throw Error(ss);
         }
 
-        // Any leftover .incr files indicate that that file has been deleted
+        std::string sha_filename = "";
+        // Any leftover .incr files indicate that that file has been deleted or that it is the SHA file
         for(std::set<std::string>::const_iterator
                 it = incr_files.begin();
                 it != incr_files.end();
                 ++it){
+            if((*it).substr((*it).length() - 4) == ".sha"){
+                sha_filename = *it;
+                continue;
+            }
+
             std::string true_filename = incr_path + "/" + *it;
             if(remove(true_filename.c_str()) != 0){
                 std::ostringstream ss;
                 ss << "error deleting file: " << true_filename;
-               throw Error(ss);
+                throw Error(ss);
             }
             write_del_manifest_entry(manifest, *it);
         }
@@ -1029,6 +1039,17 @@ void serialise_database(
             if (!recovery_options.empty()) {
                 manifest << "Option " << recovery_options <<std::endl;
             }
+        }
+
+        // Read and note the previous increment's SHA fingerprint
+        if(sha_filename.empty()){
+            std::ostringstream ss;
+            ss << "No previous SHA fingerprint";
+            throw Error(ss);
+        } else {
+            std::string sha_fingerprint = get_sha_fingerprint(sha_filename, incr_path);
+            manifest << "PREV " << sha_fingerprint << std::endl;
+            std::clog << "Here" << std::endl;
         }
 
         // Serialise the manifest file
@@ -1213,6 +1234,28 @@ void serialise_database(
 
         // Serialise all remaining log files, including incomplete ones
         serialise_log_files(dbtxndir, dbdir, log_number, false);
+    }
+
+    // Generate fingerprint SHA file
+    if(incr_create || incr_gen){
+        unsigned char obuf[20];
+
+        std::string dt_string = getDTString();
+
+        SHA1((unsigned char *) dt_string.c_str(), dt_string.length() + 1, obuf);
+
+        std::ostringstream ss;
+        for(int i = 0; i < 20; ++i){
+            ss << std::hex << std::setw(2) << std::setfill('0') << +obuf[i];
+        }
+
+        std::clog << "Calculated SHA fingerprint as: " << ss.str() << std::endl;
+        serialise_string("fingerprint.sha", ss.str());
+
+        std::string sha_filename = incr_path + "/fingerprint.sha";
+        std::ofstream sha_file(sha_filename, std::ofstream::trunc);
+
+        sha_file.write(ss.str().c_str(), 40);
     }
 
     // Release the database for log file deletion.

@@ -12,6 +12,10 @@
 
 bool is_not_incr_file(std::string filename);
 
+std::string get_sha_fingerprint(std::string filename, std::string incr_path);
+
+std::string read_sha_file();
+
 bool compare_checksum(FileInfo file, const std::string& incr_path,
         std::vector<uint32_t>& pages, ssize_t *data_size,
         std::set<std::string>& incr_files);
@@ -31,6 +35,7 @@ void incr_deserialise_database(
     const std::string& datadestdir,
     const std::string& dbname,
     std::set<std::string>& table_set,
+    std::string& sha_fingerprint,
     unsigned percent_full,
     bool force_mode,
     bool& is_disk_full,
@@ -48,7 +53,8 @@ bool process_incr_manifest(
     std::map<std::string, FileInfo>& new_files,
     std::set<std::string>& deleted_files,
     std::vector<std::string>& file_order,
-    std::vector<std::string>& options
+    std::vector<std::string>& options,
+    std::string& process_incr_manifest
 );
 
 void unpack_incr_data(

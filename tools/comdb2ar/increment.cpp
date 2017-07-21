@@ -6,6 +6,7 @@
 #include "serialiseerror.h"
 #include "error.h"
 #include "tar_header.h"
+#include "riia.h"
 
 #include <sys/stat.h>
 #include <fstream>
@@ -18,13 +19,61 @@
 #include <set>
 #include <map>
 #include <utility>
-
 #include <fcntl.h>
 #include <unistd.h>
 
 bool is_not_incr_file(std::string filename){
-    return(filename.substr(filename.length() - 5) != ".incr");
+    return((filename.substr(filename.length() - 5) != ".incr") &&
+            (filename.substr(filename.length() - 4) != ".sha"));
 }
+
+std::string get_sha_fingerprint(std::string filename, std::string incr_path) {
+    std::string filepath = incr_path + "/" + filename;
+    std::ifstream ifs (filepath, std::ifstream::in);
+
+    char sha_buffer[40];
+    ifs.read(&sha_buffer[0], 40);
+
+    std::clog << "Found previous fingerprint as " << std::string(sha_buffer) << std::endl;
+
+    return std::string(sha_buffer);
+}
+
+std::string read_sha_file() {
+    char fingerprint[40];
+
+    size_t bufsize = 4096;
+    uint8_t *buf;
+#if defined _HP_SOURCE || defined _SUN_SOURCE
+    buf = (uint8_t*) memalign(512, bufsize);
+#else
+    if (posix_memalign((void**) &buf, 512, bufsize))
+        throw Error("Failed to allocate output buffer");
+#endif
+    RIIA_malloc free_guard(buf);
+
+    if(readall(0, &fingerprint[0], 40) != 40){
+        std::ostringstream ss;
+        ss << "Could not read sha fingerprint file";
+        throw Error(ss);
+    }
+
+    // Read and discard the null padding
+    unsigned long long nblocks = (40 + 511ULL) >> 9;
+    unsigned long long padding_bytes = (nblocks << 9) - 40;
+    if(padding_bytes) {
+        if(readall(0, &buf[0], padding_bytes) != padding_bytes) {
+            std::ostringstream ss;
+
+            ss << "Error reading padding after in SHA file";
+            throw Error(ss);
+        }
+    }
+
+    std::clog << "Read SHA as: " << std::string(fingerprint, 40) << std::endl;
+    return std::string(fingerprint, 40);
+}
+
 
 bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
     uint32_t new_lsn_file = LSN(new_pagep).file;
@@ -276,6 +325,7 @@ void incr_deserialise_database(
     const std::string& datadestdir,
     const std::string& dbname,
     std::set<std::string>& table_set,
+    std::string& sha_fingerprint,
     unsigned percent_full,
     bool force_mode,
     bool& is_disk_full,
@@ -327,9 +377,6 @@ void incr_deserialise_database(
         }
 
         done_with_incr = false;
-        if(!keep_all_logs) {
-            clear_log_folder(datadestdir, dbname);
-        }
 
         // Get the file name
         if(head.h.filename[sizeof(head.h.filename) - 1] != '\0') {
@@ -361,6 +408,10 @@ void incr_deserialise_database(
 
         if(ext == "data") {
             is_incr_data = true;
+        } else if (ext == "sha") {
+            sha_fingerprint = read_sha_file();
+            std::clog << "Fingerprint: " << sha_fingerprint << std::endl;
+            continue;
         } else {
             // If it's not a text file then look at the extension to see if it looks
             // like a data file.  If it does then add it to our list of tables if
@@ -384,18 +435,32 @@ void incr_deserialise_database(
             }
         }
 
-        // Gather the text of the file for lrls and manifests
-
-
         if(is_manifest) {
+
+            // Manifest is first file in each increment, so if one is seen,
+            // delete previous logs if necessary
+            if(!keep_all_logs) {
+                std::clog << "Deleting old log files" << std::endl;
+                clear_log_folder(datadestdir, dbname);
+            }
+
             manifest_read = true;
+            std::string manifest_sha;
             std::string manifest_text = read_incr_manifest(filesize);
             if(!process_incr_manifest(manifest_text, datadestdir,
                     updated_files, new_files, deleted_files,
-                    file_order, options)){
+                    file_order, options, manifest_sha)){
                 // Failed to read a coherant manifest
                 std::ostringstream ss;
                 ss << "Error reading manifest";
+                throw Error(ss);
+            }
+
+            if(manifest_sha != sha_fingerprint){
+                std::ostringstream ss;
+                ss << "Mismatched SHA fingerprints: " << std::endl;
+                ss << "Found: " << sha_fingerprint << std::endl;
+                ss << "Manifest: " << manifest_sha;
                 throw Error(ss);
             }
         } else if(is_incr_data) {

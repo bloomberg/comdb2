@@ -371,6 +371,8 @@ void deserialise_database(
 
     bool file_is_sparse = false;
 
+    std::string fingerprint;
+
     std::string done_file_string;
 
     // This is the directory listing of the data directory taken at the time
@@ -408,6 +410,8 @@ void deserialise_database(
     std::string main_lrl_file;
     std::string dbname;
     std::string origlrlname("");
+
+    std::string sha_fingerprint = "";
 
     // The manifest map
     std::map<std::string, FileInfo> manifest_map;
@@ -483,6 +487,7 @@ void deserialise_database(
                     datadestdir,
                     dbname,
                     table_set,
+                    sha_fingerprint,
                     percent_full,
                     force_mode,
                     is_disk_full,
@@ -525,6 +530,11 @@ void deserialise_database(
         }
         if(ext == "lrl") {
             is_lrl = true;
+        }
+
+        if(ext == "sha") {
+            sha_fingerprint = read_sha_file();
+            continue;
         }
 
         bool is_manifest = false;
