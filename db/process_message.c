@@ -999,14 +999,14 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         if (ltok > 0 && (thresh = toknum(tok, ltok)) >= 0) {
             walkback_set_warnthresh(thresh);
             logmsg(LOGMSG_USER,
-                    "Set walkback warn-threshold to %d walkbacks per second\n",
-                    thresh);
+                   "Set walkback warn-threshold to %d walkbacks per second\n",
+                   thresh);
         } else {
             thresh = walkback_get_warnthresh();
             if (thresh > 0) {
                 logmsg(LOGMSG_USER,
-                        "Warn for %d or more walkbacks in the past second\n",
-                        thresh);
+                       "Warn for %d or more walkbacks in the past second\n",
+                       thresh);
             } else {
                 logmsg(LOGMSG_USER, "Walkback warning is disabled\n");
             }
@@ -2811,7 +2811,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int bdberr;
 
         tok = segtok(line, lline, &st, &ltok);
-          if (tokcmp(tok, ltok, "list") == 0) {
+        if (tokcmp(tok, ltok, "list") == 0) {
             rc = bdb_llmeta_list_records(thedb->bdb_env, &bdberr);
             if (rc) {
                 logmsg(LOGMSG_ERROR, 
@@ -5166,8 +5166,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         case TUNABLE_ERR_INVALID_TUNABLE:
             logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
             break;
-        default:
-            logmsg(LOGMSG_ERROR, tunable_error(rc));
+        default: logmsg(LOGMSG_ERROR, tunable_error(rc));
         }
         return rc;
     }
