@@ -94,19 +94,19 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
 
-static unsigned char gbl_invalid_from_fork; /* global denoting handle invalid */
-static unsigned char gbl_invalidate_parent_on_fork; /* which to invalidate */
+static int gbl_fork_generation; /* global denoting fork generation */
+static unsigned char gbl_invalidate_parent_on_fork; /* which one to invalidate */
 
 void parent_atfork(void) 
 {
     if(gbl_invalidate_parent_on_fork)
-        gbl_invalid_from_fork = 1;
+        gbl_fork_generation++;
 }
 
 void child_atfork(void) 
 {
     if(!gbl_invalidate_parent_on_fork)
-        gbl_invalid_from_fork = 1;
+        gbl_fork_generation++;
 }
 
 static void do_init_once(void)
@@ -679,6 +679,7 @@ struct cdb2_hndl {
     cdb2_ssl_sess_list *sess_list;
 #endif
     struct context_messages context_msgs;
+    int fork_generation;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -2197,7 +2198,9 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
 
 static int cdb2_next_record_int(cdb2_hndl_tp *hndl, int shouldretry)
 {
-    if(gbl_invalid_from_fork)
+if(hndl->debug_trace)
+printf("check %d < %d\n", hndl->fork_generation, gbl_fork_generation);
+    if(hndl->fork_generation < gbl_fork_generation)
         PRINT_RETURN(-1);
 
     int len;
@@ -2430,7 +2433,7 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     pthread_once(&init_once, do_init_once);
 
-    if(gbl_invalid_from_fork)
+    if(hndl->fork_generation < gbl_fork_generation)
         goto done;
 
     if (!hndl)
@@ -2980,7 +2983,9 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
-    if(gbl_invalid_from_fork)
+if(hndl->debug_trace)
+printf("check %d < %d\n", hndl->fork_generation, gbl_fork_generation);
+    if(hndl->fork_generation < gbl_fork_generation)
         PRINT_RETURN(-1);
 
     int return_value;
@@ -4894,6 +4899,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
+    hndl->fork_generation = gbl_fork_generation;
 
     cdb2_init_context_msgs(hndl);
 
