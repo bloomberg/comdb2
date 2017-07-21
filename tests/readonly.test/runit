@@ -2,7 +2,7 @@
 
 dbnm=$1
 #cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
-cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm local - > output.txt 2>&1
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
 insert into t values (40)
 insert into t values (20)
 insert into t values (30)
@@ -19,7 +19,7 @@ if [ $? -ne 0 ] ; then
     exit 1
 fi 
 
-cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm local - > output2.txt 2>&1 
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default  - > output2.txt 2>&1 
 set readonly on
 insert into t values (1)
 update t set id=id+1 limit 1
