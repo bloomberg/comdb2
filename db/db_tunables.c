@@ -182,10 +182,10 @@ static int dir_verify(void *context, void *basedir)
     return 0;
 }
 
-static const char *init_with_compr_value(void *context)
+static void *init_with_compr_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
-    return bdb_algo2compr(*(int *)tunable->var);
+    return (void *)bdb_algo2compr(*(int *)tunable->var);
 }
 
 static int init_with_compr_update(void *context, void *algo)
@@ -262,7 +262,7 @@ static int enable_sql_stmt_caching_update(void *context, void *value)
     return 0;
 }
 
-static const char *enable_sql_stmt_caching_value(void *context)
+static void *enable_sql_stmt_caching_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
@@ -270,7 +270,7 @@ static const char *enable_sql_stmt_caching_value(void *context)
                          sizeof(struct enable_sql_stmt_caching_st));
          i++) {
         if (enable_sql_stmt_caching_vals[i].code == *(int *)tunable->var) {
-            return enable_sql_stmt_caching_vals[i].name;
+            return (void *)enable_sql_stmt_caching_vals[i].name;
         }
     }
     return "unknown";
@@ -304,14 +304,14 @@ static int checkctags_update(void *context, void *value)
     return 1;
 }
 
-static const char *checkctags_value(void *context)
+static void *checkctags_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
     for (int i = 0;
          i < (sizeof(checkctags_vals) / sizeof(struct checkctags_st)); i++) {
         if (checkctags_vals[i].code == *(int *)tunable->var) {
-            return checkctags_vals[i].name;
+            return (void *)checkctags_vals[i].name;
         }
     }
     return "unknown";
@@ -597,7 +597,7 @@ static int hostname_update(void *context, void *value)
 int ctrace_set_rollat(void *unused, void *value);
 
 /* Return the value for sql_tranlevel_default. */
-static const char *sql_tranlevel_default_value()
+static void *sql_tranlevel_default_value()
 {
     switch (gbl_sql_tranlevel_default) {
     case SQL_TDEF_COMDB2: return "COMDB2";

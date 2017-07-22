@@ -139,30 +139,46 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         sqlite3_result_text(ctx, tunable_type(tunable->type), -1, NULL);
         break;
     case TUNABLES_COLUMN_VALUE:
-        if (tunable->value) {
-            sqlite3_result_text(ctx, tunable->value(tunable), -1, NULL);
-        } else {
-            switch (tunable->type) {
-            case TUNABLE_INTEGER:
-                sqlite3_result_int(ctx, *(int *)tunable->var);
-                break;
-            case TUNABLE_DOUBLE:
-                sqlite3_result_double(ctx, *(double *)tunable->var);
-                break;
-            case TUNABLE_BOOLEAN: {
-                int val = *(int *)tunable->var;
-                if ((tunable->flags & INVERSE_VALUE) != 0) {
-                    val = (val == 0) ? 1 : 0;
-                }
-                sqlite3_result_text(ctx, (val) ? "ON" : "OFF", -1, NULL);
-                break;
+        switch (tunable->type) {
+        case TUNABLE_INTEGER: {
+            int val;
+            val = (tunable->value) ? *(int *)tunable->value(tunable)
+                                   : *(int *)tunable->var;
+            sqlite3_result_int(ctx, val);
+            break;
+        }
+        case TUNABLE_DOUBLE: {
+            double val;
+            val = (tunable->value) ? *(double *)tunable->value(tunable)
+                                   : *(double *)tunable->var;
+            sqlite3_result_double(ctx, val);
+            break;
+        }
+        case TUNABLE_BOOLEAN: {
+            int val;
+            val = (tunable->value) ? *(int *)tunable->value(tunable)
+                                   : *(int *)tunable->var;
+            if ((tunable->flags & INVERSE_VALUE) != 0) {
+                val = (val == 0) ? 1 : 0;
             }
-            case TUNABLE_STRING:
-                sqlite3_result_text(ctx, *(char **)tunable->var, -1, NULL);
-                break;
-            case TUNABLE_ENUM: /* fallthrough */
-            default: assert(0);
-            }
+            sqlite3_result_text(ctx, (val) ? "ON" : "OFF", -1, NULL);
+            break;
+        }
+        case TUNABLE_STRING: {
+            const char *val;
+            val = (tunable->value) ? (const char *)tunable->value(tunable)
+                                   : *(char **)tunable->var;
+            sqlite3_result_text(ctx, val, -1, NULL);
+            break;
+        }
+        case TUNABLE_ENUM: {
+            const char *val;
+            assert(tunable->value);
+            val = (const char *)tunable->value(tunable);
+            sqlite3_result_text(ctx, val, -1, NULL);
+            break;
+        }
+        default: assert(0);
         }
         break;
     case TUNABLES_COLUMN_READONLY:
