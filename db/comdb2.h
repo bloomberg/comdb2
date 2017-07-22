@@ -1192,7 +1192,7 @@ typedef struct snap_uid {
     struct query_effects effects;
     int keylen;
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
-    uint8_t replicant_can_retry; /* verifyretry on && !snapshot_iso or higer */
+    int replicant_can_retry; /* verifyretry on && !snapshot_iso or higer */
 } snap_uid_t;
 
 enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 + 4};

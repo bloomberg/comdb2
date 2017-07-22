@@ -5448,18 +5448,17 @@ printf("AZ: set outrc=%d\n",outrc);
             bskeylen = iq->seqlen;
         }
 
-        if (!rowlocks && iq->snap_info.replicant_can_retry) {
-            trans_abort(iq, parent_trans);
-            parent_trans = NULL;
-        }
-        else if (!rowlocks) {
+        
+        if (!rowlocks) {
             int t = time_epoch();
             char *buf; 
             memcpy(p_buf_fstblk, &t, sizeof(int));
+           if (!iq->snap_info.replicant_can_retry) {
 printf("Inserting into blkseq\n");
-            rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
-                    buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
-                    &replay_data, &replay_len);
+               rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
+                       buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
+                       &replay_data, &replay_len);
+           }
 
             if (iq->seqlen == sizeof(uuid_t)) {
                 uuidstr_t us;
