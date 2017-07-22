@@ -789,7 +789,7 @@ struct lockset_req {
     unsigned long long rows[1];
 };
 
-int has_cascading_reverse_constraints(struct dbtable *db);
+int has_cascading_reverse_constraints(struct dbtable *tbl);
 
 int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
                   const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
@@ -825,8 +825,8 @@ void dump_all_constraints(struct dbenv *env);
 void dump_constraints(struct dbtable *table);
 void dump_rev_constraints(struct dbtable *table);
 
-int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
-int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
+int restore_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
+int backout_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
 
 int do_twophase_commit(struct ireq *iq, tranid_t id, block_state_t *blkstate,
                        int initial_state, fstblkseq_t *seqnum);
