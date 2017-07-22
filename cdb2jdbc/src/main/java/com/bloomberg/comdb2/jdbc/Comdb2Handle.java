@@ -1280,6 +1280,8 @@ public class Comdb2Handle extends AbstractConnection {
         if (isHASqlCommit) {
             cleanup_query_list();
         }
+        if (isBegin)
+            inTxn = false;
 
         tdlog(Level.FINER, "Maximum retries done: returning IO_ERROR, is_rollback=%b", is_rollback);
         return is_rollback ? 0 : Errors.CDB2ERR_TRAN_IO_ERROR;
