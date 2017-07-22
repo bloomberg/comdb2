@@ -2902,7 +2902,7 @@ int fdb_remcur_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
 
 int fdb_remcur_cursor_move(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct db *db;
+    struct dbtable *db;
     char *cid = msg->cm.cid;
     unsigned long long genid;
     int rc = 0;

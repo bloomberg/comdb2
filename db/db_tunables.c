@@ -397,7 +397,7 @@ static int num_qdbs_update(void *context, void *value)
     int val = *(int *)value;
 
     *(int *)tunable->var = val;
-    thedb->qdbs = calloc(val, sizeof(struct db *));
+    thedb->qdbs = calloc(val, sizeof(struct dbtable *));
     qdbs = calloc(val + 1, sizeof(char *));
     return 0;
 }

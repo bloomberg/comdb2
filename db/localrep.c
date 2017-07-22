@@ -38,7 +38,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     uint8_t *p;
     struct field *fld;
     int offset = 0;
-    struct db *savedb;
+    struct dbtable *savedb;
     int rc;
     const uint8_t *lim;
 
@@ -239,7 +239,7 @@ err:
        We never log comdb2_oplog table inserts (see above) so it won't loop.
        (my name is NOT Steve) */
     savedb = iq->usedb;
-    iq->usedb = getdbbyname("comdb2_oplog");
+    iq->usedb = get_dbtable_by_name("comdb2_oplog");
     if (rc == 0)
         rc = add_oplog_entry(iq, trans, LCL_OP_ADD, serialize_buf, sz);
     iq->usedb = savedb;
@@ -259,7 +259,7 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
     /* log the delete.  once the update succeeds we log the add
        - otherwise the whole thing gets aborted. */
     long long id;
-    struct db *savedb;
+    struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
         long long id;
@@ -294,7 +294,7 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
         delop.id = id;
 
         savedb = iq->usedb;
-        iq->usedb = getdbbyname("comdb2_oplog");
+        iq->usedb = get_dbtable_by_name("comdb2_oplog");
         rc = add_oplog_entry(iq, trans, LCL_OP_DEL, &delop, sizeof(delop));
         iq->usedb = savedb;
         free(tmpbuf);
@@ -314,7 +314,7 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
                                int *opfailcode)
 {
     long long id;
-    struct db *savedb;
+    struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
         long long id;
@@ -330,7 +330,7 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
     delop.id = id;
 
     savedb = iq->usedb;
-    iq->usedb = getdbbyname("comdb2_oplog");
+    iq->usedb = get_dbtable_by_name("comdb2_oplog");
     rc = add_oplog_entry(iq, trans, LCL_OP_DEL, &delop, sizeof(delop));
     iq->usedb = savedb;
     if (rc != 0)
@@ -353,7 +353,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     uint8_t *p;
     struct field *fld;
     int offset = 0;
-    struct db *savedb;
+    struct dbtable *savedb;
     int fndlen;
     int odsz, clsz;
     unsigned long long oldgenid;
@@ -585,7 +585,7 @@ err:
        that logic.
        We never log comdb2_oplog table inserts (see above) so it won't loop. */
     savedb = iq->usedb;
-    iq->usedb = getdbbyname("comdb2_oplog");
+    iq->usedb = get_dbtable_by_name("comdb2_oplog");
     rc = add_oplog_entry(iq, trans, LCL_OP_ADD, serialize_buf, sz);
     iq->usedb = savedb;
     /* don't need this anymore whether or not we failed */
@@ -622,14 +622,14 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     struct oprec rec;
     blob_buffer_t blobs[MAXBLOBS] = {0};
     char *p;
-    struct db *db;
+    struct dbtable *db;
     struct ireq aiq;
 
     p_buf_tag_name = (const uint8_t *)"log";
     p_buf_tag_name_end = p_buf_tag_name + 3;
 
     /* from comdb2_oplog.csc2 -> cmdb2h */
-    db = getdbbyname("comdb2_oplog");
+    db = get_dbtable_by_name("comdb2_oplog");
     if (db == NULL)
         return 0;
 
@@ -697,12 +697,12 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     blob_buffer_t blobs[MAXBLOBS] = {0};
     struct commitrec rec;
 
-    struct db *db;
+    struct dbtable *db;
 
     p_buf_tag_name = (const uint8_t *)"log";
     p_buf_tag_name_end = p_buf_tag_name + 3;
 
-    db = getdbbyname("comdb2_commit_log");
+    db = get_dbtable_by_name("comdb2_commit_log");
     if (db == NULL)
         return 0;
 
@@ -731,7 +731,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     return rc;
 }
 
-int local_replicant_write_clear(struct db *db)
+int local_replicant_write_clear(struct dbtable *db)
 {
     struct schema *s;
     int rc;
@@ -744,7 +744,7 @@ int local_replicant_write_clear(struct db *db)
     struct block_state blkstate = {0};
 
     /* skip if not needed */
-    if (gbl_replicate_local == 0 || getdbbyname("comdb2_oplog") == NULL)
+    if (gbl_replicate_local == 0 || get_dbtable_by_name("comdb2_oplog") == NULL)
         return 0;
 
     s = find_tag_schema(db->dbname, ".ONDISK_CLIENT");

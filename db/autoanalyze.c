@@ -45,7 +45,7 @@ void reset_aa_counter(char *tblname)
 
     BDB_READLOCK(__func__);
 
-    struct db *db = getdbbyname(tblname);
+    struct dbtable *db = get_dbtable_by_name(tblname);
     if (!db) {
         BDB_RELLOCK();
         return;
@@ -139,7 +139,7 @@ int load_auto_analyze_counters(void)
     int save_freq = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ);
 
     for (int i = 0; i < thedb->num_dbs; i++) {
-        struct db *db = thedb->dbs[i];
+        struct dbtable *db = thedb->dbs[i];
         if (is_sqlite_stat(db->dbname))
             continue;
 
@@ -157,7 +157,7 @@ int load_auto_analyze_counters(void)
     return 0;
 }
 
-static long long get_num_rows_from_stat1(struct db *tbldb)
+static long long get_num_rows_from_stat1(struct dbtable *tbldb)
 {
     char fnd_txt[64] = {0};
     char ix_txt[128] = {0};
@@ -167,7 +167,7 @@ static long long get_num_rows_from_stat1(struct db *tbldb)
     tran_type *trans = NULL;
 
     init_fake_ireq(thedb, &iq);
-    iq.usedb = getdbbyname("sqlite_stat1");
+    iq.usedb = get_dbtable_by_name("sqlite_stat1");
 
     int rc = trans_start(&iq, NULL, &trans);
     if (rc) {
@@ -257,13 +257,13 @@ void stat_auto_analyze(void)
            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ));
     int include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
 
-    if (NULL == getdbbyname("sqlite_stat1")) {
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         logmsg(LOGMSG_USER, "ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
         return;
     }
 
     for (int i = 0; i < thedb->num_dbs; i++) {
-        struct db *db = thedb->dbs[i];
+        struct dbtable *db = thedb->dbs[i];
         if (is_sqlite_stat(db->dbname))
             continue;
 
@@ -311,7 +311,7 @@ void *auto_analyze_main(void *unused)
         return NULL; // nothing to do
     }
 
-    if (NULL == getdbbyname("sqlite_stat1")) {
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
 #ifdef DEBUG
         printf("ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
 #endif
@@ -350,7 +350,7 @@ void *auto_analyze_main(void *unused)
             gbl_schema_change_in_progress) // should not be writing
             break;
 
-        struct db *db = thedb->dbs[i];
+        struct dbtable *db = thedb->dbs[i];
         if (is_sqlite_stat(db->dbname))
             continue;
 

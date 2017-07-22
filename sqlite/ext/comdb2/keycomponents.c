@@ -153,7 +153,7 @@ static int systblFieldsColumn(
   int i
 ){
   systbl_fields_cursor *pCur = (systbl_fields_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   struct schema *pSchema = pDb->ixschema[pCur->iKeyid];
   struct field *pField = &pSchema->member[pCur->iFieldid];
 

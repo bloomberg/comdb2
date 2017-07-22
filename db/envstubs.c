@@ -49,7 +49,7 @@ int comdb2_shm_set_flag(int db, int flag)
     if (db == thedb->dbnum) {
         thedb->shmflags |= flag;
     } else {
-        struct db *sdb = getdbbynum(db);
+        struct dbtable *sdb = getdbbynum(db);
         if (sdb == NULL) {
             logmsg(LOGMSG_ERROR, "no db %d in environment\n", db);
             return 1;
@@ -64,7 +64,7 @@ int comdb2_shm_clr_flag(int db, int flag)
     if (db == thedb->dbnum) {
         thedb->shmflags &= (~flag);
     } else {
-        struct db *sdb = getdbbynum(db);
+        struct dbtable *sdb = getdbbynum(db);
         if (sdb == NULL) {
             logmsg(LOGMSG_ERROR, "no db %d in environment\n", db);
             return 1;
@@ -79,7 +79,7 @@ int comdb2_shm_get_flags(int db, int *flags)
     if (db == thedb->dbnum) {
         *flags = thedb->shmflags;
     } else {
-        struct db *sdb = getdbbynum(db);
+        struct dbtable *sdb = getdbbynum(db);
         if (sdb == NULL) {
             logmsg(LOGMSG_ERROR, "no db %d in environment\n", db);
             return 1;

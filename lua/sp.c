@@ -141,7 +141,7 @@ static void reset_sp(SP);
     (sizeof(dbconsumer_t) - sizeof(trigger_reg_t) + trigger_reg_sz(qname))
 
 static void setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
-                             struct db *qdb, trigger_reg_t *info)
+                             struct dbtable *qdb, trigger_reg_t *info)
 {
     init_fake_ireq(thedb, &q->iq);
     q->iq.usedb = qdb;
@@ -4127,7 +4127,7 @@ static int db_consumer(Lua L)
     strcpy(spname, sp->spname);
     Q4SP(qname, spname);
 
-    struct db *db = getqueuebyname(qname);
+    struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         return luaL_error(L, "trigger not found for sp:%s", spname);
     }
@@ -6506,7 +6506,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     char *spname = reg->qname;
     Q4SP(qname, spname);
-    struct db *db = getqueuebyname(qname);
+    struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         *err = strdup("getqueuebyname failed");
         return -1;

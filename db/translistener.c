@@ -754,7 +754,7 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
     struct field *f;
     int i;
     struct sp_field *fld;
-    struct db *usedb;
+    struct dbtable *usedb;
     int nfields = 0;
 
     /* TODO: can cache most of this information, don't allocate 2 buffers per
@@ -1114,11 +1114,11 @@ int javasp_add_procedure(const char *name, const char *jar, const char *param)
 
 static int sp_field_is_a_blob(const char *table, const char *field)
 {
-    struct db *db;
+    struct dbtable *db;
     int fnum;
     struct field *f;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL)
         return 0;
     for (fnum = 0; fnum < db->schema->nmembers; fnum++) {

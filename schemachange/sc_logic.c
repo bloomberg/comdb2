@@ -204,7 +204,7 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int free_sc)
 
 static int set_original_tablename(struct schema_change_type *s)
 {
-    struct db *db = getdbbyname(s->table);
+    struct dbtable *db = get_dbtable_by_name(s->table);
     if (db) {
         strncpy0(s->table, db->dbname, sizeof(s->table));
         return 0;
@@ -220,8 +220,8 @@ int do_alter_table_shard(struct ireq *iq, int indx, int maxindx, void *tran)
     int rc;
 
     if (!s->timepart_dbs) {
-        s->timepart_dbs = (struct db **)calloc(maxindx, sizeof(struct db *));
-        s->timepart_newdbs = (struct db **)calloc(maxindx, sizeof(struct db *));
+        s->timepart_dbs = (struct dbtable **)calloc(maxindx, sizeof(struct dbtable *));
+        s->timepart_newdbs = (struct dbtable **)calloc(maxindx, sizeof(struct dbtable *));
         s->timepart_nshards = maxindx;
     }
 
@@ -235,7 +235,7 @@ int do_alter_table_shard(struct ireq *iq, int indx, int maxindx, void *tran)
     return rc;
 }
 
-static void check_for_idx_rename(struct db *newdb, struct db *olddb)
+static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
 {
     if (!newdb || !newdb->plan) return;
 
@@ -407,7 +407,7 @@ end:
 
 int do_alter_queues(struct schema_change_type *s)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc, bdberr;
 
     set_original_tablename(s);
@@ -430,7 +430,7 @@ int do_alter_queues(struct schema_change_type *s)
 
 int do_alter_stripes(struct schema_change_type *s)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc, bdberr;
 
     set_original_tablename(s);
@@ -515,7 +515,7 @@ int do_schema_change(struct schema_change_type *s)
     init_fake_ireq(thedb, &iq);
     iq.sc = s;
     if (s->db == NULL) {
-        s->db = getdbbyname(s->table);
+        s->db = get_dbtable_by_name(s->table);
     }
     iq.usedb = s->db;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
@@ -767,7 +767,7 @@ int resume_schema_change(void)
 /****************** Functions down here will likely be moved elsewhere *****/
 
 /* this assumes threads are not active in db */
-int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
+int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran)
 {
     char *tmpname;
@@ -838,7 +838,7 @@ int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
  * new.tablename file versions causing horrifying bugs.
  * @return returns 0 on success; !0 otherwise
  */
-int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb, tran_type *tran)
+int verify_new_temp_sc_db(struct dbtable *p_db, struct dbtable *p_newdb, tran_type *tran)
 {
     int i;
     int bdberr;
@@ -933,12 +933,12 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb, tran_type *tran)
 }
 
 /* close and remove the temp table after a failed schema change. */
-int delete_temp_table(struct ireq *iq, struct db *newdb)
+int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
 {
     struct schema_change_type *s = iq->sc;
     tran_type *tran = NULL;
     int i, rc, bdberr;
-    struct db *usedb_sav;
+    struct dbtable *usedb_sav;
 
     rc = bdb_close_only(newdb->handle, &bdberr);
     if (rc) {
@@ -1011,7 +1011,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
         return rc;
     }
 
-    struct db *db = iq->usedb;
+    struct dbtable *db = iq->usedb;
     bdb_lock_table_write(db->handle, tran);
     int ra, ba;
     if ((rc = get_db_compress(db, &ra)) != 0) goto out;
@@ -1043,7 +1043,7 @@ out:
     return rc;
 }
 
-int dryrun_int(struct schema_change_type *s, struct db *db, struct db *newdb,
+int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable *newdb,
                struct scinfo *scinfo)
 {
     int changed;

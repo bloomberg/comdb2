@@ -31,7 +31,7 @@
 
 #include <bdb_api.h>
 
-void dump_record_by_rrn_genid(struct db *db, int rrn, unsigned long long genid)
+void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
     int rc;
     struct ireq iq;
@@ -82,7 +82,7 @@ void dump_record_by_rrn_genid(struct db *db, int rrn, unsigned long long genid)
     free(dta);
 }
 
-void purge_by_genid(struct db *db, unsigned long long *genid)
+void purge_by_genid(struct dbtable *db, unsigned long long *genid)
 {
     int bdberr;
     /* purge all records, index entries and blobs containing a
@@ -177,7 +177,7 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
                                      int offset[16], int *nblobs)
 {
     int i;
-    struct db *db = parm;
+    struct dbtable *db = parm;
     struct schema *s;
     int blobix = 0;
     int rc;
@@ -221,7 +221,7 @@ static int verify_blobsizes_callback(void *parm, void *dta, int blobsizes[16],
 static int verify_formkey_callback(void *parm, void *dta, void *blob_parm,
                                    int ix, void *keyout, int *keysz)
 {
-    struct db *db = parm;
+    struct dbtable *db = parm;
     int rc;
     struct convert_failure reason;
 
@@ -268,11 +268,11 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
              int attempt_fix, 
              int (*lua_callback)(void *, const char *), void *lua_params)
 {
-    struct db *db;
+    struct dbtable *db;
     blob_buffer_t blob_buf[MAXBLOBS];
     int rc = 0;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     bzero(blob_buf, sizeof(blob_buf));
     if (db == NULL) {
         if (sb) sbuf2printf(sb, "?Unknown table %s\nFAILED\n", table);

@@ -849,26 +849,26 @@ static void usage(void)
     exit(1);
 }
 
-int getkeyrecnums(const struct db *db, int ixnum)
+int getkeyrecnums(const struct dbtable *db, int ixnum)
 {
     if (ixnum < 0 || ixnum >= db->nix)
         return -1;
     return db->ix_recnums[ixnum] != 0;
 }
-int getkeysize(const struct db *db, int ixnum)
+int getkeysize(const struct dbtable *db, int ixnum)
 {
     if (ixnum < 0 || ixnum >= db->nix)
         return -1;
     return db->ix_keylen[ixnum];
 }
 
-int getdatsize(const struct db *db) { return db->lrl; }
+int getdatsize(const struct dbtable *db) { return db->lrl; }
 
 /*lookup dbs..*/
-struct db *getdbbynum(int num)
+struct dbtable *getdbbynum(int num)
 {
     int ii;
-    struct db *p_db = NULL;
+    struct dbtable *p_db = NULL;
     pthread_rwlock_rdlock(&thedb_lock);
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum == num) {
@@ -883,14 +883,14 @@ struct db *getdbbynum(int num)
 
 int getdbidxbyname(const char *p_name)
 {
-    struct db *db;
+    struct dbtable *db;
     db = hash_find_readonly(thedb->db_hash, &p_name);
     return (db) ? db->dbs_idx : -1;
 }
 
-struct db *getdbbyname(const char *p_name)
+struct dbtable *get_dbtable_by_name(const char *p_name)
 {
-    struct db *p_db = NULL;
+    struct dbtable *p_db = NULL;
 
     pthread_rwlock_rdlock(&thedb_lock);
     p_db = hash_find_readonly(thedb->db_hash, &p_name);
@@ -899,7 +899,7 @@ struct db *getdbbyname(const char *p_name)
     return p_db;
 }
 
-struct db *getqueuebyname(const char *name)
+struct dbtable *getqueuebyname(const char *name)
 {
     return hash_find_readonly(thedb->qdb_hash, &name);
 }
@@ -972,7 +972,7 @@ int get_max_reclen(struct dbenv *dbenv)
 void showdbenv(struct dbenv *dbenv)
 {
     int ii, jj;
-    struct db *usedb;
+    struct dbtable *usedb;
     logmsg(LOGMSG_USER, "-----\n");
     for (jj = 0; jj < dbenv->num_dbs; jj++) {
         usedb = dbenv->dbs[jj]; /*de-stink*/
@@ -1578,13 +1578,13 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
     return 1; /* there was no "if" statement or it was true */
 }
 
-struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
+struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
 
-    db = calloc(1, sizeof(struct db));
+    db = calloc(1, sizeof(struct dbtable));
     db->dbname = strdup(name);
     db->dbenv = env;
     db->is_readonly = 0;
@@ -1604,7 +1604,7 @@ struct db *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
     return db;
 }
 
-void cleanup_newdb(struct db *db)
+void cleanup_newdb(struct dbtable *db)
 {
     if (!db)
         return;
@@ -1631,15 +1631,15 @@ void cleanup_newdb(struct db *db)
     db = NULL;
 }
 
-struct db *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
+struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                              int dbnum, int dbix, int is_foreign)
 {
-    struct db *db;
+    struct dbtable *db;
     int ii;
     int tmpidxsz;
     int rc;
 
-    db = calloc(1, sizeof(struct db));
+    db = calloc(1, sizeof(struct dbtable));
     if (db == NULL) {
         logmsg(LOGMSG_FATAL, "%s: Memory allocation error\n", __func__);
         return NULL;
@@ -2409,7 +2409,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return -1;
         }
     } else if (tokcmp(tok, ltok, "queue") == 0) {
-        struct db *db;
+        struct dbtable *db;
         char *qname = NULL;
         int avgsz;
         int pagesize = 0;
@@ -2462,7 +2462,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         db->dbs_idx = -1;
 
         dbenv->qdbs =
-            realloc(dbenv->qdbs, (dbenv->num_qdbs + 1) * sizeof(struct db *));
+            realloc(dbenv->qdbs, (dbenv->num_qdbs + 1) * sizeof(struct dbtable *));
         dbenv->qdbs[dbenv->num_qdbs++] = db;
 
         /* Add queue to the hash. */
@@ -2475,7 +2475,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         char *qname = NULL;
         int consumer;
         char *method = NULL;
-        struct db *db;
+        struct dbtable *db;
         int lrc = 0;
 
         /*
@@ -2527,7 +2527,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             ++slot;
         tok = segtok(line, len, &st, &ltok);
         *slot = tokdup(tok, ltok);
-        struct db **qdb = &dbenv->qdbs[0];
+        struct dbtable **qdb = &dbenv->qdbs[0];
         while (*qdb)
             ++qdb;
         char *name = get_qdb_name(*slot);
@@ -2559,7 +2559,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         char tmpname[MAXTABLELEN];
 
         dbenv->dbs =
-            realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct db *));
+            realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
 
         tok = segtok(line, len, &st, &ltok); /* tbl name */
         if (ltok == 0) {
@@ -2572,7 +2572,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         tok = segtok(line, len, &st, &ltok);
         fname = getdbrelpath(tokdup(tok, ltok));
 
-        /* if it's a schema file, allocate a struct db, populate with crap
+        /* if it's a schema file, allocate a struct dbtable, populate with crap
          * data, then load schema.  if it's an lrl file, we don't support it
          * anymore */
 
@@ -2582,7 +2582,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return -1;
         } else if (strstr(fname, ".csc2") != 0) {
             int dbnum;
-            struct db *db;
+            struct dbtable *db;
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
@@ -3082,7 +3082,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
-    struct db *db;
+    struct dbtable *db;
 
     /* nothing to do */
     if (gbl_create_mode)
@@ -3101,7 +3101,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         int ver;
         int bdberr;
 
-        db = getdbbyname(tblnames[i]);
+        db = get_dbtable_by_name(tblnames[i]);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "Can't find handle for table %s\n", tblnames[i]);
             return -1;
@@ -3159,13 +3159,13 @@ static int llmeta_load_queues(struct dbenv *dbenv)
         return 0;
 
     dbenv->qdbs = realloc(dbenv->qdbs,
-                          (dbenv->num_qdbs + fnd_queues) * sizeof(struct db *));
+                          (dbenv->num_qdbs + fnd_queues) * sizeof(struct dbtable *));
     if (dbenv->qdbs == NULL) {
         logmsg(LOGMSG_ERROR, "can't allocate memory for queue list\n");
         return -1;
     }
     for (int i = 0; i < fnd_queues; i++) {
-        struct db *db;
+        struct dbtable *db;
         char **dests;
         int ndests;
         char *config;
@@ -3217,7 +3217,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
-    struct db *db;
+    struct dbtable *db;
 
     /* load the tables from the low level metatable */
     if (bdb_llmeta_get_tables(NULL, tblnames, dbnums, sizeof(tblnames),
@@ -3233,7 +3233,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
     /* make room for dbs */
-    dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(struct db *));
+    dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(struct dbtable *));
 
     for (i = 0; i < fndnumtbls; ++i) {
         char *csc2text = NULL;
@@ -3481,9 +3481,9 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     int i;
     int bdberr;
     unsigned long long version_num;
-    struct db *p_db;
+    struct dbtable *p_db;
 
-    if (!(p_db = getdbbyname(table)))
+    if (!(p_db = get_dbtable_by_name(table)))
         return -1;
 
     /* print out the versions of each of the table's files */
@@ -3645,10 +3645,10 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     /* Initialize the table/queue hashes. */
     dbenv->db_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct db, dbname), 0);
+                       offsetof(struct dbtable, dbname), 0);
     dbenv->qdb_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct db, dbname), 0);
+                       offsetof(struct dbtable, dbname), 0);
 
     if ((rc = pthread_mutex_init(&dbenv->dbqueue_admin_lk, NULL)) != 0) {
         logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
@@ -4297,10 +4297,10 @@ static int llmeta_set_qdbs()
 static int init_sqlite_table(struct dbenv *dbenv, char *table)
 {
     int rc;
-    struct db *db;
+    struct dbtable *db;
 
     dbenv->dbs =
-        realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct db *));
+        realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(struct dbtable *));
 
     /* This used to just pull from installed files.  Let's just do it from memory
        so comdb2 can run standalone with no support files. */
@@ -4370,7 +4370,7 @@ static void load_dbstore_tableversion(struct dbenv *dbenv)
 {
     int i;
     for (i = 0; i < dbenv->num_dbs; i++) {
-        struct db *db = dbenv->dbs[i];
+        struct dbtable *db = dbenv->dbs[i];
         update_dbstore(db);
 
         db->tableversion = table_version_select(db, NULL);
@@ -5652,7 +5652,7 @@ void *statthd(void *p)
     int hdr;
     int diff;
     int thresh;
-    struct db *db;
+    struct dbtable *db;
     char hdr_fmt[] = "DIFF REQUEST STATS FOR DB %d '%s'\n";
     int have_scon_header = 0;
     int have_scon_stats = 0;
@@ -6797,7 +6797,7 @@ void delete_db(char *db_name)
     pthread_rwlock_unlock(&thedb_lock);
 }
 
-void replace_db_idx(struct db *p_db, int idx)
+void replace_db_idx(struct dbtable *p_db, int idx)
 {
     int move = 0;
     pthread_rwlock_wrlock(&thedb_lock);
@@ -6805,7 +6805,7 @@ void replace_db_idx(struct db *p_db, int idx)
     if (idx < 0 || idx >= thedb->num_dbs ||
         strcasecmp(thedb->dbs[idx]->dbname, p_db->dbname) != 0) {
         thedb->dbs =
-            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
         if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
         thedb->num_dbs++;
         move = 1;

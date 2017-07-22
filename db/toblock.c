@@ -194,8 +194,8 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 {
     int cblob;
     int rc;
-    struct db *qdb;
-    struct db *olddb;
+    struct dbtable *qdb;
+    struct dbtable *olddb;
     char qname[MAXTABLELEN];
 
     if (buf->qnamelen > sizeof(qname) - 1) {
@@ -2812,7 +2812,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
 
-    if (gbl_replicate_local && getdbbyname("comdb2_oplog")) {
+    if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog")) {
         /* Transactionally read the last sequence number.
            This effectively serializes all updates.
            There are probably riskier more clever schemes where we don't
@@ -4037,7 +4037,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     BACKOUT;
                 }
 
-                iq->usedb = getdbbyname(tbltag);
+                iq->usedb = get_dbtable_by_name(tbltag);
                 if (iq->usedb == NULL) {
                     iq->usedb = iq->origdb;
                     if (iq->debug)
@@ -6024,9 +6024,9 @@ int get_next_seqno(void *tran, long long *seqno)
     init_fake_ireq(thedb, &iq);
 
     if (gbl_replicate_local_concurrent)
-        iq.usedb = getdbbyname("comdb2_commit_log");
+        iq.usedb = get_dbtable_by_name("comdb2_commit_log");
     else
-        iq.usedb = getdbbyname("comdb2_oplog");
+        iq.usedb = get_dbtable_by_name("comdb2_oplog");
 
     /* HUH? */
     if (iq.usedb == NULL) {

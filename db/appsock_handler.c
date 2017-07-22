@@ -228,7 +228,7 @@ static struct appsock_cmd *tok2command(char *tok, int ltok)
     return NULL;
 }
 
-static void dumprrns(struct db *db, SBUF2 *sb)
+static void dumprrns(struct dbtable *db, SBUF2 *sb)
 {
     char key[MAXKEYLEN];
     char fndkey[MAXKEYLEN];
@@ -266,7 +266,7 @@ struct loadrrn_cmd {
 };
 
 enum { LOAD_ADD_RECORD, LOAD_GET_STATUS };
-static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
+static int loadrrns(struct dbtable *db, SBUF2 *sb, char *tag)
 {
     int len;
     char *buf;
@@ -322,7 +322,7 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
 
 /* callback for converting records to given tag */
 static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
-                            size_t clientreclen, struct db *db, const char *tag,
+                            size_t clientreclen, struct dbtable *db, const char *tag,
                             const char *tzname, uint8_t ver, int conv_flags)
 {
     unsigned char nulls[MAXNULLBITS];
@@ -388,7 +388,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
     int rc, ltok, st;
     char line[128] = {0};
     char *tok;
-    struct db *usedb, *db;
+    struct dbtable *usedb, *db;
     int bdberr, conv_flags = 0;
     struct dbenv *dbenv;
     *keepsocket = 0;

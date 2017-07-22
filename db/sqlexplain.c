@@ -126,7 +126,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
         return;
     } 
     
-    struct db *db = NULL;
+    struct dbtable *db = NULL;
     if (cinfo->tbl < thedb->num_dbs) {
         db = thedb->dbs[cinfo->tbl];
     }
@@ -193,7 +193,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
         }
         strbuf_appendf(out, "temp_%d", cinfo->tbl);
     } else {
-        struct db *db;
+        struct dbtable *db;
         db = thedb->dbs[cinfo->tbl];
 
         if (cinfo->ix != -1) {

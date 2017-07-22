@@ -104,7 +104,7 @@ typedef struct index_descriptor {
     pthread_t thread_id;
     int comp_state;
     sampled_idx_t *s_ix;
-    struct db *tbl;
+    struct dbtable *tbl;
     int ix;
     int sampling_pct;
 } index_descriptor_t;
@@ -169,7 +169,7 @@ static int run_sql_part_trans(sqlite3 *sqldb, struct sqlclntstate *client,
 static int check_stat1_and_flag(SBUF2 *sb)
 {
     /* verify sqlite_stat1 */
-    if (NULL == getdbbyname("sqlite_stat1")) {
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         sbuf2printf(sb, "?%s: analyze requires sqlite_stat1 to run\n",
                     __func__);
         sbuf2printf(sb, "FAILED\n");
@@ -194,7 +194,7 @@ void cleanup_stats(SBUF2 *sb)
     start_internal_sql_clnt(&clnt);
     clnt.sb = sb;
 
-    if (getdbbyname("sqlite_stat1")) {
+    if (get_dbtable_by_name("sqlite_stat1")) {
         run_internal_sql_clnt(&clnt,
                               "delete from sqlite_stat1 where idx is null");
         run_internal_sql_clnt(&clnt, "delete from sqlite_stat1 where idx not "
@@ -202,12 +202,12 @@ void cleanup_stats(SBUF2 *sb)
                                      "type='index')");
     }
 
-    if (getdbbyname("sqlite_stat2"))
+    if (get_dbtable_by_name("sqlite_stat2"))
         run_internal_sql_clnt(&clnt, "delete from sqlite_stat2 where idx not "
                                      "in (select name from sqlite_master where "
                                      "type='index')");
 
-    if (getdbbyname("sqlite_stat4"))
+    if (get_dbtable_by_name("sqlite_stat4"))
         run_internal_sql_clnt(&clnt, "delete from sqlite_stat4 where idx not "
                                      "in (select name from sqlite_master where "
                                      "type='index' UNION select "
@@ -242,7 +242,7 @@ static sampled_idx_t *find_sampled_index(struct sqlclntstate *client,
 static int sample_index_int(index_descriptor_t *ix_des)
 {
     sampled_idx_t *s_ix = ix_des->s_ix;
-    struct db *tbl = ix_des->tbl;
+    struct dbtable *tbl = ix_des->tbl;
     int sampling_pct = ix_des->sampling_pct;
     int ix = ix_des->ix;
     int rc;
@@ -355,7 +355,7 @@ static int wait_for_index(index_descriptor_t *ix_des)
 
 /* sample all indicies in this table */
 static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
-                           struct db *tbl, int sampling_pct, SBUF2 *sb)
+                           struct dbtable *tbl, int sampling_pct, SBUF2 *sb)
 {
     int i;
     int err = 0;
@@ -407,7 +407,7 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
 }
 
 /* clean up */
-static int cleanup_sampled_indicies(struct sqlclntstate *client, struct db *tbl)
+static int cleanup_sampled_indicies(struct sqlclntstate *client, struct dbtable *tbl)
 {
     int i;
     int rc;
@@ -452,7 +452,7 @@ int analyze_get_nrecs(int iTable)
 {
     struct sql_thread *thd;
     struct sqlclntstate *client;
-    struct db *db;
+    struct dbtable *db;
     sampled_idx_t *s_ix;
     int ixnum;
     int tblnum;
@@ -529,7 +529,7 @@ static int local_replicate_write_analyze(char *table)
     struct block_state blkstate = {0};
 
     /* skip if not needed */
-    if (gbl_replicate_local == 0 || getdbbyname("comdb2_oplog") == NULL)
+    if (gbl_replicate_local == 0 || get_dbtable_by_name("comdb2_oplog") == NULL)
         return 0;
 
     init_fake_ireq(thedb, &iq);
@@ -703,7 +703,7 @@ static int analyze_table_int(table_descriptor_t *td,
 #endif
 
     /* make sure we can find this table */
-    struct db *tbl = getdbbyname(td->table);
+    struct dbtable *tbl = get_dbtable_by_name(td->table);
     if (!tbl) {
         sbuf2printf(td->sb, "?Cannot find table '%s'\n", td->table);
         return -1;
@@ -753,7 +753,7 @@ static int analyze_table_int(table_descriptor_t *td,
     if (rc)
         goto error;
 
-    if (getdbbyname("sqlite_stat2")) {
+    if (get_dbtable_by_name("sqlite_stat2")) {
         snprintf(sql, sizeof(sql),
                  "delete from sqlite_stat2 where tbl='cdb2.%s.sav'", td->table);
 
@@ -770,7 +770,7 @@ static int analyze_table_int(table_descriptor_t *td,
             goto error;
     }
 
-    if (getdbbyname("sqlite_stat4")) {
+    if (get_dbtable_by_name("sqlite_stat4")) {
         snprintf(sql, sizeof(sql),
                  "delete from sqlite_stat4 where tbl='cdb2.%s.sav'", td->table);
 
@@ -954,7 +954,7 @@ static int wait_for_table(table_descriptor_t *td)
 static inline int check_stat1(SBUF2 *sb)
 {
     /* verify sqlite_stat1 */
-    if (NULL == getdbbyname("sqlite_stat1")) {
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         sbuf2printf(sb, ">%s: analyze requires sqlite_stat1 to run\n",
                     __func__);
         sbuf2printf(sb, "FAILED\n");
@@ -1237,13 +1237,13 @@ static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
     if (rc)
         goto error;
 
-    if (getdbbyname("sqlite_stat2")) {
+    if (get_dbtable_by_name("sqlite_stat2")) {
         rc = backout_stats_frm_tbl(clnt, table, 2);
         if (rc)
             goto error;
     }
 
-    if (getdbbyname("sqlite_stat4")) {
+    if (get_dbtable_by_name("sqlite_stat4")) {
         rc = backout_stats_frm_tbl(clnt, table, 4);
         if (rc)
             goto error;
@@ -1301,7 +1301,7 @@ void handle_backout(SBUF2 *sb, char *table)
  */
 void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
 {
-    if (NULL == getdbbyname("sqlite_stat1"))
+    if (NULL == get_dbtable_by_name("sqlite_stat1"))
         return; // stat1 does not exist, nothing to do
 
     char sql[256];
@@ -1311,7 +1311,7 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
              newname, tbl, oldname);
     run_internal_sql(sql);
 
-    if (getdbbyname("sqlite_stat2")) {
+    if (get_dbtable_by_name("sqlite_stat2")) {
         snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat2 select tbl, '%s' "
                                    "as idx, sampleno, sample FROM sqlite_stat2 "
                                    "WHERE tbl='%s' and idx='%s' \n",
@@ -1319,7 +1319,7 @@ void add_idx_stats(const char *tbl, const char *oldname, const char *newname)
         run_internal_sql(sql);
     }
 
-    if (getdbbyname("sqlite_stat4")) {
+    if (get_dbtable_by_name("sqlite_stat4")) {
         snprintf(sql, sizeof(sql), "INSERT INTO sqlite_stat4 select tbl, '%s' "
                                    "as idx, neq, nlt, ndlt, sample FROM "
                                    "sqlite_stat4 WHERE tbl='%s' and idx='%s' "
