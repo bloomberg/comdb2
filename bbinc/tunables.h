@@ -137,8 +137,11 @@ struct comdb2_tunable {
     /* Flags. */
     unsigned long int flags;
 
-    /* Returns the value of the tunable in cstring. (Optional) */
-    const char *(*value)(void *);
+    /*
+      Returns the value of the tunable. (Optional)
+      ENUM types must always return a null-terminated string.
+    */
+    void *(*value)(void *);
 
     /*
       Verify the value of the tunable. (Optional)
