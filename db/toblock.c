@@ -5450,26 +5450,28 @@ printf("AZ: set outrc=%d\n",outrc);
 
         
         if (!rowlocks) {
-            int t = time_epoch();
-            char *buf; 
-            memcpy(p_buf_fstblk, &t, sizeof(int));
-           if (!iq->snap_info.replicant_can_retry) {
+            /* force a parent-deadlock for cdb2tcm */
+            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
+                logmsg(LOGMSG_USER, "tcm forcing parent retry\n");
+                rc = RC_INTERNAL_RETRY;
+            }
+
+            // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
+            if (rc != RC_INTERNAL_RETRY || !iq->snap_info.replicant_can_retry) {
+                int t = time_epoch();
+                memcpy(p_buf_fstblk, &t, sizeof(int));
 printf("Inserting into blkseq\n");
-               rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
-                       buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
-                       &replay_data, &replay_len);
-           }
+                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
+                        buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
+                        &replay_data, &replay_len);
+            }
 
             if (iq->seqlen == sizeof(uuid_t)) {
                 uuidstr_t us;
                 uuid_t u;
                 memcpy(&u, iq->seq, iq->seqlen);
                 comdb2uuidstr(u, us);
-            }             /* force a parent-deadlock for cdb2tcm */
-            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry\n");
-                rc = RC_INTERNAL_RETRY;
-            }
+            }             
 
             if (rc == 0 && have_blkseq) {
                 irc = trans_commit_adaptive(iq, parent_trans, source_host);
@@ -5496,9 +5498,9 @@ printf("Inserting into blkseq\n");
                     memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
                     bskey[iq->snap_info.keylen] = '\0';
                     logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
-                                        "errstr='%s', rcout=%d commit-rc=%d\n",
-                           bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                           iq->sorese.rcout, irc);
+                            "errstr='%s', rcout=%d commit-rc=%d\n",
+                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
+                            iq->sorese.rcout, irc);
                 }
             } else {
                 if (hascommitlock) {
@@ -5515,12 +5517,12 @@ printf("Inserting into blkseq\n");
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(),
-                           __FILE__, __LINE__);
+                            __FILE__, __LINE__);
                     outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
-                                           replay_len, __LINE__);
+                            replay_len, __LINE__);
                     did_replay = 1;
                     logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
-                           __FILE__, __LINE__, outrc);
+                            __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
 
                     goto cleanup;
@@ -5531,17 +5533,17 @@ printf("Inserting into blkseq\n");
                     if (block_state_restore(iq, p_blkstate))
                         /* TODO can I just return here? should prob go to
                          * cleanup ? */
-                        return ERR_INTERNAL;
+                    return ERR_INTERNAL;
 
                     outrc = RC_INTERNAL_RETRY;
                     fromline = __LINE__;
 
                     /* lets bump the priority if we got killed here */
                     if (bdb_attr_get(thedb->bdb_attr,
-                                     BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
+                                BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                         iq->priority += bdb_attr_get(
-                            thedb->bdb_attr,
-                            BDB_ATTR_DEADLK_PRIORITY_BUMP_ON_FSTBLK);
+                                thedb->bdb_attr,
+                                BDB_ATTR_DEADLK_PRIORITY_BUMP_ON_FSTBLK);
                     }
                     goto cleanup;
                 }
