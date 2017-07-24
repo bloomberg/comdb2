@@ -82,14 +82,17 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     int ret = 0;
 
     FILE *override = io_override_get_std();
-    if (!override) {
-        if (lvl < level)
-            return 0;
+    /*
+      Send the message to user/client only if log level is set to
+      LOGMSG_USER. All other messages must go to server log.
+    */
+    if (override && (lvl == LOGMSG_USER)) {
+        f = override;
+    } else {
+        if (lvl < level) return 0;
 
         f = stderr;
     }
-    else
-        f = override;
 
     char buf[1];
 
