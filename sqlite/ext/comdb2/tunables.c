@@ -108,8 +108,16 @@ static int systblTunablesFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
 
 static int systblTunablesNext(sqlite3_vtab_cursor *cur)
 {
+    comdb2_tunable *tunable;
     systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)cur;
-    pCur->rowid++;
+
+    /* Skip all tunables marked 'INTERNAL'. */
+    do {
+        pCur->rowid++;
+        if (pCur->rowid >= gbl_tunables->count) break;
+        tunable = gbl_tunables->array[((systbl_tunables_cursor *)cur)->rowid];
+    } while ((tunable->flags & INTERNAL) != 0);
+
     return SQLITE_OK;
 }
 

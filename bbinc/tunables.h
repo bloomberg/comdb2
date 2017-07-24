@@ -100,6 +100,7 @@ typedef enum {
     TUNABLE_BOOLEAN,
     TUNABLE_STRING,
     TUNABLE_ENUM,
+    TUNABLE_COMPOSITE,
 
     /* Must always be the last. */
     TUNABLE_INVALID,

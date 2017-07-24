@@ -31,6 +31,9 @@
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
 
+/* Separator for composite tunable components. */
+#define COMPOSITE_TUNABLE_SEP '.'
+
 extern int gbl_allow_lua_print;
 extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
@@ -753,8 +756,10 @@ int register_tunable(comdb2_tunable tunable)
     }
     t->type = tunable.type;
 
-    if (!tunable.var) {
-        logmsg(LOGMSG_ERROR, "%s: Tunable must have a value.\n", __func__);
+    if (!tunable.var && !tunable.value && (tunable.type != TUNABLE_COMPOSITE)) {
+        logmsg(LOGMSG_ERROR, "%s: A non-composite Tunable with no var pointer "
+                             "set, must have its value function defined.\n",
+               __func__);
         goto err;
     }
     t->var = tunable.var;
@@ -799,6 +804,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_BOOLEAN: return "BOOLEAN";
     case TUNABLE_STRING: return "STRING";
     case TUNABLE_ENUM: return "ENUM";
+    case TUNABLE_COMPOSITE: return "COMPOSITE";
     default: assert(0);
     }
 }
@@ -933,8 +939,9 @@ static int parse_bool(const char *value, int *num)
     if (ret) {                                                                 \
         logmsg(LOGMSG_ERROR, "Failed to update the value of tunable '%s'.\n",  \
                t->name);                                                       \
+        return TUNABLE_ERR_INTERNAL;                                           \
     }                                                                          \
-    return TUNABLE_ERR_INTERNAL;
+    return TUNABLE_ERR_OK;
 
 /*
   Update the tunable.
@@ -1193,15 +1200,31 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
             return TUNABLE_ERR_INVALID_VALUE; /* Error */
         }
     } else {
-        /*
-          Remove leading space(s) and copy rest of the value in the buffer to
-          be processed by update_tunable().
-        */
+        /* Remove leading space(s). */
         char *val = value;
         int len = value_len;
         while (*val && isspace(*val)) {
             val++;
             len--;
+        }
+
+        /* Check whether its a composite tunable. */
+        if (t->type == TUNABLE_COMPOSITE) {
+            /* Prepare the name of the composite tunable. */
+            buf[name_len] = COMPOSITE_TUNABLE_SEP;
+            memcpy(buf + name_len + 1, tok, ltok);
+            /* No need to null-terminate */
+
+            /* Fix new value and its length */
+            val = tok + ltok;
+            len = len - ltok;
+            while (*val && isspace(*val)) {
+                val++;
+                len--;
+            }
+
+            return handle_lrl_tunable(buf, name_len + ltok + 1, val, len,
+                                      flags);
         }
 
         /* Safety check. */
@@ -1210,6 +1233,10 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
             return TUNABLE_ERR_INVALID_VALUE;
         }
 
+        /*
+          Copy rest of the value in the buffer to be processed by
+          update_tunable().
+        */
         memcpy(buf, val, len);
         buf[len] = 0;
     }

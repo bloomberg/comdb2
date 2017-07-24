@@ -40,3 +40,12 @@ exec procedure sys.cmd.send('nodebug_rowlocks')
 SELECT value AS 'debug_rowlocks' FROM comdb2_tunables WHERE name = 'debug_rowlocks';
 SELECT value AS 'nodebug_rowlocks' FROM comdb2_tunables WHERE name = 'nodebug_rowlocks';
 
+# Test composite tunables.
+SELECT name AS 'logmsg tunables' FROM comdb2_tunables WHERE name LIKE 'logmsg%';
+SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
+PUT TUNABLE 'logmsg.level' 'xxx';
+PUT TUNABLE 'logmsg.level' 'error';
+SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
+exec procedure sys.cmd.send('logmsg level xxx');
+exec procedure sys.cmd.send('logmsg level debug');
+SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';

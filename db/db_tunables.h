@@ -1242,4 +1242,19 @@ REGISTER_TUNABLE("bdboslog", NULL, TUNABLE_INTEGER, &gbl_namemangle_loglevel,
 REGISTER_TUNABLE("deadlock_rep_retry_max", NULL, TUNABLE_INTEGER,
                  &max_replication_trans_retries, READONLY | NOZERO, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("logmsg", NULL, TUNABLE_COMPOSITE, NULL, INTERNAL | READEARLY,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("logmsg.level",
+                 "All messages below this level will not be logged.",
+                 TUNABLE_ENUM, NULL, READEARLY, logmsg_level_value, NULL,
+                 logmsg_level_update, NULL);
+REGISTER_TUNABLE("logmsg.syslog", "Log messages to syslog.", TUNABLE_BOOLEAN,
+                 NULL, NOARG | READEARLY, logmsg_syslog_value, NULL,
+                 logmsg_syslog_update, NULL);
+REGISTER_TUNABLE("logmsg.timestamp", "Stamp all messages with timestamp.",
+                 TUNABLE_BOOLEAN, NULL, NOARG | READEARLY,
+                 logmsg_timestamp_value, NULL, logmsg_timestamp_update, NULL);
+REGISTER_TUNABLE("logmsg.notimestamp", "Disables 'syslog.timestamp'.",
+                 TUNABLE_BOOLEAN, NULL, INVERSE_VALUE | NOARG | READEARLY,
+                 logmsg_timestamp_value, NULL, logmsg_timestamp_update, NULL);
 #endif /* _DB_TUNABLES_H */
