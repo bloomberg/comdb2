@@ -105,7 +105,7 @@ struct blocksql_tran {
 
     int rows;
 
-    struct db *last_db;
+    struct dbtable *last_db;
 };
 
 typedef struct oplog_key {
@@ -796,7 +796,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
                                 char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid)
 {
-    struct db *db;
+    struct dbtable *db;
 
     struct req_hdr req_hdr;
     struct block_req req;

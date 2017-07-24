@@ -42,7 +42,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
     int ii, rc, bdberr;
     int newdtastripe = s->newdtastripe;
     int newblobstripe = s->blobstripe;
-    struct db *db;
+    struct dbtable *db;
 
     /* STOP THREADS */
     stop_threads(thedb);

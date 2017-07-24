@@ -77,7 +77,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
 {
-    struct db *usedb = iq->usedb;
+    struct dbtable *usedb = iq->usedb;
 
     iq->usedb = usedb->sc_to;
     if (iq->debug) {
@@ -113,7 +113,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
 }
 
 /* re-compute new partial/expressions indexes for new table */
-static unsigned long long revalidate_new_indexes(struct ireq *iq, struct db *db,
+static unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
                                                  uint8_t *new_dta,
                                                  blob_buffer_t *blobs,
                                                  size_t maxblobs)
@@ -164,7 +164,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                              unsigned long long ins_keys,
                                              int od_len)
 {
-    struct db *usedb = iq->usedb;
+    struct dbtable *usedb = iq->usedb;
     blob_status_t oldblobs[MAXBLOBS];
     blob_buffer_t add_blobs_buf[MAXBLOBS];
     blob_buffer_t *add_idx_blobs = NULL;
@@ -279,7 +279,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
     int opfailcode = 0;
     int ixfailnum = 0;
     int rc;
-    struct db *usedb = iq->usedb;
+    struct dbtable *usedb = iq->usedb;
 
     /* Convert record from .ONDISK -> .NEW..ONDISK */
 
@@ -378,7 +378,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             int *updCols, blob_buffer_t *blobs, int deferredAdd,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
-    struct db *usedb = iq->usedb;
+    struct dbtable *usedb = iq->usedb;
 
 #ifdef DEBUG
     fprintf(stderr, "live_sc_post_update_int: oldgenid 0x%llx, newgenid "
@@ -439,7 +439,7 @@ int schema_change_abort_callback(void)
 /* Deletes all the files that are no longer needed after a schema change.  Also
  * sets a timer that the checkpoint thread checks by calling
  * sc_del_unused_files_check_progress() */
-void sc_del_unused_files_tran(struct db *db, tran_type *tran)
+void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 {
     int bdberr;
 
@@ -463,7 +463,7 @@ void sc_del_unused_files_tran(struct db *db, tran_type *tran)
     pthread_mutex_unlock(&gbl_sc_lock);
 }
 
-void sc_del_unused_files(struct db *db)
+void sc_del_unused_files(struct dbtable *db)
 {
     return sc_del_unused_files_tran(db, NULL);
 }
@@ -496,9 +496,9 @@ void sc_del_unused_files_check_progress(void)
 
 static int delete_table_rep(char *table, void *tran)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc, bdberr;
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "delete_table_rep : invalid table %s\n", table);
         return -1;
@@ -529,7 +529,7 @@ static int bthash_callback(const char *table)
 {
     int bthashsz;
     logmsg(LOGMSG_INFO, "Replicant bthashing table: %s\n", table);
-    struct db *db = getdbbyname(table);
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db && get_db_bthash(db, &bthashsz) == 0) {
         if (bthashsz) {
             logmsg(LOGMSG_INFO,
@@ -593,7 +593,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     int rc = 0;
     char *csc2text = NULL;
     char *table_copy = NULL;
-    struct db *db;
+    struct dbtable *db;
     void *tran = NULL;
     int bdberr;
     int highest_ver;
@@ -601,7 +601,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     uint32_t lid = 0;
     extern uint32_t gbl_rep_lockid;
 
-    struct db *olddb = getdbbyname(table);
+    struct dbtable *olddb = get_dbtable_by_name(table);
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (tran == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,
@@ -627,7 +627,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
                    table);
             exit(1);
         }
-        db = getdbbyname(table);
+        db = get_dbtable_by_name(table);
         table_copy = strdup(table);
         /* if we can't find a table with that name, we must be trying to add one
          */
@@ -704,7 +704,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
 
     /* if we just added the table, get a pointer for it */
     if (add_new_db) {
-        db = getdbbyname(table);
+        db = get_dbtable_by_name(table);
         if (!db) {
             logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
                    __func__, table);

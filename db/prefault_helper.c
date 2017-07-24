@@ -68,7 +68,7 @@ static void *prefault_helper_thread(void *arg)
     unsigned char key[512];
     int keylen;
     int ixnum;
-    struct db *db;
+    struct dbtable *db;
     int numreadahead;
     struct thr_handle *thr_self;
     int retrys;
@@ -232,7 +232,7 @@ static void *prefault_helper_thread(void *arg)
    unsigned char key[512];
    int keylen;
    int ixnum;
-   struct db *db;
+   struct dbtable *db;
    int numreadahead;
    
    memcpy(&prefault_helper_thread_arg, arg,
@@ -386,7 +386,7 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
     return 0;
 }
 
-int readaheadpf(struct ireq *iq, struct db *db, int ixnum, unsigned char *key,
+int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *key,
                 int keylen, int num)
 {
     pthread_t my_tid;

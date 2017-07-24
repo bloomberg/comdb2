@@ -26,7 +26,7 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
 int check_table_schema(struct dbenv *dbenv, const char *table,
                        const char *csc2file);
 
-int schema_cmp(struct dbenv *dbenv, struct db *db, const char *csc2cmp);
+int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp);
 
 /* adds a new version of a schema (loaded from a file) to the meta table */
 int load_new_table_schema_file_tran(struct dbenv *dbenv, tran_type *tran,
@@ -46,16 +46,16 @@ int load_new_table_schema(struct dbenv *dbenv, const char *table,
 
 int write_csc2_file_fname(const char *fname, const char *csc2text);
 
-int write_csc2_file(struct db *db, const char *csc2text);
+int write_csc2_file(struct dbtable *db, const char *csc2text);
 
-int get_generic_csc2_fname(const struct db *db, char *fname, size_t fname_len);
+int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len);
 
 /* write out all the schemas from meta for all open tables to disk */
 int dump_all_csc2_to_disk();
 
 /* TODO clean up all these csc2 dump functions, unify them */
 /* write out all the schemas from meta for all open tables to disk */
-int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname);
+int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname);
 
 /* write out all the schemas from meta for all open tables to disk */
 int dump_table_csc2_to_disk(const char *table);

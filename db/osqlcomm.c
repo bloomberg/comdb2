@@ -6300,7 +6300,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     const uint8_t *p_buf_end;
     int rc = 0;
     int ii;
-    struct db *db =
+    struct dbtable *db =
         (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
     const unsigned char tag_name_ondisk[] = ".ONDISK";
     const size_t tag_name_ondisk_len = 8 /*includes NUL*/;
@@ -6426,7 +6426,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if ( is_tablename_queue(tablename, strlen(tablename)) ) {
             iq->usedb = getqueuebyname(tablename);
         } else {
-            iq->usedb = getdbbyname(tablename);
+            iq->usedb = get_dbtable_by_name(tablename);
             iq->usedbtablevers = dt.tableversion;
         }
         if (iq->usedb == NULL) {
@@ -7042,7 +7042,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         bdb_ltran_get_schema_lock(trans);
         iq->sc = sc;
         if (sc->db == NULL) {
-            sc->db = getdbbyname(sc->table);
+            sc->db = get_dbtable_by_name(sc->table);
         }
         sc->tran = ptran;
         if (sc->db) iq->usedb = sc->db;
@@ -7570,7 +7570,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     uint8_t *p_buf_end =
         (uint8_t *)p_buf + sizeof(osql_rpl_t) + sizeof(osql_uuid_rpl_t);
     int rc = 0;
-    struct db *db =
+    struct dbtable *db =
         (iq->usedb) ? iq->usedb : thedb->dbs[0]; /*add to first if no usedb*/
     int type;
     unsigned long long id;
@@ -8045,7 +8045,7 @@ int osqlpfthdpool_init(void)
 
 typedef struct osqlpf_rq {
     short type;
-    struct db *db;
+    struct dbtable *db;
     unsigned long long genid;
     int index;
     unsigned char key[MAXKEYLEN];
@@ -8074,7 +8074,7 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
                                   void *thddata, int op);
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_oldkey(struct db *db, void *key, int keylen, int ixnum,
+int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum,
                             int i, unsigned long long rqid,
                             unsigned long long seq)
 {
@@ -8109,7 +8109,7 @@ int enque_osqlpfault_oldkey(struct db *db, void *key, int keylen, int ixnum,
 }
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_newkey(struct db *db, void *key, int keylen, int ixnum,
+int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum,
                             int i, unsigned long long rqid,
                             unsigned long long seq)
 {
@@ -8147,7 +8147,7 @@ int enque_osqlpfault_newkey(struct db *db, void *key, int keylen, int ixnum,
                             genid then forms all keys from that record and
                             enqueues n ops to fault in each key.
                             */
-int enque_osqlpfault_olddata_oldkeys(struct db *db, unsigned long long genid,
+int enque_osqlpfault_olddata_oldkeys(struct dbtable *db, unsigned long long genid,
                                      int i, unsigned long long rqid,
                                      uuid_t uuid, unsigned long long seq)
 {
@@ -8182,7 +8182,7 @@ int enque_osqlpfault_olddata_oldkeys(struct db *db, unsigned long long genid,
                             genid then forms all keys from that record and
                             enqueues n ops to fault in each key.
                             */
-int enque_osqlpfault_newdata_newkeys(struct db *db, void *record, int reclen,
+int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record, int reclen,
                                      int i, unsigned long long rqid,
                                      uuid_t uuid, unsigned long long seq)
 {
@@ -8227,7 +8227,7 @@ int enque_osqlpfault_newdata_newkeys(struct db *db, void *record, int reclen,
                                   6) enqueues n ops to fault in each key.
                                   */
 int enque_osqlpfault_olddata_oldkeys_newkeys(
-    struct db *db, unsigned long long genid, void *record, int reclen, int i,
+    struct dbtable *db, unsigned long long genid, void *record, int reclen, int i,
     unsigned long long rqid, uuid_t uuid, unsigned long long seq)
 {
     osqlpf_rq_t *qdata = NULL;
@@ -8563,7 +8563,7 @@ static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
     }
 }
 
-int osql_page_prefault(char *rpl, int rplen, struct db **last_db,
+int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
                        unsigned long long seq)
 {
@@ -8602,11 +8602,11 @@ int osql_page_prefault(char *rpl, int rplen, struct db **last_db,
         osql_usedb_t dt;
         p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
         char *tablename;
-        struct db *db;
+        struct dbtable *db;
 
         tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
 
-        db = getdbbyname(tablename);
+        db = get_dbtable_by_name(tablename);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s\n",
                     __func__, dt.tablenamelen, tablename);
@@ -8709,8 +8709,8 @@ cron_sched_t *uprec_sched;
 // structure
 static struct uprec_tag {
     pthread_mutex_t *lk;    /* one big mutex, rule them all */
-    const struct db *owner; /* who can put elements in the array */
-    const struct db *touch; /* which db master will be touching */
+    const struct dbtable *owner; /* who can put elements in the array */
+    const struct dbtable *touch; /* which db master will be touching */
     struct buf_lock_t slock;
     size_t thre; /* slow start threshold */
     size_t intv; /* interval */
@@ -8724,7 +8724,7 @@ static struct uprec_tag {
     size_t ntimeouts; /* number of timeouts */
 } * uprec;
 
-static const uint8_t *construct_uptbl_buffer(const struct db *db,
+static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
                                              unsigned long long genid,
                                              unsigned int recs_ahead,
                                              uint8_t *p_buf_start,
@@ -8920,7 +8920,7 @@ int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid)
     buffer = alloca(OSQL_BP_MAXLEN);
 
     buffer_end =
-        construct_uptbl_buffer(getdbbyname(tbl), genid, 1, buffer,
+        construct_uptbl_buffer(get_dbtable_by_name(tbl), genid, 1, buffer,
                                (const uint8_t *)(buffer + OSQL_BP_MAXLEN));
 
     if (buffer_end == NULL)
@@ -8993,7 +8993,7 @@ static void uprec_sender_array_init(void)
     logmsg(LOGMSG_INFO, "upgraderecord sender array initialized\n");
 }
 
-int offload_comm_send_upgrade_records(struct db *db, unsigned long long genid)
+int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long genid)
 {
     int rc = 0, stripe, idx;
     struct errstat xerr;

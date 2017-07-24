@@ -14,11 +14,11 @@ enum { MAXSENDQUEUE = 64 };
 
 enum rtcpu_mode { NO_RTCPU, USE_RTCPU, DFLT_RTCPU };
 
-struct db;
+struct dbtable;
 
 /* a queue consumer */
 struct consumer {
-    struct db *db; /* chain back to db */
+    struct dbtable *db; /* chain back to db */
     int consumern;
 
     volatile int active; /* nonzero if thread is running */

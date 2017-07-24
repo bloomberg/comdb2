@@ -82,13 +82,13 @@ static int db_cluster(Lua L)
  *
  */
 static int db_comdbg_tables(Lua L) {
-    struct db *db;
+    struct dbtable *db;
     int rownum = 1;
 
     /* TODO: locking protocol for this is... */
     lua_createtable(L, 0, 0);
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
-        struct db *db;
+        struct dbtable *db;
         db = thedb->dbs[dbn];
         if (db->dbnum) {
             for (int ix = 0; ix < db->nix; ix++) {
@@ -224,10 +224,10 @@ static int db_comdb_verify(Lua L) {
         return luaL_error(L, "Verify failed.");
     }
 
-    struct db *t;
+    struct dbtable *t;
     int found = 0;
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
-        struct db *t = thedb->dbs[dbn];
+        struct dbtable *t = thedb->dbs[dbn];
         if (strcmp(tbl, t->dbname) == 0) {
             found = 1;
             break;

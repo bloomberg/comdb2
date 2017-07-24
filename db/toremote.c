@@ -56,7 +56,7 @@ int tormtfind_int(int opcode, struct ireq *iq)
     char key[MAXKEYLEN];
     int rrn;
     unsigned long long genid;
-    struct db *db;
+    struct dbtable *db;
     int fndlen;
     int ix;
     char *bp;
@@ -77,7 +77,7 @@ int tormtfind_int(int opcode, struct ireq *iq)
     }
 #endif
 
-    db = getdbbyname(req->table);
+    db = get_dbtable_by_name(req->table);
     if (db == NULL)
         return ERR_BADREQ;
     dta = malloc(getdatsize(db));
@@ -142,7 +142,7 @@ int tormtfindnext_int(int opcode, struct ireq *iq)
     struct findnext_req *req;
     struct findnext_rsp *rsp;
     char *bp;
-    struct db *db;
+    struct dbtable *db;
     char *dta;
     char key[MAXKEYLEN];
     int rc;
@@ -156,7 +156,7 @@ int tormtfindnext_int(int opcode, struct ireq *iq)
     req = (struct findnext_req*) iq->rq;
     rsp = (struct findnext_rsp*) iq->rq;
 
-    db = getdbbyname(req->table);
+    db = get_dbtable_by_name(req->table);
     if (db == NULL)
         return ERR_BADREQ;
 
@@ -254,7 +254,7 @@ int tormtfindrrn(struct ireq *iq)
     int rc;
     char key[MAXKEYLEN];
     char *dta;
-    struct db *db;
+    struct dbtable *db;
     int rrn;
     unsigned long long genid;
     int fndlen;
@@ -263,7 +263,7 @@ int tormtfindrrn(struct ireq *iq)
 
     req = (struct findrrn_req*) iq->rq;
     rsp = (struct findrrn_rsp*) iq->rq;
-    db = getdbbyname(req->table);
+    db = get_dbtable_by_name(req->table);
     if (db == NULL)
         return ERR_BADREQ;
 
