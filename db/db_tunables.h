@@ -475,8 +475,9 @@ REGISTER_TUNABLE("fdbdebg", NULL, TUNABLE_INTEGER, &gbl_fdb_track, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
                  READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("fkrcode", NULL, TUNABLE_INTEGER, &gbl_fkrcode,
-                 READONLY | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("fkrcode", "Enable foreign-key violation return code.",
+                 TUNABLE_BOOLEAN, &gbl_fkrcode, READONLY, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
                  READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
