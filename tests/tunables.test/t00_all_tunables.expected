@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=822)
+(TUNABLES_COUNT=823)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -298,6 +298,7 @@
 (name='fingerprint_queries', description='Compute fingerprint for SQL queries', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_cstr', description='Fix validation of cstrings', type='BOOLEAN', value='ON', read_only='N')
 (name='fix_pinref', description='fix_pinref', type='BOOLEAN', value='ON', read_only='N')
+(name='fkrcode', description='Enable foreign-key violation return code.', type='BOOLEAN', value='ON', read_only='Y')
 (name='flush_check_active_peer', description='Check if still have active connection when trying to flush', type='BOOLEAN', value='ON', read_only='N')
 (name='flush_scan_dbs_first', description='Don't hold bufpool mutex while opening files for flush', type='BOOLEAN', value='OFF', read_only='N')
 (name='forbid_ulonglong', description='Disallow u_longlong. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
