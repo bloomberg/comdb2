@@ -8909,7 +8909,7 @@ int sql_testrun(char *sql, int sqllen) { return 0; }
 int sqlpool_init(void)
 {
     gbl_sqlengine_thdpool =
-        thdpool_create("SQL engine pool", sizeof(struct sqlthdstate));
+        thdpool_create("sqlenginepool", sizeof(struct sqlthdstate));
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_sqlengine_thdpool);

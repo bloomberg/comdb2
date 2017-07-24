@@ -175,7 +175,7 @@ int appsock_init(void)
     cmd_genid48 = add_command("genid48");
 
     gbl_appsock_thdpool =
-        thdpool_create("appsock pool", sizeof(struct appsock_thd_state));
+        thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_appsock_thdpool);
