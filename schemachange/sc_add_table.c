@@ -24,7 +24,7 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 
-static inline int adjust_master_tables(struct db *newdb, const char *csc2,
+static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
     int rc;
@@ -60,7 +60,7 @@ static inline int adjust_master_tables(struct db *newdb, const char *csc2,
         return 0;
 }
 
-static inline int get_db_handle(struct db *newdb, void *trans)
+static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
     if (newdb->dbenv->master == gbl_mynode) {
@@ -90,7 +90,7 @@ static inline int get_db_handle(struct db *newdb, void *trans)
     return SC_OK;
 }
 
-static inline int init_bthashsize_tran(struct db *newdb, tran_type *tran)
+static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
 {
     int bthashsz;
 
@@ -113,7 +113,7 @@ int add_table_to_environment(char *table, const char *csc2,
                              tran_type *trans)
 {
     int rc;
-    struct db *newdb;
+    struct dbtable *newdb;
 
     if (!csc2) {
         logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
@@ -170,20 +170,26 @@ int add_table_to_environment(char *table, const char *csc2,
 
     gbl_sc_commit_count++;
     if (s && s->fastinit && s->db) {
-        replace_db_idx(newdb, s->db->dbs_idx, 1);
+        replace_db_idx(newdb, s->db->dbs_idx);
         free(s->db->handle);
-        free_db_and_replace(s->db, NULL);
+        freedb(s->db);
     } else {
         thedb->dbs =
-            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
         newdb->dbs_idx = thedb->num_dbs;
         thedb->dbs[thedb->num_dbs++] = newdb;
+
+        /* Add table to the hash. */
+        hash_add(thedb->db_hash, newdb);
     }
 
     rc = adjust_master_tables(newdb, csc2, iq, trans);
     if (rc) {
         gbl_sc_commit_count--;
-        thedb->dbs[--thedb->num_dbs] = NULL;
+        --thedb->num_dbs;
+        /* Remove table from the hash. */
+        hash_del(thedb->db_hash, thedb->dbs[thedb->num_dbs]);
+        thedb->dbs[thedb->num_dbs] = NULL;
         if (rc == SC_CSC2_ERROR) sc_errf(s, "New indexes syntax error\n");
         goto err;
     }
@@ -221,12 +227,12 @@ int do_add_table(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int rc = SC_OK;
-    struct db *db;
+    struct dbtable *db;
     set_empty_options(s);
 
     if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
 
-    if ((db = getdbbyname(s->table))) {
+    if ((db = get_dbtable_by_name(s->table))) {
         sc_errf(s, "Table %s already exists", s->table);
         logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->table);
         return SC_TABLE_ALREADY_EXIST;
@@ -238,7 +244,7 @@ int do_add_table(struct ireq *iq, tran_type *trans)
         return rc;
     }
 
-    if (!(db = getdbbyname(s->table))) return SC_INTERNAL_ERROR;
+    if (!(db = get_dbtable_by_name(s->table))) return SC_INTERNAL_ERROR;
 
     iq->usedb = db->sc_to = s->db = db;
     db->odh = s->headers;
@@ -257,7 +263,7 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
     int rc, bdberr;
-    struct db *db = s->db;
+    struct dbtable *db = s->db;
 
     sc_printf(s, "Start add table transaction ok\n");
     rc = load_new_table_schema_tran(thedb, tran, s->table, s->newcsc2);

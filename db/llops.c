@@ -142,7 +142,7 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
                     break;
             }
             table = tok;
-            iq.usedb = getdbbyname(table);
+            iq.usedb = get_dbtable_by_name(table);
             if (iq.usedb == NULL) {
                 rc = -1;
                 sbuf2printf(sb, "!unknown table %s\n", table);

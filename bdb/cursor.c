@@ -8144,12 +8144,19 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         if (parallel_count) {
             pthread_join(thds[i], &ret);
         }
-        rc |= args[i].rc;
+        if (args[i].rc == DB_LOCK_DEADLOCK) {
+            rc = BDBERR_DEADLOCK;
+            break;
+        } else if (args[i].rc != DB_NOTFOUND) {
+            rc = -1;
+            break;
+        }
+        rc = 0;
         count += args[i].count;
     }
     if (parallel_count) {
         pthread_attr_destroy(&attr);
     }
-    *rcnt = count;
-    return rc == DB_NOTFOUND ? 0 : -1;
+    if (rc == 0) *rcnt = count;
+    return rc;
 }

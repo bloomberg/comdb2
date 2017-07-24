@@ -57,7 +57,7 @@ struct shad_tbl {
 
     unsigned long long seq; /* used to generate uniq row ids */
     struct dbenv *env;
-    struct db *db; /* TODO: db has dbenv, chop it */
+    struct dbtable *db; /* TODO: db has dbenv, chop it */
     int dbnum;
     int nblobs;
     int updcols; /* 1 if we have update columns */
@@ -90,7 +90,7 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
                       int *updCols);
 int osql_save_dbq_consume(struct sqlclntstate *, const char *spname, genid_t);
 
-void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct db *db);
+void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db);
 int osql_fetch_shadblobs_by_genid(struct BtCursor *pCur, int *blobnum,
                                   blob_status_t *blobs, int *bdberr);
 int osql_get_shadowdata(struct BtCursor *pCur, unsigned long long genid,

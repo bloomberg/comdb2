@@ -817,9 +817,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 *dbname_found = 1;
             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
-            pthread_mutex_lock(&cdb2_sockpool_mutex);
             tok = strtok_r(NULL, " =:,", &last);
-            if (tok && strcasecmp("default_type", tok) == 0) {
+            if (tok == NULL) continue;
+            pthread_mutex_lock(&cdb2_sockpool_mutex);
+            if (strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
                     if (hndl) {
@@ -899,10 +900,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                     cdb2_cache_ssl_sess = !!atoi(tok);
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
-                if (strncasecmp(tok, "true", 4) == 0) {
-                    allow_pmux_route = 1;
-                } else {
-                    allow_pmux_route = 0;
+                if (tok) {
+                    if (strncasecmp(tok, "true", 4) == 0) {
+                        allow_pmux_route = 1;
+                    } else {
+                        allow_pmux_route = 0;
+                    }
                 }
 #endif
             }
@@ -1440,8 +1443,7 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         p = &(hndl->sess_list->list[indx]);
         sess = p->sess;
         p->sess = SSL_get1_session(sslio_get_ssl(sb));
-        if (sess != NULL)
-            SSL_SESSION_free(p->sess);
+        if (sess != NULL) SSL_SESSION_free(sess);
     }
     return 0;
 }
@@ -2065,9 +2067,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         }
     }
 
-    if (hndl &&
-        hndl->cnonce_len >
-            0) { /* Have a query id associated with each transaction/query */
+    if (hndl && hndl->cnonce_len > 0) {
+        /* Have a query id associated with each transaction/query */
         sqlquery.has_cnonce = 1;
         sqlquery.cnonce.data = hndl->cnonce;
         sqlquery.cnonce.len = hndl->cnonce_len;
@@ -2090,7 +2091,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         sqlquery.skip_rows = skip_nrows;
     }
 
-    if (hndl && hndl->context_msgs.has_changed == 1 && hndl->context_msgs.count > 0) {
+    if (hndl && hndl->context_msgs.has_changed == 1 &&
+        hndl->context_msgs.count > 0) {
         sqlquery.n_context = hndl->context_msgs.count;
         sqlquery.context = hndl->context_msgs.message;
         /* Reset the has_changed flag. */
@@ -2472,12 +2474,12 @@ done:
 static void make_random_str(char *str, int *len)
 {
     static int PID = 0;
-    if (PID == 0) {
-        PID = getpid();
-        srandom(time(0));
-    }
     struct timeval tv;
     gettimeofday(&tv, NULL);
+    if (PID == 0) {
+        PID = getpid();
+        srandom(tv.tv_sec);
+    }
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
     *len = strlen(str);
     return;
@@ -4330,6 +4332,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     int comdb2db_ports[MAX_NODES];
     int num_comdb2db_hosts;
     int master = 0, rc = 0;
+    int num_retry = 0;
     int comdb2db_num = COMDB2DB_NUM;
     char comdb2db_name[32] = COMDB2DB;
 
@@ -4380,6 +4383,13 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         }
     }
 
+retry:
+    if (rc && num_retry < MAX_RETRIES) {
+        num_retry++;
+        poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
+    } else if (rc) {
+        return rc;
+    }
     if (hndl->num_hosts == 0) {
         int i = 0;
         if (!master) {
@@ -4397,7 +4407,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         if (rc != 0) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: can't do dbinfo "
                                   "query on comdb2db hosts.");
-            return -1;
+            goto retry;
         }
 
         rc = -1;
@@ -4423,7 +4433,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
             sprintf(hndl->errstr,
                     "cdb2_get_dbhosts: can't do newsql query on %s hosts.",
                     comdb2db_name);
-            return -1;
+            goto retry;
         }
     }
 
@@ -4450,7 +4460,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);
-        return rc;
+        goto retry;
     }
     return rc;
 }

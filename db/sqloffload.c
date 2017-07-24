@@ -65,9 +65,6 @@ int g_osql_ready = 0;
 int tran2netreq(int dbtran)
 {
     switch (dbtran) {
-    case TRANLEVEL_OSQL:
-        return NET_OSQL_BLOCK_REQ;
-
     case TRANLEVEL_SOSQL:
         return NET_OSQL_SOCK_REQ;
 
@@ -96,9 +93,6 @@ int tran2netreq(int dbtran)
 int tran2netrpl(int dbtran)
 {
     switch (dbtran) {
-    case TRANLEVEL_OSQL:
-        return NET_OSQL_BLOCK_RPL;
-
     case TRANLEVEL_SOSQL:
         return NET_OSQL_SOCK_RPL;
 
@@ -269,6 +263,13 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc = 0;
     int rc2 = 0;
     int usedb_only = 0;
+
+    if (clnt->early_retry) {
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        clnt->early_retry = 0;
+        rc = SQLITE_ABORT;
+        goto goback;
+    }
 
     /* optimization (will catch all transactions with no internal updates */
     if (osql_shadtbl_empty(clnt)) {
@@ -588,9 +589,6 @@ int req2netrpl(int reqtype)
 int tran2req(int dbtran)
 {
     switch (dbtran) {
-    case TRANLEVEL_OSQL:
-        return OSQL_BLOCK_REQ;
-
     case TRANLEVEL_SOSQL:
         return OSQL_SOCK_REQ;
 
@@ -723,6 +721,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 
@@ -738,6 +742,12 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 

@@ -372,6 +372,18 @@ static const uint8_t *sqlfield_get(struct sqlfield *p_sqlfield,
     return p_buf;
 }
 
+static inline void comdb2_set_sqlite_vdbe_tzname_int(Vdbe *p,
+                                                     struct sqlclntstate *clnt)
+{
+    memcpy(p->tzname, clnt->tzname, TZNAME_MAX);
+}
+
+static inline void comdb2_set_sqlite_vdbe_dtprec_int(Vdbe *p,
+                                                     struct sqlclntstate *clnt)
+{
+    p->dtprec = clnt->dtprec;
+}
+
 static inline int disable_server_sql_timeouts(void)
 {
     extern int gbl_sql_release_locks_on_slow_reader;
@@ -603,8 +615,6 @@ static char *fsql_respcode_str(int rsp)
 char *tranlevel_tostr(int lvl)
 {
     switch (lvl) {
-    case TRANLEVEL_OSQL:
-        return "TRANLEVEL_OSQL";
     case TRANLEVEL_SOSQL:
         return "TRANLEVEL_SOSQL";
     case TRANLEVEL_RECOM:
@@ -1873,8 +1883,7 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 static void log_client_context(struct reqlogger *logger,
                                struct sqlclntstate *clnt)
 {
-    if (clnt->sql_query == NULL)
-        return;
+    if (clnt->sql_query == NULL) return;
 
     if (clnt->sql_query->n_context > 0) {
         int i = 0;
@@ -1889,9 +1898,8 @@ static void log_client_context(struct reqlogger *logger,
         /* Latch the context - client only re-sends context if
            it changes.  TODO: this seems needlessly expensive. */
         clnt->ncontext = clnt->sql_query->n_context;
-        if (clnt->context)
-            free(clnt->context);
-        clnt->context = malloc(sizeof(char*) * clnt->sql_query->n_context);
+        if (clnt->context) free(clnt->context);
+        clnt->context = malloc(sizeof(char *) * clnt->sql_query->n_context);
         for (int i = 0; i < clnt->sql_query->n_context; i++)
             clnt->context[i] = strdup(clnt->sql_query->context[i]);
     }
@@ -1997,7 +2005,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
 
     clnt->intrans = 0;
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
 
@@ -2307,13 +2315,18 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     rc = selectv_range_commit(clnt);
                     rcline = __LINE__;
                 }
-                if (rc) {
+                if (rc || clnt->early_retry) {
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
                         logmsg(LOGMSG_ERROR, 
                                 "%s: failed to abort sorese transactin irc=%d\n",
                                 __func__, irc);
+                    }
+                    if (clnt->early_retry) {
+                        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                        clnt->early_retry = 0;
+                        rc = SQLITE_ABORT;
                     }
                 } else {
                     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
@@ -2520,7 +2533,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 done:
 
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
     return outrc;
@@ -2969,21 +2982,6 @@ static int is_with_statement(char *sql)
     return 0;
 }
 
-static int is_sql_read(char *sql)
-{
-    if (!sql)
-        return 1;
-
-    sql = skipws(sql);
-
-    if (strncasecmp(sql, "select", 6))
-        return 1;
-    if (strncasecmp(sql, "with", 4))
-        return 1;
-
-    return 0;
-}
-
 static void compare_estimate_cost(sqlite3_stmt *stmt)
 {
     int showScanStat =
@@ -3101,17 +3099,23 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     extern volatile int analyze_running_flag;
     if (analyze_running_flag)
         return 0;
-    int rc;
-    if ((rc = get_curtran(thedb->bdb_env, clnt)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s get_curtran rc:%d\n", __func__, rc);
-        return SQLITE_INTERNAL;
+    int rc, got_curtran;
+    rc = got_curtran = 0;
+    if (!clnt->dbtran.cursor_tran) {
+        if ((rc = get_curtran(thedb->bdb_env, clnt)) != 0) {
+            logmsg(LOGMSG_ERROR, "%s get_curtran rc:%d\n", __func__, rc);
+            return SQLITE_INTERNAL;
+        }
+        got_curtran = 1;
     }
     if ((rc = sqlite3AnalysisLoad(thd->sqldb, 0)) == SQLITE_OK) {
         thd->analyze_gen = gbl_analyze_gen;
     } else {
         logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n", __func__, rc);
     }
-    put_curtran(thedb->bdb_env, clnt);
+    if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s failed to put_curtran\n", __func__);
+    }
     return rc;
 }
 
@@ -3129,7 +3133,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
     }
 }
 
-// Call with tag_api_lk held and no_transaction == 1
+// Call with schema_lk held and no_transaction == 1
 int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     if (gbl_fdb_track)
@@ -3339,6 +3343,7 @@ int release_locks(const char *trace)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd ? thd->sqlclntstate : NULL;
+    int rc = 0;
 
     if (clnt && clnt->dbtran.cursor_tran) {
         extern int gbl_sql_release_locks_trace;
@@ -3346,9 +3351,9 @@ int release_locks(const char *trace)
             logmsg(LOGMSG_USER, "Releasing locks for lockid %d, %s\n",
                    bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran),
                    trace);
-        recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
+        rc = recover_deadlock_silent(thedb->bdb_env, thd, NULL, -1);
     }
-    return 0;
+    return rc;
 }
 
 int release_locks_on_emit_row(struct sqlthdstate *thd,
@@ -3510,7 +3515,8 @@ void thr_set_current_sql(const char *sql)
     }
 }
 
-static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void setup_reqlog_new_sql(struct sqlthdstate *thd,
+                                 struct sqlclntstate *clnt)
 {
     char info_nvreplays[40];
     info_nvreplays[0] = '\0';
@@ -3526,7 +3532,8 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd, struct sqlclntstate *c
     log_queue_time(thd->logger, clnt);
 }
 
-static void query_stats_setup(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static void query_stats_setup(struct sqlthdstate *thd,
+                              struct sqlclntstate *clnt)
 {
     /* debug */
     thr_set_current_sql(clnt->sql);
@@ -3698,6 +3705,7 @@ struct client_comm_if {
                      const char *func, int line);
     int (*send_dummy)(struct sqlclntstate *clnt);
 };
+
 struct client_comm_if client_sql_api = {
     &send_ret_column_info,
     &send_row,
@@ -4957,16 +4965,19 @@ static int flush_row(struct sqlclntstate *clnt)
     return 0;
 }
 
-static void run_stmt_setup(struct sqlclntstate *clnt, struct sql_state *rec)
+/* will do a tiny cleanup of clnt */
+void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
-    clnt->isselect = sqlite3_stmt_readonly(rec->stmt);
-    comdb2_set_sqlite_vdbe_tzname((Vdbe *)rec->stmt);
-    comdb2_set_sqlite_vdbe_dtprec((Vdbe *)rec->stmt);
+    Vdbe *v = (Vdbe *)stmt;
+    clnt->isselect = sqlite3_stmt_readonly(stmt);
+    clnt->has_recording |= v->recording;
+    comdb2_set_sqlite_vdbe_tzname_int(v, clnt);
+    comdb2_set_sqlite_vdbe_dtprec_int(v, clnt);
     clnt->iswrite = 0; /* reset before step() */
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        fprintf(stderr, "%s () sql: '%s'\n", __func__, rec->sql);
+        fprintf(stderr, "%s () sql: '%s'\n", __func__, v->zSql);
     }
 #endif
 }
@@ -5164,7 +5175,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc;
 
     reqlog_set_event(thd->logger, "sql");
-    run_stmt_setup(clnt, rec);
+    run_stmt_setup(clnt, rec->stmt);
 
     new_row_data_type = is_new_row_data(clnt);
     ncols = sqlite3_column_count(rec->stmt);
@@ -5419,7 +5430,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
-            if(irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY) {
+            if (irc == ERR_PREPARE || irc == ERR_PREPARE_RETRY) {
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
@@ -5668,6 +5679,8 @@ static void sqlengine_work_lua_thread(struct thdpool *pool, void *work,
     thrman_setid(thrman_self(), "[done]");
 }
 
+int gbl_debug_sqlthd_failures;
+
 static void sqlengine_work_appsock(struct thdpool *pool, void *work,
                                    void *thddata)
 {
@@ -5710,9 +5723,17 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
         unlock_schema_lk();
     }
 
-
-    if (unlikely(!thd->sqldb)) {
+    int debug_appsock;
+    if (unlikely(!thd->sqldb) ||
+        (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
         /* unplausable, but anyway */
+        logmsg(LOGMSG_ERROR, "%s line %d: exiting on null thd->sqldb\n",
+               __func__, __LINE__);
+        if (debug_appsock) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d: testing null thd->sqldb codepath\n", __func__,
+                   __LINE__);
+        }
         clnt->query_rc = -1;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
@@ -5753,10 +5774,23 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
 
     /* Set whatever mode this client needs */
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode);
-    if (rc) {
+    if (rc ||
+        (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
+        logmsg(LOGMSG_ERROR,
+               "%s line %d: unable to set_transaction_mode rc=%d!\n", __func__,
+               __LINE__, rc);
+        if (debug_appsock) {
+            logmsg(LOGMSG_ERROR, "%s line %d: testing failed set-transaction "
+                                 "codepath\n",
+                   __func__, __LINE__);
+        }
         send_prepare_error(clnt, "Failed to set transaction mode.", 0);
         reqlog_logf(thd->logger, REQL_TRACE,
                     "Failed to set transaction mode.\n");
+        if (put_curtran(thedb->bdb_env, clnt)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: unable to destroy a CURSOR transaction!\n", __func__);
+        }
         clnt->query_rc = 0;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
@@ -6120,11 +6154,29 @@ static void sqlengine_thd_start(struct thdpool *pool, void *thddata)
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_PGSZ));
 }
 
+int gbl_abort_invalid_query_info_key;
+
 static void sqlengine_thd_end(struct thdpool *pool, void *thddata)
 {
     void rcache_destroy(void);
     rcache_destroy();
     struct sqlthdstate *thd = thddata;
+    struct sql_thread *sqlthd;
+
+    if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
+        /* sqlclntstate shouldn't be set: sqlclntstate is memory on another
+         * thread's stack that will not be valid at this point. */
+
+        if (sqlthd->sqlclntstate) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d sqlthd->sqlclntstate set in thd-teardown\n", __FILE__,
+                   __LINE__);
+            if (gbl_abort_invalid_query_info_key) {
+                abort();
+            }
+            sqlthd->sqlclntstate = NULL;
+        }
+    }
 
     if (thd->stmt_table)
         delete_stmt_table(thd->stmt_table);
@@ -6148,9 +6200,6 @@ static void sqlengine_thd_end(struct thdpool *pool, void *thddata)
 static inline int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
-    case SQL_TDEF_BLOCK:
-        return TRANLEVEL_OSQL;
-
     case SQL_TDEF_SOCK:
         return TRANLEVEL_SOSQL;
 
@@ -6255,6 +6304,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->get_cost = 0;
     clnt->snapshot = 0;
     clnt->num_retry = 0;
+    clnt->early_retry = 0;
     clnt->sql_query = NULL;
     clnt_reset_cursor_hints(clnt);
 
@@ -6282,7 +6332,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->file = 0;
     clnt->offset = 0;
     clnt->enque_timeus = clnt->deque_timeus = 0;
-    clnt->writeTransaction = 0;
+    reset_clnt_flags(clnt);
 
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
@@ -6296,6 +6346,12 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     free(clnt->context);
     clnt->context = NULL;
     clnt->ncontext = 0;
+}
+
+void reset_clnt_flags(struct sqlclntstate *clnt)
+{
+    clnt->writeTransaction = 0;
+    clnt->has_recording = 0;
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
@@ -6471,9 +6527,6 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
 
         if (thedb->stopped)
             goto done;
-
-        /* Reset lock info, maybe required in the case of deadlock. */
-        clnt->lockInfo = NULL;
 
         switch (clnt->req.request) {
         case FSQL_EXECUTE_INLINE_PARAMS_TZ:
@@ -7605,14 +7658,25 @@ retry:
         }
         if (rc == 0) { // descriptor not ready, write will block
             if (gbl_sql_release_locks_on_slow_reader && !released_locks) {
-                release_locks("slow reader");
+                rc = release_locks("slow reader");
+                if (rc) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s release_locks generation changed\n", __func__);
+                    return -1;
+                }
                 released_locks = 1;
             }
 
             if (bdb_lock_desired(thedb->bdb_env)) {
                 struct sql_thread *thd = pthread_getspecific(query_info_key);
                 if (thd) {
-                    recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                    rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+                    if (rc) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s recover_deadlock generation changed\n",
+                               __func__);
+                        return -1;
+                    }
                 }
             }
 
@@ -7791,6 +7855,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
         }
         clnt.osql.sent_column_data = 0;
+        clnt.stop_this_statement = 0;
         clnt.sql_query = sql_query;
 
         if ((clnt.tzname[0] == '\0') && sql_query->tzname)
@@ -7798,9 +7863,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
 
         if (sql_query->dbname && thedb->envname &&
             strcasecmp(sql_query->dbname, thedb->envname)) {
-            logmsg(LOGMSG_ERROR, "DB name mismatch query:'%s' actual:'%s' \n",
-                    sql_query->dbname, thedb->envname);
-            char *errstr = "DB name mismatch";
+            char errstr[64 + (2 * MAX_DBNAME_LENGTH)];
+            snprintf(errstr, sizeof(errstr),
+                     "DB name mismatch query:%s actual:%s", sql_query->dbname,
+                     thedb->envname);
+            logmsg(LOGMSG_ERROR, "%s\n", errstr);
             struct fsqlresp resp;
 
             resp.response = FSQL_COLUMN_DATA;
@@ -9593,23 +9660,17 @@ done:
 void comdb2_set_sqlite_vdbe_tzname(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (!sqlthd)
         return;
-
-    /*prepare the timezone info*/
-    memcpy(p->tzname, sqlthd->sqlclntstate->tzname, TZNAME_MAX);
+    comdb2_set_sqlite_vdbe_tzname_int(p, sqlthd->sqlclntstate);
 }
 
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p)
 {
     struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-
     if (!sqlthd)
         return;
-
-    /*prepare the datetime precision*/
-    p->dtprec = sqlthd->sqlclntstate->dtprec;
+    comdb2_set_sqlite_vdbe_dtprec_int(p, sqlthd->sqlclntstate);
 }
 
 void run_internal_sql(char *sql)

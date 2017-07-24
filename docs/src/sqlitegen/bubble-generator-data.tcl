@@ -415,25 +415,35 @@ set all_graphs {
       loop
       {line
           {or 
-              {line u_short}
-              {line short}
-              {line u_int}
-              {line int}
-              {line longlong}
-              {line cstring}
-              {line vutf8}
-              {line blob}
-              {line byte}
-              {line datetime}
-              {line datetimeus}
-              {line intervalds}
-              {line intervaldsus}
-              {line intervalym}
-              {line decimal32}
-              {line decimal64}
-              {line decimal128}
+              {line
+                  {or
+                      {line u_short}
+                      {line short}
+                      {line u_int}
+                      {line int}
+                      {line longlong}
+                      {line datetime}
+                      {line datetimeus}
+                      {line intervalds}
+                      {line intervaldsus}
+                      {line intervalym}
+                      {line decimal32}
+                      {line decimal64}
+                      {line decimal128}
+                  }
+                  {line /column-name}
+              }
+              {line cstring /column-name [ size ] }
+              {line
+                  {or
+                      {line vutf8}
+                      {line blob}
+                      {line byte}
+                  }
+                  {line /column-name {opt [ size ] }}
+              }
           }
-          {line /column-name {opt [ size ] } {opt DBSTORE = /literal-value}}
+          {line {opt DBSTORE = /literal-value}}
       }
   }
 

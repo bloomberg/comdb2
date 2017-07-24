@@ -141,7 +141,7 @@ static void reset_sp(SP);
     (sizeof(dbconsumer_t) - sizeof(trigger_reg_t) + trigger_reg_sz(qname))
 
 static void setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
-                             struct db *qdb, trigger_reg_t *info)
+                             struct dbtable *qdb, trigger_reg_t *info)
 {
     init_fake_ireq(thedb, &q->iq);
     q->iq.usedb = qdb;
@@ -1078,7 +1078,10 @@ static const char *create_temp_table(Lua lua, pthread_mutex_t *lk)
 
     char *err = NULL;
     comdb2_set_tmptbl_lk(lk);
-    rc = sqlite3_exec(getdb(sp), strbuf_buf(sql), NULL, NULL, &err);
+    sqlite3 *db = getdb(sp);
+    db->force_sqlite_impl = 1;
+    rc = sqlite3_exec(db, strbuf_buf(sql), NULL, NULL, &err);
+    db->force_sqlite_impl = 0;
     comdb2_set_tmptbl_lk(NULL);
     if (rc == SQLITE_OK)
         rc = 0;
@@ -1988,9 +1991,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         extern int gbl_epoch_time;
 
         if (gbl_epoch_time) {
-            /* this does not make sense for blocksql */
-            if (!(sp->clnt->dbtran.mode == TRANLEVEL_OSQL) &&
-                (gbl_epoch_time - sp->clnt->last_check_time) > 5) {
+            if ((gbl_epoch_time - sp->clnt->last_check_time) > 5) {
                 sp->clnt->last_check_time = gbl_epoch_time;
                 if (!gbl_notimeouts) {
                     if (peer_dropped_connection(sp->clnt)) {
@@ -2106,9 +2107,6 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
         return luabb_error(L, sp, "%s in stmt: %s", errstr, sql);
     }
 
-    strcpy(stmt_tzname(*stmt), sp->clnt->tzname);
-    stmt_set_dtprec(*stmt, sp->clnt->dtprec);
-
     return 0;
 }
 
@@ -2116,10 +2114,12 @@ static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
     no_active_stmt(L);
     rdlock_schema_lk();
+    sp->clnt->no_transaction = 1;
     if (sp->thd->sqldb == NULL ||
         check_thd_gen(sp->thd, sp->clnt) != SQLITE_OK) {
         sqlengine_prepare_engine(sp->thd, sp->clnt);
     }
+    sp->clnt->no_transaction = 0;
     int rc = lua_prepare_sql_int(L, sp, sql, stmt);
     unlock_schema_lk();
     return rc;
@@ -3210,6 +3210,14 @@ static int dbstmt_bind(Lua L)
     return dbstmt_bind_int(L, lua_touserdata(L, 1));
 }
 
+static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt)
+{
+    if (!dbstmt->fetched) {
+        run_stmt_setup(sp->clnt, dbstmt->stmt);
+    }
+    dbstmt->fetched = 1;
+}
+
 static int dbstmt_exec(Lua lua)
 {
     SP sp = getsp(lua);
@@ -3218,6 +3226,7 @@ static int dbstmt_exec(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
+    setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -3240,7 +3249,7 @@ static int dbstmt_fetch(Lua lua)
     luaL_checkudata(lua, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
-    dbstmt->fetched = 1;
+    setup_first_sqlite_step(getsp(lua), dbstmt);
     int rc = stmt_sql_step(lua, dbstmt);
     if (rc == SQLITE_ROW) return 1;
     donate_stmt(getsp(lua), dbstmt);
@@ -3252,7 +3261,7 @@ static int dbstmt_emit(Lua L)
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
-    dbstmt->fetched = 1;
+    setup_first_sqlite_step(getsp(L), dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
     no_active_stmt_but_me(L, stmt);
     int cols = sqlite3_column_count(stmt);
@@ -3310,14 +3319,15 @@ static int db_exec(Lua lua)
 
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
 
-    sqlite3 *sqldb = getdb(sp);
-    if (strncasecmp(sql, "select", 6) == 0 ||
-        strncasecmp(sql, "with", 4) == 0) {
-        lua_pushinteger(lua, 0); /* Success return code. */
+    if (sqlite3_stmt_readonly(stmt)) {
+        // dbstmt:fetch() will run it
+        lua_pushinteger(lua, 0);
         return 2;
     }
 
-    // a write stmt - run it
+    // a write stmt - run it now
+    setup_first_sqlite_step(sp, dbstmt);
+    sqlite3 *sqldb = getdb(sp);
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
     if (rc == SQLITE_DONE) {
@@ -3372,15 +3382,10 @@ static int db_prepare(Lua lua)
     errstat_clr(&clnt->osql.xerr);
     db_reset(lua);
     if (stmt == NULL) {
-        const char *rest_of_sql = NULL;
         if (lua_prepare_sql(lua, sp, sql, &stmt) != 0) {
             return 2;
         }
     }
-
-    /*prepare the timezone info*/
-    strcpy(stmt_tzname(stmt), sp->clnt->tzname);
-    stmt_set_dtprec(stmt, sp->clnt->dtprec);
 
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
     dbstmt->has_cached_stmt = has_cached_stmt;
@@ -4122,7 +4127,7 @@ static int db_consumer(Lua L)
     strcpy(spname, sp->spname);
     Q4SP(qname, spname);
 
-    struct db *db = getqueuebyname(qname);
+    struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         return luaL_error(L, "trigger not found for sp:%s", spname);
     }
@@ -6501,7 +6506,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     char *spname = reg->qname;
     Q4SP(qname, spname);
-    struct db *db = getqueuebyname(qname);
+    struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         *err = strdup("getqueuebyname failed");
         return -1;

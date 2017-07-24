@@ -50,6 +50,7 @@ static char *dbname = NULL;
 static char *dbtype = NULL;
 static char *dbhostname = NULL;
 static char main_prompt[MAX_DBNAME_LENGTH + 2];
+static char gbl_in_stmt = 0;
 
 /* display mode */
 enum {
@@ -229,16 +230,16 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         return NULL;
     }
     if (type == CDB2_INTEGER) {
-        int i = atol(*sqlstr);
-        int *val = malloc(sizeof(int));
+        int64_t i = atol(*sqlstr);
+        int64_t *val = malloc(sizeof(int64_t));
         *val = i;
-        *vallen = sizeof(int);
+        *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_REAL) {
         double d = atof(*sqlstr);
         double *val = malloc(sizeof(double));
         *val = d;
-        *vallen = sizeof(int);
+        *vallen = sizeof(*val);
         return val;
     } else if (type == CDB2_CSTRING) {
         char *val = strndup(*sqlstr, end - (*sqlstr));
@@ -387,7 +388,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
             fputc('\'', stdout);
         } else {
             if (printmode == BINARY) {
-                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                write(1, val, cdb2_column_size(cdb2h, col));
                 exit(0);
             } else {
                 fprintf(f, "x'");
@@ -694,7 +695,9 @@ static void process_line(char *sql, int ntypes, int *types)
     sqlstr[len] = '\0';
 
     int start_time_ms, run_time_ms;
+    gbl_in_stmt = 1;
     rc = run_statement(sqlstr, ntypes, types, &start_time_ms, &run_time_ms);
+    gbl_in_stmt = 0;
 
     if (rc != 0) {
         error++;
@@ -887,6 +890,51 @@ static void replace_args(int argc, char *argv[])
     }
 }
 
+void send_cancel_cnonce(const char *cnonce)
+{
+    if (!gbl_in_stmt) return;
+    cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
+    int rc;
+    if (dbhostname) {
+        rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
+    } else {
+        rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+    }
+    if (rc) {
+        if (debug_trace)
+            fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
+        cdb2_close(cdb2h_2);
+        return;
+    }
+    char expanded[256];
+    for (int i = 0; i < 256 / 2 && cnonce[i] != '\0'; i++) {
+        sprintf(&expanded[i * 2], "%2x", cnonce[i]);
+    }
+    char sql[256];
+    snprintf(sql, 255, "exec procedure sys.cmd.send('sql cancelcnonce %s')",
+             expanded);
+    if (debug_trace) printf("Cancel sql string '%s'\n", sql);
+    rc = cdb2_run_statement(cdb2h_2, sql);
+    if (rc && debug_trace)
+        fprintf(stderr, "failed to cancel rc %d with '%s'\n", rc, sql);
+    cdb2_close(cdb2h_2);
+    gbl_in_stmt = 0;
+}
+
+/* If ctrl_c was pressed to clear existing line and go to new line
+ * If we see two ctrl_c in a row we exit.
+ * However, after a ctrl_c if user typed something
+ * (rl_line_buffer is not empty) and then issue a ctrl_c then dont exit.
+ */
+static void int_handler(int signum)
+{
+    printf("\n");
+    rl_on_new_line();
+    rl_replace_line("", 0);
+    rl_redisplay();
+    send_cancel_cnonce(cdb2_cnonce(cdb2h));
+}
+
 int main(int argc, char *argv[])
 {
     static char *filename = NULL;
@@ -1036,8 +1084,12 @@ int main(int argc, char *argv[])
         istty = 1;
     if (isttyarg == 2)
         istty = 0;
-    if (istty)
+    if (istty) {
         load_readline_history();
+        struct sigaction sact;
+        sact.sa_handler = int_handler;
+        sigaction(SIGINT, &sact, NULL);
+    }
     char *line;
     int multi;
     while ((line = read_line()) != NULL) {

@@ -97,8 +97,10 @@
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
 
+extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
+extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern char *gbl_mynode;
 
@@ -2140,6 +2142,9 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 {
     pthread_t thread_id;
     pthread_attr_t thd_attr;
+
+    if (gbl_exit) return;
+
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
     pthread_attr_init(&thd_attr);
@@ -3228,7 +3233,7 @@ done2:
 
     print(bdb_state, "returning from dbenv_open\n");
 
-    /* TODO: one-shotting this isn't enough - we nee to 
+    /* TODO: one-shotting this isn't enough - we nee to
        periodically check this connection and re-establish it
        in case pmux bounces */
     portmux_hello("localhost", bdb_state->name);
@@ -5216,7 +5221,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->origname = NULL;
 
     if (!parent_bdb_state) {
-        if (bdb_bdblock_debug_enabled()) {
+        if (gbl_bdblock_debug) {
             bdb_bdblock_debug_init(bdb_state);
         }
 
@@ -5605,7 +5610,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->master_handle = 1;
 
         /* dont create all these aux helper threads for a run of initcomdb2 */
-        if (!create) {
+        if (!create && !gbl_exit) {
             /*
               create checkpoint thread.
               this thread periodically applied changes reflected in the
@@ -7630,27 +7635,24 @@ int bdb_have_unused_files(void) { return oldfile_list_empty() != 1; }
 int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
-  char *munged_name = NULL;
-  int rc;
-  unsigned lognum = 0, lowfilenum = 0;
-  struct stat sb;
+    char *munged_name = NULL;
+    int rc;
+    unsigned lognum = 0, lowfilenum = 0;
+    struct stat sb;
 
-  if (bdb_state->attr->keep_referenced_files) {
-    int ourlowfilenum;
+    if (bdb_state->attr->keep_referenced_files) {
+        int ourlowfilenum;
 
-    /* if there's no cluster, use our log file, otherwise use the cluster
-     * low watermark,
-     * or our low watermark, whichever is lower */
-    lowfilenum = get_lowfilenum_sanclist(bdb_state);
+        /* if there's no cluster, use our log file, otherwise use the cluster
+         * low watermark,
+         * or our low watermark, whichever is lower */
+        lowfilenum = get_lowfilenum_sanclist(bdb_state);
 
-    ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
-    if (ourlowfilenum == -1)
-      return -1;
-    if (lowfilenum == 0)
-      lowfilenum = ourlowfilenum;
+        ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
+        if (ourlowfilenum == -1) return -1;
+        if (lowfilenum == 0) lowfilenum = ourlowfilenum;
 
-    if (ourlowfilenum < lowfilenum)
-      lowfilenum = ourlowfilenum;
+        if (ourlowfilenum < lowfilenum) lowfilenum = ourlowfilenum;
     }
 
     *bdberr = 0;
@@ -7667,16 +7669,14 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     munged_name = oldfile_list_rem(&lognum);
 
     /* wait some more */
-    if (!munged_name)
-      return 1;
+    if (!munged_name) return 1;
 
     /* skip already deleted files */
-    if (stat(munged_name, &sb))
-      return 0;
+    if (stat(munged_name, &sb)) return 0;
 
     if (lognum && lowfilenum && lognum >= lowfilenum) {
-      oldfile_list_add(munged_name, lognum);
-      return 1;
+        oldfile_list_add(munged_name, lognum);
+        return 1;
     }
 
     print(bdb_state, "deleting file %s\n", munged_name);
@@ -7993,366 +7993,357 @@ int bdb_watchdog_test_io(bdb_state_type *bdb_state)
 }
 
 typedef struct file_set {
-  hash_t *fnames;
-  DB_LSN debug;
-  DB_LSN ckp;
+    hash_t *fnames;
+    DB_LSN debug;
+    DB_LSN ckp;
 } file_set_t;
 
-static void free_file_set(file_set_t *fs) {
-  hash_free(fs->fnames);
-  free(fs);
+static void free_file_set(file_set_t *fs)
+{
+    hash_free(fs->fnames);
+    free(fs);
 }
 
 static inline int log_get_record(DB_LOGC *logc, DBT *logrec, DB_LSN *lsn,
-                                 int pos) {
-  int rc;
+                                 int pos)
+{
+    int rc;
 
-  bzero(logrec, sizeof(*logrec));
-  logrec->flags = DB_DBT_MALLOC;
+    bzero(logrec, sizeof(*logrec));
+    logrec->flags = DB_DBT_MALLOC;
 
-  if (pos != DB_SET) {
-    /* reposition the cursor if this is relative */
-    rc = logc->get(logc, lsn, logrec, DB_SET);
-    if (rc) {
-      if (rc != DB_NOTFOUND)
-        logmsg(LOGMSG_ERROR, "%s: failed reading repo log record rc=%d\n",
-               __func__, rc);
-      return rc;
+    if (pos != DB_SET) {
+        /* reposition the cursor if this is relative */
+        rc = logc->get(logc, lsn, logrec, DB_SET);
+        if (rc) {
+            if (rc != DB_NOTFOUND)
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed reading repo log record rc=%d\n", __func__,
+                       rc);
+            return rc;
+        }
     }
-  }
 
-  rc = logc->get(logc, lsn, logrec, pos);
-  if (rc) {
-    if (rc != DB_NOTFOUND)
-      logmsg(LOGMSG_ERROR, "%s: failed reading log record rc=%d\n", __func__,
-             rc);
-  }
-  return rc;
+    rc = logc->get(logc, lsn, logrec, pos);
+    if (rc) {
+        if (rc != DB_NOTFOUND)
+            logmsg(LOGMSG_ERROR, "%s: failed reading log record rc=%d\n",
+                   __func__, rc);
+    }
+    return rc;
 }
 
-static int check_proper_debug_log(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn) {
-  __db_debug_args *argp = NULL;
-  DBT logrec;
-  int type;
-  int rc;
+static int check_proper_debug_log(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn)
+{
+    __db_debug_args *argp = NULL;
+    DBT logrec;
+    int type;
+    int rc;
 
-  rc = log_get_record(logc, &logrec, lsn, DB_SET);
-  if (rc)
-    goto error;
+    rc = log_get_record(logc, &logrec, lsn, DB_SET);
+    if (rc) goto error;
 
-  LOGCOPY_32(&type, logrec.data);
-  if (type != DB___db_debug) {
-    logmsg(LOGMSG_ERROR, "%s: unable to find proper debug rec\n", __func__);
-    rc = -1;
-    goto error;
-  }
-  rc = __db_debug_read(dbenv, logrec.data, &argp);
-  if (rc)
-    goto error;
-  LOGCOPY_32(&type, argp->op.data);
-  if (type != 2) {
-    logmsg(LOGMSG_ERROR, "%s: wrong type for debug rec %d\n", __func__, type);
-    rc = -1;
-    goto error;
-  }
+    LOGCOPY_32(&type, logrec.data);
+    if (type != DB___db_debug) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find proper debug rec\n", __func__);
+        rc = -1;
+        goto error;
+    }
+    rc = __db_debug_read(dbenv, logrec.data, &argp);
+    if (rc) goto error;
+    LOGCOPY_32(&type, argp->op.data);
+    if (type != 2) {
+        logmsg(LOGMSG_ERROR, "%s: wrong type for debug rec %d\n", __func__,
+               type);
+        rc = -1;
+        goto error;
+    }
 
 error:
-  if (argp)
-    __os_free(dbenv, argp);
+    if (argp) __os_free(dbenv, argp);
 
-  return rc;
+    return rc;
 }
 
 static int get_file_name(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn, int *done,
-                         char **pname) {
-  __dbreg_register_args *argp = NULL;
-  DBT logrec;
-  int type;
-  int rc;
+                         char **pname)
+{
+    __dbreg_register_args *argp = NULL;
+    DBT logrec;
+    int type;
+    int rc;
 
-  *pname = NULL;
-  *done = 0;
+    *pname = NULL;
+    *done = 0;
 
-  rc = log_get_record(logc, &logrec, lsn, DB_NEXT);
-  if (rc)
-    goto done;
+    rc = log_get_record(logc, &logrec, lsn, DB_NEXT);
+    if (rc) goto done;
 
-  LOGCOPY_32(&type, logrec.data);
-  if (type == DB___txn_ckp) {
-    *done = 1;
-    goto done;
-  }
-  if (type != DB___dbreg_register) {
-    logmsg(LOGMSG_ERROR, "%s: unable to find proper debug rec\n", __func__);
-    goto done;
-  }
+    LOGCOPY_32(&type, logrec.data);
+    if (type == DB___txn_ckp) {
+        *done = 1;
+        goto done;
+    }
+    if (type != DB___dbreg_register) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find proper debug rec\n", __func__);
+        goto done;
+    }
 
-  rc = __dbreg_register_read(dbenv, logrec.data, &argp);
-  if (rc)
-    goto done;
+    rc = __dbreg_register_read(dbenv, logrec.data, &argp);
+    if (rc) goto done;
 
-  *pname = strdup(argp->name.data);
+    *pname = strdup(argp->name.data);
 
 done:
-  if (argp)
-    __os_free(dbenv, argp);
+    if (argp) __os_free(dbenv, argp);
 
-  return rc;
+    return rc;
 }
 
 static int get_prev_checkpoint(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn,
-                               DB_LSN *retlsn) {
-  __txn_ckp_args *argp = NULL;
-  DBT logrec;
-  int type;
-  int rc;
+                               DB_LSN *retlsn)
+{
+    __txn_ckp_args *argp = NULL;
+    DBT logrec;
+    int type;
+    int rc;
 
-  rc = log_get_record(logc, &logrec, lsn, DB_SET);
-  if (rc)
-    goto done;
+    rc = log_get_record(logc, &logrec, lsn, DB_SET);
+    if (rc) goto done;
 
-  LOGCOPY_32(&type, logrec.data);
-  if (type != DB___txn_ckp) {
-    logmsg(LOGMSG_ERROR, "%s: unable to find txn_ckp rec\n", __func__);
-    goto done;
-  }
+    LOGCOPY_32(&type, logrec.data);
+    if (type != DB___txn_ckp) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find txn_ckp rec\n", __func__);
+        goto done;
+    }
 
-  rc = __txn_ckp_read(dbenv, logrec.data, &argp);
-  if (rc)
-    goto done;
+    rc = __txn_ckp_read(dbenv, logrec.data, &argp);
+    if (rc) goto done;
 
-  if(unlikely(argp->last_ckp.file == 0)) {
-    /* fresh created dbs can have this */
-    rc = -1;
-    goto done;
-  }
+    if (unlikely(argp->last_ckp.file == 0)) {
+        /* fresh created dbs can have this */
+        rc = -1;
+        goto done;
+    }
 
-  *retlsn = argp->last_ckp;
+    *retlsn = argp->last_ckp;
 
 done:
-  if (argp)
-    __os_free(dbenv, argp);
+    if (argp) __os_free(dbenv, argp);
 
-  return rc;
+    return rc;
 }
 
 static int get_fileset_start(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn,
-                             DB_LSN *prev_lsn) {
-  __db_debug_args *argp = NULL;
-  DBT logrec;
-  int type;
-  int rc;
-  int empty = 1;
-  DB_LSN saved_lsn;
+                             DB_LSN *prev_lsn)
+{
+    __db_debug_args *argp = NULL;
+    DBT logrec;
+    int type;
+    int rc;
+    int empty = 1;
+    DB_LSN saved_lsn;
 
 skip_empties:
-  /* get lsn of previous txn_ckp record in prev_lsn */
-  rc = get_prev_checkpoint(dbenv, logc, lsn, prev_lsn);
-  if (rc)
-    return rc;
+    /* get lsn of previous txn_ckp record in prev_lsn */
+    rc = get_prev_checkpoint(dbenv, logc, lsn, prev_lsn);
+    if (rc) return rc;
 
-  saved_lsn = *prev_lsn;
+    saved_lsn = *prev_lsn;
 
-  do {
-    if (argp) {
-      __os_free(dbenv, argp);
-      argp = NULL;
+    do {
+        if (argp) {
+            __os_free(dbenv, argp);
+            argp = NULL;
+        }
+
+        /* walk backwards and locate debug */
+        rc = log_get_record(logc, &logrec, prev_lsn, DB_PREV);
+        if (rc) goto done;
+
+        LOGCOPY_32(&type, logrec.data);
+        if (type == DB___dbreg_register) empty = 0;
+        if (type != DB___db_debug) continue;
+
+        rc = __db_debug_read(dbenv, logrec.data, &argp);
+        if (rc) goto done;
+        LOGCOPY_32(&type, argp->op.data);
+        if (type == 2) break;
+    } while (1);
+
+    if (empty) {
+        *lsn = saved_lsn; /* skip empty checkpoint */
+        goto skip_empties;
     }
-
-    /* walk backwards and locate debug */
-    rc = log_get_record(logc, &logrec, prev_lsn, DB_PREV);
-    if (rc)
-      goto done;
-
-    LOGCOPY_32(&type, logrec.data);
-    if (type == DB___dbreg_register)
-      empty = 0;
-    if (type != DB___db_debug)
-      continue;
-
-    rc = __db_debug_read(dbenv, logrec.data, &argp);
-    if (rc)
-      goto done;
-    LOGCOPY_32(&type, argp->op.data);
-    if (type == 2)
-      break;
-  } while (1);
-
-  if (empty) {
-    *lsn = saved_lsn; /* skip empty checkpoint */
-    goto skip_empties;
-  }
 done:
-  if (argp)
-    __os_free(dbenv, argp);
+    if (argp) __os_free(dbenv, argp);
 
-  return rc;
+    return rc;
 }
 
 static int print_fnames_hash(file_set_t *fs, const char *prefix);
 
-file_set_t *construct_file_set(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn) {
-  file_set_t *fs = NULL;
-  char *fname;
-  int done;
-  int rc;
+file_set_t *construct_file_set(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn)
+{
+    file_set_t *fs = NULL;
+    char *fname;
+    int done;
+    int rc;
 
-  fs = (file_set_t *)calloc(1, sizeof(*fs));
-  if (!fs)
-    return NULL;
-  fs->fnames = hash_init_str(0);
+    fs = (file_set_t *)calloc(1, sizeof(*fs));
+    if (!fs) return NULL;
+    fs->fnames = hash_init_str(0);
 
-  rc = check_proper_debug_log(dbenv, logc, lsn);
-  if (rc)
-    return NULL;
+    rc = check_proper_debug_log(dbenv, logc, lsn);
+    if (rc) return NULL;
 
-  fs->debug = *lsn;
-  do {
-    rc = get_file_name(dbenv, logc, lsn, &done, &fname);
-    if (rc) {
-      break;
-    }
+    fs->debug = *lsn;
+    do {
+        rc = get_file_name(dbenv, logc, lsn, &done, &fname);
+        if (rc) {
+            break;
+        }
 
-    if (fname) {
-      logmsg(LOGMSG_INFO, "ADD %s to %p\n", fname, fs->fnames);
-      hash_add(fs->fnames, fname);
-    }
-  } while (!done);
+        if (fname) {
+            logmsg(LOGMSG_INFO, "ADD %s to %p\n", fname, fs->fnames);
+            hash_add(fs->fnames, fname);
+        }
+    } while (!done);
 
-  fs->ckp = *lsn;
+    fs->ckp = *lsn;
 
-  return fs;
+    return fs;
 
 error:
-  if (fs)
-    free_file_set(fs);
-  return NULL;
+    if (fs) free_file_set(fs);
+    return NULL;
 }
 
-static int fnames_print(void *obj, void *arg) {
-  logmsg(LOGMSG_INFO, "%s\n", (char *)obj);
-  return 0;
+static int fnames_print(void *obj, void *arg)
+{
+    logmsg(LOGMSG_INFO, "%s\n", (char *)obj);
+    return 0;
 }
 
-static int print_fnames_hash(file_set_t *fs, const char *prefix) {
-  logmsg(LOGMSG_INFO, "%s: START\n", prefix);
-  hash_for(fs->fnames, fnames_print, NULL);
-  logmsg(LOGMSG_INFO, "%s: END\n", prefix);
+static int print_fnames_hash(file_set_t *fs, const char *prefix)
+{
+    logmsg(LOGMSG_INFO, "%s: START\n", prefix);
+    hash_for(fs->fnames, fnames_print, NULL);
+    logmsg(LOGMSG_INFO, "%s: END\n", prefix);
 }
 
-static int fnames_search(void *obj, void *arg) {
-  char *src = obj;
-  file_set_t *fs = arg;
+static int fnames_search(void *obj, void *arg)
+{
+    char *src = obj;
+    file_set_t *fs = arg;
 
-  if (hash_find_readonly(fs->fnames, src) == NULL) {
-    struct stat sb;
+    if (hash_find_readonly(fs->fnames, src) == NULL) {
+        struct stat sb;
 
-    if (stat(src, &sb) == 0) {
-      logmsg(LOGMSG_WARN, "MISSING %s from %d:%d-%d:%d\n", src, fs->debug.file,
-             fs->debug.offset, fs->ckp.file, fs->ckp.offset);
+        if (stat(src, &sb) == 0) {
+            logmsg(LOGMSG_WARN, "MISSING %s from %d:%d-%d:%d\n", src,
+                   fs->debug.file, fs->debug.offset, fs->ckp.file,
+                   fs->ckp.offset);
 
-      if (!oldfile_list_contains(src)) {
-        oldfile_list_add(src, fs->debug.file);
-      }
-    }
-  }
-
-  return 0;
-}
-
-static int compare_filesets(bdb_state_type *bdb_state, file_set_t *fs,
-                            DB_LSN *lsn, file_set_t *prev_fs,
-                            DB_LSN *prev_lsn) {
-  int rc = 0;
-
-  logmsg(LOGMSG_INFO, "COMPARING fs %d:%d vs older %d:%d\n", lsn->file,
-         lsn->offset, prev_lsn->file, prev_lsn->offset);
-
-  print_fnames_hash(fs, "Current");
-  print_fnames_hash(prev_fs, "Older");
-
-  /* there is apparently a possibility for debug to come in
-     after dbreg entries???? Ignore those */
-  if (hash_get_num_entries(fs->fnames) == 0)
-    return -1;
-
-  hash_for(prev_fs->fnames, fnames_search, fs);
-
-  return rc;
-}
-
-void populate_deleted_files(bdb_state_type *bdb_state) {
-  DB_ENV *dbenv = bdb_state->dbenv;
-  DB_LOGC *logc;
-  DB_LSN lsn;
-  DB_LSN prev_lsn;
-  file_set_t *fs;
-  file_set_t *prev_fs;
-  int rc;
-
-  logmsg(LOGMSG_INFO, "Checking for removed files\n");
-
-  /* get a debug */
-  rc = dbenv->get_recovery_lsn(dbenv, &lsn);
-  if (rc) {
-    logmsg(LOGMSG_ERROR, "%s: no recover lsn?rc=%d!\n", __func__, rc);
-    return;
-  }
-
-  rc = dbenv->log_cursor(dbenv, &logc, 0);
-  if (rc) {
-    logmsg(LOGMSG_ERROR, "%s: failed to open log cursor rc=%d!\n", __func__,
-           rc);
-  }
-
-  /* get the txn_ckp */
-  fs = construct_file_set(dbenv, logc, &lsn);
-  if (!fs) {
-    logmsg(LOGMSG_ERROR, "%s: unable to construct a file set!\n", __func__);
-    return;
-  }
-  print_fnames_hash(fs, "LLLL");
-
-  /* skip empty checkpoints */
-  if(hash_get_num_entries(fs->fnames) == 0) {
-    free_file_set(fs);
-    fs = NULL;
-  }
-
-
-  do {
-    /* the search stopped at txn_ckp; we can retrieve previous
-       checkpoint's fileset*/
-    rc = get_fileset_start(dbenv, logc, &lsn, &prev_lsn);
-    if (rc) {
-      break; /* this breaks also at beginning of oldest log */
-    }
-
-    prev_fs = construct_file_set(dbenv, logc, &prev_lsn);
-
-    /* compare old vs new, and queue what's missing */
-    if(fs) {
-        rc = compare_filesets(bdb_state, fs, &lsn, prev_fs, &prev_lsn);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed comparing file sets\n", __func__);
+            if (!oldfile_list_contains(src)) {
+                oldfile_list_add(src, fs->debug.file);
+            }
         }
     }
 
-    lsn = prev_lsn;
+    return 0;
+}
 
-    if(fs)
+static int compare_filesets(bdb_state_type *bdb_state, file_set_t *fs,
+                            DB_LSN *lsn, file_set_t *prev_fs, DB_LSN *prev_lsn)
+{
+    int rc = 0;
+
+    logmsg(LOGMSG_INFO, "COMPARING fs %d:%d vs older %d:%d\n", lsn->file,
+           lsn->offset, prev_lsn->file, prev_lsn->offset);
+
+    print_fnames_hash(fs, "Current");
+    print_fnames_hash(prev_fs, "Older");
+
+    /* there is apparently a possibility for debug to come in
+       after dbreg entries???? Ignore those */
+    if (hash_get_num_entries(fs->fnames) == 0) return -1;
+
+    hash_for(prev_fs->fnames, fnames_search, fs);
+
+    return rc;
+}
+
+void populate_deleted_files(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    DB_LOGC *logc;
+    DB_LSN lsn;
+    DB_LSN prev_lsn;
+    file_set_t *fs;
+    file_set_t *prev_fs;
+    int rc;
+
+    logmsg(LOGMSG_INFO, "Checking for removed files\n");
+
+    /* get a debug */
+    rc = dbenv->get_recovery_lsn(dbenv, &lsn);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: no recover lsn?rc=%d!\n", __func__, rc);
+        return;
+    }
+
+    rc = dbenv->log_cursor(dbenv, &logc, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to open log cursor rc=%d!\n", __func__,
+               rc);
+    }
+
+    /* get the txn_ckp */
+    fs = construct_file_set(dbenv, logc, &lsn);
+    if (!fs) {
+        logmsg(LOGMSG_ERROR, "%s: unable to construct a file set!\n", __func__);
+        return;
+    }
+    print_fnames_hash(fs, "LLLL");
+
+    /* skip empty checkpoints */
+    if (hash_get_num_entries(fs->fnames) == 0) {
         free_file_set(fs);
-    fs = prev_fs;
-    prev_fs = NULL;
+        fs = NULL;
+    }
 
-  } while (1); /* breaking out: oldest checkpoint will fail to read */
+    do {
+        /* the search stopped at txn_ckp; we can retrieve previous
+           checkpoint's fileset*/
+        rc = get_fileset_start(dbenv, logc, &lsn, &prev_lsn);
+        if (rc) {
+            break; /* this breaks also at beginning of oldest log */
+        }
+
+        prev_fs = construct_file_set(dbenv, logc, &prev_lsn);
+
+        /* compare old vs new, and queue what's missing */
+        if (fs) {
+            rc = compare_filesets(bdb_state, fs, &lsn, prev_fs, &prev_lsn);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: failed comparing file sets\n",
+                       __func__);
+            }
+        }
+
+        lsn = prev_lsn;
+
+        if (fs) free_file_set(fs);
+        fs = prev_fs;
+        prev_fs = NULL;
+
+    } while (1); /* breaking out: oldest checkpoint will fail to read */
 
 done:
-  logmsg(LOGMSG_INFO, "Done checking for removed files\n");
-  if (fs)
-    free_file_set(fs);
-  if (prev_fs)
-    free_file_set(prev_fs);
+    logmsg(LOGMSG_INFO, "Done checking for removed files\n");
+    if (fs) free_file_set(fs);
+    if (prev_fs) free_file_set(prev_fs);
 
-  logc->close(logc, 0);
+    logc->close(logc, 0);
 }

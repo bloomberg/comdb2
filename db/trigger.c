@@ -257,7 +257,7 @@ void trigger_stat()
 {
 #if 0
 	for (int i = 0; i < thedb->num_qdbs; ++i) {
-		struct db *qdb = thedb->qdbs[i];
+		struct dbtable *qdb = thedb->qdbs[i];
 		printf("name: %s type:%d\n", qdb->dbname, qdb->dbtype);
 		for (int j = 0; j < MAXCONSUMERS; ++j) {
 			struct consumer *consumer = qdb->consumers[i];
@@ -274,7 +274,7 @@ void trigger_stat()
     if (trigger_hash) {
         info = hash_first(trigger_hash, &ent, &bkt);
         while (info) {
-            printf("%s %s IS ASSIGNED TO node:%d cookie:0x%llx\n", __func__,
+            printf("%s %s IS ASSIGNED TO node:%d cookie:0x%p\n", __func__,
                    info->qname, info->host, info->trigger_cookie);
             info = hash_next(trigger_hash, &ent, &bkt);
         }

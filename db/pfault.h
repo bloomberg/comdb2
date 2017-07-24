@@ -59,7 +59,7 @@ typedef struct pfrq {
     int type;
     int index;
     int length;
-    struct db *db;
+    struct dbtable *db;
     pfbb_t *bbuf;
     char data[1];
 } pfrq_t;
@@ -77,25 +77,25 @@ int pflt_queue_add_record(struct ireq *iq, const char *tagdescr, size_t taglen,
 int pflt_queue_del_record(struct ireq *iq, void *primkey, void *defdta, int rrn,
                           unsigned long long genid, int flags, pfbb_t *buf);
 
-int enque_pfault_index(struct db *db, void *key, int keylen, int ixnum,
+int enque_pfault_index(struct dbtable *db, void *key, int keylen, int ixnum,
                        pfbb_t *bbuf);
-int enque_pfault_dtastripe_exit(struct db *db, pfbb_t *bbuf);
-int enque_pfault_dtastripe_add(struct db *db, pfbb_t *bbuf);
-int enque_pfault_dtastripe_genid_formkey(struct db *db,
+int enque_pfault_dtastripe_exit(struct dbtable *db, pfbb_t *bbuf);
+int enque_pfault_dtastripe_add(struct dbtable *db, pfbb_t *bbuf);
+int enque_pfault_dtastripe_genid_formkey(struct dbtable *db,
                                          unsigned long long genid,
                                          pfbb_t *bbuf);
-int enque_pfault_dtastripe_genid(struct db *db, unsigned long long genid,
+int enque_pfault_dtastripe_genid(struct dbtable *db, unsigned long long genid,
                                  pfbb_t *bbuf);
-int enque_pfault_dtastripe_defprimkey_formkey(struct db *db, void *pkey,
+int enque_pfault_dtastripe_defprimkey_formkey(struct dbtable *db, void *pkey,
                                               int pkeylen, pfbb_t *bbuf);
-int enque_pfault_dtastripe_defprimdata_formkey(struct db *db, void *ddata,
+int enque_pfault_dtastripe_defprimdata_formkey(struct dbtable *db, void *ddata,
                                                int ddlen, pfbb_t *bbuf);
 
-int stop_dealloc_all_pfault(struct db *db);
-int start_pfault_dtastripe(struct db *db, int npflt);
-int start_pfault_dta(struct db *db, int npflt);
-int start_pfault_idx(struct db *db, int npflt);
-int start_pfault_all(struct dbenv *dbenv, struct db *db);
+int stop_dealloc_all_pfault(struct dbtable *db);
+int start_pfault_dtastripe(struct dbtable *db, int npflt);
+int start_pfault_dta(struct dbtable *db, int npflt);
+int start_pfault_idx(struct dbtable *db, int npflt);
+int start_pfault_all(struct dbenv *dbenv, struct dbtable *db);
 
 int add_to_brdbuf(pfbb_t *bbuf, int type, void *data, int dtalen);
 int flush_brdbuf(pfbb_t *bbuf);

@@ -17,6 +17,8 @@
 
 /* COMDB2 MODIFICATION */
 #include <cheapstack.h>
+#include "tunables.h"
+
 #undef debug_raw
 /* Special Comments:
 **
@@ -1401,6 +1403,7 @@ struct sqlite3 {
   /* COMDB2 MODIFICATION */
   u8 should_fingerprint;
   char fingerprint[16];              /* Figerprint of the last query that was prepared */
+  int force_sqlite_impl;
 };
 
 /*
@@ -3038,6 +3041,7 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)];  /* register which cursors are recording and which not */
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
+  void *comdb2_ddl_ctx;     /* Context for DDL commands */
 };
 
 /* COMDB2 MODIFICATION */

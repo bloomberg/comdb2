@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
 #include <segstr.h>
 
 #include "switches.h"
@@ -73,12 +72,14 @@ void register_switch(const char *name, const char *descr, switch_on_fn on_fn,
     if (len > maxnamelen) {
         maxnamelen = len;
     }
+
+    REGISTER_TUNABLE((char *)name, (char *)descr, TUNABLE_BOOLEAN, context,
+                     NOARG, NULL, NULL, NULL, NULL);
 }
 
 void cleanup_switches()
 {
-    if (!switches)
-        return;
+    if (!switches) return;
 
     int ii;
     for (ii = 0; ii < num_switches; ii++) {
@@ -94,11 +95,20 @@ void cleanup_switches()
     free(switches);
 }
 
-void int_on_fn(void *context) { *((int *)context) = 1; }
+void int_on_fn(void *context)
+{
+    *((int *)context) = 1;
+}
 
-void int_off_fn(void *context) { *((int *)context) = 0; }
+void int_off_fn(void *context)
+{
+    *((int *)context) = 0;
+}
 
-int int_stat_fn(void *context) { return *((const int *)context); }
+int int_stat_fn(void *context)
+{
+    return *((const int *)context);
+}
 
 void register_int_switch(const char *name, const char *descr, int *flag)
 {

@@ -145,7 +145,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     int tblnum;
     int ixnum;
     Mem *pMem;
-    struct db *db;
+    struct dbtable *db;
     char *sql;
     strbuf *new_sql;
     char *bracket;
@@ -195,7 +195,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     ixschema = db->ixschema[ixnum];
 
     /* already datacopy indexes are ok */
-    if (ixschema->flags & SCHEMA_DATACOPY == 0) {
+    if (ixschema->flags & SCHEMA_DATACOPY) {
         return 0;
     }
 
@@ -203,7 +203,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
     /* get the sql create */
     pMem = &upr->aMem[4];
-    if (unlikely(pMem->flags & MEM_Str == 0)) {
+    if (unlikely((pMem->flags & MEM_Str) == 0)) {
         logmsg(LOGMSG_ERROR, "%s: wrong type sql string %x\n", __func__,
                 pMem->flags);
         return -1;
@@ -717,7 +717,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
     return rc;
 }
 
-static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct db *db,
+static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *db,
                                       struct convert_failure *fail_reason,
                                       BtCursor *pCur)
 {
@@ -764,7 +764,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
 {
     BtCursor bCur;
     struct sql_thread *thd;
-    struct db *db;
+    struct dbtable *db;
     char *row;
     int rowlen;
     blob_buffer_t rowblobs[MAXBLOBS];
@@ -890,7 +890,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
 {
     BtCursor bCur;
     struct sql_thread *thd;
-    struct db *db;
+    struct dbtable *db;
     char *row;
     int rowlen;
     blob_buffer_t rowblobs[MAXBLOBS];

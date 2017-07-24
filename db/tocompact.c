@@ -35,12 +35,12 @@ static void *compact_my_table(void *arg);
 static pthread_mutex_t compact_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct compact_entry {
-    struct db *db;
+    struct dbtable *db;
     int timeout;
     int freefs;
 } compact_entry_t;
 
-void compact_table(struct db *db, int timeout, int freefs)
+void compact_table(struct dbtable *db, int timeout, int freefs)
 {
 
     pthread_t tid;

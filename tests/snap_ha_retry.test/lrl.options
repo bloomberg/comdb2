@@ -1,9 +1,6 @@
 table   dummy   dummy.csc2
-morecolumns
 update_delete_limit
 
 setattr PRIVATE_BLKSEQ_ENABLED 1
 setattr MIN_KEEP_LOGS_AGE 300
 enable_snapshot_isolation
-
-on sc_logical_txn

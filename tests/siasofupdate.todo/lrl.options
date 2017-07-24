@@ -1,5 +1,3 @@
 table t1 t1.csc2
 enable_snapshot_isolation
 enable_new_snapshot_asof
-setattr MAX_SHADOW_ROWS 10000000
-on sc_logical_txn

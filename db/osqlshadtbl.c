@@ -415,7 +415,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 {
     shad_tbl_t *tbl;
     unsigned long long rqid;
-    struct db *db = pCur->db;
+    struct dbtable *db = pCur->db;
     struct dbenv *env = pCur->db->dbenv;
     int numblobs = pCur->numblobs;
     int rc = 0;
@@ -485,11 +485,6 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
     bdb_temp_table_set_cmp_func(tbl->blb_tbl->table, blb_tbl_cmp);
     bdb_temp_table_set_cmp_func(tbl->delidx_tbl->table, idx_tbl_cmp);
     bdb_temp_table_set_cmp_func(tbl->insidx_tbl->table, idx_tbl_cmp);
-
-    tbl->addidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
-                                   sizeof(unsigned long long));
-    tbl->delidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
-                                   sizeof(unsigned long long));
 
     tbl->addidx_hash = hash_init_o(offsetof(struct rec_dirty_keys, seq),
                                    sizeof(unsigned long long));
@@ -698,13 +693,11 @@ int osql_get_shadowdata(BtCursor *pCur, unsigned long long genid, void **buf,
 
 static shad_tbl_t *get_shadtbl(struct BtCursor *pCur)
 {
-    shad_tbl_t *tbl;
     struct sql_thread *thd;
     struct sqlclntstate *clnt;
 
     /* we keep the shadow with the pCur, if any */
     if (pCur && pCur->shadtbl) {
-        shad_tbl_t *tbl = (shad_tbl_t *)pCur->shadtbl;
         return (shad_tbl_t *)pCur->shadtbl;
     }
 
@@ -714,9 +707,7 @@ static shad_tbl_t *get_shadtbl(struct BtCursor *pCur)
     thd = pthread_getspecific(query_info_key);
     clnt = thd->sqlclntstate;
 
-    tbl = osql_get_shadow_bydb(clnt, pCur->db);
-
-    return tbl;
+    return osql_get_shadow_bydb(clnt, pCur->db);
 }
 
 static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
@@ -1370,7 +1361,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     return 0;
 }
 
-void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct db *db)
+void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
 {
     void *ret = NULL;
     shad_tbl_t *tbl = NULL;
@@ -1975,16 +1966,19 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             rc = SQLITE_INTERNAL;
             logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode!\n",
                     __func__);
+            break;
         }
 
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
+                   __func__, __LINE__, rc, *bdberr);
+            break;
+        }
     }
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                __func__, __LINE__, rc, *bdberr);
-        /* fall-through */
     }
 
     return rc;
@@ -2098,7 +2092,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
 
     int ix = 0;
     char namebuf[MAXTAGLEN];
-    struct db *db = pCur->db;
+    struct dbtable *db = pCur->db;
     char key[MAXKEYLEN];
     void *tran = thd->sqlclntstate->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;

@@ -1571,7 +1571,8 @@ errunlock:
 	return (ret);
 }
 
-static int max_replication_trans_retries = INT_MAX;	// disabled by default, can enable in lrl
+/* Disabled by default, can enable in lrl */
+int max_replication_trans_retries = INT_MAX;
 
 void
 berkdb_set_max_rep_retries(int max)

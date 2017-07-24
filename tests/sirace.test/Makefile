@@ -4,7 +4,7 @@ export TEST_TIMEOUT=50m
 
 CFLAGS+=-I$(SRCHOME)/cdb2api -I$(SRCHOME)/bbinc
 
-CDB2LIBS=$(SYSPATH) -L$(SRCHOME)/cdb2api -l:libcdb2api.a -L$(SRCHOME)/protobuf/ -lcdb2protobuf -lprotobuf-c -lpthread -lssl -lcrypto -L$(SRCHOME)/bb -lbb
+CDB2LIBS=$(SYSPATH) $(SRCHOME)/cdb2api/libcdb2api.a $(SRCHOME)/protobuf/libcdb2protobuf.a -lprotobuf-c -lpthread -lssl -lcrypto -L$(SRCHOME)/bb -lbb
 
 
 

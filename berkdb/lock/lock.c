@@ -95,7 +95,7 @@ static const char __db_lock_invalid[] = "%s: Lock is no longer valid";
 static const char __db_locker_invalid[] = "Locker is not valid";
 
 #ifdef DEBUG_LOCKS
-extern void bdb_describe_lock_dbt(void *bdb_state, DBT *dbt, char *out,
+extern void bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbt, char *out,
     int outlen);
 #define LKBUFMAX 10000
 #define LKBUFSZ 150
@@ -2082,8 +2082,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		dbt.data = obj->data;
 		size = dbt.size = obj->size;
 
-		bdb_describe_lock_dbt(dbenv->app_private, &dbt, desc,
-		    sizeof(desc));
+		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
 	} else {
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
@@ -3187,8 +3186,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		dbt.data = lockdata;
 		dbt.size = sh_obj->lockobj.size;
 
-		bdb_describe_lock_dbt(dbenv->app_private, &dbt, desc,
-		    sizeof(desc));
+		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
 
 		pthread_mutex_lock(&lblk);
 		idx = lbcounter;
@@ -3947,53 +3945,38 @@ __lock_getlocker(lt, locker, indx, retries, flags, retp)
 	u_int32_t flags;
 	DB_LOCKER **retp;
 {
-	int ret;
 	int created;
-	DB_LOCKREGION *region;
-	u_int32_t partition;
-
-	int create = LF_ISSET(GETLOCKER_CREATE);
+	int lk_create = LF_ISSET(GETLOCKER_CREATE);
 	int is_logical = LF_ISSET(GETLOCKER_LOGICAL);
 	u_int32_t keep_part_lock = LF_ISSET(GETLOCKER_KEEP_PART);
 	u_int32_t get_locker_lock = !LF_ISSET(GETLOCKER_DONT_LOCK);
 
-	region = lt->reginfo.primary;
-	partition = locker % gbl_lkr_parts;
+	DB_LOCKREGION *region = lt->reginfo.primary;
+	u_int32_t partition = locker % gbl_lkr_parts;
 
 	lock_locker_partition(region, partition);
 
-	ret = __lock_getlocker_int(lt, locker, indx, partition, create,
-	    retries, retp, &created, is_logical);
-
-	if (ret || *retp == NULL || keep_part_lock == 0) {
+	int ret = __lock_getlocker_int(lt, locker, indx, partition, lk_create,
+                                   retries, retp, &created, is_logical);
+    
+	if (ret || *retp == NULL || keep_part_lock == 0) 
 		unlock_locker_partition(region, partition);
-	}
 
-	if (keep_part_lock && created && get_locker_lock) {
-		/* This was on just for debugging 
-		 * printf("can't hold locker partition because "
-		 * "we need to lock lockers\n");
-		 * printf("keep_part_lock: %u create: %d created: %d "
-		 * "get_locker_lock: %u\n", keep_part_lock, create, created,
-		 * get_locker_lock);
-		 * cheap_stack_trace();
-		 * abort();
-		 */
-		unlock_locker_partition(region, partition);
-	}
+	if(!created)
+		return ret;
 
-	if (created) {
-		if (get_locker_lock)
-			lock_lockers(region);
-		SH_TAILQ_INSERT_HEAD(&region->lockers, *retp, ulinks,
-		    __db_locker);
-		if (++region->stat.st_nlockers > region->stat.st_maxnlockers)
-			region->stat.st_maxnlockers = region->stat.st_nlockers;
-		if (get_locker_lock) {
-			unlock_lockers(region);
-			if (keep_part_lock)
-				lock_locker_partition(region, partition);
-		}
+	if (get_locker_lock) {
+		if (keep_part_lock) /* cant hold locker partition when locking lockers*/
+			unlock_locker_partition(region, partition);
+		lock_lockers(region);
+	}
+	SH_TAILQ_INSERT_HEAD(&region->lockers, *retp, ulinks, __db_locker);
+	if (++region->stat.st_nlockers > region->stat.st_maxnlockers)
+		region->stat.st_maxnlockers = region->stat.st_nlockers;
+	if (get_locker_lock) {
+		unlock_lockers(region);
+		if (keep_part_lock) /* caller expects partition locked */
+			lock_locker_partition(region, partition);
 	}
 	return ret;
 }

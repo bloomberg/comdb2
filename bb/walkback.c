@@ -26,24 +26,32 @@
 /* #include <hexdump.h> */
 #endif
 
-static int warnthresh = 50;
+int gbl_walkback_enabled = 1;
+int gbl_warnthresh = 50;
+
 static unsigned long long count = 0, ivcount = 0;
 
-static int walkback_enabled = 1;
+void walkback_disable(void)
+{
+    gbl_walkback_enabled = 0;
+}
 
-void walkback_disable(void) { walkback_enabled = 0; }
-
-void walkback_enable(void) { walkback_enabled = 1; }
+void walkback_enable(void)
+{
+    gbl_walkback_enabled = 1;
+}
 
 /* Reset counter if we're enabling */
 void walkback_set_warnthresh(int thresh)
 {
-    if (warnthresh == 0 && thresh > 0)
-        ivcount = count;
-    warnthresh = thresh;
+    if (gbl_warnthresh == 0 && thresh > 0) ivcount = count;
+    gbl_warnthresh = thresh;
 }
 
-int walkback_get_warnthresh(void) { return warnthresh; }
+int walkback_get_warnthresh(void)
+{
+    return gbl_warnthresh;
+}
 
 static void showfunc(void *stack[], int nframes, FILE *f)
 {
@@ -68,12 +76,12 @@ static void trace_pc_getlist(void *stack[], int nframes, FILE *f)
 /* Print a message if we've seen at least 'warnthresh' messages
  * in the last second */
 #if 0
-    if(warnthresh>0 && ((now=time(NULL))-lastprint)>=1)
+    if(gbl_warnthresh>0 && ((now=time(NULL))-lastprint)>=1)
     {
-        if((count-ivcount)>warnthresh)
+        if((count-ivcount) > gbl_warnthresh)
         {
             fprintf(f, "Exceeded walkback warn-threshold (%d/%d): ", 
-                    (int)(count-ivcount), warnthresh);
+                    (int)(count-ivcount), gbl_warnthresh);
             showfunc(stack, nframes, f);
         }
         ivcount=count;
@@ -845,7 +853,7 @@ int /* rcode */
     arg.pcMaxCount = pcArraySize;
     arg.pcOutCount = 0;
 
-    if (walkback_enabled) {
+    if (gbl_walkback_enabled) {
         rcode = stack_pc_walkback(context, pcArraySize, pclist_add, &arg);
     }
 

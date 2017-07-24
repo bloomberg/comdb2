@@ -29,7 +29,7 @@
 #include "sc_records.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
-                           struct db *db, struct db *newdb,
+                           struct dbtable *db, struct dbtable *newdb,
                            struct scplan *theplan)
 {
     int changed = old_changed;
@@ -58,8 +58,8 @@ static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
     return changed;
 }
 
-static int prepare_changes(struct schema_change_type *s, struct db *db,
-                           struct db *newdb, struct scplan *theplan,
+static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
+                           struct dbtable *newdb, struct scplan *theplan,
                            struct scinfo *scinfo)
 {
     int changed = ondisk_schema_changed(s->table, newdb, stderr, s);
@@ -133,8 +133,8 @@ static int prepare_changes(struct schema_change_type *s, struct db *db,
 }
 
 static void adjust_version(int changed, struct scinfo *scinfo,
-                           struct schema_change_type *s, struct db *db,
-                           struct db *newdb)
+                           struct schema_change_type *s, struct dbtable *db,
+                           struct dbtable *newdb)
 {
     /* if we don't want to merely bump the version, reset it to 0. */
     if (changed == SC_TAG_CHANGE && newdb->instant_schema_change) {
@@ -175,8 +175,8 @@ static void adjust_version(int changed, struct scinfo *scinfo,
 }
 
 static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
-                                                      struct db *db,
-                                                      struct db *newdb)
+                                                      struct dbtable *db,
+                                                      struct dbtable *newdb)
 {
     int rc;
     int bdberr;
@@ -197,8 +197,8 @@ static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
     return SC_OK;
 }
 
-static int switch_versions_with_plan(void *tran, struct db *db,
-                                     struct db *newdb)
+static int switch_versions_with_plan(void *tran, struct dbtable *db,
+                                     struct dbtable *newdb)
 {
     int rc, bdberr;
     int blobno, ixnum;
@@ -278,7 +278,7 @@ static int switch_versions_with_plan(void *tran, struct db *db,
     return SC_OK;
 }
 
-static void backout(struct db *db)
+static void backout(struct dbtable *db)
 {
     backout_schemas(db->dbname);
     live_sc_off(db);
@@ -300,11 +300,11 @@ static inline void wait_to_resume(struct schema_change_type *s)
 int do_alter_table_int(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db;
+    struct dbtable *db;
     int rc;
     int bdberr = 0;
     int trying_again = 0;
-    struct db *newdb;
+    struct dbtable *newdb;
     int datacopy_odh = 0;
     int stop_tag_thds = 0;
     int retries = 0;
@@ -319,7 +319,7 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
     gbl_use_plan = 1;
     gbl_sc_last_writer_time = 0;
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->table);
         return SC_TABLE_DOESNOT_EXIST;
@@ -356,7 +356,7 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         (gbl_expressions_indexes && newdb->ix_expr)) {
         int ret = 0;
         char temp_newdb_name[MAXTABLELEN];
-        struct db *temp_newdb;
+        struct dbtable *temp_newdb;
         int len = strlen(s->table);
         len = crc32c(s->table, len);
         snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
@@ -419,8 +419,10 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
             }
 
             thedb->dbs =
-                realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+                realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
             thedb->dbs[thedb->num_dbs++] = temp_newdb;
+            /* Add table to the hash. */
+            hash_add(thedb->db_hash, temp_newdb);
             create_sqlmaster_records(tran);
             create_master_tables(); /* create sql statements */
             ret = new_indexes_syntax_check(iq);
@@ -610,12 +612,12 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     struct schema_change_type *s = iq->sc;
     int retries = 0;
     int rc, bdberr;
-    struct db *db;
-    struct db *newdb;
+    struct dbtable *db;
+    struct dbtable *newdb;
     void *old_bdb_handle, *new_bdb_handle;
     int olddb_bthashsz;
-    struct db **dbs;
-    struct db **newdbs;
+    struct dbtable **dbs;
+    struct dbtable **newdbs;
     void **pold_bdb_handle, **pnew_bdb_handle;
     int *polddb_bthashsz;
     int indx;
@@ -843,7 +845,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         /* This happens in lockstep with bdb_set_in_schema_change */
         /* delete files we don't need now */
         sc_del_unused_files_tran(db, transac);
-        memset(newdb, 0xff, sizeof(struct db));
+        memset(newdb, 0xff, sizeof(struct dbtable));
         free(newdb);
     }
 
@@ -892,10 +894,10 @@ int do_upgrade_table_int(struct schema_change_type *s)
     int rc = SC_OK;
     int i;
 
-    struct db *db;
+    struct dbtable *db;
     struct scinfo scinfo;
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) return SC_TABLE_DOESNOT_EXIST;
 
     s->db = db;
