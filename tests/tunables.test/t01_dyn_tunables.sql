@@ -49,3 +49,12 @@ SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
 exec procedure sys.cmd.send('logmsg level xxx');
 exec procedure sys.cmd.send('logmsg level debug');
 SELECT value AS 'logmsg.level' FROM comdb2_tunables WHERE name = 'logmsg.level';
+
+SELECT name AS 'appsockpool tunables' FROM comdb2_tunables WHERE name LIKE 'appsockpool%';
+SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';
+PUT TUNABLE 'appsockpool.maxt' 'xxx';
+PUT TUNABLE 'appsockpool.maxt' 101;
+SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';
+exec procedure sys.cmd.send('appsockpool maxt xxx');
+exec procedure sys.cmd.send('appsockpool maxt 102');
+SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';

@@ -8016,7 +8016,7 @@ netinfo_type *osql_get_netinfo(void)
 int osqlpfthdpool_init(void)
 {
     int i = 0;
-    gbl_osqlpfault_thdpool = thdpool_create("OSQL PREFAULT pool", 0);
+    gbl_osqlpfault_thdpool = thdpool_create("osqlpfaultpool", 0);
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_osqlpfault_thdpool);

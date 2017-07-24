@@ -164,6 +164,54 @@ static void init_pool_list(void)
     listc_init(&threadpools, offsetof(struct thdpool, lnk));
 }
 
+#include "tunables.h"
+
+#define REGISTER_THDPOOL_TUNABLE(POOL, NAME, DESCR, TYPE, VAR_PTR, FLAGS,      \
+                                 VALUE_FN, VERIFY_FN, UPDATE_FN, DESTROY_FN)   \
+    snprintf(buf, sizeof(buf), "%s.%s", POOL, #NAME);                          \
+    REGISTER_TUNABLE(buf, DESCR, TYPE, VAR_PTR, FLAGS, VALUE_FN, VERIFY_FN,    \
+                     UPDATE_FN, DESTROY_FN)
+
+static void register_thdpool_tunables(char *name, struct thdpool *pool)
+{
+    char buf[100];
+
+    REGISTER_TUNABLE(name, NULL, TUNABLE_COMPOSITE, NULL, INTERNAL, NULL, NULL,
+                     NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, mint, "Minimum number of threads in the pool.", TUNABLE_INTEGER,
+        &pool->minnthd, NOZERO, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, maxt, "Maximum number of threads in the pool.", TUNABLE_INTEGER,
+        &pool->maxnthd, NOZERO, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, maxq, "Maximum size of queue.",
+                             TUNABLE_INTEGER, &pool->maxqueue, NOZERO, NULL,
+                             NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, longwait, "Long wait alarm threshold (in milliseconds).",
+        TUNABLE_INTEGER, &pool->longwaitms, NOZERO, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, linger, "Thread linger time (in seconds).",
+                             TUNABLE_INTEGER, &pool->lingersecs, NOZERO, NULL,
+                             NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, stacksz, "Thread stack size.",
+                             TUNABLE_INTEGER, &pool->stack_sz, NOZERO, NULL,
+                             NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, maxqover,
+                             "Maximum client forced queued items above maxq.",
+                             TUNABLE_INTEGER, &pool->maxqueueoverride, NOZERO,
+                             NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, maxagems, "Maximum age for in-queue time (in milliseconds).",
+        TUNABLE_INTEGER, &pool->maxqueueagems, NOZERO, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, exit_on_error, "Exit on pthread error.",
+                             TUNABLE_BOOLEAN, &pool->exit_on_create_fail, NOARG,
+                             NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, dump_on_full, "Dump status on full queue.",
+                             TUNABLE_BOOLEAN, &pool->dump_on_full, NOARG, NULL,
+                             NULL, NULL, NULL);
+    return;
+}
+
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
 {
     struct thdpool *pool;
@@ -221,6 +269,9 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     pthread_once(&init_pool_list_once, init_pool_list);
     listc_abl(&threadpools, pool);
     pthread_mutex_unlock(&pool_list_lk);
+
+    /* Register all tunables. */
+    register_thdpool_tunables((char *)name, pool);
 
     return pool;
 }

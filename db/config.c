@@ -1128,12 +1128,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             berkdb_use_malloc_for_regions();
             gbl_malloc_regions = 1;
         }
-    } else if (tokcmp(tok, ltok, "appsockpool") == 0) {
-        thdpool_process_message(gbl_appsock_thdpool, line, len, st);
-    } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
-        thdpool_process_message(gbl_sqlengine_thdpool, line, len, st);
-    } else if (tokcmp(tok, ltok, "osqlpfaultpool") == 0) {
-        thdpool_process_message(gbl_osqlpfault_thdpool, line, len, st);
     } else if (lrltokignore(tok, ltok) == 0) {
         /* ignore this line */
     } else if (tokcmp(tok, ltok, "sql_tranlevel_default") == 0) {

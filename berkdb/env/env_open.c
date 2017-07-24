@@ -573,13 +573,13 @@ foundlsn:
 	/* Parallel recovery stuff */
 	if (LF_ISSET(DB_INIT_REP)) {
 		dbenv->recovery_processors =
-		    thdpool_create("recovery processors", 0);
+		    thdpool_create("recovery_processors", 0);
 		thdpool_set_maxthds(dbenv->recovery_processors,
 		    dbenv->num_recovery_processor_threads);
 		thdpool_set_linger(dbenv->recovery_processors, 30);
 		thdpool_set_maxqueue(dbenv->recovery_processors, 0);
 		thdpool_set_wait(dbenv->recovery_processors, 1);
-		dbenv->recovery_workers = thdpool_create("recovery workers", 0);
+		dbenv->recovery_workers = thdpool_create("recovery_workers", 0);
 		thdpool_set_maxthds(dbenv->recovery_workers,
 		    dbenv->num_recovery_worker_threads);
 		thdpool_set_linger(dbenv->recovery_workers, 30);
