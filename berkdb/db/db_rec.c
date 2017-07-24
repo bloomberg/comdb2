@@ -904,6 +904,8 @@ out:	if (pagep != NULL)
 }
 
 
+#include <poll.h>
+int gbl_poll_in_pg_free_recover;
 
 /*
  * __db_pg_free_recover_int --
@@ -926,6 +928,10 @@ __db_pg_free_recover_int(dbenv, argp, file_dbp, lsnp, mpf, op, data)
 
 	meta = NULL;
 	pagep = NULL;
+
+    if (gbl_poll_in_pg_free_recover)
+        poll(0, 0, 100);
+
 	/*
 	 * Fix up the freed page.  If we're redoing the operation we get the
 	 * page and explicitly discard its contents, then update its LSN.  If
