@@ -350,10 +350,6 @@ static int pre_read_option(struct dbenv *dbenv, char *line, int llen)
     if (rc != TUNABLE_ERR_INVALID_TUNABLE) {
         return rc;
     }
-
-    if (tokcmp(line, ltok, "logmsg") == 0) {
-        logmsg_process_message(line, llen);
-    }
     return 0;
 }
 
