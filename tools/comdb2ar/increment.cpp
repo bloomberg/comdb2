@@ -27,6 +27,7 @@ bool is_not_incr_file(std::string filename){
             (filename.substr(filename.length() - 4) != ".sha"));
 }
 
+// Read the SHA file to get the fingerprint of the previous increment
 std::string get_sha_fingerprint(std::string filename, std::string incr_path) {
     std::string filepath = incr_path + "/" + filename;
     std::ifstream ifs (filepath, std::ifstream::in);
@@ -39,7 +40,8 @@ std::string get_sha_fingerprint(std::string filename, std::string incr_path) {
     return std::string(sha_buffer);
 }
 
-std::string read_sha_file() {
+// Read from STDIN a serialised text file with the SHA fingerprint
+std::string read_serialised_sha_file() {
     char fingerprint[40];
 
     size_t bufsize = 4096;
@@ -74,7 +76,8 @@ std::string read_sha_file() {
     return std::string(fingerprint, 40);
 }
 
-
+// Determine whether the file has changed, ie if the page's current LSN + Checksum
+// is the same as it is in the .incr diff file
 bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
     uint32_t new_lsn_file = LSN(new_pagep).file;
     uint32_t new_lsn_offs = LSN(new_pagep).offset;
@@ -92,13 +95,22 @@ bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
     return (memcmp(cmp_arr, old_pagep, 12) != 0);
 }
 
-
-bool compare_checksum(FileInfo file, const std::string& incr_path,
-                        std::vector<uint32_t>& pages, ssize_t *data_size,
-                        std::set<std::string>& incr_files) {
+// Compare the page with the diff file to determine whether it has changed - driver
+// For each file, populate pages with the page numbers fo the changed pages
+// populate data_size with the total amount of data that needs to be serialised
+// Returns true if any part of the file needs to be serialised
+bool compare_checksum(
+    FileInfo file,
+    const std::string& incr_path,
+    std::vector<uint32_t>& pages,
+    ssize_t *data_size,
+    std::set<std::string>& incr_files
+) {
     std::string filename = file.get_filename();
     std::string incr_file_name = incr_path + "/" + filename + ".incr";
 
+    // Keep a set of all .incr diff files to determine if there are any remaining at the end
+    // Any remaining .incr files indiciate deleted files
     std::set<std::string>::iterator it = incr_files.find(filename + ".incr");
     if(it == incr_files.end()){
         std::ostringstream ss;
@@ -122,12 +134,14 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
         throw SerialiseError(filename, ss.str());
     }
 
+    // For a new file, make pages empty (upon returning, an empty pages list
+    // denotes a new file) and mark the size as the full size
     if(stat(incr_file_name.c_str(), &sb) != 0) {
         std::clog << "New File: " << filename << std::endl;
         *data_size = new_st.st_size;
         return true;
+    // For returning files, go through each page and compare with the diff files
     } else {
-
 
         size_t pagesize = file.get_pagesize();
         if(pagesize == 0) {
@@ -156,7 +170,7 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
                 throw SerialiseError(filename, ss.str());
             }
 
-            // File has expamded by a small amount, so add all remaining pages
+            // File has expamded by a reasonable amount, so add all remaining pages
             if(file_expanded) {
                 pages.push_back(PGNO(new_pagebuf));
                 *data_size += pagesize;
@@ -183,6 +197,7 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
                 break;
             }
 
+            // If a diff has been selected in a page, keep track of that page
             if (assert_cksum_lsn(new_pagebuf, old_pagebuf, pagesize)) {
                 pages.push_back(PGNO(new_pagebuf));
                 *data_size += pagesize;
@@ -197,8 +212,13 @@ bool compare_checksum(FileInfo file, const std::string& incr_path,
     return ret;
 }
 
-ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
-                            std::string incr_path){
+ssize_t serialise_incr_file(
+    const FileInfo& file,
+    std::vector<uint32_t> pages,
+    std::string incr_path
+)
+// For a file with changed pages, go through each changed page and serialise it
+{
     const std::string& filename = file.get_filename();
     const std::string& filepath = file.get_filepath();
 
@@ -238,12 +258,6 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
 
     std::string incrFilename = incr_path + "/" + filename + ".incr";
 
-    // if(stat(incrFilename.c_str(), &st) == -1) {
-        // ss << "cannot stat file: " << std::strerror(errno);
-        // throw SerialiseError(incrFilename, ss.str());
-    // }
-
-
     std::ofstream incrFile(incrFilename, std::ofstream::out |
                             std::ofstream::in | std::ofstream::binary);
 
@@ -273,7 +287,7 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
             throw SerialiseError(filename, ss.str());
         }
 
-
+        // Update the diff .incr file
         incrFile.seekp(12 * *it, incrFile.beg);
         PAGE * pagep = (PAGE *) pagebuf;
 
@@ -302,10 +316,21 @@ ssize_t write_incr_file(const FileInfo& file, std::vector<uint32_t> pages,
     if (pagebuf)
         free(pagebuf);
 
+    std::clog << "a " << filename << " pages=[";
+    for(size_t i = 0; i < pages.size(); ++i){
+        std::clog << pages[i];
+        if(i != pages.size() - 1){
+            std::clog << " ";
+        } else {
+            std::clog << "] ";
+        }
+    }
+    std::clog << "pagesize=" << pagesize << std::endl;
+
     return total_read;
 }
 
-
+// Get the datetime as a string YYYYMMDDHHMMSS
 std::string getDTString() {
     time_t rawtime;
     struct tm *timeinfo;
@@ -332,6 +357,7 @@ void incr_deserialise_database(
     const std::string& incr_path,
     bool keep_all_logs
 )
+// Read from STDIN to deserialise an incremental backup
 {
     static const char zero_head[512] = {0};
 
@@ -409,7 +435,7 @@ void incr_deserialise_database(
         if(ext == "data") {
             is_incr_data = true;
         } else if (ext == "sha") {
-            sha_fingerprint = read_sha_file();
+            sha_fingerprint = read_serialised_sha_file();
             std::clog << "Fingerprint: " << sha_fingerprint << std::endl;
             continue;
         } else {
@@ -463,8 +489,11 @@ void incr_deserialise_database(
                 ss << "Manifest: " << manifest_sha;
                 throw Error(ss);
             }
+        // All incremental changes are stored in a single .data file, so unpack that
+        // using the file order to keep track of which file is currently being read
         } else if(is_incr_data) {
             unpack_incr_data(file_order, updated_files, datadestdir);
+        // Unpack a full file
         } else if (is_data_file || is_queue_file || is_queuedb_file) {
             std::map<std::string, FileInfo>::iterator file_it = new_files.find(filename);
 
@@ -484,8 +513,11 @@ void incr_deserialise_database(
             unpack_full_file(NULL, filename, filesize, datadestdir, false,
                     percent_full, is_disk_full);
         }
+
+        // Delete deleted files
+        handle_deleted_files(deleted_files, datadestdir, table_set);
     }
 
-    handle_deleted_files(deleted_files, datadestdir, table_set);
+    // Recalculate incremental files
     recalc_incr_files(incr_path, datadestdir);
 }

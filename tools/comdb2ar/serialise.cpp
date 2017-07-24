@@ -284,6 +284,7 @@ reopen:
                     n += pagesize;
                     retry = 5;
 
+                    // If we are in incremental mode, on initial backup creation we want to create the diff files
                     if(incr_create){
                         incrFile.write((char *) &(LSN(pagep).file), 4);
                         incrFile.write((char *) &(LSN(pagep).offset), 4);
@@ -786,6 +787,7 @@ void serialise_database(
 
     // Vector of files that need to be backed up in incremental mode
     std::vector<FileInfo> incr_data_files;
+    // Vector of pages that need to be backed up for the corresponding files
     std::vector<FileInfo> new_files;
 
     // Vector of pages index aligned with each file to serialise
@@ -949,6 +951,7 @@ void serialise_database(
     // Construct a manifest which will give the page sizes of all the files
     std::ostringstream manifest;
 
+    // Non-incremental mode or increment creation mode
     if(!incr_gen){
         manifest << "# Manifest for serialisation of " << dbname << std::endl;
         if(support_files_only) {
@@ -979,6 +982,8 @@ void serialise_database(
 
         // Serialise the manifest file
         serialise_string("MANIFEST", manifest.str());
+
+    // Incremental Mode
     } else {
         manifest << "# Manifest for serialisation of increment produced on "
             << getDTString() << std::endl;
@@ -992,11 +997,13 @@ void serialise_database(
             std::vector<uint32_t> pages_list;
             ssize_t data_size = 0;
 
+            // Diff the page checksums for each file to find what has been changed
             if(compare_checksum(*it, incr_path, pages_list, &data_size, incr_files)) {
                 // If pages list is empty but compare_checksum returned true, it's a new file
                 if(pages_list.empty()){
                     new_files.push_back(*it);
                     write_incr_manifest_entry(manifest, *it, pages_list);
+                // Keep track of the file name and the list of pages to be backed-up
                 } else {
                     incr_data_files.push_back(*it);
                     page_number_vec.push_back(pages_list);
@@ -1012,21 +1019,24 @@ void serialise_database(
             throw Error(ss);
         }
 
+        // filename for the SHA fingerprint that asserts that increments are applied in the correct order
         std::string sha_filename = "";
         // Any leftover .incr files indicate that that file has been deleted or that it is the SHA file
         for(std::set<std::string>::const_iterator
                 it = incr_files.begin();
                 it != incr_files.end();
                 ++it){
+            // If it's the SHA fingerprint file, mark it then move onto the next file
             if((*it).substr((*it).length() - 4) == ".sha"){
                 sha_filename = *it;
                 continue;
             }
 
+            // Remove diff files corresponding to deleted files and mark them
             std::string true_filename = incr_path + "/" + *it;
             if(remove(true_filename.c_str()) != 0){
                 std::ostringstream ss;
-                ss << "error deleting file: " << true_filename;
+                ss << "error deleting file: " << *it;
                 throw Error(ss);
             }
             write_del_manifest_entry(manifest, *it);
@@ -1049,7 +1059,6 @@ void serialise_database(
         } else {
             std::string sha_fingerprint = get_sha_fingerprint(sha_filename, incr_path);
             manifest << "PREV " << sha_fingerprint << std::endl;
-            std::clog << "Here" << std::endl;
         }
 
         // Serialise the manifest file
@@ -1073,6 +1082,7 @@ void serialise_database(
 
     RIIA_fd fd_guard(fd);
 
+    // Serialise files in normal mode/initial backup mode
     if(!incr_gen){
 
         // Serialise the files that we found to stdout.  First do support files.
@@ -1177,6 +1187,7 @@ void serialise_database(
             throw Error(ss.str());
         }
 
+        // Iterate through the files, index-aligning with the list of changed pages
         std::vector<FileInfo>::const_iterator data_it = incr_data_files.begin();
         std::vector<std::vector<uint32_t>>::const_iterator
             page_it = page_number_vec.begin();
@@ -1193,8 +1204,9 @@ void serialise_database(
             log_holder->release_log(log_number - 1);
         }
 
+        // Serialise the file's changed pages
         while(data_it != incr_data_files.end()){
-            data_written += write_incr_file(*data_it, *page_it, incr_path);
+            data_written += serialise_incr_file(*data_it, *page_it, incr_path);
 
             ++data_it;
             ++page_it;
@@ -1242,6 +1254,7 @@ void serialise_database(
 
         std::string dt_string = getDTString();
 
+        // SHA the date time to get a pseudorandom fingerprint to check increment order
         SHA1((unsigned char *) dt_string.c_str(), dt_string.length() + 1, obuf);
 
         std::ostringstream ss;
@@ -1250,8 +1263,11 @@ void serialise_database(
         }
 
         std::clog << "Calculated SHA fingerprint as: " << ss.str() << std::endl;
+
+        // Serialise the SHA file
         serialise_string("fingerprint.sha", ss.str());
 
+        // Write the SHA file so that the next increment can know it
         std::string sha_filename = incr_path + "/fingerprint.sha";
         std::ofstream sha_file(sha_filename, std::ofstream::trunc);
 

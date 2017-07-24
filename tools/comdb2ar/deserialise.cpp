@@ -477,6 +477,8 @@ void deserialise_database(
         }
 
         // If the block is entirely blank then we're done
+        // Alternativelyh, if we're running in incremental mode, then
+        // we know we are moving on the the incremental backups
         if(std::memcmp(head.c, zero_head, 512) == 0) {
             if(incr_mode){
                 std::clog << "Done with base backup, moving on to increments"
@@ -533,7 +535,7 @@ void deserialise_database(
         }
 
         if(ext == "sha") {
-            sha_fingerprint = read_sha_file();
+            sha_fingerprint = read_serialised_sha_file();
             continue;
         }
 
