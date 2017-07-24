@@ -1317,7 +1317,7 @@ struct ireq {
     int debug_prefix_len[IREQ_MAX_PREFIXES];
 #endif
 
-    int errstrused;   /* TODO: uint8, fix asgnmt(req.flags & BLKF_ERRSTAT?1:0)*/
+    int errstrused;
     errstat_t errstat;
     struct javasp_trans_state *jsph;
     struct block_state *blkstate;
@@ -1325,7 +1325,7 @@ struct ireq {
 
     bpfunc_list_t bpfunc_lst;
 
-    int isinternal; /* TODO: unused (internal request, don't sndbak) */
+    int isinternal; /* internal request, don't sndbak */
 
     struct thread_info *thdinfo;
 
@@ -1392,19 +1392,19 @@ struct ireq {
     int *nwrites;
     int queryid;
 
-    unsigned char have_limits; /* TODO: unused */
-    double readcost;           /* TODO: unused */
+    unsigned char have_limits;
+    double readcost;
     double cost;
 
     int osql_flags;
 
     char *sqlhistory_ptr;
-    int sqlhistory_len;    /* TODO: ushort? */
+    int sqlhistory_len;
 
     unsigned long long last_genid;
 
     /* List of genids that we've written to detect uncommitable txn's */
-    int vfy_genid_track;  /* TODO: uint8 */
+    int vfy_genid_track;
     hash_t *vfy_genid_hash;
     pool_t *vfy_genid_pool;
 
@@ -1413,11 +1413,11 @@ struct ireq {
 
     /* Client endian flags. */
     unsigned char have_client_endian;
-    int client_endian; /* TODO: 1 or 2, make uint8 */
+    int client_endian;
 
     int priority;
 
-    int failed_to_dispatch; /* TODO: never read (only written) */
+    int failed_to_dispatch;
 
     /* read-set validation */
     CurRangeArr *arr;
@@ -1434,8 +1434,8 @@ struct ireq {
     unsigned char have_snap_info;
     uint64_t sc_seed;
     struct schema_change_type *sc_pending;
-    int sc_locked; /* TODO: uint8 */
-    int tranddl;   /* TODO: uint8 */
+    int sc_locked;
+    int tranddl;
 };
 
 /* comdb array struct */
