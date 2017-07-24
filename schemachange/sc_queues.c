@@ -21,7 +21,7 @@
 
 int consumer_change(const char *queuename, int consumern, const char *method)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
 
     db = getqueuebyname(queuename);
@@ -62,7 +62,7 @@ int consumer_change(const char *queuename, int consumern, const char *method)
 
 int do_alter_queues_int(struct schema_change_type *s)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
     db = getqueuebyname(s->table);
     if (db == NULL) {
@@ -81,7 +81,7 @@ int do_alter_queues_int(struct schema_change_type *s)
     return rc;
 }
 
-int static remove_from_qdbs(struct db *db)
+int static remove_from_qdbs(struct dbtable *db)
 {
     for (int i = 0; i < thedb->num_qdbs; i++) {
         if (db == thedb->qdbs[i]) {
@@ -102,7 +102,7 @@ int static remove_from_qdbs(struct db *db)
 
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
 {
-    struct db *newdb;
+    struct dbtable *newdb;
     int bdberr;
 
     /* regardless of success, the fact that we are getting asked to do this is
@@ -146,7 +146,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         return SC_BDB_ERROR;
     }
     thedb->qdbs =
-        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
+        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
     thedb->qdbs[thedb->num_qdbs++] = newdb;
 
     /* Add queue to the hash. */
@@ -161,7 +161,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
  * perform_trigger_update()? */
 int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
     char *config;
     int ndests;
@@ -207,7 +207,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             goto done;
         }
         thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
+            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
         thedb->qdbs[thedb->num_qdbs++] = db;
 
         /* Add queue to the hash. */
@@ -308,7 +308,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * 3) stop/start threads for consumers, as needed
      * 4) send scdone, like any other sc
      */
-    struct db *db;
+    struct dbtable *db;
     void *tran = NULL;
     int rc = 0;
     int bdberr = 0;
@@ -316,7 +316,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     scdone_t scdone_type;
     SBUF2 *sb = sc->sb;
 
-    db = getdbbyname(sc->table);
+    db = get_dbtable_by_name(sc->table);
     if (db) {
         sbuf2printf(sb, "!Trigger name %s clashes with existing table.\n",
                     sc->table);
@@ -427,7 +427,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
+            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
         thedb->qdbs[thedb->num_qdbs++] = db;
 
         /* Add queue to the hash. */
@@ -561,7 +561,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 done:
     if (tran) trans_abort(&iq, tran);
 
-    logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
+    }
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
     // This function does not have the "finalize" behaviour but it needs to
     // return a proper return code

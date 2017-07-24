@@ -134,7 +134,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     
     if(!timepart_is_timepart(dst, 1))
     {
-        struct db *db = getdbbyname(dst);
+        struct dbtable *db = get_dbtable_by_name(dst);
 
         if (db == NULL && mustexist)
         {
@@ -528,7 +528,7 @@ void comdb2CreateTableCSC2(
     }
 
     TokenStr(table, pName1);
-    if (noErr && getdbbyname(table))
+    if (noErr && get_dbtable_by_name(table))
         goto out;
 
     if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
@@ -543,7 +543,8 @@ void comdb2CreateTableCSC2(
     sc->live = 1;
     fillTableOption(sc, opt);
     copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree) &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
+                        (vdbeFuncArgFree) &free_schema_change_type);
     return;
 
 out:
@@ -587,9 +588,11 @@ void comdb2AlterTableCSC2(
 
     copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
     if(dryrun)
-        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+        comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
+                            (vdbeFuncArgFree)  &free_schema_change_type);
     else
-        comdb2prepareNoRows(v, pParse, 0,  sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+        comdb2prepareNoRows(v, pParse, 0,  sc, &comdb2SqlSchemaChange, 
+                            (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -626,7 +629,8 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         goto out;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
+                        (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -675,7 +679,8 @@ static inline void comdb2rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t o
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
+                        (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -728,7 +733,8 @@ void comdb2truncate(Parse* pParse, Token* nm, Token* lnm)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
+                        (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -779,7 +785,8 @@ void comdb2rebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
     sc->scanmode = gbl_default_sc_scanmode;
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
+                        (vdbeFuncArgFree)  &free_schema_change_type);
     return;
 
 out:
@@ -848,7 +855,8 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     v->readOnly = 0;
     sc->defaultsp = 1;
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
+                        (vdbeFuncArgFree)  &free_schema_change_type);
 }
 
 void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
@@ -880,7 +888,8 @@ void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     v->readOnly = 0;
     sc->delsp = 1;
   
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
+                        (vdbeFuncArgFree)  &free_schema_change_type);
 }
 /********************* PARTITIONS  **********************************************/
 
@@ -892,18 +901,12 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err; 
+    if (!arg) goto err; 
+    bpfunc_arg__init(arg);
 
     BpfuncCreateTimepart *tp = malloc(sizeof(BpfuncCreateTimepart));
-    
-    if (tp)
-        bpfunc_create_timepart__init(tp);
-    else
-        goto err;
+    if (!tp) goto err;
+    bpfunc_create_timepart__init(tp);
     
     arg->crt_tp = tp;
     arg->type = BPFUNC_CREATE_TIMEPART;
@@ -924,14 +927,12 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     assert (*period->z == '\'' || *period->z == '\"');
     period->z++;
     period->n -= 2;
-   
     
     max_length = period->n < 50 ? period->n : 50;
     strncpy(period_str, period->z, max_length);
     tp->period = name_to_period(period_str);
     
-    if (tp->period == VIEW_TIMEPART_INVALID)
-    {
+    if (tp->period == VIEW_TIMEPART_INVALID) {
         setError(pParse, SQLITE_ERROR, "Invalid period name");
         goto clean_arg;
     }
@@ -953,21 +954,20 @@ void comdb2CreateTimePartition(Parse* pParse, Token* table, Token* partition_nam
     strncpy(start_str, start->z, max_length);
     tp->start = convert_time_string_to_epoch(start_str);
 
-    if (tp->start == -1 )
-    {
+    if (tp->start == -1 ) {
         setError(pParse, SQLITE_ERROR, "Invalid start date");
         goto clean_arg;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
 err:
-        setError(pParse, SQLITE_INTERNAL, "Internal Error");
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
     if (arg)
         free_bpfunc_arg(arg);   
-    
 }
 
 
@@ -977,19 +977,12 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     int max_length;
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err; 
+    if (!arg) goto err; 
+    bpfunc_arg__init(arg);
     
     BpfuncDropTimepart *tp = malloc(sizeof(BpfuncDropTimepart));
-    
-
-    if (tp)
-        bpfunc_drop_timepart__init(tp);
-    else
-        goto err;
+    if (!tp) goto err;
+    bpfunc_drop_timepart__init(tp);
     
     arg->drop_tp = tp;
     arg->type = BPFUNC_DROP_TIMEPART;
@@ -998,14 +991,15 @@ void comdb2DropTimePartition(Parse* pParse, Token* partition_name)
     memset(tp->partition_name, '\0', MAXTABLELEN);
     strncpy(tp->partition_name, partition_name->z, max_length);
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
 err:
-        setError(pParse, SQLITE_INTERNAL, "Internal Error");
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
-    free_bpfunc_arg(arg);
-
+    if(arg)
+        free_bpfunc_arg(arg);
 }
 
 
@@ -1032,25 +1026,22 @@ int comdb2vdbeAnalyze(OpFunc *f)
 void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
     int percentage = pc;
     int threads = GET_ANALYZE_THREAD(opt);
     int sum_threads = GET_ANALYZE_SUMTHREAD(opt);
-
   
     if (comdb2AuthenticateUserOp(v, pParse))
         return;       
   
     if (threads > 0)
-        analyze_set_max_table_threads(threads);
+        analyze_set_max_table_threads(NULL, &threads);
     if (sum_threads)
-        analyze_set_max_sampling_threads(sum_threads);
+        analyze_set_max_sampling_threads(NULL, &sum_threads);
 
-    if (nm == NULL)
-    {
-        comdb2prepareNoRows(v, pParse, pc, NULL, &comdb2vdbeAnalyze, (vdbeFuncArgFree) &free);
-    } else
-    {
+    if (nm == NULL) {
+        comdb2prepareNoRows(v, pParse, pc, NULL, &comdb2vdbeAnalyze, 
+                            (vdbeFuncArgFree) &free);
+    } else {
         char *tablename = (char*) malloc(MAXTABLELEN);
         if (!tablename)
             goto err;
@@ -1060,65 +1051,93 @@ void comdb2analyze(Parse* pParse, int opt, Token* nm, Token* lnm, int pc)
             goto err;
         }
         else
-           comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze, (vdbeFuncArgFree) &free); 
+            comdb2prepareNoRows(v, pParse, pc, tablename, &comdb2vdbeAnalyze, 
+                                (vdbeFuncArgFree) &free); 
     }
 
     return;
 
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
-
 }
 
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
-
     if (comdb2AuthenticateUserOp(v, pParse))
-        goto err;       
+        return;
 
-    if (newscale < -1 || newscale > 100)
-    {
-        setError(pParse, SQLITE_ERROR, "Coverage must be between -1 and 100");
-        goto clean_arg;
+    if (newscale < -1 || newscale > 100) {
+        setError(pParse, SQLITE_ERROR, "Coverage must be between 0 and 100");
+        return;
     }
 
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err;
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
+
     BpfuncAnalyzeCoverage *ancov_f = (BpfuncAnalyzeCoverage*) malloc(sizeof(BpfuncAnalyzeCoverage));
-    
-    if (ancov_f)
-        bpfunc_analyze_coverage__init(ancov_f);
-    else
-        goto err;
+    if (!ancov_f) goto err;
+    bpfunc_analyze_coverage__init(ancov_f);
 
     arg->an_cov = ancov_f;
     arg->type = BPFUNC_ANALYZE_COVERAGE;
     ancov_f->tablename = (char*) malloc(MAXTABLELEN);
-    
-    if (!ancov_f->tablename)
-        goto err;
+    if (!ancov_f->tablename) goto err;
         
     if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
-        return;  
+        goto clean_arg;  
     
     ancov_f->newvalue = newscale;
-
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
-
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
+
 err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 clean_arg:
-    if (arg)
-        free_bpfunc_arg(arg);
-
+    if (arg) free_bpfunc_arg(arg);
 }
+
+
+void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable)
+{
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+    if (comdb2AuthenticateUserOp(v, pParse))
+        return;
+
+    if (enable != 0 && enable != 1) {
+        setError(pParse, SQLITE_ERROR, "Can only enable or disable skipscan");
+        return;
+    }
+
+    BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
+
+    BpfuncAnalyzeCoverage *ancov_f = (BpfuncAnalyzeCoverage*) malloc(sizeof(BpfuncAnalyzeCoverage));
+    if (!ancov_f) goto err;
+    bpfunc_analyze_coverage__init(ancov_f);
+
+    arg->an_cov = ancov_f;
+    arg->type = BPFUNC_SET_SKIPSCAN;
+    ancov_f->tablename = (char*) malloc(MAXTABLELEN);
+    if (!ancov_f->tablename) goto err;
+        
+    if (chkAndCopyTableTokens(v, pParse, ancov_f->tablename, nm, lnm, 1)) 
+        goto clean_arg;  
+    
+    ancov_f->newvalue = enable;
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
+    return;
+
+err:
+    setError(pParse, SQLITE_INTERNAL, "Internal Error");
+clean_arg:
+    if (arg) free_bpfunc_arg(arg);
+}
+
 
 void comdb2enableGenid48(Parse* pParse, int enable)
 {
@@ -1140,7 +1159,8 @@ void comdb2enableGenid48(Parse* pParse, int enable)
     arg->gn_enable = gn;
     arg->type = BPFUNC_GENID48_ENABLE;
     gn->enable = enable;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
 err:
@@ -1170,7 +1190,8 @@ void comdb2enableRowlocks(Parse* pParse, int enable)
     arg->rl_enable = rl;
     arg->type = BPFUNC_ROWLOCKS_ENABLE;
     rl->enable = enable;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
     return;
 
 err:
@@ -1183,30 +1204,21 @@ clean_arg:
 void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthreshold)
 {
     Vdbe *v  = sqlite3GetVdbe(pParse);
-
     if (comdb2AuthenticateUserOp(v, pParse))
-        goto clean_arg;       
+        return;
 
-    if (newthreshold < -1 || newthreshold > 100)
-    {
-        setError(pParse, SQLITE_ERROR, "Threshold must be between -1 and 100");
-        goto clean_arg;
+    if (newthreshold < -1 || newthreshold > 100) {
+        setError(pParse, SQLITE_ERROR, "Threshold must be between 0 and 100");
+        return;
     }
     
     BpfuncArg *arg = (BpfuncArg*) malloc(sizeof(BpfuncArg));
-    
-    if (arg)
-        bpfunc_arg__init(arg);
-    else
-        goto err;
-
+    if (!arg) goto err;
+    bpfunc_arg__init(arg);
 
     BpfuncAnalyzeThreshold *anthr_f = (BpfuncAnalyzeThreshold*) malloc(sizeof(BpfuncAnalyzeThreshold));
-    
-    if (anthr_f)
-        bpfunc_analyze_threshold__init(anthr_f);
-    else
-        goto err;
+    if (!anthr_f) goto err;
+    bpfunc_analyze_threshold__init(anthr_f);
 
     arg->an_thr = anthr_f;
     arg->type = BPFUNC_ANALYZE_THRESHOLD;
@@ -1219,7 +1231,8 @@ void comdb2analyzeThreshold(Parse* pParse, Token* nm, Token* lnm, int newthresho
         return;  
     
     anthr_f->newvalue = newthreshold;
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
 err:
@@ -1275,7 +1288,8 @@ void comdb2setAlias(Parse* pParse, Token* name, Token* url)
     if (create_string_from_token(v, pParse, &alias_f->remote, url))
         goto clean_arg;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
 
@@ -1343,7 +1357,8 @@ void comdb2grant(Parse* pParse, int revoke, int permission, Token* nm,Token* lnm
     if (create_string_from_token(v, pParse, &grant->username, u))
         goto clean_arg;
 
-    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, (vdbeFuncArgFree) &free_bpfunc_arg);
+    comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
+                        (vdbeFuncArgFree) &free_bpfunc_arg);
 
     return;
 
@@ -1567,14 +1582,11 @@ void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm)
     OpFuncSetup stp = {1, colname, &coltype, 256};
     char *tablename = (char*) malloc (MAXTABLELEN);
 
-    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) goto clean;
-    
-    comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, (vdbeFuncArgFree)  &free, &stp);
-
-    return;
-
-clean:
-    free(tablename);
+    if (chkAndCopyTableTokens(v, pParse, tablename, nm, lnm, 1)) 
+        free(tablename);
+    else
+        comdb2prepareOpFunc(v, pParse, 0, tablename, &produceAnalyzeCoverage, 
+                            (vdbeFuncArgFree)  &free, &stp);
 }
 
 static int produceAnalyzeThreshold(OpFunc *f)
@@ -2348,7 +2360,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     LISTC_FOR_EACH(&ctx->constraint_list, current_constraint, lnk)
     {
         int key_found = 0;
-        struct db *parent_table;
+        struct dbtable *parent_table;
         struct schema *parent_key;
         struct schema *child_key;
         struct csc2_constraint csc2_constraint;
@@ -2398,7 +2410,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           for current constraint.
         */
         parent_table =
-            getdbbyname(current_constraint->constraint->referenced_table);
+            get_dbtable_by_name(current_constraint->constraint->referenced_table);
         if (parent_table == 0) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(
@@ -2479,7 +2491,7 @@ cleanup:
     return 0;
 }
 
-static int retrieve_table_options(struct db *table)
+static int retrieve_table_options(struct dbtable *table)
 {
     int table_options = 0;
     int odh;
@@ -2538,8 +2550,8 @@ static int retrieve_table_options(struct db *table)
 */
 static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
-    struct db *table;
-    struct db *parent_table;
+    struct dbtable *table;
+    struct dbtable *parent_table;
     struct schema *schema = 0;
     struct schema *key;
     struct schema *parent_key;
@@ -2550,7 +2562,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     assert(ctx != 0);
 
-    table = getdbbyname(ctx->name);
+    table = get_dbtable_by_name(ctx->name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->name);
@@ -2612,7 +2624,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* Locate the parent key. */
         for (int j = 0; j < table->constraints->nrules; j++) {
             parent_key = 0;
-            parent_table = getdbbyname(table->constraints[i].table[j]);
+            parent_table = get_dbtable_by_name(table->constraints[i].table[j]);
             if (parent_table == 0) {
                 pParse->rc = SQLITE_ERROR;
                 sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
@@ -2823,7 +2835,7 @@ void comdb2CreateTableStart(
 
     pParse->comdb2_ddl_ctx = ctx;
 
-    if (noErr && getdbbyname(ctx->name)) {
+    if (noErr && get_dbtable_by_name(ctx->name)) {
         ctx->flags |= COMDB2_DDL_CTX_FLAG_NOOP;
         logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->name);
         goto cleanup;
@@ -3320,7 +3332,7 @@ void comdb2CreateIndex(
     struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-    struct db *table;
+    struct dbtable *table;
     int max_size;
     int found;
     char *keyname;
@@ -3358,7 +3370,7 @@ void comdb2CreateIndex(
 
     /* Check if an index already exists with the requested name. */
     found = 0;
-    table = getdbbyname(ctx->name);
+    table = get_dbtable_by_name(ctx->name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->name);
@@ -3785,7 +3797,7 @@ cleanup:
 /*
   Internal implementation of DROP INDEX.
 */
-static void comdb2DropIndexInt(Parse *pParse, struct db *table,
+static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
                                const char *idx_name)
 {
     Vdbe *v;
@@ -3882,8 +3894,8 @@ cleanup:
 */
 void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
 {
-    struct db *table;
-    struct db *parent_table;
+    struct dbtable *table;
+    struct dbtable *parent_table;
     int index_count = 0;
 
     if (use_sqlite_impl(pParse)) {
@@ -3944,12 +3956,12 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
 void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
                          int ifExists)
 {
-    struct db *table;
+    struct dbtable *table;
     int found = 0;
 
     TokenStr(table_name, tabName);
     sqlite3Dequote(table_name);
-    table = getdbbyname(table_name);
+    table = get_dbtable_by_name(table_name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", table_name);
@@ -3976,5 +3988,26 @@ void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
 
     comdb2DropIndexInt(pParse, table, index_name);
 
+    return;
+}
+
+void comdb2putTunable(Parse *pParse, Token *name, Token *value)
+{
+    char *t_name;
+    char *t_value;
+    int rc;
+
+    rc = create_string_from_token(NULL, pParse, &t_name, name);
+    if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
+    rc = create_string_from_token(NULL, pParse, &t_value, value);
+    if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
+
+    if ((handle_runtime_tunable(t_name, t_value))) {
+        setError(pParse, SQLITE_ERROR, "Failed to update tunable.");
+    }
+
+cleanup:
+    free(t_name);
+    free(t_value);
     return;
 }

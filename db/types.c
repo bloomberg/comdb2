@@ -13310,7 +13310,7 @@ void _setIntervalDSUS(intv_ds_t *ds, long long sec, int usec)
     /* brr, ugly */                                                            \
     tmpin[0] = 8; /* data_bit */                                               \
     sec = flibc_htonll(in->dttz_sec);                                          \
-    if (in->dttz_frac == prec)                                                 \
+    if (in->dttz_prec == prec)                                                 \
         frac = in->dttz_frac;                                                  \
     else                                                                       \
         frac = in->dttz_frac * POW10(prec) /                                   \

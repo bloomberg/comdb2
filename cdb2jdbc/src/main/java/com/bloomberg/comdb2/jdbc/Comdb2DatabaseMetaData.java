@@ -1493,11 +1493,12 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
                     + "null as FKTABLE_NAME, null as FKCOLUMN_NAME, 0 as KEY_SEQ, 0 as UPDATE_RULE, 0 as DELETE_RULE, "
                     + "null as FK_NAME, null as PK_NAME, 0 as DEFERRABILITY limit 0");
 
-        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, c.keyname as PK_NAME, "
+        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, "
                 + "c.columnname as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, a.tablename as FKTABLE_NAME, a.columnname as FKCOLUMN_NAME, "
-                + "a.keyname as FK_NAME, (a.columnnumber + 1) as KEY_SEQ, "
+                + " (a.columnnumber + 1) as KEY_SEQ, "
                 + " CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as DELETE_RULE, "
                 + " CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as UPDATE_RULE, "
+                + " a.keyname as FK_NAME, c.keyname as PK_NAME, "
                 + importedKeyInitiallyDeferred + " as DEFERRABILITY from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c "
                 + " where a.tablename = b.tablename and a.keyname = b.keyname and b.foreigntablename = c.tablename and b.foreignkeyname = c.keyname "
                 + " and b.tablename like '" + table
@@ -1511,11 +1512,12 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
                     + "null as FKTABLE_NAME, null as FKCOLUMN_NAME, 0 as KEY_SEQ, 0 as UPDATE_RULE, 0 as DELETE_RULE, "
                     + "null as FK_NAME, null as PK_NAME, 0 as DEFERRABILITY limit 0");
 
-        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, c.keyname as PK_NAME, "
+        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, "
                 + "c.columnname as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, a.tablename as FKTABLE_NAME, a.columnname as FKCOLUMN_NAME, "
-                + "a.keyname as FK_NAME, (a.columnnumber + 1) as KEY_SEQ, "
+                + " (a.columnnumber + 1) as KEY_SEQ, "
                 + " CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as DELETE_RULE, "
                 + " CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as UPDATE_RULE, "
+                + " a.keyname as FK_NAME, c.keyname as PK_NAME, "
                 + importedKeyInitiallyDeferred + " as DEFERRABILITY from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c "
                 + " where a.tablename = b.tablename and a.keyname = b.keyname and b.foreigntablename = c.tablename and b.foreignkeyname = c.keyname "
                 + " and b.foreigntablename like '" + table
@@ -1532,11 +1534,12 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
                     + "0 as KEY_SEQ, 0 as UPDATE_RULE, 0 as DELETE_RULE, "
                     + "null as FK_NAME, null as PK_NAME, 0 as DEFERRABILITY limit 0");
 
-        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, c.keyname as PK_NAME, "
+        return stmt.executeQuery("select null as PKTABLE_CAT, null as PKTABLE_SCHEM, c.tablename as PKTABLE_NAME, "
                 + "c.columnname as PKCOLUMN_NAME, null as FKTABLE_CAT, null as FKTABLE_SCHEM, a.tablename as FKTABLE_NAME, a.columnname as FKCOLUMN_NAME, "
-                + "a.keyname as FK_NAME, (a.columnnumber + 1) as KEY_SEQ, "
+                + " (a.columnnumber + 1) as KEY_SEQ, "
                 + " CASE WHEN (upper(iscascadingdelete)='YES' or upper(iscascadingdelete)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as DELETE_RULE, "
                 + " CASE WHEN (upper(iscascadingupdate)='YES' or upper(iscascadingupdate)='Y') THEN " + importedKeyCascade + " ELSE " + importedKeyNoAction + " END as UPDATE_RULE, "
+                + " a.keyname as FK_NAME, c.keyname as PK_NAME, "
                 + importedKeyInitiallyDeferred + " as DEFERRABILITY from comdb2sys_keycomponents a, comdb2sys_constraints b, comdb2sys_keycomponents c "
                 + " where a.tablename = b.tablename and a.keyname = b.keyname and b.foreigntablename = c.tablename and b.foreignkeyname = c.keyname "
                 + " and b.foreigntablename like '" + parentTable + "' and b.tablename like '" + foreignTable

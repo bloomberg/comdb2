@@ -582,7 +582,7 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                                   "PREFAULT BLOCK2_USE FAILED TO UNPACK TAG\n");
                     break;
                 }
-                iq->usedb = getdbbyname(tbltag);
+                iq->usedb = get_dbtable_by_name(tbltag);
                 if (iq->usedb == NULL) {
                     iq->usedb = iq->origdb;
                     if (iq->debug)

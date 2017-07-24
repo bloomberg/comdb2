@@ -267,7 +267,7 @@ int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
 int bdb_llog_analyze(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
     ++gbl_analyze_gen;
-    return do_llog(bdb_state, analyze, NULL, wait, bdberr);
+    return do_llog(bdb_state, sc_analyze, NULL, wait, bdberr);
 }
 
 int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait, int *bdberr)

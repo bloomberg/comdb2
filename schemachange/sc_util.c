@@ -21,7 +21,7 @@
 int close_all_dbs(void)
 {
     int ii, rc, bdberr;
-    struct db *db;
+    struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Closing all tables...\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
@@ -39,7 +39,7 @@ int close_all_dbs(void)
 int open_all_dbs(void)
 {
     int ii, rc, bdberr;
-    struct db *db;
+    struct dbtable *db;
     logmsg(LOGMSG_DEBUG, "Opening all tables\n");
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         db = thedb->dbs[ii];
@@ -108,7 +108,7 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
 }
 
 /* careful this can cause overflows, do not use */
-char *get_temp_db_name(struct db *db, char *prefix, char tmpname[])
+char *get_temp_db_name(struct dbtable *db, char *prefix, char tmpname[])
 {
     sprintf(tmpname, "%s%s", prefix, db->dbname);
 
@@ -159,7 +159,7 @@ inline static int validate_ixname(const char *keynm)
     return 0;
 }
 
-int validate_ix_names(struct db *db)
+int validate_ix_names(struct dbtable *db)
 {
     int rc = 0;
     for (int i = 0; i < db->nix; ++i) {

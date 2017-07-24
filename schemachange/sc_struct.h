@@ -17,16 +17,16 @@
 #ifndef INCLUDE_SC_STRUCT_H
 #define INCLUDE_SC_STRUCT_H
 
-struct db *create_db_from_schema(struct dbenv *thedb,
+struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                  struct schema_change_type *s, int dbnum,
                                  int foundix, int version);
 
-void print_schemachange_info(struct schema_change_type *s, struct db *db,
-                             struct db *newdb);
+void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
+                             struct dbtable *newdb);
 
-void set_schemachange_options(struct schema_change_type *s, struct db *db,
+void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
                               struct scinfo *scinfo);
-void set_schemachange_options_tran(struct schema_change_type *s, struct db *db,
+void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable *db,
                                    struct scinfo *scinfo, tran_type *tran);
 
 int print_status(struct schema_change_type *s);

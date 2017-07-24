@@ -1,0 +1,160 @@
+#!/bin/bash
+
+set -e
+#set -x
+
+HERE=$(pwd)
+SRC=../../
+
+rm -fr Comdb2.docset
+mkdir -p Comdb2.docset/Contents/Resources/Documents
+cp Info.plist Comdb2.docset/Contents/
+cp icon.png Comdb2.docset/
+cd $SRC
+jekyll build --layouts _layouts_docset -d src/dash/Comdb2.docset/Contents/Resources/Documents
+cd $HERE
+cp -r $SRC/images Comdb2.docset/Contents/Resources/Documents
+rm -f Comdb2.docset/Contents/Resources/docSet.dsidx
+sqlite3 Comdb2.docset/Contents/Resources/docSet.dsidx << EOTBL
+CREATE TABLE searchIndex(id INTEGER PRIMARY KEY, name TEXT, type TEXT, path TEXT);
+CREATE UNIQUE INDEX anchor ON searchIndex (name, type, path);
+EOTBL
+
+(
+while read type path name; do 
+    echo "INSERT OR REPLACE INTO searchIndex(name, type, path) values('$name', '$type', '$path');"
+done << EODOC
+Function c_api.html#cdb2_open cdb2_open 
+Function c_api.html#cdb2_close cdb2_close 
+Function c_api.html#cdb2_run_statement cdb2_run_statement 
+Function c_api.html#cdb2_run_statement_typed cdb2_run_statement_typed 
+Function c_api.html#cdb2_next_record cdb2_next_record 
+Function c_api.html#cdb2_numcolumns cdb2_numcolumns 
+Function c_api.html#cdb2_column_name cdb2_column_name 
+Function c_api.html#cdb2_column_size cdb2_column_size 
+Function c_api.html#cdb2_errstr cdb2_errstr 
+Function c_api.html#cdb2_column_value cdb2_column_value 
+Function c_api.html#cdb2_column_type cdb2_column_type 
+Function c_api.html#cdb2_bind_param cdb2_bind_param 
+Function c_api.html#cdb2_get_effects cdb2_get_effects 
+Function c_api.html#cdb2_clearbindings cdb2_clearbindings 
+Function c_api.html#cdb2_use_hint cdb2_use_hint 
+Function c_api.html#cdb2_set_comdb2db_config cdb2_set_comdb2db_config 
+Function c_api.html#cdb2_set_comdb2db_info cdb2_set_comdb2db_info 
+Function c_api.html#cdb2_init_ssl cdb2_init_ssl 
+Function c_api.html#cdb2_is_ssl_encrypted cdb2_is_ssl_encrypted 
+Enum c_api.html#CDB2_OK CDB2_OK 
+Enum c_api.html#CDB2_OK_DONE CDB2_OK_DONE 
+Enum c_api.html#CDB2ERR_CONNECT_ERROR CDB2ERR_CONNECT_ERROR 
+Enum c_api.html#CDB2ERR_NOTCONNECTED CDB2ERR_NOTCONNECTED 
+Enum c_api.html#CDB2ERR_PREPARE_ERROR CDB2ERR_PREPARE_ERROR 
+Enum c_api.html#CDB2ERR_IO_ERROR CDB2ERR_IO_ERROR 
+Enum c_api.html#CDB2ERR_INTERNAL CDB2ERR_INTERNAL 
+Enum c_api.html#CDB2ERR_NOSTATEMENT CDB2ERR_NOSTATEMENT 
+Enum c_api.html#CDB2ERR_BADCOLUMN CDB2ERR_BADCOLUMN 
+Enum c_api.html#CDB2ERR_BADSTATE CDB2ERR_BADSTATE 
+Enum c_api.html#CDB2ERR_REJECTED CDB2ERR_REJECTED 
+Enum c_api.html#CDB2ERR_STOPPED CDB2ERR_STOPPED 
+Enum c_api.html#CDB2ERR_BADREQ CDB2ERR_BADREQ 
+Enum c_api.html#CDB2ERR_THREADPOOL_INTERNAL CDB2ERR_THREADPOOL_INTERNAL 
+Enum c_api.html#CDB2ERR_READONLY CDB2ERR_READONLY 
+Enum c_api.html#CDB2ERR_NOMASTER CDB2ERR_NOMASTER 
+Enum c_api.html#CDB2ERR_CONSTRAINTS CDB2ERR_CONSTRAINTS 
+Enum c_api.html#CDB2ERR_DEADLOCK CDB2ERR_DEADLOCK 
+Enum c_api.html#CDB2ERR_TRAN_IO_ERROR CDB2ERR_TRAN_IO_ERROR 
+Enum c_api.html#CDB2ERR_ACCESS CDB2ERR_ACCESS 
+Enum c_api.html#CDB2ERR_TRAN_MODE_UNSUPPORTED CDB2ERR_TRAN_MODE_UNSUPPORTED 
+Enum c_api.html#CDB2ERR_VERIFY_ERROR CDB2ERR_VERIFY_ERROR 
+Enum c_api.html#CDB2ERR_FKEY_VIOLATION CDB2ERR_FKEY_VIOLATION 
+Enum c_api.html#CDB2ERR_NULL_CONSTRAINT CDB2ERR_NULL_CONSTRAINT 
+Enum c_api.html#CDB2ERR_CONV_FAIL CDB2ERR_CONV_FAIL 
+Enum c_api.html#CDB2ERR_MALLOC CDB2ERR_MALLOC 
+Enum c_api.html#CDB2ERR_NOTSUPPORTED CDB2ERR_NOTSUPPORTED 
+Enum c_api.html#CDB2ERR_DUPLICATE CDB2ERR_DUPLICATE 
+Enum c_api.html#CDB2ERR_TZNAME_FAIL CDB2ERR_TZNAME_FAIL 
+Enum c_api.html#CDB2ERR_UNKNOWN CDB2ERR_UNKNOWN 
+Query sql.html#begin begin 
+Query sql.html#commit commit 
+Query sql.html#rollback rollback 
+Query sql.html#insert insert 
+Query sql.html#update update 
+Query sql.html#delete delete 
+Query sql.html#select select 
+Query sql.html#selectv selectv 
+Query sql.html#distinct distinct 
+Query sql.html#where where 
+Query sql.html#groupby groupby 
+Query sql.html#orderby orderby 
+Query sql.html#limit limit 
+Query sql.html#union union 
+Query sql.html#foreign-tables foreign table
+Query sql.html#create-procedure create procedure 
+Query sql.html#exec-procedure exec procedure 
+Query sql.html#create-table create table 
+Query sql.html#create-lua-trigger create lua trigger 
+Query sql.html#create-lua-function create lua function 
+Query sql.html#drop-table drop table 
+Query sql.html#drop-procedure drop procedure 
+Query sql.html#drop-lua-trigger drop lua trigger 
+Query sql.html#alter-table alter table 
+Query sql.html#create-time-partition create time partition 
+Query sql.html#truncate truncate 
+Query sql.html#grant grant 
+Query sql.html#revoke revoke 
+Query sql.html#get-alias get alias 
+Query sql.html#get-analyze-coverage get analyze coverage 
+Query sql.html#get-analyze-threshold get analyze threshold 
+Query sql.html#put-analyze-coverage put analyze coverage 
+Query sql.html#put-default-procedure put default procedure 
+Query sql.html#put-analyze-threshold put analyze threshold 
+Query sql.html#put-alias put alias 
+Query sql.html#put-password put password 
+Query sql.html#put-authentication put authentication 
+Query sql.html#put-time-partition put time partition 
+Query sql.html#analyze analyze 
+Query sql.html#rebuild rebuild 
+Query sql.html#abs abs 
+Query sql.html#char char 
+Query sql.html#coalesce coalesce 
+Query sql.html#comdb2_version comdb2_version 
+Query sql.html#comdb2_prevquerycost comdb2_prevquerycost 
+Query sql.html#ifnull ifnull 
+Query sql.html#instr instr 
+Query sql.html#glob glob 
+Query sql.html#hex hex 
+Query sql.html#length length 
+Query sql.html#like like 
+Query sql.html#lower lower 
+Query sql.html#trim trim 
+Query sql.html#max max 
+Query sql.html#min min 
+Query sql.html#nullif nullif 
+Query sql.html#printf printf 
+Query sql.html#quote quote 
+Query sql.html#random random 
+Query sql.html#randomblob randomblob 
+Query sql.html#replace replace 
+Query sql.html#round round 
+Query sql.html#rtrim rtrim 
+Query sql.html#soundex soundex 
+Query sql.html#sqlite_source_id sqlite_source_id 
+Query sql.html#sqlite_version sqlite_version 
+Query sql.html#substr substr 
+Query sql.html#trim trim 
+Query sql.html#typeof typeof 
+Query sql.html#unicode unicode 
+Query sql.html#upper upper 
+Query sql.html#comdb2_version comdb2_version 
+Query sql.html#zeroblob zeroblob 
+Query sql.html#avg avg 
+Query sql.html#count count 
+Query sql.html#max max 
+Query sql.html#min min 
+Query sql.html#sum sum 
+Query sql.html#group_concat group_concat 
+EODOC
+)  | sqlite3 Comdb2.docset/Contents/Resources/docSet.dsidx
+
+# Debug step - remove when done.  Install in local Zeal docs.
+#rm -fr ~/.local/share/Zeal/Zeal/docsets/Comdb2.docset
+#cp -r Comdb2.docset ~/.local/share/Zeal/Zeal/docsets/

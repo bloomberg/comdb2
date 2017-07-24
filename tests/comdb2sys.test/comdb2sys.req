@@ -4,3 +4,9 @@ select * from comdb2_keys order by keyname, tablename
 select * from comdb2_keycomponents order by tablename
 select * from comdb2_constraints order by tablename
 select * from comdb2_tablesizes order by tablename
+SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords;
+SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y';
+SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N';
+SELECT * FROM comdb2_keywords WHERE reserved = 'Y' ORDER BY name;
+SELECT * FROM comdb2_keywords WHERE reserved = 'N' ORDER BY name;
+SELECT * FROM comdb2_limits ORDER BY name

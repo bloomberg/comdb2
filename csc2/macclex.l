@@ -78,7 +78,9 @@ extern int macc_ferror(FILE *fh);
 %n 1000
 space	[\t ]+
 number	-?[0-9]+
-where [{][\t ]*[Ww][Hh][Ee][Rr][Ee][ ].*$
+dqstring \"(\\.|[^\n\\\"])*\"
+sqstring \'(\\.|[^\n\\\'])*\'
+where [{][\t ]*[Ww][Hh][Ee][Rr][Ee][\t ]({sqstring}|{dqstring}|[^}\"\'])*[\t ]*[}]
 varname [a-zA-Z_][a-zA-Z_0-9]*
 comment \/\/.*
 fortran_comment \!.*
@@ -281,7 +283,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
                               }
 <INITIAL,RECTYPE>{varname}      { yylval.varname=yytext; return T_VARNAME; }
 
-<INITIAL,CONSTRAINTS,RECTYPE>\"(\\.|[^\n\\\"])*\"		{ yylval.opttext=yytext; return T_STRING; }
+<INITIAL,CONSTRAINTS,RECTYPE>{dqstring}		{ yylval.opttext=yytext; return T_STRING; }
 <INITIAL,CONSTRAINTS>"<"			{ return T_LT; }
 <INITIAL,CONSTRAINTS>">"			{ return T_GT; }
 

@@ -17,6 +17,8 @@
 
 /* COMDB2 MODIFICATION */
 #include <cheapstack.h>
+#include "tunables.h"
+
 #undef debug_raw
 /* Special Comments:
 **

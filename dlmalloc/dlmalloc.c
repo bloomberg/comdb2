@@ -2019,6 +2019,48 @@ struct malloc_state {
   void*      (*alloc0func)(size_t, size_t);
   void       (*destfunc)(void*);
   void*      (*reallocfunc)(void*, size_t);
+  bindex_t   histindx;
+
+#ifndef HIST_LEN
+#  define HIST_LEN 4
+#endif
+
+#define IS_RECENT03(m, base) (  \
+  (base) == (m)->hist[0] ||     \
+  (base) == (m)->hist[1] ||     \
+  (base) == (m)->hist[2] ||     \
+  (base) == (m)->hist[3]        \
+)
+
+#define IS_RECENT47(m, base) (  \
+  (base) == (m)->hist[4] ||     \
+  (base) == (m)->hist[5] ||     \
+  (base) == (m)->hist[6] ||     \
+  (base) == (m)->hist[7]        \
+)
+
+#if HIST_LEN == 4
+#  define IS_RECENT(m, base) IS_RECENT03(m, base)
+#elif HIST_LEN == 8
+#  define IS_RECENT(m, base) (IS_RECENT03(m, base) || IS_RECENT47(m, base))
+#else
+#  error "HIST_LEN is invalid."
+#endif
+
+#define ZERO_HIST(m) do {                               \
+  m->histindx = 0;                                      \
+  memset((m)->hist, 0, sizeof(void*) * HIST_LEN);       \
+} while (0)
+
+#define UPD_HIST(sz, m, mem) do {                       \
+  if (sz <= (1ULL << 20)) {                             \
+    m->hist[m->histindx] = mem;                         \
+    m->histindx = (m->histindx + 1) & (HIST_LEN - 1);   \
+  }                                                     \
+} while (0)
+
+  void*      hist[HIST_LEN];
+
 #if USE_LOCKS
   MLOCK_T    mutex;     /* locate lock among fields that rarely change */
 #endif /* USE_LOCKS */
@@ -3494,7 +3536,7 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
     }
   }
 
-  if ( 
+  if (
        (zeroout && m->alloc0func) || 
        (!zeroout && m->allocfunc) 
      ) {
@@ -3626,6 +3668,7 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
         init_top(m, m->top, m->topsize + tsize);
       }
       else {
+        UPD_HIST(tsize, m, tbase);
         if (tbase < m->least_addr)
           m->least_addr = tbase;
         sp = &m->seg;
@@ -3663,7 +3706,7 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
 /* -----------------------  system deallocation -------------------------- */
 
 /* Unmap and unlink any mmapped segments that don't contain used chunks */
-static size_t release_unused_segments(mstate m) {
+static size_t release_unused_segments(mstate m, int force) {
   size_t released = 0;
   msegmentptr pred = &m->seg;
   msegmentptr sp = pred->next;
@@ -3671,7 +3714,8 @@ static size_t release_unused_segments(mstate m) {
     char* base = sp->base;
     size_t size = sp->size;
     msegmentptr next = sp->next;
-    if ((is_allocfunc_segment(sp) || is_mmapped_segment(sp)) && !is_extern_segment(sp)) {
+    if ((is_allocfunc_segment(sp) || is_mmapped_segment(sp)) && !is_extern_segment(sp) &&
+        (force || !IS_RECENT(m, base))) {
       mchunkptr p = align_as_chunk(base);
       size_t psize = chunksize(p);
       /* Can unmap if first chunk holds entire segment and not pinned */
@@ -3711,7 +3755,7 @@ static size_t release_unused_segments(mstate m) {
   return released;
 }
 
-static int sys_trim(mstate m, size_t pad) {
+static int sys_trim(mstate m, size_t pad, int force) {
   size_t released = 0;
   if (pad < MAX_REQUEST && is_initialized(m)) {
     pad += TOP_FOOT_SIZE; /* ensure enough room for segment overhead */
@@ -3722,6 +3766,12 @@ static int sys_trim(mstate m, size_t pad) {
       size_t extra = ((m->topsize - pad + (unit - SIZE_T_ONE)) / unit -
                       SIZE_T_ONE) * unit;
       msegmentptr sp = segment_holding(m, (char*)m->top);
+
+      if (!force && IS_RECENT(m, sp->base)) {
+        /* Disable trim check on this top. */
+        m->trim_check = MAX_SIZE_T;
+        return 0;
+      }
 
       if (!is_extern_segment(sp)) {
         if (is_allocfunc_segment(sp)) {
@@ -3788,7 +3838,7 @@ static int sys_trim(mstate m, size_t pad) {
 
     /* Unmap any unused mmapped segments */
     if (HAVE_MMAP || m->destfunc != NULL) 
-      released += release_unused_segments(m);
+      released += release_unused_segments(m, force);
 
     /* On failure, disable autotrim to avoid repeated failed future calls */
     if (released == 0)
@@ -4495,7 +4545,7 @@ void dlfree(void* mem) {
                 fm->dvsize = 0;
               }
               if (should_trim(fm, tsize))
-                sys_trim(fm, 0);
+                sys_trim(fm, 0, 0);
               goto postaction;
             }
             else if (next == fm->dv) {
@@ -4603,7 +4653,7 @@ void* dlpvalloc(size_t bytes) {
 int dlmalloc_trim(size_t pad) {
   int result = 0;
   if (!PREACTION(gm)) {
-    result = sys_trim(gm, pad);
+    result = sys_trim(gm, pad, 1);
     POSTACTION(gm);
   }
   return result;
@@ -4694,6 +4744,7 @@ mspace create_mspace(size_t capacity, int locked) {
       m->destfunc = 0;
       m->reallocfunc = 0;
       m->nallocs = 0;
+      ZERO_HIST(m);
   }
 
   return (mspace) m;
@@ -4942,7 +4993,7 @@ void mspace_free(mspace msp, void* mem) {
                 fm->dvsize = 0;
               }
               if (should_trim(fm, tsize))
-                sys_trim(fm, 0);
+                sys_trim(fm, 0, 0);
               goto postaction;
             }
             else if (next == fm->dv) {
@@ -4973,7 +5024,7 @@ void mspace_free(mspace msp, void* mem) {
       USAGE_ERROR_ACTION(fm, p);
     postaction:
       if (psize >= DEFAULT_MMAP_THRESHOLD_MAX)
-        sys_trim(fm, 0);
+        sys_trim(fm, 0, 0);
       POSTACTION(fm);
     }
   }
@@ -5065,7 +5116,7 @@ int mspace_trim(mspace msp, size_t pad) {
   mstate ms = (mstate)msp;
   if (ok_magic(ms)) {
     if (!PREACTION(ms)) {
-      result = sys_trim(ms, pad);
+      result = sys_trim(ms, pad, 1);
       POSTACTION(ms);
     }
   }

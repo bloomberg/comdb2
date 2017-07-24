@@ -705,7 +705,7 @@ struct forward_ct {
     unsigned long long ins_keys;
     const uint8_t *p_buf_req_start;
     const uint8_t *p_buf_req_end;
-    struct db *usedb;
+    struct dbtable *usedb;
     int blkpos;
     int ixnum;
     int rrn;
@@ -713,8 +713,8 @@ struct forward_ct {
 };
 
 struct backward_ct {
-    struct db *srcdb;
-    struct db *dstdb;
+    struct dbtable *srcdb;
+    struct dbtable *dstdb;
     int blkpos;
     int optype;
     char key[MAXKEYLEN];
@@ -789,14 +789,14 @@ struct lockset_req {
     unsigned long long rows[1];
 };
 
-int has_cascading_reverse_constraints(struct db *db);
+int has_cascading_reverse_constraints(struct dbtable *tbl);
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct db *usedb,
+int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
                   const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
                   unsigned long long ins_keys, int blkpos);
 
-int insert_del_op(block_state_t *blkstate, struct db *srcdb, struct db *dstdb,
+int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable *dstdb,
                   int optype, int blkpos, void *inkey, void *innewkey,
                   int keylen, int sixnum, int dixnum, int nonewrefs, int flags);
 
@@ -822,11 +822,11 @@ int check_update_constraints(struct ireq *iq, void *trans,
                              void *newrec_dta, unsigned long long del_keys,
                              int *errout);
 void dump_all_constraints(struct dbenv *env);
-void dump_constraints(struct db *table);
-void dump_rev_constraints(struct db *table);
+void dump_constraints(struct dbtable *table);
+void dump_rev_constraints(struct dbtable *table);
 
-int restore_constraint_pointers(struct db *db, struct db *newdb);
-int backout_constraint_pointers(struct db *db, struct db *newdb);
+int restore_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
+int backout_constraint_pointers(struct dbtable *tbl, struct dbtable *newdb);
 
 int do_twophase_commit(struct ireq *iq, tranid_t id, block_state_t *blkstate,
                        int initial_state, fstblkseq_t *seqnum);

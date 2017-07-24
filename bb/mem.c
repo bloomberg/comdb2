@@ -215,6 +215,8 @@ static struct {
           .mmap_thresh = 0,
           .nice = 0};
 
+int gbl_mem_nice = 0;
+
 /* internal comdb2ma creation */
 static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
                                     const char *name, const char *scope,
@@ -566,8 +568,10 @@ int comdb2ma_nice(int niceness)
 {
     int rc;
     rc = mspace_mallopt(M_NICE, niceness);
-    if (rc == 1) /* 1 is success */
+    if (rc == 1) { /* 1 is success */
         root.nice = niceness;
+        gbl_mem_nice = niceness;
+    }
     return !rc;
 }
 

@@ -173,7 +173,7 @@ void live_sc_enter_exclusive_all(bdb_state_type *bdb_state, tran_type *trans)
  * stripe.
  * If the schema change is not resuming it sets them all to zero
  * If success it returns 0, if failure it returns <0 */
-int init_sc_genids(struct db *db, struct schema_change_type *s)
+int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
 {
     void *rec;
     int orglen, bdberr, stripe;
@@ -1082,7 +1082,7 @@ cleanup_no_msg:
     return NULL;
 }
 
-int convert_all_records(struct db *from, struct db *to,
+int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
 {
@@ -1573,7 +1573,7 @@ cleanup:
     return NULL;
 }
 
-int upgrade_all_records(struct db *db, unsigned long long *sc_genids,
+int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                         struct schema_change_type *s)
 {
     int idx;

@@ -1,0 +1,24 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -e
+PATH=.:${PATH}
+
+set -x
+
+dbnm=$1
+
+# Verify that the user at least supplied a dbname
+if [[ -z "$dbnm" ]]; then
+    echo "Testcase requires <dbname> argument."
+    exit 1
+
+fi
+
+# Driver 
+driver=client
+
+# Run tasks
+$driver $dbnm
+
+echo "Success!"

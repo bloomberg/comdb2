@@ -30,4 +30,11 @@ if [[ $? != 0 ]]; then
     exit 1
 fi
 
+./t3.sh $dbnm
+if [[ $? != 0 ]]; then
+    echo "Testcase failed test 3"
+    exit 1
+fi
+
 echo "Success"
+exit 0

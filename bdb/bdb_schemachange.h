@@ -26,12 +26,12 @@ extern volatile int gbl_views_gen;
 typedef enum scdone {
     alter,
     fastinit,
-    add = fastinit, /* but, getdbbyname == NULL */
+    add = fastinit, /* but, get_dbtable_by_name == NULL */
     drop,
     bulkimport,
     setcompr,
     luareload,
-    analyze,
+    sc_analyze,
     bthash,
     rowlocks_on,
     rowlocks_on_master_only,

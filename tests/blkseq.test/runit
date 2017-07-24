@@ -1,0 +1,86 @@
+#!/bin/bash
+
+dbname=$1
+error=0
+vers=open
+#vers=r6
+
+if [[ -z "$dbname" ]]; then
+    echo dbname missing
+    exit 1
+fi
+
+if [[ $vers == "r6" ]]; then
+    CDB2_OPTIONS=""
+    stage=local
+    masterst=""
+    comdb2sc.tsk $dbname add t1 ./t1.csc2
+    comdb2sc.tsk $dbname add t2 ./t2.csc2
+else
+    stage=default
+    master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+    masterst="--host $master"
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t1 { schema { int a } }'
+    cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t2 { schema { int a } keys { "a" = a } }'
+fi
+
+function replay_count
+{
+    x=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbname $masterst $stage 'exec procedure sys.cmd.send("stat replay")' | egrep 'Blkseq-replay-count:')
+    echo ${x##*:}
+}
+
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("on cause_random_blkseq_replays")'
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("on private_blkseq")'
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("master_swing_osql_verbose")'
+rcount=$(replay_count) ; i=0
+echo "Replay count is $rcount"
+while [[ $i -lt 1000 ]]; do
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbname $stage - < insert.t1 2>&1)
+    echo "$out" | egrep "(rows inserted=1)" >/dev/null 2>&1
+
+    if [[ $? != 0 ]]; then
+        echo "Unexpected output inserting a row into t1"
+        echo "$out"
+        error=1
+        break 2
+    fi
+
+    echo $out ; let i=i+1
+done
+
+if [[ "$(replay_count)" == "$rcount" ]]; then
+    echo "Didn't trip replay in table t1, failing test"
+    error=1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbname $stage - < insert.t2 >/dev/null 2>&1
+
+rcount=$(replay_count) ; i=0
+echo "Replay count is $rcount"
+while [[ $i -lt 1000 ]]; do
+    out=$(cdb2sql ${CDB2_OPTIONS} $dbname $stage - < insert.t2 2>&1)
+    echo "$out" | egrep "failed with rc 299" >/dev/null 2>&1
+
+    if [[ $? != 0 ]]; then
+        echo "Unexpected output inserting a row into t2"
+        echo "$out"
+        error=1
+        break 2
+    fi
+
+    let i=i+1
+done
+
+if [[ "$(replay_count)" == "$rcount" ]]; then
+    echo "Didn't trip replay in table t2, failing test"
+    error=1
+fi
+
+if [[ "$error" == 0 ]]; then
+    echo "success"
+    exit 0
+else
+    echo "failed"
+    exit 1
+fi

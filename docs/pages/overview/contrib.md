@@ -32,4 +32,4 @@ Like many other Open Source projects, the security bugs are handled differently
 as compared to ordinary bugs (for obvious reasons). In case, you happen to have
 found a bug in Comdb2 which you believe could be classified as a security issue
 or have a patch for the same, it is highly recommended to report it directly to
-the Comdb2 team at opencomdb2@bloomberg.net.
+the Comdb2 team at [opencomdb2@bloomberg.net](mailto:opencomdb2@bloomberg.net).
