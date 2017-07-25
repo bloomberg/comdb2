@@ -3861,7 +3861,6 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
             return -1;
         }
 
-        int ntype = osql_net_type_to_net_uuid_type(type);
         type = osql_net_type_to_net_uuid_type(type);
     } else {
         if (send_dk) {
@@ -7908,6 +7907,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
             sbuf2flush(logsb);
         }
 
+        type = osql_net_type_to_net_uuid_type(type);
         offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0);
     } else {
         osql_recgenid_rpl_t recgenid_rpl = {0};

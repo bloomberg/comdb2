@@ -2323,8 +2323,16 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                 "%s: failed to abort sorese transactin irc=%d\n",
                                 __func__, irc);
                     }
-                    if (clnt->early_retry) {
+                    if (clnt->early_retry == EARLY_ERR_VERIFY) {
                         clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                        errstat_cat_str(&(clnt->osql.xerr),
+                                        "unable to update record rc = 4");
+                    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
+                        clnt->osql.xerr.errval = ERR_CONSTR;
+                        errstat_cat_str(&(clnt->osql.xerr),
+                                        "constraints error, no genid");
+                    }
+                    if (clnt->early_retry) {
                         clnt->early_retry = 0;
                         rc = SQLITE_ABORT;
                     }
