@@ -6654,49 +6654,39 @@ void *exec_repsp()
 
     if ((rc = get_func_by_name(L, "main", &err)) != 0) return NULL;
 
-    update_tran_funcs(L, 0);
+    update_tran_funcs(L, 0); //Allow transactions
 
-    luabb_pushcstringlen(L, gbl_remote_cluster, strlen(gbl_remote_cluster));
-    luabb_pushcstringlen(L, gbl_remote_database, strlen(gbl_remote_database));
     thread_memcreate(128 * 1024);
     sql_mem_init(NULL);
 
-    while (1) {
-        get_curtran(thedb->bdb_env, &clnt);
-        SP sp = clnt.sp;
-        Lua L = sp->lua;
-        if ((rc = begin_sp(&clnt, &err)) != 0) {
-            err = strdup(sp->error);
-            goto bad;
-        }
-        if ((rc = run_sp(&clnt, 2, &err)) != 0) {
-        rollback:
-            db_rollback_int(L, &rc);
-        bad:
-            if (err) {
-                puts(err);
-                free(err);
-            }
-            sleep(5); // slow down buggy sp from spinning
-            break;
-        }
-        if (lua_gettop(L) != 1 || !lua_isnumber(L, 1) ||
-            (rc = lua_tonumber(L, 1)) != 0) {
-#if 0
-            logmsg(LOGMSG_ERROR, "trigger:%s rc:%s\n", sp->spname,
-                   lua_tostring(L, 1));
-            err = strdup("trigger returned bad rc");
-#endif
-            goto rollback;
-        }
-        if ((rc = commit_sp(L, &err)) != 0) {
-            logmsg(LOGMSG_ERROR, "trigger:%s commit failed rc:%d -- %s\n",
-                   sp->spname, rc, sp->error);
-            goto bad;
-        }
-        put_curtran(thedb->bdb_env, &clnt);
-        printf("\n SUCCESS");
+    get_curtran(thedb->bdb_env, &clnt);
+
+    luabb_pushcstringlen(L, gbl_remote_cluster, strlen(gbl_remote_cluster));
+    luabb_pushcstringlen(L, gbl_remote_database, strlen(gbl_remote_database));
+    if ((rc = begin_sp(&clnt, &err)) != 0) {
+        err = strdup(sp->error);
+        goto bad;
     }
+    if ((rc = run_sp(&clnt, 2, &err)) != 0) {
+    rollback:
+        db_rollback_int(L, &rc);
+    bad:
+        if (err) {
+            puts(err);
+            free(err);
+        }
+        goto done;
+    }
+    if (lua_gettop(L) != 1 || !lua_isnumber(L, 1) ||
+        (rc = lua_tonumber(L, 1)) != 0) {
+        goto rollback;
+    }
+    if ((rc = commit_sp(L, &err)) != 0) {
+        logmsg(LOGMSG_ERROR, "SP:%s commit failed rc:%d -- %s\n",
+               sp->spname, rc, sp->error);
+        goto bad;
+    }
+    done:
     put_curtran(thedb->bdb_env, &clnt);
     close_sp(&clnt);
     sql_mem_shutdown(NULL);
