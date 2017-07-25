@@ -6655,9 +6655,6 @@ int main(int argc, char **argv)
     if (debug_switch_verbose_deadlocks())
         verbose_deadlocks = 1;
 
-    if ((rc = io_override_init()))
-        return -1;
-
     /* line buffering in stdout */
     setvbuf(stdout, 0, _IOLBF, 0);
 
