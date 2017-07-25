@@ -30,7 +30,7 @@
 [insert into t(i, j) values(1, 15)] rc 0
 (rows inserted=1)
 [insert into u(i) values(1)] rc 0
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 16)] rc 0
 (rows inserted=1)
