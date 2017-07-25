@@ -19,16 +19,16 @@ static int ended_with_newline = 1;
 
 /* from io_override.c */
 
-static pthread_key_t iokey;
-int io_override_init(void) { return pthread_key_create(&iokey, NULL); }
-
+static __thread FILE *ptr = NULL;
 int io_override_set_std(FILE *f)
 {
-    pthread_setspecific(iokey, f);
+    ptr = f;
     return 0;
 }
 
-FILE *io_override_get_std(void) { return pthread_getspecific(iokey); }
+FILE *io_override_get_std(void) { 
+    return ptr;
+}
 
 void logmsg_set_level(loglvl lvl) {
     level = lvl;
