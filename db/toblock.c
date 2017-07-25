@@ -831,6 +831,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
                              &replay_data, &replay_data_len);
+printf("AZ: find in blkseq from do_replay_case rc=%d\n", rc);
         if (rc == IX_FND) {
             memcpy(buf_fstblk, replay_data, replay_data_len - 4);
             datalen = replay_data_len - 4;
@@ -1110,8 +1111,9 @@ printf("AZ: get outrc=%d\n",snapinfo_outrc);
         tohex(printkey, fstseqnum, seqlen);
     }
 
-    logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s!\n", __func__, line, 
-            outrc, printkey);
+    logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s, cnonce %s!\n", __func__, line, 
+            outrc, printkey, iq->snap_info.key);
+    free(printkey);
     
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
@@ -1129,8 +1131,6 @@ printf("AZ: get outrc=%d\n",snapinfo_outrc);
         }
         outrc = ERR_NOT_DURABLE;
     }
-
-    free(printkey);
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
         char *bskey = alloca(iq->snap_info.keylen + 1);
@@ -2685,10 +2685,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             void *replay_data = NULL;
             int replay_len = 0;
             int findout;
-
-            if ((findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
-                        iq->snap_info.keylen, &replay_data, &replay_len)) == 0) {
-printf("AZ: fourd in blkseq for snap info %s\n", iq->snap_info.key);
+            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
+                                       iq->snap_info.keylen, &replay_data, &replay_len);
+printf("AZ: findout=%d in blkseq for snap info %s\n", findout, iq->snap_info.key);
+            if (findout == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0, replay_data, 
                         replay_len, __LINE__);
@@ -5460,7 +5460,7 @@ printf("AZ: set outrc=%d\n",outrc);
             if (rc != RC_INTERNAL_RETRY || !iq->snap_info.replicant_can_retry) {
                 int t = time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
-printf("Inserting into blkseq\n");
+printf("Inserting into blkseq, rc=%d\n", rc);
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
                         buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
                         &replay_data, &replay_len);
