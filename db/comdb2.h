@@ -3391,7 +3391,6 @@ extern long long gbl_converted_blocksql_requests;
 extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
 
-int io_override_init(void);
 int io_override_set_std(FILE *f);
 FILE *io_override_get_std(void);
 

@@ -2495,7 +2495,7 @@ compare_op:
     pOut = &aMem[pOp->p2];
     iCompare = res;
     res2 = res2!=0;  /* For this path res2 must be exactly 0 or 1 */
-    if( (pOp->p5 & SQLITE_KEEPNULL)!=0 ){
+    if( (pOp->p5 & SQLITE_KEEPNULL)==SQLITE_KEEPNULL ){
       /* The KEEPNULL flag prevents OP_Eq from overwriting a NULL with 1
       ** and prevents OP_Ne from overwriting NULL with 0.  This flag
       ** is only used in contexts where either:
