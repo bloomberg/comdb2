@@ -410,8 +410,6 @@ struct sqlclntstate {
     int have_endian;
     int endian;
 
-    int no_transaction;
-
     int have_extended_tm;
     int extended_tm;
 

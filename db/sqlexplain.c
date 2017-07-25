@@ -1388,7 +1388,6 @@ void handle_explain(SBUF2 *sb, int trace, int all)
     reset_clnt(&client, sb, 1);
 
     client.dbtran.mode = TRANLEVEL_SOSQL;
-    client.no_transaction = 1;
 
     client.must_close_sb = 0;
     client.sb = NULL;

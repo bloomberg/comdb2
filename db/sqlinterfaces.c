@@ -3141,7 +3141,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
     }
 }
 
-// Call with schema_lk held and no_transaction == 1
+// Call with schema_lk held
 int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     if (gbl_fdb_track)
@@ -3155,9 +3155,7 @@ int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (thd->analyze_gen != gbl_analyze_gen) {
         int ret;
         delete_prepared_stmts(thd);
-        clnt->no_transaction = 1;
         ret = reload_analyze(thd, clnt);
-        clnt->no_transaction = 0;
         return ret;
     }
 
@@ -3975,10 +3973,8 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int rc = SQLITE_OK;
 
     /* checked current sql thread engine and make sure it is up to date */
-    clnt->no_transaction = 1;
     rdlock_schema_lk();
     if ((rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
-        clnt->no_transaction = 0;
         unlock_schema_lk();
         return rc;
     }
@@ -4028,7 +4024,6 @@ done:
     }
 
     unlock_schema_lk();
-    clnt->no_transaction = 0;
 
     if(!rc && !rec->stmt) rc = FSQL_PREPARE;
     if(rc)
@@ -5543,7 +5538,6 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
     clnt->debug_sqlclntstate = pthread_self();
-    clnt->no_transaction = 1;
     struct sql_thread *sqlthd;
     if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
         sqlthd->sqlclntstate = clnt;
@@ -5565,9 +5559,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
 
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         if (!thd->sqldb) {
-            clnt->no_transaction = 1;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
-            clnt->no_transaction = 0;
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
                         rc);
@@ -5608,7 +5600,6 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
             }
         }
     }
-    clnt->no_transaction = 0;
 }
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
@@ -5715,7 +5706,6 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
         /* short circuit for partial/expression indexes */
         struct sql_thread *sqlthd;
         clnt->debug_sqlclntstate = pthread_self();
-        clnt->no_transaction = 1;
         if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
             sqlthd->sqlclntstate = clnt;
         }
@@ -8572,12 +8562,9 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
         logmsg(LOGMSG_USER, "BLOCKSQL mode=%d [%s]\n", clnt->dbtran.mode,
                 clnt->sql);
 
-    clnt->no_transaction = 1;
-
     rdlock_schema_lk();
     if ((rc = check_thd_gen(poolthd, clnt)) != SQLITE_OK) {
         unlock_schema_lk();
-        clnt->no_transaction = 0;
         return rc;
     }
 
@@ -8618,7 +8605,6 @@ static int execute_sql_query_offload(struct sqlclntstate *clnt,
     } else {
         rc = sqlite3_resetclock(stmt);
     }
-    clnt->no_transaction = 0;
 
     if (ret || !stmt) {
         ret = ERR_SQL_PREP;

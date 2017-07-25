@@ -2114,12 +2114,10 @@ static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
     no_active_stmt(L);
     rdlock_schema_lk();
-    sp->clnt->no_transaction = 1;
     if (sp->thd->sqldb == NULL ||
         check_thd_gen(sp->thd, sp->clnt) != SQLITE_OK) {
         sqlengine_prepare_engine(sp->thd, sp->clnt);
     }
-    sp->clnt->no_transaction = 0;
     int rc = lua_prepare_sql_int(L, sp, sql, stmt);
     unlock_schema_lk();
     return rc;

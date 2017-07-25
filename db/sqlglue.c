@@ -4831,7 +4831,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
 #endif
 
     /* already have a transaction, keep using it until it commits/aborts */
-    if (clnt->intrans || clnt->no_transaction ||
+    if (clnt->intrans || vdbe == NULL ||
         (clnt->ctrl_sqlengine != SQLENG_STRT_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
         rc = SQLITE_OK;
@@ -4954,24 +4954,20 @@ int sqlite3BtreeCommit(Btree *pBt)
     int bdberr = 0;
 
 #ifdef DEBUG
-    if (gbl_debug_sql_opcodes) {
-        uuidstr_t us;
-        fprintf(
-            stderr,
-            "sqlite3BtreeCommit intrans=%d sqleng=%d openeng=%d rqid=%llx %s\n",
-            clnt->intrans, clnt->ctrl_sqlengine, clnt->no_transaction,
-            clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
-    }
+if (gbl_debug_sql_opcodes) {
+    uuidstr_t us;
+    fprintf(stderr, "sqlite3BtreeCommit intrans=%d sqleng=%d rqid=%llx %s\n",
+            clnt->intrans, clnt->ctrl_sqlengine, clnt->osql.rqid,
+            comdb2uuidstr(clnt->osql.uuid, us));
+}
 #endif
 
     if (clnt->arr)
         currangearr_coalesce(clnt->arr);
     if (clnt->selectv_arr)
         currangearr_coalesce(clnt->selectv_arr);
-
-    if (!clnt->intrans || clnt->no_transaction ||
-        (!clnt->no_transaction && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
-         clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
+    if (!clnt->intrans || (clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
+                           clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
         rc = SQLITE_OK;
         goto done;
     }
@@ -5142,8 +5138,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
      * fprintf(stderr, "sqlite3BtreeRollback %d %d\n", clnt->intrans,
      * clnt->ctrl_sqlengine );
      */
-
-    if (!clnt || !clnt->intrans || clnt->no_transaction ||
+    if (!clnt || !clnt->intrans ||
         (clnt->ctrl_sqlengine != SQLENG_FNSH_RBK_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
         rc = SQLITE_OK;
@@ -11473,7 +11468,6 @@ void stat4dump(int more, char *table, int istrace)
     if ((rc = sqlite3_open_serial("db", &db, 0)) != SQLITE_OK) {
         goto put;
     }
-    clnt.no_transaction = 1;
     if ((rc = sqlite3_exec(db, clnt.sql, NULL, NULL, NULL)) != SQLITE_OK) {
         goto close;
     }
