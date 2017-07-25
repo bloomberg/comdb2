@@ -1735,6 +1735,83 @@ void sqlite3AnalyzeFunctions(void){
   sqlite3InsertBuiltinFuncs(aAnalyzeTableFuncs, ArraySize(aAnalyzeTableFuncs));
 }
 
+
+/*
+** COMDB2 MODIFICATION
+** There is no literal notation for datetime and interval. For these columns,
+** try converting string literal to column's affinity for stat4 comparison.
+*/
+static int castExpr(
+  sqlite3 *db,
+  Expr *pExpr,
+  u8 affinity,
+  sqlite3_value **ppVal,
+  struct ValueNewStat4Ctx *pAlloc
+){
+  dttz_t dt;
+  intv_ds_t ds;
+  int type, sign;
+  uint64_t n0, n1;
+  Vdbe *v = db->pVdbe;
+  const char *z = pExpr->u.zToken;
+  switch( affinity ){
+    case SQLITE_AFF_DATETIME:
+      if( str_to_dttz(z, strlen(z), v->tzname, &dt, v->dtprec)==0 ){
+        sqlite3_value *pVal = valueNew(db, pAlloc);
+        if ( pVal==NULL ){
+          return SQLITE_NOMEM;
+        }
+        pVal->du.dt = dt;
+        pVal->tz = v->tzname;
+        pVal->dtprec = v->dtprec;
+        pVal->flags = MEM_Datetime;
+        *ppVal = pVal;
+        return 0;
+      }
+      break;
+    case SQLITE_AFF_INTV_MO:
+      type = INTV_YM_TYPE;
+      if(
+        str_to_interval( z, strlen(z), &type, &n0, &n1, &ds, &sign )==0
+        && type==0 // parsed into n0,n1
+      ){
+        sqlite3_value *pVal = valueNew(db, pAlloc);
+        if ( pVal==NULL ){
+          return SQLITE_NOMEM;
+        }
+        intv_t *tv = &pVal->du.tv;
+        tv->u.ym.years = n0;
+        tv->u.ym.months = n1;
+        tv->sign = sign;
+        tv->type = INTV_YM_TYPE;
+        pVal->flags = MEM_Interval;
+        *ppVal = pVal;
+        return 0;
+      }
+      break;
+    case SQLITE_AFF_INTV_SE:
+      type = INTV_DSUS_TYPE;
+      if(
+        str_to_interval( z, strlen(z), &type, &n0, &n1, &ds, &sign )==0
+        && type==1 // parsed into ds
+      ){
+        sqlite3_value *pVal = valueNew(db, pAlloc);
+        if ( pVal==NULL ){
+          return SQLITE_NOMEM;
+        }
+        intv_t *tv = &pVal->du.tv;
+        tv->u.ds = ds;
+        tv->sign = sign;
+        tv->type = ds.prec == DTTZ_PREC_MSEC ? INTV_DS_TYPE : INTV_DSUS_TYPE;
+        pVal->flags = MEM_Interval;
+        *ppVal = pVal;
+        return 0;
+      }
+      break;
+  }
+  return valueFromExpr(db, pExpr, ENC(db), affinity, ppVal, pAlloc);
+}
+
 /*
 ** Attempt to extract a value from pExpr and use it to construct *ppVal.
 **
@@ -1789,6 +1866,11 @@ static int stat4ValueFromExpr(
       }
     }
   }else{
+#   if SQLITE_BUILDING_FOR_COMDB2
+    if( pExpr->op==TK_STRING && affinity!=SQLITE_AFF_TEXT )
+      rc = castExpr(db, pExpr, affinity, &pVal, pAlloc);
+    else
+#   endif
     rc = valueFromExpr(db, pExpr, ENC(db), affinity, &pVal, pAlloc);
   }
 

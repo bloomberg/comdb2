@@ -71,6 +71,7 @@ void comdb2analyzeCoverage(Parse*, Token*, Token*, int val);
 void comdb2getAnalyzeCoverage(Parse* pParse, Token *nm, Token *lnm);
 void comdb2analyzeThreshold(Parse*, Token*, Token*, int th);
 void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm);
+void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable);
 
 
 void comdb2setAlias(Parse*, Token*, Token*);
@@ -113,6 +114,7 @@ void comdb2deletePassword(Parse* pParse, Token* nm);
 int  comdb2genidcontainstime(void);
 void comdb2schemachangeCommitsleep(Parse* pParse, int num);
 void comdb2schemachangeConvertsleep(Parse* pParse, int num);
+void comdb2putTunable(Parse *pParse, Token *name, Token *value);
 
 enum
 {

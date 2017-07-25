@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <assert.h>
 #include <pthread.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -45,8 +46,16 @@
 #include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
 
-void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
-                      int attr, int value)
+static int log_region_sz_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /* Log region size is specified in KBs. */
+    *(int *)tunable->var = *(int *)value * 1024;
+    return 0;
+}
+
+static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
+                             int attr, int value)
 {
     /* Overrides for special cases */
     switch (attr) {
@@ -99,10 +108,13 @@ void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
         break;
     }
 
-#define DEF_ATTR(NAME, name, type, dflt)                                       \
+#define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
     case BDB_ATTR_##NAME:                                                      \
         bdb_attr->name = value;                                                \
         break;
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    case BDB_ATTR_##NAME: bdb_attr->name = value; break;
+
     switch (attr) {
 #include "attr.h"
     default:
@@ -110,6 +122,7 @@ void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
         break;
     }
 #undef DEF_ATTR
+#undef DEF_ATTR_2
 
     if (attr == BDB_ATTR_REPLIMIT) {
         if (bdb_state) {
@@ -124,14 +137,17 @@ void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
                                                      bdb_attr->replimit);
 #endif
                 if (rc)
-                    logmsg(LOGMSG_ERROR, "%s:set_rep_limit: %d %s\n", __func__, rc,
-                            bdb_strerror(rc));
+                    logmsg(LOGMSG_ERROR, "%s:set_rep_limit: %d %s\n", __func__,
+                           rc, bdb_strerror(rc));
                 else
-                    logmsg(LOGMSG_USER, "dbenv->set_rep_limit called with new rep limit %d\n",
+                    logmsg(
+                        LOGMSG_USER,
+                        "dbenv->set_rep_limit called with new rep limit %d\n",
                         bdb_attr->replimit);
             }
         } else
-            logmsg(LOGMSG_ERROR, 
+            logmsg(
+                LOGMSG_ERROR,
                 "%s: BDB_ATTR_REPLIMIT changed but environment not updated\n",
                 __func__);
 
@@ -151,11 +167,17 @@ void bdb_attr_set(bdb_attr_type *bdb_attr, int attr, int value)
 int bdb_attr_set_by_name(bdb_state_type *bdb_handle, bdb_attr_type *bdb_attr,
                          const char *attrname, int value)
 {
-#define DEF_ATTR(NAME, name, type, dflt)                                       \
+#define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
     else if (strcasecmp(attrname, #NAME) == 0)                                 \
     {                                                                          \
         bdb_attr_set_int(bdb_handle, bdb_attr, BDB_ATTR_##NAME, value);        \
     }
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    else if (strcasecmp(attrname, #NAME) == 0)                                 \
+    {                                                                          \
+        bdb_attr_set_int(bdb_handle, bdb_attr, BDB_ATTR_##NAME, value);        \
+    }
+
     if (!attrname) {
         logmsg(LOGMSG_ERROR, "%s: attrname is NULL\n", __func__);
         return -1;
@@ -166,14 +188,17 @@ int bdb_attr_set_by_name(bdb_state_type *bdb_handle, bdb_attr_type *bdb_attr,
         return -1;
     }
 #undef DEF_ATTR
+#undef DEF_ATTR_2
     return 0;
 }
 
 int bdb_attr_get(bdb_attr_type *bdb_attr, int attr)
 {
-#define DEF_ATTR(NAME, name, type, dflt)                                       \
+#define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
     case BDB_ATTR_##NAME:                                                      \
         return bdb_attr->name;
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    case BDB_ATTR_##NAME: return bdb_attr->name;
     switch (attr) {
 #include "attr.h"
     default:
@@ -181,52 +206,110 @@ int bdb_attr_get(bdb_attr_type *bdb_attr, int attr)
         return -1;
     }
 #undef DEF_ATTR
+#undef DEF_ATTR_2
 }
 
 static const char *bdb_attr_units(int type)
 {
     switch (type) {
-    case BDB_ATTRTYPE_SECS:
-        return " secs";
-    case BDB_ATTRTYPE_MSECS:
-        return " msecs";
-    case BDB_ATTRTYPE_USECS:
-        return " usecs";
-    case BDB_ATTRTYPE_BYTES:
-        return " bytes";
-    case BDB_ATTRTYPE_KBYTES:
-        return " kbytes";
-    case BDB_ATTRTYPE_MBYTES:
-        return " megabytes";
-    case BDB_ATTRTYPE_BOOLEAN:
-        return " (boolean)";
-    case BDB_ATTRTYPE_QUANTITY:
-        return "";
-    case BDB_ATTRTYPE_PERCENT:
-        return "%";
-    default:
-        return " (unknown type?!)";
+    case BDB_ATTRTYPE_SECS: return " secs";
+    case BDB_ATTRTYPE_MSECS: return " msecs";
+    case BDB_ATTRTYPE_USECS: return " usecs";
+    case BDB_ATTRTYPE_BYTES: return " bytes";
+    case BDB_ATTRTYPE_KBYTES: return " kbytes";
+    case BDB_ATTRTYPE_MBYTES: return " megabytes";
+    case BDB_ATTRTYPE_BOOLEAN: return " (boolean)";
+    case BDB_ATTRTYPE_QUANTITY: return "";
+    case BDB_ATTRTYPE_PERCENT: return "%";
+    default: return " (unknown type?!)";
     }
 }
 
 void bdb_attr_dump(FILE *fh, const bdb_attr_type *bdb_attr)
 {
-#define DEF_ATTR(NAME, name, type, dflt)                                       \
-    logmsg(LOGMSG_USER, "%-20s = %d%s\n", #NAME, bdb_attr->name,                       \
-            bdb_attr_units(BDB_ATTRTYPE_##type));
+#define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
+    logmsg(LOGMSG_USER, "%-20s = %d%s\n", #NAME, bdb_attr->name,               \
+           bdb_attr_units(BDB_ATTRTYPE_##type));
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    logmsg(LOGMSG_USER, "%-20s = %d%s\n", #NAME, bdb_attr->name,               \
+           bdb_attr_units(BDB_ATTRTYPE_##type));
 #include "attr.h"
 #undef DEF_ATTR
+#undef DEF_ATTR_2
+}
+
+static inline comdb2_tunable_type bdb_to_tunable_type(int type)
+{
+    switch (type) {
+    case BDB_ATTRTYPE_SECS:
+    case BDB_ATTRTYPE_MSECS:
+    case BDB_ATTRTYPE_USECS:
+    case BDB_ATTRTYPE_BYTES:
+    case BDB_ATTRTYPE_KBYTES:
+    case BDB_ATTRTYPE_MBYTES:
+    case BDB_ATTRTYPE_QUANTITY:
+    case BDB_ATTRTYPE_PERCENT: return TUNABLE_INTEGER;
+    case BDB_ATTRTYPE_BOOLEAN: return TUNABLE_BOOLEAN;
+    default: assert(0);
+    }
+}
+
+static inline int bdb_to_tunable_flag(int type)
+{
+    switch (type) {
+    case BDB_ATTRTYPE_SECS:
+    case BDB_ATTRTYPE_MSECS:
+    case BDB_ATTRTYPE_USECS:
+    case BDB_ATTRTYPE_BYTES:
+    case BDB_ATTRTYPE_KBYTES:
+    case BDB_ATTRTYPE_MBYTES:
+    case BDB_ATTRTYPE_QUANTITY:
+    case BDB_ATTRTYPE_PERCENT: return 0;
+    case BDB_ATTRTYPE_BOOLEAN: return NOARG;
+    default: assert(0);
+    }
 }
 
 void *bdb_attr_create(void)
 {
     bdb_attr_type *bdb_attr;
 
-    bdb_attr = mymalloc(sizeof(bdb_attr_type));
-    bzero(bdb_attr, sizeof(bdb_attr_type));
-#define DEF_ATTR(NAME, name, type, dflt) bdb_attr->name = (dflt);
+    if (!(bdb_attr = mymalloc(sizeof(bdb_attr_type)))) {
+        logmsg(LOGMSG_ERROR, "%s:%d Out-of-memory", __FILE__, __LINE__);
+        return NULL;
+    }
+    memset(bdb_attr, 0, sizeof(bdb_attr_type));
+
+#define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
+    bdb_attr->name = (dflt);                                                   \
+    REGISTER_TUNABLE(#NAME, desc, bdb_to_tunable_type(BDB_ATTRTYPE_##type),    \
+                     &bdb_attr->name,                                          \
+                     bdb_to_tunable_flag(BDB_ATTRTYPE_##type), NULL, NULL,     \
+                     NULL, NULL);
+#define DEF_ATTR_2(NAME, name, type, dflt, desc, flags, verify_fn, update_fn)  \
+    bdb_attr->name = (dflt);                                                   \
+    REGISTER_TUNABLE(#NAME, desc, bdb_to_tunable_type(BDB_ATTRTYPE_##type),    \
+                     &bdb_attr->name,                                          \
+                     bdb_to_tunable_flag(BDB_ATTRTYPE_##type) | flags, NULL,   \
+                     verify_fn, update_fn, NULL);
+
 #include "attr.h"
 #undef DEF_ATTR
+#undef DEF_ATTR_2
+
+    REGISTER_TUNABLE("disable_pageorder_recsz_check",
+                     "If set, allow page-order table scans even for larger "
+                     "record sizes where they don't necessarily lead to "
+                     "improvement.",
+                     TUNABLE_BOOLEAN, &bdb_attr->disable_pageorder_recsz_chk,
+                     NOARG, NULL, NULL, NULL, NULL);
+    REGISTER_TUNABLE("enable_pageorder_recsz_check",
+                     "Disables 'disable_pageorder_recsz_chk'", TUNABLE_BOOLEAN,
+                     &bdb_attr->disable_pageorder_recsz_chk,
+                     INVERSE_VALUE | NOARG, NULL, NULL, NULL, NULL);
+    REGISTER_TUNABLE("nochecksums", "Disables 'checksums'", TUNABLE_BOOLEAN,
+                     &bdb_attr->checksums, INVERSE_VALUE | NOARG, NULL, NULL,
+                     NULL, NULL);
 
     /* echo our default attribute setting into the berkdb library */
     bdb_attr_set(bdb_attr, BDB_ATTR_REPMETHODMAXSLEEP,

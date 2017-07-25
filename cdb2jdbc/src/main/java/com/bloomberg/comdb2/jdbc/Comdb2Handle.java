@@ -177,7 +177,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     public void lookup() throws NoDbHostFoundException {
-        BBSysUtils.getDbHosts(this);
+        BBSysUtils.getDbHosts(this, false);
     }
 
     /* attribute setters - bb precious */
@@ -1814,7 +1814,7 @@ readloop:
            Re-check information about db. */
         if (!isDirectCpu && refresh_dbinfo_if_failed) {
             try {
-                lookup();
+                BBSysUtils.getDbHosts(this, true);
                 reopen(false);
             } catch (NoDbHostFoundException e) {
                 logger.log(Level.SEVERE, "Failed to refresh dbinfo", e);

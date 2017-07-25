@@ -1,0 +1,3 @@
+set hasql on
+set transaction serializable
+insert into t1 values (1)

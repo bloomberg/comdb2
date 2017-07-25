@@ -8,7 +8,7 @@ export DESTDIR
 export PREFIX
 
 # Common CFLAGS
-CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
+CPPFLAGS+=-I$(SRCHOME)/dlmalloc
 #CFLAGS+=$(OPT_CFLAGS)
 
 # Variables that will be modified by included files

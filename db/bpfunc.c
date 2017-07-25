@@ -25,6 +25,7 @@ static int exec_analyze_threshold(void *tran, bpfunc_t *func, char *err);
 static int exec_analyze_coverage(void *tran, bpfunc_t *func, char *err);
 static int exec_rowlocks_enable(void *tran, bpfunc_t *func, char *err);
 static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err);
+static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err);
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, char *err) { return 0; }
@@ -98,6 +99,10 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 
     case BPFUNC_GENID48_ENABLE:
         func->exec = exec_genid48_enable;
+        break;
+
+    case BPFUNC_SET_SKIPSCAN:
+        func->exec = exec_set_skipscan;
         break;
 
     default:
@@ -377,6 +382,7 @@ static int exec_analyze_threshold(void *tran, bpfunc_t *func, char *err)
     return rc;
 }
 
+
 static int exec_analyze_coverage(void *tran, bpfunc_t *func, char *err)
 {
 
@@ -430,6 +436,22 @@ static int prepare_timepart_retention(bpfunc_t *tp)
     tp->success = success_timepart_retention;
 
     return 0;
+}
+
+static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err)
+{
+    BpfuncAnalyzeCoverage *cov_f = func->arg->an_cov;
+    int bdberr;
+    int rc;
+
+    if (cov_f->newvalue == 1) //enable skipscan means clear llmeta entry
+        rc = bdb_clear_table_parameter(tran, cov_f->tablename, "disableskipscan");
+    else {
+        const char *value = "true";
+        rc = bdb_set_table_parameter(tran, cov_f->tablename, "disableskipscan", value);
+    }
+    bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
+    return rc;
 }
 
 static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err)

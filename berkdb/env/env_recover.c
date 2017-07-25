@@ -1742,7 +1742,7 @@ __recover_logfile_pglogs(dbenv)
 					bdb_set_gbl_recoverable_lsn(&lsn,
 					    ckp_args->timestamp);
 					got_recoverable_lsn = 1;
-					logmsg(LOGMSG_ERROR, "set gbl_recoverable_lsn as [%d][%d]\n",
+					logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
 					    lsn.file, lsn.offset);
 				}
 			}

@@ -36,10 +36,11 @@
 #define MAX_RESOURCE_TYPE 255
 #define MAXSTACKDEPTH 64
 
+int thread_debug = 0;
+int dump_resources_on_thread_exit = 1;
+
 static pthread_key_t thread_util_key;
 static void (*describe_func[MAX_RESOURCE_TYPE])(void *);
-static int thread_debug = 0;
-static int dump_resources_on_thread_exit = 1;
 
 struct thread_resource {
     int type;

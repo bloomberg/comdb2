@@ -44,8 +44,7 @@ TYPEDEF(Vdbe)
 enum transaction_level {
     TRANLEVEL_INVALID = -1,
 
-    /* deprecated */
-    TRANLEVEL_OSQL = 7,
+    /* TRANLEVEL_OSQL = 7, */
 
     /* block sql over socket */
     TRANLEVEL_SOSQL = 9,
@@ -335,6 +334,7 @@ struct sqlclntstate {
                    STATE OF A CLIENT TRANSACTION IS KEPT HERE
                  */
     struct convert_failure fail_reason; /* detailed error */
+    int early_retry;
 
     /* analyze variables */
     int n_cmp_idx;
@@ -429,7 +429,6 @@ struct sqlclntstate {
 
     int iswrite;    /* track each query if it is a read or a write */
     int isselect;   /* track if the query is a select query.*/
-    void *lockInfo; /* pointer to pointer of lock info. */
     int isUnlocked;
     int writeTransaction; /* different from iswrite above */
     int want_query_effects;
@@ -518,7 +517,7 @@ struct sqlclntstate {
 /* Query stats. */
 struct query_path_component {
     union {
-        struct db *db;           /* local db, or tmp if NULL */
+        struct dbtable *db;           /* local db, or tmp if NULL */
         struct fdb_tbl_ent *fdb; /* remote db */
     } u;
     int ix;
@@ -576,7 +575,7 @@ struct BtCursor {
     sqlite3 *sqlite;
     Vdbe *vdbe;
     Btree *bt;
-    struct db *db;
+    struct dbtable *db;
 
     int rootpage;
 
@@ -822,5 +821,6 @@ int sqlserver2sqlclient_error(int rc);
 uint16_t stmt_num_tbls(sqlite3_stmt *);
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl);
 void init_cursor(BtCursor *, Vdbe *, Btree *);
+void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 
 #endif

@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -17,48 +17,31 @@
 #ifndef INCLUDED_UTIL_CDB2_CONSTANTS_H
 #define INCLUDED_UTIL_CDB2_CONSTANTS_H
 
-#define MAXNODES 32768
-#define REPMAX 32 // Maximum number of replicants
 #define COMDB2_MAX_RECORD_SIZE 16384
+#define LONG_REQMS 2000
+#define MAXBLOBLENGTH 256 * 1024 * 1024 /* TODO: set a good maximum here */
+#define MAXBLOBS 15                     /* Should be bdb's MAXDTAFILES - 1 */
+#define MAXCOLNAME 99                   /* not incl. \0 */
+#define MAXCOLUMNS 1024
+#define MAXCONSTRAINTS 32
+#define MAXCONSUMERS 32 /* to match bdblib limit */
+#define MAXCUSTOPNAME 32
 #define MAX_DBNAME_LENGTH 64
-
-enum COMDB_LIMITS {
-    LONG_REQMS = 2000,
-    MAXKEYLEN = 512 /*max key len. to clients it is 256, but tagged mode
-                      adds an extra byte to each column so internally we
-                      allow twice that.*/
-    ,
-    MAXLRL = 65536 /*max dta lrl*/
-    ,
-    MAXINDEX = 50 /*max # of indices*/
-    ,
-    MAXBLOBS = 15 /*max # of blobs - should be bdb's MAXDTAFILES - 1 */
-    ,
-    MAXSIBLINGS = 64,
-    MAXCOLUMNS = 1024 /*max columns in table, hard limit*/
-    ,
-    MAXDYNTAGCOLUMNS = 2048,
-    MAXTAGLEN = 64,
-    MAXCOLNAME = 99 /*maximum column name length (not incl. \0)*/
-    ,
-    MAXPSTRLEN = 256,
-    MAXTABLELEN = 32,
-    MAXCOMDBGNODES = 32,
-    MAXBLOBLENGTH = 256 * 1024 * 1024 /* TODO set a good maximum here */
-    ,
-    MAXCONSTRAINTS = 32,
-    MAXCONSUMERS = 32 /* max queue consumers, to match bdblib limit */
-    ,
-    MAXCUSTOPNAME = 32 /* max length of a custom operation name */
-    ,
-    MAXDTASTRIPE = 16,
-    MAX_QUEUE_HITS_PER_TRANS = 8 /* how many queue hits we efficiently
-                                    remember per trans */
-    ,
-    MAXALIASNAME = 32,
-    MAX_SPNAME = MAXTABLELEN,
-    MAX_SPVERSION_LEN = 80,
-    MAXNETS = 3
-};
+#define MAXDTASTRIPE 16
+#define MAXDYNTAGCOLUMNS 2048
+#define MAXINDEX 50
+#define MAXKEYLEN                                                              \
+    512 /* to clients it is 256, but tagged mode adds an extra byte to each    \
+           column so internally we allow twice that.*/
+#define MAXLRL 65536
+#define MAXNETS 3
+#define MAXNODES 32768
+#define MAX_QUEUE_HITS_PER_TRANS 8
+#define MAXSIBLINGS 64
+#define MAX_SPNAME MAXTABLELEN
+#define MAX_SPVERSION_LEN 80
+#define MAXTABLELEN 32
+#define MAXTAGLEN 64
+#define REPMAX 32
 
 #endif

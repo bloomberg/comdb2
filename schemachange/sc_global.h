@@ -79,9 +79,9 @@ const char *get_sc_to_name();
 void wait_for_sc_to_stop();
 int sc_set_running(int running, uint64_t seed, char *host, time_t time);
 void sc_status(struct dbenv *dbenv);
-void live_sc_off(struct db *db);
+void live_sc_off(struct dbtable *db);
 void reset_sc_stat();
 int reload_lua();
-int replicant_reload_analyze();
+int replicant_reload_analyze_stats();
 
 #endif

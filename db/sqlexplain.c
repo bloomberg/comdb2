@@ -126,7 +126,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
         return;
     } 
     
-    struct db *db = NULL;
+    struct dbtable *db = NULL;
     if (cinfo->tbl < thedb->num_dbs) {
         db = thedb->dbs[cinfo->tbl];
     }
@@ -193,7 +193,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
         }
         strbuf_appendf(out, "temp_%d", cinfo->tbl);
     } else {
-        struct db *db;
+        struct dbtable *db;
         db = thedb->dbs[cinfo->tbl];
 
         if (cinfo->ix != -1) {
@@ -906,7 +906,7 @@ static void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v,
     }
     case OP_Seek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
-                       op->p3, op->p1);
+                       op->p1, op->p2);
         break;
     case OP_NoConflict:
     case OP_NotFound:
@@ -925,10 +925,13 @@ static void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v,
 
         break;
     case OP_NotExists:
-        strbuf_appendf(
-            out,
-            "If record id in P3 can't be found using cursor [%d], go to %d",
-            op->p1, op->p2);
+        strbuf_appendf(out,
+                       "If record id in R%d can't be found using cursor [%d]",
+                       op->p3, op->p1);
+        if (op->p2)
+            strbuf_appendf(out, "go to %d", op->p2);
+        else
+            strbuf_appendf(out, "raise an SQLITE_CORRUPT error");
         break;
     case OP_Sequence:
         strbuf_appendf(out,

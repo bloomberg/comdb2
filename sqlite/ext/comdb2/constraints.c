@@ -140,7 +140,7 @@ static int systblConstraintsColumn(
   int i
 ){
   systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   constraint_t *pConstraint = &pDb->constraints[pCur->iConstraintid];
 
   switch( i ){

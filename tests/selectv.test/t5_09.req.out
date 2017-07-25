@@ -1,0 +1,26 @@
+done
+(id=1)
+(id=2)
+(id=3)
+(id=4)
+(id=5)
+(id=6)
+(id=7)
+done
+(rows updated=7)
+done
+[commit] failed with rc -103 OP #3 BLOCK2_SEQV2(824): constraints error, no genid
+done
+done
+(id=1)
+(id=2)
+(id=3)
+(id=4)
+(id=5)
+(id=6)
+(id=7)
+done
+(rows updated=7)
+done
+[commit] failed with rc -103 OP #3 BLOCK2_SEQV2(824): constraints error, no genid
+done
