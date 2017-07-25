@@ -1280,6 +1280,8 @@ public class Comdb2Handle extends AbstractConnection {
         if (isHASqlCommit) {
             cleanup_query_list();
         }
+
+        // We've run out of retries: if this was a begin, set inTxn to false
         if (isBegin)
             inTxn = false;
 

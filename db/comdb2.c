@@ -818,12 +818,10 @@ extern int gbl_parallel_count;
 extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
-extern int gbl_abort_high_availability_failure;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
 
 int gbl_early_verify = 1;
->>>>>>> master
 
 int gbl_bbenv;
 
@@ -6477,9 +6475,6 @@ static void register_all_int_switches()
     register_int_switch("abort_invalid_query_info_key",
                         "Abort in thread-teardown for invalid query_info_key",
                         &gbl_abort_invalid_query_info_key);
-    register_int_switch("abort_server_high_availability_failure",
-                        "Abort if we do not think we are high availability",
-                        &gbl_abort_high_availability_failure);
     register_int_switch("cause_random_blkseq_replays",
                         "Cause random blkseq replays from replicant",
                         &gbl_random_blkseq_replays);
