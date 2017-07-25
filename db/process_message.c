@@ -152,6 +152,7 @@ void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
+void replay_stat(void);
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -794,7 +795,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             goto freelisthelp;
 
         tokcpy0(tok, ltok, table, sizeof(table));
-        if (!(iq.usedb = getdbbyname(table))) {
+        if (!(iq.usedb = get_dbtable_by_name(table))) {
             logmsg(LOGMSG_ERROR, "Couldn't open table '%s'\n", table);
             goto freelisthelp;
         }
@@ -1147,7 +1148,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
            These will typically be reported by e.g. the verify feature. */
 
         char table[MAXTABLELEN];
-        struct db *db;
+        struct dbtable *db;
 
         /* expect table first */
         tok = segtok(line, lline, &st, &ltok);
@@ -1156,7 +1157,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         tokcpy0(tok, ltok, table, sizeof(table));
-        db = getdbbyname(table);
+        db = get_dbtable_by_name(table);
         if (!db) {
             logmsg(LOGMSG_ERROR, "unknown table '%s'\n", table);
             return -1;
@@ -1335,7 +1336,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         char table[MAXTABLELEN];
         int rc;
         int bdberr;
-        struct db *db;
+        struct dbtable *db;
 
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {
@@ -1350,7 +1351,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
         tokcpy(tok, ltok, table);
 
-        db = getdbbyname(table);
+        db = get_dbtable_by_name(table);
         if (!db) {
             logmsg(LOGMSG_ERROR, "delfiles: could not find table: %s\n", table);
             return -1;
@@ -1475,7 +1476,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 logmsg(LOGMSG_USER, "expected queue name\n");
             } else {
                 char *name = tokdup(tok, ltok);
-                struct db *db = getqueuebyname(name);
+                struct dbtable *db = getqueuebyname(name);
                 if (!db)
                     logmsg(LOGMSG_USER, "no queue named '%s'\n", name);
                 else {
@@ -1508,7 +1509,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             } else {
                 /* stat on named queue */
                 char *name = tokdup(tok, ltok);
-                struct db *db = getqueuebyname(name);
+                struct dbtable *db = getqueuebyname(name);
                 if (!db)
                     logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
                 else {
@@ -1529,7 +1530,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             } else {
                 /* stat on named queue */
                 char *name = tokdup(tok, ltok);
-                struct db *db = getqueuebyname(name);
+                struct dbtable *db = getqueuebyname(name);
                 if (!db)
                     logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
                 else
@@ -1547,7 +1548,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             } else {
                 /* stat on named queue */
                 char *name = tokdup(tok, ltok);
-                struct db *db = getqueuebyname(name);
+                struct dbtable *db = getqueuebyname(name);
                 if (!db)
                     logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
                 else
@@ -1565,7 +1566,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             } else {
                 /* stat on named queue */
                 char *name = tokdup(tok, ltok);
-                struct db *db = getqueuebyname(name);
+                struct dbtable *db = getqueuebyname(name);
                 if (!db)
                     logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
                 else
@@ -1577,7 +1578,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         else if (tokcmp(tok, ltok, "flush") == 0) {
             char *qname;
             int consumern;
-            struct db *db;
+            struct dbtable *db;
 
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "abort") == 0) {
@@ -1647,7 +1648,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             char *qname;
             int consumern;
             char *opts;
-            struct db *db;
+            struct dbtable *db;
 
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
@@ -1818,7 +1819,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "dump") == 0) {
             char table[MAXTABLELEN];
             int dtanum;
-            struct db *db;
+            struct dbtable *db;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "Expected table\n");
@@ -1836,7 +1837,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             }
             dtanum = toknum(tok, ltok);
 
-            db = getdbbyname(table);
+            db = get_dbtable_by_name(table);
             if (!db) {
                 logmsg(LOGMSG_ERROR, "Invalid table %s\n", table);
             } else {
@@ -1873,7 +1874,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int n;
         int rc;
         int bdberr;
-        struct db *db;
+        struct dbtable *db;
         const char *which = NULL;
 
         tok = segtok(line, lline, &st, &ltok);
@@ -1882,7 +1883,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             tok = segtok(line, lline, &st, &ltok);
             tokcpy(tok, ltok, table);
 
-            db = getdbbyname(table);
+            db = get_dbtable_by_name(table);
             if (db == NULL) {
                 goto pagesize_usage;
             }
@@ -2015,6 +2016,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (thedb->bdb_env == NULL)
                 return -1;
             backend_cmd(dbenv, line, llinesav, stsav);
+        } else if (tokcmp(tok, ltok, "replay") == 0) {
+            replay_stat();
         } else if (tokcmp(tok, ltok, "osql") == 0) {
             osql_repository_printcrtsessions();
         } else if (tokcmp(tok, ltok, "net") == 0) {
@@ -2079,7 +2082,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "dumpcsc2") == 0) {
             int version;
             char *dbname;
-            struct db *db;
+            struct dbtable *db;
 
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0) {
@@ -2096,7 +2099,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             }
             version = toknum(tok, ltok);
 
-            db = getdbbyname(dbname);
+            db = get_dbtable_by_name(dbname);
             if (!db) {
                 logmsg(LOGMSG_ERROR, "no such table %s\n", dbname);
             } else if (db->dbtype != DBTYPE_TAGGED_TABLE) {
@@ -2645,7 +2648,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "bthashall") == 0) {
         int szkb;
         int idb;
-        struct db *db;
+        struct dbtable *db;
 
         if (thedb->master != gbl_mynode) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
@@ -2688,7 +2691,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         if (del_bt_hash_table(table) != 0)
             return -1;
     } else if (tokcmp(tok, ltok, "delbthashall") == 0) {
-        struct db *db;
+        struct dbtable *db;
         int idb;
 
         if (thedb->master != gbl_mynode) {
@@ -3229,7 +3232,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                tokcmp(tok, ltok, "setclass") == 0) {
         process_allow_command(line + stsav, llinesav - stsav);
     } else if (tokcmp(tok, ltok, "reinit") == 0) {
-        struct db *db;
+        struct dbtable *db;
         char dbname[100];
 
         if (gbl_mynode != thedb->master) {
@@ -3243,7 +3246,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         tokcpy(tok, ltok, dbname);
-        db = getdbbyname(dbname);
+        db = get_dbtable_by_name(dbname);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
         } else {
@@ -3254,7 +3257,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
         }
     } else if (tokcmp(tok, ltok, "cleartable") == 0) {
-        struct db *db;
+        struct dbtable *db;
         char dbname[100];
 
         if (gbl_mynode != thedb->master) {
@@ -3268,7 +3271,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         tokcpy(tok, ltok, dbname);
-        db = getdbbyname(dbname);
+        db = get_dbtable_by_name(dbname);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
         } else {
@@ -3280,7 +3283,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
     }
     else if (tokcmp(tok, ltok, "fastcount") == 0) {
-        struct db *db;
+        struct dbtable *db;
         char dbname[100];
 
         tok = segtok(line, lline, &st, &ltok);
@@ -3289,7 +3292,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         tokcpy(tok, ltok, dbname);
-        db = getdbbyname(dbname);
+        db = get_dbtable_by_name(dbname);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
         } else {
@@ -3420,7 +3423,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
 
     } else if (tokcmp(tok, ltok, "dumprecord") == 0) {
-        struct db *db;
+        struct dbtable *db;
         int rrn;
         unsigned long long genid;
         char *tbl;
@@ -3432,7 +3435,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         tbl = tokdup(tok, ltok);
-        db = getdbbyname(tbl);
+        db = get_dbtable_by_name(tbl);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "Unknown table %s\n", tbl);
             free(tbl);
@@ -3898,7 +3901,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
     } else if (tokcmp(tok, ltok, "getfilever") == 0) {
         char *table_name = NULL;
-        struct db *db;
+        struct dbtable *db;
         int bdberr, rc, is_file_type_dta = 0, file_num;
         unsigned long long file_version;
 
@@ -3920,7 +3923,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
         /*get table*/
         table_name = tokdup(tok, ltok);
-        db = getdbbyname(table_name);
+        db = get_dbtable_by_name(table_name);
         free(table_name);
         table_name = NULL;
         if (db == NULL) {
@@ -3944,7 +3947,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "newfilever") == 0) {
         /*TODO add ability to specify version_num*/
         char *table_name = NULL;
-        struct db *db;
+        struct dbtable *db;
         int bdberr, rc, is_file_type_dta = 0, file_num;
         unsigned long long file_version;
 
@@ -3966,7 +3969,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
         /*get table*/
         table_name = tokdup(tok, ltok);
-        db = getdbbyname(table_name);
+        db = get_dbtable_by_name(table_name);
         free(table_name);
         table_name = NULL;
         if (db == NULL) {
@@ -4389,7 +4392,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return 0;
         }
         char *dbname = tokdup(tok, ltok);
-        struct db *db = getdbbyname(dbname);
+        struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
             logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
                    "inplace_updates:%s  version:%d\n",
@@ -4420,7 +4423,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             free(dbname);
             return 0;
         }
-        struct db *db = getdbbyname(dbname);
+        struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
             db->version = ver;
             bdb_set_csc2_version(db->handle, db->version);
@@ -4436,7 +4439,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return 0;
         }
         char *dbname = tokdup(tok, ltok);
-        struct db *db = getdbbyname(dbname);
+        struct dbtable *db = get_dbtable_by_name(dbname);
         if (db == NULL) {
             logmsg(LOGMSG_ERROR, "No such table: %s\n", dbname);
             goto out;
@@ -4548,7 +4551,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     /* page_order_scan per-table message trap */
     else if (tokcmp(tok, ltok, "page_order_scan") == 0) {
         char *cmd = "page_order_scan";
-        struct db *db = NULL;
+        struct dbtable *db = NULL;
         char *table;
 
         tok = segtok(line, lline, &st, &ltok);
@@ -4561,7 +4564,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 return 0;
             }
             table = tokdup(tok, ltok);
-            db = getdbbyname(table);
+            db = get_dbtable_by_name(table);
             if (!db) {
                 logmsg(LOGMSG_ERROR, "Could not find table '%s'\n", table);
                 free(table);
@@ -4584,7 +4587,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             }
 
             table = tokdup(tok, ltok);
-            db = getdbbyname(table);
+            db = get_dbtable_by_name(table);
 
             if (!db) {
                 logmsg(LOGMSG_ERROR, "Could not find table '%s'\n", table);
@@ -4608,7 +4611,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (ltok) {
                 int pgscan;
                 table = tokdup(tok, ltok);
-                db = getdbbyname(table);
+                db = get_dbtable_by_name(table);
                 if (!db) {
                     logmsg(LOGMSG_ERROR, "Could not find table '%s'\n", table);
                     free(table);
@@ -5017,7 +5020,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                     dec_print_mode(gbl_decimal_rounding));
         }
     } else if (tokcmp(tok, ltok, "localrep") == 0) {
-        struct db *db;
+        struct dbtable *db;
         int i;
         logmsg(LOGMSG_USER, "%-30s %10s\n", "table", "localrep?");
         for (i = 0; i < thedb->num_dbs; i++) {
@@ -5530,7 +5533,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         print_tableparams();
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "clear") == 0) {
-            struct db *db = NULL;
+            struct dbtable *db = NULL;
             char *table;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0)
@@ -5538,7 +5541,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             else {
                logmsg(LOGMSG_USER, "Clearing entry for '%s'\n", tok);
                 table = tokdup(tok, ltok);
-                db = getdbbyname(table);
+                db = get_dbtable_by_name(table);
                 if (!db) {
                     logmsg(LOGMSG_ERROR, "Could not find table '%s'\n", table);
                 } else {
@@ -5578,9 +5581,9 @@ void fastcount(char *tablename)
     uint64_t dtasize;
     int recsize;
     int numrecs;
-    struct db *p_db;
+    struct dbtable *p_db;
 
-    if (!(p_db = getdbbyname(tablename))) {
+    if (!(p_db = get_dbtable_by_name(tablename))) {
         logmsg(LOGMSG_ERROR, "%s: couldn't find table: %s\n", __func__, tablename);
         return;
     }
@@ -5596,7 +5599,7 @@ void fastcount(char *tablename)
 
 static void dump_table_sizes(struct dbenv *dbenv)
 {
-    struct db *db;
+    struct dbtable *db;
     int ndb;
     uint64_t total = 0;
     int maxtblname = 9; /* for "log files" */
@@ -5681,7 +5684,7 @@ static void dump_table_sizes(struct dbenv *dbenv)
 void ixstats(struct dbenv *dbenv)
 {
     int dbn, ix;
-    struct db *db;
+    struct dbtable *db;
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];
@@ -5696,7 +5699,7 @@ void ixstats(struct dbenv *dbenv)
 void curstats(struct dbenv *dbenv)
 {
     int dbn;
-    struct db *db;
+    struct dbtable *db;
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];

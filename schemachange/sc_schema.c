@@ -26,7 +26,7 @@
 
 extern int gbl_partial_indexes;
 
-int verify_record_constraint(struct ireq *iq, struct db *db, void *trans,
+int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                              void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
@@ -96,12 +96,12 @@ int verify_record_constraint(struct ireq *iq, struct db *db, void *trans,
             int rixlen;
             char rkey[MAXKEYLEN];
             char rtag[MAXTAGLEN];
-            struct db *ruledb;
+            struct dbtable *ruledb;
             int fndrrn;
             unsigned long long genid;
             int nulls;
 
-            ruledb = getdbbyname(ct->table[ri]);
+            ruledb = get_dbtable_by_name(ct->table[ri]);
             if (ruledb == NULL) goto bad;
 
             rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], &ridx);
@@ -153,7 +153,7 @@ bad:
     return ERR_CONSTR;
 }
 
-int verify_partial_rev_constraint(struct db *to_db, struct db *newdb,
+int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                                   void *trans, void *od_dta,
                                   unsigned long long ins_keys, const char *from)
 {
@@ -174,7 +174,7 @@ int verify_partial_rev_constraint(struct db *to_db, struct db *newdb,
         for (j = 0; j < cnstrt->nrules; j++) {
             char ondisk_tag[MAXTAGLEN];
             int ixnum = 0, ixlen = 0;
-            struct db *ldb;
+            struct dbtable *ldb;
             char lkey[MAXKEYLEN];
             char nkey[MAXKEYLEN];
             char rnkey[MAXKEYLEN];
@@ -184,7 +184,7 @@ int verify_partial_rev_constraint(struct db *to_db, struct db *newdb,
             if (strcasecmp(cnstrt->table[j], to_db->dbname)) {
                 continue;
             }
-            ldb = getdbbyname(cnstrt->table[j]);
+            ldb = get_dbtable_by_name(cnstrt->table[j]);
             if (strcasecmp(ldb->dbname, newdb->dbname)) {
                 logmsg(LOGMSG_FATAL, "%s: failed to find table\n", __func__);
                 abort();
@@ -260,7 +260,7 @@ int verify_partial_rev_constraint(struct db *to_db, struct db *newdb,
     return 0;
 }
 
-static int verify_constraints_forward_changes(struct db *db, struct db *newdb)
+static int verify_constraints_forward_changes(struct dbtable *db, struct dbtable *newdb)
 {
     int i = 0, rc = 0, verify = 0;
     /* verify forward constraints first */
@@ -343,7 +343,7 @@ static int verify_constraints_forward_changes(struct db *db, struct db *newdb)
     return 1;
 }
 
-int set_header_and_properties(void *tran, struct db *newdb,
+int set_header_and_properties(void *tran, struct dbtable *newdb,
                               struct schema_change_type *s, int inplace_upd,
                               int bthash)
 {
@@ -414,7 +414,7 @@ int mark_schemachange_over(const char *table)
     return mark_schemachange_over_tran(table, NULL);
 }
 
-int prepare_table_version_one(tran_type *tran, struct db *db,
+int prepare_table_version_one(tran_type *tran, struct dbtable *db,
                               struct schema **version)
 {
     int rc, bdberr;
@@ -467,11 +467,11 @@ int prepare_table_version_one(tran_type *tran, struct db *db,
     return SC_OK;
 }
 
-struct db *create_db_from_schema(struct dbenv *thedb,
+struct dbtable *create_db_from_schema(struct dbenv *thedb,
                                  struct schema_change_type *s, int dbnum,
                                  int foundix, int version)
 {
-    struct db *newdb =
+    struct dbtable *newdb =
         newdb_from_schema(thedb, s->table, NULL, dbnum, foundix, 0);
 
     if (newdb == NULL) return NULL;
@@ -511,7 +511,7 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
     return SC_OK;
 }
 
-inline int check_option_coherency(struct schema_change_type *s, struct db *db,
+inline int check_option_coherency(struct schema_change_type *s, struct dbtable *db,
                                   struct scinfo *scinfo)
 {
     if (!s->headers && (s->compress || s->compress_blobs)) {
@@ -573,7 +573,7 @@ int sc_cmp_fileids(unsigned long long a, unsigned long long b)
     return bdb_cmp_genids(a, b);
 }
 
-void verify_schema_change_constraint(struct ireq *iq, struct db *currdb,
+void verify_schema_change_constraint(struct ireq *iq, struct dbtable *currdb,
                                      void *trans, void *od_dta,
                                      unsigned long long ins_keys)
 {
@@ -593,7 +593,7 @@ void verify_schema_change_constraint(struct ireq *iq, struct db *currdb,
 
 /* After loading new schema file, should call this routine to see if ondisk
  * operations are required to carry out a schema change. */
-int ondisk_schema_changed(const char *table, struct db *newdb, FILE *out,
+int ondisk_schema_changed(const char *table, struct dbtable *newdb, FILE *out,
                           struct schema_change_type *s)
 {
     int tag_rc, index_rc, constraint_rc;
@@ -655,8 +655,8 @@ int ondisk_schema_changed(const char *table, struct db *newdb, FILE *out,
             sc_printf(s, i + 1, ##args);                                       \
     } while (0)
 
-int create_schema_change_plan(struct schema_change_type *s, struct db *olddb,
-                              struct db *newdb, struct scplan *plan)
+int create_schema_change_plan(struct schema_change_type *s, struct dbtable *olddb,
+                              struct dbtable *newdb, struct scplan *plan)
 {
     int rc;
     int ixn;
@@ -949,7 +949,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct db *olddb,
 }
 
 /* Transfer settings such as dbnum, blobstrip_genid etc from olddb to newdb */
-void transfer_db_settings(struct db *olddb, struct db *newdb)
+void transfer_db_settings(struct dbtable *olddb, struct dbtable *newdb)
 {
     newdb->dbnum = olddb->dbnum;
     if (gbl_blobstripe) {
@@ -969,7 +969,7 @@ void transfer_db_settings(struct db *olddb, struct db *newdb)
 }
 
 /* use callers transaction if any, need to do I/O */
-void set_odh_options_tran(struct db *db, tran_type *tran)
+void set_odh_options_tran(struct dbtable *db, tran_type *tran)
 {
     int compr = 0;
     int blob_compr = 0;
@@ -996,21 +996,21 @@ void set_odh_options_tran(struct db *db, tran_type *tran)
 }
 
 /* Get flags from llmeta and set db, bdb_state */
-void set_odh_options(struct db *db)
+void set_odh_options(struct dbtable *db)
 {
     set_odh_options_tran(db, NULL);
 }
 
-int compare_constraints(const char *table, struct db *newdb)
+int compare_constraints(const char *table, struct dbtable *newdb)
 {
     int i = 0, rc = 0, nvlist = 0;
-    struct db **verifylist = NULL;
-    struct db *db = getdbbyname(table);
+    struct dbtable **verifylist = NULL;
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) return -2;
 
     /* check reverse constraints for old 'db*' here. there maybe other tables
        referencing us */
-    verifylist = (struct db **)malloc(thedb->num_dbs * sizeof(struct db *));
+    verifylist = (struct dbtable **)malloc(thedb->num_dbs * sizeof(struct dbtable *));
     if (verifylist == NULL) {
         logmsg(LOGMSG_ERROR, "error in malloc during verify constraint!\n");
         return -2;
@@ -1079,7 +1079,7 @@ int compare_constraints(const char *table, struct db *newdb)
     return 0;
 }
 
-int restore_constraint_pointers_main(struct db *db, struct db *newdb,
+int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                                      int copyof)
 {
     int i = 0;
@@ -1096,7 +1096,7 @@ int restore_constraint_pointers_main(struct db *db, struct db *newdb,
     /* additionally, for each table i'm pointing to in old db, must get its
      * reverse constraint array updated to get all reverse ct *'s removed */
     for (i = 0; i < thedb->num_dbs; i++) {
-        struct db *rdb = thedb->dbs[i];
+        struct dbtable *rdb = thedb->dbs[i];
         if (!strcasecmp(rdb->dbname, newdb->dbname)) {
             rdb = newdb;
         }
@@ -1145,21 +1145,21 @@ int restore_constraint_pointers_main(struct db *db, struct db *newdb,
     return 0;
 }
 
-int restore_constraint_pointers(struct db *db, struct db *newdb)
+int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
     return restore_constraint_pointers_main(db, newdb, 1);
 }
 
-int backout_constraint_pointers(struct db *db, struct db *newdb)
+int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
     return restore_constraint_pointers_main(db, newdb, 0);
 }
 
 /* did keys change which are also constraint sources? */
-int fk_source_change(struct db *newdb, FILE *out, struct schema_change_type *s)
+int fk_source_change(struct dbtable *newdb, FILE *out, struct schema_change_type *s)
 {
     int i;
-    struct db *olddb = getdbbyname(newdb->dbname);
+    struct dbtable *olddb = get_dbtable_by_name(newdb->dbname);
     for (i = 0; i < newdb->nix; ++i) {
         struct schema *index = newdb->ixschema[i];
         int offset = get_offset_of_keyname(index->csctag);
@@ -1172,8 +1172,8 @@ int fk_source_change(struct db *newdb, FILE *out, struct schema_change_type *s)
     return 0;
 }
 
-int check_sc_headroom(struct schema_change_type *s, struct db *olddb,
-                      struct db *newdb)
+int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
+                      struct dbtable *newdb)
 {
     uint64_t avail, wanted;
     struct statvfs st;
@@ -1227,7 +1227,7 @@ int check_sc_headroom(struct schema_change_type *s, struct db *olddb,
 }
 
 /* compatible change if type unchanged but get larger in size */
-int compat_chg(struct db *olddb, struct schema *s2, const char *ixname)
+int compat_chg(struct dbtable *olddb, struct schema *s2, const char *ixname)
 {
     struct schema *s1 = find_tag_schema(olddb->dbname, ixname);
     if (s1->nmembers != s2->nmembers) return 1;
@@ -1243,14 +1243,14 @@ int compat_chg(struct db *olddb, struct schema *s2, const char *ixname)
     return 0;
 }
 
-int compatible_constraint_source(struct db *olddb, struct db *newdb,
+int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
                                  struct schema *newsc, const char *key,
                                  FILE *out, struct schema_change_type *s)
 {
     const char *dbname = newdb->dbname;
     int i, j, k;
     for (i = 0; i < thedb->num_dbs; ++i) {
-        struct db *db = thedb->dbs[i];
+        struct dbtable *db = thedb->dbs[i];
         if (strcmp(db->dbname, dbname) == 0) continue;
         for (j = 0; j < db->n_constraints; ++j) {
             constraint_t *ct = &db->constraints[j];
@@ -1274,10 +1274,10 @@ int compatible_constraint_source(struct db *olddb, struct db *newdb,
     return 0;
 }
 
-int remove_constraint_pointers(struct db *db)
+int remove_constraint_pointers(struct dbtable *db)
 {
     for (int i = 0; i < thedb->num_dbs; i++) {
-        struct db *rdb = thedb->dbs[i];
+        struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
@@ -1299,13 +1299,13 @@ int remove_constraint_pointers(struct db *db)
     return 0;
 }
 
-void fix_constraint_pointers(struct db *db, struct db *newdb)
+void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
     /* This is a kludge.  Newdb is going away.  Go through all
      * tables.  Any constraints that point to newdb should be
      * changed to point to the same constraint in db. */
     int i, j, k;
-    struct db *rdb;
+    struct dbtable *rdb;
     constraint_t *ct;
 
     for (i = 0; i < thedb->num_dbs; i++) {
@@ -1333,7 +1333,7 @@ void fix_constraint_pointers(struct db *db, struct db *newdb)
 
 static int reset_sc_from(const char *table)
 {
-    struct db *db = getdbbyname(table);
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
         return -1;
     }
@@ -1345,7 +1345,7 @@ static int reset_sc_from(const char *table)
 
 void change_schemas_recover(char *table)
 {
-    struct db *db = getdbbyname(table);
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
         if (unlikely(!timepart_is_timepart(table, 1))) {
             /* shouldn't happen */

@@ -286,6 +286,7 @@ Return Values:
 |---|---|---|
 |`CDB2_INTEGER`, `CDB2_REAL`, `CDB2_CSTRING`, `CDB2_BLOB`, `CDB2_DATETIME`, `CDB2_DATETIMEUS`, `CDB2T_INTERVALYM`, `CDB2_INTERVALDS`, `CDB2_INTERVALDSUS`| The datatype of the numbered column | Numeric data is always promoted to its largest natural form, eg: a `short` field in the schema will come back from the db as an `int64_t`, see [cdb2_column_value](#cdb2columnvalue).|
 
+
 ### cdb2_bind_param
 ```
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type, const void *varaddr, int length);
@@ -325,6 +326,37 @@ Parameters:
 |*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
 |*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
+### cdb2_bind_index
+```
+int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type, const void *varaddr, int length);
+```
+
+Description:
+
+This routine is used to bind value pointers to named or unnamed replaceable params in sql statement. The index starts from 1, and increases for every new parameter in the statement. This version of cdb2_bind_* is faster than cdb2_bind_param.
+
+For example:
+
+```c
+char *sql = "INSERT INTO t1(a, b) values(?, ?)”
+
+char *a = "foo";
+int64_t b = "bar";
+
+cdb2_bind_index(db, 1, CDB2_CSTRING, a, strlen(a));
+cdb2_bind_index((db, 2, CDB2_INTEGER, &b, sizeof(int64_t));
+cdb2_run_statement(db, sql);
+```
+
+Parameters:
+
+|Name|Type|Description|Notes|
+|---|---|---|--|
+|*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
+| index | input | The index of replaceable param | The value associated with this pointer (valueaddr  arg) should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
+|*type*| input | The type of replaceable param | |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
+|*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
 ### cdb2_get_effects
 ```

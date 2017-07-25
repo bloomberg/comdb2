@@ -415,7 +415,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 {
     shad_tbl_t *tbl;
     unsigned long long rqid;
-    struct db *db = pCur->db;
+    struct dbtable *db = pCur->db;
     struct dbenv *env = pCur->db->dbenv;
     int numblobs = pCur->numblobs;
     int rc = 0;
@@ -1361,7 +1361,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     return 0;
 }
 
-void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct db *db)
+void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
 {
     void *ret = NULL;
     shad_tbl_t *tbl = NULL;
@@ -2092,7 +2092,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
 
     int ix = 0;
     char namebuf[MAXTAGLEN];
-    struct db *db = pCur->db;
+    struct dbtable *db = pCur->db;
     char key[MAXKEYLEN];
     void *tran = thd->sqlclntstate->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;

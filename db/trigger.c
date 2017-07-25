@@ -279,7 +279,7 @@ void trigger_stat()
 {
 #if 0
 	for (int i = 0; i < thedb->num_qdbs; ++i) {
-		struct db *qdb = thedb->qdbs[i];
+		struct dbtable *qdb = thedb->qdbs[i];
 		printf("name: %s type:%d\n", qdb->dbname, qdb->dbtype);
 		for (int j = 0; j < MAXCONSUMERS; ++j) {
 			struct consumer *consumer = qdb->consumers[i];

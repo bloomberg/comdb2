@@ -134,7 +134,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     
     if(!timepart_is_timepart(dst, 1))
     {
-        struct db *db = getdbbyname(dst);
+        struct dbtable *db = get_dbtable_by_name(dst);
 
         if (db == NULL && mustexist)
         {
@@ -528,7 +528,7 @@ void comdb2CreateTableCSC2(
     }
 
     TokenStr(table, pName1);
-    if (noErr && getdbbyname(table))
+    if (noErr && get_dbtable_by_name(table))
         goto out;
 
     if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
@@ -2360,7 +2360,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     LISTC_FOR_EACH(&ctx->constraint_list, current_constraint, lnk)
     {
         int key_found = 0;
-        struct db *parent_table;
+        struct dbtable *parent_table;
         struct schema *parent_key;
         struct schema *child_key;
         struct csc2_constraint csc2_constraint;
@@ -2410,7 +2410,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           for current constraint.
         */
         parent_table =
-            getdbbyname(current_constraint->constraint->referenced_table);
+            get_dbtable_by_name(current_constraint->constraint->referenced_table);
         if (parent_table == 0) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(
@@ -2491,7 +2491,7 @@ cleanup:
     return 0;
 }
 
-static int retrieve_table_options(struct db *table)
+static int retrieve_table_options(struct dbtable *table)
 {
     int table_options = 0;
     int odh;
@@ -2550,8 +2550,8 @@ static int retrieve_table_options(struct db *table)
 */
 static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
-    struct db *table;
-    struct db *parent_table;
+    struct dbtable *table;
+    struct dbtable *parent_table;
     struct schema *schema = 0;
     struct schema *key;
     struct schema *parent_key;
@@ -2562,7 +2562,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     assert(ctx != 0);
 
-    table = getdbbyname(ctx->name);
+    table = get_dbtable_by_name(ctx->name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->name);
@@ -2624,7 +2624,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* Locate the parent key. */
         for (int j = 0; j < table->constraints->nrules; j++) {
             parent_key = 0;
-            parent_table = getdbbyname(table->constraints[i].table[j]);
+            parent_table = get_dbtable_by_name(table->constraints[i].table[j]);
             if (parent_table == 0) {
                 pParse->rc = SQLITE_ERROR;
                 sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
@@ -2835,7 +2835,7 @@ void comdb2CreateTableStart(
 
     pParse->comdb2_ddl_ctx = ctx;
 
-    if (noErr && getdbbyname(ctx->name)) {
+    if (noErr && get_dbtable_by_name(ctx->name)) {
         ctx->flags |= COMDB2_DDL_CTX_FLAG_NOOP;
         logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->name);
         goto cleanup;
@@ -3332,7 +3332,7 @@ void comdb2CreateIndex(
     struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-    struct db *table;
+    struct dbtable *table;
     int max_size;
     int found;
     char *keyname;
@@ -3370,7 +3370,7 @@ void comdb2CreateIndex(
 
     /* Check if an index already exists with the requested name. */
     found = 0;
-    table = getdbbyname(ctx->name);
+    table = get_dbtable_by_name(ctx->name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->name);
@@ -3797,7 +3797,7 @@ cleanup:
 /*
   Internal implementation of DROP INDEX.
 */
-static void comdb2DropIndexInt(Parse *pParse, struct db *table,
+static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
                                const char *idx_name)
 {
     Vdbe *v;
@@ -3894,8 +3894,8 @@ cleanup:
 */
 void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
 {
-    struct db *table;
-    struct db *parent_table;
+    struct dbtable *table;
+    struct dbtable *parent_table;
     int index_count = 0;
 
     if (use_sqlite_impl(pParse)) {
@@ -3956,12 +3956,12 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
 void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
                          int ifExists)
 {
-    struct db *table;
+    struct dbtable *table;
     int found = 0;
 
     TokenStr(table_name, tabName);
     sqlite3Dequote(table_name);
-    table = getdbbyname(table_name);
+    table = get_dbtable_by_name(table_name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", table_name);

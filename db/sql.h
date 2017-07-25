@@ -334,6 +334,7 @@ struct sqlclntstate {
                    STATE OF A CLIENT TRANSACTION IS KEPT HERE
                  */
     struct convert_failure fail_reason; /* detailed error */
+    int early_retry;
 
     /* analyze variables */
     int n_cmp_idx;
@@ -516,7 +517,7 @@ struct sqlclntstate {
 /* Query stats. */
 struct query_path_component {
     union {
-        struct db *db;           /* local db, or tmp if NULL */
+        struct dbtable *db;           /* local db, or tmp if NULL */
         struct fdb_tbl_ent *fdb; /* remote db */
     } u;
     int ix;
@@ -574,7 +575,7 @@ struct BtCursor {
     sqlite3 *sqlite;
     Vdbe *vdbe;
     Btree *bt;
-    struct db *db;
+    struct dbtable *db;
 
     int rootpage;
 

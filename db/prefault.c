@@ -202,7 +202,7 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
 }
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_pfault_oldkey(struct db *db, void *key, int keylen, int ixnum,
+int enque_pfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum,
                         int opnum, int helper_thread, unsigned int seqnum,
                         int broadcast, int dolocal, int flush)
 {
@@ -244,7 +244,7 @@ int enque_pfault_oldkey(struct db *db, void *key, int keylen, int ixnum,
 }
 
 /* given a table, key   : enqueue a fault for the a single ix record */
-int enque_pfault_newkey(struct db *db, void *key, int keylen, int ixnum,
+int enque_pfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum,
                         int opnum, int helper_thread, unsigned int seqnum,
                         int broadcast, int dolocal, int flush)
 {
@@ -287,7 +287,7 @@ int enque_pfault_newkey(struct db *db, void *key, int keylen, int ixnum,
 
 /* given a table, genid   : enqueue a fault for a data record, as specified by
                             a table/genid  */
-int enque_pfault_olddata(struct db *db, unsigned long long genid, int opnum,
+int enque_pfault_olddata(struct dbtable *db, unsigned long long genid, int opnum,
                          int helper_thread, unsigned int seqnum, int broadcast,
                          int dolocal, int flush)
 {
@@ -330,7 +330,7 @@ int enque_pfault_olddata(struct db *db, unsigned long long genid, int opnum,
                             genid then forms all keys from that record and
                             enqueues n ops to fault in each key.
                             */
-int enque_pfault_olddata_oldkeys(struct db *db, unsigned long long genid,
+int enque_pfault_olddata_oldkeys(struct dbtable *db, unsigned long long genid,
                                  int opnum, int helper_thread,
                                  unsigned int seqnum, int broadcast,
                                  int dolocal, int flush)
@@ -380,7 +380,7 @@ int enque_pfault_olddata_oldkeys(struct db *db, unsigned long long genid,
                                   5) forms all keys from new record.
                                   6) enqueues n ops to fault in each key.
                                   */
-int enque_pfault_olddata_oldkeys_newkeys(struct db *db,
+int enque_pfault_olddata_oldkeys_newkeys(struct dbtable *db,
                                          unsigned long long genid, char *tag,
                                          int taglen, void *record, int reclen,
                                          int opnum, int helper_thread,

@@ -264,6 +264,13 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc2 = 0;
     int usedb_only = 0;
 
+    if (clnt->early_retry) {
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        clnt->early_retry = 0;
+        rc = SQLITE_ABORT;
+        goto goback;
+    }
+
     /* optimization (will catch all transactions with no internal updates */
     if (osql_shadtbl_empty(clnt)) {
         if (gbl_extended_sql_debug_trace) {
@@ -714,6 +721,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 
@@ -729,6 +742,12 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 

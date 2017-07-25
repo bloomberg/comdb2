@@ -24,7 +24,7 @@
 #include "sc_global.h"
 #include "sc_callbacks.h"
 
-static int delete_table(struct db *db, tran_type *tran)
+static int delete_table(struct dbtable *db, tran_type *tran)
 {
     remove_constraint_pointers(db);
 
@@ -45,8 +45,8 @@ static int delete_table(struct db *db, tran_type *tran)
 int do_drop_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db;
-    iq->usedb = db = s->db = getdbbyname(s->table);
+    struct dbtable *db;
+    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
@@ -64,7 +64,7 @@ int do_drop_table(struct ireq *iq, tran_type *tran)
 int finalize_drop_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db = s->db;
+    struct dbtable *db = s->db;
     int rc = 0;
     int bdberr = 0;
 

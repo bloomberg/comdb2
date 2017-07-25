@@ -628,6 +628,8 @@ again:
     return 0;
 }
 
+int gbl_random_blkseq_replays;
+
 /**
  * Terminates a sosql session
  * Block processor is informed that all the rows are sent
@@ -711,6 +713,11 @@ retry:
 
         else {
 
+            if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
+                logmsg(LOGMSG_ERROR, "%s line %d forcing random blkseq retry\n",
+                       __func__, __LINE__);
+                osql->xerr.errval = ERR_NOMASTER;
+            }
             /* we got a return from block processor \
                propagate the result/error
              */
@@ -1319,6 +1326,7 @@ retry:
                               &osql->xerr, nettype, osql->logsb,
                               clnt->query_stats, NULL);
     }
+
     restarted = should_restart(clnt, rc);
     RESTART_SOCKSQL;
 

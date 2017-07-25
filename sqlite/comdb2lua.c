@@ -17,8 +17,8 @@
 #include <trigger.h>
 #include <sqlglue.h>
 
-struct db;
-struct db *getqueuebyname(const char *);
+struct dbtable;
+struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 
 int comdb2LocateSP(Parse *p, char *sp)

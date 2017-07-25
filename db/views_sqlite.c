@@ -179,7 +179,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     table0name = view->shards[0].tblname;
 
 #if 0
-   This is not ready yet, let us use the struct db instead 
+   This is not ready yet, let us use the struct dbtable instead 
    /* extract schema from first table */
    pTbl = sqlite3FindTableCheckOnly(db, table0name, NULL);
    if(!pTbl)

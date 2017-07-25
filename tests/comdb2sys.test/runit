@@ -174,7 +174,7 @@ for testcase in $files ; do
     fi
 
     expected=comdb2sys
-    if [[ -f $new_batch.out ]] ; then
+    if [[ -f ${new_batch}.expected ]] ; then
         expected=$new_batch
     fi
 
@@ -182,7 +182,7 @@ for testcase in $files ; do
     testcase_output=$(cat $output | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
 
     # get expected output
-    expected_output=$(cat $expected.out | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
+    expected_output=$(cat ${expected}.expected | perl -pe "s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/; s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;")
 
     # verify 
     if [[ "$testcase_output" != "$expected_output" ]] ; then
@@ -190,9 +190,9 @@ for testcase in $files ; do
         echo "The above testcase (${testcase}) has failed!!!"
         echo " "
         echo "Use 'diff <expected-output> <my-output>' to see why:"
-        echo "> diff ${PWD}/{$expected.out,$output}"
+        echo "> diff ${PWD}/{${expected}.expected,$output}"
         echo " "
-        diff $expected.out $output
+        diff ${expected}.expected $output
         echo " "
         exit 1
 

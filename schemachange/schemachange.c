@@ -280,7 +280,7 @@ int start_schema_change(struct schema_change_type *s)
     init_fake_ireq(thedb, &iq);
     iq.sc = s;
     if (s->db == NULL) {
-        s->db = getdbbyname(s->table);
+        s->db = get_dbtable_by_name(s->table);
     }
     iq.usedb = s->db;
     return start_schema_change_tran(&iq, NULL);
@@ -411,9 +411,9 @@ int create_queue(struct dbenv *dbenvin, char *queuename, int avgitem,
 int fastinit_table(struct dbenv *dbenvin, char *table)
 {
     struct schema_change_type *s;
-    struct db *db;
+    struct dbtable *db;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: invalid table %s\n", __func__, table);
         return -1;
@@ -451,11 +451,11 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
 int do_dryrun(struct schema_change_type *s)
 {
     int rc;
-    struct db *db = NULL;
-    struct db *newdb = NULL;
+    struct dbtable *db = NULL;
+    struct dbtable *newdb = NULL;
     struct scinfo scinfo = {0};
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         if (s->alteronly) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->table);
@@ -714,12 +714,12 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 static int add_table_for_recovery(struct ireq *iq)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db;
-    struct db *newdb;
+    struct dbtable *db;
+    struct dbtable *newdb;
     int bdberr;
     int rc;
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         wrlock_schema_lk();
         rc = do_add_table(iq, NULL);
@@ -894,7 +894,7 @@ int sc_timepart_add_table(const char *existingTableName,
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
     char *schemabuf = NULL;
-    struct db *db;
+    struct dbtable *db;
 
     /* prepare sc */
     sc.onstack = 1;
@@ -913,7 +913,7 @@ int sc_timepart_add_table(const char *existingTableName,
     sc.finalize = 1;
 
     /* get new schema */
-    db = getdbbyname(existingTableName);
+    db = get_dbtable_by_name(existingTableName);
     if (db == NULL) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "table '%s' not found\n",
@@ -990,7 +990,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct schema_change_type sc = {0};
-    struct db *db;
+    struct dbtable *db;
     char *schemabuf = NULL;
     int rc;
 
@@ -1012,7 +1012,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     sc.finalize = 1;
 
     /* get new schema */
-    db = getdbbyname(tableName);
+    db = get_dbtable_by_name(tableName);
     if (db == NULL) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "table '%s' not found\n",
@@ -1086,7 +1086,6 @@ static int do_partition(timepart_views_t *views, const char *name,
                         const char *cmd, struct errstat *err)
 {
     struct ireq iq;
-    struct db db;
     void *tran = NULL;
     int rc;
     int irc = 0;
@@ -1508,8 +1507,8 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
 
     if (noschema) {
         /* Find the existing table and use its current schema */
-        struct db *db;
-        sc.db = db = getdbbyname(sc.table);
+        struct dbtable *db;
+        sc.db = db = get_dbtable_by_name(sc.table);
         if (db == NULL) {
             sbuf2printf(sb, "!table '%s' not found\n", sc.table);
             sbuf2printf(sb, "FAILED\n");
@@ -1594,7 +1593,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
 void handle_setcompr(SBUF2 *sb)
 {
     int rc;
-    struct db *db;
+    struct dbtable *db;
     struct ireq iq;
     char line[256];
     char *tok, *saveptr;
@@ -1625,7 +1624,7 @@ void handle_setcompr(SBUF2 *sb)
         sbuf2printf(sb, ">No compression operation specified\n");
         goto out;
     }
-    if ((db = getdbbyname(tbl)) == NULL) {
+    if ((db = get_dbtable_by_name(tbl)) == NULL) {
         sbuf2printf(sb, ">Table not found: %s\n", tbl);
         goto out;
     }

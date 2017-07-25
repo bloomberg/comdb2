@@ -2315,13 +2315,18 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     rc = selectv_range_commit(clnt);
                     rcline = __LINE__;
                 }
-                if (rc) {
+                if (rc || clnt->early_retry) {
                     int irc = 0;
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
                     if (irc) {
                         logmsg(LOGMSG_ERROR, 
                                 "%s: failed to abort sorese transactin irc=%d\n",
                                 __func__, irc);
+                    }
+                    if (clnt->early_retry) {
+                        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                        clnt->early_retry = 0;
+                        rc = SQLITE_ABORT;
                     }
                 } else {
                     rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
@@ -3700,6 +3705,7 @@ struct client_comm_if {
                      const char *func, int line);
     int (*send_dummy)(struct sqlclntstate *clnt);
 };
+
 struct client_comm_if client_sql_api = {
     &send_ret_column_info,
     &send_row,
@@ -4959,6 +4965,7 @@ static int flush_row(struct sqlclntstate *clnt)
     return 0;
 }
 
+/* will do a tiny cleanup of clnt */
 void run_stmt_setup(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;
@@ -6297,6 +6304,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->get_cost = 0;
     clnt->snapshot = 0;
     clnt->num_retry = 0;
+    clnt->early_retry = 0;
     clnt->sql_query = NULL;
     clnt_reset_cursor_hints(clnt);
 
@@ -7847,6 +7855,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
             clnt.dbtran.mode = TRANLEVEL_SOSQL;
         }
         clnt.osql.sent_column_data = 0;
+        clnt.stop_this_statement = 0;
         clnt.sql_query = sql_query;
 
         if ((clnt.tzname[0] == '\0') && sql_query->tzname)
@@ -7854,9 +7863,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
 
         if (sql_query->dbname && thedb->envname &&
             strcasecmp(sql_query->dbname, thedb->envname)) {
-            logmsg(LOGMSG_ERROR, "DB name mismatch query:'%s' actual:'%s' \n",
-                    sql_query->dbname, thedb->envname);
-            char *errstr = "DB name mismatch";
+            char errstr[64 + (2 * MAX_DBNAME_LENGTH)];
+            snprintf(errstr, sizeof(errstr),
+                     "DB name mismatch query:%s actual:%s", sql_query->dbname,
+                     thedb->envname);
+            logmsg(LOGMSG_ERROR, "%s\n", errstr);
             struct fsqlresp resp;
 
             resp.response = FSQL_COLUMN_DATA;

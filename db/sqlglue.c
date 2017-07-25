@@ -651,7 +651,7 @@ void done_sql_thread(void)
 static int get_data_int(BtCursor *, struct schema *, uint8_t *in, int fnum,
                         Mem *, uint8_t flip_orig, const char *tzname);
 
-static int ondisk_to_sqlite_tz(struct db *db, struct schema *s, void *inp,
+static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
                                int rrn, unsigned long long genid, void *outp,
                                int maxout, int nblobs, void **blob,
                                size_t *blobsz, size_t *bloboffs, int *reqsize,
@@ -771,7 +771,7 @@ done:
 
 /* Convert comdb2 record to sqlite format. Return 0 on success, -1 on error,
    -2 if buffer not big enough (reqsize contains required size in this case) */
-static int ondisk_to_sqlite(struct db *db, struct schema *s, void *inp, int rrn,
+static int ondisk_to_sqlite(struct dbtable *db, struct schema *s, void *inp, int rrn,
                             unsigned long long genid, void *outp, int maxout,
                             int nblobs, void **blob, size_t *blobsz,
                             size_t *bloboffs, int *reqsize)
@@ -1221,7 +1221,7 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
     return clen;
 }
 
-static int stat1_find(char *namebuf, struct schema *schema, struct db *db,
+static int stat1_find(char *namebuf, struct schema *schema, struct dbtable *db,
                       int ixnum, void *trans)
 {
     if (gbl_create_mode)
@@ -1239,7 +1239,7 @@ static int stat1_find(char *namebuf, struct schema *schema, struct db *db,
     struct field *f;
 
     init_fake_ireq(thedb, &iq);
-    iq.usedb = getdbbyname("sqlite_stat1");
+    iq.usedb = get_dbtable_by_name("sqlite_stat1");
     if (!iq.usedb)
         return -1;
 
@@ -1273,7 +1273,7 @@ static int stat1_find(char *namebuf, struct schema *schema, struct db *db,
 }
 
 static int using_old_style_name(char *namebuf, int len, struct schema *schema,
-                                struct db *db, int ixnum, void *trans)
+                                struct dbtable *db, int ixnum, void *trans)
 {
     snprintf(namebuf, len, "%s_ix_%d", db->dbname, ixnum);
     return stat1_find(namebuf, schema, db, ixnum, trans);
@@ -1327,7 +1327,7 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 **  2: Found stat with new style names.
 */
 static int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
-                                struct db *db, int ixnum, void *trans)
+                                struct dbtable *db, int ixnum, void *trans)
 {
     int rc;
     rc = using_old_style_name(namebuf, len, schema, db, ixnum, trans);
@@ -1480,7 +1480,7 @@ char *sql_field_default_trans(struct field *f, int is_out)
 
 /* This creates SQL statements that correspond to a table's schema. These
    statements are used to bootstrap sqlite. */
-static int create_sqlmaster_record(struct db *db, void *tran)
+static int create_sqlmaster_record(struct dbtable *db, void *tran)
 {
     struct schema *schema;
     strbuf *sql;
@@ -1924,7 +1924,7 @@ static void *create_master_table(int eidx, const char *csc2_schema, int tblnum,
     char *dbname;
     int rootpage;
     int rc, outdtsz = 0;
-    struct db *db;
+    struct dbtable *db;
     int reqsize;
     int maxlen = 0;
 
@@ -2524,7 +2524,7 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done,
 /**
  * Helper function for class dependent function cursor_move_table()
  */
-static void extract_stat_record(struct db *db, uint8_t *in, uint8_t *out,
+static void extract_stat_record(struct dbtable *db, uint8_t *in, uint8_t *out,
                                 int *outlen)
 {
     struct schema *s = db->schema;
@@ -2553,7 +2553,7 @@ static void genid_hash_add(BtCursor *cur, int rrn, unsigned long long genid)
     int rc;
     struct key {
         int rrn;
-        struct db *db;
+        struct dbtable *db;
     } key = {0};
 
     if (cur->db->dtastripe) {
@@ -2575,7 +2575,7 @@ static int get_matching_genid(BtCursor *cur, int rrn, unsigned long long *genid)
     int len;
     struct key {
         int rrn;
-        struct db *db;
+        struct dbtable *db;
     } key = {0};
 
     if (cur->db->dtastripe) {
@@ -4656,7 +4656,7 @@ const char *sqlite3BtreeGetJournalname(Btree *pBt)
 
 void get_current_lsn(struct sqlclntstate *clnt)
 {
-    struct db *db = thedb->dbs[0]; /* this is not used but required */
+    struct dbtable *db = thedb->dbs[0]; /* this is not used but required */
     if (db) {
         bdb_get_current_lsn(db->handle, &(clnt->file), &(clnt->offset));
     } else {
@@ -5051,13 +5051,18 @@ int sqlite3BtreeCommit(Btree *pBt)
     case TRANLEVEL_SOSQL:
         if (gbl_selectv_rangechk)
             rc = selectv_range_commit(clnt);
-        if (rc) {
+        if (rc || clnt->early_retry) {
             int irc = 0;
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
             if (irc) {
                 logmsg(LOGMSG_ERROR, 
                         "%s: failed to abort sorese transactin irc=%d\n",
                        __func__, irc);
+            }
+            if (clnt->early_retry) {
+                clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                clnt->early_retry = 0;
+                rc = SQLITE_ABORT;
             }
         } else {
             rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
@@ -5634,10 +5639,19 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     int bdberr;
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+    int verify = 0;
 
     if (debug_switch_pause_moveto()) {
         logmsg(LOGMSG_USER, "Waiting 15 sec\n");
         poll(NULL, 0, 15000);
+    }
+
+    /* verification error if not found */
+    extern int gbl_early_verify;
+    if (gbl_early_verify && (bias == OP_NotExists || bias == OP_NotFound) &&
+        *pRes != 0) {
+        verify = 1;
+        *pRes = 0;
     }
 
     /* check authentication */
@@ -6172,6 +6186,12 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     }
 
 done:
+    /* early verification error */
+    if (verify && !pCur->bt->is_temporary &&
+        pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
+        pCur->vdbe->readOnly == 0 && pCur->ixnum == -1)
+        clnt->early_retry = 1;
+
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Moveto(pCur %d, found %s)     = %s\n", pCur->cursorid,
                 *pRes == 0 ? "yes" : *pRes < 0 ? "less" : "more",
@@ -6489,7 +6509,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
             rc = SQLITE_OK;
             goto done;
         }
-        struct db *db = thedb->dbs[tblnum];
+        struct dbtable *db = thedb->dbs[tblnum];
         /* If we are in analyze, lie.  Otherwise we end up with an empty, and
          * then worse,
          * half-filled stat table during the analyze. */
@@ -7178,7 +7198,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     int key_size;
     int sz;
     struct sqlclntstate *clnt = thd->sqlclntstate;
-    struct db *db;
+    struct dbtable *db;
 
     assert(iTable >= RTPAGE_START);
     assert(iTable < (thd->rootpage_nentries + RTPAGE_START));
@@ -7506,7 +7526,7 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     int ixnum, tblnum;
     int rc;
     struct sqlclntstate *clnt = thd->sqlclntstate;
-    struct db *db;
+    struct dbtable *db;
 
     if (!clnt->is_analyze) {
         return 0;
@@ -7607,7 +7627,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             continue;
         }
 
-        struct db *db = NULL;
+        struct dbtable *db = NULL;
         db = thedb->dbs[tblnum];
 
         /* here we are locking a table and make sure no schema change happens
@@ -10905,7 +10925,7 @@ void sqlite3SetConversionError(void)
 
 int is_comdb2_index_disableskipscan(const char *dbname, char *idx)
 {
-    struct db *db = getdbbyname(dbname);
+    struct dbtable *db = get_dbtable_by_name(dbname);
     if (db) {
         int i;
         for (i = 0; i < db->nix; ++i) {
@@ -10920,7 +10940,7 @@ int is_comdb2_index_disableskipscan(const char *dbname, char *idx)
 
 int is_comdb2_index_unique(const char *dbname, char *idx)
 {
-    struct db *db = getdbbyname(dbname);
+    struct dbtable *db = get_dbtable_by_name(dbname);
     if (db) {
         int i;
         for (i = 0; i < db->nix; ++i) {
@@ -10935,7 +10955,7 @@ int is_comdb2_index_unique(const char *dbname, char *idx)
 
 int is_comdb2_index_expression(const char *dbname)
 {
-    struct db *db = getdbbyname(dbname);
+    struct dbtable *db = get_dbtable_by_name(dbname);
     if (db)
         return db->ix_expr;
     return 0;
@@ -10943,7 +10963,7 @@ int is_comdb2_index_expression(const char *dbname)
 
 int is_comdb2_index_blob(const char *dbname, int icol)
 {
-    struct db *db = getdbbyname(dbname);
+    struct dbtable *db = get_dbtable_by_name(dbname);
     if (db) {
         struct field *f;
         if (icol < 0 || icol >= db->schema->nmembers)
@@ -11554,7 +11574,7 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
 
 int bt_hash_table(char *table, int szkb)
 {
-    struct db *db;
+    struct dbtable *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
     tran_type *metatran = NULL;
@@ -11562,7 +11582,7 @@ int bt_hash_table(char *table, int szkb)
     int rc, bdberr = 0;
     int bthashsz;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: invalid table %s\n", __func__, table);
         return -1;
@@ -11609,7 +11629,7 @@ int bt_hash_table(char *table, int szkb)
 
 int del_bt_hash_table(char *table)
 {
-    struct db *db;
+    struct dbtable *db;
     bdb_state_type *bdb_state;
     struct ireq iq;
     tran_type *metatran = NULL;
@@ -11617,7 +11637,7 @@ int del_bt_hash_table(char *table)
     int rc, bdberr = 0;
     int bthashsz;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
        logmsg(LOGMSG_ERROR, "%s: invalid table %s\n", __func__, table);
         return -1;
@@ -11661,11 +11681,11 @@ int del_bt_hash_table(char *table)
 
 int stat_bt_hash_table(char *table)
 {
-    struct db *db;
+    struct dbtable *db;
     bdb_state_type *bdb_state;
     int bthashsz = 0;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: invalid table %s\n", __func__, table);
         return -1;
@@ -11692,11 +11712,11 @@ int stat_bt_hash_table(char *table)
 
 int stat_bt_hash_table_reset(char *table)
 {
-    struct db *db;
+    struct dbtable *db;
     bdb_state_type *bdb_state;
     int bthashsz = 0;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: invalid table %s\n", __func__, table);
         return -1;
@@ -11714,10 +11734,10 @@ int stat_bt_hash_table_reset(char *table)
  */
 unsigned long long comdb2_table_version(const char *tablename)
 {
-    struct db *db;
+    struct dbtable *db;
     unsigned long long ret;
 
-    db = getdbbyname(tablename);
+    db = get_dbtable_by_name(tablename);
     if (!db) {
         ctrace("table unknown \"%s\"\n", tablename);
         return -1;
@@ -12278,7 +12298,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     return rc;
 }
 
-unsigned long long verify_indexes(struct db *db, uint8_t *rec,
+unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
                                   blob_buffer_t *blobs, size_t maxblobs,
                                   int is_alter)
 {
