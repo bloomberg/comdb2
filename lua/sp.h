@@ -38,6 +38,5 @@ void lua_final(struct sqlite3_context *);
 void lua_step(struct sqlite3_context *, int argc, struct Mem **argv);
 void lua_func(struct sqlite3_context *, int argc, struct Mem **argv);
 int db_verify_table_callback(void *v, const char *buf);
-int sp_get_trans_count(struct sqlclntstate *clnt);
 
 #endif
