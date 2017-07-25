@@ -1323,8 +1323,12 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
             snap_info.replicant_can_retry = replicant_can_retry(clnt);
 printf("AZ: snap_info.replicant_can_retry=%d cnonce=%s\n", snap_info.replicant_can_retry, clnt->sql_query->cnonce.data);
             snap_info.keylen = clnt->sql_query->cnonce.len;
-            memcpy(snap_info.key, clnt->sql_query->cnonce.data,
-                   clnt->sql_query->cnonce.len);
+            memcpy(snap_info.key, clnt->sql_query->cnonce.data, clnt->sql_query->cnonce.len);
+            if(clnt->sp) {
+                int cnt = snprintf(snap_info.key + clnt->sql_query->cnonce.len, 
+                        4, "-%d", sp_get_trans_count(clnt));
+                snap_info.keylen += cnt;
+            }
             snap_info.effects = clnt->effects;
             comdb2uuidcpy(snap_info.uuid, osql->uuid);
             snap_info_p = &snap_info;

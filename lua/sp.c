@@ -2560,6 +2560,8 @@ static int db_rollback(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
     SP sp = getsp(L);
+    getsp(L)->trans_count++;
+
     if (sp->in_parent_trans) { // explicit commit w/o begin
         return luaL_error(L, no_transaction());
     }
@@ -6136,6 +6138,7 @@ static int begin_sp(struct sqlclntstate *clnt, char **err)
 
 static int commit_sp(Lua L, char **err)
 {
+    getsp(L)->trans_count++;
     if (in_parent_trans(L)) {
         const char *commit_err;
         if ((commit_err = commit_parent(L)) == NULL) return 0;
@@ -6744,4 +6747,10 @@ int db_verify_table_callback(void *v, const char *buf)
     int len = strlen(buf);
     newsql_send_strbuf_response(sp->clnt, buf, len + 1);
     return 0;
+}
+
+int sp_get_trans_count(struct sqlclntstate *clnt)
+{
+    SP sp = clnt->sp;
+    return sp->trans_count;
 }

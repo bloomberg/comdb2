@@ -5397,7 +5397,7 @@ add_blkseq:
             struct fstblk_header fstblk_header;
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
 
-printf("AZ: SENDING FSTBLK_SNAP_INFO iq->s.repl_can_retry=%d\n", iq->snap_info.replicant_can_retry);
+printf("AZ: SENDING FSTBLK_SNAP_INFO iq->s.repl_can_retry=%d, cnonce=%s\n", iq->snap_info.replicant_can_retry, iq->snap_info.key);
             fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
             fstblk_pre_rspkl.fluff = (short)0;
 
@@ -5457,10 +5457,10 @@ printf("AZ: set outrc=%d\n",outrc);
             }
 
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if (rc != RC_INTERNAL_RETRY || !iq->snap_info.replicant_can_retry) {
+            if ( !(outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)|| !iq->snap_info.replicant_can_retry) {
                 int t = time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
-printf("Inserting into blkseq, rc=%d\n", rc);
+printf("Inserting into blkseq, rc=%d, cnonce=%s\n", rc, iq->snap_info.key);
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
                         buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
                         &replay_data, &replay_len);

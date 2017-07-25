@@ -53,6 +53,7 @@ struct stored_proc {
 
     int in_parent_trans;
     int make_parent_trans;
+    int trans_count; //count of transactions inside this SP
 
     pthread_mutex_t *emit_mutex; //parent only
     int ntypes; //parent only
