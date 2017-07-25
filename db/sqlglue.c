@@ -5059,8 +5059,16 @@ int sqlite3BtreeCommit(Btree *pBt)
                         "%s: failed to abort sorese transactin irc=%d\n",
                        __func__, irc);
             }
-            if (clnt->early_retry) {
+            if (clnt->early_retry == EARLY_ERR_VERIFY) {
                 clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+                errstat_cat_str(&(clnt->osql.xerr),
+                                "unable to update record rc = 4");
+            } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
+                clnt->osql.xerr.errval = ERR_CONSTR;
+                errstat_cat_str(&(clnt->osql.xerr),
+                                "constraints error, no genid");
+            }
+            if (clnt->early_retry) {
                 clnt->early_retry = 0;
                 rc = SQLITE_ABORT;
             }
@@ -5639,6 +5647,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
     int bdberr;
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+    unsigned long long genid;
     int verify = 0;
 
     if (debug_switch_pause_moveto()) {
@@ -5803,7 +5812,6 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
 
     } else if (pCur->ixnum == -1) {
         /* Data. nKey has rrn */
-        unsigned long long genid;
         i64 nKey;
         uint8_t ver;
 
@@ -6189,8 +6197,16 @@ done:
     /* early verification error */
     if (verify && !pCur->bt->is_temporary &&
         pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
-        pCur->vdbe->readOnly == 0 && pCur->ixnum == -1)
-        clnt->early_retry = 1;
+        pCur->vdbe->readOnly == 0 && pCur->ixnum == -1) {
+        int irc = is_genid_recorded(thd, pCur->tblnum, genid);
+        if (irc < 0)
+            logmsg(LOGMSG_ERROR, "%s: failed to check early verify genid\n",
+                   __func__);
+        else if (irc == 1)
+            clnt->early_retry = EARLY_ERR_SELECTV;
+        else
+            clnt->early_retry = EARLY_ERR_VERIFY;
+    }
 
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
                 "Moveto(pCur %d, found %s)     = %s\n", pCur->cursorid,
