@@ -697,6 +697,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
     *reqsize = 0;
 
     for (fnum = 0; fnum < nField; fnum++) {
+	memset(&m[fnum], 0, sizeof(Mem));
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;

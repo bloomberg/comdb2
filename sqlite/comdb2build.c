@@ -706,7 +706,6 @@ void comdb2rebuildDataBlob(Parse* p,Token* nm, Token* lnm)
 
 void comdb2truncate(Parse* pParse, Token* nm, Token* lnm)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     struct schema_change_type* sc = new_schemachange_type();
@@ -3346,7 +3345,7 @@ void comdb2CreateIndex(
     }
 
     assert(pTblName->nSrc == 1);
-    assert(pName1.n != 0);
+    assert(pName1->n != 0);
     assert(pList != 0);
 
     if (isRemote(pParse, &pName1, &pName2)) {

@@ -4062,7 +4062,7 @@ static void get_disable_skipscan(struct dbtable *tbl)
 
 void get_disable_skipscan_all() 
 {
-#if DEBUG
+#ifdef DEBUG
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {

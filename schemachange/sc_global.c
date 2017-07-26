@@ -21,6 +21,7 @@
 #include "sc_global.h"
 #include "logmsg.h"
 #include "sc_callbacks.h"
+#include "bbinc/cheapstack.h"
 
 pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
