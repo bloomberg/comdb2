@@ -2613,6 +2613,7 @@ static const char *db_commit_int(Lua L, int *rc)
         if (db_begin_int(L, &tmp) == 0) sp->in_parent_trans = 1;
     }
     sp->clnt->osql.tran_ops = 0;
+    sp->clnt->iswrite = 0;
     return NULL;
 }
 
@@ -2636,6 +2637,7 @@ static const char *db_rollback_int(Lua L, int *rc)
         if (db_begin_int(L, &tmp) == 0) sp->in_parent_trans = 1;
     }
     sp->clnt->osql.tran_ops = 0;
+    sp->clnt->iswrite = 0;
     return NULL;
 }
 
