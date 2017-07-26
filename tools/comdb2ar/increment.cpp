@@ -174,6 +174,7 @@ bool compare_checksum(
             if(file_expanded) {
                 pages.push_back(PGNO(new_pagebuf));
                 *data_size += pagesize;
+                bytesleft -= pagesize;
                 continue;
             }
 
@@ -192,10 +193,12 @@ bool compare_checksum(
                     return true;
                 // otherwise just add the remaining pages
                 } else {
-                    std::clog << filename << " EXPANDED" << std::endl;
+                    pages.push_back(PGNO(new_pagebuf));
                     file_expanded = true;
+                    *data_size += pagesize;
+                    bytesleft -= pagesize;
+                    continue;
                 }
-                break;
             }
 
             // If a diff has been selected in a page, keep track of that page
@@ -256,6 +259,7 @@ ssize_t serialise_incr_file(
 
     ssize_t total_read = 0;
     ssize_t total_written = 0;
+    int retry = 5;
 
     std::string incrFilename = incr_path + "/" + filename + ".incr";
 
@@ -283,10 +287,17 @@ ssize_t serialise_incr_file(
         verify_checksum(pagebuf, pagesize, false, false,
                             &cksum_verified, &cksum);
         if(!cksum_verified){
-            std::ostringstream ss;
-            ss << "serialise_file:page failed checksum verification";
-            throw SerialiseError(filename, ss.str());
+            if(--retry == 0) {
+                std::ostringstream ss;
+                ss << "serialise_file:page failed checksum verification";
+                throw SerialiseError(filename, ss.str());
+            }
+
+            --it;
+            continue;
         }
+
+        retry = 5;
 
         // Update the diff .incr file
         incrFile.seekp(12 * *it, incrFile.beg);
@@ -354,9 +365,7 @@ void incr_deserialise_database(
     std::string& sha_fingerprint,
     unsigned percent_full,
     bool force_mode,
-    bool& is_disk_full,
-    const std::string& incr_path,
-    bool keep_all_logs
+    bool& is_disk_full
 )
 // Read from STDIN to deserialise an incremental backup
 {
@@ -465,11 +474,9 @@ void incr_deserialise_database(
         if(is_manifest) {
 
             // Manifest is first file in each increment, so if one is seen,
-            // delete previous logs if necessary
-            if(!keep_all_logs) {
-                std::clog << "Deleting old log files" << std::endl;
-                clear_log_folder(datadestdir, dbname);
-            }
+            // delete previous logs
+            std::clog << "Deleting old log files" << std::endl;
+            clear_log_folder(datadestdir, dbname);
 
             manifest_read = true;
             std::string manifest_sha;
@@ -518,7 +525,4 @@ void incr_deserialise_database(
         // Delete deleted files
         handle_deleted_files(deleted_files, datadestdir, table_set);
     }
-
-    // Recalculate incremental files
-    recalc_incr_files(incr_path, datadestdir);
 }
