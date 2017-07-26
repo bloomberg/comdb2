@@ -960,6 +960,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                gbl_new_snapisol_logging ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_asof ? "ENABLED" : "DISABLED");
         bdb_osql_trn_clients_status();
+#ifdef NEWSI_STAT
+        bdb_print_logfile_pglogs_stat();
+#endif
     } else if (tokcmp(tok, ltok, "stack_warn_threshold") == 0) {
         int thresh;
         tok = segtok(line, lline, &st, &ltok);
