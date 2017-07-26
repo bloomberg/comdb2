@@ -192,6 +192,7 @@ bool compare_checksum(
                     return true;
                 // otherwise just add the remaining pages
                 } else {
+                    std::clog << filename << " EXPANDED" << std::endl;
                     file_expanded = true;
                 }
                 break;
