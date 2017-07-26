@@ -613,6 +613,7 @@ static void on_off_trap(char *line, int lline, int *st, int *ltok, char *msg,
 extern int gbl_new_snapisol;
 #ifdef NEWSI_STAT
 void bdb_print_logfile_pglogs_stat();
+void bdb_clear_logfile_pglogs_stat();
 #endif
 void bdb_osql_trn_clients_status();
 
@@ -962,6 +963,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         bdb_osql_trn_clients_status();
 #ifdef NEWSI_STAT
         bdb_print_logfile_pglogs_stat();
+    } else if (tokcmp(tok, ltok, "clear_newsi_status") == 0) {
+        bdb_clear_logfile_pglogs_stat();
 #endif
     } else if (tokcmp(tok, ltok, "stack_warn_threshold") == 0) {
         int thresh;

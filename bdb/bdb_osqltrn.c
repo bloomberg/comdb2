@@ -45,6 +45,22 @@
 #include <ctrace.h>
 #include <logmsg.h>
 
+#ifdef NEWSI_STAT
+#include <time.h>
+#include <sys/time.h>
+#include <util.h>
+extern struct timeval logfile_relink_time;
+extern struct timeval logfile_insert_time;
+extern struct timeval client_insert_time;
+extern struct timeval client_relink_time;
+extern struct timeval ltran_insert_time;
+extern struct timeval ltran_relink_time;
+extern struct timeval txn_insert_time;
+extern struct timeval txn_relink_time;
+extern struct timeval logical_undo_time;
+extern pthread_mutex_t newsi_stat_mutex;
+#endif
+
 /**
  * Each snapshot/serializable transaction registers one bdb_osql_trn
  *
@@ -1220,8 +1236,19 @@ static int bdb_osql_trn_create_backfill(bdb_state_type *bdb_state,
             trn->shadow_tran->snapy_commit_lsn.offset = offset;
         }
 
+#ifdef NEWSI_STAT
+        struct timeval before, after, diff;
+        gettimeofday(&before, NULL);
+#endif
         rc = bdb_osql_trn_process_bfillhndl(bdb_state, trn, bdberr, bkfill_hndl,
                                             0 /* dont skip committed trans */);
+#ifdef NEWSI_STAT
+        gettimeofday(&after, NULL);
+        timeval_diff(&before, &after, &diff);
+        Pthread_mutex_lock(&newsi_stat_mutex);
+        timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+        Pthread_mutex_unlock(&newsi_stat_mutex);
+#endif
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s:%d failed to process backfill handler, rc = %d\n",
@@ -1252,6 +1279,10 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
         bdb_tran_open_shadow(cur->state, cur->dbnum, cur->shadow_tran, cur->idx,
                              cur->type, (type == BERKDB_SHAD_CREATE), bdberr);
 
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
     /* backfill only snapshot/serializable for now */
     if ((cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
          cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL) &&
@@ -1302,6 +1333,14 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
         if (rc)
             return NULL;
     }
+
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    Pthread_mutex_lock(&newsi_stat_mutex);
+    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+    Pthread_mutex_unlock(&newsi_stat_mutex);
+#endif
 
     if (dirty && !shadcur) {
         /* retrieve now a cursor for the newly created shadow */

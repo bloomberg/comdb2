@@ -3484,6 +3484,9 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "new snapisol is not running\n");
         gbl_new_snapisol = 0;
         gbl_new_snapisol_asof = 0;
+#ifdef NEWSI_STAT
+        bdb_newsi_stat_init();
+#endif
     }
 
     /* We grab alot of genids in the process of opening llmeta */
