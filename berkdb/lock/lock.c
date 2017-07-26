@@ -95,7 +95,7 @@ static const char __db_lock_invalid[] = "%s: Lock is no longer valid";
 static const char __db_locker_invalid[] = "Locker is not valid";
 
 #ifdef DEBUG_LOCKS
-extern void bdb_describe_lock_dbt(void *bdb_state, DBT *dbt, char *out,
+extern void bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbt, char *out,
     int outlen);
 #define LKBUFMAX 10000
 #define LKBUFSZ 150
@@ -2082,8 +2082,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		dbt.data = obj->data;
 		size = dbt.size = obj->size;
 
-		bdb_describe_lock_dbt(dbenv->app_private, &dbt, desc,
-		    sizeof(desc));
+		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
 	} else {
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
@@ -3187,8 +3186,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		dbt.data = lockdata;
 		dbt.size = sh_obj->lockobj.size;
 
-		bdb_describe_lock_dbt(dbenv->app_private, &dbt, desc,
-		    sizeof(desc));
+		bdb_describe_lock_dbt(dbenv, &dbt, desc, sizeof(desc));
 
 		pthread_mutex_lock(&lblk);
 		idx = lbcounter;

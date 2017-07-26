@@ -130,11 +130,18 @@ static unsigned int fail_udp = 0;
 static unsigned int recd_udp = 0;
 static unsigned int recl_udp = 0; /* problem with recv'd len */
 static unsigned int rect_udp = 0; /* problem with recv'd to */
-static int ack_trace = 0;
 
-void enable_ack_trace(void) { ack_trace = 1; }
+int gbl_ack_trace = 0;
 
-void disable_ack_trace(void) { ack_trace = 0; }
+void enable_ack_trace(void)
+{
+    gbl_ack_trace = 1;
+}
+
+void disable_ack_trace(void)
+{
+    gbl_ack_trace = 0;
+}
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
 {
@@ -149,7 +156,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     static unsigned long long lpcnt = 0;
 
     cnt++;
-    if (ack_trace && (now = time(NULL)) > lastpr) {
+    if (gbl_ack_trace && (now = time(NULL)) > lastpr) {
         fprintf(stderr,
                 "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
                 permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,

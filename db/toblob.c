@@ -559,7 +559,7 @@ int toblobask(struct ireq *iq)
         return ERR_BADREQ;
     }
     table[req.tblnamelen] = '\0';
-    iq->usedb = getdbbyname(table);
+    iq->usedb = get_dbtable_by_name(table);
 
     if (iq->usedb == NULL) {
         if (iq->debug)

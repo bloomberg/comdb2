@@ -1169,7 +1169,6 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     iq->__limits.tablescans_warn = gbl_querylimits_tablescans_warn;
     iq->__limits.temptables_warn = gbl_querylimits_temptables_warn;
 
-    iq->readcost = 0;
     iq->cost = 0;
     iq->sorese.osqllog = NULL;
     iq->luxref = luxref;
@@ -1294,7 +1293,6 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         if (newent == NULL) {
             errUNLOCK(&lock);
             logmsg(LOGMSG_ERROR, "handle_buf:failed to alloc new queue entry, rc %d\n", rc);
-            iq->failed_to_dispatch = 1;
             return reterr(/*thd*/ 0, iq, do_inline, ERR_REJECTED);
         }
         newent->obj = (void *)iq;
@@ -1376,7 +1374,6 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     errUNLOCK(&lock);
                     logmsg(LOGMSG_ERROR, "handle_buf:failed calloc thread:%s\n",
                             strerror(errno));
-                    iq->failed_to_dispatch = 1;
                     return reterr(/*thd*/ 0, iq, do_inline, ERR_INTERNAL);
                 }
                 /*add holder for this one being born...*/
@@ -1392,7 +1389,6 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 if (rc != 0) {
                     errUNLOCK(&lock);
                     perror_errnum("handle_buf:failed pthread_cond_init", rc);
-                    iq->failed_to_dispatch = 1;
                     return reterr(thd, iq, do_inline, ERR_INTERNAL);
                 }
                 nthdcreates++;
@@ -1419,7 +1415,6 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                                 __func__);
                         exit(1);
                     }
-                    iq->failed_to_dispatch = 1;
                     return reterr(thd, iq, do_inline, ERR_INTERNAL);
                 }
                 /* added thread to thread pool.*/
@@ -1445,7 +1440,6 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
             nextrq = (struct dbq_entry_t *)listc_rbl(&q_reqs);
             if (nextrq && nextrq == newent) {
                 iq = nextrq->obj;
-                iq->failed_to_dispatch = 1;
                 iamwriter = is_req_write(iq->opcode) ? 1 : 0;
                 if (!iamwriter) {
                     (void)listc_rfl(&rq_reqs, nextrq);

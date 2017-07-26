@@ -467,12 +467,18 @@ void sqlite3Update(
     sqlite3VdbeAddOp2(v, OP_Rewind, iEph, labelBreak); VdbeCoverage(v);
     addrTop = sqlite3VdbeAddOp2(v, OP_RowKey, iEph, regKey);
     sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, labelContinue, regKey, 0);
+    /* COMDB2 MODIFICATION */
+    /* use P5 to trigger verify error if not found */
+    sqlite3VdbeChangeP5(v, 1);
     VdbeCoverage(v);
   }else{
     labelContinue = sqlite3VdbeAddOp3(v, OP_RowSetRead, regRowSet, labelBreak,
                              regOldRowid);
     VdbeCoverage(v);
     sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue, regOldRowid);
+    /* COMDB2 MODIFICATION */
+    /* use P5 to trigger verify error if not found */
+    sqlite3VdbeChangeP5(v, 1);
     VdbeCoverage(v);
   }
 

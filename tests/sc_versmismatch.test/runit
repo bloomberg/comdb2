@@ -101,7 +101,7 @@ INITCNT=1000
 function test1
 {
     assertcnt $INITCNT
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 100')"
+    #cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 100')"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr DELAY_LOCK_TABLE_RECORD_C 100000')"
     echo "Alter table to t1_2 version while inserting records"
     (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter1.scout; touch alter1.done) &

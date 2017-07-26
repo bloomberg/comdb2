@@ -194,8 +194,8 @@ static int block2_qadd(struct ireq *iq, block_state_t *p_blkstate, void *trans,
 {
     int cblob;
     int rc;
-    struct db *qdb;
-    struct db *olddb;
+    struct dbtable *qdb;
+    struct dbtable *olddb;
     char qname[MAXTABLELEN];
 
     if (buf->qnamelen > sizeof(qname) - 1) {
@@ -807,6 +807,16 @@ static void block_state_free(block_state_t *p_blkstate)
 
 extern int gbl_dump_blkseq;
 
+unsigned long long blkseq_replay_count = 0;
+unsigned long long blkseq_replay_error_count = 0;
+
+void replay_stat(void)
+{
+    logmsg(LOGMSG_USER, "Blkseq-replay-count: %llu\n", blkseq_replay_count);
+    logmsg(LOGMSG_USER, "Blkseq-replay-error-count: %llu\n",
+           blkseq_replay_error_count);
+}
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -1141,7 +1151,7 @@ printf("AZ: get outrc=%d\n",snapinfo_outrc);
                bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
                iq->sorese.rcout);
     }
-
+    blkseq_replay_count++;
     return outrc;
 
 replay_error:
@@ -1155,6 +1165,7 @@ replay_error:
     iq->p_buf_out = block_rsp_put(&errrsp, iq->p_buf_out, iq->p_buf_out_end);
 
     outrc = ERR_BLOCK_FAILED;
+    blkseq_replay_error_count++;
     return outrc;
 }
 
@@ -2690,8 +2701,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 printf("AZ: findout=%d in blkseq for snap info %s\n", findout, iq->snap_info.key);
             if (findout == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
-                outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0, replay_data, 
-                        replay_len, __LINE__);
+                outrc = do_replay_case(iq, iq->snap_info.key,
+                                       iq->snap_info.keylen, num_reqs, 0,
+                                       replay_data, replay_len, __LINE__);
                 did_replay = 1;
                 fromline = __LINE__;
                 goto cleanup;
@@ -2803,7 +2815,7 @@ printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->hav
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
 
-    if (gbl_replicate_local && getdbbyname("comdb2_oplog")) {
+    if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog")) {
         /* Transactionally read the last sequence number.
            This effectively serializes all updates.
            There are probably riskier more clever schemes where we don't
@@ -4028,7 +4040,7 @@ printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->hav
                     BACKOUT;
                 }
 
-                iq->usedb = getdbbyname(tbltag);
+                iq->usedb = get_dbtable_by_name(tbltag);
                 if (iq->usedb == NULL) {
                     iq->usedb = iq->origdb;
                     if (iq->debug)
@@ -4482,7 +4494,6 @@ printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->hav
                     BACKOUT;
                 }
 
-                iq->have_limits = 1;
                 if (req.have_max_cost) {
                     iq->__limits.maxcost = req.max_cost;
                 }
@@ -5471,7 +5482,12 @@ printf("Inserting into blkseq, rc=%d, cnonce=%s\n", rc, iq->snap_info.key);
                 uuid_t u;
                 memcpy(&u, iq->seq, iq->seqlen);
                 comdb2uuidstr(u, us);
-            }             
+            }
+            /* force a parent-deadlock for cdb2tcm */
+            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
+                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");
+                rc = RC_INTERNAL_RETRY;
+            }
 
             if (rc == 0 && have_blkseq) {
                 irc = trans_commit_adaptive(iq, parent_trans, source_host);
@@ -5554,6 +5570,25 @@ printf("Inserting into blkseq, rc=%d, cnonce=%s\n", rc, iq->snap_info.key);
             }
         } else /* rowlocks */
         {
+            /* force a parent-deadlock for cdb2tcm */
+            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
+                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry in rowlocks\n");
+                if (hascommitlock) {
+                    irc = pthread_rwlock_unlock(&commit_lock);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL,
+                               "pthread_rwlock_unlock(&commit_lock) %d\n", irc);
+                        exit(1);
+                    }
+                    hascommitlock = 0;
+                }
+                trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
+                rc = RC_INTERNAL_RETRY;
+                if (block_state_restore(iq, p_blkstate)) return ERR_INTERNAL;
+                outrc = RC_INTERNAL_RETRY;
+                fromline = __LINE__;
+                goto cleanup;
+            }
             /* commit or abort the trasaction as appropriate,
                and write the blkseq */
             if (!backed_out) {
@@ -5594,12 +5629,6 @@ printf("Inserting into blkseq, rc=%d, cnonce=%s\n", rc, iq->snap_info.key);
 
                 if (rc == BDBERR_NOT_DURABLE)
                     rc = ERR_NOT_DURABLE;
-            }
-
-            /* force a parent-deadlock for cdb2tcm */
-            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry in rowlocks\n");
-                rc = RC_INTERNAL_RETRY;
             }
         }
 
@@ -5732,15 +5761,8 @@ printf("Inserting into blkseq, rc=%d, cnonce=%s\n", rc, iq->snap_info.key);
             sbuf2close(iq->dbglog_file);
             iq->dbglog_file = NULL;
         }
-        osql_postcommit_handle(iq);
     } else {
         iq->dbenv->txns_aborted++;
-        osql_postabort_handle(iq);
-    }
-
-    if (iq->sc_locked) {
-        unlock_schema_lk();
-        iq->sc_locked = 0;
     }
 
     /* update stats (locklessly so we may get gibberish - I know this
@@ -5860,12 +5882,11 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
-    if(rc == 0) 
-    {
+    if (rc == 0) {
+        osql_postcommit_handle(iq);
         handle_postcommit_bpfunc(iq);
-    }
-    else
-    {
+    } else {
+        osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
     }
 
@@ -6003,9 +6024,9 @@ int get_next_seqno(void *tran, long long *seqno)
     init_fake_ireq(thedb, &iq);
 
     if (gbl_replicate_local_concurrent)
-        iq.usedb = getdbbyname("comdb2_commit_log");
+        iq.usedb = get_dbtable_by_name("comdb2_commit_log");
     else
-        iq.usedb = getdbbyname("comdb2_oplog");
+        iq.usedb = get_dbtable_by_name("comdb2_oplog");
 
     /* HUH? */
     if (iq.usedb == NULL) {

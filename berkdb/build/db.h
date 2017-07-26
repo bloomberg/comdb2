@@ -56,6 +56,7 @@
 #endif
 
 #include "dbinc/atomic.h"
+#include "tunables.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -405,9 +406,10 @@ struct __db_dbt {
 #define	DB_LOCK_YOUNGEST_EVER	11	/* Select locker for youngest
 					   transaction including old
 					   reincarnations. */
-#define  DB_LOCK_MINWRITE_EVER   12	/* Select locker with min
+#define	DB_LOCK_MINWRITE_EVER	12	/* Select locker with min
 					   writelocks including old
 					   reincarnations. */
+#define	DB_LOCK_MAX		12	/* Max deadlock mode. */
 
 /* Flag values for lock_vec(), lock_get(). */
 #define	DB_LOCK_NOWAIT		0x001	/* Don't wait on unavailable lock. */

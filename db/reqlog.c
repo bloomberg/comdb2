@@ -99,7 +99,7 @@ static int shortest_long_request_ms = -1;
 
 static struct output *default_out;
 
-static int diffstat_thresh = 60; /* every minute */
+int diffstat_thresh = 60; /* every minute */
 static struct output *stat_request_out = NULL;
 
 /* These global lockless variables define what we will log for all requests
@@ -111,7 +111,7 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-static int reqltruncate = 1;
+int reqltruncate = 1;
 
 /* sometimes you have to debug the debugger */
 static int verbose = 0;

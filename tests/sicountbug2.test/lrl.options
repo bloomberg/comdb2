@@ -1,5 +1,4 @@
 table t1 t1.csc2
 round_robin_stripes
 enable_snapshot_isolation
-setattr MAX_SHADOW_ROWS 10000000
 ssl_client_mode OPTIONAL

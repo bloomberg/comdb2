@@ -89,7 +89,7 @@ typedef struct prefaultiopool {
 
 typedef struct pfrq {
     short type;
-    struct db *db;
+    struct dbtable *db;
     unsigned short ix;
     unsigned long long genid;
     int index;
@@ -127,7 +127,7 @@ typedef struct {
     void *iq;
 
     /* for readahead prefaulting */
-    struct db *db;
+    struct dbtable *db;
     short ixnum;
     short keylen;
     short numreadahead;
@@ -168,24 +168,24 @@ typedef struct {
 
 unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata);
 
-int enque_pfault_olddata(struct db *db, unsigned long long genid, int opnum,
+int enque_pfault_olddata(struct dbtable *db, unsigned long long genid, int opnum,
                          int helper_thread, unsigned int seqnum, int broadcast,
                          int dolocal, int flush);
 
-int enque_pfault_oldkey(struct db *db, void *key, int keylen, int ixnum,
+int enque_pfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum,
                         int opnum, int helper_thread, unsigned int seqnum,
                         int broadcast, int dolocal, int flush);
 
-int enque_pfault_newkey(struct db *db, void *key, int keylen, int ixnum,
+int enque_pfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum,
                         int opnum, int helper_thread, unsigned int seqnum,
                         int broadcast, int dolocal, int flush);
 
-int enque_pfault_olddata_oldkeys(struct db *db, unsigned long long genid,
+int enque_pfault_olddata_oldkeys(struct dbtable *db, unsigned long long genid,
                                  int opnum, int helper_thread,
                                  unsigned int seqnum, int broadcast,
                                  int dolocal, int flush);
 
-int enque_pfault_olddata_oldkeys_newkeys(struct db *db,
+int enque_pfault_olddata_oldkeys_newkeys(struct dbtable *db,
                                          unsigned long long genid, char *tag,
                                          int taglen, void *record, int reclen,
                                          int opnum, int helper_thread,
@@ -202,11 +202,11 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq);
 
 int prefault_toblock(struct ireq *iq, void *blkstate, int helper_thread,
                      unsigned int seqnum, int *abort);
-int prefault_readahead(struct db *db, int ixnum, unsigned char *key, int keylen,
+int prefault_readahead(struct dbtable *db, int ixnum, unsigned char *key, int keylen,
                        int num);
 
 /* call this to initiate a readahead */
-int readaheadpf(struct ireq *iq, struct db *db, int ixnum, unsigned char *key,
+int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *key,
                 int keylen, int num);
 
 void prefault_stats(struct dbenv *dbenv);

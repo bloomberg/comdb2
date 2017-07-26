@@ -186,7 +186,7 @@ const char *req2a(int opcode)
     }
 }
 
-void req_stats(struct db *db)
+void req_stats(struct dbtable *db)
 {
     int ii, jj;
     int hdr = 0;

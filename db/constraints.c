@@ -49,7 +49,7 @@ extern int gbl_partial_indexes;
  *              constraints
  * @return 0 if there are no cascading constraints !0 otherwise
  */
-int has_cascading_reverse_constraints(struct db *db)
+int has_cascading_reverse_constraints(struct dbtable *db)
 {
     int i;
 
@@ -202,7 +202,7 @@ static inline void free_cached_delayed_indexes(struct ireq *iq)
     }
 }
 
-int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct db *usedb,
+int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct dbtable *usedb,
                   const uint8_t *p_buf_req_start, const uint8_t *p_buf_req_end,
                   int optype, int rrn, int ixnum, unsigned long long genid,
                   unsigned long long ins_keys, int blkpos)
@@ -258,7 +258,7 @@ int insert_add_op(struct ireq *iq, block_state_t *blkstate, struct db *usedb,
     return 0;
 }
 
-int insert_del_op(block_state_t *blkstate, struct db *srcdb, struct db *dstdb,
+int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb, struct dbtable *dstdb,
                   int optype, int blkpos, void *inkey, void *innewkey,
                   int keylen, int sixnum, int dixnum, int nonewrefs, int flags)
 {
@@ -613,7 +613,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
         struct backward_ct *bct = NULL;
         int ondisk_size = 0;
         unsigned long long genid = 0LL, fndgenid = 0LL;
-        struct db *currdb = NULL;
+        struct dbtable *currdb = NULL;
         char *skey = NULL;
         int rrn = 0;
 
@@ -1183,7 +1183,6 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                           get_keynm_from_db_idx(iq->usedb, doidx),
                           iq->usedb->dbname, doidx);
 
-                logmsg(LOGMSG_ERROR, "%s line %d add key constraints\n", __func__, __LINE__);
                 *blkpos = curop->blkpos;
                 *errout = OP_FAILED_UNIQ;
                 *ixout = doidx;
@@ -1453,14 +1452,14 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 }
 
                 for (ridx = 0; ridx < ct->nrules; ridx++) {
-                    struct db *ftable = NULL, *currdb = NULL;
+                    struct dbtable *ftable = NULL, *currdb = NULL;
                     int ftblsz = 0;
                     int fixnum = 0;
                     int fixlen = 0;
                     char fkey[MAXKEYLEN];
                     char fondisk_tag[MAXTAGLEN];
 
-                    ftable = getdbbyname(ct->table[ridx]);
+                    ftable = get_dbtable_by_name(ct->table[ridx]);
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
@@ -1613,7 +1612,7 @@ void dump_all_constraints(struct dbenv *env)
     }
 }
 
-void dump_rev_constraints(struct db *table)
+void dump_rev_constraints(struct dbtable *table)
 {
     int i = 0;
     logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n", table->dbname,
@@ -1635,7 +1634,7 @@ void dump_rev_constraints(struct db *table)
     logmsg(LOGMSG_USER, "\n");
 }
 
-void dump_constraints(struct db *table)
+void dump_constraints(struct dbtable *table)
 {
     int i = 0;
     logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->dbname,
@@ -1836,7 +1835,7 @@ static int is_update_op(int op)
     return 0;
 }
 
-int find_constraint(struct db *db, constraint_t *ct)
+int find_constraint(struct dbtable *db, constraint_t *ct)
 {
     int i = 0;
     for (i = 0; i < db->n_constraints; i++) {
@@ -1892,7 +1891,7 @@ static inline int constraint_key_check(struct schema *fky, struct schema *bky)
     return 0;
 }
 
-static struct db *get_newer_db(struct db *db, struct db *new_db)
+static struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
 {
     if (new_db && strcasecmp(db->dbname, new_db->dbname) == 0) {
         return new_db;
@@ -1901,7 +1900,7 @@ static struct db *get_newer_db(struct db *db, struct db *new_db)
     }
 }
 
-static void constraint_err(void *s, struct db *db, constraint_t *ct, int rule,
+static void constraint_err(void *s, struct dbtable *db, constraint_t *ct, int rule,
                            const char *err)
 {
     // I am temporarily changing this in the attempt of removing the cyclic
@@ -1935,8 +1934,8 @@ static inline int key_has_expressions_members(struct schema *key)
 /* Verify that the tables and keys referred to by this table's constraints all
  * exist & have the correct column count.  If they don't it's a bit of a show
  * stopper. */
-int verify_constraints_exist(struct db *from_db, struct db *to_db,
-                             struct db *new_db, void *s)
+int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
+                             struct dbtable *new_db, void *s)
 {
     int ii, jj;
     char keytag[MAXTAGLEN];
@@ -1971,14 +1970,14 @@ int verify_constraints_exist(struct db *from_db, struct db *to_db,
             n_errors++;
         }
         for (jj = 0; jj < ct->nrules; jj++) {
-            struct db *rdb;
+            struct dbtable *rdb;
 
             /* If we have a target table (to_db) only look at rules pointing
              * to that table. */
             if (to_db && strcasecmp(ct->table[jj], to_db->dbname) != 0)
                 continue;
 
-            rdb = getdbbyname(ct->table[jj]);
+            rdb = get_dbtable_by_name(ct->table[jj]);
             if (rdb)
                 rdb = get_newer_db(rdb, new_db);
             if (!rdb) {
@@ -2014,7 +2013,7 @@ int verify_constraints_exist(struct db *from_db, struct db *to_db,
  * duplicate is not added
  * this func also does a lot of verifications
  * returns the number of erorrs encountered */
-int populate_reverse_constraints(struct db *db)
+int populate_reverse_constraints(struct dbtable *db)
 {
     int ii, n_errors = 0;
 
@@ -2022,7 +2021,7 @@ int populate_reverse_constraints(struct db *db)
         int jj = 0;
         constraint_t *cnstrt = &db->constraints[ii];
         struct schema *sc = NULL;
-        struct db *ftable = NULL;
+        struct dbtable *ftable = NULL;
         int keyszs = 0, keyszd = 0, keyix = 0;
 
         sc = find_tag_schema(db->dbname, cnstrt->lclkeyname);
@@ -2033,10 +2032,10 @@ int populate_reverse_constraints(struct db *db)
         }
 
         for (jj = 0; jj < cnstrt->nrules; jj++) {
-            struct db *cttbl = NULL;
+            struct dbtable *cttbl = NULL;
             struct schema *sckey = NULL;
             int rcidx = 0, dupadd = 0;
-            cttbl = getdbbyname(cnstrt->table[jj]);
+            cttbl = get_dbtable_by_name(cnstrt->table[jj]);
 
             if (cttbl == NULL) {
                 ++n_errors;

@@ -239,7 +239,6 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
     left = nbytes;
     while (left > 0) {
         int towrite = 0;
-        int more = 0;
 
         if ((sb->whd == sb->lbuf - 1 && sb->wtl == 0) ||
             (sb->whd == sb->wtl - 1)) {
@@ -259,7 +258,6 @@ int SBUF2_FUNC(sbuf2write)(char *ptr, int nbytes, SBUF2 *sb)
                 towrite++;
             if (towrite > left)
                 towrite = left;
-            more = sb->wtl;
         }
 
         memcpy(&sb->wbuf[sb->whd], &ptr[off], towrite);

@@ -1,0 +1,8 @@
+1 begin
+1 select id from t1 union selectv id from t2
+2 update t2 set id = id + 1
+1 commit
+1 begin
+1 with x as (selectv id from t1) select * from x
+2 update t1 set id = id + 1
+1 commit

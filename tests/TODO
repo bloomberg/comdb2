@@ -42,7 +42,8 @@ TESTS still to be fixed:
 deadlock_policy.test
 deadlock.test                   -- in clustered it leaves a bunch of cdb2sql tasts 
 overflowblobs.test        -- timesout
-recom_replay.test         -- now all threads have verify error: Thread 7f989bfff700 verify error.
+recom_replay.test         -- I dont see errors anymore in single node, let's reenable the test (Lingzhi)
+     -- now all threads have verify error: Thread 7f989bfff700 verify error.
      prior:
         error -8 while running 'COMMIT' on iter 0
         Thread 2aee81b67700 error -105 while running 'UPDATE t1 SET id=3 WHERE id=2'
@@ -100,7 +101,7 @@ prefix_foreign_keys_rev.test +
 ptranfail_socksql.test       +                                  
 rawindex.test                +
 read_committed.test          +                               
-recom_replay.test            -
+recom_replay.test            +
 recovery_pages.test          +                               
 rowlocks_blkseq.test         +                                
 rowlock_update.test          +                               

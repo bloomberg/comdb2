@@ -21,7 +21,7 @@ int close_all_dbs(void);
 int open_all_dbs(void);
 int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr);
 int llmeta_get_dbnum(char *tablename, int *bdberr);
-char *get_temp_db_name(struct db *db, char *prefix, char tmpname[]);
+char *get_temp_db_name(struct dbtable *db, char *prefix, char tmpname[]);
 
 // get offset of key name without .NEW. added to the name
 int get_offset_of_keyname(const char *idx_name);
@@ -30,7 +30,7 @@ int get_offset_of_keyname(const char *idx_name);
 int sc_via_ddl_only();
 
 // check table for index name length
-int validate_ix_names(struct db *db);
+int validate_ix_names(struct dbtable *db);
 
 int sc_via_ddl_only();
 

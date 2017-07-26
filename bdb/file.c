@@ -97,8 +97,10 @@
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
 
+extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
+extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern char *gbl_mynode;
 
@@ -2140,6 +2142,9 @@ void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 {
     pthread_t thread_id;
     pthread_attr_t thd_attr;
+
+    if (gbl_exit) return;
+
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
 
     pthread_attr_init(&thd_attr);
@@ -5216,7 +5221,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->origname = NULL;
 
     if (!parent_bdb_state) {
-        if (bdb_bdblock_debug_enabled()) {
+        if (gbl_bdblock_debug) {
             bdb_bdblock_debug_init(bdb_state);
         }
 
@@ -5605,7 +5610,7 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         bdb_state->master_handle = 1;
 
         /* dont create all these aux helper threads for a run of initcomdb2 */
-        if (!create) {
+        if (!create && !gbl_exit) {
             /*
               create checkpoint thread.
               this thread periodically applied changes reflected in the

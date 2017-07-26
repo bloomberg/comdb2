@@ -1,0 +1,9 @@
+(name='dir', read_only='Y')
+[PUT TUNABLE dir '/tmp'] failed with rc -3 Failed to update tunable.
+[PUT TUNABLE nonexistent 100] failed with rc -3 Failed to update tunable.
+(name='latch_max_poll', value=5, read_only='N')
+(value=100)
+[PUT TUNABLE latch_max_poll 'xx'] failed with rc -3 Failed to update tunable.
+[PUT TUNABLE latch_max_poll xx] failed with rc -3 near "xx": syntax error
+(value=100)
+(value=10)
