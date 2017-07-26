@@ -1951,6 +1951,10 @@ __recover_logfile_pglogs(dbenv)
 				__os_free(dbenv, free_ptr);
 				free_ptr = NULL;
 			}
+			if (keylist)
+				__os_free(dbenv, keylist);
+			keylist = NULL;
+			keycnt = 0;
 		}
 
 		if (not_newsi_log_format) {
@@ -1970,11 +1974,16 @@ err:
 			free_ptr = NULL;
 		}
 
+		if (keylist)
+			__os_free(dbenv, keylist);
+		keylist = NULL;
+		keycnt = 0;
+
 		if (logc) {
 			logc->close(logc, 0);
 		}
 
 		return ret;
-	}
+}
 
 /* vim: set ts=3 sw=3: */

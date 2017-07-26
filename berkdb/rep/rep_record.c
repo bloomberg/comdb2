@@ -4108,6 +4108,8 @@ bad_resize:	;
 	    (!txn_rl_args || (txn_rl_args->lflags & DB_TXN_LOGICAL_COMMIT)),
 	    (txn_rl_args) ? txn_rl_args->ltranid : 0,
 	    rctl->lsn, timestamp, rp->context);
+	if (pglogs)
+		__os_free(dbenv, pglogs);
 	if (ret)
 		goto err;
 

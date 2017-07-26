@@ -2110,7 +2110,15 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
     /* printf("%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
        __func__,
        lsn.file, lsn.offset, lsnent, pglogs_hashtbl, pglogs_ent,
-       &pglogs_ent->lsns); */
+       &pglogs_ent->lsns);
+    char *buf;
+    hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
+    printf("%s: FILEID: %s ", __func__, buf);
+    printf(" PGNO: %d ", pgno);
+    printf(" LSN: %d:%d ", lsn.file, lsn.offset);
+    printf(" commit_lsn: %d:%d ", commit_lsn.file, commit_lsn.offset);
+    printf("\n");
+    free(buf); */
 
     return 0;
 }
@@ -2196,18 +2204,10 @@ int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
 
 int bdb_shadows_pglogs_key_list_init(void **listp, int n)
 {
-    static struct page_logical_lsn_key *key = NULL;
-    static int nelements = 0;
-
     assert(listp);
 
     if (n == 0) {
         *listp = NULL;
-        return 0;
-    }
-
-    if (n <= nelements) {
-        (*listp) = key;
         return 0;
     }
 
@@ -2219,11 +2219,6 @@ int bdb_shadows_pglogs_key_list_init(void **listp, int n)
                 __func__, __LINE__);
         abort();
     }
-
-    if (key)
-        free(key);
-    key = (*listp);
-    nelements = n;
 
     return 0;
 }
