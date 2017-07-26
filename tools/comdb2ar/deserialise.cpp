@@ -349,9 +349,7 @@ void deserialise_database(
         bool legacy_mode,
         bool& is_disk_full,
         bool run_with_done_file,
-        bool incr_mode,
-        const std::string& incr_path,
-        bool keep_all_logs
+        bool incr_mode
 )
 // Deserialise a database from serialised from received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -492,9 +490,7 @@ void deserialise_database(
                     sha_fingerprint,
                     percent_full,
                     force_mode,
-                    is_disk_full,
-                    incr_path,
-                    keep_all_logs
+                    is_disk_full
                 );
             }
             break;

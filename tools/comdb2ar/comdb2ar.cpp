@@ -56,7 +56,6 @@ const char *help_text[] = {
 "  -I inc       create an increment for the incremental backup",
 "  -I restore   restore from a sequence of base_backup | increments",
 "  -b <path>    location to store/load the incremental backup",
-"  -k/K         do-not/do keep all logs in an incremental restoration",
 "  -x <path>    path to comdb2 binary to use for full recovery",
 "  -r/R         do/do-not run full recovery after extracting",
 "  -u %         do not allow disk usage to exceed this percentage",
@@ -114,7 +113,6 @@ int main(int argc, char *argv[])
     bool incr_ex = false;
     std::string incr_path;
     bool incr_path_specified = false;
-    bool keep_all_logs = false;
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -217,14 +215,6 @@ int main(int argc, char *argv[])
                 }
                 break;
 
-            case 'k':
-                keep_all_logs = false;
-                break;
-
-            case 'K':
-                keep_all_logs = true;
-                break;
-
             case '?':
                 std::cerr << "Unrecognised option: -" << (char)c << std::endl;
                 usage();
@@ -240,7 +230,7 @@ int main(int argc, char *argv[])
         std::exit(2);
     }
 
-    if((incr_gen || incr_create || incr_ex) && !incr_path_specified){
+    if((incr_gen || incr_create) && !incr_path_specified){
         std::cerr << "If running in incremental mode, a path to the directory where the"
             << " incremental files will be stored is required" << std::endl;
         std::exit(2);
@@ -330,9 +320,7 @@ int main(int argc, char *argv[])
              legacy_mode,
              is_disk_full,
              run_with_done_file,
-             incr_ex,
-             incr_path,
-             keep_all_logs
+             incr_ex
            );
         } catch(std::exception& e) {
             std::cerr << e.what() << std::endl;

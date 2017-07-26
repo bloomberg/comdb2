@@ -57,9 +57,7 @@ void incr_deserialise_database(
     std::string& sha_fingerprint,
     unsigned percent_full,
     bool force_mode,
-    bool& is_disk_full,
-    const std::string& incr_path,
-    bool keep_all_logs
+    bool& is_disk_full
 );
 // Deserialise an incremental backup from STDOUT
 
@@ -105,13 +103,6 @@ void unpack_full_file(
     bool& is_disk_full
 );
 // Deserialise a full file
-
-void recalc_incr_files(
-    const std::string& incr_path,
-    const std::string& datadestdir
-);
-// After a full incremental restore, recalculate the diff .incr files so that future
-// incremental backups can be done
 
 void clear_log_folder(const std::string& datadestdir, const std::string& dbname);
 // Delete everything in the log folder to ensure there aren't log gaps
