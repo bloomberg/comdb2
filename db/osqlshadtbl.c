@@ -415,7 +415,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 {
     shad_tbl_t *tbl;
     unsigned long long rqid;
-    struct db *db = pCur->db;
+    struct dbtable *db = pCur->db;
     struct dbenv *env = pCur->db->dbenv;
     int numblobs = pCur->numblobs;
     int rc = 0;
@@ -1361,7 +1361,7 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
     return 0;
 }
 
-void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct db *db)
+void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
 {
     void *ret = NULL;
     shad_tbl_t *tbl = NULL;
@@ -2092,7 +2092,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
 
     int ix = 0;
     char namebuf[MAXTAGLEN];
-    struct db *db = pCur->db;
+    struct dbtable *db = pCur->db;
     char key[MAXKEYLEN];
     void *tran = thd->sqlclntstate->dbtran.shadow_tran;
     bdb_cursor_ifn_t *tmpcur = NULL;
@@ -2521,6 +2521,39 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     return 0;
+}
+
+int is_genid_recorded(struct sql_thread *thd, int tblnum,
+                      unsigned long long genid)
+{
+    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    int rc = 0;
+    int bdberr = 0;
+    recgenid_key_t key;
+    struct temp_cursor *cur = NULL;
+
+    if (!osql->verify_tbl) return 0;
+
+    if (!osql->verify_cur) {
+        logmsg(LOGMSG_ERROR, "%s: error getting verify cursor\n", __func__);
+        return -1;
+    }
+
+    key.tblnum = tblnum;
+    key.genid = genid;
+
+    rc = bdb_temp_table_find(thedb->bdb_env, osql->verify_cur, &key,
+                             sizeof(key), NULL, &bdberr);
+
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s: temp table find failed\n", __func__);
+        return -1;
+    }
+
+    if (rc == IX_FND)
+        return 1;
+    else
+        return 0;
 }
 
 static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,

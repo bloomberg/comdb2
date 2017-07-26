@@ -228,7 +228,7 @@ static struct appsock_cmd *tok2command(char *tok, int ltok)
     return NULL;
 }
 
-static void dumprrns(struct db *db, SBUF2 *sb)
+static void dumprrns(struct dbtable *tbl, SBUF2 *sb)
 {
     char key[MAXKEYLEN];
     char fndkey[MAXKEYLEN];
@@ -240,7 +240,7 @@ static void dumprrns(struct db *db, SBUF2 *sb)
     unsigned long long genid;
 
     memset(key, 0, sizeof(key));
-    liq.usedb = db;
+    liq.usedb = tbl;
     rc = ix_find(&liq, 0, key, 1, fndkey, &fndrrn, &genid, fnddta, &fndlen,
                  sizeof(fnddta));
     while (rc >= 0 && rc <= 2) /*got a key*/
@@ -266,7 +266,7 @@ struct loadrrn_cmd {
 };
 
 enum { LOAD_ADD_RECORD, LOAD_GET_STATUS };
-static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
+static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
 {
     int len;
     char *buf;
@@ -277,11 +277,11 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
     char *dta;
     unsigned char nullbits[MAXNULLBITS] = {0};
 
-    len = get_size_of_schema_by_name(db->dbname, tag);
+    len = get_size_of_schema_by_name(tbl->dbname, tag);
     if (len == 0)
         return -1;
     buf = malloc(len);
-    dta = malloc(getdatsize(db));
+    dta = malloc(getdatsize(tbl));
 
     do {
         rrc = sbuf2fread((char *)&op, sizeof(int), 1, sb);
@@ -298,10 +298,10 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
                 break;
             }
 
-            rc = ctag_to_stag_buf(db->dbname, tag, buf, len, nullbits,
+            rc = ctag_to_stag_buf(tbl->dbname, tag, buf, len, nullbits,
                                   ".ONDISK", dta, 0, NULL);
             if (rc != -1) {
-                rc = load_record(db, buf);
+                rc = load_record(tbl, buf);
                 recno++;
             }
             break;
@@ -322,21 +322,21 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
 
 /* callback for converting records to given tag */
 static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
-                            size_t clientreclen, struct db *db, const char *tag,
+                            size_t clientreclen, struct dbtable *tbl, const char *tag,
                             const char *tzname, uint8_t ver, int conv_flags)
 {
     unsigned char nulls[MAXNULLBITS];
     int rc = 0;
-    if (db->dbtype == DBTYPE_TAGGED_TABLE) {
+    if (tbl->dbtype == DBTYPE_TAGGED_TABLE) {
         int len = reclen;
-        if (ver < db->version) {
-            void *newrec = alloca(db->lrl);
+        if (ver < tbl->version) {
+            void *newrec = alloca(tbl->lrl);
             memcpy(newrec, rec, reclen);
             rec = newrec;
         }
-        vtag_to_ondisk(db, rec, &len, ver, 0);
+        vtag_to_ondisk(tbl, rec, &len, ver, 0);
         rc =
-            stag_to_ctag_buf_tz(db->dbname, ".ONDISK", rec, len, tag, clientrec,
+            stag_to_ctag_buf_tz(tbl->dbname, ".ONDISK", rec, len, tag, clientrec,
                                 nulls, conv_flags, NULL, NULL, tzname);
     } else {
         memcpy(clientrec, rec, clientreclen);
@@ -388,7 +388,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
     int rc, ltok, st;
     char line[128] = {0};
     char *tok;
-    struct db *usedb, *db;
+    struct dbtable *usedb, *tbl;
     int bdberr, conv_flags = 0;
     struct dbenv *dbenv;
     *keepsocket = 0;
@@ -745,48 +745,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             sbuf2printf(sb, "?Invalid genid48 command.\nFAILED\n");
             sbuf2flush(sb);
             continue;
-        } else if (cmd == cmd_disableskipscan) {
-            tok = segtok(line, rc, &st, &ltok);
-            if (ltok <= 0) {
-                sbuf2printf(sb, "?No tablename specified.\nFAILED\n");
-                sbuf2flush(sb);
-                continue;
-            }
-
-            char table[80] = {0};
-            /* grab the table */
-            tokcpy0(tok, ltok, table, sizeof(table));
-
-#ifdef DEBUG
-            printf("cmd_disableskipscan table '%s'\n", table);
-#endif
-
-            struct db *tbl = getdbbyname(table);
-            if (!tbl) {
-                sbuf2printf(sb, ">Cannot find table '%s'\nFAILED\n", table);
-                sbuf2flush(sb);
-                continue;
-            }
-            tok = segtok(line, rc, &st, &ltok);
-            if (ltok && strncmp(tok, "clear", 5) == 0) {
-                bdb_clear_table_parameter(NULL, table, "disableskipscan");
-                set_skipscan_for_table_indices(tbl, 0);
-            } else {
-                const char *value = "true";
-                bdb_set_table_parameter(NULL, table, "disableskipscan", value);
-                set_skipscan_for_table_indices(tbl, 1);
-            }
-
-            char *setval = NULL;
-            bdb_get_table_parameter(table, "disableskipscan", &setval);
-
-            if (setval) {
-                sbuf2printf(sb, ">disableskipscan set %s\n", setval);
-                free(setval);
-            } else
-                sbuf2printf(sb, ">disableskipscan cleared\n");
-            sbuf2printf(sb, "SUCCESS\n");
-            sbuf2flush(sb);
         } else if (cmd == cmd_testcompr) {
             char table[128];
             tok = segtok(line, rc, &st, &ltok);

@@ -34,6 +34,42 @@ insert into t10 values (6, NULL)
 insert into t10 values (7, x'aa')
 insert into t10 values (8, NULL)
 insert into t10 values (9, x'aa')
+create procedure test version 'sptest' {
+local function read()
+    db:begin()
+    db:exec("selectv * from t10 where id > 20 order by id")
+    local rc = db:commit()
+    if rc ~= 0 then
+        return -1
+    end
+    return 0
+end
+local function write()
+    local _1, rc1 = db:exec("insert into t10(id, b1) values (ABS(RANDOM() % 200), RANDOMBLOB(16))")
+    local _2, rc2 = db:exec("delete from t10 where id = ABS(RANDOM() % 200)")
+    local _3, rc3 = db:exec("update t10 set id = ABS((RANDOM()+id) % 200), b1 = RANDOMBLOB(16) where id = ABS(RANDOM() % 200)")
+    if rc1 ~= 0 or rc2 ~= 0 or rc3 ~= 0 then
+        return -1
+    end
+    return 0
+end
+local function main(t)
+    db:exec("set transaction read committed")
+    local rc1 = read()
+    local rc2 = write()
+    if rc1 ~= 0 then
+        db:emit("sp read failed")
+        return -1
+    end
+    if rc2 ~= 0 then
+        db:emit("sp write failed")
+        return -1
+    end
+    db:emit("sp passed")
+    return 0
+end
+}\$\$
+put default procedure test 'sptest'
 EOF
 
 function randbl
@@ -127,12 +163,27 @@ function delete_rand_t10
     return 0
 }
 
+function sp_rand_t10
+{
+    typeset db=$1
+
+    out=$(cdb2sql ${CDB2_OPTIONS} $db default "exec procedure test()" 2>&1)
+
+    if [[ $? != 0 ]]; then
+        echo "sp_rand_t10 failed, $out"
+        exit 1
+    fi
+
+    return 0
+}
+
 function writer
 {
     while true; do
         insert_rand_t10 $dbname
         update_rand_t10 $dbname
         delete_rand_t10 $dbname
+        sp_rand_t10 $dbname
     done
 
     return 0

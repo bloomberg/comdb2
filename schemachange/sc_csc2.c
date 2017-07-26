@@ -60,11 +60,11 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
     int meta_csc2_len;
     char *file_csc2 = NULL;
     int rc;
-    struct db *db;
+    struct dbtable *db;
 
     if (debug_switch_skip_table_schema_check()) return 0;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (!db) {
         logmsg(LOGMSG_ERROR, "check_table_schema: no such table %s\n", table);
         return -1;
@@ -125,7 +125,7 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
     return rc;
 }
 
-int schema_cmp(struct dbenv *dbenv, struct db *db, const char *csc2cmp)
+int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
 {
     int rc;
 
@@ -181,7 +181,7 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
 {
     int rc;
     int version;
-    struct db *db = getdbbyname(table);
+    struct dbtable *db = get_dbtable_by_name(table);
 
     if (debug_switch_skip_table_schema_check()) return 0;
     if (db && db->sc_to) {
@@ -269,7 +269,7 @@ int write_csc2_file_fname(const char *fname, const char *csc2text)
     return 0;
 }
 
-int write_csc2_file(struct db *db, const char *csc2text)
+int write_csc2_file(struct dbtable *db, const char *csc2text)
 {
     char fnamedefault[256];
 
@@ -281,7 +281,7 @@ int write_csc2_file(struct db *db, const char *csc2text)
     return write_csc2_file_fname(fnamedefault, csc2text);
 }
 
-int get_csc2_fname(const struct db *db, const char *dir, char *fname,
+int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
                    size_t fname_len)
 {
     int rc;
@@ -292,7 +292,7 @@ int get_csc2_fname(const struct db *db, const char *dir, char *fname,
     return 0;
 }
 
-int get_generic_csc2_fname(const struct db *db, char *fname, size_t fname_len)
+int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len)
 {
     return get_csc2_fname(db, thedb->basedir, (char *)fname, fname_len);
 }
@@ -343,7 +343,7 @@ int dump_all_csc2_to_disk()
 
 /* TODO clean up all these csc2 dump functions, unify them */
 /* write out all the schemas from meta for all open tables to disk */
-int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname)
+int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname)
 {
     int rc;
     int version;
@@ -382,13 +382,13 @@ int dump_table_csc2_to_disk_fname(struct db *db, const char *csc2_fname)
 /* write out all the schemas from meta for all open tables to disk */
 int dump_table_csc2_to_disk(const char *table)
 {
-    struct db *p_db;
+    struct dbtable *p_db;
     int rc;
     int version;
     char *meta_csc2 = NULL;
     int meta_csc2_len;
 
-    if (!(p_db = getdbbyname(table))) return 1;
+    if (!(p_db = get_dbtable_by_name(table))) return 1;
 
     if (p_db->dbtype != DBTYPE_TAGGED_TABLE) return 1;
 

@@ -66,7 +66,7 @@ static void *pushlogs_thread(void *voidarg)
         struct ireq iq;
         int now;
         char cur_seqnum[SIZEOF_SEQNUM];
-        struct db *db;
+        struct dbtable *db;
         int done;
 
         /* get current lsn */

@@ -30,7 +30,7 @@ int analyze_is_sampled(struct sqlclntstate *client, char *table, int idx);
  * the tablesize is less than thresh, run analyze against the actual btree
  * rather than the sampled (compressed) btree.
  */
-int analyze_set_sampling_threshold(long long thresh);
+int analyze_set_sampling_threshold(void *context, void *thresh);
 
 /**
  * Returns the current sampling (compression) threshold for chosing sampled
@@ -89,12 +89,12 @@ void analyze_enable_sampled_indicies(void);
 /**
  * Set the maximum number of concurrent tables analyzed.
  */
-int analyze_set_max_table_threads(int maxtd);
+int analyze_set_max_table_threads(void *context, void *maxtd);
 
 /**
  * Set the maximum number of concurrent sampling (compression) threads.
  */
-int analyze_set_max_sampling_threads(int maxtd);
+int analyze_set_max_sampling_threads(void *context, void *maxtd);
 
 /**
  * Disable the sampled (compressed) btree logic.
