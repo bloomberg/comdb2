@@ -1,6 +1,5 @@
 all: basicops $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh))
 
-basictests: basicops sp parserdiagnose
 
 export TESTSROOTDIR:=$(shell pwd)
 
@@ -57,7 +56,6 @@ crle: basicops_nokey tools
 	@N=`tools/get_test_counter.sh` && echo TESTID=${TESTID} running $< $$N/${TOTAL}
 	@cp -r $< $(TESTDIR)/
 	@$(MAKE) -skC $(TESTDIR)/$<
-
 
 %.clean: %.test
 	+$(MAKE) -C $(patsubst %.clean,%,$<) clean
