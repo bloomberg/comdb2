@@ -1,0 +1,447 @@
+[CREATE TABLE t1(i INT)] failed with rc -3 Table already exists
+[CREATE TABLE T1(i INT)] failed with rc -3 Table already exists
+[CREATE TABLE 't1'(i INT)] failed with rc -3 Table already exists
+[CREATE TABLE "t1"(i INT)] failed with rc -3 Table already exists
+[CREATE TABLE `t1`(i INT)] failed with rc -3 Table already exists
+[CREATE TABLE t2(i INT, i INT)] failed with rc -3 Duplicate column name.
+(tablename='t1')
+(tablename='t3')
+(tablename='t4')
+(tablename='t5')
+(tablename='t6')
+(tablename='t7')
+(tablename='t8')
+(tablename='t9')
+(tablename='t10')
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='1', dbload=NULL, isnullable='Y')
+(tablename='t9', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='0', dbload=NULL, isnullable='N')
+(tablename='t10', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue='0', dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("i" int, "j" int, "k" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+')
+(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+')
+(type='table', name='t6', tbl_name='t6', rootpage=8, sql='create table "t6"("i" int);', csc2='schema
+	{
+		int i 
+	}
+')
+(type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("i" int, "j" int);', csc2='schema
+	{
+		int i 
+		int j 
+	}
+')
+(type='table', name='t8', tbl_name='t8', rootpage=10, sql='create table "t8"("i" int DEFAULT 1);', csc2='schema
+	{
+		int i dbstore = 1 null = yes 
+	}
+')
+(type='table', name='t9', tbl_name='t9', rootpage=11, sql='create table "t9"("i" int DEFAULT 0);', csc2='schema
+	{
+		int i dbstore = 0 
+	}
+')
+(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("i" int DEFAULT 0);', csc2='schema
+	{
+		int i dbstore = 0 null = yes 
+	}
+')
+[DROP TABLE t2] failed with rc -3 no such table: t2
+[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc 304 OP #3 BLOCK_SEQ(800): Error at line   9: CANT HAVE SAME TAG 'PRIMARY_KEY' FOR INDICES 1 AND 0!
+[CREATE TABLE t4(i INT, i INT)] failed with rc -3 Duplicate column name.
+[CREATE TABLE t7(i INTt)] failed with rc -3 Invalid type specified.
+[CREATE TABLE t8(INT i)] failed with rc -3 Invalid type specified.
+(tablename='t1')
+(tablename='t2')
+(tablename='t5')
+(tablename='t6')
+(tablename='t9')
+(tablename='t10')
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t9', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t9', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t10', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t10', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='$KEY_3AE602D4', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t6', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t6', keyname='$KEY_88C200AD', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t9', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t10', keyname='$KEY_BFD493EE', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i 
+	}
+')
+(type='index', name='$PRIMARY_KEY_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$PRIMARY_KEY_5E8AC7D0" on "t1" (i);', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i 
+	}
+')
+(type='index', name='$PRIMARY_KEY_75A79413', tbl_name='t2', rootpage=7, sql='create index "$PRIMARY_KEY_75A79413" on "t2" (i);', csc2=NULL)
+(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		"$KEY_3AE602D4" = i 
+	}
+')
+(type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=9, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" (i);', csc2=NULL)
+(type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i 
+		"$KEY_88C200AD" = j 
+	}
+')
+(type='index', name='$PRIMARY_KEY_11CB5117', tbl_name='t6', rootpage=11, sql='create index "$PRIMARY_KEY_11CB5117" on "t6" (i);', csc2=NULL)
+(type='index', name='$$KEY_88C200AD_88C200AD', tbl_name='t6', rootpage=12, sql='create index "$$KEY_88C200AD_88C200AD" on "t6" (j);', csc2=NULL)
+(type='table', name='t9', tbl_name='t9', rootpage=13, sql='create table "t9"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i + j 
+	}
+')
+(type='index', name='$PRIMARY_KEY_F7FB6E60', tbl_name='t9', rootpage=14, sql='create index "$PRIMARY_KEY_F7FB6E60" on "t9" (i, j);', csc2=NULL)
+(type='table', name='t10', tbl_name='t10', rootpage=15, sql='create table "t10"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_BFD493EE" = i + j 
+	}
+')
+(type='index', name='$$KEY_BFD493EE_BFD493EE', tbl_name='t10', rootpage=16, sql='create index "$$KEY_BFD493EE_BFD493EE" on "t10" (i, j);', csc2=NULL)
+[DROP TABLE t3] failed with rc -3 no such table: t3
+[DROP TABLE t4] failed with rc -3 no such table: t4
+[DROP TABLE t7] failed with rc -3 no such table: t7
+[DROP TABLE t8] failed with rc -3 no such table: t8
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 304 OP #3 BLOCK_SEQ(800): Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
+(tablename='t2')
+(tablename='t3')
+(tablename='t4')
+(tablename='t5')
+(tablename='t6')
+(tablename='t7')
+(tablename='t8')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', keyname='$KEY_FBAE8181', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='$KEY_498A83F8', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t4', keyname='$KEY_92E6E53D', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='$KEY_3AE602D4', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t6', keyname='$KEY_66967FE9', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t7', keyname='$KEY_C62EE9BB', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t8', keyname='$KEY_E03FA74B', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t8', keyname='$KEY_F6390457', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t8', keyname='$KEY_36A904B4', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=4, sql='create table "t2"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_FBAE8181" = i + j 
+		"$KEY_498A83F8" = j + i 
+	}
+')
+(type='index', name='$$KEY_FBAE8181_FBAE8181', tbl_name='t2', rootpage=5, sql='create index "$$KEY_FBAE8181_FBAE8181" on "t2" (i, j);', csc2=NULL)
+(type='index', name='$$KEY_498A83F8_498A83F8', tbl_name='t2', rootpage=6, sql='create index "$$KEY_498A83F8_498A83F8" on "t2" (j, i);', csc2=NULL)
+(type='table', name='t3', tbl_name='t3', rootpage=7, sql='create table "t3"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(type='table', name='t4', tbl_name='t4', rootpage=8, sql='create table "t4"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_92E6E53D" = <DESCEND> i 
+	}
+')
+(type='index', name='$$KEY_92E6E53D_92E6E53D', tbl_name='t4', rootpage=9, sql='create index "$$KEY_92E6E53D_92E6E53D" on "t4" (i DESC);', csc2=NULL)
+(type='table', name='t5', tbl_name='t5', rootpage=10, sql='create table "t5"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_3AE602D4" = i 
+	}
+')
+(type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=11, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" (i);', csc2=NULL)
+(type='table', name='t6', tbl_name='t6', rootpage=12, sql='create table "t6"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_66967FE9" = i + <DESCEND> j 
+	}
+')
+(type='index', name='$$KEY_66967FE9_66967FE9', tbl_name='t6', rootpage=13, sql='create index "$$KEY_66967FE9_66967FE9" on "t6" (i, j DESC);', csc2=NULL)
+(type='table', name='t7', tbl_name='t7', rootpage=14, sql='create table "t7"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_C62EE9BB" = <DESCEND> i + <DESCEND> j 
+	}
+')
+(type='index', name='$$KEY_C62EE9BB_C62EE9BB', tbl_name='t7', rootpage=15, sql='create index "$$KEY_C62EE9BB_C62EE9BB" on "t7" (i DESC, j DESC);', csc2=NULL)
+(type='table', name='t8', tbl_name='t8', rootpage=16, sql='create table "t8"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_E03FA74B" = <DESCEND> i + j 
+		"$KEY_F6390457" = i + j 
+		"$KEY_36A904B4" = i + <DESCEND> j 
+	}
+')
+(type='index', name='$$KEY_E03FA74B_E03FA74B', tbl_name='t8', rootpage=17, sql='create index "$$KEY_E03FA74B_E03FA74B" on "t8" (i DESC, j);', csc2=NULL)
+(type='index', name='$$KEY_F6390457_F6390457', tbl_name='t8', rootpage=18, sql='create index "$$KEY_F6390457_F6390457" on "t8" (i, j);', csc2=NULL)
+(type='index', name='$$KEY_36A904B4_36A904B4', tbl_name='t8', rootpage=19, sql='create index "$$KEY_36A904B4_36A904B4" on "t8" (i, j DESC);', csc2=NULL)
+[DROP TABLE t1] failed with rc -3 no such table: t1
+[CREATE TABLE t3(i INT, FOREIGN KEY (i) REFERENCES t1(i))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the child table 't3'
+[CREATE TABLE t5(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t4(i))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the parent (referenced) table 't4'.
+[CREATE TABLE t9(i INT, j INT, PRIMARY KEY(i), FOREIGN KEY (i, j) REFERENCES t7(i, j))] failed with rc -3 A matching key for the FOREIGN KEY was not found in the child table 't9'
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t6', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t6', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t7', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t8', keyname='PRIMARY_KEY', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='PRIMARY_KEY', foreigntablename='t1', foreignkeyname='PRIMARY_KEY', iscascadingdelete='N', iscascadingupdate='N')
+(tablename='t6', keyname='PRIMARY_KEY', foreigntablename='t1', foreignkeyname='PRIMARY_KEY', iscascadingdelete='N', iscascadingupdate='N')
+(tablename='t8', keyname='PRIMARY_KEY', foreigntablename='t7', foreignkeyname='PRIMARY_KEY', iscascadingdelete='N', iscascadingupdate='N')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i 
+	}
+')
+(type='index', name='$PRIMARY_KEY_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$PRIMARY_KEY_5E8AC7D0" on "t1" (i);', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i 
+	}
+constraints
+	{
+		"PRIMARY_KEY" -> <"t1":"PRIMARY_KEY"> 
+	}
+')
+(type='index', name='$PRIMARY_KEY_75A79413', tbl_name='t2', rootpage=7, sql='create index "$PRIMARY_KEY_75A79413" on "t2" (i);', csc2=NULL)
+(type='table', name='t4', tbl_name='t4', rootpage=8, sql='create table "t4"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(type='table', name='t6', tbl_name='t6', rootpage=9, sql='create table "t6"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i 
+	}
+constraints
+	{
+		"PRIMARY_KEY" -> <"t1":"PRIMARY_KEY"> 
+	}
+')
+(type='index', name='$PRIMARY_KEY_11CB5117', tbl_name='t6', rootpage=10, sql='create index "$PRIMARY_KEY_11CB5117" on "t6" (i);', csc2=NULL)
+(type='table', name='t7', tbl_name='t7', rootpage=11, sql='create table "t7"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i + j 
+	}
+')
+(type='index', name='$PRIMARY_KEY_FD65436A', tbl_name='t7', rootpage=12, sql='create index "$PRIMARY_KEY_FD65436A" on "t7" (i, j);', csc2=NULL)
+(type='table', name='t8', tbl_name='t8', rootpage=13, sql='create table "t8"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"PRIMARY_KEY" = i + j 
+	}
+constraints
+	{
+		"PRIMARY_KEY" -> <"t7":"PRIMARY_KEY"> 
+	}
+')
+(type='index', name='$PRIMARY_KEY_F6390457', tbl_name='t8', rootpage=14, sql='create index "$PRIMARY_KEY_F6390457" on "t8" (i, j);', csc2=NULL)
+[DROP TABLE t3] failed with rc -3 no such table: t3
+[DROP TABLE t5] failed with rc -3 no such table: t5
+[DROP TABLE t9] failed with rc -3 no such table: t9
+(tablename='t1')
+(tablename='t2')
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+[CREATE TABLE t6(a INT(100))] failed with rc -3 Invalid type specified.
+(tablename='t1', columnname='v', type='vutf8', size=105, sqltype='varchar', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='d', type='datetime', size=11, sqltype='datetime', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='t', type='vutf8', size=105, sqltype='varchar', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='t', type='u_short', size=3, sqltype='smallint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='c', type='cstring', size=100, sqltype='char(99)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t7', columnname='v', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='v', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t9', columnname='d', type='decimal64', size=13, sqltype='decimal', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t10', columnname='f', type='float', size=5, sqltype='smallfloat', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t10', columnname='d', type='double', size=9, sqltype='float', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" varchar);', csc2='schema
+	{
+		vutf8 v[100] null = yes 
+	}
+')
+(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("d" datetime);', csc2='schema
+	{
+		datetime d null = yes 
+	}
+')
+(type='table', name='t3', tbl_name='t3', rootpage=6, sql='create table "t3"("t" varchar);', csc2='schema
+	{
+		vutf8 t[100] null = yes 
+	}
+')
+(type='table', name='t4', tbl_name='t4', rootpage=7, sql='create table "t4"("t" smallint);', csc2='schema
+	{
+		u_short t null = yes 
+	}
+')
+(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("c" char(99));', csc2='schema
+	{
+		cstring c[100] null = yes 
+	}
+')
+(type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("v" char(100));', csc2='schema
+	{
+		cstring v[101] null = yes 
+	}
+')
+(type='table', name='t8', tbl_name='t8', rootpage=10, sql='create table "t8"("v" char(100));', csc2='schema
+	{
+		cstring v[101] null = yes 
+	}
+')
+(type='table', name='t9', tbl_name='t9', rootpage=11, sql='create table "t9"("d" decimal);', csc2='schema
+	{
+		decimal64 d null = yes 
+	}
+')
+(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("f" smallfloat, "d" float);', csc2='schema
+	{
+		float f null = yes 
+		double d null = yes 
+	}
+')
+[DROP TABLE t6] failed with rc -3 no such table: t6
+[CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate only on local schema only.

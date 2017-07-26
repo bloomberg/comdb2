@@ -105,7 +105,7 @@ struct blocksql_tran {
 
     int rows;
 
-    struct db *last_db;
+    struct dbtable *last_db;
 };
 
 typedef struct oplog_key {
@@ -197,50 +197,44 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     if (iq->blocksql_tran)
         abort();
 
-    if (!iq->blocksql_tran) {
-
-        tran = calloc(sizeof(blocksql_tran_t), 1);
-        if (!tran) {
-            logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
-                    sizeof(blocksql_tran_t));
-            free(info);
-            return -1;
-        }
-
-        pthread_mutex_init(&tran->store_mtx, NULL);
-        pthread_mutex_init(&tran->mtx, NULL);
-        pthread_cond_init(&tran->cond, NULL);
-
-        rc = sem_init(&tran->throttle, 0, g_osql_blocksql_parallel_max);
-        if (rc == -1) {
-            logmsgperror("sem_init");
-        }
-
-        iq->blocksql_tran = tran; /* now blockproc knows about it */
-
-        /* init the lists and the temporary table and cursor */
-        listc_init(&tran->pending, offsetof(blocksql_info_t, p_reqs));
-        listc_init(&tran->complete, offsetof(blocksql_info_t, c_reqs));
-
-        tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
-        if (!tran->db || bdberr) {
-            logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
-                    __func__, bdberr);
-            free(tran);
-            free(info);
-            return -1;
-        }
-
-        bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
-
-        tran->dowait = 1;
-
-        iq->timings.req_received = osql_log_time();
-        /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
-
-    } else {
-        tran = iq->blocksql_tran;
+    tran = calloc(sizeof(blocksql_tran_t), 1);
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
+               sizeof(blocksql_tran_t));
+        free(info);
+        return -1;
     }
+
+    pthread_mutex_init(&tran->store_mtx, NULL);
+    pthread_mutex_init(&tran->mtx, NULL);
+    pthread_cond_init(&tran->cond, NULL);
+
+    rc = sem_init(&tran->throttle, 0, g_osql_blocksql_parallel_max);
+    if (rc == -1) {
+        logmsgperror("sem_init");
+    }
+
+    iq->blocksql_tran = tran; /* now blockproc knows about it */
+
+    /* init the lists and the temporary table and cursor */
+    listc_init(&tran->pending, offsetof(blocksql_info_t, p_reqs));
+    listc_init(&tran->complete, offsetof(blocksql_info_t, c_reqs));
+
+    tran->db = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+    if (!tran->db || bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
+               __func__, bdberr);
+        free(tran);
+        free(info);
+        return -1;
+    }
+
+    bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
+
+    tran->dowait = 1;
+
+    iq->timings.req_received = osql_log_time();
+    /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
 
     tran->num++;
 
@@ -802,7 +796,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
                                 char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid)
 {
-    struct db *db;
+    struct dbtable *db;
 
     struct req_hdr req_hdr;
     struct block_req req;
@@ -1556,36 +1550,6 @@ int osql_get_delayed(struct ireq *iq)
             return t->delayed;
     }
     return 1;
-}
-
-void osql_bplog_clearonerror(struct ireq *iq, int rc)
-{
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-
-    abort();
-
-    if (unlikely(iq->sorese.type == 0)) {
-        abort();
-    }
-
-    /* notify socksql session that we not gonna process this */
-    osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, rc);
-
-    if (tran->pending.top)
-        osql_repository_put(((blocksql_info_t *)tran->pending.top)->sess, 0);
-
-    /* we need to clear here the bplog transaction! */
-    rc = osql_bplog_free(iq, 1, __func__, NULL, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: error clearing rejected sorese request rc=%d\n",
-                __func__, rc);
-    }
-
-    /* NOTE: caller of this function will free iq, and we had to remove bplog
-       and its
-       sessions;  reader_thread trying to save in bplog should be aware session
-       is
-       not around anymore */
 }
 
 /**

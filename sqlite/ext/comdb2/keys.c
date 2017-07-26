@@ -141,7 +141,7 @@ static int systblKeysColumn(
   int i
 ){
   systbl_keys_cursor *pCur = (systbl_keys_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   struct schema *pSchema = pDb->ixschema[pCur->iKeyid];
 
   switch( i ){

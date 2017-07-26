@@ -1,0 +1,16 @@
+Effects not sent by comdb2 server. 
+[set transaction read committed] rc 0
+Number of rows affected 0
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 0
+Number of rows inserted 0
+[begin] rc 0
+Effects not sent by comdb2 server. 
+[update t3 set y = 0 where x = 0] rc 0
+Number of rows affected 1
+Number of rows selected 0
+Number of rows deleted 0
+Number of rows updated 1
+Number of rows inserted 0
+[commit] rc 0

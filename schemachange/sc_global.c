@@ -224,7 +224,7 @@ void reset_sc_stat()
 /* Turn off live schema change.  This HAS to be done while holding the exclusive
  * lock, and it has to be done BEFORE we try to recover from a failed schema
  * change (removing temp tables etc). */
-void live_sc_off(struct db *db)
+void live_sc_off(struct dbtable *db)
 {
     db->sc_to = NULL;
     db->sc_from = NULL;
@@ -238,7 +238,7 @@ int reload_lua()
     return 0;
 }
 
-int replicant_reload_analyze()
+int replicant_reload_analyze_stats()
 {
     ++gbl_analyze_gen;
     logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");

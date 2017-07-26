@@ -34,6 +34,7 @@
 #include <list>
 #include <map>
 #include <algorithm>
+#include <unistd.h>
 
 #include "cdb2api.h"
 #include "cson_amalgamation_core.h"
@@ -74,14 +75,32 @@ static const char *get_strprop(cson_value *objval, const char *key) {
     return cson_string_cstr(cstr);
 }
 
+static cson_array *get_arrprop(cson_value *objval, const char *key) {
+    cson_object *obj;
+    cson_value_fetch_object(objval, &obj);
+    cson_value *propval = cson_object_get(obj, key);
+    if (propval == nullptr || !cson_value_is_array(propval))
+        return nullptr;
+    return cson_value_get_array(propval);
+}
+
 bool get_intprop(cson_value *objval, const char *key, int64_t *val) {
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
     cson_value *propval = cson_object_get(obj, key);
     if (propval == nullptr || !cson_value_is_integer(propval))
         return false;
-    cson_string *cstr;
     int rc = cson_value_fetch_integer(propval, (cson_int_t*) val);
+    return true;
+}
+
+bool get_doubleprop(cson_value *objval, const char *key, double *val) {
+    cson_object *obj;
+    cson_value_fetch_object(objval, &obj);
+    cson_value *propval = cson_object_get(obj, key);
+    if (propval == nullptr || !cson_value_is_double(propval))
+        return false;
+    int rc = cson_value_fetch_double(propval, (cson_double_t*) val);
     return true;
 }
 
@@ -98,10 +117,9 @@ bool is_transactional(cson_value *val) {
 
 bool is_replayable(cson_value *val) {
     int64_t nbound;
-    bool have_bindings;
 
     // Have an array of bound parameters?  Should be replayable.
-    have_bindings = have_json_key(val, "bindings");
+    bool have_bindings = have_json_key(val, "bound_parameters");
     if (have_bindings)
         return true;
     
@@ -166,36 +184,243 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
     }
 }
 
-bool do_bindings(cdb2_hndl_tp *db, cson_value *val) {
+/* TODO: */
+bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
+    cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
+    if(bound_parameters == nullptr)
+        return true;
+
+    unsigned int len = cson_array_length_get(bound_parameters);
+    for (int i = 0; i < len; i++) {
+        cson_value *bp = cson_array_get(bound_parameters, i);
+        const char *name = get_strprop(bp, "name");
+        const char *type = get_strprop(bp, "type");
+        int ret;
+
+        if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
+            int64_t *iv = new int64_t;
+            bool succ = get_intprop(bp, "value", iv);
+            if (!succ) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                return false;
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, iv, sizeof(*iv))) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+            std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
+        } 
+        else if (strcmp(type, "float") == 0 || strcmp(type, "doublefloat") == 0) {
+            double *dv = new double;
+            bool succ = get_doubleprop(bp, "value", dv);
+            if (!succ) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                return false;
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_REAL, dv, sizeof(*dv))) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+            std::cout << "binding "<< type << " column " << name << " to value " << *dv << std::endl;
+        }
+        else if (strcmp(type, "char") == 0) {
+            const char *strp = get_strprop(bp, "value");
+            if (strp == nullptr) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                return false;
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_CSTRING, strp, strlen(strp) )) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+            std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
+        }
+        else
+            std::cout << "binding unknown "<< type << " column " << name << std::endl;
+    }
+
     return true;
 }
 
-void replay(cdb2_hndl_tp *db, cson_value *val) {
-    const char *fp = get_strprop(val, "fingerprint");
-    if (fp == nullptr) {
-        std::cerr << "No fingerprint logged?" << std::endl;
-        return;
-    }
-    auto s = sqltrack.find(fp);
-    if (s == sqltrack.end()) {
-        std::cerr << "Unknown fingerprint? " << fp << std::endl;
-        return;
-    }
-    const char *sql = (*s).second.c_str();
+enum {
+    DEFAULT = 0x0000, /* default output */
+    TABS    = 0x0001, /* separate columns by tabs */
+    BINARY  = 0x0002,  /* output binary */
+    GENSQL  = 0x0004,  /* generate insert statements */
+    /* flags */
+    STDERR  = 0x1000
+};
 
-    return;
-    bool ok = do_bindings(db, val);
+static void hexdump(FILE *f, void *datap, int len)
+{
+    u_char *data = (u_char *)datap;
+    int i;
+    for (i = 0; i < len; i++)
+        fprintf(f, "%02x", (unsigned int)data[i]);
+}
+
+void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
+{
+    if (quotes)
+        fprintf(f, "'");
+    while (*s) {
+        if (*s == '\'' && quote_quotes)
+            fprintf(f, "''");
+        else
+            fprintf(f, "%c", *s);
+        s++;
+    }
+    if (quotes)
+        fprintf(f, "'");
+}
+
+void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
+{
+    int string_blobs = 1;
+    switch (cdb2_column_type(cdb2h, col)) {
+    case CDB2_INTEGER:
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
+                    *(long long *)val);
+        else
+            fprintf(f, "%lld", *(long long *)val);
+        break;
+    case CDB2_REAL:
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "%f", *(double *)val);
+        break;
+    case CDB2_CSTRING:
+        if (printmode == DEFAULT) {
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+            dumpstring(f, (char *)val, 1, 0);
+        } else if (printmode & TABS)
+            dumpstring(f, (char *)val, 0, 0);
+        else
+            dumpstring(f, (char *)val, 1, 1);
+        break;
+    case CDB2_BLOB:
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        if (string_blobs) {
+            char *c = (char*) val;
+            int len = cdb2_column_size(cdb2h, col);
+            fputc('\'', stdout);
+            while (len > 0) {
+                if (isprint(*c) || *c == '\n' || *c == '\t') {
+                    fputc(*c, stdout);
+                } else {
+                    fprintf(f, "\\x%02x", (int)*c);
+                }
+                len--;
+                c++;
+            }
+            fputc('\'', stdout);
+        } else {
+            if (printmode == BINARY) {
+                int rc = write(1, val, cdb2_column_size(cdb2h, col));
+                exit(0);
+            } else {
+                fprintf(f, "x'");
+                hexdump(f, val, cdb2_column_size(cdb2h, col));
+                fprintf(f, "'");
+            }
+        }
+        break;
+    case CDB2_DATETIME: {
+        cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
+                cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
+                cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->msec,
+                cdt->tzname);
+        break;
+    }
+    case CDB2_DATETIMEUS: {
+        cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
+                cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
+                cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->usec,
+                cdt->tzname);
+        break;
+    }
+    case CDB2_INTERVALYM: {
+        cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
+                ym->months);
+        break;
+    }
+    case CDB2_INTERVALDS: {
+        cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
+                (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
+                ds->sec, ds->msec);
+        break;
+    }
+    case CDB2_INTERVALDSUS: {
+        cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
+        if (printmode == DEFAULT)
+            fprintf(f, "%s=", cdb2_column_name(cdb2h, col));
+        fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
+                (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
+                ds->sec, ds->usec);
+        break;
+    }
+    }
+}
+
+
+void replay(cdb2_hndl_tp *db, cson_value *event_val) {
+    const char *sql = get_strprop(event_val, "sql");
+    if(sql == nullptr) {
+	    const char *fp = get_strprop(event_val, "fingerprint");
+	    if (fp == nullptr) {
+		    std::cerr << "No fingerprint logged?" << std::endl;
+		    return;
+	    }
+	    auto s = sqltrack.find(fp);
+	    if (s == sqltrack.end()) {
+		    std::cerr << "Unknown fingerprint? " << fp << std::endl;
+		    return;
+	    }
+	    sql = (*s).second.c_str();
+    }
+
+    bool ok = do_bindings(db, event_val);
     if (!ok)
         return;
 
+    std::cout << sql << std::endl;
     int rc = cdb2_run_statement(db, sql);
-    if (rc) {
+    cdb2_clearbindings(db);
+
+    if (rc != CDB2_OK) {
         std::cerr << "run rc " << rc << ": " << cdb2_errstr(db) << std::endl;
         return;
     }
-    rc = cdb2_next_record(db);
-    while (rc == CDB2_OK) {
-        rc = cdb2_next_record(db);
+
+    /* TODO: have switch to print or not results */
+    int ncols = cdb2_numcolumns(db);
+    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+        for (int col = 0; col < ncols; col++) {
+            void *val = cdb2_column_value(db, col);
+            if (val == NULL) {
+                fprintf(stdout, "%s=NULL", cdb2_column_name(db, col));
+            } else {
+                printCol(stdout, db, val, col, DEFAULT);
+            }
+            if (col != ncols - 1) {
+                fprintf(stdout, ", ");
+            }
+        }
+        std::cout << std::endl;
     }
     if (rc != CDB2_OK_DONE) {
         std::cerr << "next rc " << rc << ": " << cdb2_errstr(db) << std::endl;
@@ -215,7 +440,7 @@ void replay(cdb2_hndl_tp *db, cson_value *val) {
      eliminate it.
   */
 
-void handle_sql(cdb2_hndl_tp *db, cson_value *val) {
+void handle_sql(cdb2_hndl_tp *db, cson_value *event_val) {
     int rc;
     /* We can only replay if we have the full SQL, including parameters.
        That means
@@ -233,20 +458,20 @@ void handle_sql(cdb2_hndl_tp *db, cson_value *val) {
 
        */ 
 
-    if (!is_replayable(val)) {
-        cson_free_value(val);
+    if (!is_replayable(event_val)) {
+        cson_free_value(event_val);
         return;
     }
 
 #if 0
-    if (is_transactional(val)) {
-        add_to_transaction(db, val);
+    if (is_transactional(event_val)) {
+        add_to_transaction(db, event_val);
         return;
     }
 #endif
     
-    replay(db, val);
-    cson_free_value(val);
+    replay(db, event_val);
+    cson_free_value(event_val);
 }
 
 /* TODO: error messages? */
@@ -285,14 +510,14 @@ void init_handlers(void) {
     handlers.insert(std::pair<std::string, event_handler>("txn", handle_txn));
 }
 
-void handle(cdb2_hndl_tp *db, const char *event, cson_value *val) {
+void handle(cdb2_hndl_tp *db, const char *event, cson_value *event_val) {
     auto h = handlers.find(event);
     if (h == handlers.end()) {
-        cson_free_value(val);
+        cson_free_value(event_val);
         return;
     }
     else
-        h->second(db, val);
+        h->second(db, event_val);
 }
 
 void process_events(cdb2_hndl_tp *db, std::istream &in) {
@@ -303,24 +528,24 @@ void process_events(cdb2_hndl_tp *db, std::istream &in) {
         int rc;
         linenum++;
 
-        cson_value *obj;
+        cson_value *event_val;
         cson_parse_info pinfo = cson_parse_info_empty_m;
 
-        rc = cson_parse_string(&obj, line.c_str(), line.length(), &cson_parse_opt_empty, &pinfo);
+        rc = cson_parse_string(&event_val, line.c_str(), line.length(), &cson_parse_opt_empty, &pinfo);
         if (rc) {
             std::cerr << "Malformed input on line " << linenum << std::endl;
             continue;
         }
-        if (!cson_value_is_object(obj)) {
+        if (!cson_value_is_object(event_val)) {
             std::cerr << "Not an object  on line " << linenum << std::endl;
             continue;
         }
-        const char *type = get_strprop(obj, "type");
+        const char *type = get_strprop(event_val, "type");
 
         if (type != nullptr)
-            handle(cdb2h, type, obj);
+            handle(cdb2h, type, event_val);
         else
-            cson_free_value(obj);
+            cson_free_value(event_val);
     }
     std::cout << "got " << linenum  << " lines" << std::endl;
 }
@@ -340,13 +565,20 @@ int main(int argc, char **argv) {
         filename = argv[2];
 
     /* TODO: tier should be an option */
-#if 0
-    if (cdb2_open(&cdb2h, dbname, "local", 0)) {
+    int rc;
+    char *conf = getenv("CDB2_CONFIG");
+    if (conf) {
+        cdb2_set_comdb2db_config(conf);
+        rc = cdb2_open(&cdb2h, dbname, "default", 0);
+    }
+    else { 
+        rc = cdb2_open(&cdb2h, dbname, "local", 0);
+    }
+
+    if (rc) {
         std::cerr << "cdb2_open() failed: " << cdb2_errstr(cdb2h) << std::endl;
-        cdb2_close(cdb2h);
         exit(EXIT_FAILURE);
     }
-#endif
 
     if (filename == nullptr) {
         process_events(cdb2h, std::cin);

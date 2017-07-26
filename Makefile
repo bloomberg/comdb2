@@ -8,7 +8,7 @@ export DESTDIR
 export PREFIX
 
 # Common CFLAGS
-CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
+CPPFLAGS+=-I$(SRCHOME)/dlmalloc
 #CFLAGS+=$(OPT_CFLAGS)
 
 # Variables that will be modified by included files
@@ -31,15 +31,20 @@ modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
 lua tools db sockpool
 include $(addsuffix /module.mk,$(modules))
 
-# The following object files make into cdb2api static (libcdb2api.a) as
-# well as dynamic (libcdb2api.so) libraries and thus, need an additional
-# -fPIC flag.
-SPECIAL_OBJS:= cdb2api/cdb2api.o cdb2api/comdb2buf.o
+# The following object files make into cdb2api static
+# (libcdb2api.a & libcdb2protobuf.a) as well as dynamic
+# (libcdb2api.so & libcdb2protobuf.so) libraries and thus,
+# need an additional -fPIC (large model) flag.
+SPECIAL_OBJS:= cdb2api/cdb2api.o protobuf/%.o
 ifeq ($(arch),Linux)
 $(SPECIAL_OBJS): EXTRA_FLAGS := -fPIC
 else
 ifeq ($(arch),SunOS)
-$(SPECIAL_OBJS): EXTRA_FLAGS := -xcode=pic13
+$(SPECIAL_OBJS): EXTRA_FLAGS := -kPIC
+else
+ifeq ($(arch),AIX)
+$(SPECIAL_OBJS): EXTRA_FLAGS := -qpic
+endif
 endif
 endif
 
@@ -118,6 +123,7 @@ install: all
 	install -D cdb2api/libcdb2api.a $(DESTDIR)$(PREFIX)/lib/libcdb2api.a
 	install -D cdb2api/libcdb2api.so $(DESTDIR)$(PREFIX)/lib/libcdb2api.so
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
+	install -D protobuf/libcdb2protobuf.so $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.so
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	-[ -z "$(DESTDIR)" ] && . db/installinfo || true

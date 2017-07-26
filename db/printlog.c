@@ -54,7 +54,7 @@ struct fname {
     int index;
     int dta;
     int stripe;
-    struct db *db;
+    struct dbtable *db;
 };
 
 struct fnames {
@@ -277,7 +277,7 @@ void set_table_info_from_filename(DB_ENV *dbenv, struct fname *newname,
     newname->table = calloc(1, end - start + 1);
     strncpy(newname->table, start, end - start);
 
-    newname->db = getdbbyname(newname->table);
+    newname->db = get_dbtable_by_name(newname->table);
 }
 
 int print_register(DB_ENV *dbenv, DBT *logdta, DB_LSN *lsn, db_recops op,

@@ -1,0 +1,40 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -x
+
+# Grab my database name.
+dbnm=$1
+
+# Fastinit t1 and t2
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t2"
+
+${TESTSROOTDIR}/tools/recom -d $dbnm
+
+if [[ $? != 0 ]]; then
+
+    echo "Testcase failed test 1"
+    exit 1
+
+fi
+
+# Fill up t2
+cdb2sql -f ./t2_insert.sql ${CDB2_OPTIONS} $dbnm default >/dev/null
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - < ./t2.sql
+
+if [[ $? != 0 ]]; then
+
+    echo "Testcase failed test 2"
+    exit 1
+fi
+
+./t3.sh $dbnm
+if [[ $? != 0 ]]; then
+    echo "Testcase failed test 3"
+    exit 1
+fi
+
+echo "Success"
+exit 0

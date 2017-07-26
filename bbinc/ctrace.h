@@ -72,13 +72,12 @@ void ctrace_enable_threading(void);
 typedef void ctrace_rollover_callback_t(void);
 void ctrace_rollover_register_callback(ctrace_rollover_callback_t *func);
 
-/* Set the ctrace rollat and warnat thresholds in bytes.
+/* Set the ctrace rollat threshold in bytes.
  * If you call these before the log file is opened then the values set here
  * can be overridden by the env variables above.
  * Calling these after the log file is open will override the existing
  * values. */
-void ctrace_set_rollat(unsigned long long rollat_sz);
-void ctrace_set_warnat(unsigned long long warnat_sz);
+int ctrace_set_rollat(void *, void *);
 
 /* specify which directory trace log goes in. default is /bb/data.
    also specify taskname to be used in the trc.c filename

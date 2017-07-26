@@ -460,7 +460,7 @@ int timepart_free_view(timepart_view_t *view)
     int i;
 
     if (view->shards) {
-        for (i = 0; (view->shards != NULL) && (i < view->nshards); i++) {
+        for (i = 0; i < view->nshards; i++) {
             if (view->shards[i].tblname)
                 free(view->shards[i].tblname);
         }
@@ -603,7 +603,7 @@ int views_handle_replicant_reload(const char *name)
     timepart_views_t *views = thedb->timepart_views;
     timepart_view_t *view = NULL;
     timepart_views_t *oldview = NULL;
-    struct db *db;
+    struct dbtable *db;
     int rc = VIEW_NOERR;
     char *str = NULL;
     struct errstat xerr = {0};
@@ -634,7 +634,7 @@ int views_handle_replicant_reload(const char *name)
 
     /* double-checks... make sure all the tables exist */
     for (i = 0; i < view->nshards; i++) {
-        db = getdbbyname(view->shards[i].tblname);
+        db = get_dbtable_by_name(view->shards[i].tblname);
         if (!db) {
             logmsg(LOGMSG_ERROR, "%s: unable to locate shard %s for view %s\n",
                     __func__, view->shards[i].tblname, view->name);
@@ -1484,7 +1484,7 @@ static char* comdb2_partition_info_locked(const char *partition_name,
     int ret_len;
     int crt_len;
     int is_check = 0;
-    struct db *db;
+    struct dbtable *db;
     char *check_rep="";
 
 
@@ -1508,7 +1508,7 @@ static char* comdb2_partition_info_locked(const char *partition_name,
         crt_len = 0;
         for (i = 0; i < view->nshards; i++) {
             if(is_check) {
-                db = getdbbyname(view->shards[i].tblname);
+                db = get_dbtable_by_name(view->shards[i].tblname);
                 if(!db) {
                     check_rep = " [MISSING!]";
                 } else {
@@ -1652,7 +1652,7 @@ char* comdb2_partition_info(const char *partition_name, const char *option)
 static char *_describe_row(const char *tblname, const char *prefix,
                            enum views_trigger_op op_type, struct errstat *err)
 {
-    struct db *gdb;
+    struct dbtable *gdb;
     char *cols_str;
     char *tmp_str;
     int i;
@@ -1660,7 +1660,7 @@ static char *_describe_row(const char *tblname, const char *prefix,
     assert(op_type == VIEWS_TRIGGER_QUERY || op_type == VIEWS_TRIGGER_INSERT ||
            op_type == VIEWS_TRIGGER_UPDATE);
 
-    gdb = getdbbyname(tblname);
+    gdb = get_dbtable_by_name(tblname);
     if (!gdb) {
         err->errval = VIEW_ERR_BUG;
         snprintf(err->errstr, sizeof(err->errstr), "Missing shard %s???\n",
@@ -1829,7 +1829,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
     int preemptive_rolltime = thedb->timepart_views->preemptive_rolltime;
     char next_existing_shard[MAXTABLELEN + 1];
     char evicted_shard[MAXTABLELEN + 1];
-    struct db *evicted_db;
+    struct dbtable *evicted_db;
     int evicted_time;
     int tm;
     int rc;
@@ -1858,13 +1858,13 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         }
 
 
-        evicted_db = getdbbyname(evicted_shard);
+        evicted_db = get_dbtable_by_name(evicted_shard);
         if(!evicted_db) {
             /* there is one exception here; during the initial reach of "retention"
                shards, the phase 3 that can be lost is for shard0name, not "$0_..."
                If "$0_..." is missing, check also the initial shard, so we don't leak it */
             if(strncasecmp(evicted_shard, "$0_", 3) == 0) {
-                evicted_db = getdbbyname(view->shard0name);
+                evicted_db = get_dbtable_by_name(view->shard0name);
                 if(evicted_db) {
                     strncpy(evicted_shard, view->shard0name, sizeof(evicted_shard));
                     evicted_shard0 = 1;
@@ -2103,7 +2103,7 @@ static int _generate_evicted_shard_name(timepart_view_t *view,
 static int _next_shard_exists(timepart_view_t *view, char *newShardName,
                               int newShardNameLen)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
 
     rc = _generate_new_shard_name_wrapper(view, newShardName, newShardNameLen);
@@ -2111,7 +2111,7 @@ static int _next_shard_exists(timepart_view_t *view, char *newShardName,
         return rc;
 
     /* does this table exists ?*/
-    db = getdbbyname(newShardName);
+    db = get_dbtable_by_name(newShardName);
     if (db) {
         return VIEW_ERR_EXIST;
     }
@@ -2263,7 +2263,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view,
                         struct errstat *err)
 {
     timepart_view_t *chk_view;
-    struct db *db;
+    struct dbtable *db;
     int rc;
     int i;
     int indx;
@@ -2289,7 +2289,7 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view,
     if(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_CHECK_SHARD_EXISTENCE)) {
         for(i=0;i<view->nshards;i++) {  
             /* do all the shards exist? */
-            db = getdbbyname(view->shards[i].tblname);
+            db = get_dbtable_by_name(view->shards[i].tblname);
             if(!db) {
                 errstat_set_strf(err, "Partition %s shard %s doesn't exist!",
                         view->name, view->shards[i].tblname);

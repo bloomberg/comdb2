@@ -158,7 +158,7 @@ static int dispatch_fstsnd(struct ireq *iq, struct consumer *consumer,
                            const struct dbq_cursor *cursor, void *item);
 static int flush_fstsnd(struct ireq *iq, struct consumer *consumer);
 static void condbgf(struct consumer *consumer, const char *format, ...);
-static void goose_queue(struct db *db);
+static void goose_queue(struct dbtable *db);
 
 static void condbgf(struct consumer *consumer, const char *format, ...)
 {
@@ -183,7 +183,7 @@ void dbqueue_wake_all_consumers_all_queues(struct dbenv *dbenv, int force)
     for (ii = 0; ii < dbenv->num_qdbs; ii++) {
         if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUE ||
             dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
-            struct db *db = dbenv->qdbs[ii];
+            struct dbtable *db = dbenv->qdbs[ii];
             dbqueue_wake_all_consumers(db, force);
         }
     }
@@ -216,7 +216,7 @@ static void dbqueue_wake_up_consumer(struct consumer *consumer, int force)
     }
 }
 
-void dbqueue_wake_all_consumers(struct db *db, int force)
+void dbqueue_wake_all_consumers(struct dbtable *db, int force)
 {
     int consumern;
     if (db->dbtype == DBTYPE_QUEUEDB)
@@ -376,7 +376,7 @@ void consumer_destroy(struct consumer *consumer)
  *
  * e.g. fstsnd:localhost:n100,no_rtcpu
  * */
-int static dbqueue_add_consumer_int(struct db *db, int consumern,
+int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
                                     const char *method, int noremove,
                                     int checkonly)
 {
@@ -574,7 +574,7 @@ done:
     return rc;
 }
 
-int dbqueue_add_consumer(struct db *db, int consumern, const char *method,
+int dbqueue_add_consumer(struct dbtable *db, int consumern, const char *method,
                          int noremove)
 {
     return dbqueue_add_consumer_int(db, consumern, method, noremove, 0);
@@ -586,7 +586,7 @@ int dbqueue_check_consumer(const char *method)
     return dbqueue_add_consumer_int(NULL, -1, method, 0, 1);
 }
 
-int dbqueue_set_consumern_options(struct db *db, int consumern,
+int dbqueue_set_consumern_options(struct dbtable *db, int consumern,
                                   const char *opts)
 {
     struct consumer *consumer;
@@ -661,7 +661,7 @@ void dbqueue_admin(struct dbenv *dbenv)
                 continue;
             if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUE ||
                 dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
-                struct db *db = dbenv->qdbs[ii];
+                struct dbtable *db = dbenv->qdbs[ii];
                 if (db->dbtype == DBTYPE_QUEUEDB)
                     pthread_rwlock_rdlock(&db->consumer_lk);
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
@@ -737,7 +737,7 @@ void dbqueue_admin(struct dbenv *dbenv)
  * The "goose" concept is that we add dummy records specifically to be
  * consumed in this way, thus ensuring that the queue head advances and we
  * don't end up with millions of empty queue extents. */
-static void goose_queue(struct db *db)
+static void goose_queue(struct dbtable *db)
 {
     tran_type *trans;
     struct ireq iq;
@@ -855,7 +855,7 @@ again:
 }
 
 /* Add a goose record to the given queue */
-void dbqueue_goose(struct db *db, int force)
+void dbqueue_goose(struct dbtable *db, int force)
 {
     struct ireq iq;
     int rc, retries, debug = 0;
@@ -966,7 +966,7 @@ static int dbqueue_stat_callback(int consumern, size_t length,
     return BDB_QUEUE_WALK_CONTINUE;
 }
 
-static void dbqueue_stat_thread_int(struct db *db, int fullstat, int walk_queue)
+static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 {
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
         logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->dbname);
@@ -1105,7 +1105,7 @@ static void dbqueue_stat_thread_int(struct db *db, int fullstat, int walk_queue)
 }
 
 struct statthrargs {
-    struct db *db;
+    struct dbtable *db;
     int fullstat;
     int walk_queue;
 };
@@ -1122,7 +1122,7 @@ static void *dbqueue_stat_thread(void *argsptr)
     return NULL;
 }
 
-void dbqueue_stat(struct db *db, int full, int walk_queue, int blocking)
+void dbqueue_stat(struct dbtable *db, int full, int walk_queue, int blocking)
 {
     int rc;
     pthread_t tid;
@@ -1169,7 +1169,7 @@ void dbqueue_stat(struct db *db, int full, int walk_queue, int blocking)
 /* This is not a totally thread safe solution, but it makes flushed abortable */
 static int flush_thread_active = 0;
 
-static void dbqueue_flush(struct db *db, int consumern)
+static void dbqueue_flush(struct dbtable *db, int consumern)
 {
     struct ireq iq;
     int nflush = 0;
@@ -1219,7 +1219,7 @@ static void dbqueue_flush(struct db *db, int consumern)
 }
 
 struct flush_thd_data {
-    struct db *db;
+    struct dbtable *db;
     int consumern;
 };
 
@@ -1236,7 +1236,7 @@ static void *dbqueue_flush_thd(void *argsptr)
     return NULL;
 }
 
-void dbqueue_flush_in_thread(struct db *db, int consumern)
+void dbqueue_flush_in_thread(struct dbtable *db, int consumern)
 {
     pthread_attr_t attr;
     struct flush_thd_data *args;
@@ -1364,7 +1364,7 @@ static void restart_consumer(struct consumer *consumer)
     pthread_mutex_unlock(&consumer->mutex);
 }
 
-void dbqueue_stop_consumers(struct db *db)
+void dbqueue_stop_consumers(struct dbtable *db)
 {
     if (db->dbtype == DBTYPE_QUEUEDB)
         pthread_rwlock_rdlock(&db->consumer_lk);
@@ -1376,7 +1376,7 @@ void dbqueue_stop_consumers(struct db *db)
         pthread_rwlock_unlock(&db->consumer_lk);
 }
 
-void dbqueue_restart_consumers(struct db *db)
+void dbqueue_restart_consumers(struct dbtable *db)
 {
     if (db->dbtype == DBTYPE_QUEUEDB)
         pthread_rwlock_rdlock(&db->consumer_lk);
@@ -1391,7 +1391,7 @@ void dbqueue_restart_consumers(struct db *db)
 static void *dbqueue_consume_thread(void *arg)
 {
     struct consumer *consumer = arg;
-    struct db *db = consumer->db;
+    struct dbtable *db = consumer->db;
     struct dbenv *dbenv = db->dbenv;
     int iammaster = (dbenv->master == machine()) ? 1 : 0;
     struct ireq iq;

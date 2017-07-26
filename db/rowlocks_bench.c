@@ -186,7 +186,7 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
             }
 
             if ((rc = rowlocks_check_commit_physical(thedb->bdb_env, trans,
-                                                     j) != 0)) {
+                                                     j)) != 0) {
                 fprintf(stderr, "%s: %d: I don't think this should happen.  "
                                 "Aborting.\n",
                         __func__, __LINE__);

@@ -99,7 +99,7 @@ static int shortest_long_request_ms = -1;
 
 static struct output *default_out;
 
-static int diffstat_thresh = 60; /* every minute */
+int diffstat_thresh = 60; /* every minute */
 static struct output *stat_request_out = NULL;
 
 /* These global lockless variables define what we will log for all requests
@@ -111,7 +111,7 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-static int reqltruncate = 1;
+int reqltruncate = 1;
 
 /* sometimes you have to debug the debugger */
 static int verbose = 0;
@@ -638,8 +638,7 @@ static const char *help_text[] = {
     "reql stat               - status, print rules",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",
-    "   General commands:",
-    "       delete           - delete named rule",
+    "   General commands:", "       delete           - delete named rule",
     "       go               - start logging with rule",
     "       stop             - stop logging with this rule",
     "   Specify criteria:",
@@ -653,8 +652,7 @@ static const char *help_text[] = {
     "       stmt 'sql stmt'  - log requests where sql contains that text",
     "       vreplays <range> - log requests with given number of verify "
     "replays",
-    "   Specify what to log:",
-    "       trace            - log detailed trace",
+    "   Specify what to log:", "       trace            - log detailed trace",
     "       results          - log query results",
     "       cnt #            - log up to # before removing rule",
     "   Specify where to log:",
@@ -665,8 +663,7 @@ static const char *help_text[] = {
     "   #-                   - match any number <=#",
     "   #..#                 - match anything between the two numbers "
     "inclusive",
-    "<filename> must be a filename or the keyword '<stdout>'",
-    NULL};
+    "<filename> must be a filename or the keyword '<stdout>'", NULL};
 
 void reqlog_help(void)
 {

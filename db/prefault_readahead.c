@@ -32,7 +32,7 @@
 
 #define MAXGENIDS 256
 
-int prefault_readahead(struct db *db, int ixnum, unsigned char *key, int keylen,
+int prefault_readahead(struct dbtable *db, int ixnum, unsigned char *key, int keylen,
                        int num)
 {
     unsigned long long genids[MAXGENIDS];

@@ -86,7 +86,7 @@ void dyns_disallow_bools(void) { allow_bools = 0; }
 
 int dyns_used_bools(void) { return used_bools; }
 
-void start_constraint_list(char *tblname)
+void start_constraint_list(char *keyname)
 {
     if (nconstraints >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY CONSTRAINTS SPECIFIED. MAX %d\n",
@@ -96,8 +96,8 @@ void start_constraint_list(char *tblname)
     }
     constraints[nconstraints].flags = 0;
     constraints[nconstraints].ncnstrts = 0;
-    constraints[nconstraints].lclkey = tblname;
-    /*  fprintf(stderr, "constraints for key %s\n", tblname);*/
+    constraints[nconstraints].lclkey = keyname;
+    /*  fprintf(stderr, "constraints for key %s\n", keyname);*/
 }
 
 void set_constraint_mod(int start, int op, int type)

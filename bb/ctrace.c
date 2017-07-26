@@ -58,12 +58,13 @@
 
 enum { DEFAULT_WARNAT = 1 * 1024 * 1024 * 1024 };
 
+int nlogs = 7;
+unsigned long long rollat = 0;
+
 static FILE *logf = 0;
 static int once = 0;
-static unsigned long long rollat = 0;
 static unsigned long long warnat = 0, orig_warnat = 0;
 static unsigned long long filesz = 0;
-static int nlogs = 7;
 static char logfilename[256] = {0};
 static char savetaskname[9] = {0};
 
@@ -345,9 +346,10 @@ void ctrace_enable_threading(void)
     MEMORY_SYNC;
 }
 
-void ctrace_set_rollat(unsigned long long rollat_sz)
+int ctrace_set_rollat(void *unused, void *value)
 {
     int mutex_enabled = g_mutex_enabled;
+    int rollat_sz = *((int *)value);
 
     LOCKIFNZ(&g_mutex, mutex_enabled)
     {
@@ -356,22 +358,10 @@ void ctrace_set_rollat(unsigned long long rollat_sz)
             chkrollover_lk();
     }
     UNLOCKIFNZ(&g_mutex, mutex_enabled);
+    return 0;
 }
 
 void ctrace_set_nlogs(int n) { nlogs = n; }
-
-void ctrace_set_warnat(unsigned long long warnat_sz)
-{
-    int mutex_enabled = g_mutex_enabled;
-
-    LOCKIFNZ(&g_mutex, mutex_enabled)
-    {
-        warnat = warnat_sz;
-        if (logf)
-            chkwarnsz_lk();
-    }
-    UNLOCKIFNZ(&g_mutex, mutex_enabled);
-}
 
 void ctrace_rollover_register_callback(ctrace_rollover_callback_t *func)
 {

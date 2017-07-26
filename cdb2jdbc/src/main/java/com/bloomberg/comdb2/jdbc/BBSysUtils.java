@@ -77,9 +77,9 @@ public class BBSysUtils {
                      * Gets dunumber and hosts of the actual database.
                      */
                     hndl.myDbNum = Integer.parseInt(tokens[1]);
-                    for (int i = 2; i < tokens.length; i += 2) {
+                    for (int i = 2; i < tokens.length; ++i) {
                         hndl.myDbHosts.add(tokens[i]);
-                        hndl.myDbPorts.add(Integer.parseInt(tokens[i + 1]));
+                        hndl.myDbPorts.add(hndl.overriddenPort);
                     }
                 } else if (tokens[0].equalsIgnoreCase("comdb2_config")) {
 
@@ -167,7 +167,7 @@ public class BBSysUtils {
                 rc = true;
             }
         } catch (UnknownHostException e) {
-            logger.log(Level.SEVERE, "ERROR in getting address" + comdb2db_bdns, e);
+            logger.log(Level.SEVERE, "ERROR in getting address " + comdb2db_bdns, e);
         }
         return rc;
     }
@@ -472,15 +472,16 @@ public class BBSysUtils {
      * @param hndl
      * @throws NoDbHostFoundException
      */
-    static void getDbHosts(Comdb2Handle hndl) throws NoDbHostFoundException {
+    static void getDbHosts(Comdb2Handle hndl, boolean refresh) throws NoDbHostFoundException {
         if (debug) { 
             System.out.println("Starting getDbHosts"); 
         }
-        /* Clear node info of both the database and comdb2db */
-        hndl.comdb2dbName = null;
-        hndl.comdb2dbHosts.clear();
-        hndl.myDbHosts.clear();
-        hndl.myDbPorts.clear();
+        if (refresh) {
+            /* Clear node info of both the database and comdb2db */
+            hndl.comdb2dbHosts.clear();
+            hndl.myDbHosts.clear();
+            hndl.myDbPorts.clear();
+        }
 
         if (hndl.myDbCluster.equalsIgnoreCase("local")) {
 			/* type is local */

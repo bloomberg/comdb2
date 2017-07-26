@@ -1,0 +1,2 @@
+set transaction read committed
+insert into t1 values (1)

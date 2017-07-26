@@ -300,7 +300,7 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
 #if 0
 svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int version, int flags)
 {
-   struct db      *db;
+   struct dbtable      *db;
    struct schema  *sc;
    svc_cursor_t   *cur;
    bdb_state_type *state;
@@ -1049,7 +1049,7 @@ done:
     return rc;
 }
 
-static int fdb_ondisk_to_unpacked(struct db *db, struct schema *s,
+static int fdb_ondisk_to_unpacked(struct dbtable *db, struct schema *s,
                                   svc_cursor_t *cur, char *in,
                                   unsigned long long genid, Mem *m, int nMems,
                                   int *p_hdrsz, int *p_datasz, int *p_ncols)
@@ -1101,7 +1101,7 @@ done:
     return rc;
 }
 
-static int fdb_ondisk_to_packed_sqlite_tz(struct db *db, struct schema *s,
+static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
                                           char *in, unsigned long long genid,
                                           char *out, int maxout, int *reqsize,
                                           svc_cursor_t *cur)
@@ -1229,7 +1229,7 @@ done:
 static int fdb_convert_data(svc_cursor_t *cur, unsigned long long *genid,
                             char **data, int *datalen)
 {
-    struct db *db = thedb->dbs[cur->tblnum];
+    struct dbtable *db = thedb->dbs[cur->tblnum];
     struct schema *sc =
         (cur->ixnum < 0) ? db->schema : db->ixschema[cur->ixnum];
     uint8_t ver;
@@ -1274,7 +1274,7 @@ struct key_mem_info {
     int fldidx;
 };
 
-static int fdb_packed_sqlite_to_ondisk_key_tz(struct db *db, struct schema *s,
+static int fdb_packed_sqlite_to_ondisk_key_tz(struct dbtable *db, struct schema *s,
                                               char *in,
                                               unsigned long long genid,
                                               char *out, int maxout,
@@ -1292,7 +1292,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
                         char **datacopy, int *datacopylen, int isuuid)
 {
     svc_cursor_t *cur;
-    struct db *db;
+    struct dbtable *db;
     struct schema *sc;
     struct convert_failure convfail;
     int bdberr = 0;
@@ -1406,7 +1406,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
     if (isuuid) {
         comdb2uuidcpy(fdb_tran->tid, (unsigned char *)tid);
     } else {
-        memcpy(fdb_tran->tid, tid, sizeof(fdb_tran->tid));
+        memcpy(fdb_tran->tid, tid, sizeof(unsigned long long));
     }
     listc_atl(&trans->dtran->fdb_trans, fdb_tran);
     listc_init(&fdb_tran->cursors, offsetof(svc_cursor_t, lnk));

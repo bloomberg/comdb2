@@ -1,5 +1,3 @@
 table book book.csc2
 round_robin_stripes
 enable_snapshot_isolation
-setattr MAX_SHADOW_ROWS 10000000
-sql_time_threshold 0

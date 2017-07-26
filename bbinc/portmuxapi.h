@@ -263,7 +263,7 @@ const char *portmux_fds_get_service(portmux_fd_t *fds);
 const char *portmux_fds_get_instance(portmux_fd_t *fds);
 
 void set_portmux_port(int port);
-int set_portmux_bind_path(char *path);
+int set_portmux_bind_path(const char *path);
 
 /**
  * @brief  Connects to remote_host using portmux registered

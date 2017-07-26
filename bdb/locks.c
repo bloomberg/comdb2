@@ -84,8 +84,7 @@ static inline u_int32_t resolve_locker_id(tran_type *tran)
 }
 
 /* See comment at the top of this file for lock types. */
-int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
-                          int outlen)
+int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
 {
     char *file;
     int lklen = dbtlk->size;
@@ -101,8 +100,7 @@ int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
     /* berkeley page lock */
     if (lklen == 28) {
         berk_page_lock = lkname;
-        rc = __dbreg_get_name(bdb_state->dbenv,
-                              (u_int8_t *)berk_page_lock->fileid, &file);
+        rc = __dbreg_get_name(dbenv, (u_int8_t *)berk_page_lock->fileid, &file);
         if (rc)
             snprintf(out, outlen, "%s lock unknown file page %d",
                      (berk_page_lock->type == 1) ? "handle" : "page",
@@ -130,7 +128,7 @@ int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
     else if (lklen == 30) {
         unsigned long long genid;
         memcpy(&genid, ((char *)lkname) + 22, sizeof(unsigned long long));
-        rc = __dbreg_get_name(bdb_state->dbenv, (u_int8_t *)lkname, &file);
+        rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
         if (rc)
             snprintf(out, outlen, "rowlock, unknown file, genid %016llx",
                      genid);
@@ -141,7 +139,7 @@ int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
     else if (lklen == 31) {
         char minmax = 0;
         memcpy(&minmax, ((char *)lkname) + 30, sizeof(char));
-        rc = __dbreg_get_name(bdb_state->dbenv, (u_int8_t *)lkname, &file);
+        rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
         if (rc)
             snprintf(out, outlen, "minmax, unknown file %s",
                      minmax == 0 ? "min" : "max");
@@ -151,7 +149,7 @@ int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
     }
     /* stripe lock */
     else if (lklen == 20) {
-        rc = __dbreg_get_name(bdb_state->dbenv, (u_int8_t *)lkname, &file);
+        rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
         if (rc)
             snprintf(out, outlen, "stripelock, unknown file");
         else
@@ -159,7 +157,7 @@ int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
     }
     /* stripe lock */
     else if (lklen == 32) {
-        rc = __dbreg_get_name(bdb_state->dbenv, (u_int8_t *)lkname, &file);
+        rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
         if (rc)
             snprintf(out, outlen, "tablelock, unknown file");
         else
@@ -173,8 +171,7 @@ int bdb_describe_lock_dbt(bdb_state_type *bdb_state, DBT *dbtlk, char *out,
 }
 
 /* Describe a DB_LOCK object */
-int bdb_describe_lock(bdb_state_type *bdb_state, DB_LOCK *lk, char *out,
-                      int outlen)
+int bdb_describe_lock(DB_ENV *dbenv, DB_LOCK *lk, char *out, int outlen)
 {
     DBT lkdbt = {0};
     char mem[33];
@@ -184,12 +181,11 @@ int bdb_describe_lock(bdb_state_type *bdb_state, DB_LOCK *lk, char *out,
     lkdbt.ulen = sizeof(mem);
     lkdbt.flags = DB_DBT_USERMEM;
 
-    if ((ret = bdb_state->dbenv->lock_to_dbt(bdb_state->dbenv, lk, &lkdbt)) !=
-        0) {
+    if ((ret = dbenv->lock_to_dbt(dbenv, lk, &lkdbt)) != 0) {
         return ret;
     }
 
-    return bdb_describe_lock_dbt(bdb_state, &lkdbt, out, outlen);
+    return bdb_describe_lock_dbt(dbenv, &lkdbt, out, outlen);
 }
 
 static char *lock_mode_to_str(int mode)
@@ -228,14 +224,15 @@ extern int gbl_rep_lockid;
 extern int gbl_simulate_rowlock_deadlock_interval;
 
 /* Wrapper around berkeley lock call.  Makes debugging easier. */
-int berkdb_lock(bdb_state_type *bdb_state, int lid, int flags, DBT *lkname,
-                int mode, DB_LOCK *lk)
+int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode,
+                DB_LOCK *lk)
 {
     int rc;
     char lock_description[100];
 
 #if 0
-    bdb_describe_lock(bdb_state, lkname->data, lkname->size, lock_description, sizeof(lock_description));
+    bdb_describe_lock(dbenv, lkname->data, lkname->size, lock_description,
+                      sizeof(lock_description));
     printf("get: %s\n", lock_description);
     if (lid && lid == gbl_rep_lockid && lkname->size == 30) {
         printf("Replication thread getting row lock?\n");
@@ -252,8 +249,7 @@ int berkdb_lock(bdb_state_type *bdb_state, int lid, int flags, DBT *lkname,
         logmsg(LOGMSG_USER, "Simulating a deadlock!!\n");
         rc = DB_LOCK_DEADLOCK;
     } else {
-        rc = bdb_state->dbenv->lock_get(bdb_state->dbenv, lid, flags, lkname,
-                                        mode, lk);
+        rc = dbenv->lock_get(dbenv, lid, flags, lkname, mode, lk);
     }
 
     if (rc == DB_LOCK_DEADLOCK)
@@ -292,7 +288,8 @@ int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
         return 0;
     }
 
-    return berkdb_lock(bdb_state, lid, flags, lkname, mode, (DB_LOCK *)lk);
+    return berkdb_lock(bdb_state->dbenv, lid, flags, lkname, mode,
+                       (DB_LOCK *)lk);
 }
 
 int berkdb_lock_rowlock(bdb_state_type *bdb_state, int lid, int flags,
@@ -312,7 +309,7 @@ int berkdb_lock_rowlock(bdb_state_type *bdb_state, int lid, int flags,
         return 0;
     }
 
-    return berkdb_lock(bdb_state, lid, flags, (DBT *)lkname, mode,
+    return berkdb_lock(bdb_state->dbenv, lid, flags, (DBT *)lkname, mode,
                        (DB_LOCK *)lk);
 }
 
@@ -330,8 +327,7 @@ int form_stripelock_keyname(bdb_state_type *bdb_state, int stripe,
     return 0;
 }
 
-int form_tablelock_keyname(bdb_state_type *bdb_state, char *keynamebuf,
-                           DBT *dbt_out)
+int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
 {
     int len;
     u_int32_t cksum;
@@ -339,12 +335,12 @@ int form_tablelock_keyname(bdb_state_type *bdb_state, char *keynamebuf,
     bzero(keynamebuf, TABLELOCK_KEY_SIZE);
     bzero(dbt_out, sizeof(DBT));
 
-    len = strlen(bdb_state->name);
+    len = strlen(name);
 
-    memcpy(keynamebuf, bdb_state->name, MIN(len, SHORT_TABLENAME_LEN));
+    memcpy(keynamebuf, name, MIN(len, SHORT_TABLENAME_LEN));
 
     if (len > SHORT_TABLENAME_LEN) {
-        cksum = crc32c(bdb_state->name, len);
+        cksum = crc32c(name, len);
         memcpy(keynamebuf + SHORT_TABLENAME_LEN, &cksum, sizeof(u_int32_t));
     }
 
@@ -447,12 +443,16 @@ int form_minmaxlock_keyname(bdb_state_type *bdb_state, int ixnum, int stripe,
 
 /* fileid (20) =  20 byte names */
 static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
-                               int stripe, int how, DB_LOCK *dblk)
+                               int stripe, int how)
 {
+    DB_LOCK dblk;
     DBT lk;
     int rc;
     int lockmode;
     char name[STRIPELOCK_KEY_SIZE];
+
+    /* parent transaction inherits the locks */
+    if (tran->parent) tran = tran->parent;
 
     /* bdb_state is the table that we're locking */
     assert(bdb_state->parent);
@@ -464,7 +464,7 @@ static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
 
     rc = form_stripelock_keyname(bdb_state, stripe, name, &lk);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "berkdb_lock form name %d\n", rc);
+        logmsg(LOGMSG_ERROR, "%s form name %d\n", __func__, rc);
         return rc;
     }
 
@@ -473,13 +473,13 @@ static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
     else if (how == BDB_LOCK_WRITE)
         lockmode = DB_LOCK_WRITE;
     else {
-        logmsg(LOGMSG_ERROR, "bdb_lock_row_int unknown lock mode %d requested\n",
-                how);
+        logmsg(LOGMSG_ERROR, "%s unknown lock mode %d requested\n", __func__,
+               how);
         return BDBERR_BADARGS;
     }
 
-    rc =
-        berkdb_lock(bdb_state, resolve_locker_id(tran), 0, &lk, lockmode, dblk);
+    rc = berkdb_lock(bdb_state->dbenv, resolve_locker_id(tran), 0, &lk,
+                     lockmode, &dblk);
 
     if (rc != 0 && rc != BDBERR_DEADLOCK) {
         logmsg(LOGMSG_ERROR, "berkdb_lock %d\n", rc);
@@ -489,17 +489,16 @@ static int bdb_lock_stripe_int(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 /* first 28 bytes of table tablename(28) + optional crc32c(4) = 32 byte names */
-static int bdb_lock_table_int(bdb_state_type *bdb_state, int lid, int how,
-                              DB_LOCK *dblk)
+static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
+                              int how)
 {
+    DB_LOCK dblk;
     DBT lk;
     int rc;
     int lockmode;
     char name[TABLELOCK_KEY_SIZE];
 
-    /* bdb_state is the table that we're locking */
-
-    rc = form_tablelock_keyname(bdb_state, name, &lk);
+    rc = form_tablelock_keyname(tblname, name, &lk);
     if (rc)
         return rc;
 
@@ -508,16 +507,16 @@ static int bdb_lock_table_int(bdb_state_type *bdb_state, int lid, int how,
     else if (how == BDB_LOCK_WRITE)
         lockmode = DB_LOCK_WRITE;
     else {
-        logmsg(LOGMSG_ERROR, "bdb_lock_table_int unknown lock mode %d requested\n",
-                how);
+        logmsg(LOGMSG_ERROR, "%s unknown lock mode %d requested\n", __func__,
+               how);
         return BDBERR_BADARGS;
     }
 
-    rc = berkdb_lock(bdb_state, lid, 0, &lk, lockmode, dblk);
+    rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
 
 #ifdef DEBUG
-    fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", 
-            pthread_self(), __func__, how, bdb_state->name, lid);
+    fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", pthread_self(),
+            __func__, how, name, lid);
 #endif
 
     return rc;
@@ -667,54 +666,32 @@ static int bdb_lock_row_int(bdb_state_type *bdb_state, tran_type *tran, int idx,
 
 int bdb_lock_stripe_read(bdb_state_type *bdb_state, int stripe, tran_type *tran)
 {
-    int rc;
-    DB_LOCK dblk;
-
-    if (tran->parent)
-        tran = tran->parent;
-
-    rc = bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_READ, &dblk);
-
-    return rc;
+    return bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_READ);
 }
 
 int bdb_lock_stripe_write(bdb_state_type *bdb_state, int stripe,
                           tran_type *tran)
 {
-    int rc;
-    DB_LOCK dblk;
-
-    if (tran->parent)
-        tran = tran->parent;
-
-    rc = bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_WRITE, &dblk);
-
-    return rc;
+    return bdb_lock_stripe_int(bdb_state, tran, stripe, BDB_LOCK_WRITE);
 }
 
-int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid,
-                                DB_LOCK *dblk)
+int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
 {
-    int rc;
-
-    rc = bdb_lock_table_int(bdb_state, lid, BDB_LOCK_READ, dblk);
-
-    return rc;
+    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
+                              BDB_LOCK_READ);
 }
 
 int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;
-    u_int32_t lid;
-    DB_LOCK dblk;
 
     /* Readlocks on tables & stripes must be owned by the parent, 
      * as they are quietly dropped if the child aborts */
     if (tran->parent)
         tran = tran->parent;
 
-    rc = bdb_lock_table_int(bdb_state, resolve_locker_id(tran), BDB_LOCK_READ,
-                            &dblk);
+    rc = bdb_lock_table_int(bdb_state->dbenv, bdb_state->name,
+                            resolve_locker_id(tran), BDB_LOCK_READ);
 
     return rc;
 }
@@ -722,14 +699,24 @@ int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;
-    DB_LOCK dblk;
 
     if (tran->parent)
         tran = tran->parent;
 
-    rc = bdb_lock_table_int(bdb_state, resolve_locker_id(tran), BDB_LOCK_WRITE,
-                            &dblk);
+    rc = bdb_lock_table_int(bdb_state->dbenv, bdb_state->name,
+                            resolve_locker_id(tran), BDB_LOCK_WRITE);
 
+    return rc;
+}
+
+int bdb_lock_tablename_write(DB_ENV *dbenv, const char *name, tran_type *tran)
+{
+    int rc;
+
+    if (tran->parent) tran = tran->parent;
+
+    rc = bdb_lock_table_int(dbenv, name, resolve_locker_id(tran),
+                            BDB_LOCK_WRITE);
     return rc;
 }
 

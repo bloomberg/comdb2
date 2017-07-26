@@ -107,43 +107,43 @@ void *insert_records_thd(void *arg)
     if (c->debug)
         cdb2_set_debug_trace(sqlh);
 
-   for(id = 0; id< 20; id++) {
     snprintf(sql, sizeof(sql), "insert into t1 (id, acct, bal) values (@id, @acct, @bal)");
+    for(id = 0; id< 20; id++) {
 
-   for(acct = 0; acct<5; acct++) {
-        cdb2_clearbindings(sqlh);
-        if ((ret = cdb2_bind_param(sqlh, "id", CDB2_INTEGER, &id, sizeof(int64_t))) != 0)
-        {
-            fprintf(stderr, "error binding id column, ret=%d\n", ret);
-            exit(1);
-        }
+        for(acct = 0; acct<5; acct++) {
+            cdb2_clearbindings(sqlh);
+            if ((ret = cdb2_bind_param(sqlh, "id", CDB2_INTEGER, &id, sizeof(int64_t))) != 0)
+            {
+                fprintf(stderr, "error binding id column, ret=%d\n", ret);
+                exit(1);
+            }
 
-        if ((ret = cdb2_bind_param(sqlh, "acct", CDB2_INTEGER, &acct, sizeof(int64_t))) != 0)
-        {
-            fprintf(stderr, "error binding acct column, ret=%d.\n", ret);
-            exit(1);
-        }
+            if ((ret = cdb2_bind_param(sqlh, "acct", CDB2_INTEGER, &acct, sizeof(int64_t))) != 0)
+            {
+                fprintf(stderr, "error binding acct column, ret=%d.\n", ret);
+                exit(1);
+            }
 
-        int64_t bal = 5000;
-        if ((ret = cdb2_bind_param(sqlh, "bal", CDB2_INTEGER, &bal, sizeof(int64_t))) != 0)
-        {
-            fprintf(stderr, "error binding bal column, ret=%d.\n", ret);
-            exit(1);
-        }
+            int64_t bal = 5000;
+            if ((ret = cdb2_bind_param(sqlh, "bal", CDB2_INTEGER, &bal, sizeof(int64_t))) != 0)
+            {
+                fprintf(stderr, "error binding bal column, ret=%d.\n", ret);
+                exit(1);
+            }
 
-        if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
-        {
-            fprintf(stderr, "error inserting record ret=%d.\n", ret);
-            exit(1);
-        }
+            if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
+            {
+                fprintf(stderr, "error inserting record ret=%d.\n", ret);
+                exit(1);
+            }
 
-        do
-        {
-            ret = cdb2_next_record(sqlh);
+            do
+            {
+                ret = cdb2_next_record(sqlh);
+            }
+            while(ret == CDB2_OK);
         }
-        while(ret == CDB2_OK);
-   }
-   }
+    }
 
     cdb2_close(sqlh);
     free(arg);

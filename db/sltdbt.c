@@ -186,7 +186,7 @@ const char *req2a(int opcode)
     }
 }
 
-void req_stats(struct db *db)
+void req_stats(struct dbtable *db)
 {
     int ii, jj;
     int hdr = 0;
@@ -366,13 +366,14 @@ int handle_ireq(struct ireq *iq)
             rc = toblock(iq);
 
             extern int gbl_test_blkseq_replay_code;
-            if (gbl_test_blkseq_replay_code && (rc != RC_INTERNAL_RETRY &&
-                rc != ERR_NOT_DURABLE) && (rand() % 10) == 0) {
+            if (gbl_test_blkseq_replay_code &&
+                (rc != RC_INTERNAL_RETRY && rc != ERR_NOT_DURABLE) &&
+                (rand() % 10) == 0) {
                 logmsg(LOGMSG_USER, "Test blkseq replay: returning "
-                        "ERR_NOT_DURABLE to test replay:\n");
-                logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n", rc,
-                        iq->errstat.errval, iq->errstat.errstr, 
-                        iq->sorese.rcout);
+                                    "ERR_NOT_DURABLE to test replay:\n");
+                logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n",
+                       rc, iq->errstat.errval, iq->errstat.errstr,
+                       iq->sorese.rcout);
                 rc = ERR_NOT_DURABLE;
             }
 

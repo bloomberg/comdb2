@@ -45,7 +45,6 @@ Vdbe *sqlite3VdbeCreate(Parse *pParse){
   /* COMDB2 MODIFICATION */
   p->updCols = 0;
   p->tbls = NULL;
-  p->lockInfo = NULL;
   p->numTables = 0;
   /* due to stat4, we also need tzname during prepare
      set this here before starting to build anything */
@@ -2193,11 +2192,6 @@ static void Cleanup(Vdbe *p){
     p->updCols = 0;
   }
 #endif
-
-  if (p->lockInfo) {
-      free(p->lockInfo);
-      p->lockInfo = NULL;
-  }
   p->zErrMsg = 0;
   p->pResultSet = 0;
 }
@@ -3136,10 +3130,6 @@ void sqlite3VdbeDelete(Vdbe *p){
     p->tbls = NULL;
     p->numTables = 0;
   }  
-  if(p->lockInfo) {
-    free(p->lockInfo);
-    p->lockInfo = NULL;
-  }
 
   p->db = 0;
 
@@ -5367,3 +5357,8 @@ void sqlite3VdbePreUpdateHook(
   }
 }
 #endif /* SQLITE_ENABLE_PREUPDATE_HOOK */
+
+void comdb2SetRecording(Vdbe *v)
+{
+  v->recording = 1;
+}

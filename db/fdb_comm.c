@@ -495,7 +495,7 @@ int fdb_send_move(fdb_msg_t *msg, char *cid, int how, int isuuid, SBUF2 *sb)
     msg->hd.type = fdb_move_type(how);
     assert(msg->hd.type >= 0);
 
-    comdb2uuid_clear(msg->cc.ciduuid);
+    comdb2uuid_clear(msg->cm.ciduuid);
 
     msg->cm.cid = (char *)msg->cm.ciduuid;
 
@@ -528,15 +528,16 @@ int fdb_send_run_sql(fdb_msg_t *msg, char *cid, int sqllen, char *sql,
 
     /* request streaming remotely */
     msg->hd.type = FDB_MSG_RUN_SQL;
-    msg->cm.cid = (char *)cid;
 
-    comdb2uuid_clear(msg->cc.ciduuid);
+    msg->sq.cid = (char *)msg->sq.ciduuid;
+
+    comdb2uuid_clear(msg->sq.ciduuid);
 
     if (isuuid) {
-        memmove(msg->cm.cid, cid, sizeof(uuid_t));
+        memmove(msg->sq.cid, cid, sizeof(uuid_t));
         msg->hd.type |= FD_MSG_FLAGS_ISUUID;
     } else
-        memcpy(msg->sq.cid, cid, sizeof(msg->sq.cid));
+        memcpy(msg->sq.cid, cid, sizeof(unsigned long long));
 
     msg->sq.sqllen = sqllen;
     msg->sq.sql = sql;
@@ -2016,9 +2017,6 @@ static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     int i;
     unsigned long long t = osql_log_time();
     int isuuid;
-
-    if (!prefix)
-        prefix = "";
     char prf[512];
 
     snprintf(prf, sizeof(prf), "%llu%s%s", (unsigned long long) gettimeofday_ms(),
@@ -2398,13 +2396,6 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
             if (rc != msg->dr.datalen)
                 return FDB_ERR_WRITE_IO;
         }
-
-        if (msg->dr.datacopy && msg->dr.datacopylen > 0) {
-            rc = sbuf2fwrite(msg->dr.datacopy, 1, msg->dr.datacopylen, sb);
-            if (rc != msg->dr.datacopylen)
-                return FDB_ERR_WRITE_IO;
-        }
-
         break;
 
     case FDB_MSG_CURSOR_FIND:
@@ -2911,7 +2902,7 @@ int fdb_remcur_send_row(SBUF2 *sb, fdb_msg_t *msg, char *cid,
 
 int fdb_remcur_cursor_move(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 {
-    struct db *db;
+    struct dbtable *db;
     char *cid = msg->cm.cid;
     unsigned long long genid;
     int rc = 0;
@@ -3455,14 +3446,16 @@ int fdb_send_heartbeat(fdb_msg_t *msg, char *tid, int isuuid, SBUF2 *sb)
     int rc;
 
     fdb_msg_clean_message(msg);
-    msg->hb.tid = msg->hb.tiduuid;
 
     msg->hd.type = FDB_MSG_HBEAT;
+
+    msg->hb.tid = (char *)msg->hb.tiduuid;
+
     if (isuuid) {
         memmove(msg->hb.tiduuid, tid, sizeof(uuid_t));
         msg->hd.type |= FD_MSG_FLAGS_ISUUID;
     } else
-        memcpy(msg->hb.tiduuid, tid, sizeof(unsigned long long));
+        memcpy(msg->hb.tid, tid, sizeof(unsigned long long));
 
     clock_gettime(CLOCK_REALTIME, &msg->hb.timespec);
 
@@ -3539,7 +3532,7 @@ int fdb_remcur_trans_commit(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     }
 
     /* xerr.errstr has only prefix for success case */
-    if (clnt->osql.xerr.errval && clnt->osql.xerr.errstr) {
+    if (clnt->osql.xerr.errval && clnt->osql.xerr.errstr[0]) {
         errstrlen = strlen(clnt->osql.xerr.errstr) + 1;
         errstr_if_any = clnt->osql.xerr.errstr; /* cleanup will free */
     } else {

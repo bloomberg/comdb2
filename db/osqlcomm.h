@@ -55,7 +55,7 @@ int osql_comm_blkout_node(char *host);
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 
 /* Offload upgrade record request. */
-int offload_comm_send_upgrade_records(struct db *db, unsigned long long genid);
+int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long genid);
 
 /* Offload record upgrade statistics */
 void upgrade_records_stats(void);
@@ -410,7 +410,7 @@ enum osqlpfrq_type {
     OSQLPFRQ_OSQLREQ = 99
 };
 
-int osql_page_prefault(char *rpl, int rplen, struct db **last_db,
+int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
                        unsigned long long seq);
 

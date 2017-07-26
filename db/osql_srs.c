@@ -332,8 +332,6 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         if (!osql->history) {
             fprintf(stderr, "Trying to replay, but no history?\n");
             abort();
-            cheap_stack_trace();
-            return -1;
         }
 
         clnt->verify_retries++;
