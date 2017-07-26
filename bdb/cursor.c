@@ -1867,6 +1867,22 @@ static void *pglogs_asof_thread(void *arg)
     return NULL;
 }
 
+#ifdef NEWSI_STAT
+void bdb_newsi_stat_init()
+{
+    bzero(&logfile_relink_time, sizeof(struct timeval));
+    bzero(&logfile_insert_time, sizeof(struct timeval));
+    bzero(&client_relink_time, sizeof(struct timeval));
+    bzero(&client_insert_time, sizeof(struct timeval));
+    bzero(&ltran_relink_time, sizeof(struct timeval));
+    bzero(&ltran_insert_time, sizeof(struct timeval));
+    bzero(&txn_insert_time, sizeof(struct timeval));
+    bzero(&txn_relink_time, sizeof(struct timeval));
+    bzero(&logical_undo_time, sizeof(struct timeval));
+    pthread_mutex_init(&newsi_stat_mutex, NULL);
+}
+#endif
+
 int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 {
     int rc, i, bdberr;
@@ -1925,16 +1941,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     }
 
 #ifdef NEWSI_STAT
-    bzero(&logfile_relink_time, sizeof(struct timeval));
-    bzero(&logfile_insert_time, sizeof(struct timeval));
-    bzero(&client_relink_time, sizeof(struct timeval));
-    bzero(&client_insert_time, sizeof(struct timeval));
-    bzero(&ltran_relink_time, sizeof(struct timeval));
-    bzero(&ltran_insert_time, sizeof(struct timeval));
-    bzero(&txn_insert_time, sizeof(struct timeval));
-    bzero(&txn_relink_time, sizeof(struct timeval));
-    bzero(&logical_undo_time, sizeof(struct timeval));
-    pthread_mutex_init(&newsi_stat_mutex, NULL);
+    bdb_newsi_stat_init();
 #endif
 
     /* Init pglogs queue */
@@ -2356,6 +2363,21 @@ void bdb_print_logfile_pglogs_stat()
     logmsg(LOGMSG_USER, "logical_undo_time %.3fms\n",
            (double)logical_undo_time.tv_sec * 1000 +
                (double)logical_undo_time.tv_usec / 1000);
+}
+void bdb_clear_logfile_pglogs_stat()
+{
+    Pthread_mutex_lock(&newsi_stat_mutex);
+    bzero(&logfile_relink_time, sizeof(struct timeval));
+    bzero(&logfile_insert_time, sizeof(struct timeval));
+    bzero(&client_relink_time, sizeof(struct timeval));
+    bzero(&client_insert_time, sizeof(struct timeval));
+    bzero(&ltran_relink_time, sizeof(struct timeval));
+    bzero(&ltran_insert_time, sizeof(struct timeval));
+    bzero(&txn_insert_time, sizeof(struct timeval));
+    bzero(&txn_relink_time, sizeof(struct timeval));
+    bzero(&logical_undo_time, sizeof(struct timeval));
+    logmsg(LOGMSG_USER, "pglogs stat cleared\n");
+    Pthread_mutex_unlock(&newsi_stat_mutex);
 }
 #endif
 
@@ -7552,11 +7574,24 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
         return 0;
     }
 
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
+
     /* we have shadows, recom or snapisol/serial.   We have to do this even if
      * we're on the virtual stripe
      * to support optimized blobs */
     rc = bdb_osql_update_shadows(cur->ifn, cur->shadow_tran->osql,
                                  &dirty_shadow, LOG_APPLY, bdberr);
+
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    Pthread_mutex_lock(&newsi_stat_mutex);
+    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+    Pthread_mutex_unlock(&newsi_stat_mutex);
+#endif
     if (rc)
         return rc;
 
