@@ -6,6 +6,15 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 
+#define PARENTPARENT 0x0000
+#define CHILDPARENT 0x0010
+#define PARENTCHILD 0x0001
+#define CHILDCHILD 0x0011
+
+void usage() {
+    fprintf(stderr, "Usage: <executable> <dbname> [ [node] | [type cfg_file] invalidation ]\n");
+    exit(1);
+}
 
 int main(int argc, char **argv)
 {
@@ -13,25 +22,33 @@ int main(int argc, char **argv)
     int rc, i;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: <executable> <# inserts> <dbname> [ [node] | [type cfg_file] ]\n");
-        exit(1);
+        usage();
     }
 
     cdb2_init_ssl(1, 1);
 
     /* if fifth parameter is set we will transfer ownership of the db 
      * handle to child process thus in effect invalidate hndl on parent */
-    int invalidate_parent = 0;
-    if (argc == 5)
-        invalidate_parent = CDB2_INVALIDATE_PARENT_FORK;
+    int invalidation = 0;
+    if (argc >= 5) {
+        invalidation = atoi(argv[4]); //has to be one of 0-4
+        //fprintf(stderr, "invalidation of %s, %d\n", argv[4], invalidation);
+        if (invalidation < 0 || invalidation > 4) {
+            fprintf(stderr, "bad invalidation %s\n", argv[4]);
+            usage();
+        }
+    }
 
     cdb2_hndl_tp *hndl = NULL;
     cdb2_hndl_tp *hndl2 = NULL;
     const char *process_str = NULL;
 
+    int fork_generation = 0;
     {
         pid_t child;
 
+        int invalidate_parent = (invalidation & (1 << fork_generation) ) ? CDB2_INVALIDATE_PARENT_FORK : 0;
+        //fprintf("will invalidate %d\n", invalidate_parent);
         if (argc == 2)
             rc = cdb2_open(&hndl, argv[1], "local", invalidate_parent);
         else if(argc <= 5) {
@@ -63,6 +80,7 @@ int main(int argc, char **argv)
         child = fork();
         if (child < 0)
             return 1;
+        fork_generation++;
 
         if (child == 0) { //it is child process
             process_str = "CHILD";
@@ -101,6 +119,8 @@ int main(int argc, char **argv)
     }
 
     {
+        int invalidate_parent = (invalidation & (1 << fork_generation) ) ? CDB2_INVALIDATE_PARENT_FORK : 0;
+        //printf("will invalidate %d\n", invalidate_parent);
         if (argc == 2)
             rc = cdb2_open(&hndl2, argv[1], "local", invalidate_parent);
         else if(argc <= 5) {
@@ -133,6 +153,7 @@ int main(int argc, char **argv)
         if (child2 < 0)
             return 1;
 
+        fork_generation++;
         char process_str2[128];
         if (child2 == 0) { //it is child process
             snprintf(process_str2, sizeof(process_str2), "CHILD of %s", process_str);
@@ -171,7 +192,7 @@ int main(int argc, char **argv)
         cdb2_close(hndl2);
 
 
-        //work with first handle again
+        // work with first handle again
         rc = cdb2_run_statement(hndl, "insert into t1 values (5)");
         if (rc) {
             fprintf(stderr, "3 %s: INSERT 5 failed rc = %d\n", process_str2, rc);
