@@ -32,7 +32,7 @@ File | Description
 </table>
 
 ## Using `make`
-Docker image builds and spining up a Comdb2 cluster through Docker Compose can be done through `make`. At the root directory of the Comdb2 project, the following commands can be ran.
+Docker image builds and spining up a Comdb2 cluster through Docker Compose can be done through `make`. The following commands can be executed from the root directory of the Comdb2 project.
 
 Command | Usage
 --- | ---
@@ -53,9 +53,12 @@ The `make docker-cluster` command is a way to run an example Comdb2 cluster. As 
 
 4) Copy all the database files that have just been created in the `node1` folder into all the other `nodeX` folders.
 
-5) Run `make docker-cluster` and the cluster should start running
+5) Run `make docker-cluster` and the cluster should start running. Running `docker ps` should show nodes 1 through 5 up and running.
 
 To open a shell in one of the nodes in the cluster, run `docker exec -it nodeX /bin/bash` to open a `bash` shell on that node.
+
+If your cluster is not working, try navigating to `contrib/docker/` and run `docker-compose up` which will try to spin up the nodes in the foreground and will show any errors the cluster nodes may be experiencing.
+
 
 
 ## Misc. Files
