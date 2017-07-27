@@ -47,3 +47,12 @@ services:
       - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
       - ./volumes/node5:/db
     expose: [5105]
+  comdb2-dev:
+    container_name: dev
+    hostname: dev
+    image: comdb2-standalone:7.0.0pre
+    entrypoint: 
+      - ./runforever
+    volumes:
+      - ./testdb.cfg:/opt/bb/etc/cdb2/config.d/testdb.cfg
+      - ./runforever:/runforever
