@@ -76,7 +76,7 @@
 	}
 ')
 [DROP TABLE t2] failed with rc -3 no such table: t2
-[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc 304 OP #3 BLOCK_SEQ(800): Error at line   9: CANT HAVE SAME TAG 'PRIMARY_KEY' FOR INDICES 1 AND 0!
+[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc 304 Error at line   9: CANT HAVE SAME TAG 'PRIMARY_KEY' FOR INDICES 1 AND 0!
 [CREATE TABLE t4(i INT, i INT)] failed with rc -3 Duplicate column name.
 [CREATE TABLE t7(i INTt)] failed with rc -3 Invalid type specified.
 [CREATE TABLE t8(INT i)] failed with rc -3 Invalid type specified.
@@ -173,7 +173,7 @@ keys
 [DROP TABLE t4] failed with rc -3 no such table: t4
 [DROP TABLE t7] failed with rc -3 no such table: t7
 [DROP TABLE t8] failed with rc -3 no such table: t8
-[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 304 OP #3 BLOCK_SEQ(800): Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 304 Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
 (tablename='t2')
 (tablename='t3')
 (tablename='t4')

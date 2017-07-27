@@ -2867,8 +2867,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         /* keep track of which operation is currently done */
         reqerrstrhdrclr(iq);
-        reqerrstrhdr(iq, "OP #%d %s(%d): ", opnum, breq2a(hdr.opcode),
-                     hdr.opcode);
 
         thrman_wheref(thr_self, "%s [%s]", req2a(iq->opcode),
                       breq2a(hdr.opcode));
