@@ -4,6 +4,8 @@ dbname=$1
 error=0
 vers=open
 trace=1
+stage=default
+
 #stage=dev
 #forever=1
 #vers=r6
@@ -16,21 +18,47 @@ if [[ -z "$dbname" ]]; then
     exit 1
 fi
 
+if [[ -z "${CDB2_OPTIONS}" ]]; then
+    stage=local
+fi
+
 if [[ $vers == "r6" ]]; then
     CDB2_OPTIONS=""
-    stage=local
     masterst=""
     comdb2sc.tsk $dbname add t1 ./t1.csc2
     comdb2sc.tsk $dbname add t2 ./t2.csc2
 else
-    if [[ -z "$stage" ]]; then
-        stage=default
-    fi
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
     masterst="--host $master"
     cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t1 { schema { int a } }' 
     cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t2 { schema { int a } keys { "a" = a } }'
 fi
+
+function generate_good_insert
+{
+    echo "begin" > ./good_insert.sql
+    j=0
+    while [[ $j -lt 4000 ]]; do
+        echo "insert into t1(a) values (1)" >> ./good_insert.sql
+        let j=j+1
+    done
+    echo "commit" >> ./good_insert.sql
+}
+
+function generate_bad_insert
+{
+    echo "begin" > ./bad_insert.sql
+    j=0
+    while [[ $j -lt 4000 ]]; do
+        echo "insert into t1(a) values (1)" >> ./bad_insert.sql
+        let j=j+1
+    done
+
+    echo "insert into t2(a) values (1)" >> ./bad_insert.sql
+    echo "insert into t2(a) values (1)" >> ./bad_insert.sql
+
+    echo "commit" >> ./bad_insert.sql
+}
 
 function good_inserter
 {
@@ -39,7 +67,7 @@ function good_inserter
     set i=0
 
     while [[ $forever || $i -lt 10 ]]; do
-        cdb2sql ${CDB2_OPTIONS} $dbname $stage - < good_insert.sql > /dev/null 2>&1
+        cdb2sql ${CDB2_OPTIONS} $dbname $stage - < ./good_insert.sql > /dev/null 2>&1
         let i=i+1
     done
 }
@@ -51,7 +79,7 @@ function bad_inserter
     set i=0
 
     while [[ $forever || $i -lt 10 ]]; do
-        cdb2sql ${CDB2_OPTIONS} $dbname $stage - < bad_insert.sql > /dev/null 2>&1
+        cdb2sql ${CDB2_OPTIONS} $dbname $stage - < ./bad_insert.sql > /dev/null 2>&1
         let i=i+1
     done
 }
@@ -74,6 +102,8 @@ function deleteall
     done
 }
 
+generate_good_insert
+generate_bad_insert
 bad_inserter &
 sleep 1 
 
@@ -91,7 +121,6 @@ downgrade
 sleep 10
 deleteall
 
-# insert the same number of records & this should crash
 cnt=0
 while [[ "$cnt" -lt 8 ]]; do
     good_inserter &
