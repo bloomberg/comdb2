@@ -864,7 +864,7 @@ static pthread_mutex_t pglogs_lsn_commit_list_pool_lk;
 static pthread_mutex_t pglogs_relink_key_pool_lk;
 static pthread_mutex_t pglogs_relink_list_pool_lk;
 static pthread_mutex_t pglogs_queue_lk;
-static hash_t *pglogs_fileid_hash;
+static hash_t *pglogs_queue_fileid_hash;
 
 static pthread_mutex_t del_queue_lk = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1412,7 +1412,8 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
     struct shadows_fileid_pglogs_queue *fileid_queue;
 
     pthread_mutex_lock(&pglogs_queue_lk);
-    if (((fileid_queue = hash_find(pglogs_fileid_hash, fileid)) == NULL) &&
+    if (((fileid_queue = hash_find(pglogs_queue_fileid_hash, fileid)) ==
+         NULL) &&
         create) {
         fileid_queue = allocate_shadows_fileid_pglogs_queue();
         fileid_queue->deleteme = 0;
@@ -1422,7 +1423,7 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
                    offsetof(struct shadows_pglogs_queue_key, lnk));
         if (memcmp(fileid, test_fileid, DB_FILE_ID_LEN) == 0)
             abort();
-        hash_add(pglogs_fileid_hash, fileid_queue);
+        hash_add(pglogs_queue_fileid_hash, fileid_queue);
     }
 
     pthread_mutex_unlock(&pglogs_queue_lk);
@@ -1477,13 +1478,14 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
 
     pthread_mutex_lock(&pglogs_queue_lk);
 
-    if (!pglogs_fileid_hash) {
+    if (!pglogs_queue_fileid_hash) {
         pthread_mutex_unlock(&pglogs_queue_lk);
         pthread_mutex_unlock(&del_queue_lk);
         return 0;
     }
 
-    hash_info(pglogs_fileid_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+    hash_info(pglogs_queue_fileid_hash, NULL, NULL, NULL, NULL, &count, NULL,
+              NULL);
 
     qh.fileids = malloc(count * sizeof(unsigned char *));
     for (i = 0; i < count; i++)
@@ -1491,7 +1493,7 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
 
     qh.index = 0;
 
-    hash_for(pglogs_fileid_hash, collect_queue_fileids, &qh);
+    hash_for(pglogs_queue_fileid_hash, collect_queue_fileids, &qh);
     pthread_mutex_unlock(&pglogs_queue_lk);
 
     for (i = 0; i < count; i++) {
@@ -1705,8 +1707,8 @@ static void *pglogs_asof_thread(void *arg)
             set_del_lsn(__func__, __LINE__, &del_lsn, &lsn);
 
         pthread_mutex_lock(&pglogs_queue_lk);
-        hash_info(pglogs_fileid_hash, NULL, NULL, NULL, NULL, &count, NULL,
-                  NULL);
+        hash_info(pglogs_queue_fileid_hash, NULL, NULL, NULL, NULL, &count,
+                  NULL, NULL);
 
         // Realloc if I need to
         if (count > fileid_max_count) {
@@ -1721,7 +1723,7 @@ static void *pglogs_asof_thread(void *arg)
         qh.index = 0;
 
         // Collect the fileids
-        hash_for(pglogs_fileid_hash, collect_queue_fileids, &qh);
+        hash_for(pglogs_queue_fileid_hash, collect_queue_fileids, &qh);
         pthread_mutex_unlock(&pglogs_queue_lk);
 
         for (i = 0; i < qh.index; i++) {
@@ -1805,7 +1807,7 @@ static void *pglogs_asof_thread(void *arg)
                 (cur->cur == LISTC_BOT(&queue->queue_keys))) {
                 struct shadows_pglogs_queue_key *qe;
                 pthread_mutex_lock(&pglogs_queue_lk);
-                hash_del(pglogs_fileid_hash, queue);
+                hash_del(pglogs_queue_fileid_hash, queue);
                 pthread_mutex_unlock(&pglogs_queue_lk);
                 while (qe = listc_rtl(&queue->queue_keys))
                     return_pglogs_queue_key(qe);
@@ -1946,7 +1948,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 
     /* Init pglogs queue */
     pthread_mutex_init(&pglogs_queue_lk, NULL);
-    pglogs_fileid_hash =
+    pglogs_queue_fileid_hash =
         hash_init_o(offsetof(struct shadows_fileid_pglogs_queue, fileid),
                     sizeof(((struct shadows_fileid_pglogs_queue *)0)->fileid));
 
@@ -2641,14 +2643,14 @@ int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
     pthread_mutex_lock(&del_queue_lk);
     pthread_mutex_lock(&pglogs_queue_lk);
 
-    if (pglogs_fileid_hash &&
-        (fileid_queue = hash_find(pglogs_fileid_hash, fileid))) {
+    if (pglogs_queue_fileid_hash &&
+        (fileid_queue = hash_find(pglogs_queue_fileid_hash, fileid))) {
         // asof thread will delete this
         if (gbl_new_snapisol_asof) {
             fileid_queue->deleteme = 1;
             fileid_queue = NULL;
         } else
-            hash_del(pglogs_fileid_hash, fileid_queue);
+            hash_del(pglogs_queue_fileid_hash, fileid_queue);
     }
 
     pthread_mutex_unlock(&pglogs_queue_lk);
