@@ -7342,8 +7342,7 @@ retry_read:
             newsql_write_response(clnt, RESPONSE_HEADER__SQL_EFFECTS,
                                   &sql_response, 1 /*flush*/, malloc, __func__,
                                   __LINE__);
-        }
-        else {
+        } else {
             send_dbinforesponse(sb);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
