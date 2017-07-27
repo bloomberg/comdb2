@@ -152,6 +152,8 @@ void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
+extern void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+extern unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void replay_stat(void);
 
 static const char *HELP_MAIN[] = {
@@ -694,7 +696,6 @@ void *handle_exit_thd(void *arg)
 
     return NULL;
 }
-
 
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
@@ -5492,6 +5493,29 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             // mtrap memstat always go to printf()
             comdb2ma_stats(prefix, verbose, hr, ord, grp, 0);
         }
+    } else if (tokcmp(tok, ltok, "seed_genid48") == 0) {
+        unsigned long long seed;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "seed_genid48 requires a long-long seed in hex\n");
+            return -1;
+        }
+        seed = toknumllbase(tok, ltok, 16);
+        seed_genid48(thedb->bdb_env, seed);
+    } else if (tokcmp(tok, ltok, "get_genid") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "get_genid requires a stripe\n");
+            return -1;
+        }
+        int dtafile = toknum(tok, ltok);
+        unsigned long long flipgenid = 0;
+        unsigned long long genid = get_genid(thedb->bdb_env, dtafile);
+        int *flipptr = (int *)&flipgenid;
+        int *genptr = (int *)&genid;
+        flipptr[0] = htonl(genptr[1]);
+        flipptr[1] = htonl(genptr[0]);
+        logmsg(LOGMSG_USER, "0x%016llx 0x%016llx %llu\n", genid, flipgenid, genid);
     } else if (tokcmp(tok, ltok, "partitions") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "roll") == 0) {
