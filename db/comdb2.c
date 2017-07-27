@@ -382,7 +382,7 @@ int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
 
 int gbl_init_with_rowlocks = 0;
-int gbl_init_with_genid48 = 1;
+int gbl_init_with_genid48 = 0;
 int gbl_init_with_odh = 1;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
