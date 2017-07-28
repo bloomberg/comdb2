@@ -1,5 +1,5 @@
 ---
-title: Info Tables
+title: System Tables
 keywords: code
 sidebar: mydoc_sidebar
 permalink: system_tables.html
