@@ -8310,6 +8310,11 @@ void comdb2_free_prev_query_cost()
     }
 }
 
+int comdb2_get_server_port()
+{
+    return thedb->sibling_port[0][NET_REPLICATION];
+}
+
 /* get sql query cost and return it as char *
  * function will allocate memory for string
  * and caller should free that memory area
