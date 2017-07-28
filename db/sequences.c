@@ -62,7 +62,7 @@ int seq_next_val(char *name, long long *val)
         rc = bdb_llmeta_get_sequence_chunk(
             NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
             seq->chunk_size, &seq->flags, &seq->remaining_vals, seq->start_val,
-            &seq->next_start_val, &bdberr);
+            &seq->next_val, &seq->next_start_val, &bdberr);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,

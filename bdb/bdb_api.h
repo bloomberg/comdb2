@@ -1928,7 +1928,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                                   long long increment, bool cycle,
                                   long long chunk_size, char *flags,
                                   long long *remaining_vals,
-                                  long long start_val,
+                                  long long start_val, long long *next_val,
                                   long long *next_start_val, int *bdberr);
 
 void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
