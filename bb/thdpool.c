@@ -960,11 +960,142 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 }
 
 /* No locks, so not 100% accurate */
-int thdpool_get_maxthds(struct thdpool *pool) { return pool->maxnthd; }
+char *thdpool_get_name(struct thdpool *pool)
+{
+    return pool->name;
+}
 
-int thdpool_get_nthds(struct thdpool *pool) { return pool->thdlist.count; }
+int thdpool_get_status(struct thdpool *pool)
+{
+    return pool->stopped;
+}
+
+int thdpool_get_nthds(struct thdpool *pool)
+{
+    return pool->thdlist.count;
+}
+
+int thdpool_get_nfreethds(struct thdpool *pool)
+{
+    return pool->freelist.count;
+}
+
+int thdpool_get_maxthds(struct thdpool *pool)
+{
+    return pool->maxnthd;
+}
+
+int thdpool_get_peaknthds(struct thdpool *pool)
+{
+    return pool->peaknthd;
+}
+
+int thdpool_get_creates(struct thdpool *pool)
+{
+    return pool->num_creates;
+}
+
+int thdpool_get_exits(struct thdpool *pool)
+{
+    return pool->num_exits;
+}
+
+int thdpool_get_passed(struct thdpool *pool)
+{
+    return pool->num_passed;
+}
+
+int thdpool_get_enqueued(struct thdpool *pool)
+{
+    return pool->num_enqueued;
+}
+
+int thdpool_get_dequeued(struct thdpool *pool)
+{
+    return pool->num_dequeued;
+}
+
+int thdpool_get_timeouts(struct thdpool *pool)
+{
+    return pool->num_timeout;
+}
+
+int thdpool_get_failed_dispatches(struct thdpool *pool)
+{
+    return pool->num_failed_dispatches;
+}
+
+int thdpool_get_minnthd(struct thdpool *pool)
+{
+    return pool->minnthd;
+}
+
+int thdpool_get_maxnthd(struct thdpool *pool)
+{
+    return pool->maxnthd;
+}
+
+int thdpool_get_peakqueue(struct thdpool *pool)
+{
+    return pool->peakqueue;
+}
+
+int thdpool_get_maxqueue(struct thdpool *pool)
+{
+    return pool->maxqueue;
+}
 
 int thdpool_get_nqueuedworks(struct thdpool *pool)
 {
     return listc_size(&pool->queue);
+}
+
+int thdpool_get_longwaitms(struct thdpool *pool)
+{
+    return pool->longwaitms;
+}
+
+int thdpool_get_lingersecs(struct thdpool *pool)
+{
+    return pool->lingersecs;
+}
+
+int thdpool_get_stacksz(struct thdpool *pool)
+{
+    return pool->stack_sz;
+}
+
+int thdpool_get_maxqueueoverride(struct thdpool *pool)
+{
+    return pool->maxqueueoverride;
+}
+
+int thdpool_get_maxqueueagems(struct thdpool *pool)
+{
+    return pool->maxqueueagems;
+}
+
+int thdpool_get_exit_on_create_fail(struct thdpool *pool)
+{
+    return pool->exit_on_create_fail;
+}
+
+int thdpool_get_dump_on_full(struct thdpool *pool)
+{
+    return pool->dump_on_full;
+}
+
+int thdpool_lock(struct thdpool *pool)
+{
+    return pthread_mutex_lock(&pool->mutex);
+}
+
+int thdpool_unlock(struct thdpool *pool)
+{
+    return pthread_mutex_unlock(&pool->mutex);
+}
+
+struct thdpool *thdpool_next_pool(struct thdpool *pool)
+{
+    return (pool) ? pool->lnk.next : 0;
 }
