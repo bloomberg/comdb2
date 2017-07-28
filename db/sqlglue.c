@@ -12260,6 +12260,14 @@ void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm)
     bind_stmt_mem(psm->sc, stmt, psm->min);
 }
 
+/* verify_indexes_column_value
+** Make a hard copy of the result column from an internal sql query
+** so that we have access to the result even after the sql thread exits.
+**
+** pFrom is the result from a sql thread, pTo is a hard copy of pFrom.
+** The hard copy will be converted to ondisk format in mem_to_ondisk in
+** function indexes_expressions_data.
+*/
 int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
 {
     struct schema_mem *psm = (struct schema_mem *)sm;
