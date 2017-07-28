@@ -1,8 +1,7 @@
 #!/bin/bash
 
 dbname=$1
-NRECS=10000
-NRUNS=1000
+NRUNS=100
 
 cdb2sql ${CDB2_OPTIONS} $dbname default - <<"EOF"
 drop table if exists alltypes
@@ -79,11 +78,25 @@ function do_verify
     fi
 }
 
-for i in $(seq 1 $NRECS); do
-    bl=$(randbl 32)
-    echo "insert into alltypes values ($i, $i, $i, $i, $i, '$i.$i', cast(now(6) as real), x'$bl', 'abcdefghij$i', now(), now(6), cast($i as years), cast($i as days), cast($i as days), '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 92))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 381))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 6141))')"
-done | cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null
+function insert
+{
+    s=$1
+    e=$2
+    typeset i
+    for i in $(seq $s $e); do
+        bl=$(randbl 32)
+        echo "insert into alltypes values ($i, $i, $i, $i, $i, '$i.$i', cast(now(6) as real), x'$bl', 'abcdefghij$i', now(), now(6), cast($i as years), cast($i as days), cast($i as days), '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 92))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 381))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 6141))')"
+    done | cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null
+}
 
+insert 1 2000 &
+insert 2001 4000 &
+insert 4001 6000 &
+insert 6001 8000 &
+insert 8001 10000 &
+wait
+
+NRECS=10000
 assertcnt alltypes $NRECS
 do_verify alltypes
 

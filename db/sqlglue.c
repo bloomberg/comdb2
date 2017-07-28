@@ -12508,7 +12508,7 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
                              const char *tzname)
 {
     Mem *m = NULL;
-    Mem *mout = NULL;
+    Mem mout = {0};
     int nblobs = 0;
     struct field_conv_opts_tz convopts = {.flags = 0};
     struct mem_info info;
@@ -12525,15 +12525,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
         tzname = "America/New_York";
 
     sql = strbuf_new();
-    mout = (Mem *)malloc(sizeof(Mem));
-    memset(mout, 0, sizeof(Mem));
 
-    m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
-    if (m == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
-        rc = -1;
-        goto done;
-    }
+    m = (Mem *)alloca(sizeof(Mem) * sc->nmembers);
 
     for (i = 0; i < sc->nmembers; i++) {
         memset(&m[i], 0, sizeof(Mem));
@@ -12547,7 +12540,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
 
     build_indexes_expressions_query(sql, sc, "expridx_temp", f->name);
 
-    rc = run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, mout, &exist);
+    rc =
+        run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, &mout, &exist);
     if (rc || !exist) {
         logmsg(LOGMSG_ERROR, "%s: failed to run internal query, rc %d\n", __func__,
                 rc);
@@ -12559,7 +12553,7 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
     info.null = 0;
     info.fail_reason = fail_reason;
     info.tzname = tzname;
-    info.m = mout;
+    info.m = &mout;
     info.nblobs = &nblobs;
     info.convopts = &convopts;
     info.outblob = NULL;
@@ -12571,14 +12565,11 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
         logmsg(LOGMSG_ERROR,
                "%s: rc %d failed to form index \"%s\", result flag "
                "%x, index type %d\n",
-               __func__, rc, f->name, mout->flags, f->type);
+               __func__, rc, f->name, mout.flags, f->type);
         goto done;
     }
-    if (mout->zMalloc) free(mout->zMalloc);
+    if (mout.zMalloc) free(mout.zMalloc);
 done:
-    if (m)
-        free(m);
-    if (mout) free(mout);
     strbuf_free(sql);
     if (rc)
         return -1;
