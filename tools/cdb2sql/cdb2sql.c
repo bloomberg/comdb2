@@ -892,7 +892,6 @@ static void replace_args(int argc, char *argv[])
     }
 }
 
-
 void send_cancel_cnonce(const char *cnonce)
 {
     if (!gbl_in_stmt) return;
@@ -918,8 +917,8 @@ void send_cancel_cnonce(const char *cnonce)
              expanded);
     if (debug_trace) printf("Cancel sql string '%s'\n", sql);
     rc = cdb2_run_statement(cdb2h_2, sql);
-    if (!rc) 
-	gbl_sent_cancel_cnonce = 1;
+    if (!rc)
+        gbl_sent_cancel_cnonce = 1;
     else if (debug_trace)
         fprintf(stderr, "failed to cancel rc %d with '%s'\n", rc, sql);
     cdb2_close(cdb2h_2);
@@ -934,12 +933,13 @@ static void int_handler(int signum)
 {
     printf("\n");
     if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
-        printf("Requesting to cancel query (press Ctrl-C to exit program). Please wait...\n");
+        printf("Requesting to cancel query (press Ctrl-C to exit program). "
+               "Please wait...\n");
     if (gbl_sent_cancel_cnonce) exit(1);
-    if(!gbl_in_stmt) {
-	    rl_on_new_line();
-	    rl_replace_line("", 0);
-	    rl_redisplay();
+    if (!gbl_in_stmt) {
+        rl_on_new_line();
+        rl_replace_line("", 0);
+        rl_redisplay();
     }
     send_cancel_cnonce(cdb2_cnonce(cdb2h));
 }
