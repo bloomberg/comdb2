@@ -3320,7 +3320,7 @@ struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
 int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                     struct sqlclntstate *clnt, char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
-void verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
+int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 
 void verify_schema_change_constraint(struct ireq *iq, struct dbtable *, void *trans,
                                      void *od_dta, unsigned long long ins_keys);

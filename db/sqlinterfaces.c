@@ -5202,8 +5202,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->verify_indexes && steprc == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
-        verify_indexes_column_value(stmt, clnt->schema_mems);
-        return 0;
+        return verify_indexes_column_value(stmt, clnt->schema_mems);
     } else if (clnt->verify_indexes && steprc == SQLITE_DONE) {
         clnt->has_sqliterow = 0;
         return 0;
@@ -5353,6 +5352,12 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
     sqlite3_stmt *stmt = rec->stmt;
+
+    /* skip stat and logging for index on expression internal queries */
+    if (clnt->verify_indexes) {
+        put_prepared_stmt(thd, clnt, rec, outrc, 0);
+        return;
+    }
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt->osql.rqid, outrc);
 
