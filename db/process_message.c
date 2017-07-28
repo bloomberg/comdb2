@@ -2294,6 +2294,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "ckp_sleep_before_sync") == 0) {
         /* Don't document the msgtrap -
            it is for debugging/testing only. */
+        extern int gbl_ckp_sleep_before_sync;
         tok = segtok(line, lline, &st, &ltok);
         gbl_ckp_sleep_before_sync = (ltok != 0) ? toknum(tok, ltok) : 5;
         logmsg(LOGMSG_USER, "gbl_ckp_sleep_before_sync is now %d milliseconds\n",
