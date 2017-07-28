@@ -1,4 +1,4 @@
-(out='set default log level to DEBUG')
+(out='Set default log level to DEBUG')
 [exec procedure sys.cmd.send("logmsg level debug")] rc 0
 (Threshold=-1)
 [put analyze threshold t1 123] failed with rc -3 Threshold must be between 0 and 100

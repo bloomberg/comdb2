@@ -3613,9 +3613,6 @@ enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
 
 void check_access_controls(struct dbenv *dbenv);
 
-int defer_option(struct dbenv *dbenv, enum deferred_option_level lvl, char *option, int len, int line);
-int process_deferred_options(struct dbenv *dbenv, enum deferred_option_level lvl, void *usrdata, int (*callback)(struct dbenv *envc, char *option, void *p, int len));
-
 /* Blob mem. */
 extern comdb2bma blobmem; // blobmem for db layer
 extern size_t gbl_blobmem_cap;
@@ -3638,8 +3635,9 @@ int set_rowlocks(void *trans, int enable);
 extern int gbl_upd_null_cstr_return_conv_err;
 
 /* Update the tunable at runtime. */
-int handle_runtime_tunable(const char *name, const char *value);
+comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value);
 /* Update the tunable read from lrl file. */
-int handle_lrl_tunable(char *name, int name_len, char *value, int value_len);
+comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
+                                      int value_len, int flags);
 
 #endif /* !INCLUDED_COMDB2_H */
