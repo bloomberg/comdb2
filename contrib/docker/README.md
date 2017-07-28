@@ -5,6 +5,14 @@
 2) *For using `make docker-cluster`* Install [Docker Compose](https://docs.docker.com/compose/install/)
 3) Read these docs to see what everything is used for
 
+This utility was built and tested using the following versions of Docker Engine and Compose:
+
+Docker Engine
+* version 17.06.0-ce
+
+Docker Compose
+* version 1.14.0
+
 ## Dockerfiles
 
 This folder contains several Dockerfiles which serve different functions in running Comdb2 on Docker.
