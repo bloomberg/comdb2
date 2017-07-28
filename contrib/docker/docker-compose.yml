@@ -1,5 +1,5 @@
-# Compose file for comsb2 development standalone
-version: "3"
+# Compose file for comdb2 development standalone
+version: "2"
 
 services:
   comdb2-node1:

@@ -8,10 +8,10 @@
 This utility was built and tested using the following versions of Docker Engine and Compose:
 
 Docker Engine
-* version 17.06.0-ce, build 02c1d87
+* version 17.06.0-ce
 
 Docker Compose
-* version 1.14.0, build c7bdf9e
+* version 1.14.0
 
 ## Dockerfiles
 
