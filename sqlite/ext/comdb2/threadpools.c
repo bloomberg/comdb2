@@ -93,7 +93,7 @@ static int systblThreadPoolsConnect(sqlite3 *db, void *pAux, int argc,
         memset(*ppVtab, 0, sizeof(*ppVtab));
     }
 
-    return 0;
+    return SQLITE_OK;
 }
 
 static int systblThreadPoolsBestIndex(sqlite3_vtab *tab,
@@ -153,7 +153,7 @@ static int systblThreadPoolsNext(sqlite3_vtab_cursor *cur)
 static int systblThreadPoolsEof(sqlite3_vtab_cursor *cur)
 {
     systbl_threadpools_cursor *pCur = (systbl_threadpools_cursor *)cur;
-    return (pCur->rowid >= listc_size(&threadpools)) ? 1 : 0;
+    return (pCur->pool == NULL) ? 1 : 0;
 }
 
 static int systblThreadPoolsColumn(sqlite3_vtab_cursor *cur,
@@ -228,7 +228,6 @@ static int systblThreadPoolsColumn(sqlite3_vtab_cursor *cur,
     case COLUMN_STACK_SIZE:
         sqlite3_result_int(ctx, thdpool_get_stacksz(pool));
         break;
-
     case COLUMN_MAX_QUEUE_OVERRIDE:
         sqlite3_result_int(ctx, thdpool_get_maxqueueoverride(pool));
         break;
@@ -236,11 +235,11 @@ static int systblThreadPoolsColumn(sqlite3_vtab_cursor *cur,
         sqlite3_result_int(ctx, thdpool_get_maxqueueagems(pool));
         break;
     case COLUMN_EXIT_ON_CREATE_FAIL:
-        sqlite3_result_text(
-            ctx, YESNO(thdpool_get_exit_on_create_fail(pool) == 1), -1, NULL);
+        sqlite3_result_text(ctx, YESNO(thdpool_get_exit_on_create_fail(pool)),
+                            -1, NULL);
         break;
     case COLUMN_DUMP_ON_FULL:
-        sqlite3_result_text(ctx, YESNO(thdpool_get_dump_on_full(pool) == 1), -1,
+        sqlite3_result_text(ctx, YESNO(thdpool_get_dump_on_full(pool)), -1,
                             NULL);
         break;
     default: assert(0);
