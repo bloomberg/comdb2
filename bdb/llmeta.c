@@ -8155,6 +8155,7 @@ done:
  * @param char *flags Pointer to flags for the sequence
  * @param long long *remaining_vals Pointer to next_val member in sequence_t object
  * @param long long start_val Start value of the sequence
+ * @param long long *next_val Next value to be dispensed in the sequence
  * @param long long *next_start_val Start value of the next dispensed chunk
  * @param int *bdberr BDB error
  */
@@ -8163,7 +8164,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                                   long long increment, bool cycle,
                                   long long chunk_size, char *flags,
                                   long long *remaining_vals,
-                                  long long start_val,
+                                  long long start_val, long long *next_val,
                                   long long *next_start_val, int *bdberr)
 {
     long long new_start_val;
@@ -8291,7 +8292,8 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     rc = bdb_llmeta_alter_sequence(NULL, name, min_val, max_val, increment, cycle,
                               start_val, new_start_val, chunk_size, *flags, bdberr);
 
-    // Return start value of the next chunk
+    // Set the new values for next value and next start value
+    *next_val = *next_start_val;
     *next_start_val = new_start_val;
 
     return rc;

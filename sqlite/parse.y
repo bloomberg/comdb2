@@ -317,6 +317,10 @@ sequence_increment_by(A) ::= INCREMENT BY longlong(B). {
   A.type = SEQ_INC;
   A.data = B;
 }
+sequence_increment_by(A) ::= INCREMENT longlong(B). {
+  A.type = SEQ_INC;
+  A.data = B;
+}
 
 %type sequence_min_value {seq_arg}
 sequence_min_value(A) ::= MINVALUE longlong(B). {
