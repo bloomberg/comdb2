@@ -960,6 +960,7 @@ int sqlite3VdbeExec(
       if( (opProperty & OPFLG_IN2)!=0 ){
         assert( pOp->p2>0 );
         assert( pOp->p2<=(p->nMem+1 - p->nCursor) );
+	/* COMDB2: TODO: mem is set to MEM_Undefined so assert fails */
         assert( memIsValid(&aMem[pOp->p2]) );
         assert( sqlite3VdbeCheckMemInvariants(&aMem[pOp->p2]) );
         REGISTER_TRACE(pOp->p2, &aMem[pOp->p2]);
