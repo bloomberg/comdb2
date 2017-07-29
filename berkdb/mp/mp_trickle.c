@@ -111,8 +111,10 @@ __memp_trickle(dbenv, pct, nwrotep, lru)
 		nwrotep = &wrote;
 	if (dbenv->iomap && dbenv->attr.iomap_enabled)
 		dbenv->iomap->memptrickle_active = time(NULL);
+	/* With perfect checkpoints it is unlikely to ensure the percentage
+	   of clean pages. So here we write all modified pages to disk. */
 	ret = __memp_sync_int(dbenv, NULL, n,
-	    lru ? DB_SYNC_LRU : DB_SYNC_TRICKLE, nwrotep, 1, NULL);
+	    lru ? DB_SYNC_LRU : DB_SYNC_TRICKLE, nwrotep, 1, NULL, 0);
 	if (dbenv->iomap && dbenv->attr.iomap_enabled)
 		dbenv->iomap->memptrickle_active = 0;
 

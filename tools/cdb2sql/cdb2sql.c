@@ -50,7 +50,8 @@ static char *dbname = NULL;
 static char *dbtype = NULL;
 static char *dbhostname = NULL;
 static char main_prompt[MAX_DBNAME_LENGTH + 2];
-static char gbl_in_stmt = 0;
+static unsigned char gbl_in_stmt = 0;
+static unsigned char gbl_sent_cancel_cnonce = 0;
 
 /* display mode */
 enum {
@@ -698,6 +699,7 @@ static void process_line(char *sql, int ntypes, int *types)
     gbl_in_stmt = 1;
     rc = run_statement(sqlstr, ntypes, types, &start_time_ms, &run_time_ms);
     gbl_in_stmt = 0;
+    gbl_sent_cancel_cnonce = 0;
 
     if (rc != 0) {
         error++;
@@ -915,10 +917,11 @@ void send_cancel_cnonce(const char *cnonce)
              expanded);
     if (debug_trace) printf("Cancel sql string '%s'\n", sql);
     rc = cdb2_run_statement(cdb2h_2, sql);
-    if (rc && debug_trace)
+    if (!rc)
+        gbl_sent_cancel_cnonce = 1;
+    else if (debug_trace)
         fprintf(stderr, "failed to cancel rc %d with '%s'\n", rc, sql);
     cdb2_close(cdb2h_2);
-    gbl_in_stmt = 0;
 }
 
 /* If ctrl_c was pressed to clear existing line and go to new line
@@ -929,9 +932,15 @@ void send_cancel_cnonce(const char *cnonce)
 static void int_handler(int signum)
 {
     printf("\n");
-    rl_on_new_line();
-    rl_replace_line("", 0);
-    rl_redisplay();
+    if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
+        printf("Requesting to cancel query (press Ctrl-C to exit program). "
+               "Please wait...\n");
+    if (gbl_sent_cancel_cnonce) exit(1);
+    if (!gbl_in_stmt) {
+        rl_on_new_line();
+        rl_replace_line("", 0);
+        rl_redisplay();
+    }
     send_cancel_cnonce(cdb2_cnonce(cdb2h));
 }
 

@@ -37,9 +37,6 @@ static int __memp_set_mp_recovery_pages __P((DB_ENV *, int));
 static pthread_once_t init_pgcompact_once = PTHREAD_ONCE_INIT;
 void __memp_init_pgcompact_routines(void);
 
-/* Global switch for perfect checkpoint. */
-int gbl_use_perfect_ckp = 1;
-
 /*
  * __memp_dbenv_create --
  *	Mpool specific creation of the DB_ENV structure.
@@ -67,8 +64,6 @@ __memp_dbenv_create(dbenv)
 	    32 * ((8 * 1024) + sizeof(BH)) + 37 * sizeof(DB_MPOOL_HASH);
 	dbenv->mp_ncache = 1;
 	dbenv->mp_multiple = 1.0;
-	/* Make a copy in the structure to improve locality. */
-	dbenv->mp_perfect_ckp = gbl_use_perfect_ckp;
 
 #ifdef HAVE_RPC
 	if (F_ISSET(dbenv, DB_ENV_RPCCLIENT)) {

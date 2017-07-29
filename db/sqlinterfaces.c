@@ -5202,8 +5202,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     if (clnt->verify_indexes && steprc == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
-        verify_indexes_column_value(stmt, clnt->schema_mems);
-        return 0;
+        return verify_indexes_column_value(stmt, clnt->schema_mems);
     } else if (clnt->verify_indexes && steprc == SQLITE_DONE) {
         clnt->has_sqliterow = 0;
         return 0;
@@ -5353,6 +5352,12 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         struct sql_state *rec, int outrc)
 {
     sqlite3_stmt *stmt = rec->stmt;
+
+    /* skip stat and logging for index on expression internal queries */
+    if (clnt->verify_indexes) {
+        put_prepared_stmt(thd, clnt, rec, outrc, 0);
+        return;
+    }
 
     sql_statement_done(thd->sqlthd, thd->logger, clnt->osql.rqid, outrc);
 
@@ -5742,6 +5747,11 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
                    "%s line %d: testing null thd->sqldb codepath\n", __func__,
                    __LINE__);
         }
+        /* Tell newsql client to CHANGENODE */
+        if (clnt->is_newsql) {
+            char *errstr = "Client api should change nodes";
+            client_sql_api.send_run_error(clnt, errstr, CDB2ERR_CHANGENODE);
+        }
         clnt->query_rc = -1;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
@@ -5782,16 +5792,12 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
 
     /* Set whatever mode this client needs */
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode);
-    if (rc ||
-        (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
+    
+    /* Will only happen if the database doesn't have logical logging */
+    if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s line %d: unable to set_transaction_mode rc=%d!\n", __func__,
                __LINE__, rc);
-        if (debug_appsock) {
-            logmsg(LOGMSG_ERROR, "%s line %d: testing failed set-transaction "
-                                 "codepath\n",
-                   __func__, __LINE__);
-        }
         send_prepare_error(clnt, "Failed to set transaction mode.", 0);
         reqlog_logf(thd->logger, REQL_TRACE,
                     "Failed to set transaction mode.\n");
@@ -7310,6 +7316,7 @@ retry_read:
         clnt->ready_for_heartbeats = 0;
         pthread_mutex_unlock(&clnt->wait_mutex);
     }
+    free(p);
 
     if (query && query->dbinfo) {
         if (query->dbinfo->has_want_effects &&
@@ -7341,17 +7348,12 @@ retry_read:
             newsql_write_response(clnt, RESPONSE_HEADER__SQL_EFFECTS,
                                   &sql_response, 1 /*flush*/, malloc, __func__,
                                   __LINE__);
-
-            goto retry_read;
+        } else {
+            send_dbinforesponse(sb);
         }
-        send_dbinforesponse(sb);
         cdb2__query__free_unpacked(query, &pb_alloc);
-        query = NULL;
-        free(p);
         goto retry_read;
     }
-
-    free(p);
 
     /* Do security check before we return. We do it only after
        the query has been unpacked so that we know whether
@@ -7377,6 +7379,7 @@ retry_read:
             newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL,
                                   NULL, 1 , malloc, __func__, __LINE__);
             /* Client is going to reuse the connection. Don't drop it. */
+            cdb2__query__free_unpacked(query, &pb_alloc);
             goto retry_read;
         } else {
             char *err = "The database requires SSL connections.";
@@ -7387,6 +7390,7 @@ retry_read:
             rc = fsql_write_response(clnt, &resp, err, strlen(err) + 1, 1,
                                      __func__, __LINE__);
         }
+        cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
 
@@ -7795,6 +7799,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         goto done;
     assert(query->sqlquery);
     CDB2SQLQUERY *sql_query = query->sqlquery;
+    clnt.query = query;
 
     if (do_query_on_master_check(&clnt, sql_query))
         goto done;
@@ -8309,6 +8314,11 @@ void comdb2_free_prev_query_cost()
         free(clnt->prev_cost_string);
         clnt->prev_cost_string = NULL;
     }
+}
+
+int comdb2_get_server_port()
+{
+    return thedb->sibling_port[0][NET_REPLICATION];
 }
 
 /* get sql query cost and return it as char *
@@ -8903,7 +8913,7 @@ int sql_testrun(char *sql, int sqllen) { return 0; }
 int sqlpool_init(void)
 {
     gbl_sqlengine_thdpool =
-        thdpool_create("SQL engine pool", sizeof(struct sqlthdstate));
+        thdpool_create("sqlenginepool", sizeof(struct sqlthdstate));
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_sqlengine_thdpool);

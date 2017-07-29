@@ -134,6 +134,7 @@ build-build-container:
 
 docker-clean:
 	rm -fr contrib/docker/build/*
+	docker-compose -f $(realpath $(SRCHOME))/contrib/docker/docker-compose.yml down
 
 docker-dev: docker-standalone
 	docker build -t comdb2-dev:$(VERSION) -f contrib/docker/Dockerfile.dev .
@@ -141,6 +142,15 @@ docker-dev: docker-standalone
 
 docker-standalone: docker-build
 	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
+
+docker-cluster: docker-standalone
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node1
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node2
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node3
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node4
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node5
+	docker-compose -f $(realpath $(SRCHOME))/contrib/docker/docker-compose.yml down
+	docker-compose -f $(realpath $(SRCHOME))/contrib/docker/docker-compose.yml up -d
 
 # Build the database in the build container
 docker-build: build-build-container
@@ -152,3 +162,4 @@ docker-build: build-build-container
 		-w /comdb2.build \
 		comdb2-build:$(VERSION) \
         make DESTDIR=/comdb2 -j3 install
+ 

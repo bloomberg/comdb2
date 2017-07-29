@@ -97,7 +97,6 @@
 
 #include "views.h"
 #include "logmsg.h"
-#include "ssl_bend.h"
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results

@@ -59,6 +59,15 @@ typedef enum {
 
     /* Set this flag if no argument has been specified. */
     EMPTY = 1 << 8,
+
+    /* Set this flag if the tunable needs to be read early during startup. */
+    READEARLY = 1 << 9,
+
+    /*
+      This flag is used to allow handle_lrl_tunable() to update only dynamic
+      (non READONLY) tunables via process_command().
+    */
+    DYNAMIC = 1 << 10,
 } comdb2_tunable_flag;
 
 /*
@@ -91,10 +100,24 @@ typedef enum {
     TUNABLE_BOOLEAN,
     TUNABLE_STRING,
     TUNABLE_ENUM,
+    TUNABLE_COMPOSITE,
 
     /* Must always be the last. */
     TUNABLE_INVALID,
 } comdb2_tunable_type;
+
+typedef enum {
+    /* Success */
+    TUNABLE_ERR_OK = 0,
+    /* Internal error on updating the tunable. */
+    TUNABLE_ERR_INTERNAL,
+    /* Invalid (non-registered) tunable. */
+    TUNABLE_ERR_INVALID_TUNABLE,
+    /* Invalid value for tunable. */
+    TUNABLE_ERR_INVALID_VALUE,
+    /* Attempt to update a read-only tunable at runtime. */
+    TUNABLE_ERR_READONLY,
+} comdb2_tunable_err;
 
 struct comdb2_tunable {
     /* Name of the tunable. (Mandatory) */
@@ -115,8 +138,11 @@ struct comdb2_tunable {
     /* Flags. */
     unsigned long int flags;
 
-    /* Returns the value of the tunable in cstring. (Optional) */
-    const char *(*value)(void *);
+    /*
+      Returns the value of the tunable. (Optional)
+      ENUM types must always return a null-terminated string.
+    */
+    void *(*value)(void *);
 
     /*
       Verify the value of the tunable. (Optional)
@@ -168,5 +194,8 @@ const char *tunable_type(comdb2_tunable_type type);
 
 /* Verify whether the given value is in [0-100] range. */
 int percent_verify(void *context, void *percent);
+
+/* Return error string. */
+const char *tunable_error(comdb2_tunable_err code);
 
 #endif /* _TUNABLES_H */
