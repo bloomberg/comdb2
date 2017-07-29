@@ -5747,6 +5747,11 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
                    "%s line %d: testing null thd->sqldb codepath\n", __func__,
                    __LINE__);
         }
+        /* Tell newsql client to CHANGENODE */
+        if (clnt->is_newsql) {
+            char *errstr = "Client api should change nodes";
+            client_sql_api.send_run_error(clnt, errstr, CDB2ERR_CHANGENODE);
+        }
         clnt->query_rc = -1;
         pthread_mutex_lock(&clnt->wait_mutex);
         clnt->done = 1;
@@ -5787,16 +5792,12 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
 
     /* Set whatever mode this client needs */
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode);
-    if (rc ||
-        (gbl_debug_sqlthd_failures && (debug_appsock = !(rand() % 1000)))) {
+    
+    /* Will only happen if the database doesn't have logical logging */
+    if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s line %d: unable to set_transaction_mode rc=%d!\n", __func__,
                __LINE__, rc);
-        if (debug_appsock) {
-            logmsg(LOGMSG_ERROR, "%s line %d: testing failed set-transaction "
-                                 "codepath\n",
-                   __func__, __LINE__);
-        }
         send_prepare_error(clnt, "Failed to set transaction mode.", 0);
         reqlog_logf(thd->logger, REQL_TRACE,
                     "Failed to set transaction mode.\n");
