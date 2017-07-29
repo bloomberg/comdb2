@@ -1271,6 +1271,12 @@ void __dbenv_set_durable_lsn __P((dbenv, lsnp, generation))
 
 	pthread_mutex_lock(&dbenv->durable_lsn_lk);
 
+    if (generation > dbenv->durable_generation && 
+            log_compare(lsnp, &dbenv->durable_lsn) < 0) {
+        logmsg(LOGMSG_FATAL, "Aborting on reversing durable lsn\n");
+        abort();
+    }
+
     if (dbenv->durable_generation < generation || 
             log_compare(&dbenv->durable_lsn, lsnp) <= 0) {
 

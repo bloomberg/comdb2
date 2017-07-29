@@ -5272,11 +5272,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
             logmsg(LOGMSG_FATAL, "durable_lsn_lk failed\n");
             exit(1);
         }
-        rc = pthread_cond_init(&bdb_state->durable_lsn_wait, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "durable_lsn_wait failed\n");
-            exit(1);
-        }
     }
 
     /* XXX this looks wrong */
