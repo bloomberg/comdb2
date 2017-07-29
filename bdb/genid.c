@@ -63,6 +63,7 @@
 #endif
 
 #include "genid.h"
+#include "logmsg.h"
 
 static unsigned long long commit_genid;
 static DB_LSN commit_lsn;
@@ -267,7 +268,7 @@ int bdb_genid_is_recno(bdb_state_type *bdb_state, unsigned long long genid)
         return is_genid_add(genid) || is_genid_upd(genid);
     }
     else {
-        fprintf(stderr, "Unknown genid format!\n");
+        logmsg(LOGMSG_FATAL, "Unknown genid format!\n");
         abort();
     }
 }
@@ -304,7 +305,7 @@ void set_gblcontext(bdb_state_type *bdb_state, unsigned long long gblcontext)
     /*fprintf(stderr, "setting gblcontext to %llu\n", gblcontext);*/
 
     if (gblcontext == -1ULL) {
-        fprintf(stderr, "SETTING CONTEXT TO -1\n");
+        logmsg(LOGMSG_ERROR, "SETTING CONTEXT TO -1\n");
         cheap_stack_trace();
     }
 
@@ -364,7 +365,8 @@ static inline void set_commit_genid_lsn_gen(unsigned long long genid,
         const DB_LSN *lsn, const uint32_t *generation)
 {
     if (bdb_cmp_genids(genid, commit_genid) < 0) {
-        fprintf(stderr, "Blocked attempt to set lower commit_genid\n");
+        logmsg(LOGMSG_ERROR, "Blocked attempt to set lower commit_genid\n");
+        cheap_stack_trace();
         return;
     }
     commit_genid = genid;
@@ -394,7 +396,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     while (seed48 >= 0x0000ffffffffffffULL) {
         /* This database needs a clean dump & load (or we need to expand our
          * genids */
-        fprintf(stderr, "%s: this database has run out of genids!\n",
+        logmsg(LOGMSG_ERROR, "%s: this database has run out of genids!\n",
                 __func__);
         sleep(1);
     }
@@ -428,7 +430,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
 
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
     if (prwarn && (now = time(NULL)) > lastwarn) {
-        fprintf(stderr, "%s: low-genid warning: this database has only "
+        logmsg(LOGMSG_WARNING, "%s: low-genid warning: this database has only "
                 "%llu genids remaining\n",
                 __func__, 0x0000ffffffffffffULL - seed48);
         lastwarn = now;
@@ -463,7 +465,7 @@ stall:
         contexttime = bdb_genid_timestamp(gblcontext);
 
         if (contexttime > epochtime) {
-            fprintf(stderr, "context is %d epoch is %d  - stalling!!!\n",
+            logmsg(LOGMSG_WARNING, "context is %d epoch is %d  - stalling!!!\n",
                     contexttime, epochtime);
             poll(NULL, 0, 100);
             goto stall;
