@@ -338,7 +338,9 @@ struct __bh {
 	db_pgno_t pgno;			/* Underlying MPOOLFILE page number. */
 	roff_t	  mf_offset;		/* Associated MPOOLFILE offset. */
 
-	DB_LSN first_dirty_lsn;		/* LSN when the page was marked dirty first time. */
+	/* The begin LSN of the transaction that
+	   marked the page from clean to dirty. */
+	DB_LSN first_dirty_tx_begin_lsn;
 
 	/*
 	 * !!!

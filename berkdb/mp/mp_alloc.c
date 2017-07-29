@@ -417,7 +417,7 @@ found:		if (offsetp != NULL)
 			case 5:
 			case 6:
 				(void)__memp_sync_int(dbenv, NULL, 0,
-				    DB_SYNC_ALLOC, NULL, 0, NULL);
+				    DB_SYNC_ALLOC, NULL, 0, NULL, 0);
 
 				sleeptime++;
 				if (__gbl_max_mpalloc_sleeptime &&

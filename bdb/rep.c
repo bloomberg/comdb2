@@ -4184,7 +4184,7 @@ struct thdpool *gbl_pgcompact_thdpool;
 
 int pgcompact_thdpool_init(void)
 {
-    gbl_pgcompact_thdpool = thdpool_create("PAGE COMPACT pool", 0);
+    gbl_pgcompact_thdpool = thdpool_create("pgcompactpool", 0);
 
     thdpool_set_exit(gbl_pgcompact_thdpool);
     thdpool_set_stack_size(gbl_pgcompact_thdpool, (1 << 20));

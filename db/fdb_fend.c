@@ -54,7 +54,6 @@ extern int gbl_fdb_allow_cross_classes;
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
-extern int gbl_new_indexes;
 
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
@@ -1669,11 +1668,6 @@ static int insert_table_entry_from_packedsqlite(fdb_t *fdb, fdb_tbl_t *tbl,
     }
     if (where)
         where[1] = ' ';
-
-    if (gbl_new_indexes) {
-        tbl->ix_partial = 1;
-        tbl->ix_expr = 1;
-    }
 
     /*
     printf("Saved pointer %p\n", row);

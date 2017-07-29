@@ -391,7 +391,7 @@ struct thdpool *gbl_udppfault_thdpool = NULL;
 
 int udppfault_thdpool_init(void)
 {
-    gbl_udppfault_thdpool = thdpool_create("UDP PREFAULT pool", 0);
+    gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
 
     thdpool_set_exit(gbl_udppfault_thdpool);
 

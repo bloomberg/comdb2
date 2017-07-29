@@ -29,7 +29,7 @@ extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
 /******************* Utility ****************************/
 
-static inline int setError(Parse *pParse, int rc, char *msg)
+static inline int setError(Parse *pParse, int rc, const char *msg)
 {
     pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
@@ -1936,7 +1936,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
                 (*size)++;
             }
 
-            if (errno == EINVAL || errno == ERANGE) {
+            if (errno == EINVAL || errno == ERANGE || *size < 0) {
                 /* Malformed size. */
                 return -1;
             }
@@ -2000,7 +2000,6 @@ static int fix_type_and_len(int *type, int *len)
         *type = 8;
         *len = in_len - 1;
         break;
-    case SERVER_BLOB: goto err;
     case SERVER_DATETIME: *type = 9; break;
     case SERVER_INTVYM: *type = 13; break;
     case SERVER_INTVDS: *type = 11; break;
@@ -2016,6 +2015,7 @@ static int fix_type_and_len(int *type, int *len)
         default: goto err;
         }
         break;
+    case SERVER_BLOB: /* fallthrough */
     case SERVER_BLOB2:
         *type = 7;
         *len = in_len - 5;
@@ -3996,14 +3996,15 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     char *t_name;
     char *t_value;
     int rc;
+    comdb2_tunable_err err;
 
     rc = create_string_from_token(NULL, pParse, &t_name, name);
     if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
     rc = create_string_from_token(NULL, pParse, &t_value, value);
     if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
 
-    if ((handle_runtime_tunable(t_name, t_value))) {
-        setError(pParse, SQLITE_ERROR, "Failed to update tunable.");
+    if ((err = handle_runtime_tunable(t_name, t_value))) {
+        setError(pParse, SQLITE_ERROR, tunable_error(err));
     }
 
 cleanup:

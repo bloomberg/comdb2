@@ -378,10 +378,10 @@ echo "Test with insert, SC should not fail"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events detailed on")'
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
-#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
+#cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat alltypes.csc2 ` }"
 
 assert_vers t1 0
-assert_schema t1 t1.csc2
+assert_schema t1 alltypes.csc2
 
 let NEWNUMREC=$((2*INITNUMREC))
 insert_records 1 $NEWNUMREC
