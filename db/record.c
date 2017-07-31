@@ -288,6 +288,18 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         retrc = ERR_BADREQ;
         ERR;
     }
+    
+    /* Also check blob sizes */
+    if (!(flags & RECFLAGS_NO_BLOBS)) {
+        for (int i = 0; i < maxblobs; i++) {
+            if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
+                reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
+                        "blob size (%d) exceeds maximum (%d)", blobs[i].length, MAXBLOBLENGTH);
+                retrc = ERR_BLOB_TOO_LARGE;
+                ERR;
+            }
+        }
+    }
 
     struct schema *ondisktagsc; // schema for .ONDISK
     int tag_same_as_ondisktag = (strcmp(tag, ondisktag) == 0);
@@ -915,6 +927,18 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         goto err;
+    }
+
+    /* Also check blob sizes */
+    if (!(flags & RECFLAGS_NO_BLOBS)) {
+        for (int i = 0; i < maxblobs; i++) {
+            if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
+                reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
+                        "blob size (%d) exceeds maximum (%d)", blobs[i].length, MAXBLOBLENGTH);
+                retrc = ERR_BLOB_TOO_LARGE;
+                ERR;
+            }
+        }
     }
 
     /*
