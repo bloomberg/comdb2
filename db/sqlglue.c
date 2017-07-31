@@ -866,6 +866,14 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
         }
     }
 
+    if ((f->type == SERVER_BLOB || f->type == SERVER_BLOB2 || f->type == SERVER_VUTF8) && m->n > MAXBLOBLENGTH) {
+        rc = -1;
+        if (fail_reason) {
+            fail_reason->reason = CONVERT_FAILED_BLOB_SIZE;
+        }
+        return rc;
+    }
+
     if (m->flags & MEM_Int) {
         i64 i = flibc_htonll(m->u.i);
         rc = CLIENT_to_SERVER(
@@ -8642,6 +8650,8 @@ int sqlite3BtreeInsert(
                 rc = SQLITE_ERROR;
                 goto done;
             }
+
+            /* blob check */
         }
 
         /* If it's a known invalid genid (see sqlite3BtreeNewRowid() for
