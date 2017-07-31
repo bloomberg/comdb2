@@ -323,7 +323,7 @@ set all_graphs {
     }
   }
   truncate {
-    line TRUNCATE {opt TABLE } /table-name
+    line TRUNCATE TABLE /table-name
   }
   analyze {stack
     {line ANALYZE {or /table-name ALL} {opt /percent-coverage}}
