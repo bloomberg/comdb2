@@ -144,6 +144,76 @@ void cdb2sql_usage(int exit_val)
     exit(exit_val);
 }
 
+
+const char *words[] = {"add", "remove", "rm", "update", "child", "children", "wife", "wives", NULL};
+
+
+
+// Generator function for word completion.
+
+char *my_generator (const char *text, int state)
+
+{
+
+    static int list_index, len;
+
+    const char *name;
+
+
+
+    if (!state)
+
+    {
+
+        list_index = 0;
+
+        len = strlen (text);
+
+    }
+
+
+
+    while (name = words[list_index])
+
+    {
+
+        list_index++;
+
+        if (strncmp (name, text, len) == 0) return strdup (name);
+
+    }
+
+
+
+    // If no names matched, then return NULL.
+
+    return ((char *) NULL);
+
+}
+
+
+
+// Custom completion function
+
+static char **my_completion (const char *text, int start, int end)
+
+{
+
+    // This prevents appending space to the end of the matching word
+
+    rl_completion_append_character = '\0';
+    char **matches = (char **) NULL;
+    if (start == 0) {
+        matches = rl_completion_matches ((char *) text, &my_generator);
+    }
+
+    // else rl_bind_key ('\t', rl_abort);
+
+    return matches;
+
+}
+
+
 static char *read_line()
 {
     static char *line = NULL;
@@ -1094,6 +1164,7 @@ int main(int argc, char *argv[])
     if (isttyarg == 2)
         istty = 0;
     if (istty) {
+        rl_attempted_completion_function = my_completion;
         load_readline_history();
         struct sigaction sact;
         sact.sa_handler = int_handler;
