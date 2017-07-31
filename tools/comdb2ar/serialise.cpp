@@ -1174,6 +1174,17 @@ void serialise_database(
 
         long long log_number(lowest_log);
 
+        // First, serialise any complete log files that are in the .txn
+        // directory and notify the running database that they can now be
+        // archived.
+        // TODO: Figure out how to serialise logs after each file without
+        // disrupting the page data file
+        long long old_log_number(log_number);
+        serialise_log_files(dbtxndir, dbdir, log_number, true);
+        if(log_number != old_log_number && log_holder.get()) {
+            log_holder->release_log(log_number - 1);
+        }
+
         // Write the header
         TarHeader head;
         head.set_filename(getDTString() + ".data");
@@ -1193,18 +1204,8 @@ void serialise_database(
             page_it = page_number_vec.begin();
 
         ssize_t data_written = 0;
-        // First, serialise any complete log files that are in the .txn
-        // directory and notify the running database that they can now be
-        // archived.
-        // TODO: Figure out how to serialise logs after each file without
-        // disrupting the page data file
-        long long old_log_number(log_number);
-        serialise_log_files(dbtxndir, dbdir, log_number, true);
-        if(log_number != old_log_number && log_holder.get()) {
-            log_holder->release_log(log_number - 1);
-        }
 
-        // Serialise the file's changed pages
+        // Serialise the database's changed pages
         while(data_it != incr_data_files.end()){
             data_written += serialise_incr_file(*data_it, *page_it, incr_path);
 
