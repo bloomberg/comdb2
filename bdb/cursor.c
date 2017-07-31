@@ -200,7 +200,7 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
                            int how);
 static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
                                     int *bdberr);
-static int bdb_btree_update_shadows_with_trn_pglogs(bdb_cursor_impl_t *cur,
+static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
                                                     db_pgno_t *inpgno,
                                                     unsigned char *infileid,
                                                     int *bdberr);
@@ -2116,10 +2116,10 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                 log_compare(&bot->lsn, &lsnent->lsn) <= 0));
 #endif
     listc_abl(&pglogs_ent->lsns, lsnent);
-    /* printf("%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
-       __func__,
-       lsn.file, lsn.offset, lsnent, pglogs_hashtbl, pglogs_ent,
-       &pglogs_ent->lsns);
+    /*
+    printf("%s: added lsn [%u][%u] addr %p to hash %p, ent %p list %p\n",
+           __func__, lsn.file, lsn.offset, lsnent, pglogs_hashtbl, pglogs_ent,
+           &pglogs_ent->lsns);
     char *buf;
     hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
     printf("%s: FILEID: %s ", __func__, buf);
@@ -2127,7 +2127,8 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
     printf(" LSN: %d:%d ", lsn.file, lsn.offset);
     printf(" commit_lsn: %d:%d ", commit_lsn.file, commit_lsn.offset);
     printf("\n");
-    free(buf); */
+    free(buf);
+    */
 
     return 0;
 }
@@ -2635,7 +2636,7 @@ static int bdb_update_pglogs_fileid_queues(
 
 /* Called when the file itself is deleted. */
 int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
-                                   unsigned char *fileid, char *name)
+                                   unsigned char *fileid)
 {
     struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
     struct shadows_pglogs_queue_key *qe;
@@ -3394,7 +3395,7 @@ static int bdb_cursor_update_shadows_with_pglogs(bdb_cursor_ifn_t *pcur_ifn,
     int rc;
 
     rc =
-        bdb_btree_update_shadows_with_trn_pglogs(cur, inpgno, infileid, bdberr);
+        bdb_btree_update_shadows_with_pglogs_int(cur, inpgno, infileid, bdberr);
 
     return rc;
 }
@@ -4080,10 +4081,11 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                 abort();
             }
             if (prev_pgno != pgno || pgno == 0) {
-                rc2 = bdb_btree_update_shadows_with_trn_pglogs(cur, &pgno,
+                rc2 = bdb_btree_update_shadows_with_pglogs_int(cur, &pgno,
                                                                fileid, bdberr);
                 if (rc2 < 0) {
-                    logmsg(LOGMSG_FATAL, "bdb_btree_update_shadows_with_trn_pglogs failed\n");
+                    logmsg(LOGMSG_FATAL,
+                           "bdb_btree_update_shadows_with_pglogs_int failed\n");
                     abort();
                 }
                 prev_pgno = pgno;
@@ -4205,10 +4207,11 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
                     abort();
                 }
                 if (prev_pgno != pgno || pgno == 0) {
-                    rc2 = bdb_btree_update_shadows_with_trn_pglogs(
+                    rc2 = bdb_btree_update_shadows_with_pglogs_int(
                         cur, &pgno, fileid, bdberr);
                     if (rc2 < 0) {
-                        logmsg(LOGMSG_FATAL, "bdb_btree_update_shadows_with_trn_pglogs "
+                        logmsg(LOGMSG_FATAL,
+                               "bdb_btree_update_shadows_with_pglogs_int "
                                "failed\n");
                         abort();
                     }
@@ -4287,10 +4290,11 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
                 abort();
             }
             if (prev_pgno != pgno || pgno == 0) {
-                rc2 = bdb_btree_update_shadows_with_trn_pglogs(cur, &pgno,
+                rc2 = bdb_btree_update_shadows_with_pglogs_int(cur, &pgno,
                                                                fileid, bdberr);
                 if (rc2 < 0) {
-                    logmsg(LOGMSG_FATAL, "bdb_btree_update_shadows_with_trn_pglogs failed\n");
+                    logmsg(LOGMSG_FATAL,
+                           "bdb_btree_update_shadows_with_pglogs_int failed\n");
                     abort();
                 }
                 prev_pgno = pgno;
@@ -7119,6 +7123,14 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
     memcpy(key.fileid, infileid, DB_FILE_ID_LEN);
     key.pgno = (key.pgno == 0) ? 1 : key.pgno;
 
+    /*
+    char *buf = NULL;
+    hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
+    printf("%s: FILEID: %s, pgno %d, upto [%d][%d]\n", __func__, buf, key.pgno,
+           upto.file, upto.offset);
+    free(buf);
+    */
+
     relink_key.pgno = key.pgno;
     memcpy(relink_key.fileid, infileid, DB_FILE_ID_LEN);
 
@@ -7219,7 +7231,7 @@ out:
     return 0;
 }
 
-static int bdb_btree_update_shadows_with_trn_pglogs(bdb_cursor_impl_t *cur,
+static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
                                                     db_pgno_t *inpgno,
                                                     unsigned char *infileid,
                                                     int *bdberr)
@@ -7568,9 +7580,10 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
                         cur);
             } else if (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
                        cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE) {
-                logmsg(LOGMSG_USER, "Cur %p skipping update shadows because it is "
-                                "the wrong tranclass (%d)\n",
-                        cur, cur->shadow_tran->tranclass);
+                logmsg(LOGMSG_USER,
+                       "Cur %p skipping update shadows because it is "
+                       "the wrong tranclass (%d)\n",
+                       cur, cur->shadow_tran->tranclass);
             }
         }
         return 0;
