@@ -7805,8 +7805,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         goto done;
 
 #if DEBUG
-    printf("\n Query %s length %d", sql_query->sql_query.data,
-           sql_query->sql_query.len);
+    printf("\n Query '%s'\n", sql_query->sql_query);
 #endif
 
     pthread_mutex_init(&clnt.wait_mutex, NULL);
