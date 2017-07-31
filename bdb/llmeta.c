@@ -8143,6 +8143,31 @@ done:
 }
 
 /**
+ * Calculates number of valid sequence values between provided minimum and
+ * maximum, increasing by increment.
+ *
+ * @param long long min
+ * @param long long max
+ * @param long long increment
+ */
+unsigned long long number_of_valid_values(long long min, long long max,
+                                          long long increment)
+{
+    unsigned long long num_valid = 0;
+    // Checks for integer overflow
+    if (min > max) {
+        num_valid = 0;
+    } else if (min == LLONG_MIN && max == LLONG_MAX) {
+        num_valid = ULLONG_MAX;
+    } else {
+        num_valid = (((unsigned long long)max - (unsigned long long)min) /
+                     (unsigned long long)llabs(increment)) +
+                    1;
+    }
+    return num_valid;
+}
+
+/**
  * Get a new chunk of values from a specified sequence. Returns -1 in error
  *
  * @param tran_type *tran Current transaction
@@ -8170,71 +8195,44 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     long long new_start_val;
     int rc = 0;
 
-    // Check if sequence is exhausted
+    // Check if sequence is exhausted. Flag indicates new chunk cannot be allocated.
+    // There may still be allocated chunks with valid values.
     if (*flags & SEQUENCE_EXHAUSTED) {
-        logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
+        logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
+        return -1;
+    }
+
+    if (*next_start_val > max_val || *next_start_val < min_val) {
+        logmsg(LOGMSG_ERROR, "Sequence %s next_start_val (%lld) is incorrect. Something is very wrong.\n", name, *next_start_val, max_val, min_val);
+        
         return -1;
     }
 
     // Check sequence rules
-    unsigned long long max_uniq_values;
-    // Checks for llabs - min int value is undef behaviour
-    if (min_val == LLONG_MIN) {
-        max_uniq_values =
-            (llabs(max_val) + (LLONG_MAX - 1)) /
-            llabs(increment); /* Maximum unique values in sequence 8 */
-    } else {
-        max_uniq_values =
-            llabs(max_val - min_val) /
-            llabs(increment); /* Maximum unique values in sequence 8 */
-    }
-
+    unsigned long long max_uniq_values = number_of_valid_values(min_val, max_val, increment);
     unsigned long long
         values_before_cycle; /* Number of values that can be dispensed before
                                 hitting the max or min of the sequence */
 
     if (increment > 0) {
         // Increasing sequence
-
-        // Check for llabs - min int value is undef behaviour
-        if (*next_start_val == LLONG_MIN) {
-            values_before_cycle =
-                llabs(max_val + (LLONG_MAX - 1)) / llabs(increment);
-        } else {
-            values_before_cycle =
-                llabs(max_val - *next_start_val) / llabs(increment);
-        }
-
-        if (values_before_cycle < chunk_size) {
+        values_before_cycle = number_of_valid_values(*next_start_val, max_val, increment);
+        
+        if (values_before_cycle <= chunk_size) {
             if (cycle) {
                 new_start_val =
                     min_val +
-                    increment * ((chunk_size - values_before_cycle - 1) %
+                    increment * ((chunk_size - values_before_cycle) %
                                  max_uniq_values);
-                *remaining_vals = chunk_size;
-            } else if (values_before_cycle == 0) {
-                // Error, no more values in sequence
-                logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
-                // In this case, exausted sequence flag is set and
-                // the value of new_start_val will be undefined behaviour
-                *flags |= SEQUENCE_EXHAUSTED;
-                *remaining_vals = 0;
-                return -1;
-            } else {
-                new_start_val = max_val;
-                *remaining_vals = values_before_cycle + 1;
-            }
-        } else if (values_before_cycle == chunk_size) {
-            if (cycle) {
-                new_start_val = min_val;
                 *remaining_vals = chunk_size;
             } else {
                 // No more values in sequence after this chunk is dispensed
                 // In this case, exausted sequence flag is set and
                 // the value of new_start_val will be undefined behaviour
                 *flags |= SEQUENCE_EXHAUSTED;
-                *remaining_vals = 0;
+                *remaining_vals = values_before_cycle;
             }
+
         } else {
             // Normal case
             new_start_val = *next_start_val + increment * chunk_size;
@@ -8242,44 +8240,21 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
         }
     } else {
         // Decreasing sequence
+        values_before_cycle = number_of_valid_values(min_val, *next_start_val, increment);
 
-        // Check for llabs - min int value is undef behaviour
-        if (*next_start_val == LLONG_MIN) {
-            // min_val must be LLONG_MIN also in this case
-            values_before_cycle = 0;
-        } else {
-            values_before_cycle = llabs((*next_start_val - min_val) / increment);
-        }
-
-        if (values_before_cycle < chunk_size) {
+        if (values_before_cycle <= chunk_size) {
             if (cycle) {
                 new_start_val =
                     max_val +
-                    increment * ((chunk_size - values_before_cycle - 1) %
+                    increment * ((chunk_size - values_before_cycle) %
                                  max_uniq_values);
-                *remaining_vals = chunk_size;
-            } else if (values_before_cycle == 0) {
-                // Error, no more values in sequence
-                logmsg(LOGMSG_ERROR, "No more sequence values for '%s'", name);
-                // In this case, exausted sequence flag is set and
-                // the value of new_start_val will be undefined behaviour
-                *flags |= SEQUENCE_EXHAUSTED;
-                *remaining_vals = 0;
-                return -1;
-            } else {
-                new_start_val = min_val;
-                *remaining_vals = values_before_cycle + 1;
-            }
-        } else if (values_before_cycle == chunk_size) {
-            if (cycle) {
-                new_start_val = max_val;
                 *remaining_vals = chunk_size;
             } else {
                 // No more values in sequence after this chunk is dispensed
                 // In this case, exausted sequence flag is set and
                 // the value of new_start_val will be undefined behaviour
                 *flags |= SEQUENCE_EXHAUSTED;
-                *remaining_vals = 0;
+                *remaining_vals = values_before_cycle;
             }
         } else {
             // Normal case

@@ -1546,6 +1546,10 @@ sequence_t *new_sequence(char *name, long long min_val, long long max_val,
         return NULL;
     }
 
+    // Version
+    new_seq->version = 1;
+    
+    // Data
     strcpy(new_seq->name, name);
     new_seq->min_val = min_val;
     new_seq->max_val = max_val;
@@ -2252,7 +2256,7 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         // Create new sequence in memory
         sequence_t *seq = new_sequence(name, min_val, max_val, next_val,
                                        increment, cycle, start_val, chunk_size,
-                                       flags, 0, start_val);
+                                       flags, 0, next_start_val);
 
         if (seq == NULL) {
             logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);

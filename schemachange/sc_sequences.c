@@ -133,6 +133,8 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
                           long long restart_val_in, long long chunk_size_in,
                           int modified, tran_type *trans)
 {
+    // TODO: figure out what value to reset to. wwpgd
+
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
         logmsg(LOGMSG_ERROR, "No sequences defined\n");
@@ -143,60 +145,99 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     if (seq == NULL) {
         // Failed to find sequence with specified name
         // TODO: error out another way
-        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found", name);
+        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found\n", name);
         return -1;
     }
+
+    // Get lock for in memory object
+    pthread_mutex_lock(&seq->seq_lk);
 
     // Min Val
     long long min_val = seq->min_val;
     if (modified & SEQ_MIN_VAL) {
         min_val = min_val_in;
+
+        if (min_val < seq->min_val) {
+            // Unraise exhausted flag
+            seq->flags &= ~SEQUENCE_EXHAUSTED;
+        }
     }
 
     // Max Val
     long long max_val = seq->max_val;
     if (modified & SEQ_MAX_VAL) {
         max_val = max_val_in;
+
+        if (max_val < seq->max_val) {
+            // Unraise exhausted flag
+            seq->flags &= ~SEQUENCE_EXHAUSTED;
+        }
     }
 
     // Increment
     long long increment = seq->increment;
     if (modified & SEQ_INC) {
+        // TODO: check validity
         increment = increment_in;
+
+        // Will only cause more values to be valid if new increment
+        if (llabs(increment) < llabs(seq->increment)) {
+            // Unraise exhausted flag
+            seq->flags &= ~SEQUENCE_EXHAUSTED;
+        }
     }
 
     // Cycle
-    long long cycle = seq->cycle;
+    bool cycle = seq->cycle;
     if (modified & SEQ_CYCLE) {
         cycle = cycle_in;
+
+        if (cycle){
+            // Unraise exhausted flag
+            seq->flags &= ~SEQUENCE_EXHAUSTED;
+        }
     }
 
     // Start Val
     long long start_val = seq->start_val;
     if (modified & SEQ_START_VAL) {
+        // TODO: check validity
         start_val = start_val_in;
     }
 
     // Restart Val
     long long restart_val = seq->next_start_val;
     if (modified & SEQ_RESTART_TO_START_VAL) {
+        // TODO: check validity
         restart_val = seq->start_val;
+
+        // Unraise exhausted flag
+        seq->flags &= ~SEQUENCE_EXHAUSTED;
     } else if (modified & SEQ_RESTART_VAL) {
+        // TODO: check validity
         restart_val = restart_val_in;
+
+        // Unraise exhausted flag
+        seq->flags &= ~SEQUENCE_EXHAUSTED;
     }
 
     // Chunk Size
     long long chunk_size = seq->chunk_size;
     if (modified & SEQ_CHUNK_SIZE) {
-        chunk_size = chunk_size_in;
+        if (chunk_size_in > 0){
+            chunk_size = chunk_size_in;
+        } else {
+            logmsg(LOGMSG_ERROR, "Chunk Size %lld is invalid", chunk_size_in);
+        }
     }
 
     // Write change to llmeta
     int rc, bdberr;
     rc = bdb_llmeta_alter_sequence(trans, name, min_val, max_val, increment,
                                    cycle, start_val, restart_val, chunk_size,
-                                   (seq->flags & ~SEQUENCE_EXHAUSTED), &bdberr);
+                                   seq->flags, &bdberr);
     if (rc) {
+        pthread_mutex_unlock(&seq->seq_lk);
         return rc;
     }
 
@@ -210,5 +251,6 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     seq->chunk_size = chunk_size;
     seq->remaining_vals = 0;
 
+    pthread_mutex_unlock(&seq->seq_lk);
     return 0;
 }

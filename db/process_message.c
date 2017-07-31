@@ -1853,7 +1853,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (seq_next_val(name, val) == 0) {
                 logmsg(LOGMSG_USER, "Value: %d\n", *val);
             } else {
-                logmsg(LOGMSG_USER, "Failed to obtain next value");
+                logmsg(LOGMSG_USER, "Failed to obtain next value\n");
             }
             
             free(val);
