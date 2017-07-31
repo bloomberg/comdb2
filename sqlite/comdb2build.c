@@ -1655,7 +1655,6 @@ out:
     free_schema_change_type(sc);
 }
 
-// TODO: Modify for sequences
 void comdb2AlterSequence(
     Parse *pParse, /* Parser context */
     char *name, /* Name of sequence */
@@ -1683,7 +1682,6 @@ void comdb2AlterSequence(
 
     comdb2WriteTransaction(pParse);
 
-    // TODO: Modify for sequences
     v->readOnly = 0;
     sc->type = DBTYPE_SEQUENCE;
     sc->alterseq = 1;

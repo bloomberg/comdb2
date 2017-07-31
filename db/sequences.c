@@ -37,28 +37,17 @@ int seq_next_val(char *name, long long *val)
     if (seq == NULL) {
         // Failed to find sequence with specified name
         // TODO: error out another way
-        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found", name);
+        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found\n", name);
         return -1;
     }
 
-    if (seq->flags & SEQUENCE_EXHAUSTED) {
-        // TODO: Error End of sequence
-        logmsg(LOGMSG_ERROR, "End of sequence. No more values to dispense.");
-        return -1;
-    }
-
-    // TODO: is this a good way to lock?
+    // Get lock for in-memory object
     pthread_mutex_lock(&seq->seq_lk);
 
-    if (seq->flags & SEQUENCE_EXHAUSTED) {
-        // Check again in lock
-        logmsg(LOGMSG_ERROR, "End of sequence. No more values to dispense.");
-        pthread_mutex_unlock(&seq->seq_lk);
-        return -1;
-    }
-
-    // Check for remaining values
+    // Check for remaining values. 
+    // seq->next_val is only valid if remaining values > 0
     if (seq->remaining_vals == 0) {
+        // No remaining values, allocate new chunk
         rc = bdb_llmeta_get_sequence_chunk(
             NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
             seq->chunk_size, &seq->flags, &seq->remaining_vals, seq->start_val,
@@ -67,8 +56,13 @@ int seq_next_val(char *name, long long *val)
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "can't retrive new chunk for sequence \"%s\"\n", name);
-            pthread_mutex_unlock(&seq->seq_lk);
-            return rc;
+            goto done;
+        }
+
+        if (seq->remaining_vals == 0) {
+            logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
+            rc = -1;
+            goto done;
         }
     }
 
@@ -76,7 +70,7 @@ int seq_next_val(char *name, long long *val)
     *val = seq->next_val;
     seq->remaining_vals--;
 
-    // Increment Value for next request
+    // Calculate next value to dispense
     long long next_val = seq->next_val;
 
     // Check for integer overflow
@@ -86,17 +80,13 @@ int seq_next_val(char *name, long long *val)
                 seq->next_val = seq->min_val;
             else
                 seq->next_val = seq->max_val;
-
-            seq->remaining_vals = 1;
         } else {
             // No more sequence values to dispense. Value of next_val is now
-            // undefined behaviour (unreliable)
-            seq->flags |= SEQUENCE_EXHAUSTED;
+            // undefined behaviour and unreliable.
             seq->remaining_vals = 0;
         }
 
-        pthread_mutex_unlock(&seq->seq_lk);
-        return 0;
+        goto done;
     }
 
     // Apply increment, no overflow can occur
@@ -108,19 +98,20 @@ int seq_next_val(char *name, long long *val)
             seq->next_val = seq->min_val;
         } else {
             // No more sequence values to dispense. Value of next_val is now
-            // undefined behaviour (unreliable)
-            seq->flags |= SEQUENCE_EXHAUSTED;
+            // undefined behaviour and unreliable.
+            seq->remaining_vals = 0;
         }
     } else if ((seq->increment < 0) && (seq->next_val < seq->min_val)) {
         if (seq->cycle) {
             seq->next_val = seq->max_val;
         } else {
             // No more sequence values to dispense. Value of next_val is now
-            // undefined behaviour (unreliable)
-            seq->flags |= SEQUENCE_EXHAUSTED;
+            // undefined behaviour and unreliable.
+            seq->remaining_vals = 0;
         }
     }
 
+done:
     pthread_mutex_unlock(&seq->seq_lk);
     return rc;
 }
