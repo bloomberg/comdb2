@@ -113,19 +113,6 @@ int clnt_run_query( client_t *clnt, char *query, FILE *out)
         const char *err = cdb2_errstr(clnt->db);
         fprintf(out, "[%s] failed with rc %d %s\n", query, rc, err ? err : "");
     }
-    /*
-    cdb2_effects_tp ef;
-    rc = cdb2_get_effects(clnt->db, &ef);
-    if(rc == 0) {
-        if(ef.num_updated > 0)
-            fprintf(out, "(rows updated=%d)\n", ef.num_updated);
-        else if(ef.num_deleted > 0)
-            fprintf(out, "(rows deleted=%d)\n", ef.num_deleted);
-        else if(ef.num_inserted > 0)
-            fprintf(out, "(rows inserted=%d)\n", ef.num_inserted);
-    }
-    */
-
     int ncols;
     rc = cdb2_next_record(clnt->db);
     ncols = cdb2_numcolumns(clnt->db);
@@ -143,6 +130,20 @@ int clnt_run_query( client_t *clnt, char *query, FILE *out)
         rc = cdb2_next_record(clnt->db);
     }
     fprintf(out, "done\n");
+
+    cdb2_effects_tp ef;
+    rc = cdb2_get_effects(clnt->db, &ef);
+    /*
+    if(rc == 0) {
+        if(ef.num_updated > 0)
+            fprintf(out, "(rows updated=%d)\n", ef.num_updated);
+        else if(ef.num_deleted > 0)
+            fprintf(out, "(rows deleted=%d)\n", ef.num_deleted);
+        else if(ef.num_inserted > 0)
+            fprintf(out, "(rows inserted=%d)\n", ef.num_inserted);
+    }
+    */
+
     return 0;
 }
 
