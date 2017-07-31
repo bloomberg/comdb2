@@ -11803,7 +11803,7 @@ static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur)
 static void ondisk_blob_to_sqlite_mem(struct field *f, Mem *m,
                                       blob_buffer_t *blobs, size_t maxblobs)
 {
-    assert(f->blob_index < maxblobs);
+    assert(!blobs || f->blob_index < maxblobs);
     if (blobs && blobs[f->blob_index].exists) {
         m->z = blobs[f->blob_index].data;
         m->n = blobs[f->blob_index].length;
@@ -12279,23 +12279,21 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
         pTo->szMalloc = 0;
         pTo->zMalloc = NULL;
         pTo->flags &= ~MEM_Dyn;
-        assert(pTo->flags & MEM_Blob == 0);
-        if (pTo->flags & MEM_Str) {
-            if (pFrom->zMalloc && pFrom->szMalloc) {
-                pTo->szMalloc = pFrom->szMalloc;
-                pTo->zMalloc = malloc(pTo->szMalloc);
-                if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
-                memcpy(pTo->zMalloc, pFrom->zMalloc, pTo->szMalloc);
-                pTo->z = pTo->zMalloc;
-            } else if (pFrom->z && pFrom->n) {
-                pTo->n = pFrom->n;
-                pTo->szMalloc = pFrom->n + 1;
-                pTo->zMalloc = malloc(pTo->szMalloc);
-                if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
-                memcpy(pTo->zMalloc, pFrom->z, pFrom->n);
-                pTo->zMalloc[pFrom->n] = 0;
-                pTo->z = pTo->zMalloc;
-            }
+        if (pFrom->zMalloc && pFrom->szMalloc) {
+            pTo->szMalloc = pFrom->szMalloc;
+            pTo->zMalloc = malloc(pTo->szMalloc);
+            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
+            memcpy(pTo->zMalloc, pFrom->zMalloc, pTo->szMalloc);
+            pTo->z = pTo->zMalloc;
+            pTo->n = pFrom->n;
+        } else if (pFrom->z && pFrom->n) {
+            pTo->n = pFrom->n;
+            pTo->szMalloc = pFrom->n + 1;
+            pTo->zMalloc = malloc(pTo->szMalloc);
+            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
+            memcpy(pTo->zMalloc, pFrom->z, pFrom->n);
+            pTo->zMalloc[pFrom->n] = 0;
+            pTo->z = pTo->zMalloc;
         }
     }
     return 0;
