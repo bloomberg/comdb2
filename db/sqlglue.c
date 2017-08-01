@@ -8652,8 +8652,6 @@ int sqlite3BtreeInsert(
                 rc = SQLITE_ERROR;
                 goto done;
             }
-
-            /* blob check */
         }
 
         /* If it's a known invalid genid (see sqlite3BtreeNewRowid() for

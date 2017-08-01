@@ -70,6 +70,8 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
                               const char *tagname, struct schema *sc,
                               void *record, const void *nulls);
 
+static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs);
+
 void free_cached_idx(uint8_t * *cached_idx);
 
 /*
@@ -291,14 +293,9 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     /* Also check blob sizes */
     if (!(flags & RECFLAGS_NO_BLOBS)) {
-        for (int i = 0; i < maxblobs; i++) {
-            if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
-                          "blob size (%d) exceeds maximum (%d)",
-                          blobs[i].length, MAXBLOBLENGTH);
-                retrc = ERR_BLOB_TOO_LARGE;
-                ERR;
-            }
+        if (check_blob_sizes(iq, blobs, maxblobs)) {
+            retrc = ERR_BLOB_TOO_LARGE;
+            ERR;
         }
     }
 
@@ -932,14 +929,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     /* Also check blob sizes */
     if (!(flags & RECFLAGS_NO_BLOBS)) {
-        for (int i = 0; i < maxblobs; i++) {
-            if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
-                reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
-                          "blob size (%d) exceeds maximum (%d)",
-                          blobs[i].length, MAXBLOBLENGTH);
-                retrc = ERR_BLOB_TOO_LARGE;
-                ERR;
-            }
+        if (check_blob_sizes(iq, blobs, maxblobs)) {
+            retrc = ERR_BLOB_TOO_LARGE;
+            ERR;
         }
     }
 
@@ -2894,6 +2886,21 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
     }
     return 0;
 }
+
+static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs) {
+    int retrc = 0;
+
+    for (int i = 0; i < maxblobs; i++) {
+        if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
+            reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
+                    "blob size (%d) exceeds maximum (%d)",
+                    blobs[i].length, MAXBLOBLENGTH);
+            retrc = ERR_BLOB_TOO_LARGE;
+        }
+    }
+    return retrc;
+}
+
 
 /* find and remember the blobs for an rrn/genid. */
 int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *record,
