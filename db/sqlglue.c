@@ -8528,8 +8528,8 @@ int sqlite3BtreeInsert(
         /* is this an update? no KeY! */
         if (pCur->tblpos == thd->rootpage_nentries) {
             /* we have positioned ourselves on the side row, this is an update!
-             */
             assert(nKey == 0 && pKey == NULL);
+             */
         } else {
             /* an actual insert */
             clnt->keyDdl = pCur->keyDdl = nKey;
