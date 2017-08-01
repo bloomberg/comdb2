@@ -143,17 +143,12 @@ set rp2v_ops {
   OP_PrevIfOpen
 }
 
-set max 0
 # Assign small values to opcodes that are processed by resolveP2Values()
 # to make code generation for the switch() statement smaller and faster.
 #
 set cnt -1
 for {set i 0} {$i<$nOp} {incr i} {
   set name $order($i)
-  if {$op($name)>=0} {
-      set max [expr $max > $op($name) ? $max : $op($name)]
-      continue
-  }
   if {[lsearch $rp2v_ops $name]>=0} {
     incr cnt
     while {[info exists used($cnt)]} {incr cnt}
@@ -163,15 +158,12 @@ for {set i 0} {$i<$nOp} {incr i} {
   }
 }
 
-# COMDB2 MODIFICATIONS
-# Assign values to all remaining opcodes
+# Assign the next group of values to JUMP opcodes
 #
 for {set i 0} {$i<$nOp} {incr i} {
   set name $order($i)
-  if {$op($name)>=0} {
-      set max [expr $max > $op($name) ? $max : $op($name)]
-      continue
-  }
+  if {$op($name)>=0} continue
+  if {!$jump($name)} continue
   incr cnt
   while {[info exists used($cnt)]} {incr cnt}
   set op($name) $cnt
@@ -187,11 +179,26 @@ for {set i 0} {$i<$nOp} {incr i} {
   if {$jump($name) && $op($name)>$mxJump} {set mxJump $op($name)}
 }
 
-set max [expr $max > $cnt ? $max : $cnt]
+
+# Generate the numeric values for all remaining opcodes
+#
+for {set i 0} {$i<$nOp} {incr i} {
+  set name $order($i)
+  if {$op($name)<0} {
+    incr cnt
+    while {[info exists used($cnt)]} {incr cnt}
+    set op($name) $cnt
+    set used($cnt) 1
+    set def($cnt) $name
+  }
+}
+
+set max [lindex [lsort -decr -integer [array names used]] 0]
 for {set i 0} {$i<=$max} {incr i} {
   if {![info exists used($i)]} {
     set def($i) "OP_NotUsed_$i"
   }
+  if {$i>$max} {set max $i}
   set name $def($i)
   puts -nonewline [format {#define %-16s %3d} $name $i]
   set com {}
@@ -212,19 +219,24 @@ for {set i 0} {$i<=$max} {incr i} {
   puts ""
 }
 
-set max $cnt
+if {$max>255} {
+  error "More than 255 opcodes - VdbeOp.opcode is of type u8!"
+}
+
 # Generate the bitvectors:
 #
 set bv(0) 0
 for {set i 0} {$i<=$max} {incr i} {
-  set name $def($i)
   set x 0
-  if {$jump($name)}  {incr x 1}
-  if {$in1($name)}   {incr x 2}
-  if {$in2($name)}   {incr x 4}
-  if {$in3($name)}   {incr x 8}
-  if {$out2($name)}  {incr x 16}
-  if {$out3($name)}  {incr x 32}
+  set name $def($i)
+  if {[string match OP_NotUsed* $name]==0} {
+    if {$jump($name)}  {incr x 1}
+    if {$in1($name)}   {incr x 2}
+    if {$in2($name)}   {incr x 4}
+    if {$in3($name)}   {incr x 8}
+    if {$out2($name)}  {incr x 16}
+    if {$out3($name)}  {incr x 32}
+  }
   set bv($i) $x
 }
 puts ""
