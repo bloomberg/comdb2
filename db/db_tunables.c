@@ -338,7 +338,7 @@ static void *next_genid_value(void *context)
     snprintf(genid_str, sizeof(genid_str), "0x%016llx 0x%016llx %llu",
             genid, flipgenid, genid);
 
-    return genid_str;
+    return (void *)genid_str;
 }
 
 static int genid_seed_update(void *context, void *value)
