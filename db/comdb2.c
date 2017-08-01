@@ -2523,7 +2523,7 @@ static int dump_queuedbs(char *dir)
         int rc;
         rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Can't getch data for %s: bdberr %d\n",
+            logmsg(LOGMSG_ERROR, "Can't get data for %s: bdberr %d\n",
                    thedb->qdbs[i]->dbname, bdberr);
             return -1;
         }
