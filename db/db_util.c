@@ -442,9 +442,9 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
 
     /* add table definitions */
     for (i = 0; i < num_tables; ++i) {
-        if (strncmp(p_table_names[i], "sqlite_stat", strlen("sqlite_stat")) == 0)
+        if (strncmp(p_table_names[i], "sqlite_stat", strlen("sqlite_stat")) ==
+            0)
             continue;
-
 
         sbuf2printf(sb_out, "table %s %s", p_table_names[i], p_csc2_paths[i]);
 
@@ -460,7 +460,8 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
         sbuf2printf(sb_out, "\n");
     }
 
-    for (int i = 0; i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i)
+    for (int i = 0;
+         i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i)
         sbuf2printf(sb_out, "queuedb " REPOP_QDB_FMT "\n", out_lrl_dir,
                     thedb->envname, i);
 

@@ -2513,7 +2513,8 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 
 static int dump_queuedbs(char *dir)
 {
-    for (int i = 0; i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i) {
+    for (int i = 0;
+         i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i) {
         char *config;
         int ndests;
         char **dests;
@@ -2523,7 +2524,7 @@ static int dump_queuedbs(char *dir)
         rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Can't getch data for %s: bdberr %d\n",
-                   thedb->qdbs[i]->dbname, bdberr); 
+                   thedb->qdbs[i]->dbname, bdberr);
             return -1;
         }
         char path[PATH_MAX];
