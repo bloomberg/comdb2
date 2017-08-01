@@ -2513,13 +2513,19 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 
 static int dump_queuedbs(char *dir)
 {
-    for (int i = 0; i < thedb->num_qdbs; ++i) {
+    for (int i = 0; i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i) {
         char *config;
         int ndests;
         char **dests;
         int bdberr;
         char *name = thedb->qdbs[i]->dbname;
-        bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
+        int rc;
+        rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Can't getch data for %s: bdberr %d\n",
+                   thedb->qdbs[i]->dbname, bdberr); 
+            return -1;
+        }
         char path[PATH_MAX];
         snprintf(path, sizeof(path), REPOP_QDB_FMT, dir, thedb->envname, i);
         FILE *f = fopen(path, "w");
@@ -2528,11 +2534,11 @@ static int dump_queuedbs(char *dir)
                     strerror(errno));
             return -1;
         }
-        logmsg(LOGMSG_INFO, "%s\n%d\n", thedb->qdbs[i]->dbname, ndests);
+        fprintf(f, "%s\n%d\n", thedb->qdbs[i]->dbname, ndests);
         for (int j = 0; j < ndests; ++j) {
-            logmsg(LOGMSG_INFO, "%s\n", dests[j]);
+            fprintf(f, "%s\n", dests[j]);
         }
-        logmsg(LOGMSG_INFO, "%s", config);
+        fprintf(f, "%s", config);
         fclose(f);
         logmsg(LOGMSG_INFO, "%s wrote file:%s for queuedb:%s\n", __func__, path,
                thedb->qdbs[i]->dbname);
