@@ -1258,4 +1258,14 @@ REGISTER_TUNABLE("logmsg.timestamp", "Stamp all messages with timestamp.",
 REGISTER_TUNABLE("logmsg.notimestamp", "Disables 'syslog.timestamp'.",
                  TUNABLE_BOOLEAN, NULL, INVERSE_VALUE | NOARG | READEARLY,
                  logmsg_timestamp_value, NULL, logmsg_timestamp_update, NULL);
+REGISTER_TUNABLE("debug_high_availability_flag",
+                 "Stack on set high_availability. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_high_availability_flag, NOARG,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("abort_on_unset_ha_flag",
+                 "Abort in snap_uid_retry if ha is unset. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_unset_ha_flag, NOARG,
+                 NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */

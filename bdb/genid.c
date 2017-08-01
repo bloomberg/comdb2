@@ -430,7 +430,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
 
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
     if (prwarn && (now = time(NULL)) > lastwarn) {
-        logmsg(LOGMSG_WARNING, "%s: low-genid warning: this database has only "
+        logmsg(LOGMSG_WARN, "%s: low-genid warning: this database has only "
                 "%llu genids remaining\n",
                 __func__, 0x0000ffffffffffffULL - seed48);
         lastwarn = now;
@@ -465,7 +465,7 @@ stall:
         contexttime = bdb_genid_timestamp(gblcontext);
 
         if (contexttime > epochtime) {
-            logmsg(LOGMSG_WARNING, "context is %d epoch is %d  - stalling!!!\n",
+            logmsg(LOGMSG_WARN, "context is %d epoch is %d  - stalling!!!\n",
                     contexttime, epochtime);
             poll(NULL, 0, 100);
             goto stall;

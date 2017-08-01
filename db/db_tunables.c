@@ -122,6 +122,8 @@ extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
+extern int gbl_debug_high_availability_flag;
+extern int gbl_abort_on_unset_ha_flag;
 
 extern long long sampling_threshold;
 

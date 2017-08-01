@@ -78,6 +78,12 @@ on random_get_curtran_failures
 # Lets see durable lsns
 on wait_for_seqnum_trace
 
+# This isn't being set sometimes: try to understand why
+debug_high_availability_flag on
+
+# Try to understand this
+abort_on_incorrect_ha_flag on
+
 # Abort on invalid query info key
 # on abort_invalid_query_info_key
 
