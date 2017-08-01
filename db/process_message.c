@@ -688,7 +688,6 @@ void *handle_exit_thd(void *arg)
     return NULL;
 }
 
-
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
     char *tok;

@@ -1258,4 +1258,12 @@ REGISTER_TUNABLE("logmsg.timestamp", "Stamp all messages with timestamp.",
 REGISTER_TUNABLE("logmsg.notimestamp", "Disables 'syslog.timestamp'.",
                  TUNABLE_BOOLEAN, NULL, INVERSE_VALUE | NOARG | READEARLY,
                  logmsg_timestamp_value, NULL, logmsg_timestamp_update, NULL);
+REGISTER_TUNABLE("next_genid",
+                 "Return the next genid in hex, flipped & decimal.",
+                 TUNABLE_STRING, NULL, READONLY | NOARG, next_genid_value, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("seed_genid", "Set genid-seed in hex for genid48 test.",
+                 TUNABLE_STRING, NULL, EXPERIMENTAL | INTERNAL,
+                 next_genid_value, NULL, genid_seed_update, NULL);
+
 #endif /* _DB_TUNABLES_H */
