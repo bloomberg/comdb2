@@ -84,6 +84,7 @@ debug_high_availability_flag on
 # Try to understand this
 abort_on_incorrect_ha_flag on
 
+block_set_commit_genid_trace on
 # Abort on invalid query info key
 # on abort_invalid_query_info_key
 

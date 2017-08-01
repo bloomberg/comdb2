@@ -2674,14 +2674,14 @@ retry:
     }
 
     seqnum_type ss;
-    rc = bdb_tran_commit_with_seqnum_size(
-            llmeta_bdb_state, tran, &ss, NULL, &bdberr);
+    rc = bdb_tran_commit_with_seqnum_size(llmeta_bdb_state, tran, &ss, NULL,
+                                          &bdberr);
 
     if (rc == 0) {
         tran = NULL;
         rc = bdb_wait_for_seqnum_from_all(llmeta_bdb_state, &ss);
     }
-    //rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr);
+    // rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr);
     if (rc && bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "%s bdb_tran_commit rc: %d bdberr: %d\n", __func__, rc,
                 bdberr);

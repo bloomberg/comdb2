@@ -278,8 +278,8 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     }
 
     // Always get the durable lsn from master
-    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL || 
-        shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) && 
+    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
+         shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
         durable_lsns) {
         DB_LSN my_lsn, dur_lsn, arg_lsn;
         uint32_t my_gen;

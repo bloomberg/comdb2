@@ -1498,13 +1498,12 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
         logmsg(LOGMSG_USER, "%s: not-adding: master-hode=%s myhost=%s\n",
-                __func__, bdb_state->repinfo->master_host, 
-                bdb_state->repinfo->myhost);
+               __func__, bdb_state->repinfo->master_host,
+               bdb_state->repinfo->myhost);
         goto done;
     } else {
-        logmsg(LOGMSG_USER, "%s: adding dummy record\n",
-                __func__, bdb_state->repinfo->master_host, 
-                bdb_state->repinfo->myhost);
+        logmsg(LOGMSG_USER, "%s: adding dummy record\n", __func__,
+               bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
     }
 
     add_dummy(bdb_state);

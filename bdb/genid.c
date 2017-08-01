@@ -361,12 +361,18 @@ int genid_contains_time(bdb_state_type *bdb_state)
     return bdb_state->genid_format == LLMETA_GENID_ORIGINAL;
 }
 
+int gbl_block_set_commit_genid_trace = 0;
 static inline void set_commit_genid_lsn_gen(unsigned long long genid,
-        const DB_LSN *lsn, const uint32_t *generation)
+                                            const DB_LSN *lsn,
+                                            const uint32_t *generation)
 {
     if (bdb_cmp_genids(genid, commit_genid) < 0) {
-        logmsg(LOGMSG_ERROR, "Blocked attempt to set lower commit_genid\n");
-        cheap_stack_trace();
+
+        /* This can occur legitamately after a rep_verify_match */
+        if (gbl_block_set_commit_genid_trace) {
+            logmsg(LOGMSG_ERROR, "Blocked attempt to set lower commit_genid\n");
+            cheap_stack_trace();
+        }
         return;
     }
     commit_genid = genid;
@@ -460,7 +466,7 @@ static unsigned long long get_genid_timebased(bdb_state_type *bdb_state,
     gblcontext = get_gblcontext(bdb_state);
 
     if (!bdb_state->attr->genidplusplus) {
-stall:
+    stall:
         epochtime = time_epoch();
         contexttime = bdb_genid_timestamp(gblcontext);
 
