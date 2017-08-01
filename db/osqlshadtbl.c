@@ -2523,6 +2523,39 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     return 0;
 }
 
+int is_genid_recorded(struct sql_thread *thd, int tblnum,
+                      unsigned long long genid)
+{
+    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    int rc = 0;
+    int bdberr = 0;
+    recgenid_key_t key;
+    struct temp_cursor *cur = NULL;
+
+    if (!osql->verify_tbl) return 0;
+
+    if (!osql->verify_cur) {
+        logmsg(LOGMSG_ERROR, "%s: error getting verify cursor\n", __func__);
+        return -1;
+    }
+
+    key.tblnum = tblnum;
+    key.genid = genid;
+
+    rc = bdb_temp_table_find(thedb->bdb_env, osql->verify_cur, &key,
+                             sizeof(key), NULL, &bdberr);
+
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s: temp table find failed\n", __func__);
+        return -1;
+    }
+
+    if (rc == IX_FND)
+        return 1;
+    else
+        return 0;
+}
+
 static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
                                            int *bdberr)
 {

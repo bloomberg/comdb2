@@ -25,6 +25,9 @@ ALTER TABLE t6 ADD COLUMN j INT NULL $$
 CREATE TABLE t7(i INT) OPTIONS REC ZLIB, REBUILD $$
 ALTER TABLE t7 ADD COLUMN j INT NULL $$
 
+CREATE TABLE t8(i BLOB) $$
+ALTER TABLE t8 ADD COLUMN j BLOB(100) $$
+
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -37,4 +40,4 @@ DROP TABLE t4;
 DROP TABLE t5;
 DROP TABLE t6;
 DROP TABLE t7;
-
+DROP TABLE t8;

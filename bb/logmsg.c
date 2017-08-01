@@ -19,16 +19,16 @@ static int ended_with_newline = 1;
 
 /* from io_override.c */
 
-static pthread_key_t iokey;
-int io_override_init(void) { return pthread_key_create(&iokey, NULL); }
-
+static __thread FILE *ptr = NULL;
 int io_override_set_std(FILE *f)
 {
-    pthread_setspecific(iokey, f);
+    ptr = f;
     return 0;
 }
 
-FILE *io_override_get_std(void) { return pthread_getspecific(iokey); }
+FILE *io_override_get_std(void) { 
+    return ptr;
+}
 
 void logmsg_set_level(loglvl lvl) {
     level = lvl;
@@ -226,24 +226,7 @@ int logmsg_process_message(char *line, int llen) {
         return 1;
     } else if (tokcmp(tok, ltok, "level") == 0) {
         tok = segtok(line, llen, &st, &ltok);
-        if (tok == NULL) { 
-            logmsg(LOGMSG_ERROR, "expected logmsg level default_level\n");
-            return 1;
-        } else if (tokcmp(tok, ltok, "debug") == 0) {
-            logmsg_set_level(LOGMSG_DEBUG);
-        } else if (tokcmp(tok, ltok, "info") == 0) {
-            logmsg_set_level(LOGMSG_INFO);
-        } else if (tokcmp(tok, ltok, "warn") == 0) {
-            logmsg_set_level(LOGMSG_WARN);
-        } else if (tokcmp(tok, ltok, "error") == 0) {
-            logmsg_set_level(LOGMSG_ERROR);
-        } else if (tokcmp(tok, ltok, "fatal") == 0) {
-            logmsg_set_level(LOGMSG_FATAL);
-        } else {
-            logmsg(LOGMSG_ERROR, "unknown logging level requested\n");
-            return 1;
-        }
-        logmsg(LOGMSG_USER, "set default log level to %s\n", logmsg_level_str(level));
+        logmsg_level_update(0, tok);
     } else if (tokcmp(tok, ltok, "timestamp") == 0) {
         logmsg_set_time(1);
         logmsg(LOGMSG_USER, "timestamps on\n");
@@ -262,5 +245,66 @@ int logmsg_process_message(char *line, int llen) {
         logmsg(LOGMSG_USER, "timestamps: %s\n", do_time ? "yes" : "no");
     }
 
+    return 0;
+}
+
+void *logmsg_level_value(void *unused)
+{
+    return logmsg_level_str(level);
+}
+
+int logmsg_level_update(void *unused, void *value)
+{
+    char *line;
+    char *tok;
+    int st = 0;
+    int llen;
+    int ltok;
+
+    line = (char *)value;
+    llen = strlen(line);
+
+    tok = segtok(line, llen, &st, &ltok);
+    if (tok == NULL) {
+        logmsg(LOGMSG_USER, "expected logmsg level default_level\n");
+        return 1;
+    } else if (tokcmp(tok, ltok, "debug") == 0) {
+        logmsg_set_level(LOGMSG_DEBUG);
+    } else if (tokcmp(tok, ltok, "info") == 0) {
+        logmsg_set_level(LOGMSG_INFO);
+    } else if (tokcmp(tok, ltok, "warn") == 0) {
+        logmsg_set_level(LOGMSG_WARN);
+    } else if (tokcmp(tok, ltok, "error") == 0) {
+        logmsg_set_level(LOGMSG_ERROR);
+    } else if (tokcmp(tok, ltok, "fatal") == 0) {
+        logmsg_set_level(LOGMSG_FATAL);
+    } else {
+        logmsg(LOGMSG_DEBUG, "Unknown logging level requested\n");
+        return 1;
+    }
+    logmsg(LOGMSG_USER, "Set default log level to %s\n",
+           logmsg_level_str(level));
+    return 0;
+}
+
+void *logmsg_syslog_value(void *unused)
+{
+    return &do_syslog;
+}
+
+int logmsg_syslog_update(void *unused, void *value)
+{
+    logmsg_set_syslog(*(int *)value);
+    return 0;
+}
+
+void *logmsg_timestamp_value(void *unused)
+{
+    return &do_time;
+}
+
+int logmsg_timestamp_update(void *unused, void *value)
+{
+    logmsg_set_time(*(int *)value);
     return 0;
 }

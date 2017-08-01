@@ -30,64 +30,64 @@
 [insert into t(i, j) values(1, 15)] rc 0
 (rows inserted=1)
 [insert into u(i) values(1)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 16)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 17)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 18)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 19)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 20)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 21)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 22)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 23)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 24)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 25)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 26)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 27)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 28)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 29)] rc 0
-[delete from t where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
-[update t set i = 2 where 1] failed with rc 3 OP #3 BLOCK2_SEQV2(824): verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[delete from t where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
+[update t set i = 2 where 1] failed with rc 3 verify key constraint cannot resolve constraint table 't' index '0' key 'I' -> table 'u' index '0' 
 (rows inserted=1)
 [insert into t(i, j) values(1, 30)] rc 0
 (i=1, j=1, k=NULL)

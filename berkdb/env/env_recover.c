@@ -1127,7 +1127,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		logc = NULL;
 
 		/* Flush everything to disk, we are losing the log. */
-		if ((ret = __memp_sync(dbenv, NULL, NULL)) != 0)
+		if ((ret = __memp_sync(dbenv, NULL)) != 0)
 			 goto err;
 
 		region->last_ckp = ((DB_TXNHEAD *)txninfo)->ckplsn;

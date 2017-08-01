@@ -1,4 +1,4 @@
-[ALTER TABLE t1 ADD COLUMN k INT NOT NULL] failed with rc 304 OP #3 BLOCK_SEQ(800): 
+[ALTER TABLE t1 ADD COLUMN k INT NOT NULL] failed with rc 304 
 [ALTER TABLE t2 DROP COLUMN doesnotexist] failed with rc -3 Column 'doesnotexist' not found.
 [ALTER TABLE t2 DROP COLUMN `j`] failed with rc -3 Table must have at least one column.
 (tablename='t1')
@@ -8,6 +8,7 @@
 (tablename='t5')
 (tablename='t6')
 (tablename='t7')
+(tablename='t8')
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='l', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -24,6 +25,8 @@
 (tablename='t6', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t7', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='i', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t8', columnname='j', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t4', keyname='$KEY_FF23FD33', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "l" int, "m" int DEFAULT 1, "n" int DEFAULT 1, "o" int);', csc2='schema
 	{
@@ -72,5 +75,11 @@ keys
 	{
 		int i null = yes 
 		int j null = yes 
+	}
+')
+(type='table', name='t8', tbl_name='t8', rootpage=12, sql='create table "t8"("i" blob, "j" blob);', csc2='schema
+	{
+		blob i null = yes 
+		blob j[100] null = yes 
 	}
 ')

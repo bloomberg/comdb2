@@ -76,7 +76,7 @@
 	}
 ')
 [DROP TABLE t2] failed with rc -3 no such table: t2
-[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc 304 OP #3 BLOCK_SEQ(800): Error at line   9: CANT HAVE SAME TAG 'PRIMARY_KEY' FOR INDICES 1 AND 0!
+[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc 304 Error at line   9: CANT HAVE SAME TAG 'PRIMARY_KEY' FOR INDICES 1 AND 0!
 [CREATE TABLE t4(i INT, i INT)] failed with rc -3 Duplicate column name.
 [CREATE TABLE t7(i INTt)] failed with rc -3 Invalid type specified.
 [CREATE TABLE t8(INT i)] failed with rc -3 Invalid type specified.
@@ -173,7 +173,7 @@ keys
 [DROP TABLE t4] failed with rc -3 no such table: t4
 [DROP TABLE t7] failed with rc -3 no such table: t7
 [DROP TABLE t8] failed with rc -3 no such table: t8
-[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 304 OP #3 BLOCK_SEQ(800): Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 304 Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
 (tablename='t2')
 (tablename='t3')
 (tablename='t4')
@@ -445,3 +445,35 @@ constraints
 ')
 [DROP TABLE t6] failed with rc -3 no such table: t6
 [CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate only on local schema only.
+[CREATE TABLE t2(b blob[1])] failed with rc -3 Invalid type specified.
+[CREATE TABLE t6(b blob(-100))] failed with rc -3 Invalid type specified.
+(tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='b', type='blob', size=6, sqltype='blob', varinlinesize='1', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='b', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+[CREATE TABLE t4(b blob(0))] failed with rc -3 Table already exists
+[CREATE TABLE t5(b blob(-100))] failed with rc -3 Invalid type specified.
+(tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='b', type='blob', size=6, sqltype='blob', varinlinesize='1', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='b', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("b" blob);', csc2='schema
+	{
+		blob b null = yes 
+	}
+')
+(type='table', name='t3', tbl_name='t3', rootpage=5, sql='create table "t3"("b" blob);', csc2='schema
+	{
+		blob b[1] null = yes 
+	}
+')
+(type='table', name='t4', tbl_name='t4', rootpage=6, sql='create table "t4"("b" blob);', csc2='schema
+	{
+		blob b[100] null = yes 
+	}
+')
+(type='table', name='t5', tbl_name='t5', rootpage=7, sql='create table "t5"("b" blob);', csc2='schema
+	{
+		blob b null = yes 
+	}
+')

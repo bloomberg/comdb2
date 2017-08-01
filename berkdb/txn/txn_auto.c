@@ -2882,7 +2882,6 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	void *notused3;
 {
 	__txn_regop_gen_args *argp;
-    unsigned long long commit_context = 0;
 	struct tm *lt;
 	u_int32_t i;
 	int ch;
@@ -2905,8 +2904,13 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tgeneration: %u\n", argp->generation);
+    unsigned long long flipcontext;
+    int *fliporig = (int *)&argp->context;
+    int *flipptr = (int *)&flipcontext;
+    flipptr[0] = htonl(fliporig[1]);
+    flipptr[1] = htonl(fliporig[0]);
 	fflush(stdout);
-	(void)printf("\tcontext: %llx\n", argp->context);
+	(void)printf("\tcontext: %016llx %016llx\n", argp->context, flipcontext);
 	fflush(stdout);
 	lt = localtime((time_t *)&argp->timestamp);
     if (lt)

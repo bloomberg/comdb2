@@ -1500,7 +1500,7 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
     start = time_epochms();
     rc = ll_checkpoint(bdb_state, force);
     if (rc != 0) {
-logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
+        logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -8281,7 +8281,7 @@ void populate_deleted_files(bdb_state_type *bdb_state)
     DB_LSN lsn;
     DB_LSN prev_lsn;
     file_set_t *fs;
-    file_set_t *prev_fs;
+    file_set_t *prev_fs = NULL;
     int rc;
 
     logmsg(LOGMSG_INFO, "Checking for removed files\n");

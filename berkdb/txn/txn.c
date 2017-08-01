@@ -334,6 +334,16 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		goto err;
 
 	*txnpp = txn;
+
+	if (LOGGING_ON(dbenv) && dbenv->tx_perfect_ckp) {
+		/* We set the pthread key to the DB_TXN so that
+		   we can trace back to the parent DB_TXN to get its
+		   begin LSN. Do not rush to get the begin LSN as
+		   it may not be needed (eg, readonly txn's). */
+		if (pthread_getspecific(txn_key) == NULL &&
+		    pthread_setspecific(txn_key, (void *)txn) != 0)
+			goto err;
+	}
 	return (0);
 
 err:
@@ -1521,6 +1531,9 @@ __txn_discard(txnp, flags)
 		__os_free(dbenv, freep);
 	}
 
+	if ((ret = pthread_setspecific(txn_key, NULL)) != 0)
+		return (ret);
+
 	return (0);
 }
 
@@ -1862,6 +1875,9 @@ __txn_end(txnp, is_commit)
 		(void)__txn_checkpoint(dbenv, 0, 0, DB_FORCE);
 	}
 
+	if ((ret = pthread_setspecific(txn_key, NULL)) != 0)
+		return (ret);
+
 	return (0);
 }
 
@@ -2115,7 +2131,7 @@ __txn_checkpoint(dbenv, kbytes, minutes, flags)
 	 * so just sync the Mpool and go home.
 	 */
 	if (IS_REP_CLIENT(dbenv)) {
-		if (MPOOL_ON(dbenv) && (ret = __memp_sync(dbenv, NULL, NULL)) != 0) {
+		if (MPOOL_ON(dbenv) && (ret = __memp_sync(dbenv, NULL)) != 0) {
 			__db_err(dbenv,
 		    "txn_checkpoint: failed to flush the buffer cache %s",
 			    db_strerror(ret));
@@ -2192,7 +2208,10 @@ do_ckp:	/*
 	if (unlikely(gbl_ckp_sleep_before_sync > 0))
 		usleep(gbl_ckp_sleep_before_sync * 1000LL);
 
-	if (MPOOL_ON(dbenv) && (ret = __memp_sync(dbenv, NULL, &ckp_lsn)) != 0) {
+	/* If flag is DB_FORCE, don't run perfect checkpoints. */
+	if (MPOOL_ON(dbenv) &&
+			(ret = __memp_sync_restartable(dbenv,
+			       (LF_ISSET(DB_FORCE) ? NULL : &ckp_lsn), 0, 0)) != 0) {
 		__db_err(dbenv,
 		    "txn_checkpoint: failed to flush the buffer cache %s",
 		    db_strerror(ret));
@@ -2212,6 +2231,33 @@ do_ckp:	/*
 		R_LOCK(dbenv, &mgr->reginfo);
 		last_ckp = region->last_ckp;
 		R_UNLOCK(dbenv, &mgr->reginfo);
+
+		/*
+		 * `ckp_lsn' may go backwards. Here is an example:
+		 *
+		 * Suppose we have a large enough buffer pool, and memp_trickle
+		 * is disabled or the threshold is low enough to allow all dirty
+		 * pages stay in the buffer pool.
+		 *
+		 * 1) TXN A begins with LSN A.
+		 * 2) TXN B begins with an older LSN B.
+		 * 3) TXN A reads pages, and has not modified any pages yet.
+		 * 4) TXN B modifies pages.
+		 * 5) Checkpoint takes place and ckp_lsn is adjusted to LSN B.
+		 *    the last checkpoint LSN becomes LSN B.
+		 * 6) TXN A modifies pages.
+		 * 7) Checkpoint takes place and ckp_lsn is adjusted to LSN A.
+		 *    LSN A is younger than the last checkpoint LSN which is LSN B.
+		 *
+		 * If ckp_lsn goes backwards, we skip the checkpoint record.
+		 * It should be fine because we have a separate checkpoint file
+		 * which tells us where the checkpoints are in the log files.
+		 * However, it does break the assumption that every successful
+		 * __txn_checkpoint() writes a checkpoint in the log.
+		 */
+		if (dbenv->tx_perfect_ckp && log_compare(&ckp_lsn, &last_ckp) <= 0)
+			return (0);
+
 		if (REP_ON(dbenv))
 			__rep_get_gen(dbenv, &gen);
 

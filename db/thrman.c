@@ -434,15 +434,17 @@ static void thrman_dump_ll(void)
     struct thr_handle *temp;
     int count;
 
-    printf("%d registered threads running:-\n", listc_size(&thr_list));
+    logmsg(LOGMSG_USER, "%d registered threads running:-\n",
+           listc_size(&thr_list));
     count = 0;
     LISTC_FOR_EACH_SAFE(&thr_list, thr, temp, linkv)
     {
         char buf[1024];
-        printf("  %2d) %s\n", count, thrman_describe(thr, buf, sizeof(buf)));
+        logmsg(LOGMSG_USER, "  %2d) %s\n", count,
+               thrman_describe(thr, buf, sizeof(buf)));
         count++;
     }
-    printf("------\n");
+    logmsg(LOGMSG_USER, "------\n");
 }
 
 /* Dump all active threads */
