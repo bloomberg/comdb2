@@ -2890,17 +2890,15 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
 
 static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
 {
-    int retrc = 0;
-
     for (int i = 0; i < maxblobs; i++) {
         if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
             reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                       "blob size (%d) exceeds maximum (%d)", blobs[i].length,
                       MAXBLOBLENGTH);
-            retrc = ERR_BLOB_TOO_LARGE;
+            return ERR_BLOB_TOO_LARGE;
         }
     }
-    return retrc;
+    return 0;
 }
 
 /* find and remember the blobs for an rrn/genid. */
