@@ -866,7 +866,9 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
         }
     }
 
-    if ((f->type == SERVER_BLOB || f->type == SERVER_BLOB2 || f->type == SERVER_VUTF8) && m->n > MAXBLOBLENGTH) {
+    if ((f->type == SERVER_BLOB || f->type == SERVER_BLOB2 ||
+         f->type == SERVER_VUTF8) &&
+        m->n > MAXBLOBLENGTH) {
         rc = -1;
         if (fail_reason) {
             fail_reason->reason = CONVERT_FAILED_BLOB_SIZE;
