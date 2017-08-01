@@ -163,6 +163,10 @@ extern int max_replication_trans_retries;
 /* net/net.c */
 extern int explicit_flush_trace;
 
+/* bdb/genid.c */
+unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
+void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+
 #include <stdbool.h>
 extern bool gbl_rcache;
 
@@ -318,6 +322,33 @@ static void *checkctags_value(void *context)
         }
     }
     return "unknown";
+}
+
+static void *next_genid_value(void *context)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    static char genid_str[64];
+    unsigned long long flipgenid, genid = get_genid(thedb->bdb_env, 0);
+
+    int *genptr = (int *)&genid, *flipptr = (int *)&flipgenid;
+
+    flipptr[0] = htonl(genptr[1]);
+    flipptr[1] = htonl(genptr[0]);
+
+    snprintf(genid_str, sizeof(genid_str), "0x%016llx 0x%016llx %llu",
+            genid, flipgenid, genid);
+
+    return genid_str;
+}
+
+static int genid_seed_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    char *seedstr = (char *)value;
+    unsigned long long seed;
+    seed = strtoll(seedstr, 0, 16);
+    seed_genid48(thedb->bdb_env, seed);
+    return 0;
 }
 
 /*
