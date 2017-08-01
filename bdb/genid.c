@@ -361,8 +361,8 @@ int genid_contains_time(bdb_state_type *bdb_state)
 }
 
 static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
-                                      unsigned int dtafile, DB_LSN *lsn,
-                                      uint32_t generation, uint64_t seed)
+                                          unsigned int dtafile, DB_LSN *lsn,
+                                          uint32_t generation, uint64_t seed)
 {
     unsigned int *iptr;
     unsigned long long genid;
@@ -374,7 +374,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     int prwarn = 0;
 
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
-    if (!seed) 
+    if (!seed)
         seed48 = get_genid_counter48(bdb_state->gblcontext);
     else
         seed48 = seed;

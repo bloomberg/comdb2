@@ -335,8 +335,8 @@ static void *next_genid_value(void *context)
     flipptr[0] = htonl(genptr[1]);
     flipptr[1] = htonl(genptr[0]);
 
-    snprintf(genid_str, sizeof(genid_str), "0x%016llx 0x%016llx %llu",
-            genid, flipgenid, genid);
+    snprintf(genid_str, sizeof(genid_str), "0x%016llx 0x%016llx %llu", genid,
+             flipgenid, genid);
 
     return (void *)genid_str;
 }
