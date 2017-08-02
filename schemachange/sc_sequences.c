@@ -18,6 +18,49 @@
 #include "logmsg.h"
 
 /**
+ * Checks sequence parameters to ensure that the configured sequence is valid.
+ * Returns 0 if valid and non-zero if not valid.
+ */
+int validate_sequence(long long min_val, long long max_val, long long increment,
+                      int cycle, long long start_val, long long restart_val,
+                      long long chunk_size)
+{
+    if (min_val > max_val) {
+        logmsg(LOGMSG_ERROR,
+               "Minvalue of %lld and Maxvalue of %lld are invalid\n", min_val,
+               max_val);
+        return 1;
+    }
+
+    if (chunk_size < 1) {
+        logmsg(LOGMSG_ERROR, "Chunk size of %lld is invalid\n", chunk_size);
+        return 1;
+    }
+
+    if (increment == 0) {
+        logmsg(LOGMSG_ERROR, "Increment of %lld is invalid\n", chunk_size);
+        return 1;
+    }
+
+    if (increment > chunk_size) {
+        logmsg(LOGMSG_ERROR, "Increment of %lld is invalid\n", increment);
+        return 1;
+    }
+
+    if (start_val > max_val || start_val < min_val) {
+        logmsg(LOGMSG_ERROR, "Start Value of %lld is invalid\n", start_val);
+        return 1;
+    }
+
+    if (restart_val > max_val || restart_val < min_val) {
+        logmsg(LOGMSG_ERROR, "Restart Value of %lld is invalid\n", restart_val);
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
  * Adds sequence to llmeta and memory
  */
 int do_add_sequence_int(char *name, long long min_val, long long max_val,
@@ -43,7 +86,16 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     if (thedb->num_sequences >= MAX_NUM_SEQUENCES) {
         logmsg(
             LOGMSG_ERROR,
-            "Max number of sequences created. Unable to create new sequence.");
+            "Max number of sequences created. Unable to create new sequence.\n");
+        return 1;
+    }
+
+    // Validate sequence attributes
+    if (validate_sequence(min_val, max_val, increment, cycle, start_val,
+                          start_val, chunk_size)) {
+        // Invalid sequence configuration
+        logmsg(LOGMSG_ERROR,
+               "Invalid parameters provided. Sequence cannot be created.\n");
         return 1;
     }
 
@@ -133,8 +185,6 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
                           long long restart_val_in, long long chunk_size_in,
                           int modified, tran_type *trans)
 {
-    // TODO: figure out what value to reset to. wwpgd
-
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
         logmsg(LOGMSG_ERROR, "No sequences defined\n");
@@ -155,65 +205,40 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     long long min_val = seq->min_val;
     if (modified & SEQ_MIN_VAL) {
         min_val = min_val_in;
-
-        if (min_val < seq->min_val) {
-            // Unraise exhausted flag
-            seq->flags &= ~SEQUENCE_EXHAUSTED;
-        }
     }
 
     // Max Val
     long long max_val = seq->max_val;
     if (modified & SEQ_MAX_VAL) {
         max_val = max_val_in;
-
-        if (max_val < seq->max_val) {
-            // Unraise exhausted flag
-            seq->flags &= ~SEQUENCE_EXHAUSTED;
-        }
     }
 
     // Increment
     long long increment = seq->increment;
     if (modified & SEQ_INC) {
-        // TODO: check validity
         increment = increment_in;
-
-        // Will only cause more values to be valid if new increment
-        if (llabs(increment) < llabs(seq->increment)) {
-            // Unraise exhausted flag
-            seq->flags &= ~SEQUENCE_EXHAUSTED;
-        }
     }
 
     // Cycle
     bool cycle = seq->cycle;
     if (modified & SEQ_CYCLE) {
         cycle = cycle_in;
-
-        if (cycle){
-            // Unraise exhausted flag
-            seq->flags &= ~SEQUENCE_EXHAUSTED;
-        }
     }
 
     // Start Val
     long long start_val = seq->start_val;
     if (modified & SEQ_START_VAL) {
-        // TODO: check validity
         start_val = start_val_in;
     }
 
     // Restart Val
     long long restart_val = seq->next_start_val;
     if (modified & SEQ_RESTART_TO_START_VAL) {
-        // TODO: check validity
         restart_val = seq->start_val;
 
         // Unraise exhausted flag
         seq->flags &= ~SEQUENCE_EXHAUSTED;
     } else if (modified & SEQ_RESTART_VAL) {
-        // TODO: check validity
         restart_val = restart_val_in;
 
         // Unraise exhausted flag
@@ -223,11 +248,17 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     // Chunk Size
     long long chunk_size = seq->chunk_size;
     if (modified & SEQ_CHUNK_SIZE) {
-        if (chunk_size_in > 0){
-            chunk_size = chunk_size_in;
-        } else {
-            logmsg(LOGMSG_ERROR, "Chunk Size %lld is invalid", chunk_size_in);
-        }
+        chunk_size = chunk_size_in;
+    }
+
+    // Validate sequence attributes
+    if (validate_sequence(min_val, max_val, increment, cycle, start_val,
+                          restart_val, chunk_size)) {
+        // Invalid sequence configuration
+        logmsg(LOGMSG_ERROR,
+               "Invalid parameters provided. Sequence cannot be altered.\n");
+        pthread_mutex_unlock(&seq->seq_lk);
+        return 1;
     }
 
     // Write change to llmeta
