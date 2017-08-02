@@ -3731,7 +3731,8 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     if (rc) {
         bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
         errstat_set_rc(&clnt->osql.xerr, rc);
-        errstat_set_str(&clnt->osql.xerr, tran->errstr);
+        if(tran->errstr) //TODO: this can be non-null even when no error
+            errstat_set_str(&clnt->osql.xerr, tran->errstr);
         clnt->osql.error_is_remote = 1;
     } else {
         errstat_set_rc(&clnt->osql.xerr, 0);
