@@ -17,7 +17,7 @@ function setandtest
     testv=$2
 
     cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "put tunable 'seed_genid' '$set'"
-    pre=$(cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "select * from comdb2_tunables() where name=\"next_genid\"" | awk '{print $9}')
+    pre=$(cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "select value from comdb2_tunables() where name=\"next_genid\"" | awk '{print $2}')
 
     echo $pre | egrep $testv
     if [[ $? != 0 ]]; then
