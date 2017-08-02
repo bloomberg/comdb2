@@ -5102,7 +5102,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int *genptr = (int *)&genid;
         flipptr[0] = htonl(genptr[1]);
         flipptr[1] = htonl(genptr[0]);
-        logmsg(LOGMSG_USER, "0x%016llx 0x%016llx %llu\n", genid, flipgenid, genid);
+        logmsg(LOGMSG_USER, "0x%016llx 0x%016llx %llu\n", genid, flipgenid,
+               genid);
     } else if (tokcmp(tok, ltok, "partitions") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "roll") == 0) {
