@@ -36,7 +36,6 @@ int seq_next_val(char *name, long long *val)
 
     if (seq == NULL) {
         // Failed to find sequence with specified name
-        // TODO: error out another way
         logmsg(LOGMSG_ERROR, "Sequence %s cannot be found\n", name);
         return -1;
     }

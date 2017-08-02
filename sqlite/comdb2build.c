@@ -1588,15 +1588,7 @@ clean_arg:
     free_bpfunc_arg(arg);  
 }
 
-/**
- * ------------------------------------------------------------------------------
- * 
- *                             REMOVE: Sequences
- * 
- * ------------------------------------------------------------------------------
- */
 /****************************** SEQUENCES *******************************/
-// TODO: Modify for sequences 
 void comdb2CreateSequence(
     Parse *pParse, /* Parser context */
     char *name, /* Name of sequence */
@@ -1624,12 +1616,8 @@ void comdb2CreateSequence(
     if (chkAndCopySequenceNames(v, pParse, sc->table, name, 0))
         goto out;
 
-    // TODO: is this needed without user tables?
-    // if (authenticateSC(sc->sequence, pParse)) goto out;
-
     comdb2WriteTransaction(pParse);
 
-    // TODO: Modify for sequences
     v->readOnly = 0;
     sc->type = DBTYPE_SEQUENCE;
     sc->addseq = 1;
@@ -1640,12 +1628,6 @@ void comdb2CreateSequence(
     sc->seq_cycle = cycle;
     sc->seq_chunk_size = chunk_size;
     sc->seq_start_val = start_val;
-
-    // TODO: Not needed?
-    // fillTableOption(sc, opt);
-
-    // copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
-
     
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                         (vdbeFuncArgFree)&free_schema_change_type);
@@ -1703,7 +1685,6 @@ out:
     free_schema_change_type(sc);
 }
 
-// TODO: Modify for sequences
 void comdb2DropSequence(Parse *pParse, char *name)
 {
     sqlite3 *db = pParse->db;
@@ -1718,22 +1699,11 @@ void comdb2DropSequence(Parse *pParse, char *name)
     if (chkAndCopySequenceNames(v, pParse, sc->table, name, 1))
         goto out;
 
-    // TODO: is this needed without user tables?
-    // if (authenticateSC(sc->sequence, pParse)) goto out;
-
     comdb2WriteTransaction(pParse);
 
-    // TODO: Modify for sequences
     v->readOnly = 0;
     sc->type = DBTYPE_SEQUENCE;
     sc->dropseq = 1;
-
-
-    // if (get_csc2_file(sc->table, -1, &sc->newcsc2, NULL)) {
-    //     logmsg(LOGMSG_ERROR, "%s: table schema not found: \n", sc->table);
-    //     setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
-    //     goto out;
-    // }
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                         (vdbeFuncArgFree)&free_schema_change_type);
@@ -1742,14 +1712,6 @@ void comdb2DropSequence(Parse *pParse, char *name)
 out:
     free_schema_change_type(sc);
 }
-
-/**
- * ------------------------------------------------------------------------------
- * 
- *                          REMOVE: END Sequences
- * 
- * ------------------------------------------------------------------------------
- */
 
 
 int comdb2genidcontainstime(void)
