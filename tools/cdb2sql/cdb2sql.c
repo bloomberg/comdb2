@@ -161,12 +161,14 @@ const char *words[] = {
   "WITH", NULL, };
 
 
+
+
 // Generator function for word completion.
-char *my_generator (const char *text, int state)
+char *level_one_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
-//printf("\nstate %d text %s\n", state, text);
+printf("\nstate %x text %s rl_text '%s'\n", state, text, rl_line_buffer);
     if (!state) { //if state is 0 get the length of text
         list_index = 0;
         len = strlen (text);
@@ -182,12 +184,11 @@ char *my_generator (const char *text, int state)
     return ((char *) NULL);
 }
 
-char *my_db_generator (const char *text, int state)
+char *db_generator (const char *text, int state, char *query)
 {
     static char **db_words;
     static int list_index, len;
     const char *name;
-//printf("\nstate %x text %s\n", state, text);
     if (!state) { //if state is 0 get the completions from the db
         cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
         if (db_words) {
@@ -207,8 +208,8 @@ char *my_db_generator (const char *text, int state)
         char sql[256];
         //TODO: escape text
         snprintf(sql, sizeof(sql), 
-                "SELECT DISTINCT candidate COLLATE nocase"
-                "  FROM comdb2_completion('%s') ORDER BY 1", text);
+                query,
+                text);
 
         int rc;
         if (dbhostname) {
@@ -272,6 +273,31 @@ printf("error with malloc/realloc\n");
     return ((char *) NULL);
 }
 
+char *completion_generator (const char *text, int state)
+{
+printf("\nstate %x text %p '%s' rl_text %p '%s'\n", state, text, text, rl_line_buffer, rl_line_buffer);
+    if(!*rl_line_buffer) 
+        return level_one_generator(text, state);
+
+    char *endptr = rl_line_buffer;
+    while(*endptr) sptr++; //go to end
+    while(*endptr == ' ') endptr--; //eliminate ending spaces
+
+    char *sptr = endptr;
+    while(sptr != rl_line_buffer && *sptr != ' ') sptr--; //go back, last word
+
+    printf("suptr %s\n", sptr);
+    if(strncasecmp(sptr, "PUT", 3) == 0) {
+        return db_generator(text, state,
+                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '\%s'"
+            );
+    }
+    return db_generator(text, state, 
+            "SELECT DISTINCT candidate COLLATE nocase"
+            "  FROM comdb2_completion('\%s') ORDER BY 1"
+            );
+}
+
 
 
 // Custom completion function
@@ -280,13 +306,7 @@ static char **my_completion (const char *text, int start, int end)
     // This prevents appending space to the end of the matching word
     //rl_completion_append_character = '\0';
     char **matches = (char **) NULL;
-printf("\nstart %d end %d\n", start, end);
-    if (start < 3) {
-        matches = rl_completion_matches ((char *) text, &my_generator);
-    }
-    else { //perform db query
-        matches = rl_completion_matches ((char *) text, &my_db_generator);
-    }
+    matches = rl_completion_matches ((char *) text, &completion_generator);
 
     return matches;
 }

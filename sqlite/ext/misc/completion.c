@@ -281,10 +281,14 @@ static int completionNext(sqlite3_vtab_cursor *cur){
             zSep = " UNION ";
           }
           sqlite3_finalize(pS2);
+          sqlite3_prepare_v2(pCur->db, zSql, -1, &pCur->pStmt, 0);
+          sqlite3_free(zSql);
           */
-          sqlite3_prepare_v2(pCur->db, "SELECT name FROM sqlite_master WHERE type='table' and name not like 'sqlite_stat\%'", -1, &pCur->pStmt, 0);
-          //UNION vtables...
-          //sqlite3_free(zSql);
+          sqlite3_prepare_v2(pCur->db, 
+                  "SELECT tablename FROM comdb2_tables "
+                  "WHERE tablename NOT LIKE 'sqlite_stat\%'", 
+                  -1, &pCur->pStmt, 0);
+          //TODO: UNION vtables? 
         }
         iCol = 0;
         eNextPhase = COMPLETION_COLUMNS;
@@ -292,6 +296,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
       case COMPLETION_COLUMNS: {
         if( pCur->pStmt==0 ){
+            /*
           sqlite3_stmt *pS2;
           char *zSql = 0;
           const char *zSep = "";
@@ -311,6 +316,10 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           sqlite3_finalize(pS2);
           sqlite3_prepare_v2(pCur->db, zSql, -1, &pCur->pStmt, 0);
           sqlite3_free(zSql);
+          */
+          sqlite3_prepare_v2(pCur->db, 
+                  "select columnname from comdb2_columns;", 
+                  -1, &pCur->pStmt, 0);
         }
         iCol = 0;
         eNextPhase = COMPLETION_EOF;
