@@ -175,7 +175,7 @@ int appsock_init(void)
     cmd_genid48 = add_command("genid48");
 
     gbl_appsock_thdpool =
-        thdpool_create("appsock pool", sizeof(struct appsock_thd_state));
+        thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_appsock_thdpool);
@@ -521,7 +521,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
              * function will dispatch to a pooled sql engine for performing
              * queries. */
             thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
-            handle_newsql_requests(thr_self, sb, keepsocket);
+            *keepsocket = 1;
+            handle_newsql_requests(thr_self, sb);
 
             break;
         } else if (cmd == cmd_remcur) {

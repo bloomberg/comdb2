@@ -1699,8 +1699,15 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
                 }
                 memcpy(&m->convopts, &schema->member[m->idx].convopts,
                        sizeof(struct field_conv_opts));
-                if (gbl_new_indexes && strncmp(dbname, "sqlite_stat", 11))
+                if (gbl_new_indexes && strncasecmp(dbname, "sqlite_stat", 11) &&
+                    strcasecmp(dbname, "comdb2_oplog") &&
+                    strcasecmp(dbname, "comdb2_commit_log") &&
+                    (!gbl_replicate_local ||
+                     strcasecmp(m->name, "comdb2_seqno"))) {
                     m->isExpr = 1;
+                    db->ix_partial = 1;
+                    db->ix_expr = 1;
+                }
             }
             if (ascdesc)
                 m->flags |= INDEX_DESCEND;
@@ -1731,10 +1738,6 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
                 db->ix_partial = 1;
             }
         }
-    }
-    if (gbl_new_indexes && strncmp(dbname, "sqlite_stat", 11)) {
-        db->ix_partial = 1;
-        db->ix_expr = 1;
     }
     return 0;
 
@@ -7533,7 +7536,19 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
     if (db->ix_datacopy[ixnum]) {
         assert(db->ix_collattr[ixnum] == 0);
 
-        if (tail) {
+        if (db->ix_datacopy[ixnum] > 1) {
+            /* the key has decimals */
+            rc = extract_decimal_quantum(db, ixnum, outbuf, mangled_key,
+                                         4 * (db->ix_datacopy[ixnum] - 1),
+                                         taillen);
+        }
+        if (rc) {
+            if (tail) {
+                *tail = NULL;
+                *taillen = 0;
+            }
+            rc = -1; /* callers like -1 */
+        } else if (tail) {
             *tail = (char *)inbuf;
             *taillen = inbuflen;
         }

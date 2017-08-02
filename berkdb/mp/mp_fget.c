@@ -28,6 +28,7 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "dbinc/db_swap.h"
 #include "dbinc/db_page.h"
 #include "dbinc/btree.h"
+#include "dbinc/txn.h"
 
 #include "logmsg.h"
 
@@ -222,6 +223,7 @@ __memp_fget_internal(dbmfp, pgnoaddr, flags, addrp, did_io)
 	u_int32_t n_cache, st_hsearch, alloc_flags;
 	int b_incr, extending, first, ret, is_recovery_page;
 	db_pgno_t falloc_off, falloc_len;
+	DB_TXN *thrtxn;
 
 	uint64_t start_time_us;
 
@@ -654,9 +656,12 @@ alloc:		/*
 			atomic_inc(env, &hp->hash_page_dirty);
 			atomic_inc(env, &c_mp->stat.st_page_dirty);
 			F_SET(bhp, BH_DIRTY | BH_DIRTY_CREATE);
-			if (dbenv->mp_perfect_ckp) {
-				/* Set page first-dirty-LSN to the lowest */
-				bhp->first_dirty_lsn = (DB_LSN){0};
+			if (dbenv->tx_perfect_ckp) {
+				/* Set page first-dirty-LSN to not logged */
+				DB_LSN not_logged;
+				LSN_NOT_LOGGED(not_logged);
+				bhp->first_dirty_tx_begin_lsn =
+					__txn_get_first_dirty_begin_lsn(not_logged);
 			}
 		}
 

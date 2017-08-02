@@ -1,4 +1,4 @@
-(out='set default log level to INFO')
+(out='Set default log level to INFO')
 [exec procedure sys.cmd.send("logmsg level info")] rc 0
 (out='Attribute set')
 [exec procedure sys.cmd.send("bdb setattr DEFAULT_ANALYZE_PERCENT 100")] rc 0
