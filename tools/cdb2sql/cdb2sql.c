@@ -153,15 +153,17 @@ char *my_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
-//printf("\nstate %x text %s\n", state, text);
+//printf("\nstate %d text %s\n", state, text);
     if (!state) { //if state is 0 get the length of text
         list_index = 0;
         len = strlen (text);
     }
     while (name = words[list_index]) {
-//printf("\n%d): name %s, state %x text %s\n", list_index, name, state, text);
         list_index++;
-        if (strncmp (name, text, len) == 0) return strdup (name);
+//printf("%d): name '%s', state %d text '%s' len %d\n", list_index, name, state, text, len);
+        if (len == 0 || strncmp (name, text, len) == 0) {
+            return strdup (name);
+        }
     }
     // If no names matched, then return NULL.
     return ((char *) NULL);
@@ -226,7 +228,6 @@ char *my_db_generator (const char *text, int state)
                     m = malloc(sz * sizeof(char *));
                 } else {
                     sz = sz * 2; //double
-printf("realloc to %ld, %p\n", sz, db_words);
                     m = (char**) realloc(db_words, sz * sizeof(char *));
                 }
                 if (!m) { 
@@ -241,7 +242,8 @@ printf("error with malloc/realloc\n");
             db_words[count] = strdup((char*) val);
             count++;
         }
-        db_words[count] = NULL; //last one always NULL
+        if (db_words)
+            db_words[count] = NULL; //last one always NULL
         cdb2_close(cdb2h_2);
     }
 
@@ -263,15 +265,15 @@ printf("error with malloc/realloc\n");
 static char **my_completion (const char *text, int start, int end)
 {
     // This prevents appending space to the end of the matching word
-    rl_completion_append_character = '\0';
+    //rl_completion_append_character = '\0';
     char **matches = (char **) NULL;
 printf("\nstart %d end %d\n", start, end);
-    if (start < 3) {
-        matches = rl_completion_matches ((char *) text, &my_generator);
-    }
-    else { //perform db query
+    //if (start < 3) {
+    //    matches = rl_completion_matches ((char *) text, &my_generator);
+    //}
+    //else { //perform db query
         matches = rl_completion_matches ((char *) text, &my_db_generator);
-    }
+    //}
 
     return matches;
 }
@@ -1064,11 +1066,11 @@ void send_cancel_cnonce(const char *cnonce)
  */
 static void int_handler(int signum)
 {
-    printf("\n");
+    printf("int_handler()\n");
     if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
         printf("Requesting to cancel query (press Ctrl-C to exit program). "
                "Please wait...\n");
-    if (gbl_sent_cancel_cnonce) exit(1);
+    if (gbl_sent_cancel_cnonce) exit(1); // pressed ctrl-c again
     if (!gbl_in_stmt) {
         rl_on_new_line();
         rl_replace_line("", 0);
