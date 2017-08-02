@@ -75,7 +75,7 @@ function downgrade
     [[ "$debug" == 1 ]] && set -x
     [[ "$trace" == 1 ]] && echo "Running downgrade"
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-    cdb2sql ${CDB2_OPTIONS} $dbname --host $master $stage "exec procedure sys.cmd.send('downgrade')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbname $stage "exec procedure sys.cmd.send('downgrade')"
 }
 
 function deleteall
@@ -126,6 +126,8 @@ function verify
         if [[ $? != 0 ]]; then
             echo "No response from $node"
             exit 1
+        else
+            echo "Good SELECT from $node"
         fi
     done
 }
