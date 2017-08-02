@@ -125,32 +125,35 @@ static int completionConnect(
 #define COMPLETION_COLUMN_WHOLELINE 2  /* Entire line seen so far */
 #define COMPLETION_COLUMN_PHASE     3  /* ePhase - used for debugging only */
 
-  rc = sqlite3_declare_vtab(db,
+  /*
+    rc = sqlite3_declare_vtab(db,
       "CREATE TABLE comdb2_completion(\"candidate\", \"prefix\", \"wholeline\", \"phase\")");
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
             return SQLITE_NOMEM;
         }
         memset(*ppVtab, 0, sizeof(*ppVtab));
+        *ppVtab->db = db;
     }
 
     return 0;
+  */
 
-  /*
+  rc = sqlite3_declare_vtab(db,
+      "CREATE TABLE comdb2_completion("
       "  candidate TEXT,"
       "  prefix TEXT HIDDEN,"
       "  wholeline TEXT HIDDEN,"
-      "  phase INT HIDDEN"        /* Used for debugging only * /
+      "  phase INT HIDDEN"        /* Used for debugging only */
       ")"); 
   if( rc==SQLITE_OK ){
     pNew = sqlite3_malloc( sizeof(*pNew) );
     *ppVtab = (sqlite3_vtab*)pNew;
     if( pNew==0 ) return SQLITE_NOMEM;
     memset(pNew, 0, sizeof(*pNew));
-    pNew->db = db;
+    //pNew->db = db;
   }
   return rc;
-  */
 }
 
 /*
@@ -488,7 +491,7 @@ static int completionBestIndex(
 ** This following structure defines all the methods for the 
 ** completion virtual table.
 */
-static sqlite3_module completionModule = {
+const sqlite3_module completionModule = {
   0,                         /* iVersion */
   0,                         /* xCreate */
   completionConnect,         /* xConnect */

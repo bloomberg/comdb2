@@ -148,20 +148,110 @@ void cdb2sql_usage(int exit_val)
 const char *words[] = {"SELECT", "INSERT", "UPDATE", "PUT", "GET", "SET", "EXEC", NULL};
 
 
-
 // Generator function for word completion.
 char *my_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
-    printf("state %x text %s\n", state, text);
+//printf("\nstate %x text %s\n", state, text);
     if (!state) { //if state is 0 get the length of text
         list_index = 0;
         len = strlen (text);
     }
     while (name = words[list_index]) {
+//printf("\n%d): name %s, state %x text %s\n", list_index, name, state, text);
         list_index++;
         if (strncmp (name, text, len) == 0) return strdup (name);
+    }
+    // If no names matched, then return NULL.
+    return ((char *) NULL);
+}
+
+char *my_db_generator (const char *text, int state)
+{
+    static char **db_words;
+    static int list_index, len;
+    const char *name;
+//printf("\nstate %x text %s\n", state, text);
+    if (!state) { //if state is 0 get the completions from the db
+        cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
+        if (db_words) {
+            char *wrd;
+            list_index = 0;
+            while ((wrd = db_words[list_index])) {
+                free(wrd);
+                db_words[list_index] = NULL;
+                list_index++;
+            }
+            free(db_words);
+            db_words = NULL;
+        }
+
+        list_index = 0;
+        len = strlen (text);
+        char sql[256];
+        //TODO: escape text
+        snprintf(sql, sizeof(sql), 
+                "SELECT DISTINCT candidate COLLATE nocase"
+                "  FROM comdb2_completion('%s') ORDER BY 1", text);
+
+        int rc;
+        if (dbhostname) {
+            rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
+        } else {
+            rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+        }
+        if (rc) {
+            //if (debug_trace)
+                fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
+            cdb2_close(cdb2h_2);
+            return ((char *) NULL);
+        }
+        rc = cdb2_run_statement(cdb2h_2, sql);
+        fprintf(stderr, "rc=%d, run sql '%s'\n", rc, sql);
+        if (rc) {
+            fprintf(stderr, "failed to run sql '%s'\n", sql);
+            return ((char *) NULL);
+        }
+        
+        int ncols = cdb2_numcolumns(cdb2h_2);
+        assert(ncols == 1);
+        int count = 0;
+        int sz = 0;
+        while ((rc = cdb2_next_record(cdb2h_2)) == CDB2_OK) {
+            if ( sz < count + 1 ) {
+                void * m = NULL;
+                if (sz == 0) {
+                    sz = 32;
+                    m = malloc(sz * sizeof(char *));
+                } else {
+                    sz = sz * 2; //double
+printf("realloc to %ld, %p\n", sz, db_words);
+                    m = (char**) realloc(db_words, sz * sizeof(char *));
+                }
+                if (!m) { 
+printf("error with malloc/realloc\n");
+                    break; 
+                }
+                db_words = m; 
+            }
+            void *val = cdb2_column_value(cdb2h_2, 0);
+//printf("val = %s, count %d\n", (char*) val);
+            assert(count < sz);
+            db_words[count] = strdup((char*) val);
+            count++;
+        }
+        db_words[count] = NULL; //last one always NULL
+        cdb2_close(cdb2h_2);
+    }
+
+    if (!db_words)
+        return ((char *) NULL);
+
+    while (name = db_words[list_index]) {
+//printf("\n%d): name %s, state %x text %s\n", list_index, name, state, text);
+        list_index++;
+        return strdup(name);
     }
     // If no names matched, then return NULL.
     return ((char *) NULL);
@@ -175,11 +265,12 @@ static char **my_completion (const char *text, int start, int end)
     // This prevents appending space to the end of the matching word
     rl_completion_append_character = '\0';
     char **matches = (char **) NULL;
-    printf("start %d end %d\n", start, end);
-    if (start == 0) {
+printf("\nstart %d end %d\n", start, end);
+    if (start < 3) {
         matches = rl_completion_matches ((char *) text, &my_generator);
     }
     else { //perform db query
+        matches = rl_completion_matches ((char *) text, &my_db_generator);
     }
 
     return matches;
