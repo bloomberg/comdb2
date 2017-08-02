@@ -18,9 +18,12 @@ fi
 
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t1 { schema { int a } }' 
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t2 { schema { int a } keys { "a" = a } }'
+cluster=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':')
 
 function generate_good_insert
 {
+    [[ "$debug" == 1 ]] && set -x
+    [[ "$trace" == 1 ]] && echo "Running generate_good_insert"
     echo "begin" > ./good_insert.sql
     j=0
     while [[ $j -lt 4000 ]]; do
@@ -32,16 +35,16 @@ function generate_good_insert
 
 function generate_bad_insert
 {
+    [[ "$debug" == 1 ]] && set -x
+    [[ "$trace" == 1 ]] && echo "Running generate_bad_insert"
     echo "begin" > ./bad_insert.sql
     j=0
     while [[ $j -lt 4000 ]]; do
         echo "insert into t1(a) values (1)" >> ./bad_insert.sql
         let j=j+1
     done
-
     echo "insert into t2(a) values (1)" >> ./bad_insert.sql
     echo "insert into t2(a) values (1)" >> ./bad_insert.sql
-
     echo "commit" >> ./bad_insert.sql
 }
 
@@ -50,7 +53,6 @@ function good_inserter
     [[ "$debug" == 1 ]] && set -x
     [[ "$trace" == 1 ]] && echo "Running good_inserter"
     set i=0
-
     while [[ $forever || $i -lt 10 ]]; do
         cdb2sql ${CDB2_OPTIONS} $dbname $stage - < ./good_insert.sql > /dev/null 2>&1
         let i=i+1
@@ -62,7 +64,6 @@ function bad_inserter
     [[ "$debug" == 1 ]] && set -x
     [[ "$trace" == 1 ]] && echo "Running bad_inserter"
     set i=0
-
     while [[ $forever || $i -lt 10 ]]; do
         cdb2sql ${CDB2_OPTIONS} $dbname $stage - < ./bad_insert.sql > /dev/null 2>&1
         let i=i+1
@@ -87,30 +88,60 @@ function deleteall
     done
 }
 
-generate_good_insert
-generate_bad_insert
-bad_inserter &
-sleep 1 
-
-cnt=0
-while [[ "$cnt" -lt 4 ]]; do
+function beforedg
+{
+    [[ "$debug" == 1 ]] && set -x
+    [[ "$trace" == 1 ]] && echo "Running beforedg"
+    generate_good_insert
+    generate_bad_insert
     bad_inserter &
-    good_inserter &
-    let cnt=cnt+1
-done
+    sleep 1 
+    cnt=0
+    while [[ "$cnt" -lt 4 ]]; do
+        bad_inserter &
+        good_inserter &
+        let cnt=cnt+1
+    done
+}
 
-wait
+function afterdg
+{
+    [[ "$debug" == 1 ]] && set -x
+    [[ "$trace" == 1 ]] && echo "Running afterdg"
+    deleteall
+    cnt=0
+    while [[ "$cnt" -lt 8 ]]; do
+        good_inserter &
+        let cnt=cnt+1
+    done
+    wait
+}
 
-downgrade
+function verify
+{
+    [[ "$debug" == 1 ]] && set -x
+    [[ "$trace" == 1 ]] && echo "Running afterdg"
+    for node in $cluster ; do
+        cdb2sql ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 
+        if [[ $? != 0 ]]; then
+            echo "No response from $node"
+            exit 1
+        fi
+    done
+}
 
-sleep 10
-deleteall
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    [[ "$trace" == 1 ]] && echo "Running afterdg"
+    beforedg
+    wait
+    downgrade
+    sleep 10
+    afterdg
+    verify
+}
 
-cnt=0
-while [[ "$cnt" -lt 8 ]]; do
-    good_inserter &
-    let cnt=cnt+1
-done
-wait
-
+runtest
+echo "success"
 exit 0
