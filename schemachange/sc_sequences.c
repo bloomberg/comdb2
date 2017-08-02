@@ -144,7 +144,6 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     sequence_t *seq = getsequencebyname(name);
     if (seq == NULL) {
         // Failed to find sequence with specified name
-        // TODO: error out another way
         logmsg(LOGMSG_ERROR, "Sequence %s cannot be found\n", name);
         return -1;
     }
