@@ -145,7 +145,20 @@ void cdb2sql_usage(int exit_val)
 }
 
 
-const char *words[] = {"SELECT", "INSERT", "UPDATE", "PUT", "GET", "SET", "EXEC", NULL};
+const char *words[] = {
+  "ALTER", "ANALYZE", 
+  "BEGIN", "BETWEEN", "BY",
+  "COMMIT",
+  "CREATE", 
+  "DELETE", "DROP"
+  "EXPLAIN",
+  "INSERT", 
+  "PUT",
+  "REBUILD",
+  "SELECT", "SET",
+  "TRUNCATE",
+  "UPDATE",
+  "WITH", NULL, };
 
 
 // Generator function for word completion.
@@ -161,7 +174,7 @@ char *my_generator (const char *text, int state)
     while (name = words[list_index]) {
         list_index++;
 //printf("%d): name '%s', state %d text '%s' len %d\n", list_index, name, state, text, len);
-        if (len == 0 || strncmp (name, text, len) == 0) {
+        if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
         }
     }
@@ -268,12 +281,12 @@ static char **my_completion (const char *text, int start, int end)
     //rl_completion_append_character = '\0';
     char **matches = (char **) NULL;
 printf("\nstart %d end %d\n", start, end);
-    //if (start < 3) {
-    //    matches = rl_completion_matches ((char *) text, &my_generator);
-    //}
-    //else { //perform db query
+    if (start < 3) {
+        matches = rl_completion_matches ((char *) text, &my_generator);
+    }
+    else { //perform db query
         matches = rl_completion_matches ((char *) text, &my_db_generator);
-    //}
+    }
 
     return matches;
 }

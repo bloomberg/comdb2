@@ -151,7 +151,7 @@ static int completionConnect(
     *ppVtab = (sqlite3_vtab*)pNew;
     if( pNew==0 ) return SQLITE_NOMEM;
     memset(pNew, 0, sizeof(*pNew));
-    //pNew->db = db;
+    pNew->db = db;
   }
   return rc;
 }
@@ -264,6 +264,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
       case COMPLETION_TABLES: {
         if( pCur->pStmt==0 ){
+            /*
           sqlite3_stmt *pS2;
           char *zSql = 0;
           const char *zSep = "";
@@ -280,8 +281,10 @@ static int completionNext(sqlite3_vtab_cursor *cur){
             zSep = " UNION ";
           }
           sqlite3_finalize(pS2);
-          sqlite3_prepare_v2(pCur->db, zSql, -1, &pCur->pStmt, 0);
-          sqlite3_free(zSql);
+          */
+          sqlite3_prepare_v2(pCur->db, "SELECT name FROM sqlite_master WHERE type='table' and name not like 'sqlite_stat\%'", -1, &pCur->pStmt, 0);
+          //UNION vtables...
+          //sqlite3_free(zSql);
         }
         iCol = 0;
         eNextPhase = COMPLETION_COLUMNS;
