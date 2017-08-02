@@ -1,16 +1,8 @@
 #!/bin/bash
 
 dbname=$1
-error=0
-vers=open
 trace=1
-stage=default
 
-#stage=dev
-#forever=1
-#vers=r6
-
-# debug=1
 [[ "$debug" == 1 ]] && set -x
 
 if [[ -z "$dbname" ]]; then
@@ -20,19 +12,12 @@ fi
 
 if [[ -z "${CDB2_OPTIONS}" ]]; then
     stage=local
+else
+    stage=default
 fi
 
-if [[ $vers == "r6" ]]; then
-    CDB2_OPTIONS=""
-    masterst=""
-    comdb2sc.tsk $dbname add t1 ./t1.csc2
-    comdb2sc.tsk $dbname add t2 ./t2.csc2
-else
-    master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-    masterst="--host $master"
-    cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t1 { schema { int a } }' 
-    cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t2 { schema { int a } keys { "a" = a } }'
-fi
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t1 { schema { int a } }' 
+cdb2sql -tabs ${CDB2_OPTIONS} $dbname $stage 'create table t2 { schema { int a } keys { "a" = a } }'
 
 function generate_good_insert
 {

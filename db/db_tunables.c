@@ -122,6 +122,7 @@ extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
+extern int gbl_poll_in_pg_free_recover;
 
 extern long long sampling_threshold;
 
