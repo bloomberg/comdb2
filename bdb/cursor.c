@@ -7535,7 +7535,7 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
     int dirty_shadow = 0;
     int rc = 0;
 
-    if (gbl_new_snapisol) {
+    if (gbl_new_snapisol && cur->rl) {
         if (!cur->shadow_tran ||
             (cur->shadow_tran->tranclass != TRANCLASS_SNAPISOL &&
              cur->shadow_tran->tranclass != TRANCLASS_SERIALIZABLE)) {
