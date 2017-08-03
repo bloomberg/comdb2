@@ -245,13 +245,21 @@ static int completionNext(sqlite3_vtab_cursor *cur){
   while( pCur->ePhase!=COMPLETION_EOF ){
     switch( pCur->ePhase ){
       case COMPLETION_KEYWORDS: {
+        /*
         if( pCur->j >= completionKwCount ){
           pCur->zCurrentRow = 0;
           pCur->ePhase = COMPLETION_DATABASES;
         }else{
           pCur->zCurrentRow = completionKwrds[pCur->j++];
         }
-        iCol = -1;
+        */
+        if( pCur->pStmt==0 ){
+          sqlite3_prepare_v2(pCur->db, 
+                  "SELECT name FROM comdb2_keywords ORDER BY 1", 
+                  -1, &pCur->pStmt, 0);
+        }
+        iCol = 0;
+        eNextPhase = COMPLETION_DATABASES;
         break;
       }
       case COMPLETION_DATABASES: {
@@ -287,7 +295,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           */
           sqlite3_prepare_v2(pCur->db, 
                   "SELECT tablename FROM comdb2_tables "
-                  "WHERE tablename NOT LIKE 'sqlite_stat\%'", 
+                  "WHERE tablename NOT LIKE 'sqlite_stat\%' ORDER BY 1", 
                   -1, &pCur->pStmt, 0);
           //TODO: UNION vtables? 
         }
@@ -319,7 +327,8 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           sqlite3_free(zSql);
           */
           sqlite3_prepare_v2(pCur->db, 
-                  "select columnname from comdb2_columns;", 
+                  "SELECT columnname FROM comdb2_columns " 
+                  "WHERE tablename NOT LIKE 'sqlite_stat\%' ORDER BY 1", 
                   -1, &pCur->pStmt, 0);
         }
         iCol = 0;

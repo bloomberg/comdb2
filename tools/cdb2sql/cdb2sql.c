@@ -269,25 +269,10 @@ char *put_generator (const char *text, int state)
 char *generic_generator(const char *text, int state)
 {
     char sql[256];
-    if (*text)
-        //TODO: escape text
-        snprintf(sql, sizeof(sql), 
-            "SELECT DISTINCT name "
-            "FROM comdb2_keywords('%s') UNION "
-            "SELECT tablename FROM comdb2_tables "
-            "WHERE tablename NOT LIKE 'sqlite_stat%%' AND "
-            "tablename LIKE '%s%%' UNION "
-            "SELECT columnname FROM comdb2_columns "
-            "WHERE columnname LIKE '%s%%'"
-            "ORDER BY 1", 
-            text, text, text);
-    else 
-        snprintf(sql, sizeof(sql), 
-            "SELECT DISTINCT name FROM comdb2_keywords "
-            "UNION SELECT tablename FROM comdb2_tables "
-            "WHERE tablename NOT LIKE 'sqlite_stat%%' UNION "
-            "SELECT columnname FROM comdb2_columns "
-            "ORDER BY 1 ");
+    //TODO: escape text
+    snprintf(sql, sizeof(sql), 
+            "SELECT DISTINCT candidate "
+            "FROM comdb2_completion('%s')", text);
 
     return db_generator(state, sql);
 }
