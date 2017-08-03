@@ -2891,7 +2891,7 @@ static int check_blob_buffers(struct ireq *iq, blob_buffer_t *blobs,
 static int check_blob_sizes(struct ireq *iq, blob_buffer_t *blobs, int maxblobs)
 {
     for (int i = 0; i < maxblobs; i++) {
-        if (blobs[i].exists && blobs[i].length > MAXBLOBLENGTH) {
+        if (blobs[i].exists && blobs[i].length != -2 &&  blobs[i].length > MAXBLOBLENGTH) {
             reqerrstr(iq, COMDB2_ADD_RC_INVL_BLOB,
                       "blob size (%d) exceeds maximum (%d)", blobs[i].length,
                       MAXBLOBLENGTH);
