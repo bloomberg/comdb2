@@ -158,7 +158,7 @@ const char *words[] = {
   "SELECT", "SET",
   "TRUNCATE",
   "UPDATE",
-  "WITH", NULL, };
+  "WITH", NULL, }; // must be terminated by NULL
 
 
 
@@ -168,20 +168,17 @@ char *level_one_generator (const char *text, int state)
 {
     static int list_index, len;
     const char *name;
-printf("\nstate %x text %s rl_text '%s'\n", state, text, rl_line_buffer);
     if (!state) { //if state is 0 get the length of text
         list_index = 0;
         len = strlen (text);
     }
     while (name = words[list_index]) {
         list_index++;
-//printf("%d): name '%s', state %d text '%s' len %d\n", list_index, name, state, text, len);
         if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
         }
     }
-    // If no names matched, then return NULL.
-    return ((char *) NULL);
+    return ((char *) NULL); // If no names matched, then return NULL.
 }
 
 char *db_generator (const char *text, int state, char *query)
@@ -207,9 +204,7 @@ char *db_generator (const char *text, int state, char *query)
         len = strlen (text);
         char sql[256];
         //TODO: escape text
-        snprintf(sql, sizeof(sql), 
-                query,
-                text);
+        snprintf(sql, sizeof(sql), query, text);
 
         int rc;
         if (dbhostname) {
@@ -218,13 +213,12 @@ char *db_generator (const char *text, int state, char *query)
             rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
         }
         if (rc) {
-            //if (debug_trace)
+            if (debug_trace)
                 fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
             cdb2_close(cdb2h_2);
             return ((char *) NULL);
         }
         rc = cdb2_run_statement(cdb2h_2, sql);
-        fprintf(stderr, "rc=%d, run sql '%s'\n", rc, sql);
         if (rc) {
             fprintf(stderr, "failed to run sql '%s'\n", sql);
             return ((char *) NULL);
@@ -236,22 +230,16 @@ char *db_generator (const char *text, int state, char *query)
         int sz = 0;
         while ((rc = cdb2_next_record(cdb2h_2)) == CDB2_OK) {
             if ( sz < count + 1 ) {
-                void * m = NULL;
-                if (sz == 0) {
-                    sz = 32;
-                    m = malloc(sz * sizeof(char *));
-                } else {
-                    sz = sz * 2; //double
-                    m = (char**) realloc(db_words, sz * sizeof(char *));
-                }
+                sz = (sz == 0) ? 32 : sz * 2;
+                void * m = (char**) realloc(db_words, sz * sizeof(char *));
                 if (!m) { 
-printf("error with malloc/realloc\n");
+                    fprintf(stderr, "error with malloc/realloc\n");
+                    abort();
                     break; 
                 }
                 db_words = m; 
             }
             void *val = cdb2_column_value(cdb2h_2, 0);
-//printf("val = %s, count %d\n", (char*) val);
             assert(count < sz);
             db_words[count] = strdup((char*) val);
             count++;
@@ -265,18 +253,15 @@ printf("error with malloc/realloc\n");
         return ((char *) NULL);
 
     while (name = db_words[list_index]) {
-//printf("\n%d): name %s, state %x text %s\n", list_index, name, state, text);
         list_index++;
         return strdup(name);
     }
-    // If no names matched, then return NULL.
-    return ((char *) NULL);
+    return ((char *) NULL); // If no names matched, then return NULL.
 }
 
 
 char *put_generator (const char *text, int state)
 {
-    //printf("\nstate %x text %p '%s' rl_text %p '%s'\n", state, text, text, rl_line_buffer, rl_line_buffer);
     if (*text)
         return db_generator(text, state,
                 "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'");
@@ -298,11 +283,6 @@ char *generic_generator(const char *text, int state)
 // Custom completion function
 static char **my_completion (const char *text, int start, int end)
 {
-    // This prevents appending space to the end of the matching word
-    //rl_completion_append_character = '\0';
-    char **matches = (char **) NULL;
-
-
     char *bgn = rl_line_buffer;
     while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
 
@@ -320,7 +300,14 @@ static char **my_completion (const char *text, int start, int end)
     if(endptr == bgn)
         return rl_completion_matches ((char *) text, &level_one_generator);
 
-    if(strlen(bgn) == 11 && (strncasecmp(bgn, "PUT TUNABLE", 11) == 0 || strncasecmp(bgn, "GET TUNABLE", 11) == 0) )
+    // find end of previous word
+    while(endptr != bgn && *endptr == ' ') 
+        endptr--;
+
+    int l = sizeof("PUT TUNABLE");
+    if(endptr - bgn + 1 == l && 
+            (strncasecmp(bgn, "PUT TUNABLE", l) == 0 || 
+             strncasecmp(bgn, "GET TUNABLE", l) == 0) )
         return rl_completion_matches ((char *) text, &put_generator);
     else
         return rl_completion_matches ((char *) text, &generic_generator);
