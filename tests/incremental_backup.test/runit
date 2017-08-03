@@ -1,0 +1,105 @@
+#!/bin/bash
+# Test basic functionality for incremental backups
+
+dbname=$1
+DBDIR=$2
+
+if [[ -z "$dbname" ]] ; then
+  echo dbname missing
+  exit 1
+fi
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function make_base {
+  basename=${TMPDIR}/backups/base.tar
+  backuplist+=(base.tar)
+  cmd="comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename" || failexit "base backup failed"
+  echo $cmd
+  $cmd
+}
+
+function make_backup {
+  fullbackupname=$1
+  backupname=${fullbackupname%.*}.tar
+  backuplist+=($backupname)
+  cmd="comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > ${TMPDIR}/backups/${backupname}" || failexit "incr backup failed"
+  echo $cmd
+  $cmd
+}
+
+function test_restoredb {
+  testname=$1
+  restorecmd="cat "
+  for i in $(seq 0 $2); do
+    restorecmd="$restorecmd <(${backuplist[i]}) "
+  done
+
+  restorecmd="$restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore"
+  $restorecmd
+
+  comdb2 --lrl ${TMPDIR}/restore/$dbname.lrl ${dbname}_restore & || failexit "restore create failed"
+  dbpid=$!
+  # wait for db to launch
+  wait 30
+
+  cb2sql ${CDB2_OPTIONS} -f $1 $dbname default > $output 2>&1
+  expected_output=$(cat ${testname}.out)
+
+  if [[ "$output" != "$expected_output"]]; then
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testname}) has failed!!!"
+    echo " "
+    echo "Use 'diff <expected-output> <my-output>' to see why:"
+    echo "> diff ${PWD}/{$testname.out.$output}"
+    echo " "
+    diff $testname.out $output
+    echo " "
+    exit 1
+  fi
+
+  kill $dbpid
+  rm -rf ${TMPDIR}/restore/*
+}
+
+function resetdb {
+  backuplist=()
+  rm -rf ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+  mkdir -p ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+
+  cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
+  make_base
+  cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
+  make_backup create_table
+}
+
+# BASIC FUNCTIONALITY TEST
+resetdb
+
+for statement in `ls t1*.stmt`; do
+  cb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+  make_backup statement
+done
+
+counter=0
+
+for testreq in `ls t1*.req`; do
+  test_restoredb testreq counter
+  ((counter++))
+done
+
+# PUSH NEXT TEST FOR RECOVERY WITH LOG HOLES
+resetdb
+for i in $(seq 1 10); do
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+done
+cdb2sql ${CDB2_OPTIONS} -f t1-1_insert.stmt $dbname default
+make_backup push_next_inserts
+test_restoredb t2.req 1
+
+echo "Test Successful"
+exit 0
