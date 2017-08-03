@@ -51,10 +51,6 @@ if [[ "$?" == 0 ]]; then
     echo "success"
     exit 0
 else
-<<<<<<< HEAD
-    echo "failed: expected count of 30000, but got $x"
-=======
     echo "failed: expected count of $lastins, but got $x"
->>>>>>> master
     exit 1
 fi

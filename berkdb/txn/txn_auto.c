@@ -2910,8 +2910,7 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
     flipptr[0] = htonl(fliporig[1]);
     flipptr[1] = htonl(fliporig[0]);
     fflush(stdout);
-    (void)printf("\tcontext: %016llx %016llx\n", argp->context,
-            flipcontext);
+    (void)printf("\tcontext: %016llx %016llx\n", argp->context, flipcontext);
     fflush(stdout);
     lt = localtime((time_t *)&argp->timestamp);
     if (lt)

@@ -84,7 +84,11 @@ debug_high_availability_flag on
 # Try to understand this
 abort_on_incorrect_ha_flag on
 
+
 block_set_commit_genid_trace on
+
+# Print a message when writing a dummy record
+write_dummy_trace on
 # Abort on invalid query info key
 # on abort_invalid_query_info_key
 

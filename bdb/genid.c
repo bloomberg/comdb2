@@ -381,8 +381,8 @@ static inline void set_commit_genid_lsn_gen(unsigned long long genid,
 }
 
 static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
-                                      unsigned int dtafile, DB_LSN *lsn,
-                                      uint32_t generation, uint64_t seed)
+                                          unsigned int dtafile, DB_LSN *lsn,
+                                          uint32_t generation, uint64_t seed)
 {
     unsigned int *iptr;
     unsigned long long genid;
@@ -394,7 +394,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     int prwarn = 0;
 
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
-    if (!seed) 
+    if (!seed)
         seed48 = get_genid_counter48(bdb_state->gblcontext);
     else
         seed48 = seed;
@@ -403,7 +403,7 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
         /* This database needs a clean dump & load (or we need to expand our
          * genids */
         logmsg(LOGMSG_ERROR, "%s: this database has run out of genids!\n",
-                __func__);
+               __func__);
         sleep(1);
     }
 
@@ -437,8 +437,8 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
     if (prwarn && (now = time(NULL)) > lastwarn) {
         logmsg(LOGMSG_WARN, "%s: low-genid warning: this database has only "
-                "%llu genids remaining\n",
-                __func__, 0x0000ffffffffffffULL - seed48);
+                            "%llu genids remaining\n",
+               __func__, 0x0000ffffffffffffULL - seed48);
         lastwarn = now;
     }
     return genid;
@@ -472,7 +472,7 @@ static unsigned long long get_genid_timebased(bdb_state_type *bdb_state,
 
         if (contexttime > epochtime) {
             logmsg(LOGMSG_WARN, "context is %d epoch is %d  - stalling!!!\n",
-                    contexttime, epochtime);
+                   contexttime, epochtime);
             poll(NULL, 0, 100);
             goto stall;
         }
@@ -1063,7 +1063,8 @@ void bdb_set_commit_genid( bdb_state_type *bdb_state, unsigned long long context
 
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
 
-    set_commit_genid_lsn_gen(context, (const DB_LSN *)plsn, (const uint32_t *)generation);
+    set_commit_genid_lsn_gen(context, (const DB_LSN *)plsn,
+                             (const uint32_t *)generation);
 
     Pthread_mutex_unlock(&(bdb_state->gblcontext_lock));
 }

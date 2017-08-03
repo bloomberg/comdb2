@@ -1486,6 +1486,7 @@ char *print_permslsn(DB_LSN lsn, char str[])
     return str;
 }
 
+int gbl_write_dummy_trace;
 static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
 {
     if (add_delay)
@@ -1502,8 +1503,10 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
                bdb_state->repinfo->myhost);
         goto done;
     } else {
-        logmsg(LOGMSG_USER, "%s: adding dummy record\n", __func__,
-               bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
+        if (gbl_write_dummy_trace) {
+            logmsg(LOGMSG_USER, "%s: adding dummy record\n", __func__,
+                    bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
+        }
     }
 
     add_dummy(bdb_state);
