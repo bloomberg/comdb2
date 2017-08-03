@@ -16,8 +16,11 @@ $comdb2task $NEWNAME --lrl ${DBNAME}.lrl &
 trap "cdb2sql $NEWNAME \"exec procedure sys.cmd.send('exit')\"" EXIT
 
 while :; do 
+    # cdb2sql may fail if the db isn't up yet
+    set +e
     out=$(cdb2sql -tabs $NEWNAME local 'select 1') ||
     [[ "$out" = "1" ]] && break
+    set -e
     sleep 1
 done
 
