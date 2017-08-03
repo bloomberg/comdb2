@@ -63,10 +63,20 @@ int validate_sequence(long long min_val, long long max_val, long long increment,
 /**
  * Adds sequence to llmeta and memory
  */
-int do_add_sequence_int(char *name, long long min_val, long long max_val,
-                        long long increment, int cycle, long long start_val,
-                        long long chunk_size, tran_type *trans)
+int do_add_sequence_int(struct schema_change_type *s, tran_type *trans)
 {
+    char *name = s->table;
+    long long min_val = s->seq_min_val;
+    long long max_val = s->seq_max_val;
+    long long increment = s->seq_increment;
+    int cycle = s->seq_cycle;
+    long long start_val = s->seq_start_val;
+    long long chunk_size = s->seq_chunk_size;
+    char flags = 0;
+    SBUF2 *sb = s->sb;
+    int rc = 0;
+    int bdberr;
+
     // Check that name is valid
     if (strlen(name) > MAXTABLELEN - 1) {
         logmsg(LOGMSG_ERROR,
@@ -84,9 +94,8 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
 
     // Check that there aren't too many sequences
     if (thedb->num_sequences >= MAX_NUM_SEQUENCES) {
-        logmsg(
-            LOGMSG_ERROR,
-            "Max number of sequences created. Unable to create new sequence.\n");
+        logmsg(LOGMSG_ERROR, "Max number of sequences created. Unable to "
+                             "create new sequence.\n");
         return 1;
     }
 
@@ -100,9 +109,6 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     }
 
     // Add sequence to llmeta
-    int rc, bdberr;
-    char flags = 0;
-
     rc = bdb_llmeta_add_sequence(trans, name, min_val, max_val, increment,
                                  cycle, start_val, start_val, chunk_size, flags,
                                  &bdberr);
@@ -133,17 +139,26 @@ int do_add_sequence_int(char *name, long long min_val, long long max_val,
     thedb->sequences[thedb->num_sequences] = seq;
     thedb->num_sequences++;
 
-    return 0;
+    /* log for replicants to do the same */
+    // rc = bdb_llog_scdone(db->handle, llmeta_sequence_add, 1, &bdberr);
+    // if (rc) {
+    //     sbuf2printf(sb, "Failed to broadcast sequence add\n");
+    //     logmsg(LOGMSG_ERROR, "Failed to broadcast sequence ad\n");
+    // }
+
+    return rc;
 }
 
 /**
  * Drops sequence from llmeta and memory
  */
-int do_drop_sequence_int(char *name, tran_type *trans)
+int do_drop_sequence_int(struct schema_change_type *s, tran_type *trans)
 {
     int rc;
     int bdberr;
     int i;
+    char *name = s->table;
+    SBUF2 *sb = s->sb;
 
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
@@ -168,6 +183,14 @@ int do_drop_sequence_int(char *name, tran_type *trans)
 
             if (rc) return rc;
 
+            /* log for replicants to do the same */
+            // rc = bdb_llog_scdone(db->handle, llmeta_sequence_drop, 1, &bdberr);
+            // if (rc) {
+            //     sbuf2printf(sb, "Failed to broadcast sequence drop\n");
+            //     logmsg(LOGMSG_ERROR, "Failed to broadcast sequence drop\n");
+            //     return rc;
+            // }
+
             return 0;
         }
     }
@@ -180,11 +203,21 @@ int do_drop_sequence_int(char *name, tran_type *trans)
  * Alters the sequence definition in llmeta and updates in memory
  * representations on the master and replicants
  */
-int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in,
-                          long long increment_in, int cycle_in, long long start_val_in,
-                          long long restart_val_in, long long chunk_size_in,
-                          int modified, tran_type *trans)
+int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
 {
+    char *name = s->table;
+    long long min_val_in = s->seq_min_val;
+    long long max_val_in = s->seq_max_val;
+    long long increment_in = s->seq_increment;
+    int cycle_in = s->seq_cycle;
+    long long start_val_in = s->seq_start_val;
+    long long restart_val_in = s->seq_restart_val;
+    long long chunk_size_in = s->seq_chunk_size;
+    int modified = s->seq_modified;
+    SBUF2 *sb = s->sb;
+    int rc = 0;
+    int bdberr;
+
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
         logmsg(LOGMSG_ERROR, "No sequences defined\n");
@@ -262,7 +295,6 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     }
 
     // Write change to llmeta
-    int rc, bdberr;
     rc = bdb_llmeta_alter_sequence(trans, name, min_val, max_val, increment,
                                    cycle, start_val, restart_val, chunk_size,
                                    seq->flags, &bdberr);
@@ -282,5 +314,13 @@ int do_alter_sequence_int(char *name, long long min_val_in, long long max_val_in
     seq->remaining_vals = 0;
 
     pthread_mutex_unlock(&seq->seq_lk);
-    return 0;
+
+    /* log for replicants to do the same */
+    // rc = bdb_llog_scdone(db->handle, llmeta_sequence_alter, 1, &bdberr);
+    // if (rc) {
+    //     sbuf2printf(sb, "Failed to broadcast sequence alter\n");
+    //     logmsg(LOGMSG_ERROR, "Failed to broadcast sequence alter\n");
+    // }
+
+    return rc;
 }

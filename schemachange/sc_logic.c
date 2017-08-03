@@ -489,34 +489,27 @@ int do_alter_stripes(struct schema_change_type *s)
 
     return rc;
 }
-// TODO: Modify for sequences
+
 int do_add_sequence(struct schema_change_type *s, tran_type *trans)
 {
     wrlock_schema_lk();
-    int rc = do_add_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
-                                 s->seq_increment, s->seq_cycle,
-                                 s->seq_start_val, s->seq_chunk_size, trans);
+    int rc = do_add_sequence_int(s, trans);
     unlock_schema_lk();
     return rc;
 }
 
-// TODO: Modify for sequences
 int do_drop_sequence(struct schema_change_type *s, tran_type *trans)
 {
     wrlock_schema_lk();
-    int rc = do_drop_sequence_int(s->table, trans);
+    int rc = do_drop_sequence_int(s, trans);
     unlock_schema_lk();
     return rc;
 }
 
-// TODO: Modify for sequences
 int do_alter_sequence(struct schema_change_type *s, tran_type *trans)
 {
     wrlock_schema_lk();
-    int rc = do_alter_sequence_int(s->table, s->seq_min_val, s->seq_max_val,
-                                   s->seq_increment, s->seq_cycle,
-                                   s->seq_start_val, s->seq_restart_val,
-                                   s->seq_chunk_size, s->seq_modified, trans);
+    int rc = do_alter_sequence_int(s, trans);
     unlock_schema_lk();
     return rc;
 }
