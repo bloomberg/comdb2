@@ -256,31 +256,39 @@ char *db_generator (int state, const char *sql)
 char *put_generator (const char *text, int state)
 {
     char sql[256];
-    //TODO: escape text
-    if (*text) {
+    if (*text)
+        //TODO: escape text
         snprintf(sql, sizeof(sql), 
                 "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
-        return db_generator(state, sql);
-    }
-    else {
+    else
         snprintf(sql, sizeof(sql), 
                 "SELECT DISTINCT name FROM comdb2_tunables %s");
-        return db_generator(state, sql);
-    }
+    return db_generator(state, sql);
 }
 
 char *generic_generator(const char *text, int state)
 {
     char sql[256];
-    //TODO: escape text
-    snprintf(sql, sizeof(sql), 
-            "SELECT DISTINCT candidate COLLATE nocase "
-            "FROM comdb2_keywords('%s') ORDER BY 1 UNION "
+    if (*text)
+        //TODO: escape text
+        snprintf(sql, sizeof(sql), 
+            "SELECT DISTINCT name "
+            "FROM comdb2_keywords('%s') UNION "
             "SELECT tablename FROM comdb2_tables "
-            "WHERE tablename NOT LIKE 'sqlite_stat%%' AND"
-            "tablename LIKE '%s%%'", 
-            text, text);
-    SELECT DISTINCT name FROM comdb2_keywords  UNION SELECT tablename FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1
+            "WHERE tablename NOT LIKE 'sqlite_stat%%' AND "
+            "tablename LIKE '%s%%' UNION "
+            "SELECT columnname FROM comdb2_columns "
+            "WHERE columnname LIKE '%s%%'"
+            "ORDER BY 1", 
+            text, text, text);
+    else 
+        snprintf(sql, sizeof(sql), 
+            "SELECT DISTINCT name FROM comdb2_keywords "
+            "UNION SELECT tablename FROM comdb2_tables "
+            "WHERE tablename NOT LIKE 'sqlite_stat%%' UNION "
+            "SELECT columnname FROM comdb2_columns "
+            "ORDER BY 1 ");
+
     return db_generator(state, sql);
 }
 
