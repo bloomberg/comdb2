@@ -179,7 +179,7 @@ char *level_one_generator (const char *text, int state)
     return ((char *) NULL); // If no names matched, then return NULL.
 }
 
-char *db_generator (const char *text, int state, char *query)
+char *db_generator (int state, const char *sql)
 {
     static char **db_words;
     static int list_index, len;
@@ -199,11 +199,6 @@ char *db_generator (const char *text, int state, char *query)
         }
 
         list_index = 0;
-        len = strlen (text);
-        char sql[256];
-        //TODO: escape text
-        snprintf(sql, sizeof(sql), query, text);
-
         int rc;
         if (dbhostname) {
             rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
@@ -260,20 +255,33 @@ char *db_generator (const char *text, int state, char *query)
 
 char *put_generator (const char *text, int state)
 {
-    if (*text)
-        return db_generator(text, state,
-                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'");
-    else
-        return db_generator(text, state,
+    char sql[256];
+    //TODO: escape text
+    if (*text) {
+        snprintf(sql, sizeof(sql), 
+                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
+        return db_generator(state, sql);
+    }
+    else {
+        snprintf(sql, sizeof(sql), 
                 "SELECT DISTINCT name FROM comdb2_tunables %s");
+        return db_generator(state, sql);
+    }
 }
 
 char *generic_generator(const char *text, int state)
 {
-    return db_generator(text, state, 
+    char sql[256];
+    //TODO: escape text
+    snprintf(sql, sizeof(sql), 
             "SELECT DISTINCT candidate COLLATE nocase "
-            "FROM comdb2_completion('%s') ORDER BY 1"
-            );
+            "FROM comdb2_keywords('%s') ORDER BY 1 UNION "
+            "SELECT tablename FROM comdb2_tables "
+            "WHERE tablename NOT LIKE 'sqlite_stat%%' AND"
+            "tablename LIKE '%s%%'", 
+            text, text);
+    SELECT DISTINCT name FROM comdb2_keywords  UNION SELECT tablename FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1
+    return db_generator(state, sql);
 }
 
 
