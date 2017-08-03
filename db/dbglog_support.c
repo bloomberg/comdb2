@@ -44,6 +44,7 @@
 #include <cdb2_constants.h>
 #include <cdb2api.h>
 #include <logmsg.h>
+#include <str0.h>
 
 /* dbglog + //DBSTATS support.  We have lots of interaces to
  sql, so here's
@@ -170,24 +171,18 @@ int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
             query_info->n_components--;
             continue;
         }
-
         stats[i].nfind = c->nfind;
         stats[i].nnext = c->nnext;
         stats[i].nwrite = c->nwrite;
         stats[i].ix = c->ix;
         stats[i].table[0] = 0;
-        if (c->u.db) {
-            if (c->remote) {
-                snprintf(stats[i].table, sizeof(stats[i].table), "%s.%s",
-                         fdb_table_entry_dbname(c->u.fdb),
-                         fdb_table_entry_tblname(c->u.fdb));
-            } else {
-                strncpy(stats[i].table, c->u.db->dbname,
-                        sizeof(stats[i].table));
-            }
-            stats[i].table[sizeof(stats[i].table) - 1] = 0;
+        if (c->fdb) {
+            snprintf0(stats[i].table, sizeof(stats[i].table), "%s.%s",
+                      fdb_table_entry_dbname(c->fdb),
+                      fdb_table_entry_tblname(c->fdb));
+        } else if (c->lcl_tbl_name[0]) {
+            strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }
-
         i++;
     }
     return 0;
