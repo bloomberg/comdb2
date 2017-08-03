@@ -33,16 +33,17 @@ function insertrecords
 
 cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{\"id\" = id}}"
 
-cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send(\"seed_genid48 122C34\")"
+cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "put tunable 'seed_genid' '122C34'"
 insertrecords 10000
 
-cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send(\"seed_genid48 127A51\")"
+cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "put tunable 'seed_genid' '127A51'"
 insertrecords 10000
 
-cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send(\"seed_genid48 130000\")"
+cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "put tunable 'seed_genid' '130000'"
 insertrecords 10000
 
-cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "exec procedure sys.cmd.send(\"seed_genid48 1302DB\")"
+cdb2sql -tabs ${CDB2_OPTIONS} $db $stage "put tunable 'seed_genid' '1302DB'"
+insertrecords 10000
 
 x=$(cdb2sql -tabs ${CDB2_OPTIONS} $db $stage - < count.sql)
 echo "$x" | grep "$lastins"
@@ -50,6 +51,10 @@ if [[ "$?" == 0 ]]; then
     echo "success"
     exit 0
 else
+<<<<<<< HEAD
     echo "failed: expected count of 30000, but got $x"
+=======
+    echo "failed: expected count of $lastins, but got $x"
+>>>>>>> master
     exit 1
 fi

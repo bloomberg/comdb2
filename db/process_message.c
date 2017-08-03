@@ -5092,16 +5092,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             // mtrap memstat always go to printf()
             comdb2ma_stats(prefix, verbose, hr, ord, grp, 0);
         }
-    } else if (tokcmp(tok, ltok, "seed_genid48") == 0) {
-        unsigned long long seed;
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "seed_genid48 requires a long-long seed in hex\n");
-            return -1;
-        }
-        seed = toknumllbase(tok, ltok, 16);
-        seed_genid48(thedb->bdb_env, seed);
     } else if (tokcmp(tok, ltok, "get_genid") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok == 0) {

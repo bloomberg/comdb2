@@ -5788,7 +5788,7 @@ static void sqlengine_work_appsock(struct thdpool *pool, void *work,
 
     /* Set whatever mode this client needs */
     rc = sql_set_transaction_mode(thd->sqldb, clnt, clnt->dbtran.mode);
-    
+
     /* Will only happen if the database doesn't have logical logging */
     if (rc) {
         logmsg(LOGMSG_ERROR,
