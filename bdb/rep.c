@@ -5048,14 +5048,6 @@ void *watcher_thread(void *arg)
             send_myseqnum_to_all(bdb_state, 0);
         }
 
-        /*
-        bdb_state->dbenv->getattr(
-            bdb_state->dbenv, "elect_highest_committed_gen", NULL, &is_durable);
-        if (is_durable) {
-            update_durable_lsn(bdb_state);
-        }
-        */
-
         BDB_RELLOCK();
 
         /*

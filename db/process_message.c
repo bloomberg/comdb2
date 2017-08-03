@@ -145,9 +145,6 @@ void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
-extern void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
-extern unsigned long long get_genid(bdb_state_type *bdb_state,
-                                    unsigned int dtafile);
 void replay_stat(void);
 
 static const char *HELP_MAIN[] = {
