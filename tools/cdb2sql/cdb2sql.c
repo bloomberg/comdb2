@@ -320,17 +320,7 @@ static char **my_completion (const char *text, int start, int end)
     if(endptr == bgn)
         return rl_completion_matches ((char *) text, &level_one_generator);
 
-    // find end of previous word
-    while(endptr != bgn && *endptr == ' ') 
-        endptr--;
-
-    //find begin of previous word
-    char *sptr = endptr;
-    while(sptr != bgn && *sptr != ' ') 
-        sptr--; //to bgn of word
-
-    printf("suptr %s\n", sptr);
-    if(strncasecmp(sptr, "PUT", 3) == 0 || strncasecmp(sptr, "GET", 3) == 0)
+    if(strlen(bgn) == 11 && (strncasecmp(bgn, "PUT TUNABLE", 11) == 0 || strncasecmp(bgn, "GET TUNABLE", 11) == 0) )
         return rl_completion_matches ((char *) text, &put_generator);
     else
         return rl_completion_matches ((char *) text, &generic_generator);
