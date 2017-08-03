@@ -112,21 +112,19 @@ static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
     "\n"
     "Options:\n"
-    " -h, --help             Help on usage \n"
-    " -s, --script           Script mode (less verbose output)\n"
-    "     --tabs             Seperate output columns with tabs rather\n"
-    "                        than commas\n"
-    " -c, --cdb2cfg          Change the config file to point to comdb2db\n"
-    "                        configuration file\n"
-    " -t, --type TYPE        Type of database or tier (ie 'dev' or 'prod',\n"
-    "                                              default 'local')\n"
-    " -n, --host HOSTNAME    Host to connect to and run query.\n"
-    "     --debugtrace       Set debug trace flag on api handle\n"
-    "     --showeffects      Show the effects of query at the end\n"
-    "     --cost             Log the cost of query in db trace files\n"
-    " -p, --precision #      Set precision for floation point outputs\n"
-    "     --strblobs         Display blobs as strings\n"
-    " -f, --file FL          reads queries from the specified file FL\n"
+    " -c, --cdb2cfg FL    Set the config file to FL\n"
+    "     --cost          Log the cost of query in db trace files\n"
+    "     --debugtrace    Set debug trace flag on api handle\n"
+    " -f, --file FL       Read queries from the specified file FL\n"
+    " -h, --help          Help on usage \n"
+    " -n, --host HOST     Host to connect to and run query.\n"
+    " -p, --precision #   Set precision for floation point outputs\n"
+    " -s, --script        Script mode (less verbose output)\n"
+    "     --showeffects   Show the effects of query at the end\n"
+    "     --strblobs      Display blobs as strings\n"
+    "     --tabs          Set column separator to tabs rather than commas\n"
+    " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
+    " default 'local')\n"
     "\n"
     " Examples: \n"
     " * Querying db with name mydb on local server \n"
@@ -1264,6 +1262,7 @@ int main(int argc, char *argv[])
         istty = 0;
     if (istty) {
         rl_attempted_completion_function = my_completion;
+        rl_editing_mode = 0; //vi mode
         load_readline_history();
         struct sigaction sact;
         sact.sa_handler = int_handler;
