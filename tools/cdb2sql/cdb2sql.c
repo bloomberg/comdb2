@@ -273,28 +273,23 @@ printf("error with malloc/realloc\n");
     return ((char *) NULL);
 }
 
-char *completion_generator (const char *text, int state)
+
+char *put_generator (const char *text, int state)
 {
-printf("\nstate %x text %p '%s' rl_text %p '%s'\n", state, text, text, rl_line_buffer, rl_line_buffer);
-    if(!*rl_line_buffer) 
-        return level_one_generator(text, state);
-
-    char *endptr = rl_line_buffer;
-    while(*endptr) sptr++; //go to end
-    while(*endptr == ' ') endptr--; //eliminate ending spaces
-
-    char *sptr = endptr;
-    while(sptr != rl_line_buffer && *sptr != ' ') sptr--; //go back, last word
-
-    printf("suptr %s\n", sptr);
-    if(strncasecmp(sptr, "PUT", 3) == 0) {
+    //printf("\nstate %x text %p '%s' rl_text %p '%s'\n", state, text, text, rl_line_buffer, rl_line_buffer);
+    if (*text)
         return db_generator(text, state,
-                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '\%s'"
-            );
-    }
+                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'");
+    else
+        return db_generator(text, state,
+                "SELECT DISTINCT name FROM comdb2_tunables %s");
+}
+
+char *generic_generator(const char *text, int state)
+{
     return db_generator(text, state, 
-            "SELECT DISTINCT candidate COLLATE nocase"
-            "  FROM comdb2_completion('\%s') ORDER BY 1"
+            "SELECT DISTINCT candidate COLLATE nocase "
+            "FROM comdb2_completion('%s') ORDER BY 1"
             );
 }
 
@@ -306,9 +301,39 @@ static char **my_completion (const char *text, int start, int end)
     // This prevents appending space to the end of the matching word
     //rl_completion_append_character = '\0';
     char **matches = (char **) NULL;
-    matches = rl_completion_matches ((char *) text, &completion_generator);
 
-    return matches;
+
+    char *bgn = rl_line_buffer;
+    while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+
+    char *endptr = bgn;
+    while(*endptr) endptr++; //go to end
+
+    if(endptr == bgn)
+        return rl_completion_matches ((char *) text, &level_one_generator);
+
+    endptr--;
+    // find last space (or will hit bgn)
+    while(endptr != bgn && *endptr != ' ') 
+        endptr--; 
+
+    if(endptr == bgn)
+        return rl_completion_matches ((char *) text, &level_one_generator);
+
+    // find end of previous word
+    while(endptr != bgn && *endptr == ' ') 
+        endptr--;
+
+    //find begin of previous word
+    char *sptr = endptr;
+    while(sptr != bgn && *sptr != ' ') 
+        sptr--; //to bgn of word
+
+    printf("suptr %s\n", sptr);
+    if(strncasecmp(sptr, "PUT", 3) == 0 || strncasecmp(sptr, "GET", 3) == 0)
+        return rl_completion_matches ((char *) text, &put_generator);
+    else
+        return rl_completion_matches ((char *) text, &generic_generator);
 }
 
 
@@ -1099,7 +1124,6 @@ void send_cancel_cnonce(const char *cnonce)
  */
 static void int_handler(int signum)
 {
-    printf("int_handler()\n");
     if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
         printf("Requesting to cancel query (press Ctrl-C to exit program). "
                "Please wait...\n");
