@@ -1,0 +1,62 @@
+#!/bin/bash
+scnum=500
+sec=0.1
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'create table t (i int)$$'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'create index i on t(i)'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'alter table t add j int$$'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'alter table t add k int$$'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'alter table t drop j$$'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'alter table t drop k$$'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'truncate table t'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+for ((i=0;i<${scnum};++i)); do
+echo 'drop table t'
+sleep $sec
+done | cdb2sql $ARG - &
+
+
+wait
+
+
+cdb2sql $ARG 'drop table if exists t' || exit 1
+cdb2sql $ARG 'create table t (a int, b int, c int)' || exit 1
+cdb2sql $ARG 'insert into t values(0, 1, 2),(1,2,3),(2,3,4)' || exit 1
+cdb2sql $ARG 'select * from t' || exit 1
+
+exit 0

@@ -372,20 +372,42 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
     return rc;
 }
 
+static int check_table_version(struct ireq *iq)
+{
+    if (iq->sc->addonly) return 0;
+    int rc, bdberr;
+    unsigned long long version;
+    rc = bdb_table_version_select(iq->sc->table, NULL, &version, &bdberr);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_table_version_select failed table:%s rc:%d\n", __func__,
+               iq->sc->table, rc);
+        return rc;
+    }
+    if (iq->usedbtablevers != version) {
+        logmsg(LOGMSG_WARN, "%s: schema version mismatch for table:%s "
+                            "master-version:%d replicant-version:%d\n",
+               __func__, iq->sc->table, version, iq->usedbtablevers);
+        return SC_INTERNAL_ERROR;
+    }
+    return 0;
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
                   scdone_t type)
 {
     int rc;
     struct schema_change_type *s = iq->sc;
-
     if (s->finalize_only) {
         return s->sc_rc;
     }
     if (type != alter) wrlock_schema_lk();
     set_original_tablename(s);
+    if ((rc = check_table_version(iq)) != 0) { // non-tran ??
+        goto end;
+    }
     if (!s->resume) set_sc_flgs(s);
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) goto end; // non-tran ??
-    propose_sc(s);
     rc = pre(iq, NULL); // non-tran ??
     if (type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
@@ -401,7 +423,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
 end:
     s->sc_rc = rc;
     if (type != alter) unlock_schema_lk();
-    broadcast_sc_end(sc_seed);
     return rc;
 }
 

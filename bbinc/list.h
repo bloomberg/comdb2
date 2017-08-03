@@ -106,6 +106,8 @@ extern int listc_size(void *list);
 
 #define LISTC_TOP(listp) ((listp)->top)
 
+#define LISTC_NEXT(currentp, linkv) ((currentp)->linkv.next)
+
 /* Iteration in which it is safe to remove the current element.
  * tmpp is an additional pointer of the same type as currentp,
  * to cache the next element */
