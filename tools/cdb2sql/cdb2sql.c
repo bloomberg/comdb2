@@ -281,6 +281,7 @@ char *generic_generator(const char *text, int state)
 // Custom completion function
 static char **my_completion (const char *text, int start, int end)
 {
+    rl_attempted_completion_over = 1; // skip directory listing
     char *bgn = rl_line_buffer;
     while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
 
@@ -1104,6 +1105,7 @@ static void int_handler(int signum)
                "Please wait...\n");
     if (gbl_sent_cancel_cnonce) exit(1); // pressed ctrl-c again
     if (!gbl_in_stmt) {
+        rl_crlf();
         rl_on_new_line();
         rl_replace_line("", 0);
         rl_redisplay();
@@ -1262,7 +1264,6 @@ int main(int argc, char *argv[])
         istty = 0;
     if (istty) {
         rl_attempted_completion_function = my_completion;
-        rl_editing_mode = 0; //vi mode
         load_readline_history();
         struct sigaction sact;
         sact.sa_handler = int_handler;
