@@ -8231,6 +8231,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                 // the value of new_start_val will be undefined behaviour
                 *flags |= SEQUENCE_EXHAUSTED;
                 *remaining_vals = values_before_cycle;
+                new_start_val = *next_start_val;
             }
 
         } else {
@@ -8255,6 +8256,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                 // the value of new_start_val will be undefined behaviour
                 *flags |= SEQUENCE_EXHAUSTED;
                 *remaining_vals = values_before_cycle;
+                new_start_val = *next_start_val;
             }
         } else {
             // Normal case

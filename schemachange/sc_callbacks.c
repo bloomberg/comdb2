@@ -557,6 +557,97 @@ static int replicant_reload_views(const char *name)
     return rc;
 }
 
+/**
+ * Updates in-memory representations of a specified sequence when
+ * schema change is executed.
+ */
+int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[],
+                                scdone_t type)
+{
+    void *tran = NULL;
+    int rc = 0;
+    int bdberr;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
+    char *name = strdup(seq_name);
+
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,
+               __LINE__, bdberr);
+        rc = bdberr;
+        goto done;
+    }
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    // Remove existing entry in memory
+    int i;
+    for (i = 0; i < thedb->num_sequences; i++) {
+        if (strcasecmp(thedb->sequences[i]->name, name) == 0) {
+            // TODO: add checks for usage in tables
+            // Remove sequence from dbenv
+            thedb->num_sequences--;
+
+            if (thedb->num_sequences > 0) {
+                thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
+            }
+
+            thedb->sequences[thedb->num_sequences] = NULL;
+        }
+    }
+    
+    if (type == llmeta_sequence_add || type == llmeta_sequence_alter ) {
+        // Sequence attributes
+        long long min_val; // Minimum value 
+        long long max_val; // Maximum value
+        long long next_val; // Next valid value to be dispensed
+        long long increment; // Value to increment by for dispensed values
+        long long start_val; // Start value for the sequence
+        long long next_start_val; // First valid value of the next allocated chunk
+        long long remaining_vals; // Remaining valid values in the allocated chunk
+        long long chunk_size; // Size of allocated chunk
+        bool cycle; // Flag for cyclic behaviour in sequence
+        char flags; // Flags for sequence (cdb2_constants.h)
+        
+        // Get sequence configuration from llmeta
+        rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment,
+                                     &cycle, &start_val, &next_start_val,
+                                     &chunk_size, &flags, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "can't get information for sequence \"%s\"\n",
+                   name);
+            goto done;
+        }
+
+        // Create new sequence in memory
+        sequence_t *seq = new_sequence(name, min_val, max_val, next_val,
+                                       increment, cycle, start_val, chunk_size,
+                                       flags, 0, next_start_val);
+
+        if (seq == NULL) {
+            logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
+            goto done;
+        }
+        thedb->sequences[thedb->num_sequences++] = seq;
+    }
+
+done:
+    if (name) {
+        free(name);
+    }
+    
+    if (tran) {
+        bdb_set_tran_lockerid(tran, lid);
+        rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
+                   __FILE__, __LINE__);
+            exit(1);
+        }
+    }
+}
+
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
  * we take ownership of table string
@@ -587,6 +678,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
+    case llmeta_sequence_add:
+    case llmeta_sequence_alter:
+    case llmeta_sequence_drop:
+        return update_sequence_description(bdb_state, table, type);
     }
 
     int add_new_db = 0;
