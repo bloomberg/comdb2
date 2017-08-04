@@ -163,6 +163,10 @@ extern int max_replication_trans_retries;
 /* net/net.c */
 extern int explicit_flush_trace;
 
+/* bdb/genid.c */
+unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
+void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+
 #include <stdbool.h>
 extern bool gbl_rcache;
 
@@ -318,6 +322,33 @@ static void *checkctags_value(void *context)
         }
     }
     return "unknown";
+}
+
+static void *next_genid_value(void *context)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    static char genid_str[64];
+    unsigned long long flipgenid, genid = get_genid(thedb->bdb_env, 0);
+
+    int *genptr = (int *)&genid, *flipptr = (int *)&flipgenid;
+
+    flipptr[0] = htonl(genptr[1]);
+    flipptr[1] = htonl(genptr[0]);
+
+    snprintf(genid_str, sizeof(genid_str), "0x%016llx 0x%016llx %llu", genid,
+             flipgenid, genid);
+
+    return (void *)genid_str;
+}
+
+static int genid_seed_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    char *seedstr = (char *)value;
+    unsigned long long seed;
+    seed = strtoll(seedstr, 0, 16);
+    seed_genid48(thedb->bdb_env, seed);
+    return 0;
 }
 
 /*
@@ -729,11 +760,20 @@ int register_tunable(comdb2_tunable tunable)
       registered.
     */
     if ((t = hash_find_readonly(gbl_tunables->hash, &tunable.name))) {
-        /* TODO(Nirbhay): This should be either ERROR or FATAL. */
-        logmsg(LOGMSG_DEBUG, "Tunable '%s' already registered..\n",
-               tunable.name);
+        /*
+          Overwrite & reuse the existing slot.
 
-        /* Overwrite & reuse the existing slot. */
+          Berkdb tunables are registered during the creation of the main bdb
+          environment (dbenv_open()). But, right before that, we also create
+          blkseq db, which also tries to create env and thus (pre-)register
+          same set of berkdb tunables. We tolerate this by simply overwriting
+          them when creating the main bdb environment. The subsequent calls
+          to db_env_create() has no effect here as gbl_tunables->freeze is set
+          and we return above ignoring the request to (re-)register/overwrite
+          same tunables all over again.
+
+          (See bdb_open_int() & berkdb/env/env_attr.c)
+        */
         free_tunable(t);
 
         already_exists = 1;
@@ -940,8 +980,7 @@ static int parse_bool(const char *value, int *num)
         logmsg(LOGMSG_ERROR, "Failed to update the value of tunable '%s'.\n",  \
                t->name);                                                       \
         return TUNABLE_ERR_INTERNAL;                                           \
-    }                                                                          \
-    return TUNABLE_ERR_OK;
+    }
 
 /*
   Update the tunable.
@@ -1086,10 +1125,15 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     }
     /* ENUM types must have at least value and update functions defined. */
     case TUNABLE_ENUM: {
+        /* The following 2 must be set for ENUM tunables. */
+        assert(t->update);
+        assert(t->value);
+
         PARSE_TOKEN;
         DO_VERIFY(t, buf);
-        assert(t->update);
         DO_UPDATE(t, buf);
+        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %s\n", t->name,
+               (const char *)t->value(t));
         break;
     }
     default: assert(0);
@@ -1136,6 +1180,8 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
     return ret;
 }
 
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
 /*
   Update the tunable read from lrl file or updated at runtime via
   process_command().
@@ -1153,16 +1199,19 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     char *tok;
     int st = 0;
     int ltok;
+    int len;
     comdb2_tunable_err ret;
 
     assert(gbl_tunables);
 
-    memcpy(buf, name, name_len);
-    buf[name_len] = 0;
+    /* Avoid buffer overrun. */
+    len = MIN(name_len, sizeof(buf) - 1);
+    memcpy(buf, name, len);
+    buf[len] = 0;
     tok = &buf[0];
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", name);
+        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 

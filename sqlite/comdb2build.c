@@ -2409,8 +2409,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           A matching local key has been found. On to find the parent key
           for current constraint.
         */
-        parent_table =
-            get_dbtable_by_name(current_constraint->constraint->referenced_table);
+        parent_table = get_dbtable_by_name(
+            current_constraint->constraint->referenced_table);
         if (parent_table == 0) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(
@@ -2838,7 +2838,7 @@ void comdb2CreateTableStart(
     if (noErr && get_dbtable_by_name(ctx->name)) {
         ctx->flags |= COMDB2_DDL_CTX_FLAG_NOOP;
         logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->name);
-        goto cleanup;
+        /* We'll not free the context here, as the flag's needed later. */
     }
 
     return;
@@ -2860,6 +2860,7 @@ void comdb2CreateTableEnd(
     )
 {
     struct comdb2_ddl_context *ctx;
+    struct schema_change_type *sc = 0;
     Vdbe *v;
     int max_size;
 
@@ -2890,7 +2891,7 @@ void comdb2CreateTableEnd(
 
     v = sqlite3GetVdbe(pParse);
 
-    struct schema_change_type *sc = new_schemachange_type();
+    sc = new_schemachange_type();
     if (sc == 0) goto oom;
 
     if (strlen(ctx->name) + 1 <= MAXTABLELEN) {
