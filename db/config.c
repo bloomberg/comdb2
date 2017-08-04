@@ -35,7 +35,6 @@
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
-extern int gbl_nogbllrl;
 extern int gbl_exit;
 extern int gbl_recovery_timestamp;
 extern int gbl_recovery_lsn_file;
@@ -53,6 +52,7 @@ extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **qdbs;
 extern char **sfuncs;
 extern char **afuncs;
+static int gbl_nogbllrl;    /* don't load /bb/bin/comdb2*.lrl */
 
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
@@ -412,7 +412,7 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
         return dbenv;
     }
 
-    logmsg(LOGMSG_DEBUG, "processing %s...\n", lrlname);
+    logmsg(LOGMSG_INFO, "processing %s...\n", lrlname);
     while (fgets(line, sizeof(line), ff)) {
         char *s = strchr(line, '\n');
         if (s) *s = 0;
@@ -453,7 +453,6 @@ struct dbenv *read_lrl_file_int(struct dbenv *dbenv, const char *lrlname,
 static struct dbenv *read_lrl_file(struct dbenv *dbenv, const char *lrlname,
                                    int required)
 {
-
     struct lrlfile *lrlfile;
     struct dbenv *out;
     out = read_lrl_file_int(dbenv, (char *)lrlname, required);
@@ -1379,6 +1378,13 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
                 return 0;
             }
         }
+    } else {
+        /* disable loading comdb2.lrl and comdb2_local.lrl with an absolute
+         * path in /bb/bin. comdb2.lrl and comdb2_local.lrl in the pwd are
+         * still loaded */
+        logmsg(LOGMSG_INFO, "Not loading %s/bin/comdb2.lrl and "
+               "%s/bin/comdb2_local.lrl.\n",
+               gbl_config_root, gbl_config_root);
     }
 
     /* look for overriding lrl's in the local directory */

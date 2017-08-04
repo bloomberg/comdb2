@@ -340,7 +340,6 @@ int gbl_create_mode = 0; /* turn on create-if-not-exists mode*/
 const char *gbl_repoplrl_fname = NULL; /* if != NULL this is the fname of the
                                         * external lrl file to create with
                                         * this db's settings and table defs */
-int gbl_nogbllrl = 0;                /* don't load /bb/bin/comdb2*.lrl */
 int gbl_local_mode = 0;                /* local mode, no siblings */
 int gbl_fullrecovery = 0;              /* backend full-recovery mode*/
 int gbl_maxretries = 500;              /* thats a lotta retries */
@@ -3148,14 +3147,6 @@ static int init(int argc, char **argv)
     if (gbl_fullrecovery) {       /*  11  */
         logmsg(LOGMSG_FATAL, "force full recovery.\n");
         gbl_exit = 1;
-    }
-    if (gbl_nogbllrl) {         /*  14  */
-        /* disable loading comdb2.lrl and comdb2_local.lrl with an absolute
-         * path in /bb/bin. comdb2.lrl and comdb2_local.lrl in the pwd are
-         * still loaded */
-        logmsg(LOGMSG_INFO, "not loading %s/bin/comdb2.lrl and "
-               "%s/bin/comdb2_local.lrl.\n",
-               gbl_config_root, gbl_config_root);
     }
 
     /* every option that sets exit implies local mode */
