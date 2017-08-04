@@ -197,7 +197,8 @@ done >> $DBDIR/${DBNAME}.lrl
 
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
-$comdb2task --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $DBNAME  >$TESTDIR/logs/${DBNAME}.init 2>&1
+PARAMS="--no-global-lrl $DBNAME"
+$comdb2task --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS  >$TESTDIR/logs/${DBNAME}.init 2>&1
 rc=$?
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
@@ -217,9 +218,9 @@ cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
     echo "!$TESTCASE: starting single node"
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $comdb2task $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
     else
-        ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.db &
+        ${DEBUG_PREFIX} $comdb2task $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.db &
     fi
 
     set +e
@@ -245,14 +246,14 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="source ${TESTDIR}/replicant_vars ; $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl"
+    CMD="source ${TESTDIR}/replicant_vars ; $comdb2task ${PARAMS} -lrl $DBDIR/${DBNAME}.lrl"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $comdb2task ${PARAMS} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
-                ${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
+                ${DEBUG_PREFIX} $comdb2task ${PARAMS} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
             fi
             continue
         fi
