@@ -4716,7 +4716,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 #ifdef DEBUG
         else
             host_node_printf(
-	        LOGMSG_USER, host_node_ptr,
+                LOGMSG_USER, host_node_ptr,
                 "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif

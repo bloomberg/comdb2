@@ -698,7 +698,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
     *reqsize = 0;
 
     for (fnum = 0; fnum < nField; fnum++) {
-	memset(&m[fnum], 0, sizeof(Mem));
+        memset(&m[fnum], 0, sizeof(Mem));
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
@@ -12251,7 +12251,8 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
         if (pFrom->zMalloc && pFrom->szMalloc) {
             pTo->szMalloc = pFrom->szMalloc;
             pTo->zMalloc = malloc(pTo->szMalloc);
-            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
+            if (pTo->zMalloc == NULL)
+                return SQLITE_NOMEM;
             memcpy(pTo->zMalloc, pFrom->zMalloc, pTo->szMalloc);
             pTo->z = pTo->zMalloc;
             pTo->n = pFrom->n;
@@ -12259,7 +12260,8 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
             pTo->n = pFrom->n;
             pTo->szMalloc = pFrom->n + 1;
             pTo->zMalloc = malloc(pTo->szMalloc);
-            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
+            if (pTo->zMalloc == NULL)
+                return SQLITE_NOMEM;
             memcpy(pTo->zMalloc, pFrom->z, pFrom->n);
             pTo->zMalloc[pFrom->n] = 0;
             pTo->z = pTo->zMalloc;

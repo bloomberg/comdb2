@@ -4463,7 +4463,8 @@ retry:
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);
-        if (hndl->num_hosts > 1) goto retry;
+        if (hndl->num_hosts > 1)
+            goto retry;
     }
     return rc;
 }

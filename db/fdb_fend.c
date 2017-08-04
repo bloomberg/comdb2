@@ -1213,7 +1213,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             }
             goto error; /* new_fdb bumped up users, need to decrement that */
         }
-    } 
+    }
 
     /* the bellow will exclusively lock fdb, and bump users before releasing
        the lock and returning */
@@ -3731,7 +3731,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     if (rc) {
         bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
         errstat_set_rc(&clnt->osql.xerr, rc);
-        if(tran->errstr) //TODO: this can be non-null even when no error
+        if (tran->errstr) // TODO: this can be non-null even when no error
             errstat_set_str(&clnt->osql.xerr, tran->errstr);
         clnt->osql.error_is_remote = 1;
     } else {
