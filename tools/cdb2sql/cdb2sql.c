@@ -145,15 +145,16 @@ void cdb2sql_usage(int exit_val)
 
 const char *words[] = {
   "ALTER", "ANALYZE", 
-  "BEGIN", "BETWEEN", "BY",
+  "BEGIN", 
   "COMMIT",
   "CREATE", 
-  "DELETE", "DROP"
+  "DELETE", "DROP", "DRYRUN",
   "EXPLAIN",
   "INSERT", 
   "PUT",
   "REBUILD",
-  "SELECT", "SET",
+  "ROLLBACK",
+  "SELECT", "SELECTV", "SET",
   "TRUNCATE",
   "UPDATE",
   "WITH", NULL, }; // must be terminated by NULL
