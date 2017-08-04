@@ -6288,14 +6288,12 @@ void addVbdeSorterCost(const VdbeSorter *pSorter)
         return;
 
     struct query_path_component fnd, *qc;
-
-    fnd.u.db = 0;
+    fnd.fdb = 0;
+    fnd.lcl_tbl_name[0] = 0;
     fnd.ix = 0;
 
     if (NULL == (qc = hash_find(thd->query_hash, &fnd))) {
         qc = calloc(sizeof(struct query_path_component), 1);
-        qc->u.db = 0;
-        qc->ix = 0;
         hash_add(thd->query_hash, qc);
         listc_abl(&thd->query_stats, qc);
     }
@@ -6378,9 +6376,9 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         if (pCur->bt && pCur->bt->is_remote) {
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
-            fnd.u.fdb = pCur->fdbc->table_entry(pCur);
-        } else {
-            fnd.u.db = pCur->db;
+            fnd.fdb = pCur->fdbc->table_entry(pCur);
+        } else if (pCur->db) {
+            strcpy(fnd.lcl_tbl_name, pCur->db->dbname);
         }
         fnd.ix = pCur->ixnum;
 
@@ -6388,10 +6386,9 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             NULL == (qc = hash_find(thd->query_hash, &fnd))) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
-                qc->remote = 1;
-                qc->u.fdb = fnd.u.fdb;
-            } else {
-                qc->u.db = pCur->db;
+                qc->fdb = fnd.fdb;
+            } else if (pCur->db) {
+                strcpy(qc->lcl_tbl_name, pCur->db->dbname);
             }
             qc->ix = pCur->ixnum;
             hash_add(thd->query_hash, qc);
