@@ -1398,7 +1398,6 @@ void handle_explain(SBUF2 *sb, int trace, int all)
     client.client_understands_query_stats = 0;
     client.tzname[0] = 0;
     bzero(&client.conninfo, sizeof(struct conninfo));
-    client.inited_mutex = 0;
     client.query_rc = 0;
     client.rawnodestats = NULL;
     sql_set_sqlengine_state(&client, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);

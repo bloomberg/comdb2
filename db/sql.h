@@ -301,7 +301,6 @@ struct sqlclntstate {
                                   for races betweem sql thread created and
                                   other readers, like appsock */
     SBUF2 *sb;
-    int must_close_sb;
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
@@ -310,13 +309,11 @@ struct sqlclntstate {
     int *type_overrides;
     int recno;
     struct fsqlreq req;
-    int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
     int dtprec;
     struct conninfo conninfo;
 
     /* For SQL engine dispatch. */
-    int inited_mutex;
     pthread_mutex_t wait_mutex;
     pthread_mutex_t write_lock;
     pthread_cond_t wait_cond;
@@ -328,15 +325,7 @@ struct sqlclntstate {
     enum ctrl_sqleng ctrl_sqlengine; /* use to mark a begin/end out of state,
                                         see enum ctrl_sqleng
                                      */
-    int intrans; /* THIS FIELD IS USED BY sqlglue.c TO RECORD THE ENTRANCE (=1)
-                   AND THE EXIT(=0) in a sql transaction marked by a succesfull
-                   call to BeginTrans, and Commit/Rollback respectively
-                   THIS DOES NOT MATCH THE CLIENT TRANSACTION EXCERPT FOR
-                   SINGULAR STATEMENTS;
-                   STATE OF A CLIENT TRANSACTION IS KEPT HERE
-                 */
     struct convert_failure fail_reason; /* detailed error */
-    int early_retry;
 
     /* analyze variables */
     int n_cmp_idx;
@@ -345,29 +334,85 @@ struct sqlclntstate {
     int debug_sqlclntstate;
     int last_check_time;
     int query_timeout;
-    int stop_this_statement;
-    int statement_timedout;
     struct conninfo conn;
 
-    uint8_t heartbeat;
-    uint8_t ready_for_heartbeats;
-    uint8_t no_more_heartbeats;
-    uint8_t done;
-
-    int using_case_insensitive_like;
-    int deadlock_recovered;
-
     /* lua stored procedure */
-    int trans_has_sp;
     struct stored_proc *sp;
-    int exec_lua_thread;
-    int sp_cdata_sent;
-    int want_stored_procedure_trace;
-    int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
     struct spversion_t spversion;
     int n_lua_stmt;
     int max_lua_stmt;
+    int trans_has_sp: 1;
+    int exec_lua_thread: 1;
+    int sp_cdata_sent: 1;
+    int want_stored_procedure_trace: 1;
+    int want_stored_procedure_debug: 1;
+
+    /* various flags */
+    int stop_this_statement: 1;
+    int must_close_sb: 1;
+    int client_understands_query_stats: 1;
+    int statement_timedout: 1;
+    int heartbeat: 1;
+    int ready_for_heartbeats: 1;
+    int no_more_heartbeats: 1;
+    int done: 1;
+    int using_case_insensitive_like: 1;
+    int deadlock_recovered: 1;
+    /*
+    THIS FIELD IS USED BY sqlglue.c TO RECORD THE ENTRANCE (=1) AND THE EXIT(=0)
+    in a sql transaction marked by a succesfull call to BeginTrans, and
+    Commit/Rollback respectively THIS DOES NOT MATCH THE CLIENT TRANSACTION
+    EXCERPT FOR SINGULAR STATEMENTS; STATE OF A CLIENT TRANSACTION IS KEPT HERE
+    */
+    int intrans: 1;
+    int early_retry: 2;
+    /*
+    to remain compatible with blocksql: if a user starts a transaction, we need
+    to pend the first error until a commit is issued.  any statements past the
+    first error are ignored.
+    */
+    int had_errors: 1;
+    /*
+    clnt is in a client transaction (ie: client ran "begin" but not yet
+    commit or abort)
+    */
+    int in_client_trans: 1;
+    /* track each query if it is a read or a write */
+    int iswrite: 1;
+    /* track if the query is a select query.*/
+    int isselect: 1;
+    int isUnlocked: 1;
+    /* different from iswrite above */
+    int writeTransaction: 1;
+    int want_query_effects: 1;
+    int send_one_row: 1;
+    int verifyretry_off: 1;
+    int pageordertablescan: 1;
+    int is_hasql_retry: 1;
+    int is_readonly: 1;
+    int is_newsql: 1;
+    int have_query_limits: 1;
+    int have_user: 1;
+    int have_password: 1;
+    int have_endian: 1;
+    int have_extended_tm: 1;
+    int wrong_db: 1;
+    int is_lua_sql_thread: 1;
+    int skip_feature: 1;
+    int high_availability: 1;
+    int hasql_on: 1;
+    int has_recording: 1;
+    int is_retry: 1;
+    int get_cost: 1;
+    int is_explain: 2;
+    int is_analyze: 1;
+    int is_overlapping: 1;
+    int gen_changed: 1;
+    int skip_peer_chk: 1;
+    int has_sqliterow: 1;
+    int verify_indexes: 1;
+    int added_to_hist: 1;
 
     char *tag;
     void *tagbuf; /* note: this is a pointer into the client appsock thread
@@ -395,56 +440,27 @@ struct sqlclntstate {
     unsigned long long dbglog_cookie;
     unsigned long long master_dbglog_cookie;
 
-    int have_query_limits;
     struct query_limits limits;
-
     struct query_effects effects;
     struct query_effects log_effects;
-
-    int have_user;
     char user[17];
-
-    int have_password;
     char password[19];
-
-    int have_endian;
     int endian;
-
-    int have_extended_tm;
     int extended_tm;
 
     char *origin;
     char origin_space[255];
     uint8_t dirty[256]; /* We can track upto 2048 tables */
 
-    int had_errors; /* to remain compatible with blocksql: if a user starts a
-                       transaction, we
-                       need to pend the first error until a commit is issued.
-                       any statements
-                       past the first error are ignored. */
-    int in_client_trans; /* clnt is in a client transaction (ie: client ran
-                            "begin" but not yet commit or abort) */
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
-    int iswrite;    /* track each query if it is a read or a write */
-    int isselect;   /* track if the query is a select query.*/
-    int isUnlocked;
-    int writeTransaction; /* different from iswrite above */
-    int want_query_effects;
-    int send_one_row;
     int verify_retries; /* how many verify retries we've borne */
-    int verifyretry_off;
-    int pageordertablescan;
     int snapshot; /* snapshot epoch placeholder */
     int snapshot_file;
     int snapshot_offset;
-    int is_hasql_retry;
-    int is_readonly;
-    int is_newsql;
     CDB2SQLQUERY *sql_query; /* Needed to fetch the bind variables. */
     CDB2QUERY *query;
-    int added_to_hist;
 
     struct thr_handle *thr_self;
     arch_tid appsock_id;
@@ -482,29 +498,13 @@ struct sqlclntstate {
     /* partial indexes */
     unsigned long long ins_keys;
     unsigned long long del_keys;
-    int has_sqliterow;
-    int verify_indexes;
     void *schema_mems;
 
     /* indexes on expressions */
     uint8_t **idxInsert;
     uint8_t **idxDelete;
 
-    int8_t wrong_db;
-    int8_t is_lua_sql_thread;
-    int8_t skip_feature;
-    int8_t high_availability;
-    int8_t hasql_on;
-
-    int8_t has_recording;
-    int8_t is_retry;
-    int8_t get_cost;
-    int8_t is_explain;
-    uint8_t is_analyze;
-    uint8_t is_overlapping;
     uint32_t init_gen;
-    int8_t gen_changed;
-    uint8_t skip_peer_chk;
 
     char fingerprint[16];
     int ncontext;
