@@ -12,6 +12,7 @@ export SRCHOME
 export TESTID:=$(shell tools/get_random.sh)
 CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
+export GITVERSION:=$(shell git rev-parse --short HEAD)
 
 
 basicops_nokey:

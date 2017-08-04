@@ -269,7 +269,6 @@ else
     done
 
     set +e
-    gitversion=$(git describe --always)
     echo "!$TESTCASE: waiting until ready"
     sleep 1
     for node in $CLUSTER; do
@@ -285,8 +284,8 @@ else
             exit 1
         fi
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_gitversion()' 2>&1)
-        if [ "$out" != "$gitversion" ] ; then
-            echo "comdb2_gitversion() '$out' != expected '$gitversion'"
+        if [ "$out" != "$GITVERSION" ] ; then
+            echo "comdb2_gitversion() '$out' != expected '$GITVERSION'"
             sleep 1
             exit 1
         fi
