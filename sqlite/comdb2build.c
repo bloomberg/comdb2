@@ -2942,7 +2942,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        if ((pParse->pNewTable) == 0) assert(0);
+        //TODO: BAD ASSERT: if ((pParse->pNewTable) == 0) assert(0);
         sqlite3AddColumn(pParse, pName, pType);
         return;
     }

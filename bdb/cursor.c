@@ -1710,7 +1710,7 @@ static void *pglogs_asof_thread(void *arg)
     struct commit_list *lcommit, *bcommit, *next;
     int pollms, ret;
 
-    while (1) {
+    while (!bdb_state->exiting) {
         // Remove list
         int count, i, dont_poll = 0, drain_limit;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
