@@ -140,11 +140,11 @@ int do_add_sequence_int(struct schema_change_type *s, tran_type *trans)
     thedb->num_sequences++;
 
     /* log for replicants to do the same */
-    // rc = bdb_llog_scdone(db->handle, llmeta_sequence_add, 1, &bdberr);
-    // if (rc) {
-    //     sbuf2printf(sb, "Failed to broadcast sequence add\n");
-    //     logmsg(LOGMSG_ERROR, "Failed to broadcast sequence ad\n");
-    // }
+    rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_add, trans, &bdberr);
+    if (rc) {
+        sbuf2printf(sb, "Failed to broadcast sequence add\n");
+        logmsg(LOGMSG_ERROR, "Failed to broadcast sequence ad\n");
+    }
 
     return rc;
 }
@@ -184,12 +184,12 @@ int do_drop_sequence_int(struct schema_change_type *s, tran_type *trans)
             if (rc) return rc;
 
             /* log for replicants to do the same */
-            // rc = bdb_llog_scdone(db->handle, llmeta_sequence_drop, 1, &bdberr);
-            // if (rc) {
-            //     sbuf2printf(sb, "Failed to broadcast sequence drop\n");
-            //     logmsg(LOGMSG_ERROR, "Failed to broadcast sequence drop\n");
-            //     return rc;
-            // }
+            rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_drop, trans, &bdberr);
+            if (rc) {
+                sbuf2printf(sb, "Failed to broadcast sequence drop\n");
+                logmsg(LOGMSG_ERROR, "Failed to broadcast sequence drop\n");
+                return rc;
+            }
 
             return 0;
         }
@@ -316,11 +316,11 @@ int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
     pthread_mutex_unlock(&seq->seq_lk);
 
     /* log for replicants to do the same */
-    // rc = bdb_llog_scdone(db->handle, llmeta_sequence_alter, 1, &bdberr);
-    // if (rc) {
-    //     sbuf2printf(sb, "Failed to broadcast sequence alter\n");
-    //     logmsg(LOGMSG_ERROR, "Failed to broadcast sequence alter\n");
-    // }
+    rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_alter, trans, &bdberr);
+    if (rc) {
+        sbuf2printf(sb, "Failed to broadcast sequence alter\n");
+        logmsg(LOGMSG_ERROR, "Failed to broadcast sequence alter\n");
+    }
 
     return rc;
 }

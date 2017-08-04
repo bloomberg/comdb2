@@ -219,35 +219,25 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
     return do_llog_int(bdb_state, dtbl, &dtype, wait, bdberr);
 }
 
-int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, int *bdberr)
+int llog_scdone_tran(bdb_state_type *p_bdb_state, char *name, scdone_t type,
+                     tran_type *tran, int *bdberr)
 {
     int rc = 0;
     DBT *dtbl = NULL;
     DBT dtype = {0};
     uint32_t sctype = htonl(type);
-    bdb_state_type *p_bdb_state = bdb_state;
     DB_LSN lsn;
 
     ++gbl_dbopen_gen;
-    if (bdb_state->name) {
+    if (name) {
         dtbl = alloca(sizeof(DBT));
         bzero(dtbl, sizeof(DBT));
-        dtbl->data = bdb_state->name;
-        dtbl->size = strlen(bdb_state->name) + 1;
+        dtbl->data = name;
+        dtbl->size = strlen(name) + 1;
     }
 
     dtype.data = &sctype;
     dtype.size = sizeof(sctype);
-
-    if (bdb_state->parent) p_bdb_state = bdb_state->parent;
-
-#if 0 /* finalize_schema_change already got the write lock? */
-    if ((type == alter || type == fastinit) &&
-        (strncmp(bdb_state->name, "sqlite_stat",
-                 sizeof("sqlite_stat") - 1) != 0))
-        bdb_lock_table_write(bdb_state, tran);
-#endif
 
     rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, dtbl, &dtype);
     if (rc) {
@@ -255,6 +245,21 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         return -1;
     }
     return rc;
+}
+
+int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
+                         tran_type *tran, int *bdberr)
+{
+    bdb_state_type *p_bdb_state = bdb_state;
+    if (bdb_state->parent) p_bdb_state = bdb_state->parent;
+
+    return llog_scdone_tran(p_bdb_state, bdb_state->name, type, tran, bdberr);
+}
+
+int bdb_llog_sequences_tran(bdb_state_type *bdb_state, char *name,
+                            scdone_t type, tran_type *tran, int *bdberr)
+{
+    return llog_scdone_tran(bdb_state, name, type, tran, bdberr);
 }
 
 int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
