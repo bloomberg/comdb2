@@ -14,7 +14,7 @@ CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
 
 
-basicops_nokey:
+basicops_nokey: executables cdb2_sqlreplay cdb2sql comdb2ar pmux comdb2
 	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
@@ -25,6 +25,29 @@ basicops_nokey:
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
+
+EXECOMDB2:=$(shell command -v ${SRCHOME}/comdb2 2> /dev/null)
+EXESQLREPLAY:=$(shell command -v ${SRCHOME}/cdb2_sqlreplay 2> /dev/null)
+EXECDB2SQL:=$(shell command -v ${SRCHOME}/cdb2sql 2> /dev/null)
+EXECOMDB2AR:=$(shell command -v ${SRCHOME}/comdb2ar 2> /dev/null)
+EXEPMUX:=$(shell command -v ${SRCHOME}/pmux 2> /dev/null)
+
+executables: 
+	ifndef EXECOMDB2
+		$(error "${SRCHOME}/comdb2 is not available please run make")
+	endif
+	ifndef EXESQLREPLAY
+		$(error "${SRCHOME}/cdb2_sqlreplay is not available please run make")
+	endif
+	ifndef EXECDB2SQL
+		$(error "${SRCHOME}/cdb2sql is not available please run make")
+	endif
+	ifndef EXECOMDB2AR
+		$(error "${SRCHOME}/comdb2ar is not available please run make")
+	endif
+	ifndef EXEPMUX
+		$(error "${SRCHOME}/pmux is not available please run make")
+	endif
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
