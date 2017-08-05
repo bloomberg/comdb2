@@ -226,7 +226,6 @@ for node in $cluster ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_host()"`
     assertres $res $node
 
-
     port=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_port()"`
     echo "connect to db with direct port info"
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @$node:port=$port "select comdb2_dbname()"`
@@ -245,6 +244,9 @@ for node in $cluster ; do
     if [ diff out.txt out.exp ]; then
         failexit "Expected failure when connecting with the wrong db name"
     fi
+
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_gitversion()"`
+    assertres $res $GITVERSION
 done
 
 

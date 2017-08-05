@@ -231,12 +231,6 @@ if [[ -z "$CLUSTER" ]]; then
         sleep 1
     done
 
-    out=$(cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME default 'select comdb2_gitversion()' 2>&1)
-    if [ "$out" != "$GITVERSION" ] ; then
-        echo "comdb2_gitversion() '$out' != expected '$GITVERSION'"
-        exit 1
-    fi
-
 else
     echo "!$TESTCASE: copying to cluster"
     for node in $CLUSTER; do
@@ -287,11 +281,6 @@ else
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'comdb2_host()' 2>&1)
         if [ $out != $node ] ; then
             echo "comdb2_host() '$out' != expected '$node'"
-            exit 1
-        fi
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_gitversion()' 2>&1)
-        if [ "$out" != "$GITVERSION" ] ; then
-            echo "comdb2_gitversion() '$out' != expected '$GITVERSION'"
             exit 1
         fi
     done
