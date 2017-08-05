@@ -1532,6 +1532,11 @@ int osql_dbq_consume_logic(struct sqlclntstate *clnt, const char *spname,
 
 extern int gbl_allow_user_schema;
 
+static inline int should_check_password(BtCursor *cur)
+{
+    return gbl_uses_password && !cur->sqlite->init.busy;
+}
+
 static int access_control_check_sql_write(struct BtCursor *pCur,
                                           struct sql_thread *thd)
 {
@@ -1558,8 +1563,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password &&
-        (thd->sqlclntstate->no_transaction == 0)) {
+    if (should_check_password(pCur)) {
         rc = bdb_check_user_tbl_access(pCur->db->dbenv->bdb_env,
                                        thd->sqlclntstate->user,
                                        pCur->db->dbname, ACCESS_WRITE, &bdberr);
@@ -1604,8 +1608,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password &&
-        (thd->sqlclntstate->no_transaction == 0)) {
+    if (should_check_password(pCur)) {
         rc = bdb_check_user_tbl_access(pCur->db->dbenv->bdb_env,
                                        thd->sqlclntstate->user,
                                        pCur->db->dbname, ACCESS_READ, &bdberr);
