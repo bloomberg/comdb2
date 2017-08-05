@@ -52,7 +52,7 @@ extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern char **qdbs;
 extern char **sfuncs;
 extern char **afuncs;
-static int gbl_nogbllrl;    /* don't load /bb/bin/comdb2*.lrl */
+static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
 
 static struct option long_options[] = {
     {"lrl", required_argument, NULL, 0},
@@ -1383,7 +1383,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
          * path in /bb/bin. comdb2.lrl and comdb2_local.lrl in the pwd are
          * still loaded */
         logmsg(LOGMSG_INFO, "Not loading %s/bin/comdb2.lrl and "
-               "%s/bin/comdb2_local.lrl.\n",
+                            "%s/bin/comdb2_local.lrl.\n",
                gbl_config_root, gbl_config_root);
     }
 
