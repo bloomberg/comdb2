@@ -13,6 +13,7 @@ export TESTID:=$(shell tools/get_random.sh)
 CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
 export GITVERSION:=$(shell git describe --always)
+export COMDB2MD5SUM:=$(shell md5sum ${SRCHOME}/comdb2 | cut -d ' ' -f1)
 
 
 basicops_nokey:
