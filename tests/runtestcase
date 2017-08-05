@@ -56,6 +56,6 @@ call_unsetup
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> $TESTDIR/test.log
-echo "Duration $SECONDS seconds" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> ${TESTDIR}/logs/${DBNAME}.testcase
+echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
 
 exit $rc
