@@ -43,6 +43,9 @@ sqlite/ext/misc/json1.o
 
 sqlite/md5.o: CFLAGS+=-O2
 
+COMDB2_GITVERSION:=$(shell git describe --always)
+sqlite/func.o: CFLAGS+=-DCOMDB2_GITVERSION=\"$(COMDB2_GITVERSION)\"
+
 SQLITE_GENC:=sqlite/parse.c sqlite/opcodes.c sqlite/inline/serialget.c	\
 sqlite/inline/memcompare.c sqlite/inline/vdbecompare.c
 SQLITE_GENH:=sqlite/parse.h sqlite/opcodes.h sqlite/keywordhash.h
