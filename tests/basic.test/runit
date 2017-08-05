@@ -226,6 +226,7 @@ for node in $cluster ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_host()"`
     assertres $res $node
 
+
     port=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_port()"`
     echo "connect to db with direct port info"
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @$node:port=$port "select comdb2_dbname()"`
@@ -234,17 +235,18 @@ for node in $cluster ; do
     echo "connect with wrong db name"
     set +e
     cdb2sql --tabs ${CDB2_OPTIONS} badname @$node:port=$port "select comdb2_dbname()" &> out.txt
-    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch" > out.exp
+    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch query:badname actual:$DBNAME" > out.exp
     rc=$?
     set -e
 #    TODO: this returns rc=0 even though error and can't run query!!
 #    if [ $rc -eq 0 ]; then
 #        failexit "Expected bad rc when connecting with the wrong db name"
 #    fi
-    if [ diff out.txt out.exp ]; then
-        failexit "Expected failure when connecting with the wrong db name"
+    if ! diff out.txt out.exp ; then
+        failexit "Expected failure when connecting with the wrong db name, diff out.txt out.exp"
     fi
 
+    echo "check git hash of comdb2 task with current directory git hash, it will be different if you git commit after liking comdb2 server."
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_gitversion()"`
     assertres $res $GITVERSION
 done

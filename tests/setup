@@ -230,7 +230,6 @@ if [[ -z "$CLUSTER" ]]; then
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2>/dev/null)
         sleep 1
     done
-
 else
     echo "!$TESTCASE: copying to cluster"
     for node in $CLUSTER; do
