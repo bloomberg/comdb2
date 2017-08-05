@@ -15,7 +15,6 @@ export TESTDIR:=$(CURRDIR)/test_$(TESTID)
 
 
 basicops_nokey: executables
-	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
@@ -27,6 +26,9 @@ basicops_nokey: executables
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
 executables: execomdb2 exesqlreplay execdb2sql execomdb2ar exepmux
+	@mkdir -p ${TESTDIR}
+	@mv ${SRCHOME}/comdb2 ${SRCHOME}/cdb2sql ${SRCHOME}/comdb2ar ${SRCHOME}/cdb2_sqlreplay ${SRCHOME}/pmux ${TESTDIR}/
+
 execomdb2: ; @command -v ${SRCHOME}/comdb2 &> /dev/null
 exesqlreplay: ; @command -v ${SRCHOME}/cdb2_sqlreplay &> /dev/null
 execdb2sql: ; @command -v ${SRCHOME}/cdb2sql &> /dev/null

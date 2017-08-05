@@ -10,8 +10,8 @@ export TMPDIR=$(TESTDIR)/tmp
 export CDB2_CONFIG=$(DBDIR)/comdb2db.cfg
 export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
-export comdb2ar=$(SRCHOME)/comdb2ar
-export comdb2task=$(SRCHOME)/comdb2
+export comdb2ar=$(TESTDIR)/comdb2ar
+export comdb2task=$(TESTDIR)/comdb2
 export COMDB2_UNITTEST?=0
 
 test:: tool unit

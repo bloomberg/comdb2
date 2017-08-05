@@ -63,13 +63,13 @@ fi
 
 if [[ $debug -eq 1 ]]; then
     set +x
-    export PATH="${SRCHOME}/:${PATH}"
+    export PATH="${TESTDIR}/:${PATH}"
     echo "To run the ${TESTCASE} test, please run the following:"
     echo
     for env in $vars; do
         echo "export $env=\"${!env}\""
     done
-    echo 'export PATH=${SRCHOME}/:${PATH}'
+    echo 'export PATH=${TESTDIR}/:${PATH}'
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"'
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/"
     echo "./runit ${DBNAME} >${TESTDIR}/logs/${TESTCASE}.testcase 2>&1"
@@ -146,23 +146,23 @@ export COMDB2AR_EXOPTS="-x $comdb2task"
 copy_files_to_cluster() 
 {
     # copy executables to each node except localhost
-    pmux=${SRCHOME}/pmux
+    pmux=${TESTDIR}/pmux
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}"
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${TESTDIR}"
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2"
-        scp -o StrictHostKeyChecking=no $comdb2ar $node:${SRCHOME} 
-        scp -o StrictHostKeyChecking=no $comdb2task $node:${SRCHOME}
+        scp -o StrictHostKeyChecking=no $comdb2ar $node:${TESTDIR} 
+        scp -o StrictHostKeyChecking=no $comdb2task $node:${TESTDIR}
         # stop pmux on nodes first before copying and starting it
         if [ -n "$PMUXPORT" ] ; then
             ssh -o StrictHostKeyChecking=no $node "$stop_pmux"
         fi
         scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
         echo start pmux on $node if not running 
-        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' ${SRCHOME}/$pmux_cmd"
+        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' ${TESTDIR}/$pmux_cmd"
     done
 }
 
@@ -175,7 +175,7 @@ if [ $? -eq 0 ] ; then
         eval $stop_pmux
     fi
     echo start pmux on local host if not running
-    COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" ${SRCHOME}/$pmux_cmd
+    COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" ${TESTDIR}/$pmux_cmd
 fi
 
 # if CLUSTER is length is nonzero, and file does not exist, copy to cluster
