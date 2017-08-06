@@ -126,6 +126,7 @@ extern int gbl_block_set_commit_genid_trace;
 extern int gbl_debug_high_availability_flag;
 extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
+extern int gbl_abort_on_incorrect_upgrade;
 
 extern long long sampling_threshold;
 

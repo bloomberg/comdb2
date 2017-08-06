@@ -7,6 +7,7 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
+#include "logmsg.h"
 
 #ifndef lint
 static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell Exp $";
@@ -274,6 +275,8 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
  * PUBLIC: int __rep_new_master __P((DB_ENV *, REP_CONTROL *, char *));
  */
 
+int gbl_abort_on_incorrect_upgrade;
+
 int
 __rep_new_master(dbenv, cntrl, eid)
 	DB_ENV *dbenv;
@@ -294,7 +297,30 @@ __rep_new_master(dbenv, cntrl, eid)
 	ret = 0;
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	__rep_elect_done(dbenv, rep);
-	change = rep->gen != cntrl->gen || rep->master_id != eid;
+
+    // This should never happen: we are calling new-master against a
+    // network message with a lower generation.  I believe this is the 
+    // election bug that I've been tracking down: because we've 
+    // previously released db_rep->rep_mutexp, my generation could be 
+    // larger than cntrl->gen (and therefore we shouldn't upgrade).
+    logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n", 
+            __func__, rep->gen, cntrl->gen, rep->master_id, eid);
+    if (rep->gen > cntrl->gen) {
+        logmsg(LOGMSG_USER, "%s: current-gen (%u) is greater than cntrl->gen (%u)??\n", 
+                __func__, rep->gen, cntrl->gen);
+        if (gbl_abort_on_incorrect_upgrade)
+            abort();
+    }
+
+    // I would abort here also but I suspect it might occur on startup
+    // or in a single-node installation
+    if (rep->gen == cntrl->gen) {
+        logmsg(LOGMSG_USER, "%s: current-gen is equal to cntrl->gen (%u)??\n", 
+                __func__, rep->gen);
+    }
+    
+	change = rep->gen < cntrl->gen;
+//	change = rep->gen != cntrl->gen || rep->master_id != eid;
 	if (change) {
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
