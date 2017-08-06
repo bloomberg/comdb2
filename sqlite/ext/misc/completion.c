@@ -252,6 +252,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
         }else{
           pCur->zCurrentRow = completionKwrds[pCur->j++];
         }
+        iCol = -1;
         */
         if( pCur->pStmt==0 ){
           sqlite3_prepare_v2(pCur->db, 
@@ -332,7 +333,20 @@ static int completionNext(sqlite3_vtab_cursor *cur){
                   -1, &pCur->pStmt, 0);
         }
         iCol = 0;
-        eNextPhase = COMPLETION_EOF;
+        pCur->j = 0;
+        eNextPhase = COMPLETION_FUNCTIONS;
+        break;
+      }
+      case COMPLETION_FUNCTIONS: {
+        static char *cfuncs[] = {"comdb2_version()", "table_version()", "partition_info()", "comdb2_host()", "comdb2_port()", "comdb2_dbname()", "comdb2_prevquerycost()", "sys.cmd.send()"};
+        static int j = 0;
+        if( pCur->j >= sizeof(cfuncs)/sizeof(char*)) {
+          pCur->zCurrentRow = 0;
+          pCur->ePhase = COMPLETION_EOF;
+        }else{
+          pCur->zCurrentRow = cfuncs[pCur->j++];
+        }
+        iCol = -1;
         break;
       }
     }

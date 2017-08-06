@@ -149,7 +149,7 @@ const char *words[] = {
   "COMMIT",
   "CREATE", 
   "DELETE", "DROP", "DRYRUN",
-  "EXPLAIN",
+  "EXEC", "EXPLAIN",
   "INSERT", 
   "PUT",
   "REBUILD",
@@ -158,7 +158,6 @@ const char *words[] = {
   "TRUNCATE",
   "UPDATE",
   "WITH", NULL, }; // must be terminated by NULL
-
 
 
 
