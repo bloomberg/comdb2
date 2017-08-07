@@ -6751,7 +6751,7 @@ void update_dbstore(struct dbtable *db)
                        "PANIC!!\n",
                        db->dbname, __func__, from->name, tag);
                 /* FIXME */
-                exit(1);
+                abort();
             }
 
             if (db->versmap[v][i] != i || from->type != to->type ||
@@ -6769,7 +6769,7 @@ void update_dbstore(struct dbtable *db)
                         logmsg(LOGMSG_FATAL, "%s: %s() @ %d calloc failed!! PANIC!!\n",
                                db->dbname, __func__, __LINE__);
                         /* FIXME */
-                        exit(1);
+                        abort();
                     }
                     rc = SERVER_to_SERVER(
                         from->in_default, from->in_default_len,
@@ -6782,7 +6782,7 @@ void update_dbstore(struct dbtable *db)
                                "PANIC!!\n",
                                db->dbname, __func__, __LINE__);
                         /* FIXME */
-                        exit(1);
+                        abort();
                     }
                 }
             }

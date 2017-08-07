@@ -6139,7 +6139,7 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr)
     //select needs to be done with the same transaction to avoid 
     //undetectable deadlock for writing and reading from same thread
     unsigned long long version;
-    rc = bdb_table_version_select(db->handle, trans, &version, bdberr);
+    rc = bdb_table_version_select(db->dbname, trans, &version, bdberr);
     if (rc || *bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, *bdberr);
@@ -6160,7 +6160,7 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     unsigned long long version;
     int rc;
 
-    rc = bdb_table_version_select(db->handle, tran, &version, &bdberr);
+    rc = bdb_table_version_select(db->dbname, tran, &version, &bdberr);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, bdberr);

@@ -6996,7 +6996,7 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state, tran, &version, bdberr);
+    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -7086,7 +7086,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state, tran, &version, bdberr);
+    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -7125,14 +7125,13 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_table_version_select(const char *tblname, tran_type *tran,
                              unsigned long long *version, int *bdberr)
 {
     struct llmeta_sane_table_version schema_version;
     char key[LLMETA_IXLEN] = {0};
     char fnddata[sizeof(*version)];
     int fnddatalen;
-    const char *tblname = bdb_state->name;
     int tblnamelen;
     uint8_t *p_buf, *p_buf_end;
     int retries;
