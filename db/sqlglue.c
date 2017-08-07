@@ -7730,7 +7730,8 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
         int dbtblnum = 0, ixnum;
         get_sqlite_tblnum_and_ixnum(thd, iTable, &dbtblnum, &ixnum);
-        reqlog_add_table(thd->bt->reqlogger, thedb->dbs[dbtblnum]->dbname);
+        reqlog_add_table(thrman_get_reqlogger(thrman_self()),
+                         thedb->dbs[dbtblnum]->dbname);
     }
 
     if (!after_recovery)
