@@ -963,7 +963,7 @@ send:			if (__rep_send_message(dbenv,
                                                  REP_NEWMASTER, &lsn, NULL, 0,
                                                  NULL);
                 }
-		/*
+                /*
 		 * Otherwise, clients just ignore it.
 		 */
 		goto errlock;
