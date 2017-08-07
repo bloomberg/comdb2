@@ -1277,9 +1277,9 @@ REGISTER_TUNABLE("write_dummy_trace",
 REGISTER_TUNABLE("seed_genid", "Set genid-seed in hex for genid48 test.",
                  TUNABLE_STRING, NULL, EXPERIMENTAL | INTERNAL,
                  next_genid_value, NULL, genid_seed_update, NULL);
-REGISTER_TUNABLE("abort_on_bad_upgrade", 
+REGISTER_TUNABLE("abort_on_bad_upgrade",
                  "Abort in upgrade current-generation exceeds ctrl-gen.",
-                 TUNABLE_BOOLEAN, &gbl_abort_on_incorrect_upgrade, 
+                 TUNABLE_BOOLEAN, &gbl_abort_on_incorrect_upgrade,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

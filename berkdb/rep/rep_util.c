@@ -298,35 +298,31 @@ __rep_new_master(dbenv, cntrl, eid)
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	__rep_elect_done(dbenv, rep);
 
-    // This should never happen: we are calling new-master against a
-    // network message with a lower generation.  I believe this is the 
-    // election bug that I've been tracking down: because we've 
-    // previously released db_rep->rep_mutexp, my generation could be 
-    // larger than cntrl->gen (and therefore we shouldn't upgrade).
-    logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n", 
-            __func__, rep->gen, cntrl->gen, rep->master_id, eid);
-    if (rep->gen > cntrl->gen) {
-        logmsg(LOGMSG_USER, "%s: current-gen (%u) is greater than cntrl->gen (%u)??\n", 
-                __func__, rep->gen, cntrl->gen);
-        if (gbl_abort_on_incorrect_upgrade)
-            abort();
-    }
+        /* This should never happen: we are calling new-master against a
+           network message with a lower generation.  I believe this is the
+           election bug that I've been tracking down: because we've
+           previously released db_rep->rep_mutexp, this node's generation
+           can be larger than cntrl->gen (therefore we shouldn't upgrade). */
+        logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
+               __func__, rep->gen, cntrl->gen, rep->master_id, eid);
+        if (rep->gen > cntrl->gen) {
+            logmsg(LOGMSG_USER,
+                   "%s: rep-gen (%u) > cntrl->gen (%u): ignoring upgrade\n",
+                   __func__, rep->gen, cntrl->gen);
 
-    // I would abort here also but I suspect it might occur on startup
-    // or in a single-node installation
-    if (rep->gen == cntrl->gen) {
-        logmsg(LOGMSG_USER, "%s: current-gen is equal to cntrl->gen (%u)??\n", 
-                __func__, rep->gen);
-    }
-    
-	change = rep->gen < cntrl->gen;
-//	change = rep->gen != cntrl->gen || rep->master_id != eid;
-	if (change) {
+            if (gbl_abort_on_incorrect_upgrade) abort();
+
+            MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            rep->stat.st_msgs_badgen++;
+            return 0;
+        }
+
+        change = rep->gen < cntrl->gen || rep->master_id != eid;
+        if (change) {
 #ifdef DIAGNOSTIC
-		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-			__db_err(dbenv,
-			    "Updating gen from %lu to %lu from master %d",
-			    (u_long)rep->gen, (u_long)cntrl->gen, eid);
+            if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
+                __db_err(dbenv, "Updating gen from %lu to %lu from master %d",
+                         (u_long)rep->gen, (u_long)cntrl->gen, eid);
 #endif
 		rep->gen = cntrl->gen;
 		if (rep->egen <= rep->gen)

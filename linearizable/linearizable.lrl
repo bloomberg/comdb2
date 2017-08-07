@@ -92,6 +92,9 @@ write_dummy_trace on
 # Abort on invalid query info key
 # on abort_invalid_query_info_key
 
+# Abort if we try to upgrade
+# abort_on_bad_upgrade on
+
 # Make sure that the blkseq code works correctly
 #on test_blkseq_replay
 
