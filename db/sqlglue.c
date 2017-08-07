@@ -89,6 +89,7 @@
 
 #include <genid.h>
 #include <strbuf.h>
+#include <thread_malloc.h>
 #include "fdb_fend.h"
 #include "fdb_access.h"
 #include "bdb_osqlcur.h"
@@ -2280,6 +2281,7 @@ void create_master_tables(void)
 #endif
 }
 
+static int indexes_thread_memory = 1048576;
 /* force an update on sqlite_master to test partial indexes syntax*/
 int new_indexes_syntax_check(struct ireq *iq)
 {
@@ -2294,6 +2296,7 @@ int new_indexes_syntax_check(struct ireq *iq)
         return -1;
 
     sql_mem_init(NULL);
+    thread_memcreate(indexes_thread_memory);
 
     reset_clnt(&client, NULL, 1);
     client.sb = NULL;
@@ -11800,7 +11803,7 @@ static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur)
 static void ondisk_blob_to_sqlite_mem(struct field *f, Mem *m,
                                       blob_buffer_t *blobs, size_t maxblobs)
 {
-    assert(f->blob_index < maxblobs);
+    assert(!blobs || f->blob_index < maxblobs);
     if (blobs && blobs[f->blob_index].exists) {
         m->z = blobs[f->blob_index].data;
         m->n = blobs[f->blob_index].length;
@@ -12257,12 +12260,43 @@ void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm)
     bind_stmt_mem(psm->sc, stmt, psm->min);
 }
 
-void verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
+/* verify_indexes_column_value
+** Make a hard copy of the result column from an internal sql query
+** so that we have access to the result even after the sql thread exits.
+**
+** pFrom is the result from a sql thread, pTo is a hard copy of pFrom.
+** The hard copy will be converted to ondisk format in mem_to_ondisk in
+** function indexes_expressions_data.
+*/
+int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
 {
     struct schema_mem *psm = (struct schema_mem *)sm;
-    if (psm->mout)
-        sqlite3VdbeMemCopy(psm->mout,
-                           (const Mem *)sqlite3_column_value(stmt, 0));
+    Mem *pTo = psm->mout;
+    Mem *pFrom = sqlite3_column_value(stmt, 0);
+    if (pTo) {
+        memcpy(pTo, pFrom, MEMCELLSIZE);
+        pTo->db = NULL;
+        pTo->szMalloc = 0;
+        pTo->zMalloc = NULL;
+        pTo->flags &= ~MEM_Dyn;
+        if (pFrom->zMalloc && pFrom->szMalloc) {
+            pTo->szMalloc = pFrom->szMalloc;
+            pTo->zMalloc = malloc(pTo->szMalloc);
+            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
+            memcpy(pTo->zMalloc, pFrom->zMalloc, pTo->szMalloc);
+            pTo->z = pTo->zMalloc;
+            pTo->n = pFrom->n;
+        } else if (pFrom->z && pFrom->n) {
+            pTo->n = pFrom->n;
+            pTo->szMalloc = pFrom->n + 1;
+            pTo->zMalloc = malloc(pTo->szMalloc);
+            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
+            memcpy(pTo->zMalloc, pFrom->z, pFrom->n);
+            pTo->zMalloc[pFrom->n] = 0;
+            pTo->z = pTo->zMalloc;
+        }
+    }
+    return 0;
 }
 
 static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
@@ -12480,7 +12514,7 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
                              const char *tzname)
 {
     Mem *m = NULL;
-    Mem mout;
+    Mem mout = {0};
     int nblobs = 0;
     struct field_conv_opts_tz convopts = {.flags = 0};
     struct mem_info info;
@@ -12497,14 +12531,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
         tzname = "America/New_York";
 
     sql = strbuf_new();
-    memset(&mout, 0, sizeof(Mem));
 
-    m = (Mem *)malloc(sizeof(Mem) * MAXCOLUMNS);
-    if (m == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc Mem\n", __func__);
-        rc = -1;
-        goto done;
-    }
+    m = (Mem *)alloca(sizeof(Mem) * sc->nmembers);
 
     for (i = 0; i < sc->nmembers; i++) {
         memset(&m[i], 0, sizeof(Mem));
@@ -12518,7 +12546,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
 
     build_indexes_expressions_query(sql, sc, "expridx_temp", f->name);
 
-    rc = run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, &mout, &exist);
+    rc =
+        run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, &mout, &exist);
     if (rc || !exist) {
         logmsg(LOGMSG_ERROR, "%s: failed to run internal query, rc %d\n", __func__,
                 rc);
@@ -12539,15 +12568,14 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
 
     rc = mem_to_ondisk(outbuf, f, &info, NULL);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: rc %d failed to form index \"%s\", result flag "
-                        "%x, index type %d\n",
-                __func__, rc, f->name, mout.flags, f->type);
+        logmsg(LOGMSG_ERROR,
+               "%s: rc %d failed to form index \"%s\", result flag "
+               "%x, index type %d\n",
+               __func__, rc, f->name, mout.flags, f->type);
         goto done;
     }
-    sqlite3VdbeMemRelease(&mout);
+    if (mout.zMalloc) free(mout.zMalloc);
 done:
-    if (m)
-        free(m);
     strbuf_free(sql);
     if (rc)
         return -1;

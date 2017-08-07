@@ -82,16 +82,41 @@ void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
 void thdpool_set_exit(struct thdpool *pool);
 void thdpool_set_wait(struct thdpool *pool, int wait);
-
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st);
-
-int thdpool_get_maxthds(struct thdpool *pool);
+char *thdpool_get_name(struct thdpool *pool);
+int thdpool_get_status(struct thdpool *pool);
 int thdpool_get_nthds(struct thdpool *pool);
+int thdpool_get_nfreethds(struct thdpool *pool);
+int thdpool_get_maxthds(struct thdpool *pool);
+int thdpool_get_peaknthds(struct thdpool *pool);
+int thdpool_get_creates(struct thdpool *pool);
+int thdpool_get_exits(struct thdpool *pool);
+int thdpool_get_passed(struct thdpool *pool);
+int thdpool_get_enqueued(struct thdpool *pool);
+int thdpool_get_dequeued(struct thdpool *pool);
+int thdpool_get_timeouts(struct thdpool *pool);
+int thdpool_get_failed_dispatches(struct thdpool *pool);
+int thdpool_get_minnthd(struct thdpool *pool);
+int thdpool_get_maxnthd(struct thdpool *pool);
+int thdpool_get_peakqueue(struct thdpool *pool);
+int thdpool_get_maxqueue(struct thdpool *pool);
 int thdpool_get_nqueuedworks(struct thdpool *pool);
+int thdpool_get_longwaitms(struct thdpool *pool);
+int thdpool_get_lingersecs(struct thdpool *pool);
+int thdpool_get_stacksz(struct thdpool *pool);
+int thdpool_get_maxqueueoverride(struct thdpool *pool);
+int thdpool_get_maxqueueagems(struct thdpool *pool);
+int thdpool_get_exit_on_create_fail(struct thdpool *pool);
+int thdpool_get_dump_on_full(struct thdpool *pool);
 void thdpool_list_pools(void);
 void thdpool_command_to_all(char *line, int lline, int st);
 void thdpool_set_dump_on_full(struct thdpool *pool, int onoff);
+
+int thdpool_lock(struct thdpool *pool);
+int thdpool_unlock(struct thdpool *pool);
+
+struct thdpool *thdpool_next_pool(struct thdpool *pool);
 
 #ifdef __cplusplus
 }

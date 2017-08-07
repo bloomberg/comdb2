@@ -147,3 +147,23 @@ DROP TABLE t10;
 CREATE TABLE main.t1(i INT) $$
 CREATE TABLE remotedb.t1(i INT) $$
 DROP TABLE t1;
+
+CREATE TABLE t1(b blob) $$
+CREATE TABLE t2(b blob[1]) $$
+CREATE TABLE t3(b blob(1)) $$
+CREATE TABLE t4(b blob(100)) $$
+CREATE TABLE t5(b blob(0)) $$
+CREATE TABLE t6(b blob(-100)) $$
+
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+CREATE TABLE t4(b blob(0)) $$
+CREATE TABLE t5(b blob(-100)) $$
+
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;
