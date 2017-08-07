@@ -1,0 +1,175 @@
+[drop table if exists t1] rc 0
+[create table t1 {
+    tag ondisk {
+        intervalds intds
+        intervaldsus intdsus
+    }
+}] rc 0
+(rows inserted=1)
+[insert into t1 values (cast(1 as days), cast(1 as days))] rc 0
+(rows inserted=1)
+[insert into t1 values (cast(1 as hours), cast(1 as hours))] rc 0
+(rows inserted=1)
+[insert into t1 values (cast(1 as mins), cast(1 as mins))] rc 0
+(rows inserted=1)
+[insert into t1 values (cast(1 as secs), cast(1 as secs))] rc 0
+(0 * intds="0 00:00:00.000", intds * 0="0 00:00:00.000", 0 * intdsus="0 00:00:00.000000", intdsus * 0="0 00:00:00.000000")
+(0 * intds="0 00:00:00.000", intds * 0="0 00:00:00.000", 0 * intdsus="0 00:00:00.000000", intdsus * 0="0 00:00:00.000000")
+(0 * intds="0 00:00:00.000", intds * 0="0 00:00:00.000", 0 * intdsus="0 00:00:00.000000", intdsus * 0="0 00:00:00.000000")
+(0 * intds="0 00:00:00.000", intds * 0="0 00:00:00.000", 0 * intdsus="0 00:00:00.000000", intdsus * 0="0 00:00:00.000000")
+[select 0 * intds, intds * 0, 0 * intdsus, intdsus * 0 from t1 order by intdsus] rc 0
+(1 * intds="0 00:00:01.000", intds * 1="0 00:00:01.000", 1 * intdsus="0 00:00:01.000000", intdsus * 1="0 00:00:01.000000")
+(1 * intds="0 00:01:00.000", intds * 1="0 00:01:00.000", 1 * intdsus="0 00:01:00.000000", intdsus * 1="0 00:01:00.000000")
+(1 * intds="0 01:00:00.000", intds * 1="0 01:00:00.000", 1 * intdsus="0 01:00:00.000000", intdsus * 1="0 01:00:00.000000")
+(1 * intds="1 00:00:00.000", intds * 1="1 00:00:00.000", 1 * intdsus="1 00:00:00.000000", intdsus * 1="1 00:00:00.000000")
+[select 1 * intds, intds * 1, 1 * intdsus, intdsus * 1 from t1 order by intdsus] rc 0
+(intds / 1="0 00:00:01.000", intdsus / 1="0 00:00:01.000000")
+(intds / 1="0 00:01:00.000", intdsus / 1="0 00:01:00.000000")
+(intds / 1="0 01:00:00.000", intdsus / 1="0 01:00:00.000000")
+(intds / 1="1 00:00:00.000", intdsus / 1="1 00:00:00.000000")
+[select intds / 1, intdsus / 1 from t1 order by intdsus] rc 0
+(2 * intds="0 00:00:02.000", intds * 2="0 00:00:02.000", 2 * intdsus="0 00:00:02.000000", intdsus * 2="0 00:00:02.000000")
+(2 * intds="0 00:02:00.000", intds * 2="0 00:02:00.000", 2 * intdsus="0 00:02:00.000000", intdsus * 2="0 00:02:00.000000")
+(2 * intds="0 02:00:00.000", intds * 2="0 02:00:00.000", 2 * intdsus="0 02:00:00.000000", intdsus * 2="0 02:00:00.000000")
+(2 * intds="2 00:00:00.000", intds * 2="2 00:00:00.000", 2 * intdsus="2 00:00:00.000000", intdsus * 2="2 00:00:00.000000")
+[select 2 * intds, intds * 2, 2 * intdsus, intdsus * 2 from t1 order by intdsus] rc 0
+(intds / 2="0 00:00:00.500", intdsus / 2="0 00:00:00.500000")
+(intds / 2="0 00:00:30.000", intdsus / 2="0 00:00:30.000000")
+(intds / 2="0 00:30:00.000", intdsus / 2="0 00:30:00.000000")
+(intds / 2="0 12:00:00.000", intdsus / 2="0 12:00:00.000000")
+[select intds / 2, intdsus / 2 from t1 order by intdsus] rc 0
+(1000 * intds="0 00:16:40.000", intds * 1000="0 00:16:40.000", 1000 * intdsus="0 00:16:40.000000", intdsus * 1000="0 00:16:40.000000")
+(1000 * intds="0 16:40:00.000", intds * 1000="0 16:40:00.000", 1000 * intdsus="0 16:40:00.000000", intdsus * 1000="0 16:40:00.000000")
+(1000 * intds="41 16:00:00.000", intds * 1000="41 16:00:00.000", 1000 * intdsus="41 16:00:00.000000", intdsus * 1000="41 16:00:00.000000")
+(1000 * intds="1000 00:00:00.000", intds * 1000="1000 00:00:00.000", 1000 * intdsus="1000 00:00:00.000000", intdsus * 1000="1000 00:00:00.000000")
+[select 1000 * intds, intds * 1000, 1000 * intdsus, intdsus * 1000 from t1 order by intdsus] rc 0
+(intds / 1000="0 00:00:00.001", intdsus / 1000="0 00:00:00.001000")
+(intds / 1000="0 00:00:00.060", intdsus / 1000="0 00:00:00.060000")
+(intds / 1000="0 00:00:03.600", intdsus / 1000="0 00:00:03.600000")
+(intds / 1000="0 00:01:26.400", intdsus / 1000="0 00:01:26.400000")
+[select intds / 1000, intdsus / 1000 from t1 order by intdsus] rc 0
+(1000000 * intds="11 13:46:40.000", intds * 1000000="11 13:46:40.000", 1000000 * intdsus="11 13:46:40.000000", intdsus * 1000000="11 13:46:40.000000")
+(1000000 * intds="694 10:40:00.000", intds * 1000000="694 10:40:00.000", 1000000 * intdsus="694 10:40:00.000000", intdsus * 1000000="694 10:40:00.000000")
+(1000000 * intds="41666 16:00:00.000", intds * 1000000="41666 16:00:00.000", 1000000 * intdsus="41666 16:00:00.000000", intdsus * 1000000="41666 16:00:00.000000")
+(1000000 * intds="1000000 00:00:00.000", intds * 1000000="1000000 00:00:00.000", 1000000 * intdsus="1000000 00:00:00.000000", intdsus * 1000000="1000000 00:00:00.000000")
+[select 1000000 * intds, intds * 1000000, 1000000 * intdsus, intdsus * 1000000 from t1 order by intdsus] rc 0
+(1000 * intds * 1000="11 13:46:40.000", intds * 1000 * 1000="11 13:46:40.000", 1000 * intdsus * 1000="11 13:46:40.000000", intdsus * 1000 * 1000="11 13:46:40.000000")
+(1000 * intds * 1000="694 10:40:00.000", intds * 1000 * 1000="694 10:40:00.000", 1000 * intdsus * 1000="694 10:40:00.000000", intdsus * 1000 * 1000="694 10:40:00.000000")
+(1000 * intds * 1000="41666 16:00:00.000", intds * 1000 * 1000="41666 16:00:00.000", 1000 * intdsus * 1000="41666 16:00:00.000000", intdsus * 1000 * 1000="41666 16:00:00.000000")
+(1000 * intds * 1000="1000000 00:00:00.000", intds * 1000 * 1000="1000000 00:00:00.000", 1000 * intdsus * 1000="1000000 00:00:00.000000", intdsus * 1000 * 1000="1000000 00:00:00.000000")
+[select 1000 * intds * 1000, intds * 1000 * 1000, 1000 * intdsus * 1000, intdsus * 1000 * 1000 from t1 order by intdsus] rc 0
+(intds / 1000000="0 00:00:00.000", intdsus / 1000000="0 00:00:00.000001")
+(intds / 1000000="0 00:00:00.000", intdsus / 1000000="0 00:00:00.000060")
+(intds / 1000000="0 00:00:00.003", intdsus / 1000000="0 00:00:00.003600")
+(intds / 1000000="0 00:00:00.086", intdsus / 1000000="0 00:00:00.086400")
+[select intds / 1000000, intdsus / 1000000 from t1 order by intdsus] rc 0
+(intds / 1000 / 1000="0 00:00:00.000", intdsus / 1000 / 1000="0 00:00:00.000001")
+(intds / 1000 / 1000="0 00:00:00.000", intdsus / 1000 / 1000="0 00:00:00.000060")
+(intds / 1000 / 1000="0 00:00:00.003", intdsus / 1000 / 1000="0 00:00:00.003600")
+(intds / 1000 / 1000="0 00:00:00.086", intdsus / 1000 / 1000="0 00:00:00.086400")
+[select intds / 1000 / 1000, intdsus / 1000 / 1000 from t1 order by intdsus] rc 0
+(0 + intds=1, intds + 0=1, 0 + intdsus=1, intdsus + 0=1)
+(0 + intds=60, intds + 0=60, 0 + intdsus=60, intdsus + 0=60)
+(0 + intds=3600, intds + 0=3600, 0 + intdsus=3600, intdsus + 0=3600)
+(0 + intds=86400, intds + 0=86400, 0 + intdsus=86400, intdsus + 0=86400)
+[select 0 + intds, intds + 0, 0 + intdsus, intdsus + 0 from t1 order by intdsus] rc 0
+(1 + intds=2, intds + 1=2, 1 + intdsus=2, intdsus + 1=2)
+(1 + intds=61, intds + 1=61, 1 + intdsus=61, intdsus + 1=61)
+(1 + intds=3601, intds + 1=3601, 1 + intdsus=3601, intdsus + 1=3601)
+(1 + intds=86401, intds + 1=86401, 1 + intdsus=86401, intdsus + 1=86401)
+[select 1 + intds, intds + 1, 1 + intdsus, intdsus + 1 from t1 order by intdsus] rc 0
+(intds + intdsus * 0="0 00:00:01.000000", intds + intds * 0="0 00:00:01.000", intdsus + intdsus * 0="0 00:00:01.000000")
+(intds + intdsus * 0="0 00:01:00.000000", intds + intds * 0="0 00:01:00.000", intdsus + intdsus * 0="0 00:01:00.000000")
+(intds + intdsus * 0="0 01:00:00.000000", intds + intds * 0="0 01:00:00.000", intdsus + intdsus * 0="0 01:00:00.000000")
+(intds + intdsus * 0="1 00:00:00.000000", intds + intds * 0="1 00:00:00.000", intdsus + intdsus * 0="1 00:00:00.000000")
+[select intds + intdsus * 0, intds + intds * 0, intdsus + intdsus * 0 from t1 order by intdsus] rc 0
+(intds + intdsus * 1="0 00:00:02.000000", intds + intds * 1="0 00:00:02.000", intdsus + intdsus * 1="0 00:00:02.000000")
+(intds + intdsus * 1="0 00:02:00.000000", intds + intds * 1="0 00:02:00.000", intdsus + intdsus * 1="0 00:02:00.000000")
+(intds + intdsus * 1="0 02:00:00.000000", intds + intds * 1="0 02:00:00.000", intdsus + intdsus * 1="0 02:00:00.000000")
+(intds + intdsus * 1="2 00:00:00.000000", intds + intds * 1="2 00:00:00.000", intdsus + intdsus * 1="2 00:00:00.000000")
+[select intds + intdsus * 1, intds + intds * 1, intdsus + intdsus * 1 from t1 order by intdsus] rc 0
+(intds + intdsus / 1="0 00:00:02.000000", intds + intds / 1="0 00:00:02.000", intdsus + intdsus / 1="0 00:00:02.000000")
+(intds + intdsus / 1="0 00:02:00.000000", intds + intds / 1="0 00:02:00.000", intdsus + intdsus / 1="0 00:02:00.000000")
+(intds + intdsus / 1="0 02:00:00.000000", intds + intds / 1="0 02:00:00.000", intdsus + intdsus / 1="0 02:00:00.000000")
+(intds + intdsus / 1="2 00:00:00.000000", intds + intds / 1="2 00:00:00.000", intdsus + intdsus / 1="2 00:00:00.000000")
+[select intds + intdsus / 1, intds + intds / 1, intdsus + intdsus / 1 from t1 order by intdsus] rc 0
+(intds + intdsus * 2="0 00:00:03.000000", intds + intds * 2="0 00:00:03.000", intdsus + intdsus * 2="0 00:00:03.000000")
+(intds + intdsus * 2="0 00:03:00.000000", intds + intds * 2="0 00:03:00.000", intdsus + intdsus * 2="0 00:03:00.000000")
+(intds + intdsus * 2="0 03:00:00.000000", intds + intds * 2="0 03:00:00.000", intdsus + intdsus * 2="0 03:00:00.000000")
+(intds + intdsus * 2="3 00:00:00.000000", intds + intds * 2="3 00:00:00.000", intdsus + intdsus * 2="3 00:00:00.000000")
+[select intds + intdsus * 2, intds + intds * 2, intdsus + intdsus * 2 from t1 order by intdsus] rc 0
+(intds + intdsus / 2="0 00:00:01.500000", intds + intds / 2="0 00:00:01.500", intdsus + intdsus / 2="0 00:00:01.500000")
+(intds + intdsus / 2="0 00:01:30.000000", intds + intds / 2="0 00:01:30.000", intdsus + intdsus / 2="0 00:01:30.000000")
+(intds + intdsus / 2="0 01:30:00.000000", intds + intds / 2="0 01:30:00.000", intdsus + intdsus / 2="0 01:30:00.000000")
+(intds + intdsus / 2="1 12:00:00.000000", intds + intds / 2="1 12:00:00.000", intdsus + intdsus / 2="1 12:00:00.000000")
+[select intds + intdsus / 2, intds + intds / 2, intdsus + intdsus / 2 from t1 order by intdsus] rc 0
+(intds + intdsus * 1000="0 00:16:41.000000", intds + intds * 1000="0 00:16:41.000", intdsus + intdsus * 1000="0 00:16:41.000000")
+(intds + intdsus * 1000="0 16:41:00.000000", intds + intds * 1000="0 16:41:00.000", intdsus + intdsus * 1000="0 16:41:00.000000")
+(intds + intdsus * 1000="41 17:00:00.000000", intds + intds * 1000="41 17:00:00.000", intdsus + intdsus * 1000="41 17:00:00.000000")
+(intds + intdsus * 1000="1001 00:00:00.000000", intds + intds * 1000="1001 00:00:00.000", intdsus + intdsus * 1000="1001 00:00:00.000000")
+[select intds + intdsus * 1000, intds + intds * 1000, intdsus + intdsus * 1000 from t1 order by intdsus] rc 0
+(intds + intdsus / 1000="0 00:00:01.001000", intds + intds / 1000="0 00:00:01.001", intdsus + intdsus / 1000="0 00:00:01.001000")
+(intds + intdsus / 1000="0 00:01:00.060000", intds + intds / 1000="0 00:01:00.060", intdsus + intdsus / 1000="0 00:01:00.060000")
+(intds + intdsus / 1000="0 01:00:03.600000", intds + intds / 1000="0 01:00:03.600", intdsus + intdsus / 1000="0 01:00:03.600000")
+(intds + intdsus / 1000="1 00:01:26.400000", intds + intds / 1000="1 00:01:26.400", intdsus + intdsus / 1000="1 00:01:26.400000")
+[select intds + intdsus / 1000, intds + intds / 1000, intdsus + intdsus / 1000 from t1 order by intdsus] rc 0
+(intds + intdsus * 1000000="11 13:46:41.000000", intds + intds * 1000000="11 13:46:41.000", intdsus + intdsus * 1000000="11 13:46:41.000000")
+(intds + intdsus * 1000000="694 10:41:00.000000", intds + intds * 1000000="694 10:41:00.000", intdsus + intdsus * 1000000="694 10:41:00.000000")
+(intds + intdsus * 1000000="41666 17:00:00.000000", intds + intds * 1000000="41666 17:00:00.000", intdsus + intdsus * 1000000="41666 17:00:00.000000")
+(intds + intdsus * 1000000="1000001 00:00:00.000000", intds + intds * 1000000="1000001 00:00:00.000", intdsus + intdsus * 1000000="1000001 00:00:00.000000")
+[select intds + intdsus * 1000000, intds + intds * 1000000, intdsus + intdsus * 1000000 from t1 order by intdsus] rc 0
+(intds + intdsus / 1000000="0 00:00:01.000001", intds + intds / 1000000="0 00:00:01.000", intdsus + intdsus / 1000000="0 00:00:01.000001")
+(intds + intdsus / 1000000="0 00:01:00.000060", intds + intds / 1000000="0 00:01:00.000", intdsus + intdsus / 1000000="0 00:01:00.000060")
+(intds + intdsus / 1000000="0 01:00:00.003600", intds + intds / 1000000="0 01:00:00.003", intdsus + intdsus / 1000000="0 01:00:00.003600")
+(intds + intdsus / 1000000="1 00:00:00.086400", intds + intds / 1000000="1 00:00:00.086", intdsus + intdsus / 1000000="1 00:00:00.086400")
+[select intds + intdsus / 1000000, intds + intds / 1000000, intdsus + intdsus / 1000000 from t1 order by intdsus] rc 0
+(intds - 0=1, intdsus - 0=1)
+(intds - 0=60, intdsus - 0=60)
+(intds - 0=3600, intdsus - 0=3600)
+(intds - 0=86400, intdsus - 0=86400)
+[select intds - 0, intdsus - 0 from t1 order by intdsus] rc 0
+(intds - intdsus * 0="0 00:00:01.000000", intds - intds * 0="0 00:00:01.000", intdsus - intdsus * 0="0 00:00:01.000000")
+(intds - intdsus * 0="0 00:01:00.000000", intds - intds * 0="0 00:01:00.000", intdsus - intdsus * 0="0 00:01:00.000000")
+(intds - intdsus * 0="0 01:00:00.000000", intds - intds * 0="0 01:00:00.000", intdsus - intdsus * 0="0 01:00:00.000000")
+(intds - intdsus * 0="1 00:00:00.000000", intds - intds * 0="1 00:00:00.000", intdsus - intdsus * 0="1 00:00:00.000000")
+[select intds - intdsus * 0, intds - intds * 0, intdsus - intdsus * 0 from t1 order by intdsus] rc 0
+(intdsus * 1 - intds="0 00:00:00.000000", intds * 1 - intds="0 00:00:00.000", intdsus * 1 - intdsus="0 00:00:00.000000")
+(intdsus * 1 - intds="0 00:00:00.000000", intds * 1 - intds="0 00:00:00.000", intdsus * 1 - intdsus="0 00:00:00.000000")
+(intdsus * 1 - intds="0 00:00:00.000000", intds * 1 - intds="0 00:00:00.000", intdsus * 1 - intdsus="0 00:00:00.000000")
+(intdsus * 1 - intds="0 00:00:00.000000", intds * 1 - intds="0 00:00:00.000", intdsus * 1 - intdsus="0 00:00:00.000000")
+[select intdsus * 1 - intds, intds * 1 - intds, intdsus * 1 - intdsus from t1 order by intdsus] rc 0
+(intds - intdsus / 1="0 00:00:00.000000", intds - intds / 1="0 00:00:00.000", intdsus - intdsus / 1="0 00:00:00.000000")
+(intds - intdsus / 1="0 00:00:00.000000", intds - intds / 1="0 00:00:00.000", intdsus - intdsus / 1="0 00:00:00.000000")
+(intds - intdsus / 1="0 00:00:00.000000", intds - intds / 1="0 00:00:00.000", intdsus - intdsus / 1="0 00:00:00.000000")
+(intds - intdsus / 1="0 00:00:00.000000", intds - intds / 1="0 00:00:00.000", intdsus - intdsus / 1="0 00:00:00.000000")
+[select intds - intdsus / 1, intds - intds / 1, intdsus - intdsus / 1 from t1 order by intdsus] rc 0
+(intdsus * 2 - intds="0 00:00:01.000000", intds * 2 - intds="0 00:00:01.000", intdsus * 2 - intdsus="0 00:00:01.000000")
+(intdsus * 2 - intds="0 00:01:00.000000", intds * 2 - intds="0 00:01:00.000", intdsus * 2 - intdsus="0 00:01:00.000000")
+(intdsus * 2 - intds="0 01:00:00.000000", intds * 2 - intds="0 01:00:00.000", intdsus * 2 - intdsus="0 01:00:00.000000")
+(intdsus * 2 - intds="1 00:00:00.000000", intds * 2 - intds="1 00:00:00.000", intdsus * 2 - intdsus="1 00:00:00.000000")
+[select intdsus * 2 - intds, intds * 2 - intds, intdsus * 2 - intdsus from t1 order by intdsus] rc 0
+(intds - intdsus / 2="0 00:00:00.500000", intds - intds / 2="0 00:00:00.500", intdsus - intdsus / 2="0 00:00:00.500000")
+(intds - intdsus / 2="0 00:00:30.000000", intds - intds / 2="0 00:00:30.000", intdsus - intdsus / 2="0 00:00:30.000000")
+(intds - intdsus / 2="0 00:30:00.000000", intds - intds / 2="0 00:30:00.000", intdsus - intdsus / 2="0 00:30:00.000000")
+(intds - intdsus / 2="0 12:00:00.000000", intds - intds / 2="0 12:00:00.000", intdsus - intdsus / 2="0 12:00:00.000000")
+[select intds - intdsus / 2, intds - intds / 2, intdsus - intdsus / 2 from t1 order by intdsus] rc 0
+(intdsus * 1000 - intds="0 00:16:39.000000", intds * 1000 - intds="0 00:16:39.000", intdsus * 1000 - intdsus="0 00:16:39.000000")
+(intdsus * 1000 - intds="0 16:39:00.000000", intds * 1000 - intds="0 16:39:00.000", intdsus * 1000 - intdsus="0 16:39:00.000000")
+(intdsus * 1000 - intds="41 15:00:00.000000", intds * 1000 - intds="41 15:00:00.000", intdsus * 1000 - intdsus="41 15:00:00.000000")
+(intdsus * 1000 - intds="999 00:00:00.000000", intds * 1000 - intds="999 00:00:00.000", intdsus * 1000 - intdsus="999 00:00:00.000000")
+[select intdsus * 1000 - intds, intds * 1000 - intds, intdsus * 1000 - intdsus from t1 order by intdsus] rc 0
+(intds - intdsus / 1000="0 00:00:00.999000", intds - intds / 1000="0 00:00:00.999", intdsus - intdsus / 1000="0 00:00:00.999000")
+(intds - intdsus / 1000="0 00:00:59.940000", intds - intds / 1000="0 00:00:59.940", intdsus - intdsus / 1000="0 00:00:59.940000")
+(intds - intdsus / 1000="0 00:59:56.400000", intds - intds / 1000="0 00:59:56.400", intdsus - intdsus / 1000="0 00:59:56.400000")
+(intds - intdsus / 1000="0 23:58:33.600000", intds - intds / 1000="0 23:58:33.600", intdsus - intdsus / 1000="0 23:58:33.600000")
+[select intds - intdsus / 1000, intds - intds / 1000, intdsus - intdsus / 1000 from t1 order by intdsus] rc 0
+(intdsus * 1000000 - intds="11 13:46:39.000000", intds * 1000000 - intds="11 13:46:39.000", intdsus * 1000000 - intdsus="11 13:46:39.000000")
+(intdsus * 1000000 - intds="694 10:39:00.000000", intds * 1000000 - intds="694 10:39:00.000", intdsus * 1000000 - intdsus="694 10:39:00.000000")
+(intdsus * 1000000 - intds="41666 15:00:00.000000", intds * 1000000 - intds="41666 15:00:00.000", intdsus * 1000000 - intdsus="41666 15:00:00.000000")
+(intdsus * 1000000 - intds="999999 00:00:00.000000", intds * 1000000 - intds="999999 00:00:00.000", intdsus * 1000000 - intdsus="999999 00:00:00.000000")
+[select intdsus * 1000000 - intds, intds * 1000000 - intds, intdsus * 1000000 - intdsus from t1 order by intdsus] rc 0
+(intds - intdsus / 1000000="0 00:00:00.999999", intds - intds / 1000000="0 00:00:01.000", intdsus - intdsus / 1000000="0 00:00:00.999999")
+(intds - intdsus / 1000000="0 00:00:59.999940", intds - intds / 1000000="0 00:01:00.000", intdsus - intdsus / 1000000="0 00:00:59.999940")
+(intds - intdsus / 1000000="0 00:59:59.996400", intds - intds / 1000000="0 00:59:59.997", intdsus - intdsus / 1000000="0 00:59:59.996400")
+(intds - intdsus / 1000000="0 23:59:59.913600", intds - intds / 1000000="0 23:59:59.914", intdsus - intdsus / 1000000="0 23:59:59.913600")
+[select intds - intdsus / 1000000, intds - intds / 1000000, intdsus - intdsus / 1000000 from t1 order by intdsus] rc 0

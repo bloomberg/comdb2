@@ -1,0 +1,55 @@
+drop table if exists t12
+create table t12 {schema{int i int j} keys{"I" = i}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i int j} keys{"I" = i {where j > 10}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i int j} keys{"I" = i {where j > "10"} "J" = j}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i int j} keys{"I" = i {where j > "10"} "J" = j {where i > 10}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i int j} keys{"I" = (int)"i+j" {where i+j > 10} "J" = (int)"i-j" {where i > j}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j > "10" and j < '20'} "J" = (int)"length(j)" {where j > '}'}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j > "{{" and j < '}}'} "J" = (int)"length(j)" {where j > '{{{{}}}}}{{{}}}{}{}{}'}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j > '{{" and j < "}}'} "J" = (int)"length(j)" {where j > "{{{{}}}{}}}{}{}{}"}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j > "{{' and j < '}}"} "J" = (int)"length(j)" {where j > '{{{{}}}}{}{}'}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j > " and j < '}}'"} "J" = (int)"length(j)" {where j > "}{}{}}}{{}}"}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j > "''" and j < ''''''}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j < '''}'}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j < "'}"}}}$$
+select csc2 from sqlite_master where name = 't12'
+
+drop table if exists t12
+create table t12 {schema{int i cstring j[16]} keys{"I" = (int)"i" {where j < ''}'}}}$$
+select csc2 from sqlite_master where name = 't12'

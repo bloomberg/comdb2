@@ -1,0 +1,4 @@
+setattr SC_RESTART_SEC 30
+ssl_client_mode OPTIONAL
+sync full
+table t1 t1.csc2
