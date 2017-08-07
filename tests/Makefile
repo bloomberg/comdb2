@@ -12,14 +12,13 @@ export SRCHOME
 export TESTID:=$(shell tools/get_random.sh)
 CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
-export GITVERSION:=$(shell git describe --always)
 export COMDB2MD5SUM:=$(shell md5sum ${SRCHOME}/comdb2 | cut -d ' ' -f1)
 
 
 basicops_nokey:
 	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
-	$(shell which git > /dev/null 2>&1 && git describe --always | xargs echo "SHA " >> ${TESTDIR}/test.log)
+	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTID=${TESTID} " >> ${TESTDIR}/test.log)
 	$(shell echo "CLUSTER=${CLUSTER} " >> ${TESTDIR}/test.log)
 	$(shell echo "SRCHOME=${SRCHOME} " >> ${TESTDIR}/test.log)

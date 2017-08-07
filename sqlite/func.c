@@ -675,7 +675,7 @@ static void guidFromByteFunc(
 
 
 /*
-** Implementation of comdb2_version() SQL function.  The return
+** Implementation of the comdb2_version() SQL function.  The return
 ** value is the same as the stat value for version
 */
 static void comdb2VersionFunc(
@@ -687,21 +687,6 @@ static void comdb2VersionFunc(
   char zBuf[50];
   const char * version = getenv("COMDB2_VERSION");
   sqlite3_snprintf(sizeof(zBuf), zBuf, "%s (%s)", gbl_db_release_name, version);
-  sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
-}
-
-/*
-** Implementation of comdb2_gitversion() SQL function. 
-** Uses git describe to get git repository version in makefile
-*/
-static void comdb2GitversionFunc(
-  sqlite3_context *context,
-  int NotUsed,
-  sqlite3_value **NotUsed2
-){
-  UNUSED_PARAMETER2(NotUsed, NotUsed2);
-  char zBuf[50];
-  sqlite3_snprintf(sizeof(zBuf), zBuf, "%s", COMDB2_GITVERSION);
   sqlite3_result_text(context, zBuf, -1, SQLITE_TRANSIENT);
 }
 
@@ -2213,7 +2198,6 @@ void sqlite3RegisterBuiltinFunctions(void){
   #endif
 #ifdef SQLITE_BUILDING_FOR_COMDB2
     FUNCTION(comdb2_version,    0, 0, 0, comdb2VersionFunc),
-    FUNCTION(comdb2_gitversion, 0, 0, 0, comdb2GitversionFunc),
     FUNCTION(table_version,     1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,    2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,       0, 0, 0, comdb2HostFunc),
