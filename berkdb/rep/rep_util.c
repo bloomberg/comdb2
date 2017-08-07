@@ -300,9 +300,9 @@ __rep_new_master(dbenv, cntrl, eid)
 
         /* This should never happen: we are calling new-master against a
            network message with a lower generation.  I believe this is the
-           election bug that I've been tracking down: because we've
-           previously released db_rep->rep_mutexp, this node's generation
-           can be larger than cntrl->gen (therefore we shouldn't upgrade). */
+           election bug that I've been tracking down: this node's generation
+           can change from when we initially checked it at the top of
+           process_message. */
         logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
                __func__, rep->gen, cntrl->gen, rep->master_id, eid);
         if (rep->gen > cntrl->gen) {

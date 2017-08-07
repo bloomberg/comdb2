@@ -959,10 +959,10 @@ send:			if (__rep_send_message(dbenv,
                         logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER: "
                                             "gen=%u egen=%d\n",
                                __func__, __LINE__, rep->gen, rep->egen);
-                        (void)__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0,
-			    NULL);
-		}
+                        (void)__rep_send_message(dbenv, db_eid_broadcast,
+                                                 REP_NEWMASTER, &lsn, NULL, 0,
+                                                 NULL);
+                }
 		/*
 		 * Otherwise, clients just ignore it.
 		 */
