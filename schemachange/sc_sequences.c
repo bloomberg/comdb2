@@ -42,11 +42,6 @@ int validate_sequence(long long min_val, long long max_val, long long increment,
         return 1;
     }
 
-    if (increment > chunk_size) {
-        logmsg(LOGMSG_ERROR, "Increment of %lld is invalid\n", increment);
-        return 1;
-    }
-
     if (start_val > max_val || start_val < min_val) {
         logmsg(LOGMSG_ERROR, "Start Value of %lld is invalid\n", start_val);
         return 1;
@@ -63,7 +58,8 @@ int validate_sequence(long long min_val, long long max_val, long long increment,
 /**
  * Adds sequence to llmeta and memory
  */
-int do_add_sequence_int(struct schema_change_type *s, tran_type *trans)
+int do_add_sequence_int(struct schema_change_type *s, struct ireq *iq,
+                        tran_type *trans)
 {
     char *name = s->table;
     long long min_val = s->seq_min_val;
@@ -79,33 +75,40 @@ int do_add_sequence_int(struct schema_change_type *s, tran_type *trans)
 
     // Check that name is valid
     if (strlen(name) > MAXTABLELEN - 1) {
-        logmsg(LOGMSG_ERROR,
-               "sequence name too long. Must be less than %d characters\n",
-               MAXTABLELEN - 1);
-        return 1;
+        reqerrstr(iq, ERR_SC,
+                  "sequence name too long. Must be less than %d characters\n",
+                  MAXTABLELEN - 1);
+        sc_errf(s, "sequence name too long. Must be less than %d characters\n",
+                MAXTABLELEN - 1);
+        return SC_INVALID_OPTIONS;
     }
 
     // Check for duplicate name
     if (!(getsequencebyname(name) == NULL)) {
-        logmsg(LOGMSG_ERROR, "sequence with name \"%s\" already exists\n",
-               name);
-        return 1;
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" already exists\n",
+                  name);
+        sc_errf(s, "sequence with name \"%s\" already exists\n", name);
+        return SC_TABLE_ALREADY_EXIST;
     }
 
     // Check that there aren't too many sequences
     if (thedb->num_sequences >= MAX_NUM_SEQUENCES) {
-        logmsg(LOGMSG_ERROR, "Max number of sequences created. Unable to "
-                             "create new sequence.\n");
-        return 1;
+        reqerrstr(iq, ERR_SC, "Max number of sequences created. Unable to "
+                              "create new sequence.\n");
+        sc_errf(s, "Max number of sequences created. Unable to "
+                   "create new sequence.\n");
+        return SC_INTERNAL_ERROR;
     }
 
     // Validate sequence attributes
     if (validate_sequence(min_val, max_val, increment, cycle, start_val,
                           start_val, chunk_size)) {
         // Invalid sequence configuration
-        logmsg(LOGMSG_ERROR,
-               "Invalid parameters provided. Sequence cannot be created.\n");
-        return 1;
+        reqerrstr(iq, ERR_SC,
+                  "Invalid parameters provided. Sequence cannot be created.\n");
+        sc_errf(s,
+                "Invalid parameters provided. Sequence cannot be created.\n");
+        return SC_INVALID_OPTIONS;
     }
 
     // Add sequence to llmeta
@@ -114,16 +117,18 @@ int do_add_sequence_int(struct schema_change_type *s, tran_type *trans)
                                  &bdberr);
 
     if (rc) {
-        logmsg(LOGMSG_ERROR, "can't create new sequence \"%s\"\n", name);
-        return -1;
+        reqerrstr(iq, ERR_SC, "can't create new sequence \"%s\"\n", name);
+        sc_errf(s, "can't create new sequence \"%s\"\n", name);
+        return SC_LLMETA_ERR;
     }
 
     // Make space in memory
     thedb->sequences = realloc(thedb->sequences,
                                (thedb->num_sequences + 1) * sizeof(sequence_t));
     if (thedb->sequences == NULL) {
-        logmsg(LOGMSG_ERROR, "can't allocate memory for sequences list\n");
-        return 1;
+        reqerrstr(iq, ERR_SC, "can't allocate memory for sequences list\n");
+        sc_errf(s, "can't allocate memory for sequences list\n");
+        return SC_INTERNAL_ERROR;
     }
 
     // Create new sequence in memory
@@ -132,27 +137,32 @@ int do_add_sequence_int(struct schema_change_type *s, tran_type *trans)
                      start_val, chunk_size, flags, 0, start_val);
 
     if (seq == NULL) {
-        logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);
-        return -1;
+        reqerrstr(iq, ERR_SC, "can't create sequence \"%s\"\n", name);
+        sc_errf(s, "can't create sequence \"%s\"\n", name);
+        return SC_INTERNAL_ERROR;
     }
 
     thedb->sequences[thedb->num_sequences] = seq;
     thedb->num_sequences++;
 
     /* log for replicants to do the same */
-    rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_add, trans, &bdberr);
+    rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_add,
+                                 trans, &bdberr);
     if (rc) {
         sbuf2printf(sb, "Failed to broadcast sequence add\n");
-        logmsg(LOGMSG_ERROR, "Failed to broadcast sequence ad\n");
+        reqerrstr(iq, ERR_SC, "Failed to broadcast sequence add\n");
+        sc_errf(s, "Failed to broadcast sequence add\n");
+        return SC_INTERNAL_ERROR;
     }
 
-    return rc;
+    return SC_OK;
 }
 
 /**
  * Drops sequence from llmeta and memory
  */
-int do_drop_sequence_int(struct schema_change_type *s, tran_type *trans)
+int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
+                         tran_type *trans)
 {
     int rc;
     int bdberr;
@@ -162,8 +172,10 @@ int do_drop_sequence_int(struct schema_change_type *s, tran_type *trans)
 
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
-        logmsg(LOGMSG_ERROR, "No sequences defined\n");
-        return 1;
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+        sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
+        
+        return SC_TABLE_DOESNOT_EXIST;
     }
 
     for (i = 0; i < thedb->num_sequences; i++) {
@@ -181,29 +193,38 @@ int do_drop_sequence_int(struct schema_change_type *s, tran_type *trans)
             // Remove llmeta record
             rc = bdb_llmeta_drop_sequence(trans, name, &bdberr);
 
-            if (rc) return rc;
-
-            /* log for replicants to do the same */
-            rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_drop, trans, &bdberr);
             if (rc) {
-                sbuf2printf(sb, "Failed to broadcast sequence drop\n");
-                logmsg(LOGMSG_ERROR, "Failed to broadcast sequence drop\n");
-                return rc;
+                reqerrstr(iq, ERR_SC, "can't drop sequence \"%s\"\n", name);
+                sc_errf(s, "can't drop sequence \"%s\"\n", name);
+                return SC_LLMETA_ERR;
             }
 
-            return 0;
+            /* log for replicants to do the same */
+            rc = bdb_llog_sequences_tran(thedb->bdb_env, name,
+                                         llmeta_sequence_drop, trans, &bdberr);
+            if (rc) {
+                sbuf2printf(sb, "Failed to broadcast sequence drop\n");
+                reqerrstr(iq, ERR_SC, "Failed to broadcast sequence drop\n");
+                sc_errf(s, "Failed to broadcast sequence drop\n");
+                return SC_INTERNAL_ERROR;
+            }
+
+            return SC_OK;
         }
     }
 
-    logmsg(LOGMSG_ERROR, "sequence with name \"%s\" does not exists\n", name);
-    return 1;
+    reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+    sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
+
+    return SC_TABLE_DOESNOT_EXIST;
 }
 
 /**
  * Alters the sequence definition in llmeta and updates in memory
  * representations on the master and replicants
  */
-int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
+int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
+                          tran_type *trans)
 {
     char *name = s->table;
     long long min_val_in = s->seq_min_val;
@@ -220,15 +241,19 @@ int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
 
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
-        logmsg(LOGMSG_ERROR, "No sequences defined\n");
-        return 1;
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+        sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
+        
+        return SC_TABLE_DOESNOT_EXIST;
     }
 
     sequence_t *seq = getsequencebyname(name);
     if (seq == NULL) {
         // Failed to find sequence with specified name
-        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found\n", name);
-        return -1;
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+        sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
+        
+        return SC_TABLE_DOESNOT_EXIST;
     }
 
     // Get lock for in memory object
@@ -288,10 +313,12 @@ int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
     if (validate_sequence(min_val, max_val, increment, cycle, start_val,
                           restart_val, chunk_size)) {
         // Invalid sequence configuration
-        logmsg(LOGMSG_ERROR,
-               "Invalid parameters provided. Sequence cannot be altered.\n");
         pthread_mutex_unlock(&seq->seq_lk);
-        return 1;
+        reqerrstr(iq, ERR_SC,
+                  "Invalid parameters provided. Sequence cannot be created.\n");
+        sc_errf(s,
+                "Invalid parameters provided. Sequence cannot be created.\n");
+        return SC_INVALID_OPTIONS;
     }
 
     // Write change to llmeta
@@ -300,7 +327,9 @@ int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
                                    seq->flags, &bdberr);
     if (rc) {
         pthread_mutex_unlock(&seq->seq_lk);
-        return rc;
+        reqerrstr(iq, ERR_SC, "can't alter sequence \"%s\"\n", name);
+        sc_errf(s, "can't alter sequence \"%s\"\n", name);
+        return SC_LLMETA_ERR;
     }
 
     // Update environment
@@ -316,11 +345,14 @@ int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans)
     pthread_mutex_unlock(&seq->seq_lk);
 
     /* log for replicants to do the same */
-    rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_alter, trans, &bdberr);
+    rc = bdb_llog_sequences_tran(thedb->bdb_env, name, llmeta_sequence_alter,
+                                 trans, &bdberr);
     if (rc) {
         sbuf2printf(sb, "Failed to broadcast sequence alter\n");
-        logmsg(LOGMSG_ERROR, "Failed to broadcast sequence alter\n");
+        reqerrstr(iq, ERR_SC, "Failed to broadcast sequence alter\n");
+        sc_errf(s, "Failed to broadcast sequence alter\n");
+        return SC_INTERNAL_ERROR;
     }
 
-    return rc;
+    return SC_OK;
 }

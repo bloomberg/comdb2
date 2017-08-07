@@ -8316,10 +8316,11 @@ int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
     return rc;
 }
 
-int bdb_llmeta_get_sequence(char *name, long long *min_val, long long *max_val,
-                            long long *increment, bool *cycle,
-                            long long *start_val, long long *next_start_val,
-                            long long *chunk_size, char *flags, int *bdberr)
+int bdb_llmeta_get_sequence(tran_type *tran, char *name, long long *min_val,
+                            long long *max_val, long long *increment,
+                            bool *cycle, long long *start_val,
+                            long long *next_start_val, long long *chunk_size,
+                            char *flags, int *bdberr)
 {
     struct seq_key sk = {0};
     struct seq_data *sd = NULL;
@@ -8345,7 +8346,7 @@ int bdb_llmeta_get_sequence(char *name, long long *min_val, long long *max_val,
         goto done;
     }
 
-    rc = bdb_lite_exact_fetch_alloc(llmeta_bdb_state, key, &dta, &foundlen,
+    rc = bdb_lite_exact_fetch_alloc_tran(llmeta_bdb_state, tran, key, &dta, &foundlen,
                                     bdberr);
     if (rc) {
         *bdberr == BDBERR_FETCH_DTA;

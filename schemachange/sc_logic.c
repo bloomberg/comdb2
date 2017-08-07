@@ -490,26 +490,26 @@ int do_alter_stripes(struct schema_change_type *s)
     return rc;
 }
 
-int do_add_sequence(struct schema_change_type *s, tran_type *trans)
+int do_add_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *trans)
 {
     wrlock_schema_lk();
-    int rc = do_add_sequence_int(s, trans);
+    int rc = do_add_sequence_int(s, iq, trans);
     unlock_schema_lk();
     return rc;
 }
 
-int do_drop_sequence(struct schema_change_type *s, tran_type *trans)
+int do_drop_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *trans)
 {
     wrlock_schema_lk();
-    int rc = do_drop_sequence_int(s, trans);
+    int rc = do_drop_sequence_int(s, iq, trans);
     unlock_schema_lk();
     return rc;
 }
 
-int do_alter_sequence(struct schema_change_type *s, tran_type *trans)
+int do_alter_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *trans)
 {
     wrlock_schema_lk();
-    int rc = do_alter_sequence_int(s, trans);
+    int rc = do_alter_sequence_int(s, iq, trans);
     unlock_schema_lk();
     return rc;
 }
@@ -559,11 +559,11 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
     else if (s->type == DBTYPE_SEQUENCE && s->addseq)
-        rc = do_add_sequence(s, trans);
+        rc = do_add_sequence(s, iq, trans);
     else if (s->type == DBTYPE_SEQUENCE && s->alterseq)
-        rc = do_alter_sequence(s, trans);
+        rc = do_alter_sequence(s, iq, trans);
     else if (s->type == DBTYPE_SEQUENCE && s->dropseq)
-        rc = do_drop_sequence(s, trans);
+        rc = do_drop_sequence(s, iq, trans);
 
     reset_sc_thread(oldtype, s);
     if (s->resume != SC_NEW_MASTER_RESUME && rc != SC_COMMIT_PENDING &&
