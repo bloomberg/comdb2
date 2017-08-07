@@ -17,8 +17,11 @@
 #ifndef INCLUDE_SC_SEQUENCES_H
 #define INCLUDE_SC_SEQUENCES_H
 
-int do_add_sequence_int(struct schema_change_type *s, tran_type *trans);
-int do_drop_sequence_int(struct schema_change_type *s, tran_type *trans);
-int do_alter_sequence_int(struct schema_change_type *s, tran_type *trans);
+int do_add_sequence_int(struct schema_change_type *s, struct ireq *iq,
+                        tran_type *trans);
+int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
+                         tran_type *trans);
+int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
+                          tran_type *trans);
 
 #endif

@@ -560,6 +560,10 @@ static int replicant_reload_views(const char *name)
 /**
  * Updates in-memory representations of a specified sequence when
  * schema change is executed.
+ * 
+ * @param bdb_state_type *bdb_state
+ * @param const char seq_name[]
+ * @param scdone_t type 
  */
 int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[],
                                 scdone_t type)
@@ -585,7 +589,6 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
     int i;
     for (i = 0; i < thedb->num_sequences; i++) {
         if (strcasecmp(thedb->sequences[i]->name, name) == 0) {
-            // TODO: add checks for usage in tables
             // Remove sequence from dbenv
             thedb->num_sequences--;
 
@@ -611,7 +614,7 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
         char flags; // Flags for sequence (cdb2_constants.h)
         
         // Get sequence configuration from llmeta
-        rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment,
+        rc = bdb_llmeta_get_sequence(tran, name, &min_val, &max_val, &increment,
                                      &cycle, &start_val, &next_start_val,
                                      &chunk_size, &flags, &bdberr);
         if (rc) {

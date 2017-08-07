@@ -2244,7 +2244,7 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         char *name = seq_names[i];
 
         // Get sequence configuration from llmeta
-        rc = bdb_llmeta_get_sequence(name, &min_val, &max_val, &increment,
+        rc = bdb_llmeta_get_sequence(NULL, name, &min_val, &max_val, &increment,
                                      &cycle, &start_val, &next_start_val,
                                      &chunk_size, &flags, &bdberr);
         if (rc) {
