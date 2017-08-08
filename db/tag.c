@@ -2017,6 +2017,9 @@ void convert_failure_reason_str(const struct convert_failure *reason,
     case CONVERT_FAILED_BAD_BLOB_PROGRAMMER:
         str = "bad blob programming";
         break;
+    case CONVERT_FAILED_BLOB_SIZE:
+        str = "blob size exceeds max";
+        break;
     case CONVERT_OK:
         str = "no error";
         break;
