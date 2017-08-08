@@ -587,6 +587,35 @@ static void randomBlob(
   }
 }
 
+/** 
+ * Function for returning next sequence values
+ */
+extern int request_sequence_num(const char *name, long long *val);
+
+static void sequenceNextVal(sqlite3_context *context, int argc,
+                            sqlite3_value **argv)
+{
+  UNUSED_PARAMETER(argc);
+
+  if(sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+    return;
+  }
+
+  const unsigned char * seq_name = sqlite3_value_text(argv[0]);
+
+  long long *val;
+
+  int rc = request_sequence_num(sqlite3_value_text(argv[0]), val);
+
+  if (rc) {
+    // TODO: Error
+    sqlite3_result_error(context, "Sequence number could not be generated", -1);
+    return;
+  }
+
+  sqlite3_result_int64(context, *val);
+}
+
 /* 36 characters + trailing '\0' - taken from `man uuid_unparse` */
 #define GUID_STR_LENGTH 37
 
@@ -2204,6 +2233,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
+    FUNCTION(nextval             ,1,0,0, sequenceNextVal),
 #endif
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),

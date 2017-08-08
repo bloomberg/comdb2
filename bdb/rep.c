@@ -4040,6 +4040,237 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     return;
 }
 
+// --------------------------------------------------------- SEQUENCES ---------------------------------------------------------
+static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || MAXTABLELEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_put(name, MAXTABLELEN, p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *sequence_num_request_get(char *name, const uint8_t *p_buf, const uint8_t 
+        *p_buf_end)
+{
+    if (p_buf_end < p_buf || MAXTABLELEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_get(name, MAXTABLELEN, p_buf, p_buf_end);
+    return p_buf;
+}
+
+static uint8_t *sequence_num_response_put(long long *value, uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || sizeof(long long) > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_put(value, sizeof(long long), p_buf, p_buf_end);
+    return p_buf;
+}
+
+static const uint8_t *sequence_num_response_get(long long *value, const uint8_t *p_buf, const uint8_t 
+        *p_buf_end)
+{
+    if (p_buf_end < p_buf || sizeof(long long) > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_get(value, sizeof(long long), p_buf, p_buf_end);
+    return p_buf;
+}
+
+// TODO: Modify for sequences
+void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
+                                  char *from_host, int usertype, void *dta,
+                                  int dtalen, uint8_t is_tcp)
+{
+    uint8_t buf[sizeof(long long)];
+    uint8_t *p_buf, *p_buf_end;
+    bdb_state_type *bdb_state = usr_ptr;
+    repinfo_type *repinfo = bdb_state->repinfo;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    if (repinfo->master_host != repinfo->myhost) {
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i am not master\n", 
+                __func__);
+        net_ack_message(ack_handle, 1);
+        return;
+    }
+
+    if (bdb_state->attr->master_lease && 
+            !verify_master_leases(bdb_state, __func__, __LINE__)) {
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i don't have enough "
+                "leases\n", __func__);
+        net_ack_message(ack_handle, 2);
+        return;
+    }
+
+    char name[MAXTABLELEN];
+    const uint8_t *p_buf_req = (uint8_t *)dta;
+    const uint8_t *p_buf_end_req = p_buf_req + MAXTABLELEN;
+
+    if ((sequence_num_request_get(name, p_buf_req,
+                                  p_buf_end_req)) == NULL){
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i can't unpack sequence name\n", __func__);
+        net_ack_message(ack_handle, 3);
+        return;
+    }
+
+    // bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &start_lsn.lsn, 
+    //         &start_lsn.gen);
+
+    // bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
+
+    // if (start_lsn.gen != current_gen) {
+    //     logmsg(LOGMSG_ERROR, "%s line %d generation-mismatch: current_gen=%d, "
+    //                          "durable_gen=%d\n",
+    //            __func__, __LINE__, current_gen, start_lsn.gen);
+    //     net_ack_message(ack_handle, 3);
+    //     return;
+    // }
+
+    // if (start_lsn.lsn.file == 2147483647) {
+    //     logmsg(LOGMSG_FATAL, "Huh? Durable lsn is 2147483647???\n");
+    //     abort();
+    // }
+
+    long long value = 42;
+    p_buf = buf;
+    p_buf_end = p_buf + sizeof(long long);
+
+    sequence_num_response_put(&value, p_buf, p_buf_end);
+
+    // if (bdb_state->attr->receive_start_lsn_request_trace) {
+    //     logmsg(LOGMSG_USER, "%s returning gen %d lsn[%d][%d]\n", __func__, 
+    //             start_lsn.gen, start_lsn.lsn.file, start_lsn.lsn.offset);
+    // }
+
+    net_ack_message_payload(ack_handle, 0, buf, sizeof(long long));
+    return;
+}
+
+int request_sequence_num_from_master(bdb_state_type *bdb_state,
+                                     const char *name_in, long long *val)
+{
+    const uint8_t *p_buf, *p_buf_end;
+    // DB_LSN durable_lsn;
+    uint8_t *buf = NULL;
+    // uint32_t current_gen;
+    int buflen = 0;
+    int waitms = 1000;
+    int rc;
+    // int request_durable_lsn_trace = bdb_state->attr->request_durable_lsn_trace;
+    // start_lsn_response_t start_lsn;
+    static time_t lastpr = 0;
+    time_t now;
+    uint64_t start_time, end_time;
+    static uint32_t goodcount = 0, badcount = 0;
+
+    if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+        // const char *comlist[REPMAX];
+        // if (bdb_state->attr->master_lease && !verify_master_leases(bdb_state, 
+        //             __func__, __LINE__)) {
+        //     logmsg(LOGMSG_ERROR, "%s line %d failed verifying master leases\n", 
+        //             __func__, __LINE__);
+        //     badcount++;
+        //     return -2;
+        // }
+
+        // bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn, durable_gen);
+        // bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
+
+        // if (current_gen != *durable_gen) {
+        //     logmsg(LOGMSG_ERROR, "%s line %d master generation-mismatch: "
+        //                          "current_gen=%d, durable_gen=%d\n",
+        //            __func__, __LINE__, current_gen, *durable_gen);
+        //     badcount++;
+        //     return -3;
+        // }
+
+        // *durable_file = durable_lsn.file;
+        // *durable_offset = durable_lsn.offset;
+
+        // if (request_durable_lsn_trace && ((now = time(NULL)) > lastpr)) {
+        //     logmsg(LOGMSG_USER, "%s executed on local-machine, durable lsn is gen %d [%d][%d] "
+        //             "good-count=%u bad-count=%u\n", __func__, *durable_gen, *durable_file, 
+        //             *durable_offset, goodcount, badcount);
+        //     lastpr = now;
+        // }
+        *val = -1;
+
+        return 0;
+    }
+
+    // Pack sequence name
+    char *name = strdup(name_in);
+    char data[MAXTABLELEN] = {0};
+    uint8_t *p_buf_req = data;
+    const uint8_t *p_buf_end_req = p_buf_req + MAXTABLELEN;
+
+    if ((p_buf_req = sequence_num_request_put(name, p_buf_req,
+                                          p_buf_end_req)) == NULL){
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i can't pack sequence name\n", __func__);
+        return -1;
+    }
+
+    start_time = gettimeofday_ms();
+    if ((rc = net_send_message_payload_ack(bdb_state->repinfo->netinfo_signal,
+            bdb_state->repinfo->master_host, USER_TYPE_REQ_SEQUENCE_NUM,
+            (void *)&data, MAXTABLELEN, (uint8_t **)&buf, &buflen, 1, waitms)) != 0) {
+        end_time = gettimeofday_ms();
+        if (rc == NET_SEND_FAIL_TIMEOUT) {
+            logmsg(LOGMSG_WARN, "%s line %d: timed out waiting for sequence num from master %s "
+                    "after %u ms\n", __func__, __LINE__, bdb_state->repinfo->master_host,
+                    end_time - start_time);
+        }
+        else {
+            logmsg(LOGMSG_USER, "%s line %d: net_send_message_payload_ack returns %d\n",
+                    __func__, __LINE__, rc);
+        }
+        badcount++;
+        return rc;
+    }
+
+    if (buflen < sizeof(long long)) {
+        logmsg(LOGMSG_ERROR, "%s line %d: payload size to small: len is %d, i want"
+                " at least %d\n", __func__, __LINE__, buflen, 
+                sizeof(long long));
+        if (buf)
+            free(buf);
+        badcount++;
+        return -1;
+    }
+
+    long long value;
+    p_buf = buf;
+    p_buf_end = p_buf + buflen;
+
+    if (!(p_buf = sequence_num_response_get(&value, p_buf, p_buf_end))) {
+        logmsg(LOGMSG_ERROR, "%s line %d error unpacking sequence value\n", __func__, 
+                __LINE__);
+        if (buf)
+            free(buf);
+        badcount++;
+        return -2;
+    }
+    free(buf);
+
+    goodcount++;
+    // if (request_durable_lsn_trace && ((now = time(NULL)) > lastpr)) {
+    //     logmsg(LOGMSG_USER, "%s returning a good rcode, durable lsn is gen %d [%d][%d] "
+    //             "good-count=%u bad-count=%u\n", __func__, *durable_gen, *durable_file, 
+    //             *durable_offset, goodcount, badcount);
+    //     lastpr = now;
+    // }
+
+    *val = value;
+    return 0;
+}
+
+// --------------------------------------------------------- SEQUENCES END ---------------------------------------------------------
+
 void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
                              int usertype, void *dta, int dtalen,
                              uint8_t is_tcp)
