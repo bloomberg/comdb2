@@ -173,8 +173,8 @@ struct relink_list {
 
 enum { PGLOGS_QUEUE_PAGE = 1, PGLOGS_QUEUE_RELINK = 2 };
 
-struct shadows_pglogs_queue_key {
-    LINKC_T(struct shadows_pglogs_queue_key) lnk;
+struct pglogs_queue_key {
+    LINKC_T(struct pglogs_queue_key) lnk;
     unsigned long long logical_tranid;
     int type;
     db_pgno_t pgno;
@@ -187,24 +187,24 @@ struct shadows_pglogs_queue_key {
 #endif
 };
 
-struct shadows_asof_cursor {
+struct asof_cursor {
     unsigned char fileid[DB_FILE_ID_LEN];
-    struct shadows_pglogs_queue_key *cur;
+    struct pglogs_queue_key *cur;
 };
 
-struct shadows_fileid_pglogs_queue {
+struct fileid_pglogs_queue {
     unsigned char fileid[DB_FILE_ID_LEN];
     int deleteme;
     pthread_rwlock_t queue_lk;
-    LISTC_T(struct shadows_pglogs_queue_key) queue_keys;
+    LISTC_T(struct pglogs_queue_key) queue_keys;
 };
 
 // This is stored in a hash indexed by fileid.  All cursors pointed
 // at a fileid maintain a pointer to the same memory.
 struct pglogs_queue_cursor {
     unsigned char fileid[DB_FILE_ID_LEN];
-    struct shadows_fileid_pglogs_queue *queue;
-    struct shadows_pglogs_queue_key *last;
+    struct fileid_pglogs_queue *queue;
+    struct pglogs_queue_key *last;
 };
 
 struct pglogs_queue_heads {
@@ -270,7 +270,7 @@ struct lsn_list *allocate_lsn_list(void);
 struct lsn_commit_list *allocate_lsn_commit_list(void);
 struct pglogs_relink_key *allocate_pglogs_relink_key(void);
 struct relink_list *allocate_relink_list(void);
-void return_pglogs_queue_key(struct shadows_pglogs_queue_key *qk);
+void return_pglogs_queue_key(struct pglogs_queue_key *qk);
 
 struct checkpoint_list {
     DB_LSN lsn;

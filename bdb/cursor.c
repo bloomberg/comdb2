@@ -834,10 +834,10 @@ int timestamp_lsn_keycmp(void *_, int key1len, const void *key1, int key2len,
     return 0;
 }
 
-static pool_t *shadows_fileid_pglogs_queue_pool = NULL;
+static pool_t *fileid_pglogs_queue_pool = NULL;
 static pool_t *pglogs_queue_cursor_pool = NULL;
 static pool_t *ltran_pglogs_key_pool = NULL;
-static pool_t *shadows_asof_cursor_pool = NULL;
+static pool_t *asof_cursor_pool = NULL;
 static pool_t *pglogs_commit_list_pool = NULL;
 static pool_t *pglogs_queue_key_pool = NULL;
 static pool_t *pglogs_key_pool = NULL;
@@ -848,10 +848,10 @@ static pool_t *pglogs_relink_key_pool = NULL;
 static pool_t *pglogs_relink_list_pool = NULL;
 
 static LISTC_T(struct commit_list) pglogs_commit_list;
-static pthread_mutex_t shadows_fileid_pglogs_queue_lk;
+static pthread_mutex_t fileid_pglogs_queue_lk;
 static pthread_mutex_t pglogs_queue_cursor_lk;
 static pthread_mutex_t ltran_pglogs_key_lk;
-static pthread_mutex_t shadows_asof_cursor_lk;
+static pthread_mutex_t asof_cursor_lk;
 static pthread_mutex_t pglogs_commit_list_pool_lk;
 static pthread_mutex_t pglogs_queue_key_pool_lk;
 static pthread_mutex_t pglogs_key_pool_lk;
@@ -865,27 +865,26 @@ static hash_t *pglogs_queue_fileid_hash;
 
 static pthread_mutex_t del_queue_lk = PTHREAD_MUTEX_INITIALIZER;
 
-static struct shadows_fileid_pglogs_queue *
-allocate_shadows_fileid_pglogs_queue()
+static struct fileid_pglogs_queue *allocate_fileid_pglogs_queue()
 {
-    struct shadows_fileid_pglogs_queue *q;
-    Pthread_mutex_lock(&shadows_fileid_pglogs_queue_lk);
-    q = pool_getablk(shadows_fileid_pglogs_queue_pool);
-    Pthread_mutex_unlock(&shadows_fileid_pglogs_queue_lk);
+    struct fileid_pglogs_queue *q;
+    Pthread_mutex_lock(&fileid_pglogs_queue_lk);
+    q = pool_getablk(fileid_pglogs_queue_pool);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_lk);
 #ifdef NEWSI_DEBUG_POOL
-    q->pool = shadows_fileid_pglogs_queue_pool;
+    q->pool = fileid_pglogs_queue_pool;
 #endif
     return q;
 }
 
-void return_shadows_fileid_pglogs_queue(struct shadows_fileid_pglogs_queue *q)
+void return_fileid_pglogs_queue(struct fileid_pglogs_queue *q)
 {
-    Pthread_mutex_lock(&shadows_fileid_pglogs_queue_lk);
+    Pthread_mutex_lock(&fileid_pglogs_queue_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(q->pool == shadows_fileid_pglogs_queue_pool);
+    assert(q->pool == fileid_pglogs_queue_pool);
 #endif
-    pool_relablk(shadows_fileid_pglogs_queue_pool, q);
-    Pthread_mutex_unlock(&shadows_fileid_pglogs_queue_lk);
+    pool_relablk(fileid_pglogs_queue_pool, q);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_lk);
 }
 
 static struct pglogs_queue_cursor *allocate_pglogs_queue_cursor(void)
@@ -932,26 +931,26 @@ static void return_ltran_pglogs_key(struct ltran_pglogs_key *k)
     Pthread_mutex_unlock(&ltran_pglogs_key_lk);
 }
 
-static struct shadows_asof_cursor *allocate_asof_cursor(void)
+static struct asof_cursor *allocate_asof_cursor(void)
 {
-    struct shadows_asof_cursor *a;
-    Pthread_mutex_lock(&shadows_asof_cursor_lk);
-    a = pool_getablk(shadows_asof_cursor_pool);
-    Pthread_mutex_unlock(&shadows_asof_cursor_lk);
+    struct asof_cursor *a;
+    Pthread_mutex_lock(&asof_cursor_lk);
+    a = pool_getablk(asof_cursor_pool);
+    Pthread_mutex_unlock(&asof_cursor_lk);
 #ifdef NEWSI_DEBUG_POOL
-    a->pool = shadows_asof_cursor_pool;
+    a->pool = asof_cursor_pool;
 #endif
     return a;
 }
 
-static void return_asof_cursor(struct shadows_asof_cursor *a)
+static void return_asof_cursor(struct asof_cursor *a)
 {
-    Pthread_mutex_lock(&shadows_asof_cursor_lk);
+    Pthread_mutex_lock(&asof_cursor_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(a->pool == shadows_asof_cursor_pool);
+    assert(a->pool == asof_cursor_pool);
 #endif
-    pool_relablk(shadows_asof_cursor_pool, a);
-    Pthread_mutex_unlock(&shadows_asof_cursor_lk);
+    pool_relablk(asof_cursor_pool, a);
+    Pthread_mutex_unlock(&asof_cursor_lk);
 }
 
 static struct commit_list *allocate_pglogs_commit_list(void)
@@ -976,9 +975,9 @@ static void return_pglogs_commit_list(struct commit_list *c)
     Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
 }
 
-struct shadows_pglogs_queue_key *allocate_shadows_pglogs_queue_key(void)
+struct pglogs_queue_key *allocate_pglogs_queue_key(void)
 {
-    struct shadows_pglogs_queue_key *q;
+    struct pglogs_queue_key *q;
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
     q = pool_getablk(pglogs_queue_key_pool);
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
@@ -988,7 +987,7 @@ struct shadows_pglogs_queue_key *allocate_shadows_pglogs_queue_key(void)
     return q;
 }
 
-void return_pglogs_queue_key(struct shadows_pglogs_queue_key *qk)
+void return_pglogs_queue_key(struct pglogs_queue_key *qk)
 {
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
@@ -1090,13 +1089,13 @@ void deallocate_relink_list(struct relink_list *r)
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
 }
 
-static int return_relinks(void *obj, void *arg)
+static int return_pglogs_relink_key(void *obj, void *arg)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
-    while ((ent = listc_rtl(list)) != NULL) {
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
         assert(((struct relink_list *)ent)->pool == pglogs_relink_list_pool);
 #endif
@@ -1112,7 +1111,7 @@ static int return_relinks(void *obj, void *arg)
     return 0;
 }
 
-static int return_logical_txn_pglogs(void *obj, void *arg)
+static int return_pglogs_logical_key(void *obj, void *arg)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
@@ -1137,23 +1136,11 @@ static int return_logical_txn_pglogs(void *obj, void *arg)
 
 static int return_pglogs_key(void *obj, void *arg)
 {
-    struct pglogs_key *r = (struct pglogs_key *)obj;
-    Pthread_mutex_lock(&pglogs_key_pool_lk);
-#ifdef NEWSI_DEBUG_POOL
-    assert(r->pool == pglogs_key_pool);
-#endif
-    pool_relablk(pglogs_key_pool, r);
-    Pthread_mutex_unlock(&pglogs_key_pool_lk);
-    return 0;
-}
-
-static int return_txn_pglogs(void *obj, void *arg)
-{
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
-    while ((ent = listc_rtl(list)) != NULL) {
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
         assert(((struct lsn_list *)ent)->pool == pglogs_lsn_list_pool);
 #endif
@@ -1169,28 +1156,21 @@ static int return_txn_pglogs(void *obj, void *arg)
     return 0;
 }
 
-void bdb_return_relinks(hash_t *hashtbl)
+void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_relinks, hashtbl);
+    hash_for(hashtbl, return_pglogs_relink_key, hashtbl);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
-void bdb_return_logical_pglogs_hashtbl(hash_t *hashtbl)
+void bdb_return_pglogs_logical_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_logical_txn_pglogs, hashtbl);
+    hash_for(hashtbl, return_pglogs_logical_key, hashtbl);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
-void bdb_return_txn_pglogs_hashtbl(hash_t *hashtbl)
-{
-    hash_for(hashtbl, return_txn_pglogs, hashtbl);
-    hash_clear(hashtbl);
-    hash_free(hashtbl);
-}
-
-void bdb_return_pglogs_key_hashtbl(hash_t *hashtbl)
+void bdb_return_pglogs_hashtbl(hash_t *hashtbl)
 {
     hash_for(hashtbl, return_pglogs_key, hashtbl);
     hash_clear(hashtbl);
@@ -1204,18 +1184,18 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     if (!gbl_new_snapisol)
         return 0;
 
-    shadows_fileid_pglogs_queue_pool = pool_setalloc_init(
-        sizeof(struct shadows_fileid_pglogs_queue), stepup, malloc, free);
+    fileid_pglogs_queue_pool = pool_setalloc_init(
+        sizeof(struct fileid_pglogs_queue), stepup, malloc, free);
     pglogs_queue_cursor_pool = pool_setalloc_init(
         sizeof(struct pglogs_queue_cursor), stepup, malloc, free);
     ltran_pglogs_key_pool = pool_setalloc_init(sizeof(struct ltran_pglogs_key),
                                                stepup, malloc, free);
-    shadows_asof_cursor_pool = pool_setalloc_init(
-        sizeof(struct shadows_asof_cursor), stepup, malloc, free);
+    asof_cursor_pool =
+        pool_setalloc_init(sizeof(struct asof_cursor), stepup, malloc, free);
     pglogs_commit_list_pool =
         pool_setalloc_init(sizeof(struct commit_list), stepup, malloc, free);
-    pglogs_queue_key_pool = pool_setalloc_init(
-        sizeof(struct shadows_pglogs_queue_key), stepup, malloc, free);
+    pglogs_queue_key_pool = pool_setalloc_init(sizeof(struct pglogs_queue_key),
+                                               stepup, malloc, free);
     pglogs_key_pool =
         pool_setalloc_init(sizeof(struct pglogs_key), stepup, malloc, free);
     pglogs_logical_key_pool = pool_setalloc_init(
@@ -1229,10 +1209,10 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     pglogs_relink_list_pool =
         pool_setalloc_init(sizeof(struct relink_list), stepup, malloc, free);
 
-    pthread_mutex_init(&shadows_fileid_pglogs_queue_lk, NULL);
+    pthread_mutex_init(&fileid_pglogs_queue_lk, NULL);
     pthread_mutex_init(&pglogs_queue_cursor_lk, NULL);
     pthread_mutex_init(&ltran_pglogs_key_lk, NULL);
-    pthread_mutex_init(&shadows_asof_cursor_lk, NULL);
+    pthread_mutex_init(&asof_cursor_lk, NULL);
     pthread_mutex_init(&pglogs_commit_list_pool_lk, NULL);
     pthread_mutex_init(&pglogs_queue_key_pool_lk, NULL);
     pthread_mutex_init(&pglogs_key_pool_lk, NULL);
@@ -1298,17 +1278,16 @@ int bdb_relink_gbl_ltran_pglogs(void *bdb_state, unsigned char *fileid,
                                 db_pgno_t pgno, db_pgno_t prev_pgno,
                                 db_pgno_t next_pgno, DB_LSN lsn);
 
-int bdb_update_logfile_pglogs_from_queue(
-    void *bdb_state, unsigned char *fid,
-    struct shadows_pglogs_queue_key *queuekey);
+int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
+                                         struct pglogs_queue_key *queuekey);
 
 int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
                               db_pgno_t pgno, db_pgno_t prev_pgno,
                               db_pgno_t next_pgno, DB_LSN lsn);
 
 static int copy_queue_key_to_global(bdb_state_type *bdb_state,
-                                    struct shadows_fileid_pglogs_queue *queue,
-                                    struct shadows_pglogs_queue_key *key)
+                                    struct fileid_pglogs_queue *queue,
+                                    struct pglogs_queue_key *key)
 {
     int ret;
 #ifdef ASOF_TRACE
@@ -1374,8 +1353,7 @@ static int copy_queue_key_to_global(bdb_state_type *bdb_state,
 static int collect_queue_fileids(void *obj, void *arg)
 {
     struct pglogs_queue_heads *qh = (struct pglogs_queue_heads *)arg;
-    struct shadows_fileid_pglogs_queue *queue =
-        (struct shadows_fileid_pglogs_queue *)obj;
+    struct fileid_pglogs_queue *queue = (struct fileid_pglogs_queue *)obj;
     memcpy(qh->fileids[qh->index++], queue->fileid, DB_FILE_ID_LEN);
     return 0;
 }
@@ -1401,22 +1379,22 @@ int bdb_pglogs_min_lsn(bdb_state_type *bdb_state, DB_LSN *outlsn)
     return 0;
 }
 
-static struct shadows_fileid_pglogs_queue *
+static struct fileid_pglogs_queue *
 retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
 {
     unsigned char test_fileid[DB_FILE_ID_LEN] = {0};
-    struct shadows_fileid_pglogs_queue *fileid_queue;
+    struct fileid_pglogs_queue *fileid_queue;
 
     pthread_mutex_lock(&pglogs_queue_lk);
     if (((fileid_queue = hash_find(pglogs_queue_fileid_hash, fileid)) ==
          NULL) &&
         create) {
-        fileid_queue = allocate_shadows_fileid_pglogs_queue();
+        fileid_queue = allocate_fileid_pglogs_queue();
         fileid_queue->deleteme = 0;
         memcpy(fileid_queue->fileid, fileid, DB_FILE_ID_LEN);
         pthread_rwlock_init(&fileid_queue->queue_lk, NULL);
         listc_init(&fileid_queue->queue_keys,
-                   offsetof(struct shadows_pglogs_queue_key, lnk));
+                   offsetof(struct pglogs_queue_key, lnk));
         if (memcmp(fileid, test_fileid, DB_FILE_ID_LEN) == 0)
             abort();
         hash_add(pglogs_queue_fileid_hash, fileid_queue);
@@ -1427,10 +1405,9 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
 }
 
 int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
-                          struct shadows_fileid_pglogs_queue *queue,
-                          DB_LSN minlsn)
+                          struct fileid_pglogs_queue *queue, DB_LSN minlsn)
 {
-    struct shadows_pglogs_queue_key *qe, *prev_qe, *del_qe = NULL;
+    struct pglogs_queue_key *qe, *prev_qe, *del_qe = NULL;
 
     // Grab this in write mode
     // Consumers will grab in read-mode until they anchor against the list by
@@ -1493,7 +1470,7 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
     pthread_mutex_unlock(&pglogs_queue_lk);
 
     for (i = 0; i < count; i++) {
-        struct shadows_fileid_pglogs_queue *queue; //= qh.queue_heads[i];
+        struct fileid_pglogs_queue *queue; //= qh.queue_heads[i];
         unsigned char *fileid = qh.fileids[i];
 
         if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
@@ -1544,8 +1521,8 @@ void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
         if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
             hash_del(logfile_pglogs_repo, e);
             pthread_mutex_lock(&e->pglogs_mutex);
-            bdb_return_logical_pglogs_hashtbl(e->pglogs_hashtbl);
-            bdb_return_relinks(e->relinks_hashtbl);
+            bdb_return_pglogs_logical_hashtbl(e->pglogs_hashtbl);
+            bdb_return_pglogs_relink_hashtbl(e->relinks_hashtbl);
             pthread_mutex_destroy(&e->pglogs_mutex);
             free(e);
         }
@@ -1652,8 +1629,8 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
     }
 
     pthread_mutex_destroy(&ltran_ent->pglogs_mutex);
-    bdb_return_logical_pglogs_hashtbl(ltran_ent->pglogs_hashtbl);
-    bdb_return_relinks(ltran_ent->relinks_hashtbl);
+    bdb_return_pglogs_logical_hashtbl(ltran_ent->pglogs_hashtbl);
+    bdb_return_pglogs_relink_hashtbl(ltran_ent->relinks_hashtbl);
     return_ltran_pglogs_key(ltran_ent);
 
 #ifdef NEWSI_STAT
@@ -1723,10 +1700,10 @@ static void *pglogs_asof_thread(void *arg)
         pthread_mutex_unlock(&pglogs_queue_lk);
 
         for (i = 0; i < qh.index; i++) {
-            struct shadows_fileid_pglogs_queue *queue;
+            struct fileid_pglogs_queue *queue;
             unsigned char *fileid = qh.fileids[i];
-            struct shadows_pglogs_queue_key *prev, *top, *current, *last;
-            struct shadows_asof_cursor *cur;
+            struct pglogs_queue_key *prev, *top, *current, *last;
+            struct asof_cursor *cur;
 
             int do_current = 0;
 
@@ -1757,7 +1734,7 @@ static void *pglogs_asof_thread(void *arg)
             // this
             // code if the order were switched.
             if (last) {
-                struct shadows_pglogs_queue_key *fnd = last;
+                struct pglogs_queue_key *fnd = last;
 
                 while (fnd && fnd->type != PGLOGS_QUEUE_PAGE)
                     fnd = fnd->lnk.prev;
@@ -1791,8 +1768,8 @@ static void *pglogs_asof_thread(void *arg)
 
         // Loop again to delete
         for (i = 0; i < qh.index; i++) {
-            struct shadows_fileid_pglogs_queue *queue;
-            struct shadows_asof_cursor *cur;
+            struct fileid_pglogs_queue *queue;
+            struct asof_cursor *cur;
             unsigned char *fileid = qh.fileids[i];
 
             if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
@@ -1801,13 +1778,13 @@ static void *pglogs_asof_thread(void *arg)
             if (queue->deleteme &&
                 (cur = hash_find(bdb_asof_ltran_hash, fileid)) &&
                 (cur->cur == LISTC_BOT(&queue->queue_keys))) {
-                struct shadows_pglogs_queue_key *qe;
+                struct pglogs_queue_key *qe;
                 pthread_mutex_lock(&pglogs_queue_lk);
                 hash_del(pglogs_queue_fileid_hash, queue);
                 pthread_mutex_unlock(&pglogs_queue_lk);
                 while ((qe = listc_rtl(&queue->queue_keys)))
                     return_pglogs_queue_key(qe);
-                return_shadows_fileid_pglogs_queue(queue);
+                return_fileid_pglogs_queue(queue);
                 assert(cur);
                 hash_del(bdb_asof_ltran_hash, cur);
                 return_asof_cursor(cur);
@@ -1931,7 +1908,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
         logfile_pglogs_repo_ready = 1;
 
         bdb_asof_ltran_hash =
-            hash_init_o(offsetof(struct shadows_asof_cursor, fileid),
+            hash_init_o(offsetof(struct asof_cursor, fileid),
                         DB_FILE_ID_LEN * sizeof(unsigned char));
         pthread_mutex_init(&bdb_asof_current_lsn_mutex, NULL);
         pthread_cond_init(&bdb_asof_current_lsn_cond, NULL);
@@ -1945,8 +1922,8 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
     /* Init pglogs queue */
     pthread_mutex_init(&pglogs_queue_lk, NULL);
     pglogs_queue_fileid_hash =
-        hash_init_o(offsetof(struct shadows_fileid_pglogs_queue, fileid),
-                    sizeof(((struct shadows_fileid_pglogs_queue *)0)->fileid));
+        hash_init_o(offsetof(struct fileid_pglogs_queue, fileid),
+                    sizeof(((struct fileid_pglogs_queue *)0)->fileid));
 
     bdb_gbl_ltran_pglogs_hash =
         hash_init_o(offsetof(struct ltran_pglogs_key, logical_tranid),
@@ -2022,8 +1999,8 @@ int bdb_txn_pglogs_close(void *instate, void **pglogs_hashtbl,
     if (!gbl_new_snapisol)
         return 0;
 
-    bdb_return_txn_pglogs_hashtbl(*pglogs_hashtbl);
-    bdb_return_relinks(*relinks_hashtbl);
+    bdb_return_pglogs_hashtbl(*pglogs_hashtbl);
+    bdb_return_pglogs_relink_hashtbl(*relinks_hashtbl);
     pthread_mutex_destroy(mutexp);
 
     return 0;
@@ -2380,9 +2357,8 @@ void bdb_clear_logfile_pglogs_stat()
 }
 #endif
 
-int bdb_update_logfile_pglogs_from_queue(
-    void *bdb_state, unsigned char *fid,
-    struct shadows_pglogs_queue_key *queuekey)
+int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
+                                         struct pglogs_queue_key *queuekey)
 {
     int rc = 0;
     int count = 0;
@@ -2543,11 +2519,11 @@ static int bdb_update_relinks_fileid_queues(void *bdb_state,
                                             db_pgno_t pgno, db_pgno_t prev_pgno,
                                             db_pgno_t next_pgno, DB_LSN lsn)
 {
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_queue_key *qe;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_queue_key *qe;
 
     fileid_queue = retrieve_fileid_pglogs_queue(fileid, 1);
-    qe = allocate_shadows_pglogs_queue_key();
+    qe = allocate_pglogs_queue_key();
     qe->type = PGLOGS_QUEUE_RELINK;
     qe->prev_pgno = prev_pgno;
     qe->next_pgno = next_pgno;
@@ -2566,20 +2542,20 @@ static int bdb_update_pglogs_fileid_queues(
     DB_LSN commit_lsn, struct page_logical_lsn_key *keylist, unsigned int nkeys)
 {
     int j, count;
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_queue_key **qearray = NULL, *qe, *chk;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_queue_key **qearray = NULL, *qe, *chk;
     struct page_logical_lsn_key *key;
 
     if (nkeys <= 256)
-        qearray = (struct shadows_pglogs_queue_key **)alloca(
-            nkeys * sizeof(struct shadows_pglogs_queue_key *));
+        qearray = (struct pglogs_queue_key **)alloca(
+            nkeys * sizeof(struct pglogs_queue_key *));
     else
-        qearray = (struct shadows_pglogs_queue_key **)malloc(
-            nkeys * sizeof(struct shadows_pglogs_queue_key *));
+        qearray = (struct pglogs_queue_key **)malloc(
+            nkeys * sizeof(struct pglogs_queue_key *));
 
     for (j = 0; j < nkeys; j++) {
         key = &keylist[j];
-        qearray[j] = qe = allocate_shadows_pglogs_queue_key();
+        qearray[j] = qe = allocate_pglogs_queue_key();
         qe->logical_tranid = logical_tranid;
         qe->type = PGLOGS_QUEUE_PAGE;
         qe->prev_pgno = qe->next_pgno = 0;
@@ -2634,8 +2610,8 @@ static int bdb_update_pglogs_fileid_queues(
 int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
                                    unsigned char *fileid)
 {
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_queue_key *qe;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
+    struct pglogs_queue_key *qe;
 
     pthread_mutex_lock(&del_queue_lk);
     pthread_mutex_lock(&pglogs_queue_lk);
@@ -2656,7 +2632,7 @@ int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
     if (fileid_queue) {
         while ((qe = listc_rtl(&fileid_queue->queue_keys)) != NULL)
             return_pglogs_queue_key(qe);
-        return_shadows_fileid_pglogs_queue(fileid_queue);
+        return_fileid_pglogs_queue(fileid_queue);
     }
 
     return 0;
@@ -2664,7 +2640,7 @@ int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
 
 struct pglog_queue_heads {
     int index;
-    struct shadows_fileid_pglogs_queue **queue_heads;
+    struct fileid_pglogs_queue **queue_heads;
 };
 
 int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
@@ -2813,9 +2789,9 @@ static int transfer_txn_relinks_to_queues(void *bdb_state,
                                           DB_LSN commit_lsn)
 {
     void *hash_cur;
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
     struct pglogs_relink_key *relinks_ent = NULL;
-    struct shadows_pglogs_queue_key *qe, *chk;
+    struct pglogs_queue_key *qe, *chk;
     struct relink_list *rlent = NULL;
     unsigned int hash_cur_buk;
 
@@ -2831,7 +2807,7 @@ static int transfer_txn_relinks_to_queues(void *bdb_state,
 
         LISTC_FOR_EACH(&relinks_ent->relinks, rlent, lnk)
         {
-            qe = allocate_shadows_pglogs_queue_key();
+            qe = allocate_pglogs_queue_key();
             qe->logical_tranid = logical_tranid;
             qe->type = PGLOGS_QUEUE_RELINK;
             qe->prev_pgno = 0;
@@ -2862,9 +2838,9 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
                                          DB_LSN commit_lsn)
 {
     void *hash_cur;
-    struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
+    struct fileid_pglogs_queue *fileid_queue = NULL;
     struct pglogs_key *pglogs_ent = NULL;
-    struct shadows_pglogs_queue_key *qe, *chk;
+    struct pglogs_queue_key *qe, *chk;
     struct lsn_list *lsnent = NULL;
     unsigned int hash_cur_buk;
 
@@ -2880,7 +2856,7 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
 
         LISTC_FOR_EACH(&pglogs_ent->lsns, lsnent, lnk)
         {
-            qe = allocate_shadows_pglogs_queue_key();
+            qe = allocate_pglogs_queue_key();
             qe->logical_tranid = logical_tranid;
             qe->type = PGLOGS_QUEUE_PAGE;
             qe->prev_pgno = qe->next_pgno = 0;
@@ -7371,8 +7347,7 @@ static struct pglogs_queue_cursor *retrieve_queue_cursor(bdb_cursor_impl_t *cur,
     return retrieve_queue_cursor_fileid(cur, fileid, bdberr);
 }
 
-static int should_update(tran_type *shadow_tran,
-                         struct shadows_pglogs_queue_key *key)
+static int should_update(tran_type *shadow_tran, struct pglogs_queue_key *key)
 {
     int i;
 
@@ -7392,7 +7367,7 @@ static int should_update(tran_type *shadow_tran,
 
 static int update_pglogs_from_queue(tran_type *shadow_tran,
                                     unsigned char *fileid,
-                                    struct shadows_pglogs_queue_key *key)
+                                    struct pglogs_queue_key *key)
 {
     int ret = 0;
 
@@ -7427,7 +7402,7 @@ static int update_pglogs_from_queue(tran_type *shadow_tran,
 static int update_pglogs_from_global_queues_int(
     bdb_cursor_impl_t *cur, struct pglogs_queue_cursor *qcur, int *bdberr)
 {
-    struct shadows_pglogs_queue_key *current, *prev, *last;
+    struct pglogs_queue_key *current, *prev, *last;
     DB_LSN last_lsn = {0};
 
     pthread_rwlock_rdlock(&qcur->queue->queue_lk);
