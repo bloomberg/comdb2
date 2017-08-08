@@ -1387,7 +1387,7 @@ static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
     int i;
     int rc;
     int len;
-#if DEBUG
+#ifdef DEBUG
     printf("send_decom_all() entering...");
 #endif
 

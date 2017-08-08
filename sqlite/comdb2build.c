@@ -723,7 +723,6 @@ void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm)
 
 void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     struct schema_change_type* sc = new_schemachange_type();
@@ -2951,7 +2950,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        if ((pParse->pNewTable) == 0) assert(0);
+        // TODO: BAD ASSERT: if ((pParse->pNewTable) == 0) assert(0);
         sqlite3AddColumn(pParse, pName, pType);
         return;
     }
@@ -3354,7 +3353,7 @@ void comdb2CreateIndex(
     }
 
     assert(pTblName->nSrc == 1);
-    assert(pName1.n != 0);
+    assert(pName1->n != 0);
     assert(pList != 0);
 
     if (isRemote(pParse, &pName1, &pName2)) {

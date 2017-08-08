@@ -284,7 +284,8 @@ void *coherency_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (lease_time = bdb_state->attr->coherency_lease) {
+    while (!db_is_stopped() &&
+           (lease_time = bdb_state->attr->coherency_lease)) {
         inc_wait = 0;
         uint32_t current_gen, durable_gen;
         DB_LSN durable_lsn;
