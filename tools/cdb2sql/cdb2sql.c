@@ -112,21 +112,19 @@ static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
     "\n"
     "Options:\n"
-    " -h, --help             Help on usage \n"
-    " -s, --script           Script mode (less verbose output)\n"
-    "     --tabs             Seperate output columns with tabs rather\n"
-    "                        than commas\n"
-    " -c, --cdb2cfg          Change the config file to point to comdb2db\n"
-    "                        configuration file\n"
-    " -t, --type TYPE        Type of database or tier (ie 'dev' or 'prod',\n"
-    "                                              default 'local')\n"
-    " -n, --host HOSTNAME    Host to connect to and run query.\n"
-    "     --debugtrace       Set debug trace flag on api handle\n"
-    "     --showeffects      Show the effects of query at the end\n"
-    "     --cost             Log the cost of query in db trace files\n"
-    " -p, --precision #      Set precision for floation point outputs\n"
-    "     --strblobs         Display blobs as strings\n"
-    " -f, --file FL          reads queries from the specified file FL\n"
+    " -c, --cdb2cfg FL    Set the config file to FL\n"
+    "     --cost          Log the cost of query in db trace files\n"
+    "     --debugtrace    Set debug trace flag on api handle\n"
+    " -f, --file FL       Read queries from the specified file FL\n"
+    " -h, --help          Help on usage \n"
+    " -n, --host HOST     Host to connect to and run query.\n"
+    " -p, --precision #   Set precision for floation point outputs\n"
+    " -s, --script        Script mode (less verbose output)\n"
+    "     --showeffects   Show the effects of query at the end\n"
+    "     --strblobs      Display blobs as strings\n"
+    "     --tabs          Set column separator to tabs rather than commas\n"
+    " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
+    " default 'local')\n"
     "\n"
     " Examples: \n"
     " * Querying db with name mydb on local server \n"
@@ -143,6 +141,182 @@ void cdb2sql_usage(int exit_val)
     fprintf((exit_val == EXIT_SUCCESS) ? stdout : stderr, usage_text);
     exit(exit_val);
 }
+
+
+const char *words[] = {
+  "ALTER", "ANALYZE", 
+  "BEGIN", 
+  "COMMIT",
+  "CREATE", 
+  "DELETE", "DROP", "DRYRUN",
+  "EXEC", "EXPLAIN",
+  "INSERT", 
+  "PUT",
+  "REBUILD",
+  "ROLLBACK",
+  "SELECT", "SELECTV", "SET",
+  "TRUNCATE",
+  "UPDATE",
+  "WITH", NULL, }; // must be terminated by NULL
+
+
+
+// Generator function for word completion.
+char *level_one_generator (const char *text, int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the length of text
+        list_index = 0;
+        len = strlen (text);
+    }
+    while (name = words[list_index]) {
+        list_index++;
+        if (len == 0 || strncasecmp (name, text, len) == 0) {
+            return strdup (name);
+        }
+    }
+    return ((char *) NULL); // If no names matched, then return NULL.
+}
+
+char *db_generator (int state, const char *sql)
+{
+    static char **db_words;
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the completions from the db
+        cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
+        if (db_words) {
+            char *wrd;
+            list_index = 0;
+            while ((wrd = db_words[list_index])) {
+                free(wrd);
+                db_words[list_index] = NULL;
+                list_index++;
+            }
+            free(db_words);
+            db_words = NULL;
+        }
+
+        list_index = 0;
+        int rc;
+        if (dbhostname) {
+            rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
+        } else {
+            rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+        }
+        if (rc) {
+            if (debug_trace)
+                fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
+            cdb2_close(cdb2h_2);
+            return ((char *) NULL);
+        }
+        rc = cdb2_run_statement(cdb2h_2, sql);
+        if (rc) {
+            fprintf(stderr, "failed to run sql '%s'\n", sql);
+            return ((char *) NULL);
+        }
+        
+        int ncols = cdb2_numcolumns(cdb2h_2);
+        assert(ncols == 1);
+        int count = 0;
+        int sz = 0;
+        while ((rc = cdb2_next_record(cdb2h_2)) == CDB2_OK) {
+            if ( sz < count + 1 ) {
+                sz = (sz == 0) ? 32 : sz * 2;
+                void * m = (char**) realloc(db_words, sz * sizeof(char *));
+                if (!m) { 
+                    fprintf(stderr, "error with malloc/realloc\n");
+                    abort();
+                    break; 
+                }
+                db_words = m; 
+            }
+            void *val = cdb2_column_value(cdb2h_2, 0);
+            assert(count < sz);
+            db_words[count] = strdup((char*) val);
+            count++;
+        }
+        if (db_words)
+            db_words[count] = NULL; //last one always NULL
+        cdb2_close(cdb2h_2);
+    }
+
+    if (!db_words)
+        return ((char *) NULL);
+
+    while (name = db_words[list_index]) {
+        list_index++;
+        return strdup(name);
+    }
+    return ((char *) NULL); // If no names matched, then return NULL.
+}
+
+
+char *tunables_generator (const char *text, int state)
+{
+    char sql[256];
+    if (*text)
+        //TODO: escape text
+        snprintf(sql, sizeof(sql), 
+                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
+    else
+        snprintf(sql, sizeof(sql), 
+                "SELECT DISTINCT name FROM comdb2_tunables");
+    return db_generator(state, sql);
+}
+
+char *generic_generator(const char *text, int state)
+{
+    char sql[256];
+    //TODO: escape text
+    snprintf(sql, sizeof(sql), 
+            "SELECT DISTINCT candidate "
+            "FROM comdb2_completion('%s')", text);
+
+    return db_generator(state, sql);
+}
+
+
+
+// Custom completion function
+static char **my_completion (const char *text, int start, int end)
+{
+    rl_attempted_completion_over = 1; // skip directory listing
+    char *bgn = rl_line_buffer;
+    while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+
+    char *endptr = bgn;
+    while(*endptr) endptr++; //go to end
+
+    if(endptr == bgn)
+        return rl_completion_matches ((char *) text, &level_one_generator);
+
+    endptr--;
+    // find last space (or will hit bgn)
+    while(endptr != bgn && *endptr != ' ') 
+        endptr--; 
+
+    if(endptr == bgn)
+        return rl_completion_matches ((char *) text, &level_one_generator);
+
+    // find end of previous word
+    while(endptr != bgn && *endptr == ' ') 
+        endptr--;
+
+    char *lastw = endptr;
+    // find begining of previous word
+    while(lastw != bgn && *lastw != ' ') 
+        lastw--;
+    lastw++;
+
+    int l = sizeof("TUNABLE") - 1;
+    if(endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
+        return rl_completion_matches ((char *) text, &tunables_generator);
+    else
+        return rl_completion_matches ((char *) text, &generic_generator);
+}
+
 
 static char *read_line()
 {
@@ -931,12 +1105,12 @@ void send_cancel_cnonce(const char *cnonce)
  */
 static void int_handler(int signum)
 {
-    printf("\n");
     if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
         printf("Requesting to cancel query (press Ctrl-C to exit program). "
                "Please wait...\n");
-    if (gbl_sent_cancel_cnonce) exit(1);
+    if (gbl_sent_cancel_cnonce) exit(1); // pressed ctrl-c again
     if (!gbl_in_stmt) {
+        rl_crlf();
         rl_on_new_line();
         rl_replace_line("", 0);
         rl_redisplay();
@@ -1094,6 +1268,7 @@ int main(int argc, char *argv[])
     if (isttyarg == 2)
         istty = 0;
     if (istty) {
+        rl_attempted_completion_function = my_completion;
         load_readline_history();
         struct sigaction sact;
         sact.sa_handler = int_handler;
