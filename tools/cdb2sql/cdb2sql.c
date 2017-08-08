@@ -253,7 +253,7 @@ char *db_generator (int state, const char *sql)
 }
 
 
-char *put_generator (const char *text, int state)
+char *tunables_generator (const char *text, int state)
 {
     char sql[256];
     if (*text)
@@ -262,7 +262,7 @@ char *put_generator (const char *text, int state)
                 "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
     else
         snprintf(sql, sizeof(sql), 
-                "SELECT DISTINCT name FROM comdb2_tunables %s");
+                "SELECT DISTINCT name FROM comdb2_tunables");
     return db_generator(state, sql);
 }
 
@@ -304,11 +304,15 @@ static char **my_completion (const char *text, int start, int end)
     while(endptr != bgn && *endptr == ' ') 
         endptr--;
 
-    int l = sizeof("PUT TUNABLE");
-    if(endptr - bgn + 1 == l && 
-            (strncasecmp(bgn, "PUT TUNABLE", l) == 0 || 
-             strncasecmp(bgn, "GET TUNABLE", l) == 0) )
-        return rl_completion_matches ((char *) text, &put_generator);
+    char *lastw = endptr;
+    // find begining of previous word
+    while(lastw != bgn && *lastw != ' ') 
+        lastw--;
+    lastw++;
+
+    int l = sizeof("TUNABLE") - 1;
+    if(endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
+        return rl_completion_matches ((char *) text, &tunables_generator);
     else
         return rl_completion_matches ((char *) text, &generic_generator);
 }

@@ -296,7 +296,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           */
           sqlite3_prepare_v2(pCur->db, 
                   "SELECT tablename FROM comdb2_tables "
-                  "WHERE tablename NOT LIKE 'sqlite_stat\%' ORDER BY 1", 
+                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
                   -1, &pCur->pStmt, 0);
           //TODO: UNION vtables? 
         }
@@ -329,7 +329,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
           */
           sqlite3_prepare_v2(pCur->db, 
                   "SELECT columnname FROM comdb2_columns " 
-                  "WHERE tablename NOT LIKE 'sqlite_stat\%' ORDER BY 1", 
+                  "WHERE tablename NOT LIKE 'sqlite_stat%' ORDER BY 1", 
                   -1, &pCur->pStmt, 0);
         }
         iCol = 0;
