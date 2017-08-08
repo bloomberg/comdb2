@@ -2,7 +2,6 @@
 # Test basic functionality for incremental backups
 
 dbname=$1
-DBDIR=$2
 
 if [[ -z "$dbname" ]] ; then
   echo dbname missing
@@ -18,39 +17,60 @@ function failexit
 function make_base {
   basename=${TMPDIR}/backups/base.tar
   backuplist+=(base.tar)
-  cmd="comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename" || failexit "base backup failed"
-  echo $cmd
-  $cmd
+  comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  echo "~~~~~~~~~~"
+  echo "  LISTING FILE CONTENTS"
+  echo $basename
+  tar -tvf $basename
+  echo "~~~~~~~~~~"
+  echo "  DONE WITH BASE"
+  echo " "
 }
 
 function make_backup {
   fullbackupname=$1
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
-  cmd="comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > ${TMPDIR}/backups/${backupname}" || failexit "incr backup failed"
-  echo $cmd
-  $cmd
+
+  comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > ${TMPDIR}/backups/${backupname}
+  echo "~~~~~~~~~~"
+  echo "  LISTING FILE CONTENTS"
+  echo ${TMPDIR}/backups/${backupname}
+  tar -tvf ${TMPDIR}/backups/${backupname}
+  echo "~~~~~~~~~~"
+  echo "  DONE WITH INCREMENT"
+  echo " "
 }
 
 function test_restoredb {
   testname=$1
   restorecmd="cat "
   for i in $(seq 0 $2); do
-    restorecmd="$restorecmd <(${backuplist[i]}) "
+    restorecmd="$restorecmd ${TMPDIR}/backups/${backuplist[i]} "
   done
 
-  restorecmd="$restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore"
-  $restorecmd
+  echo $restorecmd
+  $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
 
-  comdb2 --lrl ${TMPDIR}/restore/$dbname.lrl ${dbname}_restore & || failexit "restore create failed"
+  comdb2 --lrl ${TMPDIR}/restore/$dbname.lrl ${dbname}_restore &
   dbpid=$!
   # wait for db to launch
-  wait 30
+  count=0
+  cdb2sql ${CDB2_OPTIONS} $dbname default "select 1"
+  while [$? != "(1=1)" && $count -le 30]; do
+      sleep 1
+      let count=count+1
+      cdb2sql ${CDB2_OPTIONS} $dbname default "select 1"
+  done
+
+  if [$count -ge 30] ; then
+    failwith "DB Startup exceeded"
+  fi
 
   cb2sql ${CDB2_OPTIONS} -f $1 $dbname default > $output 2>&1
   expected_output=$(cat ${testname}.out)
 
-  if [[ "$output" != "$expected_output"]]; then
+  if [["$output" != "$expected_output"]] ; then
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
@@ -81,15 +101,20 @@ function resetdb {
 resetdb
 
 for statement in `ls t1*.stmt`; do
-  cb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+  cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
   make_backup statement
 done
+
+ls -al ${TMPDIR}/backups
+echo "~~~~~~~~~~"
+echo "  Moving on to restoration"
+echo " "
 
 counter=0
 
 for testreq in `ls t1*.req`; do
-  test_restoredb testreq counter
-  ((counter++))
+  test_restoredb $testreq $counter
+  let counter=counter+1
 done
 
 # PUSH NEXT TEST FOR RECOVERY WITH LOG HOLES
