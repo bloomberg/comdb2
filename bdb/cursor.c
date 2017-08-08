@@ -1252,12 +1252,10 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
             return -1;
         }
         ltran_ent->logical_tranid = logical_tranid;
-        ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        ltran_ent->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        ltran_ent->pglogs_hashtbl =
+            hash_init_o(PGLOGS_LOGICAL_KEY_OFFSET, PAGE_KEY_SIZE);
+        ltran_ent->relinks_hashtbl =
+            hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
         pthread_mutex_init(&ltran_ent->pglogs_mutex, NULL);
         ltran_ent->logical_commit_lsn.file = 0;
         ltran_ent->logical_commit_lsn.offset = 1;
@@ -1497,12 +1495,10 @@ retrieve_logfile_pglogs(unsigned int filenum, int create)
     if ((e = hash_find(logfile_pglogs_repo, &filenum)) == NULL && create) {
         e = malloc(sizeof(struct logfile_pglogs_entry));
         e->filenum = filenum;
-        e->pglogs_hashtbl = hash_init_o(
-            offsetof(struct pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        e->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        e->pglogs_hashtbl =
+            hash_init_o(PGLOGS_LOGICAL_KEY_OFFSET, PAGE_KEY_SIZE);
+        e->relinks_hashtbl =
+            hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
         pthread_mutex_init(&e->pglogs_mutex, NULL);
         hash_add(logfile_pglogs_repo, e);
 
@@ -1978,15 +1974,11 @@ int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
     if (!gbl_new_snapisol)
         return 0;
 
-    *pglogs_hashtbl =
-        hash_init_o(offsetof(struct pglogs_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+    *pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
     if (*pglogs_hashtbl == NULL)
         return ENOMEM;
 
-    *relinks_hashtbl =
-        hash_init_o(offsetof(struct pglogs_relink_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+    *relinks_hashtbl = hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
     if (*relinks_hashtbl == NULL)
         return ENOMEM;
 
@@ -2265,12 +2257,10 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
             return -1;
         }
         ltran_ent->logical_tranid = logical_tranid;
-        ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        ltran_ent->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        ltran_ent->pglogs_hashtbl =
+            hash_init_o(PGLOGS_LOGICAL_KEY_OFFSET, PAGE_KEY_SIZE);
+        ltran_ent->relinks_hashtbl =
+            hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
         pthread_mutex_init(&ltran_ent->pglogs_mutex, NULL);
         ltran_ent->logical_commit_lsn.file = 0;
         ltran_ent->logical_commit_lsn.offset = 1;
@@ -2714,12 +2704,10 @@ static int transfer_txn_pglogs_to_ltran(hash_t *pglogs_hashtbl,
             return -1;
         }
         ltran_ent->logical_tranid = logical_tranid;
-        ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct pglogs_logical_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
-        ltran_ent->relinks_hashtbl = hash_init_o(
-            offsetof(struct pglogs_relink_key, fileid),
-            DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        ltran_ent->pglogs_hashtbl =
+            hash_init_o(PGLOGS_LOGICAL_KEY_OFFSET, PAGE_KEY_SIZE);
+        ltran_ent->relinks_hashtbl =
+            hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
         pthread_mutex_init(&ltran_ent->pglogs_mutex, NULL);
         ltran_ent->logical_commit_lsn.file = 0;
         ltran_ent->logical_commit_lsn.offset = 1;
