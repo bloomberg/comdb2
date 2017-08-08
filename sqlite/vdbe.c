@@ -3650,8 +3650,8 @@ case OP_Transaction: {
   assert( p->readOnly==0 || pOp->p2==0 );
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
   /* COMDB2: we have not set btreeMask because we dont set cookieMask
-   * which then is used to set btreeMask in sqlite3FinishCoding 
-   * (modified by COMDB2) by calling sqlite3VdbeUsesBtree. 
+   * which then is used to set btreeMask in sqlite3FinishCoding
+   * (modified by COMDB2) by calling sqlite3VdbeUsesBtree.
    * assert( DbMaskTest(p->btreeMask, pOp->p1) ); */
   if( pOp->p2 && (db->flags & SQLITE_QueryOnly)!=0 ){
     rc = SQLITE_READONLY;

@@ -52,7 +52,8 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
   assert( (p->flags & (MEM_Int|MEM_Real))!=(MEM_Int|MEM_Real) );
 
   /* The szMalloc field holds the correct memory allocation size */
-  /* COMDB2: TODO: fix this assert -- either to correct spec or explain why it is not needed 
+  /* COMDB2: TODO: fix this assert -- either to correct spec or explain why it
+  is not needed
   assert( p->szMalloc==0
        || p->szMalloc==sqlite3DbMallocSize(p->db,p->zMalloc) ); */
 
@@ -64,7 +65,7 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
   **   (3) An ephemeral string or blob
   **   (4) A static string or blob
   if( (p->flags & (MEM_Str|MEM_Blob)) && p->n>0 ){
-    assert( 
+    assert(
       ((p->szMalloc>0 && p->z==p->zMalloc)? 1 : 0) +
       ((p->flags&MEM_Dyn)!=0 ? 1 : 0) +
       ((p->flags&MEM_Ephem)!=0 ? 1 : 0) +

@@ -12251,8 +12251,7 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
         if (pFrom->zMalloc && pFrom->szMalloc) {
             pTo->szMalloc = pFrom->szMalloc;
             pTo->zMalloc = malloc(pTo->szMalloc);
-            if (pTo->zMalloc == NULL)
-                return SQLITE_NOMEM;
+            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
             memcpy(pTo->zMalloc, pFrom->zMalloc, pTo->szMalloc);
             pTo->z = pTo->zMalloc;
             pTo->n = pFrom->n;
@@ -12260,8 +12259,7 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
             pTo->n = pFrom->n;
             pTo->szMalloc = pFrom->n + 1;
             pTo->zMalloc = malloc(pTo->szMalloc);
-            if (pTo->zMalloc == NULL)
-                return SQLITE_NOMEM;
+            if (pTo->zMalloc == NULL) return SQLITE_NOMEM;
             memcpy(pTo->zMalloc, pFrom->z, pFrom->n);
             pTo->zMalloc[pFrom->n] = 0;
             pTo->z = pTo->zMalloc;
