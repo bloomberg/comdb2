@@ -5495,8 +5495,8 @@ err:
 	return (ret);
 }
 
-int bdb_shadows_pglogs_key_list_init(void **listp, int n);
-int bdb_update_add_pglogs_key_list(int i, void **listp,
+int bdb_pglogs_key_list_init(void **listp, int n);
+int bdb_add_pglogs_key_list(int i, void **listp,
     db_pgno_t pgno, unsigned char *fileid, DB_LSN lsn, DB_LSN commit_lsn);
 
 static char *
@@ -5579,7 +5579,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 		}
 	}
 	if (LF_ISSET(LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PAGELOGS))
-		bdb_shadows_pglogs_key_list_init(pglogs, nkeys);
+		bdb_pglogs_key_list_init(pglogs, nkeys);
 	*keycnt = nkeys;
 	keyidx = 0;
 	for (i = 0; i < nlocks; i++) {
@@ -5638,7 +5638,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 				}
 				if (LF_ISSET(LOCK_GET_LIST_GETLOCK |
 					LOCK_GET_LIST_PAGELOGS)) {
-					bdb_update_add_pglogs_key_list(keyidx++,
+					bdb_add_pglogs_key_list(keyidx++,
 						pglogs, lock->pgno, lock->fileid,
 						llsn, *maxlsn);
 				}
