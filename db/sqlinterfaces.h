@@ -268,5 +268,5 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt);
 CDB2SQLRESPONSE__Column** newsql_alloc_row(int ncols);
 void newsql_dealloc_row(CDB2SQLRESPONSE__Column **columns, int ncols);
 void reset_clnt_flags(struct sqlclntstate *);
-
+int request_sequence_num(const char *name, long long *val);
 #endif
