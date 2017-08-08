@@ -59,6 +59,7 @@
 #endif
 
 extern void fsnapf(FILE *, void *, int);
+extern int db_is_stopped(void);
 
 struct ack_info_t {
     uint32_t hdrsz;
@@ -500,7 +501,7 @@ static void *udp_reader(void *arg)
     uint8_t *p_buf, *p_buf_end;
     filepage_type fp;
 
-    while (!bdb_state->exiting) {
+    while (!db_is_stopped()) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;

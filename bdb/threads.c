@@ -51,6 +51,8 @@
 #include <autoanalyze.h>
 #include <logmsg.h>
 
+int db_is_stopped(void);
+
 void *udp_backup(void *arg)
 {
     unsigned pollms = 500; // factor of 1000
@@ -282,7 +284,7 @@ void *coherency_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (!bdb_state->exiting &&
+    while (!db_is_stopped() && 
            (lease_time = bdb_state->attr->coherency_lease)) {
         inc_wait = 0;
         uint32_t current_gen, durable_gen;

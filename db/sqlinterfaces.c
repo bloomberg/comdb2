@@ -7804,7 +7804,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     if (do_query_on_master_check(&clnt, sql_query))
         goto done;
 
-#if DEBUG
+#ifdef DEBUG
     printf("\n Query '%s'\n", sql_query->sql_query);
 #endif
 
