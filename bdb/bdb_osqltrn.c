@@ -511,7 +511,7 @@ done:
                 pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
                 shadow_tran->asof_hashtbl = hash_init_o(
-                    offsetof(struct shadows_pglogs_key, fileid),
+                    offsetof(struct pglogs_key, fileid),
                     DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
                 bdb_checkpoint_list_get_ckplsn_before_lsn(
                     shadow_tran->asof_lsn, &shadow_tran->asof_ref_lsn);

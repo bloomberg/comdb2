@@ -1001,9 +1001,9 @@ void return_pglogs_queue_key(struct shadows_pglogs_queue_key *qk)
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
 }
 
-struct shadows_pglogs_key *allocate_shadows_pglogs_key(void)
+struct pglogs_key *allocate_pglogs_key(void)
 {
-    struct shadows_pglogs_key *r;
+    struct pglogs_key *r;
     Pthread_mutex_lock(&pglogs_key_pool_lk);
     r = pool_getablk(pglogs_key_pool);
     Pthread_mutex_unlock(&pglogs_key_pool_lk);
@@ -1013,9 +1013,9 @@ struct shadows_pglogs_key *allocate_shadows_pglogs_key(void)
     return r;
 }
 
-struct shadows_pglogs_logical_key *allocate_shadows_pglogs_logical_key(void)
+struct pglogs_logical_key *allocate_pglogs_logical_key(void)
 {
-    struct shadows_pglogs_logical_key *r;
+    struct pglogs_logical_key *r;
     Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
     r = pool_getablk(pglogs_logical_key_pool);
     Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
@@ -1131,8 +1131,7 @@ static int return_logical_txn_pglogs(void *obj, void *arg)
     Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
     Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(((struct shadows_pglogs_logical_key *)obj)->pool ==
-           pglogs_logical_key_pool);
+    assert(((struct pglogs_logical_key *)obj)->pool == pglogs_logical_key_pool);
 #endif
     pool_relablk(pglogs_logical_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
@@ -1141,7 +1140,7 @@ static int return_logical_txn_pglogs(void *obj, void *arg)
 
 static int return_pglogs_key(void *obj, void *arg)
 {
-    struct shadows_pglogs_key *r = (struct shadows_pglogs_key *)obj;
+    struct pglogs_key *r = (struct pglogs_key *)obj;
     Pthread_mutex_lock(&pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_key_pool);
@@ -1166,7 +1165,7 @@ static int return_txn_pglogs(void *obj, void *arg)
     Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
     Pthread_mutex_lock(&pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    assert(((struct shadows_pglogs_key *)obj)->pool == pglogs_key_pool);
+    assert(((struct pglogs_key *)obj)->pool == pglogs_key_pool);
 #endif
     pool_relablk(pglogs_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_key_pool_lk);
@@ -1220,10 +1219,10 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
         pool_setalloc_init(sizeof(struct commit_list), stepup, malloc, free);
     pglogs_queue_key_pool = pool_setalloc_init(
         sizeof(struct shadows_pglogs_queue_key), stepup, malloc, free);
-    pglogs_key_pool = pool_setalloc_init(sizeof(struct shadows_pglogs_key),
-                                         stepup, malloc, free);
+    pglogs_key_pool =
+        pool_setalloc_init(sizeof(struct pglogs_key), stepup, malloc, free);
     pglogs_logical_key_pool = pool_setalloc_init(
-        sizeof(struct shadows_pglogs_logical_key), stepup, malloc, free);
+        sizeof(struct pglogs_logical_key), stepup, malloc, free);
     pglogs_lsn_list_pool =
         pool_setalloc_init(sizeof(struct lsn_list), stepup, malloc, free);
     pglogs_lsn_commit_list_pool = pool_setalloc_init(
@@ -1274,7 +1273,7 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
         }
         ltran_ent->logical_tranid = logical_tranid;
         ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
+            offsetof(struct pglogs_logical_key, fileid),
             DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
         ltran_ent->relinks_hashtbl = hash_init_o(
             offsetof(struct pglogs_relink_key, fileid),
@@ -1522,7 +1521,7 @@ retrieve_logfile_pglogs(unsigned int filenum, int create)
         e = malloc(sizeof(struct logfile_pglogs_entry));
         e->filenum = filenum;
         e->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
+            offsetof(struct pglogs_logical_key, fileid),
             DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
         e->relinks_hashtbl = hash_init_o(
             offsetof(struct pglogs_relink_key, fileid),
@@ -1570,8 +1569,8 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
     struct ltran_pglogs_key key;
     void *hash_cur;
     unsigned int hash_cur_buk;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
-    struct shadows_pglogs_logical_key *logfile_pglogs_ent = NULL;
+    struct pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_logical_key *logfile_pglogs_ent = NULL;
     struct lsn_commit_list *lsn_ent = NULL;
     unsigned filenum;
 #ifdef NEWSI_DEBUG
@@ -1618,7 +1617,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
             if ((logfile_pglogs_ent =
                      hash_find(l_entry->pglogs_hashtbl, pglogs_ent)) == NULL) {
                 /* add one if not exist */
-                logfile_pglogs_ent = allocate_shadows_pglogs_logical_key();
+                logfile_pglogs_ent = allocate_pglogs_logical_key();
                 if (!logfile_pglogs_ent) {
                     Pthread_mutex_unlock(&ltran_ent->pglogs_mutex);
                     Pthread_mutex_unlock(&l_entry->pglogs_mutex);
@@ -1627,7 +1626,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
                     return -1;
                 }
                 memcpy(logfile_pglogs_ent, pglogs_ent,
-                       sizeof(struct shadows_pglogs_logical_key));
+                       sizeof(struct pglogs_logical_key));
                 listc_init(&logfile_pglogs_ent->lsns,
                            offsetof(struct lsn_commit_list, lnk));
                 hash_add(l_entry->pglogs_hashtbl, logfile_pglogs_ent);
@@ -2003,7 +2002,7 @@ int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
         return 0;
 
     *pglogs_hashtbl =
-        hash_init_o(offsetof(struct shadows_pglogs_key, fileid),
+        hash_init_o(offsetof(struct pglogs_key, fileid),
                     DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
     if (*pglogs_hashtbl == NULL)
         return ENOMEM;
@@ -2037,8 +2036,8 @@ int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                           db_pgno_t pgno, DB_LSN lsn)
 {
     int rc = 0;
-    struct shadows_pglogs_key key;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
+    struct pglogs_key key;
+    struct pglogs_key *pglogs_ent = NULL;
     struct lsn_list *lsnent = NULL;
 #ifdef NEWSI_DEBUG
     struct lsn_list *bot = NULL;
@@ -2052,7 +2051,7 @@ int bdb_insert_pglogs_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
 
     /* find the page in the hash */
     if ((pglogs_ent = hash_find(pglogs_hashtbl, &key)) == NULL) {
-        pglogs_ent = allocate_shadows_pglogs_key();
+        pglogs_ent = allocate_pglogs_key();
         if (!pglogs_ent)
             return ENOMEM;
         memcpy(pglogs_ent->fileid, fileid, DB_FILE_ID_LEN);
@@ -2079,8 +2078,8 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                                   db_pgno_t pgno, DB_LSN lsn, DB_LSN commit_lsn)
 {
     int rc = 0;
-    struct shadows_pglogs_logical_key key;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_logical_key key;
+    struct pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
 #ifdef NEWSI_DEBUG
     struct lsn_commit_list *bot = NULL;
@@ -2094,7 +2093,7 @@ int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
 
     /* find the page in the hash */
     if ((pglogs_ent = hash_find(pglogs_hashtbl, &key)) == NULL) {
-        pglogs_ent = allocate_shadows_pglogs_logical_key();
+        pglogs_ent = allocate_pglogs_logical_key();
         if (!pglogs_ent)
             return ENOMEM;
         memcpy(pglogs_ent->fileid, fileid, DB_FILE_ID_LEN);
@@ -2212,7 +2211,7 @@ int bdb_insert_relinks_int(hash_t *relinks_hashtbl, unsigned char *fileid,
     return 0;
 }
 
-int bdb_shadows_pglogs_key_list_init(void **listp, int n)
+int bdb_pglogs_key_list_init(void **listp, int n)
 {
     assert(listp);
 
@@ -2233,9 +2232,9 @@ int bdb_shadows_pglogs_key_list_init(void **listp, int n)
     return 0;
 }
 
-int bdb_update_add_pglogs_key_list(int i, void **listp, db_pgno_t pgno,
-                                   unsigned char *fileid, DB_LSN lsn,
-                                   DB_LSN commit_lsn)
+int bdb_add_pglogs_key_list(int i, void **listp, db_pgno_t pgno,
+                            unsigned char *fileid, DB_LSN lsn,
+                            DB_LSN commit_lsn)
 {
     struct page_logical_lsn_key *keylist =
         *(struct page_logical_lsn_key **)listp;
@@ -2256,7 +2255,7 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
     int bdberr = 0;
     struct ltran_pglogs_key *ltran_ent = NULL;
     struct ltran_pglogs_key ltran_key;
-    struct shadows_pglogs_logical_key *pglogs_ent;
+    struct pglogs_logical_key *pglogs_ent;
     struct lsn_commit_list *lsnent;
     int i;
     struct page_logical_lsn_key *keylist =
@@ -2290,7 +2289,7 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
         }
         ltran_ent->logical_tranid = logical_tranid;
         ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
+            offsetof(struct pglogs_logical_key, fileid),
             DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
         ltran_ent->relinks_hashtbl = hash_init_o(
             offsetof(struct pglogs_relink_key, fileid),
@@ -2394,7 +2393,7 @@ int bdb_update_logfile_pglogs_from_queue(
     int i, allocate = 0;
     unsigned filenum;
     struct logfile_pglogs_entry *l_entry;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
     DB_LSN logical_commit_lsn = queuekey->commit_lsn;
 
@@ -2445,7 +2444,7 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
     unsigned filenum, fileidx;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_logical_key *pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
 
 #ifdef NEWSI_STAT
@@ -2709,8 +2708,8 @@ static int transfer_txn_pglogs_to_ltran(hash_t *pglogs_hashtbl,
     struct ltran_pglogs_key ltran_key;
     void *hash_cur;
     unsigned int hash_cur_buk;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
-    struct shadows_pglogs_logical_key *ltran_pglogs_ent = NULL;
+    struct pglogs_key *pglogs_ent = NULL;
+    struct pglogs_logical_key *ltran_pglogs_ent = NULL;
     struct lsn_list *lsnent = NULL;
     struct lsn_commit_list *add_lsnent = NULL;
 #ifdef NEWSI_DEBUG
@@ -2740,7 +2739,7 @@ static int transfer_txn_pglogs_to_ltran(hash_t *pglogs_hashtbl,
         }
         ltran_ent->logical_tranid = logical_tranid;
         ltran_ent->pglogs_hashtbl = hash_init_o(
-            offsetof(struct shadows_pglogs_logical_key, fileid),
+            offsetof(struct pglogs_logical_key, fileid),
             DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
         ltran_ent->relinks_hashtbl = hash_init_o(
             offsetof(struct pglogs_relink_key, fileid),
@@ -2765,7 +2764,7 @@ static int transfer_txn_pglogs_to_ltran(hash_t *pglogs_hashtbl,
         if ((ltran_pglogs_ent =
                  hash_find(ltran_ent->pglogs_hashtbl, pglogs_ent)) == NULL) {
             /* add one if not exist */
-            ltran_pglogs_ent = allocate_shadows_pglogs_logical_key();
+            ltran_pglogs_ent = allocate_pglogs_logical_key();
             if (!ltran_pglogs_ent)
                 abort();
             memcpy(ltran_pglogs_ent->fileid, pglogs_ent->fileid,
@@ -2867,7 +2866,7 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
 {
     void *hash_cur;
     struct shadows_fileid_pglogs_queue *fileid_queue = NULL;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
+    struct pglogs_key *pglogs_ent = NULL;
     struct shadows_pglogs_queue_key *qe, *chk;
     struct lsn_list *lsnent = NULL;
     unsigned int hash_cur_buk;
@@ -2911,8 +2910,8 @@ int bdb_update_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
                           unsigned char *fileid, DB_LSN lsn)
 {
     int rc;
-    struct shadows_pglogs_key *pglogs_ent;
-    struct shadows_pglogs_key key;
+    struct pglogs_key *pglogs_ent;
+    struct pglogs_key key;
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
     gettimeofday(&before, NULL);
@@ -6945,9 +6944,9 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 {
     int rc = 0;
 
-    struct shadows_pglogs_logical_key key;
-    struct shadows_pglogs_logical_key *pglogs_ent = NULL;
-    struct shadows_pglogs_key *client_pglogs_ent = NULL;
+    struct pglogs_logical_key key;
+    struct pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_key *client_pglogs_ent = NULL;
     struct lsn_commit_list *lsnent = NULL;
     struct lsn_list *add_lsnent = NULL;
     struct lsn_list *add_before_lsnent = NULL;
@@ -6961,7 +6960,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 
     unsigned filenum, last_filenum;
 
-    bzero(&key, sizeof(struct shadows_pglogs_logical_key));
+    bzero(&key, sizeof(struct pglogs_logical_key));
 
     assert(inpgno);
     assert(infileid);
@@ -7000,7 +6999,7 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
             if ((client_pglogs_ent = hash_find(shadow_tran->pglogs_hashtbl,
                                                pglogs_ent)) == NULL) {
                 /* add one if not exist */
-                client_pglogs_ent = allocate_shadows_pglogs_key();
+                client_pglogs_ent = allocate_pglogs_key();
                 if (!client_pglogs_ent) {
                     logmsg(LOGMSG_FATAL, "%s: fail malloc client_pglogs_ent\n",
                             __func__);
@@ -7105,16 +7104,16 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
 {
     int rc = 0;
     DB_LSN maxlsn = {0};
-    struct shadows_pglogs_key key;
-    struct shadows_pglogs_key *hashent = NULL;
-    struct shadows_pglogs_key *pglogs_ent = NULL;
+    struct pglogs_key key;
+    struct pglogs_key *hashent = NULL;
+    struct pglogs_key *pglogs_ent = NULL;
     struct lsn_list *lsnent = NULL;
 
     struct pglogs_relink_key relink_key;
     struct pglogs_relink_key *relinks_ent = NULL;
     struct relink_list *rlent = NULL;
 
-    bzero(&key, sizeof(struct shadows_pglogs_key));
+    bzero(&key, sizeof(struct pglogs_key));
     bzero(&relink_key, sizeof(struct pglogs_relink_key));
 
     assert(inpgno);
@@ -7141,12 +7140,12 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
         rc = bdb_copy_logfile_pglogs_to_shadow_tran(
             cur->state, cur->shadow_tran, inpgno, infileid, bdberr);
         if (!rc) {
-            hashent = allocate_shadows_pglogs_key();
+            hashent = allocate_pglogs_key();
             if (!hashent) {
                 logmsg(LOGMSG_ERROR, "%s: fail malloc hashent\n", __func__);
                 return -1;
             }
-            memcpy(hashent, &key, sizeof(struct shadows_pglogs_key));
+            memcpy(hashent, &key, sizeof(struct pglogs_key));
             hash_add(cur->shadow_tran->asof_hashtbl, hashent);
         } else {
             logmsg(LOGMSG_ERROR, "%s failed to copy gbl pglogs to shadow tran\n",

@@ -220,7 +220,7 @@ struct page_logical_lsn_key {
     DB_LSN commit_lsn;
 };
 
-struct shadows_pglogs_key {
+struct pglogs_key {
     PAGE_KEY
     LISTC_T(struct lsn_list) lsns;
 #ifdef NEWSI_DEBUG_POOL
@@ -228,7 +228,7 @@ struct shadows_pglogs_key {
 #endif
 };
 
-struct shadows_pglogs_logical_key {
+struct pglogs_logical_key {
     PAGE_KEY
     LISTC_T(struct lsn_commit_list) lsns;
 #ifdef NEWSI_DEBUG_POOL
@@ -266,8 +266,8 @@ struct logfile_pglogs_entry {
     hash_t *relinks_hashtbl;
 };
 
-struct shadows_pglogs_key *allocate_shadows_pglogs_key(void);
-struct shadows_pglogs_logical_key *allocate_shadows_pglogs_logical_key(void);
+struct pglogs_key *allocate_pglogs_key(void);
+struct pglogs_logical_key *allocate_pglogs_logical_key(void);
 struct lsn_list *allocate_lsn_list(void);
 struct lsn_commit_list *allocate_lsn_commit_list(void);
 struct pglogs_relink_key *allocate_pglogs_relink_key(void);
