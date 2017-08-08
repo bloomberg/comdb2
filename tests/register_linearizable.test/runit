@@ -66,6 +66,7 @@ function waitforcoherency
     r=$?
     while [[ $r == 0 ]] ; do
         echo "$(date) waiting for $db cluster to become coherent"
+        heal
         sleep 1
         ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
         m=${ma%%:*}
@@ -83,9 +84,12 @@ function runtestwithoptions
     outfile=register.$db.$dt.out
     clojout=register.$db.$dt.cloj
     knosout=register.$db.$dt.knossos
-    echo "$regtest -d $db $debug_trace -r 20 -j $clojout $*" > $outfile
-    $regtest -d $db $debug_trace -r 20 -j $clojout $* >> $outfile 2>&1
+    echo "$regtest -d $db -c ${CDB2_CONFIG} -t stage $debug_trace -r 20 -j $clojout $*" > $outfile
+    $regtest -d $db -c ${CDB2_CONFIG} -t stage $debug_trace -r 20 -j $clojout $* >> $outfile 2>&1
     checkforerrors $clojout $knosout
+    echo "OUTFILE" ; cat $outfile
+    echo "clojout" ; cat $clojout
+    echo "knosout" ; cat $knosout
     rm $outfile $clojout $knosout
 }
 

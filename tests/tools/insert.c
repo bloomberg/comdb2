@@ -36,7 +36,7 @@ int max_retries = 1000000;
 int *state;
 uint32_t which_events = 0;
 char *dbname = NULL;
-char *cltype = "dev";
+char *cltype = "default";
 char *argv0 = NULL;
 int fixtest_after = 0;
 int partition_master = 1;
@@ -69,6 +69,7 @@ void usage(FILE *f)
         f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
     fprintf(f, "        -i <count>          - insert this many records per "
                "transaction\n");
+    fprintf(f, "        -c <cdb2cfg>        - set cdb2cfg file\n");
     fprintf(f, "        -M                  - partition the master\n");
     fprintf(f, "        -m <max-retries>    - set max-retries in the api\n");
     fprintf(f, "        -D                  - enable debug trace\n");
@@ -893,6 +894,7 @@ int main(int argc, char *argv[])
                 errors++;
             }
             break;
+        case 'c': cdb2_set_comdb2db_config(optarg); break;
         case 'm': max_retries = atoi(optarg); break;
         case 'e': exit_at_failure = 1; break;
         case 's': select_test = 1; break;
@@ -935,7 +937,18 @@ int main(int argc, char *argv[])
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
-    struct nemesis *n = nemesis_open(dbname, cltype, flags);
+
+    struct nemesis *n = NULL;
+    for (int cnt = 0; cnt < 1000 && n == NULL; cnt++) {
+        n = nemesis_open(dbname, cltype, flags);
+        if (!n) sleep(1);
+    }
+
+    if (!n) {
+        fprintf(stderr, "Could not open nemesis for %s, exiting\n", dbname);
+        myexit(__func__, __LINE__, 1);
+    }
+
     fixall(n);
 
     char *master_node = master(dbname, cltype);

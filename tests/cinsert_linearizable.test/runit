@@ -1,5 +1,6 @@
 #!/bin/bash
 
+debug=1
 # Runs the insert utility
 [[ "$debug" == 1 ]] && set -x
 
@@ -98,6 +99,7 @@ function waitforcoherency
     r=$?
     while [[ $r == 0 ]] ; do
         echo "$(date) waiting for $db cluster to become coherent"
+        heal
         sleep 1
         ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
         m=${ma%%:*}
@@ -112,9 +114,10 @@ function runtestwithoptions
 {
     [[ "$debug" == 1 ]] && set -x
     outfile=insert.$db.$(date +%Y%m%d%H%M%S).out
-    echo "$instest -d $db $debug_trace $*" > $outfile
-    $instest -d $db $debug_trace $* >> $outfile 2>&1
+    echo "$instest -d $db -c ${CDB2_CONFIG} -t $stage $debug_trace $*" > $outfile
+    $instest -d $db -c ${CDB2_CONFIG} -t $stage $debug_trace $* >> $outfile 2>&1
     checkforerrors $outfile
+    cat $outfile
     rm $outfile
 }
 

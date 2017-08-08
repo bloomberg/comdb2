@@ -31,7 +31,7 @@ int runtime = 60;
 int max_clock_skew = 60;
 
 char *dbname = NULL;
-char *cltype = "dev";
+char *cltype = "default";
 char *argv0 = NULL;
 
 uint32_t which_events = 0;
@@ -50,6 +50,7 @@ void usage(FILE *f)
     fprintf(f, "        -T <numthd>         - set the number of threads\n");
     fprintf(
         f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
+    fprintf(f, "        -c <cdb2cfg>        - set cdb2cfg file\n");
     fprintf(f, "        -M                  - partition the master\n");
     fprintf(f, "        -m <max-retries>    - set max-retries in the api\n");
     fprintf(f, "        -D                  - enable debug trace\n");
@@ -501,6 +502,7 @@ int main(int argc, char *argv[])
                 errors++;
             }
             break;
+        case 'c': cdb2_set_comdb2db_config(optarg); break;
         case 'T': nthreads = atoi(optarg); break;
         case 't': cltype = optarg; break;
         case 'M': partition_master = 1; break;
