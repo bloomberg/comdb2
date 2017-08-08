@@ -1,4 +1,4 @@
-ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle
+ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle insert register
 all:$(ALL)
 
 include ../../main.mk
@@ -39,6 +39,12 @@ ptrantest: ptrantest.o
 	$(CC) -o $@ $^ $(LDFLAGS) $(CDB2LIBS) -lsqlite3 -lpthread
 
 crle:CFLAGS+=-I../../comdb2rle
+
+insert: insert.o nemesis.o testutil.o
+	$(CC) -o $@ $^ $(LDFLAGS) $(CDB2LIBS) -lpthread -lssl -lcrypto
+
+register: register.o nemesis.o testutil.o
+	$(CC) -o $@ $^ $(LDFLAGS) $(CDB2LIBS) -lpthread -lssl -lcrypto
 
 clean:
 	@rm -f *.o $(ALL)
