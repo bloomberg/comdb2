@@ -1,6 +1,6 @@
 ifeq ($(TESTSROOTDIR),)
-  export TESTSROOTDIR=$(shell readlink -f $(PWD)/..)
-  export SKIPSSL=1
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
 endif
-include $(TESTSROOTDIR)/testcase.mk
 export TEST_TIMEOUT=1m
