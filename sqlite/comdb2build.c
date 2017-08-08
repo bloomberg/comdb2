@@ -2312,6 +2312,13 @@ static char *gen_key_name(struct comdb2_ddl_context *ctx, const char *tabname,
     return keyname;
 }
 
+#define PK "PRIMARY_KEY"
+
+static int is_pk(const char *key)
+{
+    return (((strncasecmp(key, PK, sizeof(PK) - 1)) == 0) ? 1 : 0);
+}
+
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     char *csc2;
@@ -2364,7 +2371,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           * Columns must not allow NULLs
           * Must be only one per table
         */
-        if (strcmp(current_key->schema->csctag, "PRIMARY_KEY") == 0) {
+        if (is_pk(current_key->schema->csctag)) {
             struct comdb2_field *col;
 
             if (++pk_count > 1) {
@@ -3192,7 +3199,7 @@ void comdb2AddPrimaryKey(
 
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
-    key->csctag = comdb2_strdup(ctx->mem, "PRIMARY_KEY");
+    key->csctag = comdb2_strdup(ctx->mem, PK);
     if (key->csctag == 0) goto oom;
 
     key->flags = SCHEMA_INDEX;
@@ -3404,7 +3411,7 @@ void comdb2CreateIndex(
     if (keyname == 0) goto oom;
     sqlite3Dequote(keyname);
 
-    if (strcasecmp(keyname, "PRIMARY_KEY") == 0) {
+    if (is_pk(keyname)) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse,
                         "PRIMARY KEY cannot be created using CREATE INDEX.");
