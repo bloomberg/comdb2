@@ -5468,10 +5468,13 @@ printf("AZ: set outrc=%d\n",outrc);
             }
 
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if ( !(outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)|| !iq->snap_info.replicant_can_retry) {
+            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY && iq->snap_info.replicant_can_retry) {
+printf("Not Inserting into blkseq because replicant will retry, outrc=%d, rc=%d, cnonce=%s\n", outrc, rc, iq->snap_info.key);
+            }
+            else {
                 int t = time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
-printf("Inserting into blkseq, rc=%d, cnonce=%s\n", rc, iq->snap_info.key);
+printf("Inserting into blkseq, outrc=%d, rc=%d, cnonce=%s\n", outrc, rc, iq->snap_info.key);
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
                         buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
                         &replay_data, &replay_len);

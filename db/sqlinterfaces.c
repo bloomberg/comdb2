@@ -9081,7 +9081,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return DB_ERR_TRN_FAIL;
     case 222:
         return DB_ERR_TRN_DUP;
-    case ERR_BLOCK_FAILED + ERR_VERIFY:
+    case ERR_BLOCK_FAILED + ERR_VERIFY: //224
         return DB_ERR_TRN_VERIFY;
     case 225:
         return DB_ERR_TRN_DB_FAIL;
