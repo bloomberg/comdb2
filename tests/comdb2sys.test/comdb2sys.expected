@@ -81,9 +81,9 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=184)
+(KEYWORDS_COUNT=182)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=107)
+(RESERVED_KW=105)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=77)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
@@ -101,12 +101,10 @@
 (name='BY', reserved='Y')
 (name='CASE', reserved='Y')
 (name='CAST', reserved='Y')
-(name='CHECK', reserved='Y')
 (name='COLLATE', reserved='Y')
 (name='COMMIT', reserved='Y')
 (name='COMMITSLEEP', reserved='Y')
 (name='CONFLICT', reserved='Y')
-(name='CONSTRAINT', reserved='Y')
 (name='CONVERTSLEEP', reserved='Y')
 (name='CREATE', reserved='Y')
 (name='CROSS', reserved='Y')

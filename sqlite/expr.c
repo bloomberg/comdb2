@@ -5223,14 +5223,11 @@ char * binary_op(int op){
     case TK_BITNOT:
     case TK_STRING:
     case TK_JOIN_KW:
-    case TK_CONSTRAINT:
     case TK_DEFAULT:
     case TK_NULL:
     case TK_PRIMARY:
     case TK_UNIQUE:
-    case TK_CHECK:
     case TK_REFERENCES:
-    case TK_AUTOINCR:
     case TK_ON:
     case TK_INSERT:
     case TK_DELETE:
@@ -5552,7 +5549,6 @@ static char* sqlite3ExprDescribe_inner(
       return sqlite3_mprintf("'%s'", pExpr->u.zToken);
     }
     case TK_JOIN_KW:
-    case TK_CONSTRAINT:
     case TK_DEFAULT: {
       break;
     }
@@ -5561,9 +5557,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_PRIMARY:
     case TK_UNIQUE:
-    case TK_CHECK:
     case TK_REFERENCES:
-    case TK_AUTOINCR:
     case TK_ON:
     case TK_INSERT:
     case TK_DELETE:

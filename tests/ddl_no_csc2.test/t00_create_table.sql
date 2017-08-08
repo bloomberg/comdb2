@@ -167,3 +167,14 @@ DROP TABLE t1;
 DROP TABLE t3;
 DROP TABLE t4;
 DROP TABLE t5;
+
+CREATE TABLE t1(i INT PRIMARY KEY) $$
+CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1) $$
+CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i)) $$
+
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t2;
+DROP TABLE t1;

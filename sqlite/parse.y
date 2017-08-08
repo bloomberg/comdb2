@@ -178,6 +178,8 @@ create_table_args ::= AS select(S). {
 
 %type table_options {int}
 table_options(A) ::= .    {A = 0;}
+/*
+// COMDB2 MODIFICATION (WITHOUT ROWID is not supported.)
 table_options(A) ::= WITHOUT nm(X). {
   if( X.n==5 && sqlite3_strnicmp(X.z,"rowid",5)==0 ){
     A = TF_WithoutRowid | TF_NoVisibleRowid;
@@ -186,6 +188,7 @@ table_options(A) ::= WITHOUT nm(X). {
     sqlite3ErrorMsg(pParse, "unknown table option: %.*s", X.n, X.z);
   }
 }
+*/
 
 columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
@@ -284,7 +287,8 @@ signed ::= minus_num.
 //
 carglist ::= carglist ccons.
 carglist ::= .
-ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
+// COMDB2 MODIFICATION (CONSTRAINT name is not supported.)
+//ccons ::= CONSTRAINT nm(X).           {pParse->constraintName = X;}
 ccons ::= DEFAULT term(X).            {comdb2AddDefaultValue(pParse,&X);}
 ccons ::= DEFAULT LP expr(X) RP.      {comdb2AddDefaultValue(pParse,&X);}
 ccons ::= DEFAULT PLUS term(X).       {comdb2AddDefaultValue(pParse,&X);}
@@ -310,10 +314,12 @@ ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
                                  {comdb2AddPrimaryKey(pParse,0,R,I,Z);}
 ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
-ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
-ccons ::= REFERENCES nm(T) eidlist_opt(TA) refargs(R).
+// COMDB2 MODIFICATION (CHECK not supported)
+//ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
+ccons ::= REFERENCES nm(T) LP eidlist(TA) RP refargs(R).
                                  {comdb2CreateForeignKey(pParse,0,&T,TA,R);}
-ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
+// COMDB2 MODIFICATION (DEFERRABLE construct not supported)
+//ccons ::= defer_subclause(D).    {sqlite3DeferForeignKey(pParse,D);}
 ccons ::= COLLATE ids(C).        {sqlite3AddCollateType(pParse, &C);}
 ccons ::= WITH DBPAD EQ INTEGER(X). {
     int tmp;
@@ -325,7 +331,8 @@ ccons ::= WITH DBPAD EQ INTEGER(X). {
 // The optional AUTOINCREMENT keyword
 %type autoinc {int}
 autoinc(X) ::= .          {X = 0;}
-autoinc(X) ::= AUTOINCR.  {X = 1;}
+// COMDB2 MODIFICATION (AUTOINCREMENT is not supported.)
+//autoinc(X) ::= AUTOINCR.  {X = 1;}
 
 // The next group of rules parses the arguments to a REFERENCES clause
 // that determine if the referential integrity checking is deferred or
@@ -346,6 +353,8 @@ refact(A) ::= SET DEFAULT.           { A = OE_SetDflt;  /* EV: R-33326-45252 */}
 refact(A) ::= CASCADE.               { A = OE_Cascade;  /* EV: R-33326-45252 */}
 refact(A) ::= RESTRICT.              { A = OE_Restrict; /* EV: R-33326-45252 */}
 refact(A) ::= NO ACTION.             { A = OE_None;     /* EV: R-33326-45252 */}
+// COMDB2 MODIFICATION (DEFERRABLE construct not supported)
+/*
 %type defer_subclause {int}
 defer_subclause(A) ::= NOT DEFERRABLE init_deferred_pred_opt.     {A = 0;}
 defer_subclause(A) ::= DEFERRABLE init_deferred_pred_opt(X).      {A = X;}
@@ -353,6 +362,7 @@ defer_subclause(A) ::= DEFERRABLE init_deferred_pred_opt(X).      {A = X;}
 init_deferred_pred_opt(A) ::= .                       {A = 0;}
 init_deferred_pred_opt(A) ::= INITIALLY DEFERRED.     {A = 1;}
 init_deferred_pred_opt(A) ::= INITIALLY IMMEDIATE.    {A = 0;}
+*/
 
 conslist_opt(A) ::= .                         {A.n = 0; A.z = 0;}
 conslist_opt(A) ::= COMMA(A) conslist.
@@ -360,22 +370,25 @@ conslist ::= conslist tconscomma tcons.
 conslist ::= tcons.
 tconscomma ::= COMMA.            {pParse->constraintName.n = 0;}
 tconscomma ::= .
-tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
+// COMDB2 MODIFICATION (CONSTRAINT name is not supported.)
+//tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
                                  {comdb2AddPrimaryKey(pParse,X,R,I,0);}
 tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
                                  {comdb2AddIndex(pParse,X,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
-tcons ::= CHECK LP expr(E) RP onconf.
-                                 {sqlite3AddCheckConstraint(pParse,E.pExpr);}
+// COMDB2 MODIFICATION (CHECK not supported)
+//tcons ::= CHECK LP expr(E) RP onconf.
+//                                 {sqlite3AddCheckConstraint(pParse,E.pExpr);}
 tcons ::= FOREIGN KEY LP eidlist(FA) RP
-          REFERENCES nm(T) eidlist_opt(TA) refargs(R) defer_subclause_opt(D). {
+          REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
     comdb2CreateForeignKey(pParse, FA, &T, TA, R);
     comdb2DeferForeignKey(pParse, D);
 }
 %type defer_subclause_opt {int}
 defer_subclause_opt(A) ::= .                    {A = 0;}
-defer_subclause_opt(A) ::= defer_subclause(A).
+// COMDB2 MODIFICATION (DEFERRABLE construct not supported)
+//defer_subclause_opt(A) ::= defer_subclause(A).
 
 // The following is a non-standard extension that allows us to declare the
 // default behavior when there is a constraint conflict.
@@ -384,15 +397,16 @@ defer_subclause_opt(A) ::= defer_subclause(A).
 %type orconf {int}
 %type resolvetype {int}
 onconf(A) ::= .                              {A = OE_Default;}
-onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
 orconf(A) ::= .                              {A = OE_Default;}
+// COMDB2 MODIFICATION (ON CONFLICT not supported)
+/*
+onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
 orconf(A) ::= OR resolvetype(X).             {A = X;}
 resolvetype(A) ::= raisetype(A).
 resolvetype(A) ::= IGNORE.                   {A = OE_Ignore;}
-/* COMDB2 MODIFICATION 
- * insert or replace logic not supported
- * resolvetype(A) ::= REPLACE.                  {A = OE_Replace;} 
- */
+// INSERT OR REPLACE logic not supported
+resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
+*/
 
 ////////////////////////// The DROP TABLE /////////////////////////////////////
 //
@@ -1378,7 +1392,8 @@ eidlist(A) ::= nm(Y) collate(C) sortorder(Z). {
 
 %type collate {int}
 collate(C) ::= .              {C = 0;}
-collate(C) ::= COLLATE ids.   {C = 1;}
+// COMDB2 MODIFICATION (COLLATE is not supported.)
+//collate(C) ::= COLLATE ids.   {C = 1;}
 
 
 ///////////////////////////// The DROP INDEX command /////////////////////////
@@ -2061,6 +2076,7 @@ alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
   comdb2AlterTableStart(pParse,&Y,&Z,D);
 }
 
+alter_table_action_list ::= .
 alter_table_action_list ::= alter_table_action_list COMMA alter_table_action.
 alter_table_action_list ::= alter_table_action.
 
