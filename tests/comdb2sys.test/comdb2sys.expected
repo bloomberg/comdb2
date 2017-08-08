@@ -274,7 +274,7 @@
 (name='ZLIB', reserved='N')
 [SELECT * FROM comdb2_keywords WHERE reserved = 'N' ORDER BY name] rc 0
 (name='COMDB2_MAX_RECORD_SIZE', description='Maximum record size', value=16384)
-(name='MAXBLOBLENGTH', description='Maximum blob length', value=268435456)
+(name='MAXBLOBLENGTH', description='Maximum blob length', value=267386880)
 (name='MAXBLOBS', description='Maximum number of blobs', value=15)
 (name='MAXCOLNAME', description='Maximum column name length', value=99)
 (name='MAXCOLUMNS', description='Maximum columns in a table', value=1024)
