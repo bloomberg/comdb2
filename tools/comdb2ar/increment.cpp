@@ -486,7 +486,7 @@ void incr_deserialise_database(
                 throw Error(ss);
             }
 
-            if(strncmp(manifest_sha, sha_fingerprint, 40) != 0){
+            if(strncmp(manifest_sha.c_str(), sha_fingerprint.c_str(), 40) != 0){
                 std::ostringstream ss;
                 ss << "Mismatched SHA fingerprints: " << std::endl;
                 ss << "Found: " << sha_fingerprint << std::endl;
