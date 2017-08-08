@@ -263,6 +263,18 @@ struct timestamp_lsn_key {
     unsigned long long context;
 };
 
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+#define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
+#else
+typedef struct pglogs_logical_key logfile_pglog_hashkey;
+typedef struct pglogs_relink_key logfile_relink_hashkey;
+#define LOGFILE_PAGE_KEY_SIZE                                                  \
+    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
+#endif
+
+#define LOGFILE_PGLOG_OFFSET (offsetof(logfile_pglog_hashkey, fileid))
+#define LOGFILE_RELINK_OFFSET (offsetof(logfile_relink_hashkey, fileid))
+
 struct logfile_pglogs_entry {
     u_int32_t filenum;
     pthread_mutex_t pglogs_mutex;
