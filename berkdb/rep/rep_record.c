@@ -6051,12 +6051,6 @@ __rep_verify_match(dbenv, rp, savetime)
 	    __func__, prevlsn.file, prevlsn.offset, trunclsn.file,
 	    trunclsn.offset);
 
-	/* 
-	 * Closes a race: until the txn_regop, new snapshots start with genid 0.  The first 
-	 * commit-record will be applied to all of their shadows.
-	 */
-    set_commit_context(0, NULL, &trunclsn, NULL, 0);
-
 	/*
 	 * The log has been truncated (either directly by us or by __db_apprec)
 	 * We want to make sure we're waiting for the LSN at the new end-of-log,

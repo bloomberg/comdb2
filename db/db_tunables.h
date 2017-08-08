@@ -1258,6 +1258,22 @@ REGISTER_TUNABLE("logmsg.timestamp", "Stamp all messages with timestamp.",
 REGISTER_TUNABLE("logmsg.notimestamp", "Disables 'syslog.timestamp'.",
                  TUNABLE_BOOLEAN, NULL, INVERSE_VALUE | NOARG | READEARLY,
                  logmsg_timestamp_value, NULL, logmsg_timestamp_update, NULL);
+REGISTER_TUNABLE("block_set_commit_genid_trace",
+                 "Print trace when blocking set commit_genid. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_block_set_commit_genid_trace, INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("debug_high_availability_flag",
+                 "Stack on set high_availability. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_high_availability_flag, INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("abort_on_unset_ha_flag",
+                 "Abort in snap_uid_retry if ha is unset. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_unset_ha_flag, INTERNAL, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("write_dummy_trace",
+                 "Print trace when doing a dummy write. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_write_dummy_trace, INTERNAL, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("seed_genid", "Set genid-seed in hex for genid48 test.",
                  TUNABLE_STRING, NULL, EXPERIMENTAL | INTERNAL,
                  next_genid_value, NULL, genid_seed_update, NULL);

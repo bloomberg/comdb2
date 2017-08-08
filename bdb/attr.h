@@ -612,11 +612,7 @@ DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
          "Check at startup/time-partition creation that all shard files exist.")
 /* Keep enabled for the merge */
 DEF_ATTR(DURABLE_LSNS, durable_lsns, BOOLEAN, 0, NULL)
-DEF_ATTR(DURABLE_LSN_POLL_INTERVAL_MS, durable_lsn_poll_interval_ms, MSECS, 200,
-         NULL)
 /* Keep disabled:  we get it when we add to the trn_repo */
-DEF_ATTR(RETRIEVE_DURABLE_LSN_AT_BEGIN, retrieve_durable_lsn_at_begin, BOOLEAN,
-         0, NULL)
 DEF_ATTR(
     DURABLE_MAXWAIT_MS, durable_maxwait_ms, MSECS, 4000,
     "Maximum time a replicant will spend waiting for an LSN to become durable.")
@@ -630,11 +626,7 @@ DEF_ATTR(LEASEBASE_TRACE, leasebase_trace, BOOLEAN, 0, NULL)
 DEF_ATTR(MASTER_LEASE, master_lease, MSECS, 500, NULL)
 DEF_ATTR(MASTER_LEASE_RENEW_INTERVAL, master_lease_renew_interval, MSECS, 200,
          NULL)
-DEF_ATTR(VERBOSE_DURABLE_BLOCK_TRACE, verbose_durable_block_trace, BOOLEAN, 0,
-         NULL)
 DEF_ATTR(LOGDELETE_RUN_INTERVAL, logdelete_run_interval, SECS, 30, NULL)
-DEF_ATTR(REQUEST_DURABLE_LSN_FROM_MASTER, request_durable_lsn_from_master,
-         BOOLEAN, 1, NULL)
 DEF_ATTR(DURABLE_LSN_REQUEST_WAITMS, durable_lsn_request_waitms, MSECS, 1000,
          NULL)
 DEF_ATTR(VERIFY_MASTER_LEASE_TRACE, verify_master_lease_trace, BOOLEAN, 0, NULL)
