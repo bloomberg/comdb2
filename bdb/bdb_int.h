@@ -136,6 +136,9 @@ typedef enum {
     unsigned char fileid[DB_FILE_ID_LEN];                                      \
     db_pgno_t pgno;
 
+#define PAGE_KEY_SIZE                                                          \
+    (DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t))
+
 struct lsn_list {
     DB_LSN lsn;
     LINKC_T(struct lsn_list) lnk;
@@ -225,6 +228,7 @@ struct pglogs_key {
     void *pool;
 #endif
 };
+#define PGLOGS_KEY_OFFSET (offsetof(struct pglogs_key, fileid))
 
 struct pglogs_logical_key {
     PAGE_KEY
@@ -233,6 +237,7 @@ struct pglogs_logical_key {
     void *pool;
 #endif
 };
+#define PGLOGS_LOGICAL_KEY_OFFSET (offsetof(struct pglogs_logical_key, fileid))
 
 struct pglogs_relink_key {
     PAGE_KEY
@@ -241,6 +246,7 @@ struct pglogs_relink_key {
     void *pool;
 #endif
 };
+#define PGLOGS_RELINK_KEY_OFFSET (offsetof(struct pglogs_relink_key, fileid))
 
 struct ltran_pglogs_key {
     unsigned long long logical_tranid;
