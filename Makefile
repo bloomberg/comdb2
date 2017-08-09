@@ -155,12 +155,10 @@ docker-cluster: docker-dev
 # Build the database in the build container
 docker-build: build-build-container
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
-	docker run --user $(shell id -u):$(shell id -g) \
-		--env HOME=/tmp \
+	docker run --env HOME=/tmp \
 		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
-		-v $(realpath $(SRCHOME)):/comdb2.build \
 		-w /comdb2.build \
 		--rm \
 		comdb2-build:$(VERSION) \
-        make DESTDIR=/comdb2 -j3 install
+		make DESTDIR=/comdb2 -j3 install
  
