@@ -6,4 +6,16 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [jepsen "0.1.4-SNAPSHOT"]
                  [org.clojure/java.jdbc "0.4.1"]
-                 [com.bloomberg.comdb2/cdb2jdbc "2.0.0"]])
+                 [com.bloomberg.comdb2/cdb2jdbc "2.0.0"]]
+  :test-selectors {
+                   :register :register-test
+                   :register-nemesis :register-test-nemesis
+                   :dirty-reads :dirty-reads-test
+                   :sets :sets-test'
+                   :sets-nemesis :sets-test-nemesis'
+                   :bank :test-bank
+                   :bank-nemesis :test-bank-nemesis
+                  }
+
+
+  )

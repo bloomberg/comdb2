@@ -2,11 +2,14 @@
 
 # Runs the register linearizability test
 #debug=1
-[[ "$debug" == 1 ]] && set -x
 #debug_trace="-D"
+
+[[ "$debug" == 1 ]] && set -x
+needcluster=0
+jepsentest=":bank"
 db=$1
 
-if [[ -z "$CLUSTER" ]]; then
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
     exit 0
 fi
@@ -19,10 +22,7 @@ fi
 function createtables
 {
     [[ "$debug" == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $db $stage "create table register {schema{int id int val null=yes longlong uid null=yes} keys{ \"id\" = id }}" >/dev/null 2>&1
     cdb2sql ${CDB2_OPTIONS} $db $stage "create table accounts {schema{int id int balance} keys{ \"id\" = id }}" >/dev/null 2>&1
-    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
-    cdb2sql ${CDB2_OPTIONS} $db $stage "create table dirty {schema{int id int x}}" >/dev/null 2>&1
 }
 
 function checkforerrors
@@ -89,12 +89,11 @@ function runtestwithoptions
     outfile=$(pwd)/jepsen.$db.$dt.out
     export COMDB2_DBNAME=$db
     export COMDB2_DBSTAGE=$stage
-    #export COMDB2_DBCONFIG=${CDB2_CONFIG}
     export COMDB2_DEBUG=1
-    export CDB2DBCONFIG_JDBC=${CDB2_CONFIG}
+    export CDB2_CONFIG_FILE=${CDB2_CONFIG}
     (
         cd ${TESTSROOTDIR}/linearizable/jepsen
-        lein test > $outfile 2>&1 < /dev/null
+        lein test $jepsentest > $outfile 2>&1 < /dev/null
         r=$? ; [[ $r != 0 ]] && echo "XXX JEPSEN ERROR Lein test returns $r" >> $outfile
     )
     cat $outfile

@@ -249,7 +249,7 @@
 
     (teardown! [_ test])))
 
-(defn sets-test
+(defn sets-test-nemesis
  []
  (basic-test
   {:name "set"
@@ -269,6 +269,29 @@
   :checker (checker/compose
           {:perf (checker/perf)
           :set checker/set})}))
+
+(defn sets-test
+ []
+ (basic-test
+  {:name "set"
+  :client (set-client nil)
+  :generator (gen/phases
+          (->> (range)
+           (map (partial array-map
+                 :type :invoke
+                 :f :add
+                 :value))
+           gen/seq
+           (gen/delay 1/10)
+           )
+          (->> {:type :invoke, :f :read, :value nil}
+           gen/once
+           gen/clients))
+  :checker (checker/compose
+          {:perf (checker/perf)
+          :set checker/set})}))
+
+
 
 
 (defn bank-test-nemesis
