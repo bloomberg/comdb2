@@ -1241,7 +1241,7 @@ int gbl_convert_sleep;
 int appsock_schema_change(SBUF2 *sb, int *keepsocket)
 {
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: entering\n", __func__);
 #endif
 
@@ -1305,7 +1305,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
     tok = strtok_r(line, delims, &lasts);
     while (tok) {
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
         printf("%s: parameter '%s'\n", __func__, tok);
 #endif
 
@@ -1431,7 +1431,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
         tok = strtok_r(NULL, delims, &lasts);
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s:  sc.table '%s'\n", __func__, sc.table);
     printf("%s:  sc.aname '%s'\n", __func__, sc.aname);
 #endif

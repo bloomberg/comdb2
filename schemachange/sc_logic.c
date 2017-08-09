@@ -278,7 +278,7 @@ static int do_alter_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
     int rc;
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
 
