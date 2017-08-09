@@ -88,10 +88,10 @@ function deleteall
     done
 }
 
-function beforedg
+function beforedowngrade
 {
     [[ "$debug" == 1 ]] && set -x
-    [[ "$trace" == 1 ]] && echo "Running beforedg"
+    [[ "$trace" == 1 ]] && echo "Running beforedowngrade"
     generate_good_insert
     generate_bad_insert
     bad_inserter &
@@ -104,10 +104,10 @@ function beforedg
     done
 }
 
-function afterdg
+function afterdowngrade
 {
     [[ "$debug" == 1 ]] && set -x
-    [[ "$trace" == 1 ]] && echo "Running afterdg"
+    [[ "$trace" == 1 ]] && echo "Running afterdowngrade"
     deleteall
     cnt=0
     while [[ "$cnt" -lt 8 ]]; do
@@ -120,7 +120,7 @@ function afterdg
 function verify
 {
     [[ "$debug" == 1 ]] && set -x
-    [[ "$trace" == 1 ]] && echo "Running afterdg"
+    [[ "$trace" == 1 ]] && echo "Running verify"
     for node in $cluster ; do
         cdb2sql ${CDB2_OPTIONS} --host $node $dbname "select count(*) from t1" 
         if [[ $? != 0 ]]; then
@@ -135,12 +135,12 @@ function verify
 function runtest
 {
     [[ "$debug" == 1 ]] && set -x
-    [[ "$trace" == 1 ]] && echo "Running afterdg"
-    beforedg
+    [[ "$trace" == 1 ]] && echo "Running runtest"
+    beforedowngrade
     wait
     downgrade
     sleep 10
-    afterdg
+    afterdowngrade
     verify
 }
 
