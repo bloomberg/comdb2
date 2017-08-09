@@ -526,10 +526,10 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
     } else
         rc = 0;
 
-    if (rc)
-        rc = SC_CONVERSION_FAILED;
-    else if (stopsc)
+    if (stopsc || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;
+    else if (rc)
+        rc = SC_CONVERSION_FAILED;
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);

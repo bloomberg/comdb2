@@ -374,7 +374,7 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
 
 static int check_table_version(struct ireq *iq)
 {
-    if (iq->sc->addonly)
+    if (iq->sc->addonly || iq->sc->resume)
         return 0;
     int rc, bdberr;
     unsigned long long version;
@@ -822,10 +822,13 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                    "Found existing tempdb: %s, attempting to resume an in "
                    "progress schema change\n",
                    tmpname);
-        else
-            logmsg(LOGMSG_INFO,
-                   "Didn't find existing tempdb: %s, creating a new one\n",
+        else {
+            logmsg(LOGMSG_ERROR,
+                   "Didn't find existing tempdb: %s, aborting schema change\n",
                    tmpname);
+            free(tmpname);
+            return -1;
+        }
     }
 
     if (!db->handle) /* did not/could not open existing one, creating new one */
