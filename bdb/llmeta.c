@@ -8195,6 +8195,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     long long new_start_val;
     int rc = 0;
 
+    
     // Check if sequence is exhausted. Flag indicates new chunk cannot be allocated.
     // There may still be allocated chunks with valid values.
     if (*flags & SEQUENCE_EXHAUSTED) {
@@ -8207,6 +8208,9 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
         
         return -1;
     }
+
+    // Create transaction if one doesn't exist
+    tran_type *t = tran ? tran : bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
 
     // Check sequence rules
     unsigned long long max_uniq_values = number_of_valid_values(min_val, max_val, increment);
@@ -8266,12 +8270,19 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     }
 
     // Write new start value to llmeta
-    rc = bdb_llmeta_alter_sequence(NULL, name, min_val, max_val, increment, cycle,
+    rc = bdb_llmeta_alter_sequence(t, name, min_val, max_val, increment, cycle,
                               start_val, new_start_val, chunk_size, *flags, bdberr);
 
     // Set the new values for next value and next start value
     *next_val = *next_start_val;
     *next_start_val = new_start_val;
+
+    if (tran == NULL) {
+        if (rc == 0)
+            rc = bdb_tran_commit(llmeta_bdb_state, t, bdberr);
+        else
+            rc = bdb_tran_abort(llmeta_bdb_state, t, bdberr);
+    }
 
     return rc;
 }

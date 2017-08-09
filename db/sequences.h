@@ -20,6 +20,6 @@
 #include "comdb2.h"
 #include <stdbool.h>
 
-int seq_next_val(char *name, long long *val);
+int seq_next_val(tran_type *tran, char *name, long long *val);
 
 #endif

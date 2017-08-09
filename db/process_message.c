@@ -1850,7 +1850,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             name = segtok(line, lline, &st, &ltok);
             long long *val = (long long *) malloc(sizeof(long long));
 
-            if (seq_next_val(name, val) == 0) {
+            if (seq_next_val(NULL, name, val) == 0) {
                 logmsg(LOGMSG_USER, "Value: %d\n", *val);
             } else {
                 logmsg(LOGMSG_USER, "Failed to obtain next value\n");
