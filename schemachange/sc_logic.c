@@ -374,7 +374,7 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
 
 static int check_table_version(struct ireq *iq)
 {
-    if (iq->sc->addonly)
+    if (iq->sc->addonly || iq->sc->resume)
         return 0;
     int rc, bdberr;
     unsigned long long version;
