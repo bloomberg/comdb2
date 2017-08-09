@@ -47,14 +47,12 @@ extern FinalKeyword_t f_keywords[];
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
-    char *zPrefix;             /* The prefix for the word we want to complete */
 } systbl_keywords_cursor;
 
 /* Column numbers (always keep the below table definition in sync). */
 enum {
     KEYWORDS_COLUMN_NAME,
     KEYWORDS_COLUMN_RESERVED,
-    KEYWORDS_COLUMN_PREFIX,
 };
 
 static int systblKeywordsConnect(sqlite3 *db, void *pAux, int argc,
@@ -64,7 +62,7 @@ static int systblKeywordsConnect(sqlite3 *db, void *pAux, int argc,
     int rc;
 
     rc = sqlite3_declare_vtab(
-        db, "CREATE TABLE comdb2_keywords(\"name\", \"reserved\", prefix TEXT HIDDEN)");
+        db, "CREATE TABLE comdb2_keywords(\"name\", \"reserved\")");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -79,13 +77,6 @@ static int systblKeywordsConnect(sqlite3 *db, void *pAux, int argc,
 static int systblKeywordsBestIndex(sqlite3_vtab *tab,
                                    sqlite3_index_info *pIdxInfo)
 {
-    const struct sqlite3_index_constraint *pConstraint;
-    pConstraint = pIdxInfo->aConstraint;
-    if(pIdxInfo->nConstraint > 0) {
-        pIdxInfo->aConstraintUsage[0].argvIndex = 1;
-        pIdxInfo->aConstraintUsage[0].omit = 1;
-        pIdxInfo->idxNum = 1;
-    }
     return SQLITE_OK;
 }
 
@@ -109,10 +100,7 @@ static int systblKeywordsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 
 static int systblKeywordsClose(sqlite3_vtab_cursor *cur)
 {
-    systbl_keywords_cursor *pCur = (systbl_keywords_cursor *)cur;
-    sqlite3_free(pCur->zPrefix);
-    pCur->zPrefix = 0;
-    sqlite3_free(pCur);
+    sqlite3_free(cur);
     return SQLITE_OK;
 }
 
@@ -120,12 +108,8 @@ static int systblKeywordsFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
                                 const char *idxStr, int argc,
                                 sqlite3_value **argv)
 {
-    systbl_keywords_cursor *cur = (systbl_keywords_cursor *)pVtabCursor;
-    sqlite3_free(cur->zPrefix);
-    cur->zPrefix = 0;
-    cur->rowid = -1;
-    if(idxNum > 0)
-        cur->zPrefix = strdup(sqlite3_value_text(argv[0]));
+    systbl_keywords_cursor *pCur = (systbl_keywords_cursor *)pVtabCursor;
+    pCur->rowid = 0;
     return SQLITE_OK;
 }
 
@@ -133,10 +117,6 @@ static int systblKeywordsNext(sqlite3_vtab_cursor *cur)
 {
     systbl_keywords_cursor *pCur = (systbl_keywords_cursor *)cur;
     pCur->rowid++;
-    while( pCur->zPrefix && pCur->rowid < SQLITE_N_KEYWORD && 
-            strncasecmp(pCur->zPrefix, f_keywords[pCur->rowid].name, 
-                        strlen(pCur->zPrefix) ) != 0 )
-        pCur->rowid++;
     return SQLITE_OK;
 }
 
@@ -149,26 +129,19 @@ static int systblKeywordsEof(sqlite3_vtab_cursor *cur)
 static int systblKeywordsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
                                 int pos)
 {
-    systbl_keywords_cursor *pCur = (systbl_keywords_cursor *)cur;
-    if(pCur->rowid < 0) systblKeywordsNext(cur);
-
     switch (pos) {
     case KEYWORDS_COLUMN_NAME:
         sqlite3_result_text(
-            ctx, f_keywords[pCur->rowid].name, -1,
+            ctx, f_keywords[((systbl_keywords_cursor *)cur)->rowid].name, -1,
             NULL);
         break;
     case KEYWORDS_COLUMN_RESERVED:
         sqlite3_result_text(
             ctx,
-            YESNO(f_keywords[pCur->rowid].reserved ==
+            YESNO(f_keywords[((systbl_keywords_cursor *)cur)->rowid].reserved ==
                   1),
             -1, NULL);
         break;
-    case KEYWORDS_COLUMN_PREFIX: {
-      sqlite3_result_text(ctx, pCur->zPrefix, -1, NULL);
-      break;
-    }
     default: assert(0);
     };
 
