@@ -1,15 +1,11 @@
 #!/bin/bash
 
-# Runs the insert utility
-
+# Runs the register linearizability test
+[[ "$debug" == 1 ]] && set -x
+#debug_trace="-D"
 db=$1
-failed=0
-debug_trace="-D"
 
 regtest=${TESTSROOTDIR}/tools/register
-knossos=${TESTSROOTDIR}/linearizable/filetest
-
-[[ "$debug" == 1 ]] && set -x
 
 if [[ -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
@@ -21,6 +17,12 @@ if [[ -z "$stage" ]]; then
     stage="default"
 fi
 
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table register {schema{int id int val null=yes longlong uid null=yes} keys{ \"id\" = id }}" >/dev/null 2>&1
+}
+
 function checkforerrors
 {
     [[ "$debug" == 1 ]] && set -x
@@ -28,7 +30,7 @@ function checkforerrors
     knosout=$2
     (
         cd ${TESTSROOTDIR}/linearizable/filetest
-        lein run $clojout > $knosout 2>&1
+        lein run $clojout > $knosout 2>&1 < /dev/null
     )
 
     egrep "^{:valid\? false" $knosout >/dev/null 2>&1 
@@ -86,7 +88,7 @@ function runtestwithoptions
     knosout=register.$db.$dt.knossos
     echo "$regtest -d $db -c ${CDB2_CONFIG} -t stage $debug_trace -r 20 -j $clojout $*" > $outfile
     $regtest -d $db -c ${CDB2_CONFIG} -t stage $debug_trace -r 20 -j $clojout $* >> $outfile 2>&1
-    checkforerrors $clojout $knosout
+    checkforerrors $(pwd)/$clojout $(pwd)/$knosout
     echo "OUTFILE" ; cat $outfile
     echo "clojout" ; cat $clojout
     echo "knosout" ; cat $knosout
@@ -117,6 +119,7 @@ function runtest
     fi
 }
 
+createtables
 runtest
 
 echo "Success"

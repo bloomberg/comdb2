@@ -487,7 +487,7 @@ int main(int argc, char *argv[])
     int rc, c, errors = 0, cnt;
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:")) != EOF) {
+    while ((c = getopt(argc, argv, "d:G:c:T:t:PMm:Doi:r:j:")) != EOF) {
         switch (c) {
         case 'd': dbname = optarg; break;
         case 'G':
