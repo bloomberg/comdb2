@@ -141,7 +141,12 @@ public class BBSysUtils {
      * @return
      */
     private static boolean getComdb2dbHosts(Comdb2Handle hndl, boolean just_defaults) {
-        boolean rc = readComdb2dbCfg(CDB2DBCONFIG_NOBBENV, hndl);
+        boolean rc;
+        String cfg = System.getenv("CDB2DBCONFIG_JDBC");
+        if (cfg != null)
+            rc = readComdb2dbCfg(cfg, hndl);
+        else
+            rc = readComdb2dbCfg(CDB2DBCONFIG_NOBBENV, hndl);
         if (!rc) /* fall back to /bb/bin if noenv conf not found */
             rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
         readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);

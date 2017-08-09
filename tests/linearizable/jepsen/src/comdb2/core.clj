@@ -32,7 +32,7 @@
 (def conn-spec
  {:classname "com.bloomberg.comdb2.jdbc.Driver"
  :subprotocol "comdb2"
- :subname (.concat (System/getenv "COMDB2_DBNAME") ":dev")})
+ :subname (.concat (.concat (System/getenv "COMDB2_DBNAME") ":") (System/getenv "COMDB2_DBSTAGE"))})
 
 (defn retriable-transaction-error [e]
  (or (re-find #"not serializable" e) 
