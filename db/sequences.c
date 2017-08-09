@@ -28,7 +28,7 @@ extern struct dbenv *thedb;
  *  @param name char * Name of the sequence
  *  @param val long long * Reference to output location
  */
-int seq_next_val(char *name, long long *val)
+int seq_next_val(tran_type *tran, char *name, long long *val)
 {
     sequence_t *seq = getsequencebyname(name);
     int rc = 0;
@@ -48,7 +48,7 @@ int seq_next_val(char *name, long long *val)
     if (seq->remaining_vals == 0) {
         // No remaining values, allocate new chunk
         rc = bdb_llmeta_get_sequence_chunk(
-            NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
+            tran, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
             seq->chunk_size, &seq->flags, &seq->remaining_vals, seq->start_val,
             &seq->next_val, &seq->next_start_val, &bdberr);
 

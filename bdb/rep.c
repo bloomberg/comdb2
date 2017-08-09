@@ -4041,7 +4041,7 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
 }
 
 // --------------------------------------------------------- SEQUENCES ---------------------------------------------------------
-extern int seq_next_val(char *name, long long *val);
+extern int seq_next_val(tran_type *tran, char *name, long long *val);
 
 static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf, const uint8_t *p_buf_end)
 {
@@ -4130,7 +4130,7 @@ void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
     // TODO: Generate value from seq_next_val
     long long value;
 
-    int rc = seq_next_val(name, &value);
+    int rc = seq_next_val(NULL, name, &value);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not generate sequence value\n", __func__);
@@ -4182,7 +4182,7 @@ int request_sequence_num_from_master(bdb_state_type *bdb_state,
         }
 
         // Generate sequence value
-        rc = seq_next_val(name, val);
+        rc = seq_next_val(NULL, name, val);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not generate sequence value\n", __func__);
