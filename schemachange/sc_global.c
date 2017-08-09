@@ -143,7 +143,7 @@ void wait_for_sc_to_stop(void)
  * dtastripe changes. */
 int sc_set_running(int running, uint64_t seed, char *host, time_t time)
 {
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif

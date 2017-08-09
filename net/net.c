@@ -2491,7 +2491,7 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
     int rc;
     host_node_type *ptr;
 
-#ifdef DEBUG
+#ifdef DEBUGNET
     fprintf(stderr, "%s: adding %s\n", __func__, hostname);
 #endif
 

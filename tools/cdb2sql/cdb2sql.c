@@ -213,7 +213,8 @@ char *db_generator (int state, const char *sql)
         }
         rc = cdb2_run_statement(cdb2h_2, sql);
         if (rc) {
-            fprintf(stderr, "failed to run sql '%s'\n", sql);
+            if (debug_trace)
+                fprintf(stderr, "failed to run sql '%s'\n", sql);
             return ((char *) NULL);
         }
         

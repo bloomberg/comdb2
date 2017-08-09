@@ -2702,7 +2702,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         outrc = SQLITE_INTERNAL;
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         fprintf(stdout, "MOVE [%s] : genid=%llx pRes=%d how=%d rc=%d\n",
                 pCur->db->dbname, pCur->genid, *pRes, how, outrc);
@@ -4793,7 +4793,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_ERROR, "%s %d %d\n", __func__, clnt->intrans,
                clnt->ctrl_sqlengine);
@@ -4886,7 +4886,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     clnt->intrans = 1;
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
                 clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
@@ -4923,7 +4923,7 @@ int sqlite3BtreeCommit(Btree *pBt)
     int irc = 0;
     int bdberr = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
         fprintf(
@@ -4955,7 +4955,7 @@ int sqlite3BtreeCommit(Btree *pBt)
 
     clnt->intrans = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
         fprintf(stderr, "%p commits transaction %d %d rqid=%llx %s\n", clnt,
@@ -9200,7 +9200,7 @@ int put_curtran_int(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     int rc = 0;
     int bdberr = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     fprintf(stderr, "%llx, %s\n", pthread_self(), __func__);
 #endif
 

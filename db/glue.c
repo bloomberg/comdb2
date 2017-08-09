@@ -4031,7 +4031,7 @@ void set_skipscan_for_table_indices(struct dbtable *tbl, int val)
     for (int ii = 0; ii < tbl->nix; ii++) {
         struct schema *s = tbl->ixschema[ii];
         s->disableskipscan = val;
-#ifdef DEBUG
+#ifdef DEBUGSKIPSCAN
         printf("%s: setting disableskipscan for %s.%s %d\n", __func__,
                tbl->dbname, s->sqlitetag, val);
 #endif
@@ -4062,7 +4062,7 @@ static void get_disable_skipscan(struct dbtable *tbl)
 
 void get_disable_skipscan_all() 
 {
-#ifdef DEBUG
+#ifdef DEBUGSKIPSCAN
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
