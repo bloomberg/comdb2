@@ -3183,6 +3183,9 @@ retry_queries:
         if (is_hasql_commit) {
             cleanup_query_list(hndl, commit_query_list, __LINE__);
         }
+        if (is_begin) {
+            hndl->in_trans = 0;
+        }
         PRINT_RETURN(CDB2ERR_TRAN_IO_ERROR);
     }
 
@@ -4467,7 +4470,7 @@ retry:
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
                 hndl->dbname);
-        goto retry;
+        if (hndl->num_hosts > 1) goto retry;
     }
     return rc;
 }

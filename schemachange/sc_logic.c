@@ -278,7 +278,7 @@ static int do_alter_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
     int rc;
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
 
@@ -372,20 +372,45 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
     return rc;
 }
 
+static int check_table_version(struct ireq *iq)
+{
+    if (iq->sc->addonly || iq->sc->resume)
+        return 0;
+    int rc, bdberr;
+    unsigned long long version;
+    rc = bdb_table_version_select(iq->sc->table, NULL, &version, &bdberr);
+    if (rc != 0) {
+        errstat_set_strf(&iq->errstat,
+                         "failed to get version for table:%s rc:%d\n",
+                         iq->sc->table, rc);
+        iq->errstat.errval = ERR_SC;
+        return SC_INTERNAL_ERROR;
+    }
+    if (iq->usedbtablevers != version) {
+        errstat_set_strf(&iq->errstat,
+                         "stale version for table:%s master:%d replicant:%d\n",
+                         iq->sc->table, version, iq->usedbtablevers);
+        iq->errstat.errval = ERR_SC;
+        return SC_INTERNAL_ERROR;
+    }
+    return 0;
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
                   scdone_t type)
 {
     int rc;
     struct schema_change_type *s = iq->sc;
-
     if (s->finalize_only) {
         return s->sc_rc;
     }
     if (type != alter) wrlock_schema_lk();
     set_original_tablename(s);
+    if ((rc = check_table_version(iq)) != 0) { // non-tran ??
+        goto end;
+    }
     if (!s->resume) set_sc_flgs(s);
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) goto end; // non-tran ??
-    propose_sc(s);
     rc = pre(iq, NULL); // non-tran ??
     if (type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
@@ -401,7 +426,6 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
 end:
     s->sc_rc = rc;
     if (type != alter) unlock_schema_lk();
-    broadcast_sc_end(sc_seed);
     return rc;
 }
 
@@ -798,10 +822,13 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                    "Found existing tempdb: %s, attempting to resume an in "
                    "progress schema change\n",
                    tmpname);
-        else
-            logmsg(LOGMSG_INFO,
-                   "Didn't find existing tempdb: %s, creating a new one\n",
+        else {
+            logmsg(LOGMSG_ERROR,
+                   "Didn't find existing tempdb: %s, aborting schema change\n",
                    tmpname);
+            free(tmpname);
+            return -1;
+        }
     }
 
     if (!db->handle) /* did not/could not open existing one, creating new one */

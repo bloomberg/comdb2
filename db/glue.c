@@ -97,7 +97,6 @@
 
 #include "views.h"
 #include "logmsg.h"
-#include "ssl_bend.h"
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
  * Don't want to vtag those results
@@ -4032,7 +4031,7 @@ void set_skipscan_for_table_indices(struct dbtable *tbl, int val)
     for (int ii = 0; ii < tbl->nix; ii++) {
         struct schema *s = tbl->ixschema[ii];
         s->disableskipscan = val;
-#ifdef DEBUG
+#ifdef DEBUGSKIPSCAN
         printf("%s: setting disableskipscan for %s.%s %d\n", __func__,
                tbl->dbname, s->sqlitetag, val);
 #endif
@@ -4063,7 +4062,7 @@ static void get_disable_skipscan(struct dbtable *tbl)
 
 void get_disable_skipscan_all() 
 {
-#if DEBUG
+#ifdef DEBUGSKIPSCAN
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
 #endif
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
@@ -6140,7 +6139,7 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr)
     //select needs to be done with the same transaction to avoid 
     //undetectable deadlock for writing and reading from same thread
     unsigned long long version;
-    rc = bdb_table_version_select(db->handle, trans, &version, bdberr);
+    rc = bdb_table_version_select(db->dbname, trans, &version, bdberr);
     if (rc || *bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, *bdberr);
@@ -6161,7 +6160,7 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     unsigned long long version;
     int rc;
 
-    rc = bdb_table_version_select(db->handle, tran, &version, &bdberr);
+    rc = bdb_table_version_select(db->dbname, tran, &version, &bdberr);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, bdberr);

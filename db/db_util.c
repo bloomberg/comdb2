@@ -335,8 +335,6 @@ int rewrite_lrl_remove_tables(const char *lrlname)
             continue;
         if (ltok && tokcmp(tok, ltok, "afuncs") == 0)
             continue;
-        if (ltok && tokcmp(tok, ltok, "num_qdbs") == 0)
-            continue;
         if (ltok && tokcmp(tok, ltok, "queuedb") == 0)
             continue;
 
@@ -444,6 +442,10 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
 
     /* add table definitions */
     for (i = 0; i < num_tables; ++i) {
+        if (strncmp(p_table_names[i], "sqlite_stat",
+                    sizeof("sqlite_stat") - 1) == 0)
+            continue;
+
         sbuf2printf(sb_out, "table %s %s", p_table_names[i], p_csc2_paths[i]);
 
         if (table_nums[i])
@@ -458,9 +460,8 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
         sbuf2printf(sb_out, "\n");
     }
 
-    if (thedb->num_qdbs)
-        sbuf2printf(sb_out, "num_qdbs %d\n", thedb->num_qdbs);
-    for (int i = 0; i < thedb->num_qdbs; ++i)
+    for (int i = 0;
+         i < thedb->num_qdbs && thedb->qdbs[i]->dbtype == DBTYPE_QUEUEDB; ++i)
         sbuf2printf(sb_out, "queuedb " REPOP_QDB_FMT "\n", out_lrl_dir,
                     thedb->envname, i);
 

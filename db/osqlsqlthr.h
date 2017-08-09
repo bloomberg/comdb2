@@ -183,8 +183,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
 * Returns SQLITE_OK if successful.
 *
 */
-int osql_schemachange_logic(struct schema_change_type *,
-                            struct sql_thread *thd);
+int osql_schemachange_logic(struct schema_change_type *, struct sql_thread *,
+                            int usedb);
 
 int osql_dbq_consume_logic(struct sqlclntstate *, const char *spname, genid_t);
 int osql_dbq_consume(struct sqlclntstate *, const char *spname, genid_t);

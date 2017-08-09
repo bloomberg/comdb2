@@ -41,6 +41,13 @@ limitations under the License. -->
     </dependency>
   </dependencies>
   <build>
+    <!-- explicitly copy services file to JAR for auto-regiration -->
+    <resources>
+      <resource>
+        <directory>src/main/resources/META-INF/services</directory>
+        <targetPath>META-INF/services</targetPath>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.xolstice.maven.plugins</groupId>

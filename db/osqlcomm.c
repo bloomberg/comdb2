@@ -6361,7 +6361,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
 
-            assert(!memcmp(&snap_info, iq->snap_info, sizeof(snap_uid_t)));
+            assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
 
         /* p_buf is pointing at client_query_stats if there is one */
@@ -7988,7 +7988,7 @@ netinfo_type *osql_get_netinfo(void)
 int osqlpfthdpool_init(void)
 {
     int i = 0;
-    gbl_osqlpfault_thdpool = thdpool_create("OSQL PREFAULT pool", 0);
+    gbl_osqlpfault_thdpool = thdpool_create("osqlpfaultpool", 0);
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_osqlpfault_thdpool);

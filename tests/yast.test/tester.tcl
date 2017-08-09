@@ -1238,7 +1238,7 @@ proc execsql {sql {option ""}} {
       set rc [catch {create_index $query} err]
       if {$rc != 0} {
         lappend r $rc
-        # IBM: failed with rc -3 OP #2 BLOCK2_SQL(811): ORDER BY without LIMIT on DELETE
+        # IBM: failed with rc -3 ORDER BY without LIMIT on DELETE
         # Linux: failed with rc -3 ORDER BY without LIMIT on DELETE
         set found [regexp {failed with rc (?:-)??[[:digit:]]+ (?:OP \#.*\)\: )*(.*)$} $err _ errmsg]
         if {$found} {
@@ -1304,7 +1304,7 @@ proc execsql {sql {option ""}} {
 
     if {$rc != 0} {
       lappend r $rc
-      # IBM: failed with rc -3 OP #2 BLOCK2_SQL(811): ORDER BY without LIMIT on DELETE
+      # IBM: failed with rc -3 ORDER BY without LIMIT on DELETE
       # Linux: failed with rc -3 ORDER BY without LIMIT on DELETE
       set found [regexp {failed with rc (?:-)??[[:digit:]]+ (?:OP \#.*\)\: )*(.*)$} $err _ errmsg]
       if {$found} {

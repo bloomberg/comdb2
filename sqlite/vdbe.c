@@ -3649,7 +3649,10 @@ case OP_Transaction: {
   assert( p->bIsReader );
   assert( p->readOnly==0 || pOp->p2==0 );
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p1) );
+  /* COMDB2: we have not set btreeMask because we dont set cookieMask
+   * which then is used to set btreeMask in sqlite3FinishCoding
+   * (modified by COMDB2) by calling sqlite3VdbeUsesBtree.
+   * assert( DbMaskTest(p->btreeMask, pOp->p1) ); */
   if( pOp->p2 && (db->flags & SQLITE_QueryOnly)!=0 ){
     rc = SQLITE_READONLY;
     goto abort_due_to_error;
@@ -3957,7 +3960,7 @@ case OP_OpenWrite:
   pCur->isOrdered = 1;
   pCur->pgnoRoot = p2;
 #ifdef SQLITE_DEBUG
-  pCur->wrFlag = wrFlag;
+  pCur->wrFlag = flag;
 #endif
 /* COMDB2 MODIFICATION */
   pCur->nCookFields = -1;

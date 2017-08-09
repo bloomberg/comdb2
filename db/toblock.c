@@ -2870,8 +2870,6 @@ printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->hav
 
         /* keep track of which operation is currently done */
         reqerrstrhdrclr(iq);
-        reqerrstrhdr(iq, "OP #%d %s(%d): ", opnum, breq2a(hdr.opcode),
-                     hdr.opcode);
 
         thrman_wheref(thr_self, "%s [%s]", req2a(iq->opcode),
                       breq2a(hdr.opcode));
