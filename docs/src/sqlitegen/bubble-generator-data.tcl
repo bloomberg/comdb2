@@ -525,7 +525,7 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
-      {line REFERENCES ref-table-name ( ref-column ) }
+      {line REFERENCES ref-table-name ( ref-column-name ) }
       {line WITH DBPAD = signed-number }
   }
 
