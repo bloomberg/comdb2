@@ -3996,6 +3996,7 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
         logmsg(LOGMSG_ERROR, "%s returning bad rcode because i am not master\n", 
                 __func__);
         net_ack_message(ack_handle, 1);
+        ack_handle = NULL;
         return;
     }
 
@@ -4004,6 +4005,7 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
         logmsg(LOGMSG_ERROR, "%s returning bad rcode because i don't have enough "
                 "leases\n", __func__);
         net_ack_message(ack_handle, 2);
+        ack_handle = NULL;
         return;
     }
 
@@ -4017,6 +4019,7 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
                              "durable_gen=%d\n",
                __func__, __LINE__, current_gen, start_lsn.gen);
         net_ack_message(ack_handle, 3);
+        ack_handle = NULL;
         return;
     }
 
@@ -4037,6 +4040,7 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     }
 
     net_ack_message_payload(ack_handle, 0, buf, START_LSN_RESPONSE_TYPE_LEN);
+    ack_handle = NULL;
     return;
 }
 
@@ -4517,6 +4521,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         /* This version of comdb2 shouldn't be getting these messages */
         if (ack_handle) {
             net_ack_message(ack_handle, 0);
+            ack_handle = NULL;
         }
         break;
 
@@ -4524,6 +4529,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         /* This version of comdb2 shouldn't be getting these messages */
         if (ack_handle) {
             net_ack_message(ack_handle, 0);
+            ack_handle = NULL;
         }
         break;
 
@@ -4535,6 +4541,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         print(bdb_state, "not adding node %d to sanctioned list\n", node);
         // net_add_to_sanctioned(bdb_state->repinfo->netinfo, "", 0);
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_ADD_NAME:
@@ -4542,6 +4549,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         net_add_to_sanctioned(bdb_state->repinfo->netinfo, intern((char *)dta),
                               0);
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_DEL:
@@ -4552,6 +4560,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         print(bdb_state, "removing node %d from sanctioned list\n", node);
         // net_del_from_sanctioned(bdb_state->repinfo->netinfo, node);
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_DEL_NAME:
@@ -4560,6 +4569,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         net_del_from_sanctioned(bdb_state->repinfo->netinfo,
                                 intern((char *)dta));
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_DECOM_NAME: {
@@ -4570,6 +4580,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         logmsg(LOGMSG_DEBUG, "acking message\n");
 
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         host = intern((char *)dta);
 
         osql_decom_node(host);
@@ -4581,6 +4592,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
     case USER_TYPE_ADD_DUMMY:
         add_dummy(bdb_state);
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_TRANSFERMASTER:
@@ -4603,6 +4615,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         /* Don't ack this - if we get this message we want an election. */
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_LSNCMP: {
@@ -4624,6 +4637,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         /* if he's ahead he's good */
         if (log_compare(&lsn_cmp.lsn, &cur_lsn) >= 0) {
             net_ack_message(ack_handle, 0);
+            ack_handle = NULL;
             break;
         }
 
@@ -4642,6 +4656,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         } else {
             net_ack_message(ack_handle, 0);
         }
+        ack_handle = NULL;
         break;
     }
 
@@ -4656,6 +4671,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         bdb_state->rep_trace = on_off;
 
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_INPROCMSG:
@@ -4668,6 +4684,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         else
             net_ack_message(ack_handle, 0);
 
+        ack_handle = NULL;
         break;
 
     case USER_TYPE_DOWNGRADEANDLOSE: {
@@ -4677,6 +4694,7 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
         }
 
         net_ack_message(ack_handle, 0);
+        ack_handle = NULL;
     } break;
 
     case USER_TYPE_TCP_TIMESTAMP:
@@ -4721,6 +4739,7 @@ void berkdb_receive_test(void *ack_handle, void *usr_ptr, char *from_host,
     logmsg(LOGMSG_USER, "got req from %s\n", from_host);
 
     net_ack_message(ack_handle, 0);
+    ack_handle = NULL;
 }
 
 static void udppfault_do_work_pp(struct thdpool *pool, void *work,
