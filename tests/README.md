@@ -64,10 +64,10 @@ are torn down after the test is over.
       cd testname.test
       echo ' 
 ifeq ($(TESTSROOTDIR),)
-  export TESTSROOTDIR=$(shell readlink -f $(PWD)/..)
-  export SKIPSSL=1
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
 endif
-include $(TESTSROOTDIR)/testcase.mk
 ' > Makefile
 
       make setup
