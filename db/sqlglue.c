@@ -57,13 +57,12 @@
 #include <ctrace.h>
 #include <epochlib.h>
 
-#include <list.h>
-
 #include <sbuf2.h>
 
 #include <bdb_api.h>
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
+#include <time.h>
 
 #include "comdb2.h"
 #include "crc32c.h"
@@ -78,12 +77,14 @@
 #include <vdbeInt.h>
 #include <sqlite_btree.h>
 #include <os.h>
+#include <sqlite3.h>
 
 #include "debug.h"
+#include "sqlconstraints.h"
+#include "sqlinterfaces.h"
 
 #include "osqlsqlthr.h"
 #include "osqlshadtbl.h"
-#include "bdb_cursor.h"
 #include "bdb_sqlstat1.h"
 #include "bdb/bdb_schemachange.h"
 
@@ -697,6 +698,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
     *reqsize = 0;
 
     for (fnum = 0; fnum < nField; fnum++) {
+        memset(&m[fnum], 0, sizeof(Mem));
         rc = get_data_int(pCur, s, in, fnum, &m[fnum], 1, tzname);
         if (rc)
             goto done;
@@ -2402,48 +2404,6 @@ static int move_is_nop(BtCursor *pCur, int *pRes)
    needed to host the library.  All other code belongs in sqlsupport.c
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <strings.h>
-#include <sqlite3.h>
-#include "sqliteInt.h"
-
-/*#include "vdbe.h"*/
-
-#include "os.h"
-#include <assert.h>
-#include <stdarg.h>
-#include <stddef.h>
-#include <limits.h>
-#include <ctype.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <alloca.h>
-
-#include <plhash.h>
-
-#include <list.h>
-
-#include <sbuf2.h>
-#include <bdb_api.h>
-
-#include "comdb2.h"
-#include "types.h"
-#include "util.h"
-
-#include "debug.h"
-#include "sqlconstraints.h"
-#include "sqlinterfaces.h"
-#include <bdb_api.h>
-#include <time.h>
-#include <poll.h>
-
-#include <sqlite3.h>
-
-#include "debug_switches.h"
-
 #define UNIMPLEMENTED 99999
 
 typedef int (*xCmpPacked)(KeyInfo *, int l1, const void *k1, int l2,
@@ -2742,7 +2702,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         outrc = SQLITE_INTERNAL;
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         fprintf(stdout, "MOVE [%s] : genid=%llx pRes=%d how=%d rc=%d\n",
                 pCur->db->dbname, pCur->genid, *pRes, how, outrc);
@@ -4833,7 +4793,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_ERROR, "%s %d %d\n", __func__, clnt->intrans,
                clnt->ctrl_sqlengine);
@@ -4926,7 +4886,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
     clnt->intrans = 1;
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_ERROR, "%p starts transaction tid=%d mode=%d intrans=%d\n",
                 clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
@@ -4963,7 +4923,7 @@ int sqlite3BtreeCommit(Btree *pBt)
     int irc = 0;
     int bdberr = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
         fprintf(
@@ -4995,7 +4955,7 @@ int sqlite3BtreeCommit(Btree *pBt)
 
     clnt->intrans = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
         fprintf(stderr, "%p commits transaction %d %d rqid=%llx %s\n", clnt,
@@ -6288,14 +6248,12 @@ void addVbdeSorterCost(const VdbeSorter *pSorter)
         return;
 
     struct query_path_component fnd, *qc;
-
-    fnd.u.db = 0;
+    fnd.fdb = 0;
+    fnd.lcl_tbl_name[0] = 0;
     fnd.ix = 0;
 
     if (NULL == (qc = hash_find(thd->query_hash, &fnd))) {
         qc = calloc(sizeof(struct query_path_component), 1);
-        qc->u.db = 0;
-        qc->ix = 0;
         hash_add(thd->query_hash, qc);
         listc_abl(&thd->query_stats, qc);
     }
@@ -6378,9 +6336,9 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         if (pCur->bt && pCur->bt->is_remote) {
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
-            fnd.u.fdb = pCur->fdbc->table_entry(pCur);
-        } else {
-            fnd.u.db = pCur->db;
+            fnd.fdb = pCur->fdbc->table_entry(pCur);
+        } else if (pCur->db) {
+            strcpy(fnd.lcl_tbl_name, pCur->db->dbname);
         }
         fnd.ix = pCur->ixnum;
 
@@ -6388,10 +6346,9 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             NULL == (qc = hash_find(thd->query_hash, &fnd))) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
-                qc->remote = 1;
-                qc->u.fdb = fnd.u.fdb;
-            } else {
-                qc->u.db = pCur->db;
+                qc->fdb = fnd.fdb;
+            } else if (pCur->db) {
+                strcpy(qc->lcl_tbl_name, pCur->db->dbname);
             }
             qc->ix = pCur->ixnum;
             hash_add(thd->query_hash, qc);
@@ -7230,7 +7187,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     struct dbtable *db;
 
     assert(iTable >= RTPAGE_START);
-    assert(iTable < (thd->rootpage_nentries + RTPAGE_START));
+    /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
     get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
 
@@ -7562,7 +7519,7 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     }
 
     assert(iTable >= RTPAGE_START);
-    assert(iTable < (thd->rootpage_nentries + RTPAGE_START));
+    /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
     get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
 
@@ -7630,7 +7587,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         Table *tab = tbls[i];
         iTable = tab->tnum;
 
-        assert(iTable < thd->rootpage_nentries + RTPAGE_START);
+        /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
         if (iTable < RTPAGE_START)
             continue;
@@ -7743,7 +7700,8 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
         int dbtblnum = 0, ixnum;
         get_sqlite_tblnum_and_ixnum(thd, iTable, &dbtblnum, &ixnum);
-        reqlog_add_table(thd->bt->reqlogger, thedb->dbs[dbtblnum]->dbname);
+        reqlog_add_table(thrman_get_reqlogger(thrman_self()),
+                         thedb->dbs[dbtblnum]->dbname);
     }
 
     if (!after_recovery)
@@ -7844,7 +7802,7 @@ void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt)
 
         iTable = tab->tnum;
 
-        assert(iTable < thd->rootpage_nentries + RTPAGE_START);
+        /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
         if (iTable < RTPAGE_START)
             continue;
@@ -8012,7 +7970,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     void *shadow_tran = NULL;
 
     assert(iTable >= RTPAGE_START);
-    assert(iTable < thd->rootpage_nentries + RTPAGE_START);
+    /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
     get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
 
@@ -8527,8 +8485,8 @@ int sqlite3BtreeInsert(
         /* is this an update? no KeY! */
         if (pCur->tblpos == thd->rootpage_nentries) {
             /* we have positioned ourselves on the side row, this is an update!
-             */
             assert(nKey == 0 && pKey == NULL);
+             */
         } else {
             /* an actual insert */
             clnt->keyDdl = pCur->keyDdl = nKey;
@@ -9242,7 +9200,7 @@ int put_curtran_int(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     int rc = 0;
     int bdberr = 0;
 
-#ifdef DEBUG
+#ifdef DEBUG_TRAN
     fprintf(stderr, "%llx, %s\n", pthread_self(), __func__);
 #endif
 
@@ -11460,7 +11418,6 @@ static int printf_logmsg_wrap(const char *fmt, ...) {
     return 0;
 }
 
-#include <thread_malloc.h>
 void stat4dump(int more, char *table, int istrace)
 {
     int rc;

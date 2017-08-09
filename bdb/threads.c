@@ -51,12 +51,14 @@
 #include <autoanalyze.h>
 #include <logmsg.h>
 
+int db_is_stopped(void);
+
 void *udp_backup(void *arg)
 {
     unsigned pollms = 500; // factor of 1000
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    while (!(bdb_state->exiting)) {
+    while (!db_is_stopped()) {
         if (repinfo->master_host != repinfo->myhost && gbl_udp) {
             send_myseqnum_to_master(bdb_state, 1);
         }
@@ -78,7 +80,7 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     unsigned count = 0;
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    while (!(bdb_state->exiting)) {
+    while (!db_is_stopped()) {
         ++count;
         if (repinfo->master_host != repinfo->myhost) { // not master
             if (gbl_udp)
@@ -123,7 +125,7 @@ void *memp_trickle_thread(void *arg)
 
         BDB_READLOCK("memp_trickle_thread");
 
-        if (bdb_state->exiting) {
+        if (db_is_stopped()) {
             logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
 
             BDB_RELLOCK();
@@ -185,7 +187,7 @@ void *deadlockdetect_thread(void *arg)
         if (bdb_state->attr->deadlock_youngest_ever)
             policy = DB_LOCK_YOUNGEST_EVER;
 
-        if (bdb_state->exiting) {
+        if (db_is_stopped()) {
             logmsg(LOGMSG_DEBUG, "deadlockdetect_thread: exiting\n");
 
             BDB_RELLOCK();
@@ -282,11 +284,16 @@ void *coherency_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (lease_time = bdb_state->attr->coherency_lease) {
+    while (!db_is_stopped() &&
+           (lease_time = bdb_state->attr->coherency_lease)) {
         inc_wait = 0;
         uint32_t current_gen, durable_gen;
         DB_LSN durable_lsn;
-
+        BDB_READLOCK(__func__);
+        if (db_is_stopped()) {
+            BDB_RELLOCK();
+            break;
+        }
         if (repinfo->master_host == repinfo->myhost) {
             send_coherency_leases(bdb_state, lease_time, &inc_wait);
 
@@ -300,7 +307,6 @@ void *coherency_lease_thread(void *arg)
                 inc_wait = 1;
             }
         }
-
         now = time(NULL);
         if (inc_wait && (add_interval = bdb_state->attr->add_record_interval)) {
             if ((now - last_add_record) >= add_interval) {
@@ -310,7 +316,7 @@ void *coherency_lease_thread(void *arg)
                 last_add_record = now;
             }
         }
-
+        BDB_RELLOCK();
         pollms = ((renew = bdb_state->attr->lease_renew_interval) &&
                   renew < lease_time)
                      ? renew
@@ -349,7 +355,7 @@ void *logdelete_thread(void *arg)
         int sleeptime;
         BDB_READLOCK("logdelete_thread");
 
-        if (bdb_state->exiting) {
+        if (db_is_stopped()) {
             logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
 
             BDB_RELLOCK();
@@ -411,7 +417,7 @@ void *checkpoint_thread(void *arg)
                     broken);
         }
 
-        if (bdb_state->exiting) {
+        if (db_is_stopped()) {
             logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
 
             BDB_RELLOCK();

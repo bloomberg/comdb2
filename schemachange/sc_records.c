@@ -1017,7 +1017,7 @@ void *convert_records_thd(struct convert_record_data *data)
             release_rebuild_thr(&data->cmembers->thrcount);
 
         if (stopsc) { // set from downgrade
-            data->outrc = rc;
+            data->outrc = SC_MASTER_DOWNGRADE;
             goto cleanup_no_msg;
         }
     }

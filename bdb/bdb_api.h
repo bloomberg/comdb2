@@ -1873,7 +1873,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_table_version_select(const char *name, tran_type *tran,
                              unsigned long long *version, int *bdberr);
 
 void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);

@@ -29,4 +29,7 @@ RUN apt-get update && \
     tzdata && \
   rm -rf /var/lib/apt/lists/*
 
+COPY . /comdb2.build
+RUN cd /comdb2.build && make clean
+
 VOLUME /comdb2

@@ -6996,7 +6996,7 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state, tran, &version, bdberr);
+    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -7086,7 +7086,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state, tran, &version, bdberr);
+    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -7125,14 +7125,13 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_table_version_select(const char *tblname, tran_type *tran,
                              unsigned long long *version, int *bdberr)
 {
     struct llmeta_sane_table_version schema_version;
     char key[LLMETA_IXLEN] = {0};
     char fnddata[sizeof(*version)];
     int fnddatalen;
-    const char *tblname = bdb_state->name;
     int tblnamelen;
     uint8_t *p_buf, *p_buf_end;
     int retries;
@@ -7231,7 +7230,7 @@ retry:
 static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
                            int *len)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
     if (llmeta_bdb_state == NULL)
@@ -7256,7 +7255,7 @@ rep:
         *value = malloc(*len + 1);
         strncpy(*value, tmpstr, *len);
         (*value)[*len] = '\0';
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
         fprintf(
             stderr,
             "%s: bdb_lite_exact_fetch_tran found:%s *len:%d rc:%d bdberr:%d\n",
@@ -7264,7 +7263,7 @@ rep:
 #endif
         free(tmpstr);
     } else if (bdberr == BDBERR_FETCH_DTA) {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
         fprintf(stderr,
                 "%s: bdb_lite_exact_fetch_tran not found rc:%d bdberr:%d\n",
                 __func__, rc, bdberr);
@@ -7289,7 +7288,7 @@ static int llmeta_del_set_blob(void *parent_tran, llmetakey_t key,
                                const char *table, const char *value, int len,
                                int deleteonly)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
     if (llmeta_bdb_state == NULL)
@@ -7328,7 +7327,7 @@ rep:
         goto err;
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     tmpstr[fndlen - 1] = '\0';
     fprintf(
         stderr,
@@ -7412,7 +7411,7 @@ int bdb_del_table_csonparameters(void *parent_tran, const char *table)
 int bdb_get_table_parameter(const char *table, const char *parameter,
                             char **value)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
     if (llmeta_bdb_state == NULL)
@@ -7448,7 +7447,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 
     cson_value *param = cson_object_get(rootObj, parameter);
     if (param == NULL) {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
         printf("param %s not found\n", parameter);
 #endif
         rc = 1;
@@ -7458,7 +7457,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
     cson_string const *str = cson_value_get_string(param);
     *value = strdup(cson_string_cstr(str));
 
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stdout, "%s\n", cson_string_cstr(str));
     fprintf(stdout, "%s\n", *value);
     { // print root object
@@ -7495,7 +7494,7 @@ out:
 int bdb_set_table_parameter(void *parent_tran, const char *table,
                             const char *parameter, const char *value)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
     char *blob = NULL;
@@ -7533,7 +7532,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
     if (value == NULL) {
         cson_value *param = cson_object_get(rootObj, parameter);
         if (param == NULL) {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
             printf("param %s not found -- nothing to do\n", parameter);
 #endif
             cson_value_free(rootV);
@@ -7555,7 +7554,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
                         cson_value_new_string(value, strlen(value)));
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     { // print root object
         cson_object_iterator iter;
         rc = cson_object_iter_init(rootObj, &iter);
