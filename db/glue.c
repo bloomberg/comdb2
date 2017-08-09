@@ -3054,6 +3054,7 @@ void net_quiesce_threads(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     stop_threads(thedb);
     net_ack_message(hndl, 0);
+    hndl = NULL;
 }
 
 void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3061,6 +3062,7 @@ void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     resume_threads(thedb);
     net_ack_message(hndl, 0);
+    hndl = NULL;
 }
 
 /* yuk. */
@@ -3081,6 +3083,7 @@ static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
 
     if (dtalen < 8) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return -1;
     }
 
@@ -3089,6 +3092,7 @@ static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
 
     if (dtalen < 2 * sizeof(int) + tlen + flen) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return -1;
     }
 
@@ -3108,6 +3112,7 @@ static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
         if (!*fvar) {
             logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
             net_ack_message(hndl, 1);
+            hndl = NULL;
             return -1;
         }
         memcpy(*fvar, dta + offset, flen);
@@ -3120,6 +3125,7 @@ static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
             free(*fvar);
         logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return -1;
     }
     memcpy(*table, dta + 2 * sizeof(int), tlen);
@@ -3135,6 +3141,7 @@ static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
                 free(*fvar);
             free(*table);
             net_ack_message(hndl, 1);
+            hndl = NULL;
             return -1;
         }
         memcpy(*aname, dta + origlen, anamelen);
@@ -3163,6 +3170,8 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
         logmsg(LOGMSG_ERROR, "%s: fname and aname no longer supported\n", __func__);
 
         net_ack_message(hndl, 1);
+        hndl = NULL;
+
         if (table)
             free(table);
         if (csc2)
@@ -3180,6 +3189,7 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
     create_master_tables(); /* create sql statements */
 
     net_ack_message(hndl, rc || rc2);
+    hndl = NULL;
 
     if (table)
         free(table);
@@ -3199,11 +3209,13 @@ void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
     memset(table, 0, sizeof(table));
     if (dtalen < 2 * sizeof(int)) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
     memcpy(&len, dta, sizeof(int));
     if (dtalen < 2 * sizeof(int) + len) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
     memcpy(table, dta + sizeof(int), len);
@@ -3214,6 +3226,7 @@ void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
     logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%08x\n", db);
     if (db == NULL) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
@@ -3228,6 +3241,7 @@ void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
         logmsg(LOGMSG_DEBUG, 
                "net_close_db: Error sending back the acknoledgement\n");
     }
+    hndl = NULL;
 }
 
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
@@ -3237,6 +3251,7 @@ static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
     int rc;
     rc = close_all_dbs();
     net_ack_message(hndl, rc == 0 ? 0 : 1);
+    hndl = NULL;
 }
 
 struct start_sc {
@@ -3257,6 +3272,7 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
 
     rc = sc_set_running(1, sc->seed, sc->host, sc->time);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
+    hndl = NULL;
 }
 
 static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3266,11 +3282,13 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
     uint64_t *seed;
     if (dtalen != sizeof(uint64_t)) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
     seed = dtap;
     rc = sc_set_running(0, 0, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
+    hndl = NULL;
 }
 
 static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
@@ -3280,6 +3298,7 @@ static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
     int rc;
     rc = check_sc_ok(NULL);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
+    hndl = NULL;
 }
 
 static void net_lua_reload(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3287,6 +3306,7 @@ static void net_lua_reload(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     gbl_analyze_gen++;
     net_ack_message(hndl, 0);
+    hndl = NULL;
 }
 
 static void net_statistics_changed(void *hndl, void *uptr, char *fromnode,
@@ -3294,6 +3314,7 @@ static void net_statistics_changed(void *hndl, void *uptr, char *fromnode,
 {
     gbl_analyze_gen++;
     net_ack_message(hndl, 0);
+    hndl = NULL;
 }
 
 static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3306,6 +3327,7 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
     }
     flush_db();
     net_ack_message(hndl, 0);
+    hndl = NULL;
 }
 
 static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
@@ -3321,6 +3343,7 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
         logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
                 dtalen);
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
@@ -3329,11 +3352,13 @@ static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
     rc = open_all_dbs();
     if (rc != 0) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
     fix_blobstripe_genids();
     net_ack_message(hndl, 0);
+    hndl = NULL;
 }
 
 void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3344,6 +3369,7 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
 
     if (dtalen != sizeof(struct net_new_queue_msg)) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
@@ -3351,6 +3377,7 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
     msg->name[sizeof(msg->name) - 1] = '\0';
     rc = add_queue_to_environment(msg->name, msg->avgitemsz, 0);
     net_ack_message(hndl, rc);
+    hndl = NULL;
 }
 
 void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3365,6 +3392,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 
     if (dtalen < offsetof(struct new_procedure_op_msg, text)) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
@@ -3372,6 +3400,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
         offsetof(struct new_procedure_op_msg, text) + msg->namelen +
             msg->jarfilelen + msg->paramlen) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
@@ -3393,6 +3422,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
     free(param);
 
     net_ack_message(hndl, rc);
+    hndl = NULL;
 }
 
 void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
@@ -3418,6 +3448,7 @@ void net_add_consumer(void *hndl, void *uptr, char *fromnode, int usertype,
 
     if (dtalen != sizeof(struct net_add_consumer_msg)) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
@@ -3428,12 +3459,14 @@ void net_add_consumer(void *hndl, void *uptr, char *fromnode, int usertype,
     db = getqueuebyname(msg->name);
     if (!db) {
         net_ack_message(hndl, 1);
+        hndl = NULL;
         return;
     }
 
     rc = dbqueue_add_consumer(db, msg->consumern, msg->method, 0);
     fix_consumers_with_bdblib(thedb);
     net_ack_message(hndl, rc);
+    hndl = NULL;
 }
 
 static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
@@ -3461,6 +3494,7 @@ static void net_trigger_register(void *hndl, void *uptr, char *fromnode,
     int rc = trigger_register(dtap);
     if (hndl)
         net_ack_message(hndl, rc);
+    hndl = NULL;
 }
 
 static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
@@ -3470,6 +3504,7 @@ static void net_trigger_unregister(void *hndl, void *uptr, char *fromnode,
     int rc = trigger_unregister(dtap);
     if (hndl)
         rc = net_ack_message(hndl, rc);
+    hndl = NULL;
 }
 
 static void net_trigger_start(void *hndl, void *uptr, char *fromnode,

@@ -3522,6 +3522,7 @@ int net_ack_message_payload(void *handle, int outrc, void *payload,
                            WIRE_HEADER_ACK_PAYLOAD, ack_buf, sz);
 
         Pthread_rwlock_unlock(&(ack_state->netinfo->lock));
+        free(ack_state);
     }
     return rc;
 }
@@ -3656,6 +3657,7 @@ int net_ack_message(void *handle, int outrc)
                            ack_buf, sizeof(ack_buf));
 
         Pthread_rwlock_unlock(&(ack_state->netinfo->lock));
+        free(ack_state);
     }
     return rc;
 }
@@ -3686,6 +3688,8 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         (usertype >= 0 && usertype <= MAX_USER_TYPE &&
          netinfo_ptr->userfuncs[usertype] != NULL)) {
         if (needack) {
+            // ack_state needs to be freed in the
+            // net_ack_message/net_ack_message_payload functions
             ack_state = mymalloc(sizeof(ack_state_type));
             ack_state->seqnum = seqnum;
             ack_state->needack = needack;
@@ -3705,6 +3709,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
             logmsg(LOGMSG_DEBUG, "process_user_decom: "
                             "calling net_ack_message\n");
             net_ack_message(ack_state, 0);
+            ack_state = NULL;
             logmsg(LOGMSG_DEBUG, "process_user_decom: back "
                             "from net_ack_message\n");
             break;
@@ -3732,9 +3737,6 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         logmsg(LOGMSG_INFO, "%s: got an unexpected usertype from %s, ut=%d\n",
                __func__, host_node_ptr->host, usertype);
     }
-
-    if (ack_state)
-        free(ack_state);
 
     if (malloced)
         free(data);
