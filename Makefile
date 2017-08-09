@@ -143,7 +143,7 @@ docker-dev: docker-standalone
 docker-standalone: docker-build
 	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
 
-docker-cluster: docker-standalone
+docker-cluster: docker-dev
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node1
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node2
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node3
@@ -155,11 +155,10 @@ docker-cluster: docker-standalone
 # Build the database in the build container
 docker-build: build-build-container
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
-	docker run --user $(shell id -u):$(shell id -g) \
-		--env HOME=/tmp \
+	docker run --env HOME=/tmp \
 		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
-		-v $(realpath $(SRCHOME)):/comdb2.build \
 		-w /comdb2.build \
+		--rm \
 		comdb2-build:$(VERSION) \
-        make DESTDIR=/comdb2 -j3 install
+		make DESTDIR=/comdb2 -j3 install
  
