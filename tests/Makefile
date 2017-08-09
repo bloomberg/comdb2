@@ -5,7 +5,7 @@ export TESTSROOTDIR:=$(shell pwd)
 
 SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ )
 ifeq ($(SRCHOME),)
-SRCHOME:=$(TESTSROOTDIR)/..
+  SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
 
