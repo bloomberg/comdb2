@@ -5,7 +5,7 @@ set -e
 
 COPYDIR=$DBDIR/copy
 mkdir $COPYDIR
-copycomdb2 -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
+$SRCHOME/db/copycomdb2 -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
 cd $COPYDIR
 grep -v name ${DBNAME}.lrl > tmp && mv tmp ${DBNAME}.lrl
 NEWNAME="qcopy$$test"
