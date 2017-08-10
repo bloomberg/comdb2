@@ -1,0 +1,10 @@
+set hasql on
+set transaction serializable
+select comdb2_host()
+begin
+insert into jepsen values(1,1)
+insert into jepsen values(2,2)
+select * from t1 order by a
+commit
+select comdb2_host()
+quit
