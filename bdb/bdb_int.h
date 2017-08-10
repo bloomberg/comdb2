@@ -266,6 +266,26 @@ struct timestamp_lsn_key {
 };
 
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
+typedef struct pglogs_tmptbl_key {
+    db_pgno_t pgno;
+    DB_LSN commit_lsn;
+    DB_LSN lsn;
+} pglogs_tmptbl_key;
+typedef struct {
+    unsigned char fileid[DB_FILE_ID_LEN];
+    struct temp_table *tmptbl;
+    struct temp_cursor *tmpcur;
+#ifdef NEWSI_DEBUG_POOL
+    void *pool;
+#endif
+} logfile_pglog_hashkey;
+
+typedef struct relinks_tmptbl_key {
+    db_pgno_t pgno;
+    DB_LSN lsn;
+    db_pgno_t inh;
+} relinks_tmptbl_key;
+typedef logfile_pglog_hashkey logfile_relink_hashkey;
 #define LOGFILE_PAGE_KEY_SIZE (DB_FILE_ID_LEN * sizeof(unsigned char))
 #else
 typedef struct pglogs_logical_key logfile_pglog_hashkey;
