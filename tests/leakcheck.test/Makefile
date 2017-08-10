@@ -1,4 +1,8 @@
-include $(TESTSROOTDIR)/testcase.mk
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
 include $(TESTSROOTDIR)/../main.mk
 export TEST_TIMEOUT=6m
 CFLAGS+=-I$(SRCHOME)/cdb2api -I$(SRCHOME)/bbinc
