@@ -18,8 +18,8 @@ if [ "x$dbnm" == "x" ] ; then
     exit 1
 fi
 
-if [ -z $comdb2task ] ; then
-   failexit '$comdb2task is not set'
+if [ -z $COMDB2_EXE ] ; then
+   failexit '$COMDB2_EXE is not set'
 fi
 
 nout=0
@@ -325,18 +325,18 @@ kill_restart_node()
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
         sleep $delay
         if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         else
-            $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
         fi
     else
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
         sleep $delay
         echo "$DBNAME: starting single node"
-        echo "$comdb2task $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $comdb2task $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
     fi
 
     popd
@@ -460,7 +460,7 @@ done
 #setup remode db
 $TESTSROOTDIR/setup
 
-${SRCHOME}/cdb2_sqlreplay $alterdbname $logflunziped > sqlreplay.out
+$CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
 cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
 
 

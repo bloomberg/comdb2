@@ -5,13 +5,13 @@ set -e
 
 COPYDIR=$DBDIR/copy
 mkdir $COPYDIR
-$SRCHOME/db/copycomdb2 -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
+$COPYCOMDB2_EXE -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
 cd $COPYDIR
 grep -v name ${DBNAME}.lrl > tmp && mv tmp ${DBNAME}.lrl
 NEWNAME="qcopy$$test"
 echo "name $NEWNAME" >> ${DBNAME}.lrl
-$comdb2task $NEWNAME --create --lrl ${DBNAME}.lrl
-$comdb2task $NEWNAME --lrl ${DBNAME}.lrl &
+$COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
+$COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
 
 trap "cdb2sql $NEWNAME \"exec procedure sys.cmd.send('exit')\"" EXIT
 
