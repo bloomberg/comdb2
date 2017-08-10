@@ -930,10 +930,6 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (which_events == 0) {
-        fprintf(stderr, "NO TESTS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
-    }
-
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (debug_trace) flags |= NEMESIS_VERBOSE;

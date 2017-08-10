@@ -23,9 +23,6 @@ function createtables
 {
     [[ "$debug" == 1 ]] && set -x
     cdb2sql ${CDB2_OPTIONS} $db $stage "create table register {schema{int id int val null=yes longlong uid null=yes} keys{ \"id\" = id }}" >/dev/null 2>&1
-#    cdb2sql ${CDB2_OPTIONS} $db $stage "create table accounts {schema{int id int balance} keys{ \"id\" = id }}" >/dev/null 2>&1
-#    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
-#    cdb2sql ${CDB2_OPTIONS} $db $stage "create table dirty {schema{int id int x}}" >/dev/null 2>&1
 }
 
 function checkforerrors

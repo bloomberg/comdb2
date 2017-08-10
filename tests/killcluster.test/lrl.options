@@ -60,7 +60,7 @@ on extended_sql_debug_trace
 on verbose_toblock_backouts
 
 # Fail randomly to test curtran generation changes
-# on test_curtran_change
+#on test_curtran_change
 
 # Disable compression so I can read printlog output
 init_with_compr none
@@ -73,7 +73,7 @@ on dump_blkseq
 # on debug_sqlthd_failures
 
 # Force random get_curtran failures
-# on random_get_curtran_failures
+#on random_get_curtran_failures
 
 # Abort on invalid query info key
 # on abort_invalid_query_info_key
