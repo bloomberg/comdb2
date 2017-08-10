@@ -183,7 +183,7 @@ static inline int chkAndCopySequence(Vdbe* v, Parse* pParse, char *dst,
     }
 
     strncpy(dst, tmp_dst, MAXTABLELEN);
-    
+
     sequence_t *seq = getsequencebyname(dst);
 
     if (seq == NULL && mustexist)
@@ -278,9 +278,9 @@ static inline int chkAndCopySequenceNames(Vdbe *v, Parse *pParse, char *dst,
 {
  
     int rc;
-    int max_size = sizeof(name);
-    
-    if (max_size >= MAXTABLELEN)
+    int max_size = strlen(name) + 1;
+
+    if (max_size > MAXTABLELEN)
         return setError(pParse, SQLITE_MISUSE, "Sequence Name is too long");
 
     if ((rc = chkAndCopySequence(v, pParse, dst, name, max_size, mustexist)))
@@ -1628,7 +1628,7 @@ void comdb2CreateSequence(
     sc->seq_cycle = cycle;
     sc->seq_chunk_size = chunk_size;
     sc->seq_start_val = start_val;
-    
+    logmsg(LOGMSG_DEBUG, "\n\nNEW NAME: %s\n\n", sc->table);
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                         (vdbeFuncArgFree)&free_schema_change_type);
     return;
