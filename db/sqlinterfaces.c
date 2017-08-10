@@ -3131,7 +3131,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
 {
     if (thd->stmt_table) {
         delete_stmt_table(thd->stmt_table);
-        thd->stmt_table = NULL;
+        init_stmt_table(&thd->stmt_table);
         thd->param_stmt_head = NULL;
         thd->param_stmt_tail = NULL;
         thd->noparam_stmt_head = NULL;
