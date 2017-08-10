@@ -56,31 +56,37 @@ function test_restoredb {
   dbpid=$!
   # wait for db to launch
   count=0
-  cdb2sql ${CDB2_OPTIONS} $dbname default "select 1"
-  while [$? != "(1=1)" && $count -le 30]; do
+  sqloutput=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select 1")
+  while [ $sqloutput != "\(1=1\)" -a $count -le 5 ]; do
       sleep 1
       let count=count+1
-      cdb2sql ${CDB2_OPTIONS} $dbname default "select 1"
+      sqloutput=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select 1")
   done
 
-  if [$count -ge 30] ; then
+  if [ $count -ge 30 ] ; then
     failwith "DB Startup exceeded"
   fi
+  echo " "
 
-  cb2sql ${CDB2_OPTIONS} -f $1 $dbname default > $output 2>&1
-  expected_output=$(cat ${testname}.out)
+  sqlstatement=$(cat $1)
+  real_output=$(cdb2sql ${CDB2_OPTIONS} $dbname default "$sqlstatement")
+  expected_output=`cat ${testname}.out`
 
-  if [["$output" != "$expected_output"]] ; then
+  if [[ "$real_output" != "$expected_output" ]] ; then
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
     echo "Use 'diff <expected-output> <my-output>' to see why:"
-    echo "> diff ${PWD}/{$testname.out.$output}"
+    echo "> diff ${PWD}/${testname}.out}"
     echo " "
-    diff $testname.out $output
+    diff <(echo "$expected_output") <(echo $real_output)
     echo " "
+    kill $dbpid
     exit 1
   fi
+
+  echo "${testname} passed"
+  echo " "
 
   kill $dbpid
   rm -rf ${TMPDIR}/restore/*
@@ -99,7 +105,6 @@ function resetdb {
 
 # BASIC FUNCTIONALITY TEST
 resetdb
-
 for statement in `ls t1*.stmt`; do
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
   make_backup statement
@@ -110,7 +115,7 @@ echo "~~~~~~~~~~"
 echo "  Moving on to restoration"
 echo " "
 
-counter=0
+counter=1
 
 for testreq in `ls t1*.req`; do
   test_restoredb $testreq $counter
