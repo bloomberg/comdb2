@@ -680,6 +680,8 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     listc_init(&osql->shadtbls, offsetof(struct shad_tbl, linkv));
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
+    /* Clear intrans flag to force a new rqid. */
+    clnt->intrans = 0;
 
     return 0;
 }
