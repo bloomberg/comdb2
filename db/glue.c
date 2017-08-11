@@ -93,6 +93,7 @@
 #include <trigger.h>
 
 #include "views.h"
+#include "sequences.h"
 #include <sc_callbacks.h>
 
 #include "views.h"
@@ -2878,6 +2879,9 @@ static int new_master_callback(void *bdb_handle, char *host)
             load_auto_analyze_counters();
             trigger_clear_hash();
             trigger_timepart = 1;
+
+            // Reload Sequences
+            sequences_master_upgrade();
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
@@ -2888,6 +2892,9 @@ static int new_master_callback(void *bdb_handle, char *host)
         if (oldmaster != host)
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
+
+        // Invalidate sequence chunks
+        sequences_master_change();
     }
 
     gbl_lost_master_time = 0; /* reset this */

@@ -180,7 +180,6 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
 
     for (i = 0; i < thedb->num_sequences; i++) {
         if (strcasecmp(thedb->sequences[i]->name, name) == 0) {
-            // TODO: add checks for usage in tables
             // Remove sequence from dbenv
             thedb->num_sequences--;
 
