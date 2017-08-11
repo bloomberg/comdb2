@@ -1231,7 +1231,6 @@ int osql_bplog_reqlog_queries(struct ireq *iq)
     return 0;
 }
 
-static pthread_mutex_t ddl_lk = PTHREAD_MUTEX_INITIALIZER;
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err, SBUF2 *logsb)
 {
@@ -1279,11 +1278,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
-    if (iq->tranddl && pthread_mutex_trylock(&ddl_lk) != 0) {
-        errstat_set_str(&iq->errstat, "schemachange already in progress");
-        iq->errstat.errval = ERR_SC;
-        return iq->errstat.errval;
-    }
     /* go through the complete list and apply all the changes */
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
@@ -1292,9 +1286,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
         if (out_rc) {
             break;
         }
-    }
-    if (iq->tranddl) {
-        pthread_mutex_unlock(&ddl_lk);
     }
 #if 0
     /* we will apply these outside a transaction */

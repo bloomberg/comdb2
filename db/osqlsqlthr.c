@@ -664,6 +664,13 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
         }
     }
 
+    osql->timings.commit_start = osql_log_time();
+
+/* send results of sql processing to block master */
+/* if (thd->sqlclntstate->query_stats)*/
+
+retry:
+
     /* Release our locks.  Only table locks should be held at this point. */
     if (clnt->dbtran.cursor_tran) {
         rc = bdb_free_curtran_locks(thedb->bdb_env, clnt->dbtran.cursor_tran,
@@ -678,12 +685,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
         }
     }
 
-    osql->timings.commit_start = osql_log_time();
-
-/* send results of sql processing to block master */
-/* if (thd->sqlclntstate->query_stats)*/
-
-retry:
     rc = osql_send_commit_logic(clnt, req2netrpl(type));
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d: failed to send commit to master rc was %d\n", __FILE__,

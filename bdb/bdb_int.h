@@ -1859,6 +1859,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr);
 void wait_for_sc_to_stop(void);
+void allow_sc_to_run(void);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
 

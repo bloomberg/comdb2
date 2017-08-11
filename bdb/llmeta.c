@@ -4343,14 +4343,16 @@ done:
 }
 
 int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, int *bdberr)
+                               unsigned long long *genid, unsigned int *host,
+                               int *bdberr)
 {
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
     int fndlen;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
-    unsigned long long tmpgenid;
+    int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
+    uint8_t *data_buf = alloca(data_sz);
 
     *bdberr = BDBERR_NOERROR;
 
@@ -4363,22 +4365,29 @@ int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &tmpgenid,
-                                   sizeof(tmpgenid), &fndlen, bdberr);
-    if (rc == 0)
-        *genid = tmpgenid;
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, data_buf,
+                                   data_sz, &fndlen, bdberr);
+    if (rc == 0) {
+        *genid = *(unsigned long long *)data_buf;
+        *host = ntohl(*(unsigned int *)(data_buf + sizeof(unsigned long long)));
+    }
     return rc;
 }
 
 int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, int *bdberr)
+                               unsigned long long genid, unsigned int host,
+                               int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
-    unsigned long long genidlcl = genid;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
+    uint8_t *data_buf = alloca(data_sz);
+    *(unsigned long long *)data_buf = genid;
+    *(unsigned int *)(data_buf + sizeof(unsigned long long)) = htonl(host);
 
     *bdberr = BDBERR_NOERROR;
 
@@ -4401,11 +4410,11 @@ int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
 
-    rc = bdb_get_disable_plan_genid(bdb_state, tran, &genid, bdberr);
+    rc = bdb_get_disable_plan_genid(bdb_state, tran, &genid, &host, bdberr);
     if (rc) { //not found, just add -- should refactor
         if (*bdberr == BDBERR_FETCH_DTA) {
-            rc = bdb_lite_add(llmeta_bdb_state, tran, &genidlcl,
-                              sizeof(unsigned long long), key, bdberr);
+            rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key,
+                              bdberr);
         } 
         goto done;
     }
@@ -4414,8 +4423,7 @@ int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
     if (rc && *bdberr != BDBERR_DEL_DTA)
         goto done;
 
-    rc = bdb_lite_add(llmeta_bdb_state, tran, &genidlcl,
-                      sizeof(unsigned long long), key, bdberr);
+    rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key, bdberr);
 
 done:
     if (started_our_own_transaction) {
