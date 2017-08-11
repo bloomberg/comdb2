@@ -201,18 +201,20 @@ void unpack_full_file(
         throw Error("Stream contains files for data directory before data dir is known");
     }
 
-    std::string outfilename(datadestdir + "/" + filename);
-    std::unique_ptr<fdostream> incr_of_ptr = output_file(outfilename, false, true);
-
     size_t pagesize = 0;
     bool checksums = false;
     bool file_is_sparse = false;
+    std::unique_ptr<fdostream> incr_of_ptr;
+    std::string outfilename(datadestdir + "/" + filename);
 
     if(is_data_file){
         FileInfo file_info = *file_info_pt;
         pagesize = file_info.get_pagesize();
         checksums = file_info.get_checksums();
         file_is_sparse = file_info.get_sparse();
+        incr_of_ptr = output_file(outfilename, false, true);
+    } else {
+        incr_of_ptr = output_file(outfilename, false, false);
     }
 
     if(pagesize == 0) {
@@ -348,29 +350,16 @@ void unpack_full_file(
                     lim = write_size;
 
                 if (!incr_of_ptr->write((char*) &buf[off], lim)) {
-                    bool err = true;
 
-                    // Retry by opening another file pointer
-                    std::ofstream ofs(outfilename, std::ofstream::out |
-                            std::ofstream::binary | std::ofstream::app);
-                    if (ofs.is_open()){
-                        if(ofs.write((char *) &buf[off], lim)) {
-                            err = false;
-                        }
-                        ofs.close();
-                    }
+                    std::ostringstream ss;
 
-                    if(err) {
-                        std::ostringstream ss;
+                    if (filename == "FLUFF")
+                        return;
 
-                        if (filename == "FLUFF")
-                            return;
-
-                        ss << "Error Writing " << filename << " after "
-                           << (filesize - bytesleft) << " bytes" << std::endl
-                           << errno << ": " << strerror(errno);
-                        throw Error(ss);
-                    }
+                    ss << "Error Writing " << filename << " after "
+                       << (filesize - bytesleft) << " bytes" << std::endl
+                       << errno << ": " << strerror(errno);
+                    throw Error(ss);
                 }
                 nwrites++;
                 off += lim;

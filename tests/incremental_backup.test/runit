@@ -16,15 +16,12 @@ function failexit
 
 function make_base {
   # basename=${TMPDIR}/backups/t1-1_base.tar
-  basename=~/testrestore/t1-1_base.tar
+  basename=~/incrtest/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
   comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
   cp $basename ${TMPDIR}/backups/t1-1_base.tar
   echo "~~~~~~~~~~"
-  echo "  LISTING FILE CONTENTS"
   echo $basename
-  tar -tvf $basename
-  echo "~~~~~~~~~~"
   echo "  DONE WITH BASE"
   echo " "
 }
@@ -34,16 +31,12 @@ function make_backup {
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
   # backuploc=${TMPDIR}/backups/${backupname}
-  backuploc=~/testrestore/${backupname}
-
+  backuploc=~/incrtest/${backupname}
 
   comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
   cp $backuploc ${TMPDIR}/backups/${backupname}
   echo "~~~~~~~~~~"
-  echo "  LISTING FILE CONTENTS"
   echo ${TMPDIR}/backups/${backupname}
-  tar -tvf ${TMPDIR}/backups/${backupname}
-  echo "~~~~~~~~~~"
   echo "  DONE WITH INCREMENT"
   echo " "
 }
@@ -58,16 +51,21 @@ function test_restoredb {
   echo $restorecmd
   $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
 
+  echo "~~~~~~~~~~"
+  echo "  LISTING RESTORED DIRECTORY"
+  ls -l ${TMPDIR}/restore
   comdb2 --lrl ${TMPDIR}/restore/$dbname.lrl ${dbname}_restore &
   dbpid=$!
   echo $dbpid
   # wait for db to launch
   count=0
-  sqloutput=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select 1")
+  cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > sqloutput 2>&1
+  sqloutput=$(echo sqloutput)
   while [ $sqloutput != "\(1=1\)" -a $count -le 5 ]; do
       sleep 1
       let count=count+1
-      sqloutput=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select 1")
+      cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > sqloutput 2>&1
+      sqloutput=$(echo sqloutput)
   done
 
   if [ $count -ge 30 ] ; then
@@ -75,15 +73,15 @@ function test_restoredb {
   fi
   echo " "
 
-  cdb2sql ${CDB2_OPTIONS} -f $1 $dbname default > ${testname}.output 2>&1
+  cdb2sql ${CDB2_OPTIONS} -f $1 ${dbname}_restore default > ${testname}.output 2>&1
   diff ${testname}.expected ${testname}.output
   if [[ $? -ne 0 ]] ; then
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
     echo " "
-    kill $dbpid
-    exit 1
+    # kill $dbpid
+    # exit 1
   fi
 
   echo "${testname} passed"
@@ -111,7 +109,6 @@ for statement in `ls t1*.stmt`; do
   make_backup $statement
 done
 
-ls -al ${TMPDIR}/backups
 echo "~~~~~~~~~~"
 echo "  Moving on to restoration"
 echo " "
@@ -130,7 +127,7 @@ for i in $(seq 1 10); do
 done
 cdb2sql ${CDB2_OPTIONS} -f t1-1_insert.stmt $dbname default
 make_backup push_next_inserts
-test_restoredb t2.req 1
+test_restoredb t2.req 2
 
 echo "Test Successful"
 exit 0
