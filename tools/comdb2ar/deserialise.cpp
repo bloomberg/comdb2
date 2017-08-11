@@ -732,13 +732,6 @@ void deserialise_database(
                 uint64_t nwrites = 0;
                 uint64_t bytes = readbytes;
 
-                fdostream *fdo_ptr = of_ptr.get();
-                if (fdo_ptr == NULL) {
-                    std::clog << "NULL" << std::endl;
-                } else {
-                    std::clog << fdo_ptr << std::endl;
-                }
-
                 if (file_is_sparse && skipped_bytes)
                 {
                     if((of_ptr->skip(skipped_bytes)))

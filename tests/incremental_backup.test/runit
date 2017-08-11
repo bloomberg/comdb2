@@ -15,9 +15,11 @@ function failexit
 }
 
 function make_base {
-  basename=${TMPDIR}/backups/base.tar
-  backuplist+=(base.tar)
+  # basename=${TMPDIR}/backups/t1-1_base.tar
+  basename=~/testrestore/t1-1_base.tar
+  backuplist+=(t1-1_base.tar)
   comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  cp $basename ${TMPDIR}/backups/t1-1_base.tar
   echo "~~~~~~~~~~"
   echo "  LISTING FILE CONTENTS"
   echo $basename
@@ -31,8 +33,12 @@ function make_backup {
   fullbackupname=$1
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
+  # backuploc=${TMPDIR}/backups/${backupname}
+  backuploc=~/testrestore/${backupname}
 
-  comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > ${TMPDIR}/backups/${backupname}
+
+  comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  cp $backuploc ${TMPDIR}/backups/${backupname}
   echo "~~~~~~~~~~"
   echo "  LISTING FILE CONTENTS"
   echo ${TMPDIR}/backups/${backupname}
@@ -54,6 +60,7 @@ function test_restoredb {
 
   comdb2 --lrl ${TMPDIR}/restore/$dbname.lrl ${dbname}_restore &
   dbpid=$!
+  echo $dbpid
   # wait for db to launch
   count=0
   sqloutput=$(cdb2sql ${CDB2_OPTIONS} $dbname default "select 1")
@@ -68,18 +75,12 @@ function test_restoredb {
   fi
   echo " "
 
-  sqlstatement=$(cat $1)
-  real_output=$(cdb2sql ${CDB2_OPTIONS} $dbname default "$sqlstatement")
-  expected_output=`cat ${testname}.out`
-
-  if [[ "$real_output" != "$expected_output" ]] ; then
+  cdb2sql ${CDB2_OPTIONS} -f $1 $dbname default > ${testname}.output 2>&1
+  diff ${testname}.expected ${testname}.output
+  if [[ $? -ne 0 ]] ; then
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
-    echo "Use 'diff <expected-output> <my-output>' to see why:"
-    echo "> diff ${PWD}/${testname}.out}"
-    echo " "
-    diff <(echo "$expected_output") <(echo $real_output)
     echo " "
     kill $dbpid
     exit 1
@@ -100,14 +101,14 @@ function resetdb {
   cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
   make_base
   cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
-  make_backup create_table
+  make_backup t1-2_create_table
 }
 
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1*.stmt`; do
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
-  make_backup statement
+  make_backup $statement
 done
 
 ls -al ${TMPDIR}/backups
@@ -115,7 +116,7 @@ echo "~~~~~~~~~~"
 echo "  Moving on to restoration"
 echo " "
 
-counter=1
+counter=0
 
 for testreq in `ls t1*.req`; do
   test_restoredb $testreq $counter

@@ -202,7 +202,6 @@ void unpack_full_file(
     }
 
     std::string outfilename(datadestdir + "/" + filename);
-    std::clog << "about to construct " << outfilename <<  std::endl;
     std::unique_ptr<fdostream> incr_of_ptr = output_file(outfilename, false, true);
 
     size_t pagesize = 0;
@@ -324,13 +323,6 @@ void unpack_full_file(
             uint64_t nwrites = 0;
             uint64_t bytes = readbytes;
 
-            fdostream *fdo_ptr = incr_of_ptr.get();
-            if (fdo_ptr == NULL) {
-                std::clog << "NULL" << std::endl;
-            } else {
-                std::clog << fdo_ptr << std::endl;
-            }
-
             if (file_is_sparse && skipped_bytes)
             {
                 if((incr_of_ptr->skip(skipped_bytes)))
@@ -356,16 +348,29 @@ void unpack_full_file(
                     lim = write_size;
 
                 if (!incr_of_ptr->write((char*) &buf[off], lim)) {
+                    bool err = true;
 
-                    std::ostringstream ss;
+                    // Retry by opening another file pointer
+                    std::ofstream ofs(outfilename, std::ofstream::out |
+                            std::ofstream::binary | std::ofstream::app);
+                    if (ofs.is_open()){
+                        if(ofs.write((char *) &buf[off], lim)) {
+                            err = false;
+                        }
+                        ofs.close();
+                    }
 
-                    if (filename == "FLUFF")
-                        return;
+                    if(err) {
+                        std::ostringstream ss;
 
-                    ss << "Error Writing " << filename << " after "
-                       << (filesize - bytesleft) << " bytes" << std::endl
-                       << errno << ": " << strerror(errno);
-                    throw Error(ss);
+                        if (filename == "FLUFF")
+                            return;
+
+                        ss << "Error Writing " << filename << " after "
+                           << (filesize - bytesleft) << " bytes" << std::endl
+                           << errno << ": " << strerror(errno);
+                        throw Error(ss);
+                    }
                 }
                 nwrites++;
                 off += lim;
@@ -429,8 +434,6 @@ void unpack_full_file(
        std::clog << " not sparse ";
 
     std::clog << std::endl;
-
-    std::clog << "about to destruct" << outfilename << std::endl;
 }
 
 void clear_log_folder(
