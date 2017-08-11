@@ -1,6 +1,6 @@
 #!/bin/bash
 
-debug=1
+#debug=1
 # Runs the insert utility
 [[ "$debug" == 1 ]] && set -x
 
