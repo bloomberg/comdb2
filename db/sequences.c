@@ -43,7 +43,7 @@ int seq_next_val(tran_type *tran, char *name, long long *val)
     // Get lock for in-memory object
     pthread_mutex_lock(&seq->seq_lk);
 
-    // Check for remaining values. 
+    // Check for remaining values.
     // seq->next_val is only valid if remaining values > 0
     if (seq->remaining_vals == 0) {
         // No remaining values, allocate new chunk
@@ -113,4 +113,56 @@ int seq_next_val(tran_type *tran, char *name, long long *val)
 done:
     pthread_mutex_unlock(&seq->seq_lk);
     return rc;
+}
+
+int sequences_master_change()
+{
+    int i;
+    sequence_t *seq;
+
+    /*should be changed to a hash table*/
+    for (i = 0; i < thedb->num_sequences; i++) {
+        seq = thedb->sequences[i];
+
+        if (seq == NULL) {
+            continue;
+        }
+
+        // Clear remaining_vals to force chunk reallocation
+        pthread_mutex_lock(&seq->seq_lk);
+        seq->remaining_vals = 0;
+        pthread_mutex_unlock(&seq->seq_lk);
+    }
+}
+
+int sequences_master_upgrade()
+{
+    int i, rc, bdberr;
+    sequence_t *seq;
+
+    /*should be changed to a hash table*/
+    for (i = 0; i < thedb->num_sequences; i++) {
+        seq = thedb->sequences[i];
+
+        if (seq == NULL) {
+            continue;
+        }
+
+        // Reload sequence descriptions from llmeta (for next_start_val)
+        pthread_mutex_lock(&seq->seq_lk);
+
+        rc = bdb_llmeta_get_sequence(
+            NULL, seq->name, &seq->min_val, &seq->max_val, &seq->increment,
+            &seq->cycle, &seq->start_val, &seq->next_start_val,
+            &seq->chunk_size, &seq->flags, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "can't get information for sequence \"%s\"\n",
+                   seq->name);
+            return -1;
+        }
+
+        seq->remaining_vals = 0;
+
+        pthread_mutex_unlock(&seq->seq_lk);
+    }
 }
