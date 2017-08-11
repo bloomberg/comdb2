@@ -21,6 +21,7 @@
 #include "sc_global.h"
 #include "logmsg.h"
 #include "sc_callbacks.h"
+#include "bbinc/cheapstack.h"
 
 pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -142,7 +143,7 @@ void wait_for_sc_to_stop(void)
  * dtastripe changes. */
 int sc_set_running(int running, uint64_t seed, char *host, time_t time)
 {
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif

@@ -3640,4 +3640,6 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value);
 comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
+int db_is_stopped(void);
+
 #endif /* !INCLUDED_COMDB2_H */

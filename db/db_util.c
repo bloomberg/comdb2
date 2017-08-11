@@ -442,8 +442,8 @@ int rewrite_lrl_un_llmeta(const char *p_lrl_fname_in,
 
     /* add table definitions */
     for (i = 0; i < num_tables; ++i) {
-        if (strncmp(p_table_names[i], "sqlite_stat", sizeof("sqlite_stat")-1) ==
-            0)
+        if (strncmp(p_table_names[i], "sqlite_stat",
+                    sizeof("sqlite_stat") - 1) == 0)
             continue;
 
         sbuf2printf(sb_out, "table %s %s", p_table_names[i], p_csc2_paths[i]);

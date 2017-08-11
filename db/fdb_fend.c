@@ -1153,10 +1153,8 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     fdb_t *fdb;
     int rc = FDB_NOERR;
     int created = 0;
-    int node = -1;
     int local = 0;
     enum mach_class lvl = 0;
-    char *host;
     char errstr[256];
     char *perrstr;
 
@@ -1185,7 +1183,6 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
         }
     }
 
-    /* discover node */
     if (!local) {
         pthread_mutex_lock(&fdb->dbcon_mtx);
         rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
@@ -1216,9 +1213,6 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             }
             goto error; /* new_fdb bumped up users, need to decrement that */
         }
-    } else {
-        /* node should be 0, which is local */
-        assert(node == 0);
     }
 
     /* the bellow will exclusively lock fdb, and bump users before releasing
@@ -3737,7 +3731,8 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     if (rc) {
         bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
         errstat_set_rc(&clnt->osql.xerr, rc);
-        errstat_set_str(&clnt->osql.xerr, tran->errstr);
+        if (tran->errstr) // TODO: this can be non-null even when no error
+            errstat_set_str(&clnt->osql.xerr, tran->errstr);
         clnt->osql.error_is_remote = 1;
     } else {
         errstat_set_rc(&clnt->osql.xerr, 0);
