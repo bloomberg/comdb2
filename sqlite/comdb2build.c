@@ -1802,8 +1802,10 @@ struct comdb2_type_mapping {
       Comdb2 types.
       WARNING: DO NOT CHANGE THE ORDER!
     */
-    COMDB2_TYPE("u_short", "u_short", 0), COMDB2_TYPE("short", "short", 0),
-    COMDB2_TYPE("u_int", "u_int", 0), COMDB2_TYPE("int", "int", 0),
+    COMDB2_TYPE("u_short", "u_short", 0),
+    COMDB2_TYPE("short", "short", 0),
+    COMDB2_TYPE("u_int", "u_int", 0),
+    COMDB2_TYPE("int", "int", 0),
     COMDB2_TYPE("longlong", "longlong", 0),
     COMDB2_TYPE("cstring", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
     COMDB2_TYPE("vutf8", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
@@ -1817,12 +1819,18 @@ struct comdb2_type_mapping {
     COMDB2_TYPE("decimal32", "decimal32", 0),
     COMDB2_TYPE("decimal64", "decimal64", 0),
     COMDB2_TYPE("decimal128", "decimal128", 0),
-    COMDB2_TYPE("float", "float", 0), COMDB2_TYPE("double", "double", 0),
+    COMDB2_TYPE("float", "float", 0),
+    COMDB2_TYPE("double", "double", 0),
 
     /* Additional types mapped to a Comdb2 type. */
     COMDB2_TYPE("varchar", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
     COMDB2_TYPE("char", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY)};
+    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
+    COMDB2_TYPE("integer", "int", 0),
+    COMDB2_TYPE("smallint", "short", 0),
+    COMDB2_TYPE("bigint", "longlong", 0),
+    COMDB2_TYPE("real", "float", 0),
+};
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
@@ -1913,9 +1921,23 @@ static void free_ddl_context(Parse *pParse)
 static int comdb2_parse_sql_type(const char *type, int *size)
 {
     char *endptr;
+    size_t type_len;
+    int size_maybe;
+
+    type_len = strlen(type);
 
     for (int i = 0;
          i < sizeof(type_mapping) / sizeof(struct comdb2_type_mapping); ++i) {
+
+        /* Check if current type could accept size. */
+        int size_maybe =
+            ((type_mapping[i].flag & COMDB2_TYPE_FLAG_ALLOW_ARRAY) == 0) ? 0
+                                                                         : 1;
+
+        if ((size_maybe == 0) && (type_mapping[i].sql_type_len != type_len)) {
+            continue;
+        }
+
         if (strncasecmp(type, type_mapping[i].sql_type,
                         type_mapping[i].sql_type_len) == 0) {
 
@@ -1932,7 +1954,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
             /* A size has been specified. */
 
-            if ((type_mapping[i].flag & COMDB2_TYPE_FLAG_ALLOW_ARRAY) == 0) {
+            if (size_maybe == 0) {
                 /* The type does not accept size. */
                 return -1;
             }
