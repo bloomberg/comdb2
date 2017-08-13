@@ -302,16 +302,15 @@ The ```CREATE TABLE``` statement creates a new table. If the table already
 exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
 is present.
 
-Comdb2 support two variants of ```CREATE TABLE``` syntax. In the first approach,
+Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach,
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
 The second approach, added in version 7.0, follows the usual standard data
-definition language syntax supported by other relational database systems. It
-is important to note that, unlike other relational database systems, Comdb2
-does not have the notion of ```PRIMARY KEY```. However, a primary key created
-using ```CREATE TABLE (II)``` implicitly creates a ```UNIQUE``` index named
-```PRIMARY_KEY``` with all key columns marked ```NOT NULL```.
+definition language syntax supported by other relational database systems.
+A primary key created using ```CREATE TABLE (II)``` implicitly creates a
+```UNIQUE``` index named ```PRIMARY_KEY``` with all key columns marked
+```NOT NULL```.
 
 See also:
 
@@ -373,8 +372,18 @@ ALTER TABLE (II):
 
 ![ALTER](images/alter-table-ddl.gif)
 
+_**Schema changes in Comdb2 are always live**. The database will not acquire
+long duration table locks during the change and may be freely read from and
+written to.  If the schema change adds a new field, or grows the size of an
+existing field, and doesn't modify the table keys, the change is "*instant*"
+(unless the ```ISC``` table option is set to ```OFF```). No table rebuild will
+take place (unless the table option ```REBUILD``` is specified) if it's not
+needed. If fields are removed or the size of an existing field is reduced, the
+schema change will need to rebuild the existing table. If any key is modified,
+it'll be rebuilt._
+
 The ```ALTER TABLE``` statement will change the definition of the named table
-to the one provided. Note that Comdb2 support two variants of ```ALTER TABLE```
+to the one provided. Note that Comdb2 supports two variants of ```ALTER TABLE```
 syntax.
 
 The first approach uses a [declarative language](table_schema.html) and is not
@@ -392,18 +401,8 @@ The second approach, added in version 7.0, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
-```DROP``` operation, the references to the column begin dropped will be
+```DROP``` operation, the references to the column being dropped will be
 silently removed from the referring keys and constraints definitions.
-
-**Schema changes in Comdb2 are always live**. The database will not acquire
-long duration table locks during the change and may be freely read from and
-written to.  If the schema change adds a new field, or grows the size of an
-existing field, and doesn't modify the table keys, the change is "*instant*"
-(unless the ```ISC``` table option is set to ```OFF```). No table rebuild will
-take place (unless the table option ```REBUILD``` is specified) if it's not
-needed. If fields are removed or the size of an existing field is reduced, the
-schema change will need to rebuild the existing table. If any key is modified,
-it'll be rebuilt.
 
 See also:
 
