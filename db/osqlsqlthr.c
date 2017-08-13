@@ -393,8 +393,6 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
         if (gbl_noenv_messages) {
             osql->rqid = OSQL_RQID_USE_UUID;
             comdb2uuid(osql->uuid);
-
-            uuidstr_t us;
         } else {
             osql->rqid = comdb2fastseed();
             comdb2uuid_clear(osql->uuid);
