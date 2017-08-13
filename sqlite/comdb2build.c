@@ -1827,7 +1827,7 @@ struct comdb2_type_mapping {
 /*
   Allocate Comdb2 DDL context to be used during parsing.
 */
-static struct comdb2_ddl_context *create_ddl_context()
+static struct comdb2_ddl_context *create_ddl_context(Parse *pParse)
 {
     struct comdb2_ddl_context *ctx;
 
@@ -1850,36 +1850,12 @@ static struct comdb2_ddl_context *create_ddl_context()
     listc_init(&ctx->key_list, offsetof(struct comdb2_schema, lnk));
     listc_init(&ctx->constraint_list, offsetof(struct comdb2_constraint, lnk));
 
+    pParse->comdb2_ddl_ctx = ctx;
     return ctx;
 
 err:
     free(ctx);
     return NULL;
-}
-
-/* Free memory allocated by schema struct. */
-static void free_schema(struct schema *schema)
-{
-    if (schema == 0) return;
-
-    free(schema->tag);
-
-    for (int i = 0; i < schema->nmembers; i++) {
-        free(schema->member[i].name);
-        free(schema->member[i].in_default);
-        free(schema->member[i].out_default);
-    }
-    free(schema->member);
-
-    for (int i = 0; i < schema->nix; i++) {
-        free_schema(schema->ix[i]);
-    }
-    free(schema->ix);
-
-    free(schema->csctag);
-    free(schema->datacopy);
-    free(schema);
-    return;
 }
 
 /*
@@ -1892,7 +1868,6 @@ static void free_ddl_context(Parse *pParse)
     ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) return;
 
-    free_schema(ctx->schema);
     comdb2ma_destroy(ctx->mem);
 
     free(ctx);
@@ -2052,8 +2027,7 @@ err:
     Success    NULL-terminated string
     Error      NULL
 */
-static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
-                        int len)
+static char *format_val(comdb2ma ma, char *val, int type, int len)
 {
     char *buf;
     int buf_len;
@@ -2067,7 +2041,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             v = ntohs(v);
             buf_len = snprintf(NULL, 0, "%hu", v);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%hu", v);
             return buf;
         }
@@ -2077,7 +2051,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             v = ntohs(v);
             buf_len = snprintf(NULL, 0, "%u", v);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%hu", v);
             return buf;
         }
@@ -2093,7 +2067,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             int2b_to_int2(v, &sval);
             buf_len = snprintf(NULL, 0, "%hd", sval);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%hd", sval);
             return buf;
         }
@@ -2105,7 +2079,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             int4b_to_int4(v, &ival);
             buf_len = snprintf(NULL, 0, "%d", ival);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%d", ival);
             return buf;
         }
@@ -2117,7 +2091,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             int8b_to_int8(v, &lval);
             buf_len = snprintf(NULL, 0, "%lld", lval);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%lld", lval);
             return buf;
         }
@@ -2133,7 +2107,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             ieee4b_to_ieee4(v, &fval);
             buf_len = snprintf(NULL, 0, "%f", (double)fval);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%f", (double)fval);
             return buf;
         }
@@ -2145,7 +2119,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
             ieee8b_to_ieee8(v, &dval);
             buf_len = snprintf(NULL, 0, "%f", dval);
             buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
+            buf = comdb2_malloc(ma, buf_len);
             snprintf(buf, buf_len, "%f", dval);
             return buf;
         }
@@ -2153,7 +2127,7 @@ static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
         }
     case SERVER_BCSTR:
         buf_len = strlen(val + 1) + 3;
-        buf = comdb2_malloc(ctx->mem, buf_len);
+        buf = comdb2_malloc(ma, buf_len);
         snprintf(buf, buf_len, "\"%s\"", val + 1);
         return buf;
         break;
@@ -2556,6 +2530,53 @@ static int retrieve_table_options(struct dbtable *table)
     return table_options;
 }
 
+static struct schema *clone_schema_ma(comdb2ma ma, struct schema *from)
+{
+    int i;
+
+    struct schema *sc = comdb2_calloc(ma, 1, sizeof(struct schema));
+    sc->tag = comdb2_strdup(ma, from->tag);
+    sc->nmembers = from->nmembers;
+    sc->member = comdb2_malloc(ma, from->nmembers * sizeof(struct field));
+    sc->flags = from->flags;
+    sc->nix = from->nix;
+    if (sc->nix) sc->ix = comdb2_calloc(ma, from->nix, sizeof(struct schema *));
+
+    for (i = 0; i < from->nmembers; i++) {
+        sc->member[i] = from->member[i];
+        sc->member[i].name = comdb2_strdup(ma, from->member[i].name);
+        if (from->member[i].in_default) {
+            sc->member[i].in_default =
+                comdb2_malloc(ma, sc->member[i].in_default_len);
+            memcpy(sc->member[i].in_default, from->member[i].in_default,
+                   from->member[i].in_default_len);
+        }
+        if (from->member[i].out_default) {
+            sc->member[i].out_default =
+                comdb2_malloc(ma, sc->member[i].out_default_len);
+            memcpy(sc->member[i].out_default, from->member[i].out_default,
+                   from->member[i].out_default_len);
+        }
+    }
+
+    for (i = 0; i < from->nix; i++) {
+        if (from->ix && from->ix[i])
+            sc->ix[i] = clone_schema_ma(ma, from->ix[i]);
+    }
+
+    sc->ixnum = from->ixnum;
+    sc->recsize = from->recsize;
+    sc->numblobs = from->numblobs;
+
+    if (from->csctag) sc->csctag = comdb2_strdup(ma, from->csctag);
+
+    if (from->datacopy) {
+        sc->datacopy = comdb2_malloc(ma, from->nmembers * sizeof(int));
+        memcpy(sc->datacopy, from->datacopy, from->nmembers * sizeof(int));
+    }
+    return sc;
+}
+
 /*
   Fetch the schema definition of the table being altered.
 */
@@ -2582,7 +2603,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     ctx->table_options = retrieve_table_options(table);
 
-    schema = clone_schema(table->schema);
+    schema = clone_schema_ma(ctx->mem, table->schema);
     ctx->schema = schema;
 
     /* Change the type and length of fields in the cloned schema. */
@@ -2600,8 +2621,8 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* Convert the default value to string. */
         if (fentry->field->in_default) {
             fentry->field->in_default = format_val(
-                ctx, fentry->field->in_default, fentry->field->in_default_type,
-                fentry->field->in_default_len);
+                ctx->mem, fentry->field->in_default,
+                fentry->field->in_default_type, fentry->field->in_default_len);
         }
         listc_abl(&ctx->column_list, fentry);
     }
@@ -2710,11 +2731,13 @@ void comdb2AlterTableStart(
 {
     struct comdb2_ddl_context *ctx;
 
+    assert(pParse->comdb2_ddl_ctx == 0);
+
     if (isRemote(pParse, &pName1, &pName2)) {
         return;
     }
 
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
@@ -2732,8 +2755,6 @@ void comdb2AlterTableStart(
     if (retrieve_schema(pParse, ctx)) {
         goto cleanup;
     }
-
-    pParse->comdb2_ddl_ctx = ctx;
 
     return;
 
@@ -2790,6 +2811,8 @@ void comdb2AlterTableEnd(Parse *pParse)
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
 
@@ -2822,10 +2845,11 @@ void comdb2CreateTableStart(
 {
     struct comdb2_ddl_context *ctx;
 
+    assert(pParse->comdb2_ddl_ctx == 0);
+
     if (isTemp) pParse->db->force_sqlite_impl = 1;
 
     if (use_sqlite_impl(pParse)) {
-        pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
         return;
@@ -2835,14 +2859,12 @@ void comdb2CreateTableStart(
         return;
     }
 
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
     ctx->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
     if (ctx->name == 0) goto oom;
     sqlite3Dequote(ctx->name);
-
-    pParse->comdb2_ddl_ctx = ctx;
 
     if (noErr && get_dbtable_by_name(ctx->name)) {
         ctx->flags |= COMDB2_DDL_CTX_FLAG_NOOP;
@@ -2922,8 +2944,11 @@ void comdb2CreateTableEnd(
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
+
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
@@ -2983,7 +3008,6 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
         setError(pParse, SQLITE_MISUSE, "Invalid type specified.");
         goto cleanup;
     }
-    free(type);
 
     struct comdb2_field *entry =
         comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_field));
@@ -3055,6 +3079,7 @@ cleanup:
 void comdb2AddNull(Parse *pParse)
 {
     struct comdb2_ddl_context *ctx;
+
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
     if (use_sqlite_impl(pParse)) {
@@ -3113,6 +3138,7 @@ void comdb2AddNotNull(Parse *pParse, int onError)
 void comdb2AddDbpad(Parse *pParse, int dbpad)
 {
     struct comdb2_ddl_context *ctx;
+
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
     if (use_sqlite_impl(pParse)) {
@@ -3345,6 +3371,8 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
+    assert(pParse->comdb2_ddl_ctx == 0);
+
     if (use_sqlite_impl(pParse)) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
@@ -3370,7 +3398,7 @@ void comdb2CreateIndex(
     assert(idxType == SQLITE_IDXTYPE_APPDEF);
 
     /* Its a CREATE INDEX command. */
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
     ctx->name = comdb2_strdup(ctx->mem, pTblName->a[0].zName);
@@ -3413,8 +3441,6 @@ void comdb2CreateIndex(
     if (retrieve_schema(pParse, ctx)) {
         goto cleanup;
     }
-
-    pParse->comdb2_ddl_ctx = ctx;
 
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) {
@@ -3487,8 +3513,11 @@ void comdb2CreateIndex(
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
+
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
@@ -3821,8 +3850,9 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
         return;
     }
 
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
+
     ctx->name = table->dbname;
 
     /*
@@ -3832,8 +3862,6 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
     if (retrieve_schema(pParse, ctx)) {
         goto cleanup;
     }
-
-    pParse->comdb2_ddl_ctx = ctx;
 
     /* Mark the index as dropped. */
     struct comdb2_schema *current_key;
@@ -3877,8 +3905,11 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
+
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
     return;
@@ -3901,6 +3932,8 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
     struct dbtable *table;
     struct dbtable *parent_table;
     int index_count = 0;
+
+    assert(pParse->comdb2_ddl_ctx == 0);
 
     if (use_sqlite_impl(pParse)) {
         sqlite3DropIndex(pParse, pName, ifExists);
@@ -3962,6 +3995,8 @@ void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
 {
     struct dbtable *table;
     int found = 0;
+
+    assert(pParse->comdb2_ddl_ctx == 0);
 
     TokenStr(table_name, tabName);
     sqlite3Dequote(table_name);
