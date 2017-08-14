@@ -1922,7 +1922,6 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 {
     char *endptr;
     size_t type_len;
-    int size_maybe;
 
     type_len = strlen(type);
 
@@ -1930,11 +1929,11 @@ static int comdb2_parse_sql_type(const char *type, int *size)
          i < sizeof(type_mapping) / sizeof(struct comdb2_type_mapping); ++i) {
 
         /* Check if current type could accept size. */
-        int size_maybe =
+        int accepts_size =
             ((type_mapping[i].flag & COMDB2_TYPE_FLAG_ALLOW_ARRAY) == 0) ? 0
                                                                          : 1;
 
-        if ((size_maybe == 0) && (type_mapping[i].sql_type_len != type_len)) {
+        if ((accepts_size == 0) && (type_mapping[i].sql_type_len != type_len)) {
             continue;
         }
 
@@ -1954,7 +1953,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
             /* A size has been specified. */
 
-            if (size_maybe == 0) {
+            if (accepts_size == 0) {
                 /* The type does not accept size. */
                 return -1;
             }
