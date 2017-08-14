@@ -120,9 +120,12 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
         sb->dbgout = NULL;
     }
 #if SBUF2_SERVER
-    comdb2ma_destroy(sb->allocator);
+    comdb2ma alloc = sb->allocator;
 #endif
     free(sb);
+#if SBUF2_SERVER
+    comdb2ma_destroy(alloc);
+#endif
     return 0;
 }
 
@@ -716,35 +719,50 @@ void SBUF2_FUNC(sbuf2setflags)(SBUF2 *sb, int flags)
 
 SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
 {
+    if (fd < 0) {
+        return NULL;
+    }
     SBUF2 *sb = NULL;
-
-    /* Check for 'valid' file descriptor */
-    if (fd >= 0) {
-        sb = (SBUF2 *)calloc(1, sizeof(SBUF2));
-        if (!sb)
-            return NULL;
-        sb->fd = fd;
-        sb->flags = flags;
+#if SBUF2_SERVER
+    comdb2ma alloc = comdb2ma_create(0, 0, "sbuf2", 0);
+    if (alloc == NULL) {
+        goto error;
+    }
+    /* get malloc to work in server-mode */
+    SBUF2 dummy = {.allocator = alloc};
+    sb = &dummy;
+#endif
+    sb = malloc(sizeof(SBUF2));
+    if (sb == NULL) {
+        goto error;
+    }
+    memset(sb, 0, sizeof(SBUF2));
+    sb->fd = fd;
+    sb->flags = flags;
+#if SBUF2_SERVER
+    sb->allocator = alloc;
+#endif
 
 #if SBUF2_UNGETC
-        sb->ungetc_buf_len = 0;
-        memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
+    sb->ungetc_buf_len = 0;
+    memset(sb->ungetc_buf, EOF, SBUF2UNGETC_BUF_MAX);
 #endif
-        sb->write = swrite; /*default writer/reader*/
-        sb->read = sread;
-#if SBUF2_SERVER
-        comdb2ma alloc = comdb2ma_create(0, 0, "sbuf2", 0);
-        if (alloc != NULL) {
-            sb->allocator = alloc;
-        } else {
-            free(sb);
-            sb = NULL;
-        }
-#endif
-        if (sbuf2setbufsize(sb, SBUF2_DFL_SIZE) != 0)
-            return NULL;
+    /* default writer/reader */
+    sb->write = swrite;
+    sb->read = sread;
+    if (sbuf2setbufsize(sb, SBUF2_DFL_SIZE) == 0) {
+        return sb;
     }
-    return sb;
+error:
+    if (sb) {
+        free(sb);
+    }
+#if SBUF2_SERVER
+    if (alloc) {
+        comdb2ma_destroy(alloc);
+    }
+#endif
+    return NULL;
 }
 
 char *SBUF2_FUNC(sbuf2dbgin)(SBUF2 *sb)
