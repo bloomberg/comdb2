@@ -383,6 +383,8 @@ static int check_table_version(struct ireq *iq)
         errstat_set_strf(&iq->errstat,
                          "failed to get version for table:%s rc:%d\n",
                          iq->sc->table, rc);
+        sc_errf(iq->sc, "failed to get version for table:%s rc:%d\n",
+                iq->sc->table, rc);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
@@ -390,6 +392,8 @@ static int check_table_version(struct ireq *iq)
         errstat_set_strf(&iq->errstat,
                          "stale version for table:%s master:%d replicant:%d\n",
                          iq->sc->table, version, iq->usedbtablevers);
+        sc_errf(iq->sc, "stale version for table:%s master:%d replicant:%d\n",
+                iq->sc->table, version, iq->usedbtablevers);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
@@ -542,6 +546,7 @@ int do_schema_change(struct schema_change_type *s)
         s->db = get_dbtable_by_name(s->table);
     }
     iq.usedb = s->db;
+    iq.usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = &iq;
     arg->trans = NULL;
