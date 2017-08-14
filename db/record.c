@@ -201,7 +201,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             ERR;
         }
 
-        if (iq->usedb->tableversion != iq->usedbtablevers) {
+        if (iq->usedb == iq->origdb && iq->usedb->tableversion != iq->usedbtablevers) {
             if (iq->debug)
                 reqprintf(iq, "Stale buffer: usedb version %d "
                               "vs curr ver %d\n",
@@ -852,7 +852,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (iq->usedb->tableversion != iq->usedbtablevers) {
+    if (iq->usedb == iq->origdb && iq->usedb->tableversion != iq->usedbtablevers) {
         if (iq->debug)
             reqprintf(iq, "Stale buffer: usedb version %d "
                           "vs curr ver %d\n",
@@ -1837,7 +1837,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (iq->usedb->tableversion != iq->usedbtablevers) {
+    if (iq->usedb == iq->origdb && iq->usedb->tableversion != iq->usedbtablevers) {
         if (iq->debug)
             reqprintf(iq, "Stale buffer: usedb version %d "
                           "vs curr ver %d\n",
