@@ -195,6 +195,7 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 
 %include {
   #include <limits.h>
+  #include <errno.h>
 
   typedef struct {
     int type;
@@ -224,10 +225,17 @@ longlong(A) ::= MINUS INTEGER(B). {
   out[B.n+1] = '\0';
   out[0] = '-';
 
+  errno = 0;
   A = strtoll(out, NULL, 10);
+
+  if ((errno == ERANGE && (A == LONG_MAX || A == LONG_MIN))
+            || (errno != 0 && A == 0)) {
+    sqlite3ErrorMsg(pParse, "Number underflows or overflows");
+  }
 }
 
-// Rule for non-negative long long
+// Rule for non-negative long long 
+// (not to be confused with unsigned long long)
 %type ulonglong {long long}
 ulonglong(A) ::= INTEGER(B). {
   // Null terminate string
@@ -235,7 +243,13 @@ ulonglong(A) ::= INTEGER(B). {
   memcpy(out, B.z, B.n);
   out[B.n] = '\0';
 
+  errno = 0;
   A = strtoll(out, NULL, 10);
+
+  if ((errno == ERANGE && (A == LONG_MAX || A == LONG_MIN))
+            || (errno != 0 && A == 0)) {
+    sqlite3ErrorMsg(pParse, "Number underflows or overflows");
+  }
 }
 
 %type sequence_args {seq_args}
