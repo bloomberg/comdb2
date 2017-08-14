@@ -397,6 +397,10 @@ constraints
 (tablename='t9', columnname='d', type='decimal64', size=13, sqltype='decimal', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t10', columnname='f', type='float', size=5, sqltype='smallfloat', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t10', columnname='d', type='double', size=9, sqltype='float', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t10', columnname='r', type='float', size=5, sqltype='smallfloat', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t11', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t11', columnname='j', type='short', size=3, sqltype='smallint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t11', columnname='k', type='longlong', size=9, sqltype='largeint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("v" varchar);', csc2='schema
 	{
 		vutf8 v[100] null = yes 
@@ -437,10 +441,18 @@ constraints
 		decimal64 d null = yes 
 	}
 ')
-(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("f" smallfloat, "d" float);', csc2='schema
+(type='table', name='t10', tbl_name='t10', rootpage=12, sql='create table "t10"("f" smallfloat, "d" float, "r" smallfloat);', csc2='schema
 	{
 		float f null = yes 
 		double d null = yes 
+		float r null = yes 
+	}
+')
+(type='table', name='t11', tbl_name='t11', rootpage=13, sql='create table "t11"("i" int, "j" smallint, "k" largeint);', csc2='schema
+	{
+		int i null = yes 
+		short j null = yes 
+		longlong k null = yes 
 	}
 ')
 [DROP TABLE t6] failed with rc -3 no such table: t6
