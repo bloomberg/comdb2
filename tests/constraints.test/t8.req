@@ -1,0 +1,13 @@
+insert into t1(uuid, value, dup_value) values(8888, 1, 1);
+insert into t4(uuid, value) values(8888, 2);
+update t1 set uuid = 8887 where uuid = 8888
+select uuid, value from t1 where uuid > 8000 and uuid < 9000
+select uuid, value from t4 where uuid > 8000 and uuid < 9000
+rebuild t1
+update t1 set uuid = 8889 where uuid = 8887
+select uuid, value from t1 where uuid > 8000 and uuid < 9000
+select uuid, value from t4 where uuid > 8000 and uuid < 9000
+insert into t1(uuid, value, dup_value) values(8886, 3, 1)
+insert into t3(uuid, value) values(8886, 3)
+delete from t1 where uuid = 8886
+select uuid, value from t3
