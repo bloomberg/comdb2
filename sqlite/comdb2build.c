@@ -1628,7 +1628,7 @@ void comdb2CreateSequence(
     sc->seq_cycle = cycle;
     sc->seq_chunk_size = chunk_size;
     sc->seq_start_val = start_val;
-    logmsg(LOGMSG_DEBUG, "\n\nNEW NAME: %s\n\n", sc->table);
+
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
                         (vdbeFuncArgFree)&free_schema_change_type);
     return;
