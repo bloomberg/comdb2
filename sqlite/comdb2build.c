@@ -20,6 +20,7 @@
 #include <net_types.h>
 #include <views.h>
 #include <logmsg.h>
+#include <str0.h>
 
 #define INCLUDE_KEYWORDHASH_H
 #define INCLUDE_FINALKEYWORD_H
@@ -2963,7 +2964,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
                      )
 {
     struct comdb2_ddl_context *ctx;
-    char *type;
+    char type[pType->n + 1];
     struct field *field;
 
     ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
@@ -2995,15 +2996,13 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     sqlite3Dequote(field->name);
 
     /* Field type */
-    type = comdb2_strndup(ctx->mem, pType->z, pType->n);
-    if (type == 0) goto oom;
+    strncpy0(type, pType->z, sizeof(type));
     sqlite3Dequote(type);
 
     if ((field->type = comdb2_parse_sql_type(type, &field->len)) == -1) {
         setError(pParse, SQLITE_MISUSE, "Invalid type specified.");
         goto cleanup;
     }
-    free(type);
 
     struct comdb2_field *entry =
         comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_field));
