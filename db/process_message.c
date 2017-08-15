@@ -55,8 +55,6 @@ extern int __berkdb_fsync_alarm_ms;
 #include "memdebug.h"
 #include "verify.h"
 #include "switches.h"
-
-// REMOVE: TEST
 #include "sequences.h"
 
 #include "osqlrepository.h"
@@ -1840,26 +1838,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int thread_id = toknum(tok, ltok);
         gbl_break_lua = thread_id;
 
-
-// REMOVE: TEST Sequences
     } else if (tokcmp(tok, ltok, "sequence") == 0) {
         tok = segtok(line, lline, &st, &ltok);
-        char *name = "tst";
 
-        if (tokcmp(tok, ltok, "next_val") == 0) {
-            name = segtok(line, lline, &st, &ltok);
-            long long *val = (long long *) malloc(sizeof(long long));
-
-            if (seq_next_val(NULL, name, val) == 0) {
-                logmsg(LOGMSG_USER, "Value: %d\n", *val);
-            } else {
-                logmsg(LOGMSG_USER, "Failed to obtain next value\n");
-            }
-            
-            free(val);
-        }
-
-        else if (tokcmp(tok, ltok, "print") == 0) {
+        if (tokcmp(tok, ltok, "print") == 0) {
             int idx;
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];

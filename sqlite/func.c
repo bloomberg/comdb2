@@ -608,7 +608,6 @@ static void sequenceNextVal(sqlite3_context *context, int argc,
   int rc = request_sequence_num(sqlite3_value_text(argv[0]), val);
 
   if (rc) {
-    // TODO: Error
     sqlite3_result_error(context, "Sequence number could not be generated", -1);
     return;
   }
