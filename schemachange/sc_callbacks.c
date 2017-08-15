@@ -596,6 +596,7 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
                 thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
             }
 
+            free(thedb->sequences[thedb->num_sequences]);
             thedb->sequences[thedb->num_sequences] = NULL;
         }
     }

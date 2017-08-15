@@ -187,6 +187,8 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
                 thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
             }
 
+            free(thedb->sequences[thedb->num_sequences]);
+            
             thedb->sequences[thedb->num_sequences] = NULL;
 
             // Remove llmeta record
