@@ -25,6 +25,7 @@ extern struct schema_change_type *sc_resuming;
 extern volatile int gbl_schema_change_in_progress;
 extern volatile int gbl_lua_version;
 extern uint64_t sc_seed;
+extern uint32_t sc_host;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;
 extern int gbl_default_sc_scanmode;
@@ -77,7 +78,8 @@ extern int stopsc;        /* stop schemachange, so it can resume */
 int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name();
 void wait_for_sc_to_stop();
-int sc_set_running(int running, uint64_t seed, char *host, time_t time);
+void allow_sc_to_run();
+int sc_set_running(int running, uint64_t seed, const char *host, time_t time);
 void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct dbtable *db);
 void reset_sc_stat();

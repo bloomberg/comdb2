@@ -2450,7 +2450,7 @@ int broadcast_close_only_db(char *table);
 int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe);
 int broadcast_close_all_dbs(void);
 int broadcast_sc_end(uint64_t seed);
-int broadcast_sc_start(uint64_t seed, char *from, time_t t);
+int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t);
 int broadcast_sc_ok(void);
 int broadcast_flush_all(void);
 

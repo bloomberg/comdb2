@@ -722,7 +722,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
             BDB_RELLOCK();
             logmsg(LOGMSG_ERROR, "Master change while getting logical tran.\n");
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
-            *bdberr = BDBERR_DEADLOCK;
+            *bdberr = BDBERR_READONLY;
             myfree(tran);
             return NULL;
         }

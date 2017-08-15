@@ -313,6 +313,7 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
+extern unsigned long long get_next_sc_seed(bdb_state_type *);
 
 int appsock_schema_change(SBUF2 *sb, int *keepsocket);
 

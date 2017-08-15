@@ -1048,8 +1048,8 @@ out:
     return rc;
 }
 
-
-const char * get_hostname_with_crc32(bdb_state_type *bdb_state, int hash)
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     if(crc32c(repinfo->myhost, strlen(repinfo->myhost)) == hash)
