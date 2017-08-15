@@ -871,8 +871,8 @@ int main(int argc, char **argv)
     std::vector<std::pair<int, int>> port_ranges{{19000, 19999}};
     bool default_ports = true;
     bool default_range = true;
-    enum { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
-    bool store_mode = MODE_NONE;
+    enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
+    store_mode store_mode = MODE_NONE;
     std::pair<int, int> custom_range;
     int c;
     struct sockaddr_un serv_addr;
