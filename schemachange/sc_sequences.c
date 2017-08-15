@@ -291,7 +291,7 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
     // Restart Val
     long long restart_val = seq->next_start_val;
     if (modified & SEQ_RESTART_TO_START_VAL) {
-        restart_val = seq->start_val;
+        restart_val = start_val;
 
         // Unraise exhausted flag
         seq->flags &= ~SEQUENCE_EXHAUSTED;
