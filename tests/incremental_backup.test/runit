@@ -15,11 +15,9 @@ function failexit
 }
 
 function make_base {
-  # basename=${TMPDIR}/backups/t1-1_base.tar
-  basename=~/incrtest/t1-1_base.tar
+  basename=${TMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
   comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
-  cp $basename ${TMPDIR}/backups/t1-1_base.tar
   echo "~~~~~~~~~~"
   echo $basename
   echo "  DONE WITH BASE"
@@ -30,11 +28,9 @@ function make_backup {
   fullbackupname=$1
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
-  # backuploc=${TMPDIR}/backups/${backupname}
-  backuploc=~/incrtest/${backupname}
+  backuploc=${TMPDIR}/backups/${backupname}
 
   comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
-  cp $backuploc ${TMPDIR}/backups/${backupname}
   echo "~~~~~~~~~~"
   echo ${TMPDIR}/backups/${backupname}
   echo "  DONE WITH INCREMENT"
@@ -52,10 +48,7 @@ function test_restoredb {
   $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
 
   echo "~~~~~~~~~~"
-  echo "  LISTING RESTORED DIRECTORY"
-  ls -l ${TMPDIR}/restore
-  comdb2 --lrl ${TMPDIR}/restore/$dbname.lrl ${dbname}_restore &
-  dbpid=$!
+  $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.lrl -pidfile ${TMPDIR}/${db}.pid &
   echo $dbpid
   # wait for db to launch
   count=0
@@ -74,20 +67,21 @@ function test_restoredb {
   echo " "
 
   cdb2sql ${CDB2_OPTIONS} -f $1 ${dbname}_restore default > ${testname}.output 2>&1
+  cat ${testname}.output
   diff ${testname}.expected ${testname}.output
   if [[ $? -ne 0 ]] ; then
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
     echo " "
-    # kill $dbpid
-    # exit 1
+    kill -9 $(cat ${TMPDIR}/${db}.pid)
+    exit 1
   fi
 
   echo "${testname} passed"
   echo " "
 
-  kill $dbpid
+  kill -9 $(cat ${TMPDIR}/${db}.pid)
   rm -rf ${TMPDIR}/restore/*
 }
 
@@ -97,15 +91,18 @@ function resetdb {
   mkdir -p ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
 
   cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
+  sleep 1
   make_base
   cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
+  sleep 1
   make_backup t1-2_create_table
 }
 
 # BASIC FUNCTIONALITY TEST
 resetdb
-for statement in `ls t1*.stmt`; do
+for statement in `ls t1-*.stmt`; do
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+  sleep 1
   make_backup $statement
 done
 
@@ -115,7 +112,7 @@ echo " "
 
 counter=0
 
-for testreq in `ls t1*.req`; do
+for testreq in `ls t1-*.req`; do
   test_restoredb $testreq $counter
   let counter=counter+1
 done
@@ -124,8 +121,9 @@ done
 resetdb
 for i in $(seq 1 10); do
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+  sleep 2
 done
-cdb2sql ${CDB2_OPTIONS} -f t1-1_insert.stmt $dbname default
+cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
 test_restoredb t2.req 2
 
