@@ -16,10 +16,22 @@ build-rpm:
 	-docker kill rpmtest
 	-docker rm rpmtest
 
-build-inst:
+build-inst-pre:
 	-docker rm -f insttest
 	docker build -t smoketest-inst -f Dockerfile.inst.build ../../
 	docker run -d --name insttest smoketest-inst /build/tests/smoketest/docker-dev-entrypoint.sh db1 db2 db3 db4 db5
+
+build-inst-c: build-inst-pre
 	./testdbs insttest
+
+build-inst-java: export envSkipTests='false'
+build-inst-java: export envTestDatabase='db1'
+build-inst-java: export envTestCluster=$(shell docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' insttest)
+build-inst-java: build-inst-pre
+	cd ../../cdb2jdbc && make jdbc-docker-build
+
+build-inst: build-inst-c build-inst-java
+
+build-inst-post: build-inst-c build-inst-java
 	-docker kill insttest
 	-docker rm insttest

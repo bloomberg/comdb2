@@ -35,8 +35,8 @@ public class PreparedStatementTest {
     final static String INSERT_APPLICATION= "insert into application(app_id, name, update_uuid, update_tms) values ((select coalesce(max(app_id), 0)+1 from application), @name, @uuid, @tms)";
     final static String SELECT_APPLICATION_BY_NAME_TMS="SELECT app_id as id, name, update_uuid AS uuid, update_tms as tms FROM APPLICATION WHERE name =@name and update_tms=@tms";
     final static String DELETE_APPLICATION_BY_ID="delete from APPLICATION WHERE app_id =@id";
-    final static String db = "ehubdb";
-    final static String cluster = "dev";
+    static String db;
+    static String cluster;
 
     Connection conn;
     int appId;
@@ -44,8 +44,9 @@ public class PreparedStatementTest {
 
     @Before
     public void setUp() throws ClassNotFoundException, SQLException{
-        Class.forName("com.bloomberg.comdb2.jdbc.Driver");
-        conn = DriverManager.getConnection(String.format("jdbc:comdb2:%s:%s", db, cluster));
+        db = System.getProperty("cdb2jdbc.test.database");
+        cluster = System.getProperty("cdb2jdbc.test.cluster");
+        conn = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s", cluster, db));
     }
 
     @After
@@ -62,6 +63,15 @@ public class PreparedStatementTest {
 
         stmt.clearParameters();
     }
+
+    @Test
+    public void createTable() throws SQLException {
+        PreparedStatement stmt = conn.prepareStatement(
+                "create table application (app_id int primary key, name varchar(100), update_uuid int, update_tms datetime)");
+        int shouldbezero = stmt.executeUpdate();
+        assertEquals("Expecting 0 from a DDL statement.", 0, shouldbezero);
+    }
+
     /*
      * autoCommit default is true
      */
