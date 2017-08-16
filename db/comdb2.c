@@ -1523,22 +1523,19 @@ static int lrllinecmp(char *lrlline, char *cmpto)
  * @param name char* Name of sequence
  * @param min_val long long Minimum Value
  * @param max_val long long Maximum Value
- * @param next_val long long Next value to be dispensed by the sequence
  * @param increment long long Increment that the sequence changes by each time a
  * value is requested
  * @param cycle bool Flag for cyclic sequence behaviour
  * @param start_val long long Start value for sequence
  * @param chunk_size long long Number of sequence values to allocate into memory
  * @param flags char Flags for sequences
- * @param remaining_vals long long Remaining values before needing to allocated
- * more values to memory
  * @param next_start_val long long Start value of the next set of values to be
  * allocated to memory
  */
 sequence_t *new_sequence(char *name, long long min_val, long long max_val,
-                         long long next_val, long long increment, bool cycle,
-                         long long start_val, long long chunk_size, char flags,
-                         long long remaining_vals, long long next_start_val)
+                         long long increment, bool cycle, long long start_val,
+                         long long chunk_size, char flags,
+                         long long next_start_val)
 {
     sequence_t *new_seq = malloc(sizeof(sequence_t));
     if (new_seq == NULL) {
@@ -1548,7 +1545,7 @@ sequence_t *new_sequence(char *name, long long min_val, long long max_val,
 
     // Version
     new_seq->version = 1;
-    
+
     // Data
     strcpy(new_seq->name, name);
     new_seq->min_val = min_val;
@@ -1556,21 +1553,47 @@ sequence_t *new_sequence(char *name, long long min_val, long long max_val,
     new_seq->start_val = start_val;
     new_seq->increment = increment;
     new_seq->cycle = cycle;
-    new_seq->next_val = next_val;
     new_seq->chunk_size = chunk_size;
     new_seq->flags = flags;
-    new_seq->remaining_vals = remaining_vals;
     new_seq->next_start_val = next_start_val;
+    new_seq->range_head = NULL;
 
     int rc = pthread_mutex_init(&new_seq->seq_lk, NULL);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to initialize lock for sequence\n");
-        free(new_seq);
+        cleanup_sequence(new_seq);
         return NULL;
     }
 
     return new_seq;
+}
+
+void remove_sequence_ranges(sequence_t *seq){
+    if (seq == NULL) {
+        return;
+    }
+
+    // Remove allocated ranges
+    sequence_range_t *node = seq->range_head;
+    sequence_range_t *toFree;
+    while (node) {
+        toFree = node;
+        node = node->next;
+        free(toFree);
+    }
+
+    seq->range_head = NULL;
+}
+void cleanup_sequence(sequence_t *seq)
+{
+    if (seq == NULL) {
+        return;
+    }
+
+    remove_sequence_ranges(seq);
+
+    free(seq);
 }
 
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
@@ -2207,7 +2230,7 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
     // Clear existing sequence information in memory
     if (dbenv->num_sequences > 0) {
         for (i = 0; i < dbenv->num_sequences; i++) {
-            free(dbenv->sequences[i]);
+            cleanup_sequence(dbenv->sequences[i]);
         }
     }
     // Init number of sequences in memory
@@ -2232,11 +2255,9 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
     for (i = 0; i < num_found_sequences; i++) {
         long long min_val; // Minimum value 
         long long max_val; // Maximum value
-        long long next_val; // Next valid value to be dispensed
         long long increment; // Value to increment by for dispensed values
         long long start_val; // Start value for the sequence
         long long next_start_val; // First valid value of the next allocated chunk
-        long long remaining_vals; // Remaining valid values in the allocated chunk
         long long chunk_size; // Size of allocated chunk
         bool cycle; // Flag for cyclic behaviour in sequence
         char flags; // Flags for sequence (cdb2_constants.h)
@@ -2254,9 +2275,9 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
         }
 
         // Create new sequence in memory
-        sequence_t *seq = new_sequence(name, min_val, max_val, next_val,
-                                       increment, cycle, start_val, chunk_size,
-                                       flags, 0, next_start_val);
+        sequence_t *seq =
+            new_sequence(name, min_val, max_val, increment, cycle, start_val,
+                         chunk_size, flags, next_start_val);
 
         if (seq == NULL) {
             logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);

@@ -596,7 +596,7 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
                 thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
             }
 
-            free(thedb->sequences[thedb->num_sequences]);
+            cleanup_sequence(thedb->sequences[thedb->num_sequences]);
             thedb->sequences[thedb->num_sequences] = NULL;
         }
     }
@@ -605,11 +605,9 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
         // Sequence attributes
         long long min_val; // Minimum value 
         long long max_val; // Maximum value
-        long long next_val; // Next valid value to be dispensed
         long long increment; // Value to increment by for dispensed values
         long long start_val; // Start value for the sequence
         long long next_start_val; // First valid value of the next allocated chunk
-        long long remaining_vals; // Remaining valid values in the allocated chunk
         long long chunk_size; // Size of allocated chunk
         bool cycle; // Flag for cyclic behaviour in sequence
         char flags; // Flags for sequence (cdb2_constants.h)
@@ -625,9 +623,9 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
         }
 
         // Create new sequence in memory
-        sequence_t *seq = new_sequence(name, min_val, max_val, next_val,
-                                       increment, cycle, start_val, chunk_size,
-                                       flags, 0, next_start_val);
+        sequence_t *seq =
+            new_sequence(name, min_val, max_val, increment, cycle, start_val,
+                         chunk_size, flags, next_start_val);
 
         if (seq == NULL) {
             logmsg(LOGMSG_ERROR, "can't create sequence \"%s\"\n", name);

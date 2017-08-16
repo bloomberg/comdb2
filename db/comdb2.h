@@ -644,6 +644,9 @@ typedef struct {
     int version; /* Sequence attr struct version */
     char name[MAXTABLELEN]; /* Identifier */
 
+    /* Dispensing */
+    sequence_range_t *range_head; /* Pointer to the head range node*/
+
     /* Basic Attributes */
     long long min_val; /* Values dispensed must be greater than or equal to min_val */
     long long max_val; /* Values dispensed must be less than or equal to max_val */
@@ -651,16 +654,12 @@ typedef struct {
     long long increment; /* Normal difference between two consecutively dispensed values */
     bool cycle; /* If cycling values is permitted */
 
-    /* Dispensing */
-    long long next_val; /* Next value to be dispensed */
-
     /* Synchronization with llmeta */
     long long chunk_size; /* Number of values to allocate from llmeta */
-    long long remaining_vals; /* Number of values allocated from llmeta */
     long long next_start_val; /* Starting value of the next chunk */
 
     /* Flags */
-    char flags; /* Flags for the sequence objeckt*/
+    char flags; /* Flags for the sequence object*/
 
     pthread_mutex_t seq_lk; /* mutex for protecting the value dispensing */
 } sequence_t;
@@ -2378,9 +2377,11 @@ int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
 
 sequence_t *new_sequence(char *name, long long min_val, long long max_val,
-                         long long next_val, long long increment, bool cycle,
-                         long long start_val, long long chunk_size, char flags,
-                         long long remaining_vals, long long next_start_val);
+                         long long increment, bool cycle, long long start_val,
+                         long long chunk_size, char flags,
+                         long long next_start_val);
+void cleanup_sequence(sequence_t *seq);
+void remove_sequence_ranges(sequence_t *seq);
 
 int put_db_odh(struct dbtable *db, tran_type *, int odh);
 int get_db_odh(struct dbtable *db, int *odh);

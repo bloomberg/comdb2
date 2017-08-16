@@ -31,6 +31,8 @@ extern struct dbenv *thedb;
 int seq_next_val(tran_type *tran, char *name, long long *val)
 {
     sequence_t *seq = getsequencebyname(name);
+    sequence_range_t *temp;
+    sequence_range_t *node;
     int rc = 0;
     int bdberr = 0;
 
@@ -45,74 +47,75 @@ int seq_next_val(tran_type *tran, char *name, long long *val)
 
     // Check for remaining values.
     // seq->next_val is only valid if remaining values > 0
-    if (seq->remaining_vals == 0) {
-        // No remaining values, allocate new chunk
+    if (seq->range_head == NULL) {
+        pthread_mutex_unlock(&seq->seq_lk);
+
+        // TODO: Check if master, if not go to master
+
+        // Create new node range
+        node = malloc(sizeof(sequence_range_t));
+
+        if (node == NULL) {
+            logmsg(LOGMSG_ERROR,
+                   "can't allocate memory for new chunk for sequence \"%s\"\n",
+                   name);
+            goto done;
+        }
+
+        // No remaining values, allocate new chunk into range
         rc = bdb_llmeta_get_sequence_chunk(
             tran, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
-            seq->chunk_size, &seq->flags, &seq->remaining_vals, seq->start_val,
-            &seq->next_val, &seq->next_start_val, &bdberr);
+            seq->chunk_size, &seq->flags, seq->start_val, &seq->next_start_val,
+            node, &bdberr);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "can't retrive new chunk for sequence \"%s\"\n", name);
+            free(node);
             goto done;
         }
 
-        if (seq->remaining_vals == 0) {
-            logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
-            rc = -1;
-            goto done;
-        }
+        // Get lock for in-memory object
+        pthread_mutex_lock(&seq->seq_lk);
+
+        // Insert node into ranges linked list
+        insert_sequence_range(seq, node);
     }
 
     // Dispense next_val
-    *val = seq->next_val;
-    seq->remaining_vals--;
+    *val = seq->range_head->current;
 
     // Calculate next value to dispense
-    long long next_val = seq->next_val;
-
     // Check for integer overflow
-    if (overflow_ll_add(seq->next_val, seq->increment)) {
-        if (seq->cycle) {
-            if (seq->increment > 0)
-                seq->next_val = seq->min_val;
-            else
-                seq->next_val = seq->max_val;
-        } else {
-            // No more sequence values to dispense. Value of next_val is now
-            // undefined behaviour and unreliable.
-            seq->remaining_vals = 0;
-        }
-
-        goto done;
+    if (overflow_ll_add(seq->range_head->current, seq->increment)) {
+        goto next_range;
     }
 
     // Apply increment, no overflow can occur
-    seq->next_val += seq->increment;
+    seq->range_head->current += seq->increment;
 
-    // Check for cycle conditions
-    if ((seq->increment > 0) && (seq->next_val > seq->max_val)) {
-        if (seq->cycle) {
-            seq->next_val = seq->min_val;
-        } else {
-            // No more sequence values to dispense. Value of next_val is now
-            // undefined behaviour and unreliable.
-            seq->remaining_vals = 0;
-        }
-    } else if ((seq->increment < 0) && (seq->next_val < seq->min_val)) {
-        if (seq->cycle) {
-            seq->next_val = seq->max_val;
-        } else {
-            // No more sequence values to dispense. Value of next_val is now
-            // undefined behaviour and unreliable.
-            seq->remaining_vals = 0;
-        }
+    // Check for out of range conditions
+    if ((seq->increment > 0) &&
+            (seq->range_head->current > seq->range_head->max_val) ||
+        (seq->increment < 0) &&
+            (seq->range_head->current < seq->range_head->min_val)) {
+        goto next_range;
     }
 
 done:
     pthread_mutex_unlock(&seq->seq_lk);
     return rc;
+
+next_range:
+    // Current head range is empty, move to next range
+    temp = seq->range_head;
+    seq->range_head = temp->next;
+
+    if (temp->next) {
+        free(temp);
+    }
+
+    goto done;
 }
 
 int sequences_master_change()
@@ -128,9 +131,9 @@ int sequences_master_change()
             continue;
         }
 
-        // Clear remaining_vals to force chunk reallocation
+        // Remove any allocated values to force chunk reallocation
         pthread_mutex_lock(&seq->seq_lk);
-        seq->remaining_vals = 0;
+        remove_sequence_ranges(seq);
         pthread_mutex_unlock(&seq->seq_lk);
     }
 }
@@ -161,8 +164,27 @@ int sequences_master_upgrade()
             return -1;
         }
 
-        seq->remaining_vals = 0;
+        // Remove any allocated values
+        remove_sequence_ranges(seq);
 
         pthread_mutex_unlock(&seq->seq_lk);
     }
+}
+
+int insert_sequence_range(sequence_t *seq, sequence_range_t *node)
+{
+    if (seq->range_head) {
+        sequence_range_t *cur_node = seq->range_head;
+        while (cur_node->next) {
+            cur_node = cur_node->next;
+        }
+
+        cur_node->next = node;
+        node->next = NULL;
+    } else {
+        seq->range_head = node;
+        node->next = NULL;
+    }
+
+    return 0;
 }

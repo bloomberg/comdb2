@@ -595,24 +595,31 @@ extern int request_sequence_num(const char *name, long long *val);
 static void sequenceNextVal(sqlite3_context *context, int argc,
                             sqlite3_value **argv)
 {
-  UNUSED_PARAMETER(argc);
+    UNUSED_PARAMETER(argc);
 
-  if(sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
-    return;
-  }
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        return;
+    }
 
-  const unsigned char * seq_name = sqlite3_value_text(argv[0]);
+    const unsigned char *seq_name = sqlite3_value_text(argv[0]);
 
-  long long *val;
+    long long *val;
 
-  int rc = request_sequence_num(sqlite3_value_text(argv[0]), val);
+    int rc = request_sequence_num(sqlite3_value_text(argv[0]), val);
 
-  if (rc) {
-    sqlite3_result_error(context, "Sequence number could not be generated", -1);
-    return;
-  }
+    if (rc) {
+        if (rc == -1) {
+            sqlite3_result_error(context, "No more sequence values avaliable",
+                                 -1);
+            return;
+        }
 
-  sqlite3_result_int64(context, *val);
+        sqlite3_result_error(context, "Sequence number could not be generated",
+                             -1);
+        return;
+    }
+
+    sqlite3_result_int64(context, *val);
 }
 
 /* 36 characters + trailing '\0' - taken from `man uuid_unparse` */

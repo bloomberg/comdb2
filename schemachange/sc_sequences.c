@@ -133,8 +133,8 @@ int do_add_sequence_int(struct schema_change_type *s, struct ireq *iq,
 
     // Create new sequence in memory
     sequence_t *seq =
-        new_sequence(name, min_val, max_val, start_val, increment, cycle,
-                     start_val, chunk_size, flags, 0, start_val);
+        new_sequence(name, min_val, max_val, increment, cycle,
+                     start_val, chunk_size, flags, start_val);
 
     if (seq == NULL) {
         reqerrstr(iq, ERR_SC, "can't create sequence \"%s\"\n", name);
@@ -187,7 +187,7 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
                 thedb->sequences[i] = thedb->sequences[thedb->num_sequences];
             }
 
-            free(thedb->sequences[thedb->num_sequences]);
+            cleanup_sequence(thedb->sequences[thedb->num_sequences]);
             
             thedb->sequences[thedb->num_sequences] = NULL;
 
@@ -341,7 +341,9 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
     seq->start_val = start_val;
     seq->next_start_val = restart_val;
     seq->chunk_size = chunk_size;
-    seq->remaining_vals = 0;
+
+    // Remove any allocated values
+    remove_sequence_ranges(seq);
 
     pthread_mutex_unlock(&seq->seq_lk);
 
