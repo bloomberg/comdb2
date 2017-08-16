@@ -8,7 +8,7 @@ export DESTDIR
 export PREFIX
 
 # Common CFLAGS
-CPPFLAGS+=-I$(SRCHOME)/dlmalloc $(OPTBBINCLUDE)
+CPPFLAGS+=-I$(SRCHOME)/dlmalloc
 #CFLAGS+=$(OPT_CFLAGS)
 
 # Variables that will be modified by included files
@@ -31,15 +31,20 @@ modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
 lua tools db sockpool
 include $(addsuffix /module.mk,$(modules))
 
-# The following object files make into cdb2api static (libcdb2api.a) as
-# well as dynamic (libcdb2api.so) libraries and thus, need an additional
-# -fPIC flag.
-SPECIAL_OBJS:= cdb2api/cdb2api.o cdb2api/comdb2buf.o
+# The following object files make into cdb2api static
+# (libcdb2api.a & libcdb2protobuf.a) as well as dynamic
+# (libcdb2api.so & libcdb2protobuf.so) libraries and thus,
+# need an additional -fPIC (large model) flag.
+SPECIAL_OBJS:= cdb2api/cdb2api.o protobuf/%.o
 ifeq ($(arch),Linux)
 $(SPECIAL_OBJS): EXTRA_FLAGS := -fPIC
 else
 ifeq ($(arch),SunOS)
-$(SPECIAL_OBJS): EXTRA_FLAGS := -xcode=pic13
+$(SPECIAL_OBJS): EXTRA_FLAGS := -kPIC
+else
+ifeq ($(arch),AIX)
+$(SPECIAL_OBJS): EXTRA_FLAGS := -qpic
+endif
 endif
 endif
 
@@ -118,6 +123,7 @@ install: all
 	install -D cdb2api/libcdb2api.a $(DESTDIR)$(PREFIX)/lib/libcdb2api.a
 	install -D cdb2api/libcdb2api.so $(DESTDIR)$(PREFIX)/lib/libcdb2api.so
 	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
+	install -D protobuf/libcdb2protobuf.so $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.so
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	-[ -z "$(DESTDIR)" ] && . db/installinfo || true
@@ -128,6 +134,7 @@ build-build-container:
 
 docker-clean:
 	rm -fr contrib/docker/build/*
+	docker-compose -f $(realpath $(SRCHOME))/contrib/docker/docker-compose.yml down
 
 docker-dev: docker-standalone
 	docker build -t comdb2-dev:$(VERSION) -f contrib/docker/Dockerfile.dev .
@@ -136,13 +143,22 @@ docker-dev: docker-standalone
 docker-standalone: docker-build
 	docker build -t comdb2-standalone:$(VERSION) -f contrib/docker/Dockerfile.standalone contrib/docker
 
+docker-cluster: docker-dev
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node1
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node2
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node3
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node4
+	mkdir -p $(realpath $(SRCHOME))/contrib/docker/volumes/node5
+	docker-compose -f $(realpath $(SRCHOME))/contrib/docker/docker-compose.yml down
+	docker-compose -f $(realpath $(SRCHOME))/contrib/docker/docker-compose.yml up -d
+
 # Build the database in the build container
 docker-build: build-build-container
 	mkdir -p $(realpath $(SRCHOME))/contrib/docker/build
-	docker run --user $(shell id -u):$(shell id -g) \
-		--env HOME=/tmp \
+	docker run --env HOME=/tmp \
 		-v $(realpath $(SRCHOME))/contrib/docker/build:/comdb2 \
-		-v $(realpath $(SRCHOME)):/comdb2.build \
 		-w /comdb2.build \
+		--rm \
 		comdb2-build:$(VERSION) \
-        make DESTDIR=/comdb2 -j3 install
+		make DESTDIR=/comdb2 -j3 install
+ 
