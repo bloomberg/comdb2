@@ -611,8 +611,11 @@ static unsigned int query_path_component_hash(const void *key, int len)
 
 static int query_path_component_cmp(const void *key1, const void *key2, int len)
 {
-    const char *n1, *n2;
     const struct query_path_component *q1 = key1, *q2 = key2;
+    if (q1->ix != q2->ix) {
+        return 1;
+    }
+    const char *n1, *n2;
     if (q1->fdb == NULL && q2->fdb == NULL) {
         // both local
         n1 = q1->lcl_tbl_name;
@@ -625,13 +628,7 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
         n1 = fdb_table_entry_tblname(q1->fdb);
         n2 = fdb_table_entry_tblname(q2->fdb);
     }
-    // check name + ix
-    if (strcmp(n1, n2) == 0) {
-        if (q1->ix == q2->ix) {
-            return 0;
-        }
-    }
-    return 1;
+    return strcmp(n1, n2);
 }
 
 struct sql_thread *start_sql_thread(void)
