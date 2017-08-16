@@ -3227,7 +3227,7 @@ void testrep(int niter, int recsz)
 
     stuff = malloc(recsz);
 
-    init_fake_ireq(thedb->bdb_env, &iq);
+    init_fake_ireq(thedb, &iq);
     iq.usedb = thedb->dbs[0];
 
     n = 0;

@@ -43,12 +43,7 @@ TYPEDEF(Vdbe)
 /* Modern transaction modes, more or less */
 enum transaction_level {
     TRANLEVEL_INVALID = -1,
-
-    /* TRANLEVEL_OSQL = 7, */
-
-    /* block sql over socket */
     TRANLEVEL_SOSQL = 9,
-
     /* SQL MODE, so-called read-commited:
        - server-side parsing
        - transaction-internal updates are visible only inside transaction thread
@@ -813,7 +808,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg); //, pthread_mutex_t *lk);
+                      int rootpg);
 void sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *);
 int check_thd_gen(struct sqlthdstate *, struct sqlclntstate *);
 int sqlserver2sqlclient_error(int rc);
@@ -822,4 +817,26 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl);
 void init_cursor(BtCursor *, Vdbe *, Btree *);
 void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 
+#define HINT_LEN 127
+enum cache_status {
+    CACHE_DISABLED = 0,
+    CACHE_HAS_HINT = 1,
+    CACHE_FOUND_STMT = 2,
+    CACHE_FOUND_STR = 4,
+};
+struct sql_state {
+    enum cache_status status;          /* populated by get_prepared_stmt */
+    sqlite3_stmt *stmt;                /* cached engine, if any */
+    char cache_hint[HINT_LEN];         /* hint copy, if any */
+    const char *sql;                   /* the actual string used */
+    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    struct schema *parameters_to_bind; /* fast pointer to parameters */
+};
+int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
+                               struct sql_state *, struct errstat *,
+                               const char *sql);
+void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
+                       struct sql_state *, int outrc);
+void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
+void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
 #endif

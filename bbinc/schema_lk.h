@@ -26,13 +26,13 @@
 extern pthread_rwlock_t schema_lk;
 
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
-
-static inline void rdlock_schema_int(const char *file, const char *func, int line)
-{ 
+static inline void rdlock_schema_int(const char *file, const char *func,
+                                     int line)
+{
     int rc = pthread_rwlock_rdlock(&schema_lk);
     if (rc) {
         logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_rdlock failed %d\n", file,
-                line, rc);
+               line, rc);
         abort();
     }
 #ifdef VERBOSE_SCHEMA_LK
@@ -40,29 +40,41 @@ static inline void rdlock_schema_int(const char *file, const char *func, int lin
 #endif
 }
 
-#define unlock_schema_lk() unlock_schema_int(__FILE__, __func__, __LINE__)
-
-static inline void unlock_schema_int(const char *file, const char *func, int line)
+#define tryrdlock_schema_lk() tryrdlock_schema_int(__FILE__, __func__, __LINE__)
+static inline int tryrdlock_schema_int(const char *file, const char *func,
+                                       int line)
 {
-    int rc = pthread_rwlock_unlock(&schema_lk);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_unlock failed %d\n", file,
-                line, rc);
-        abort();
-    }
+    int rc = pthread_rwlock_tryrdlock(&schema_lk);
+#ifdef VERBOSE_SCHEMA_LK
+    fprintf(stdout, "%llx:TRYRDLOCK RC:%d %s:%d\n", pthread_self(), rc, func,
+            line);
+#endif
+    return rc;
+}
+
+#define unlock_schema_lk() unlock_schema_int(__FILE__, __func__, __LINE__)
+static inline void unlock_schema_int(const char *file, const char *func,
+                                     int line)
+{
 #ifdef VERBOSE_SCHEMA_LK
     fprintf(stdout, "%llx:UNLOCK %s:%d\n", pthread_self(), func, line);
 #endif
+    int rc = pthread_rwlock_unlock(&schema_lk);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_unlock failed %d\n", file,
+               line, rc);
+        abort();
+    }
 }
 
 #define wrlock_schema_lk() wrlock_schema_int(__FILE__, __func__, __LINE__)
-
-static inline void wrlock_schema_int(const char *file, const char *func, int line)
+static inline void wrlock_schema_int(const char *file, const char *func,
+                                     int line)
 {
     int rc = pthread_rwlock_wrlock(&schema_lk);
     if (rc) {
         logmsg(LOGMSG_FATAL, "%s:%d pthread_rwlock_wrlock failed %d\n", file,
-                line, rc);
+               line, rc);
         abort();
     }
 #ifdef VERBOSE_SCHEMA_LK
