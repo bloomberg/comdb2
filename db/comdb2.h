@@ -2450,7 +2450,7 @@ int broadcast_close_only_db(char *table);
 int broadcast_morestripe_and_open_all_dbs(int newdtastripe, int newblobstripe);
 int broadcast_close_all_dbs(void);
 int broadcast_sc_end(uint64_t seed);
-int broadcast_sc_start(uint64_t seed, char *from, time_t t);
+int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t);
 int broadcast_sc_ok(void);
 int broadcast_flush_all(void);
 
@@ -3639,5 +3639,7 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value);
 /* Update the tunable read from lrl file. */
 comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
+
+int db_is_stopped(void);
 
 #endif /* !INCLUDED_COMDB2_H */

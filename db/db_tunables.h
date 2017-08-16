@@ -1261,5 +1261,8 @@ REGISTER_TUNABLE("logmsg.notimestamp", "Disables 'syslog.timestamp'.",
 REGISTER_TUNABLE("seed_genid", "Set genid-seed in hex for genid48 test.",
                  TUNABLE_STRING, NULL, EXPERIMENTAL | INTERNAL,
                  next_genid_value, NULL, genid_seed_update, NULL);
+REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.",
+                 TUNABLE_BOOLEAN, &gbl_poll_in_pg_free_recover,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

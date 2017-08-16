@@ -1536,9 +1536,11 @@ int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr);
 
 int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, int *bdberr);
+                               unsigned long long genid, unsigned int host,
+                               int *bdberr);
 int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, int *bdberr);
+                               unsigned long long *genid, unsigned int *host,
+                               int *bdberr);
 int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
                                   int *bdberr);
 
@@ -1873,7 +1875,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_table_version_select(const char *name, tran_type *tran,
                              unsigned long long *version, int *bdberr);
 
 void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);

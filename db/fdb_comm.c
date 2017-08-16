@@ -915,6 +915,8 @@ int fdb_recv_row(fdb_msg_t *msg, char *cid, int isuuid, SBUF2 *sb)
 
     rc = fdb_msg_read_message(sb, msg);
     if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
+               __func__, rc);
         /* maybe this should return FDB_ERR_READ_IO instead */
         return -1;
     }

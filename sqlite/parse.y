@@ -1771,19 +1771,19 @@ cmd ::= rebuild.
 
 rebuild ::= REBUILD nm(T) dbnm(X). { /* REBUILD FULL CANNOT BE USED
                                         BECAUSE OF SQLITE SYNTAX */
-    comdb2rebuildFull(pParse,&T,&X);
+    comdb2RebuildFull(pParse,&T,&X);
 }
 
 rebuild ::= REBUILD INDEX nm(T) dbnm(Y) nm(X). {
-    comdb2rebuildIndex(pParse, &T,&Y, &X);
+    comdb2RebuildIndex(pParse, &T,&Y, &X);
 }
 
 rebuild ::= REBUILD DATA nm(T) dbnm(X). {
-    comdb2rebuildData(pParse, &T, &X);
+    comdb2RebuildData(pParse, &T, &X);
 }
 
 rebuild ::= REBUILD DATABLOB nm(N) dbnm(X). {
-    comdb2rebuildDataBlob(pParse,&N, &X);
+    comdb2RebuildDataBlob(pParse,&N, &X);
 }
 /////////////////////COMDB2 GRANT STATEMENT //////////////////////////////////
 
@@ -1833,7 +1833,7 @@ cmd ::= REVOKE userschema(P) nm(U1) TO nm(U2). {
 cmd ::= truncate.
 truncate ::= TRUNCATE table_opt nm(T) dbnm(Y).
 {
-    comdb2truncate(pParse, &T, &Y);
+    comdb2Truncate(pParse, &T, &Y);
 }
 
 table_opt ::= .

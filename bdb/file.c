@@ -1387,7 +1387,7 @@ static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
     int i;
     int rc;
     int len;
-#if DEBUG
+#ifdef DEBUG
     printf("send_decom_all() entering...");
 #endif
 
@@ -5003,6 +5003,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
         (bdb_state->callback->whoismaster_rtn)(bdb_state,
                                                bdb_state->repinfo->master_host);
 
+    allow_sc_to_run();
     BDB_RELLOCK();
 
     watchdog_cancel_alarm();

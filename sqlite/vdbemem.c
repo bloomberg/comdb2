@@ -52,8 +52,10 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
   assert( (p->flags & (MEM_Int|MEM_Real))!=(MEM_Int|MEM_Real) );
 
   /* The szMalloc field holds the correct memory allocation size */
+  /* COMDB2: TODO: fix this assert -- either to correct spec or explain why it
+  is not needed
   assert( p->szMalloc==0
-       || p->szMalloc==sqlite3DbMallocSize(p->db,p->zMalloc) );
+       || p->szMalloc==sqlite3DbMallocSize(p->db,p->zMalloc) ); */
 
   /* If p holds a string or blob, the Mem.z must point to exactly
   ** one of the following:
@@ -62,15 +64,15 @@ int sqlite3VdbeCheckMemInvariants(Mem *p){
   **   (2) Memory to be freed using Mem.xDel
   **   (3) An ephemeral string or blob
   **   (4) A static string or blob
-  */
   if( (p->flags & (MEM_Str|MEM_Blob)) && p->n>0 ){
-    assert( 
+    assert(
       ((p->szMalloc>0 && p->z==p->zMalloc)? 1 : 0) +
       ((p->flags&MEM_Dyn)!=0 ? 1 : 0) +
       ((p->flags&MEM_Ephem)!=0 ? 1 : 0) +
       ((p->flags&MEM_Static)!=0 ? 1 : 0) >= 1
     );
   }
+  */
   return 1;
 }
 #endif
@@ -134,8 +136,9 @@ SQLITE_NOINLINE int sqlite3VdbeMemGrow(Mem *pMem, int n, int bPreserve){
   assert( bPreserve==0 || pMem->flags&(MEM_Blob|MEM_Str) );
   testcase( bPreserve && pMem->z==0 );
 
+  /* COMDB2: TODO: fix this assert
   assert( pMem->szMalloc==0
-       || pMem->szMalloc==sqlite3DbMallocSize(pMem->db, pMem->zMalloc) );
+       || pMem->szMalloc==sqlite3DbMallocSize(pMem->db, pMem->zMalloc) ); */
   if( pMem->szMalloc<n ){
     if( n<32 ) n = 32;
     if( bPreserve && pMem->szMalloc>0 && pMem->z==pMem->zMalloc ){

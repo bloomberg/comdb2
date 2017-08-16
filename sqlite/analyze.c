@@ -1707,7 +1707,7 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
     decodeIntArray((char*)z, nCol, aiRowEst, pIndex->aiRowLogEst, pIndex);
     if( pIndex->pPartIdxWhere==0 ) pTable->nRowLogEst = pIndex->aiRowLogEst[0];
     /* COMDB2 MODIFICATION: assign noskipscan, only if not foreign table */ 
-    if( pIndex->pTable->iDb < 2 ){
+    if( pIndex->pTable->iDb == 0){
       pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName, 
                                                            pIndex->zName);
 #ifdef DEBUG
