@@ -1927,13 +1927,23 @@ int bdb_llmeta_alter_sequence(tran_type *tran, char *name, long long min_val,
 
 int bdb_llmeta_drop_sequence(tran_type *tran, char *name, int *bdberr);
 
+/* Node to define a sequence range allocated to a requestor */
+typedef struct sequence_range sequence_range_t;
+
+struct sequence_range {
+    long long min_val;
+    long long max_val;
+    long long current;
+    sequence_range_t *next;
+};
+
 int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                                   long long min_val, long long max_val,
                                   long long increment, bool cycle,
                                   long long chunk_size, char *flags,
-                                  long long *remaining_vals,
-                                  long long start_val, long long *next_val,
-                                  long long *next_start_val, int *bdberr);
+                                  long long start_val,
+                                  long long *next_start_val,
+                                  sequence_range_t *new_range, int *bdberr);
 
 void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 

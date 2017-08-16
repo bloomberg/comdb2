@@ -8178,24 +8178,22 @@ unsigned long long number_of_valid_values(long long min, long long max,
  * @param bool cycle Whether the sequence has cyclic behaviour
  * @param long long chunk_size Size of the chunk of values to preallocate from llmeta
  * @param char *flags Pointer to flags for the sequence
- * @param long long *remaining_vals Pointer to next_val member in sequence_t object
  * @param long long start_val Start value of the sequence
- * @param long long *next_val Next value to be dispensed in the sequence
  * @param long long *next_start_val Start value of the next dispensed chunk
+ * @param sequence_range_t **range_head pointer to pointer of the start of ranges
  * @param int *bdberr BDB error
  */
 int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                                   long long min_val, long long max_val,
                                   long long increment, bool cycle,
                                   long long chunk_size, char *flags,
-                                  long long *remaining_vals,
-                                  long long start_val, long long *next_val,
-                                  long long *next_start_val, int *bdberr)
+                                  long long start_val,
+                                  long long *next_start_val,
+                                  sequence_range_t *new_range, int *bdberr)
 {
     long long new_start_val;
     int rc = 0;
 
-    
     // Check if sequence is exhausted. Flag indicates new chunk cannot be allocated.
     // There may still be allocated chunks with valid values.
     if (*flags & SEQUENCE_EXHAUSTED) {
@@ -8206,7 +8204,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     if (*next_start_val > max_val || *next_start_val < min_val) {
         logmsg(LOGMSG_ERROR, "Sequence %s next_start_val (%lld) is incorrect. Something is very wrong.\n", name, *next_start_val, max_val, min_val);
         
-        return -1;
+        return -2;
     }
 
     // Create transaction if one doesn't exist
@@ -8224,24 +8222,33 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
         
         if (values_before_cycle <= chunk_size) {
             if (cycle) {
-                new_start_val =
-                    min_val +
-                    increment * ((chunk_size - values_before_cycle) %
-                                 max_uniq_values);
-                *remaining_vals = chunk_size;
+                new_start_val = min_val;  
             } else {
                 // No more values in sequence after this chunk is dispensed
-                // In this case, exausted sequence flag is set and
-                // the value of new_start_val will be undefined behaviour
                 *flags |= SEQUENCE_EXHAUSTED;
-                *remaining_vals = values_before_cycle;
+                
+                if (values_before_cycle == 0) {
+                    logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
+                    return -1;
+                }
+
                 new_start_val = *next_start_val;
             }
+
+            // Form new range node
+            new_range->min_val = *next_start_val;
+            new_range->current = *next_start_val;
+            new_range->max_val = max_val;
 
         } else {
             // Normal case
             new_start_val = *next_start_val + increment * chunk_size;
-            *remaining_vals = chunk_size;
+
+            // Form new range node
+            new_range->min_val = *next_start_val;
+            new_range->current = *next_start_val;
+            new_range->max_val = *next_start_val + increment * (chunk_size - 1);
+
         }
     } else {
         // Decreasing sequence
@@ -8249,23 +8256,31 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
 
         if (values_before_cycle <= chunk_size) {
             if (cycle) {
-                new_start_val =
-                    max_val +
-                    increment * ((chunk_size - values_before_cycle) %
-                                 max_uniq_values);
-                *remaining_vals = chunk_size;
+                new_start_val = max_val;
             } else {
                 // No more values in sequence after this chunk is dispensed
-                // In this case, exausted sequence flag is set and
-                // the value of new_start_val will be undefined behaviour
                 *flags |= SEQUENCE_EXHAUSTED;
-                *remaining_vals = values_before_cycle;
+                
+                if (values_before_cycle == 0) {
+                    logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
+                    return -1;
+                }
+                
                 new_start_val = *next_start_val;
             }
+
+            // Form new range node
+            new_range->min_val = min_val;
+            new_range->current = *next_start_val;
+            new_range->max_val = *next_start_val;
         } else {
             // Normal case
             new_start_val = *next_start_val + increment * chunk_size;
-            *remaining_vals = chunk_size;
+           
+            // Form new range node
+            new_range->min_val = *next_start_val + increment * (chunk_size - 1);
+            new_range->current = *next_start_val;
+            new_range->max_val = *next_start_val;
         }
     }
 
@@ -8274,7 +8289,6 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                               start_val, new_start_val, chunk_size, *flags, bdberr);
 
     // Set the new values for next value and next start value
-    *next_val = *next_start_val;
     *next_start_val = new_start_val;
 
     if (tran == NULL) {

@@ -1845,24 +1845,40 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             int idx;
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
-                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nNext Val: %lld\nStart Val: %lld\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nRemaining Vals: %lld\nNext Start Val: %lld\nSequence Exhausted?: %s\n",
+                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nStart Val: %lld\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nNext Start Val: %lld\nSequence Exhausted?: %s\n",
                     idx+1,
                     seq->name,
-                    seq->next_val,
                     seq->start_val,
                     seq->min_val,
                     seq->max_val,
                     seq->increment,
                     seq->cycle ? "true": "false",
                     seq->chunk_size,
-                    seq->remaining_vals,
                     seq->next_start_val,
                     seq->flags & SEQUENCE_EXHAUSTED ? "true" : "false"
                 );
             }
-        }
+        } else if (tokcmp(tok, ltok, "ranges") == 0) {
+            tok = segtok(line, lline, &st, &ltok);
 
-        else {
+            int idx;
+            sequence_t *seq = getsequencebyname(tok);
+            if (seq == NULL) {
+                logmsg(LOGMSG_USER, "Could not find sequence %s\n", tok);
+            }
+
+            logmsg(LOGMSG_USER, "------ Sequence %s ------\nHEAD\n", tok);
+
+            sequence_range_t *node = seq->range_head;
+            sequence_range_t *toFree;
+            while (node) {
+                logmsg(LOGMSG_USER, "  -> %lld - %lld (%lld)\n", node->min_val,
+                       node->max_val, node->current);
+                node = node->next;
+            }
+
+            logmsg(LOGMSG_USER, "-------------------------\n");
+        } else {
             logmsg(LOGMSG_USER, "Try Again\n");
             return -1;
         }

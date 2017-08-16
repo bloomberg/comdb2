@@ -952,6 +952,8 @@ int request_sequence_num_from_master(bdb_state_type *bdb_state, const char *name
 
 int request_sequence_num(const char *name, long long *val)
 {
+    // TODO: Call seq_next_val() if rep distribution
+
     return request_sequence_num_from_master(thedb->bdb_env, name, val);
 }
 
