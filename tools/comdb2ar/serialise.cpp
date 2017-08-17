@@ -664,10 +664,10 @@ void serialise_database(
         // cleaned up on the db's next startup
         std::string newlrlpath;
         if (nonames) {
-             newlrlpath = dbdir + "/" + dbname + ".tmpdbs/" + dbname
-                + ".lrl";
+            newlrlpath = dbdir + "/tmp/" + dbname + ".lrl";
         } else {
-            newlrlpath = dbdir + "/tmp" + dbname + ".lrl";
+            newlrlpath = dbdir + "/" + dbname + ".tmpdbs/" + dbname
+                + ".lrl";
         }
 
         struct stat st;

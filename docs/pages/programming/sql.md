@@ -138,6 +138,7 @@ expression list in between the ```SELECT``` and ```FROM``` keywords. Any arbitra
 result. If a result expression is * then all columns of all tables are substituted for that one expression. If 
 the expression is the name of a table followed by .* then the result is all columns in that one table.
 
+<a id="SELECTV"/>
 The SELECTV variant of ```SELECT``` operates exactly the same as ```SELECT``` and supports exactly the same syntax. 
 The difference is ```SELECTV``` causes Comdb2 to *assert* that the rows visited during the ```SELECTV``` remain 
 unchanged at the time of a COMMIT. It can be used in a similar manner to the ```SELECT FOR UPDATE``` construct 
@@ -150,6 +151,7 @@ in ```SNAPSHOT ISOLATION```, but use ```READ COMMITTED``` unless your transactio
 ```SNAPSHOT ISOLATION``` (it is slightly more expensive to run in ```SNAPSHOT ISOLATION``` than 
 ```READ COMMITTED``` transactions).
 
+<a id="DISTINCT"/>
 The ```DISTINCT``` keyword causes a subset of result rows to be returned, in which each result row is different. 
 ```NULL``` values are not treated as distinct from each other. The default behavior is that all result rows be 
 returned, which can be made explicit with the keyword ```ALL```.
@@ -159,14 +161,17 @@ separated by commas, then the query is against the cross join of the various tab
 can also be used to specify joins. A sub-query in parentheses may be substituted for any table name in the ```FROM``` 
 clause. The entire FROM clause may be omitted, in which case the result is a single row consisting of the values of the expression list.
 
+<a id="WHERE"/>
 The ```WHERE``` clause can be used to limit the number of rows over which the query operates.
 
+<a id="GROUPBY"/>
 The ```GROUP BY``` clause causes one or more rows of the result to be combined into a single row of output. This is 
 especially useful when the result contains aggregate functions. The expressions in the ```GROUP BY``` clause do not 
 have to be expressions that appear in the result. The ```HAVING``` clause is similar to ```WHERE``` except 
 that ```HAVING``` applies after grouping has occurred. The ```HAVING``` expression may refer to values, even 
 aggregate functions, that are not in the result.
 
+<a id="ORDERBY"/>
 The ```ORDER BY``` clause causes the output rows to be sorted. The argument to ```ORDER BY``` is a list of 
 expressions that are used as the key for the sort. The expressions do not have to be part of the result for 
 a simple ```SELECT```, but in a compound ```SELECT``` each sort expression must exactly match one of the 
@@ -190,6 +195,7 @@ the compound. If a match is found, the search stops. Otherwise, the next ```SELE
 continues until a match is found. Each term of the ```ORDER BY``` clause is processed separately and may come 
 from different ```SELECT``` statements in the compound.
 
+<a id="LIMIT"/>
 The ```LIMIT``` clause places an upper bound on the number of rows returned in the result. A negative ```LIMIT``` 
 indicates no upper bound. The optional ```OFFSET``` following ```LIMIT``` specifies how many rows to skip at the 
 beginning of the result set. In a compound query, the ```LIMIT``` clause may only appear on the final ```SELECT``` 
@@ -199,6 +205,7 @@ number and the offset is the second number. If a comma is used instead of the ``
 offset is the first number and the limit is the second number. This seeming contradiction is intentional - it 
 maximizes compatibility with legacy SQL database systems.
 
+<a id="UNION"/>
 A compound ```SELECT``` is formed from two or more simple ```SELECT``` statements connected by one of the 
 operators ```UNION```, ```UNION ALL``` , ```INTERSECT```, or ```EXCEPT```. In a compound ```SELECT```, all the 
 constituent ```SELECT``` statements must specify the same number of result columns. There may be only a 
@@ -267,19 +274,45 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
+CREATE TABLE (I):
+
 ![CREATE TABLE](images/create-table.gif)
 
-The ```CREATE TABLE``` statement creates a new table.  If the table already exists, the statement returns an error
-unless the ```IF NOT EXISTS``` clause is present.  
+CREATE TABLE (II):
 
-Note that this the syntax of ```CREATE TABLE``` is different from other traditional database systems.  Table 
-declarations in comdb2 aren't incremental - there's no separate "CREATE INDEX" statement to add indices.  The 
-schema definition defines all keys and constraints.  The schema definition language deserves its 
-[own page](table_schema.html)
+![CREATE TABLE](images/create-table-ddl.gif)
+
+Column list:
+
+![COLUMN LIST](images/column-list.gif)
+
+Column constraint:
+
+![COLUMN CONSTRAINT](images/column-constraint.gif)
+
+Table constraint:
+
+![TABLE CONSTRAINT](images/table-constraint.gif)
+
+Table options:
+
+![TABLE OPTIONS](images/table-options.gif)
+
+The ```CREATE TABLE``` statement creates a new table. If the table already
+exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
+is present.
+
+Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach,
+the schema definition defines all keys and constraints (more information can be
+found on the [table schema](table_schema.html) page).
+
+The second approach, added in version 7.0, follows the usual standard data
+definition language syntax supported by other relational database systems.
+A primary key created using ```CREATE TABLE (II)``` implicitly creates a
+```UNIQUE``` index named ```PRIMARY_KEY``` with all key columns marked
+```NOT NULL```.
 
 See also:
-
-[table-options](#table-options)
 
 [table-schema](table_schema.html)
 
@@ -331,23 +364,45 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
+ALTER TABLE (I):
+
 ![ALTER](images/alter-table.gif)
 
-The ```ALTER TABLE``` statement will change the definition of the named table to the one provided.  Note that the
-change not incremental like in other traditional databases.  There's no need to alter the table multiple times to
-add several indices.  The ```ALTER TABLE``` statement will try to form the most efficient to change the old table
-definition to the new one.  Any fields present in the new schema but absent from the old will be added to the 
-table definition.  Any fields absent in the new schema but present int the old will be dropped.  Keys will be added,
-renamed, or changed.  Constraints will be added or removed. See the [Schema definition](table_schema.html) section
-for details on the table schema definition syntax.  See the [Table options](#table-options) section a list of options 
-that may be set for a table.
+ALTER TABLE (II):
 
-**All** schema changes in Comdb2 are always live.  The database will not acquire long duration table locks during 
-the change and may be freely read from and written to.  If the schema change adds a new field, or grows the size 
-of an existing field, and doesn't modify the table keys, the change is "*instant*" (unless the ```ISC``` table 
-option is set to ```OFF```).  No table rebuild will take place (unless the table option ```REBUILD``` is specified) 
-if it's not needed.  If fields are removed or the size of an existing field is reduced, the schema change will 
-need to rebuild the existing table.  If any key is modified, it'll be rebuilt.
+![ALTER](images/alter-table-ddl.gif)
+
+_**Schema changes in Comdb2 are always live**. The database will not acquire
+long duration table locks during the change and may be freely read from and
+written to.  If the schema change adds a new field, or grows the size of an
+existing field, and doesn't modify the table keys, the change is "*instant*"
+(unless the ```ISC``` table option is set to ```OFF```). No table rebuild will
+take place (unless the table option ```REBUILD``` is specified) if it's not
+needed. If fields are removed or the size of an existing field is reduced, the
+schema change will need to rebuild the existing table. If any key is modified,
+it'll be rebuilt._
+
+The ```ALTER TABLE``` statement will change the definition of the named table
+to the one provided. Note that Comdb2 supports two variants of ```ALTER TABLE```
+syntax.
+
+The first approach uses a [declarative language](table_schema.html) and is not
+incremental like SQL. In this approach there is no need to alter the table
+multiple times to add several indices. The ```ALTER TABLE``` statement will try
+to form the most efficient to change the old table definition to the new one.
+Any fields present in the new schema but absent from the old will be added to
+the table definition. Any fields absent in the new schema but present int the
+old will be dropped. Keys will be added, renamed or changed. Constraints will
+be added or removed. See the [Schema definition](table_schema.html) section for
+details on the table schema definition syntax. See the [table options](#table-options)
+section a list of options that may be set for a table.
+
+The second approach, added in version 7.0, supports the usual standard data
+definition language, like other relational database systems. This syntax can
+be used to ```ADD``` a new column or ```DROP``` an existing column from the
+table. Multiple ADD/DROP operations can be used in the same command. In case of
+```DROP``` operation, the references to the column being dropped will be
+silently removed from the referring keys and constraints definitions.
 
 See also:
 
@@ -370,6 +425,22 @@ to operate on tables that have foreign key constraints, or are referred to by ta
 This restriction is necessary since it's not possible to quickly verify that no constraints are violated.  If all
 records need to be deleted from a table with/referenced by foreign key constrains, please use the ```DELETE``` 
 statement instead.
+
+### CREATE INDEX
+
+![CREATE INDEX](images/create-index.gif)
+
+The ```CREATE INDEX``` statement can be used to create an index on an existing
+table. The support for ```CREATE INDEX``` was added in version 7.0.
+
+### DROP INDEX
+
+![DROP INDEX](images/drop-index.gif)
+
+The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
+INDEX``` command without ```ON``` will drop an index with the specified name.
+It, however, would fail if there are multiple indexes in the database with the
+same name. The support for ```DROP INDEX``` was added in version 7.0.
 
 ## Access control
 
@@ -467,39 +538,39 @@ are different, for example.  Consult the table below for a list.  New functions 
 
 |Function                          | Description                                                                  |
 |----------------------------------|------------------------------------------------------------------------------|
-|abs(X)                            | Return the absolute value of the numeric argument X. Return NULL if X is NULL. Return 0.0 if X is not a numeric value.                                |
-|char(X1,X2,...,XN)                | Return a string composed of characters having the unicode code point values of integers X1 through XN, respectively. |
-|coalesce(X,Y,...)                 | Return a copy of the first non-NULL argument. If all arguments are NULL then NULL is returned. There must be at least 2 arguments. |
-|comdb2_version()                  | Return a string that describes the version of the software. It has a format "release (version)", eg: "R5 (v97966)" Supported in R5 since v93297 and R4 since v95511. If your database is running versions older than this, the function won't be available. |
-|comdb2_prevquerycost()            | Return a string that describes the cost of the last query run on this connection. Requires a ```SET GETCOST ON``` is run on the connection first.
-|ifnull(X,Y)                       | Return a copy of the first non-NULL argument. If both arguments are NULL then NULL is returned. This behaves the same as |
-|instr(X,Y)                        | Find the first occurrence of string Y within string X and returns the number of prior characters plus 1, or 0 if Y is nowhere found within X. Or, if X and Y are both BLOBs, then return one more than the number bytes prior to the first occurrence of Y, or 0 if Y does not occur anywhere within X. If both arguments X and Y are non-NULL and are not BLOBs then both are interpreted as strings. If either X or Y are NULL then the result is NULL. |
-|glob(X,Y)                         | Equivalent to the expression "Y GLOB X". |
-|hex(X)                            | The argument is interpreted as a BLOB. The result is a hexadecimal rendering of the content of that blob. |
-|length(X)                         | Return the string length of X in characters. If configured to support UTF-8, then the number of UTF-8 characters is returned, not the number of bytes. |
-|like(X, Y) <br/> like(X,Y,Z)      | Equivalent to the expression "Y LIKE X", or "Y LIKE X ESCAPE Z". |
-|lower(X)                          | Return a copy of input string X converted to all lower-case letters. The implementation of this function uses the C library routine tolower() which means it may not work correctly on non-ASCII UTF-8 strings. |
-|trim(X) <br/> ltrim(X, Y)         | Return a string formed by removing any and all characters that appear in Y from the left side of X. If the Y argument is omitted, removes spaces from the left side of X. |
-|max(X,Y,...)                      | Return the argument with the maximum value. Arguments may be strings in addition to numbers. The maximum value is determined by the usual sort order. Note that max() is a simple function when it has 2 or more arguments but converts to an aggregate function if given only a single argument. |
-|min(X,Y,...)                      | Return the argument with the minimum value. Arguments may be strings in addition to numbers. The minimum value is determined by the usual sort order. Note that min() is a simple function when it has 2 or more arguments but converts to an aggregate function if given only a single argument. |
-|nullif(X,Y)                       | Return the first argument if the arguments are different, otherwise return NULL. |
-|printf(FORMAT,...)                | Works like the printf() function from the standard C library. The first argument is a format string that specifies how to construct the output string using values taken from subsequent arguments. If the FORMAT argument is missing or NULL then the result is NULL. The %n format is silently ignored and does not consume an argument. The %p format is an alias for %X. The %z format is interchangeable with %s. If there are too few arguments in the argument list, missing arguments are assumed to have a NULL value, which is translated into 0 or 0.0 for numeric formats or an empty string for %s. |
-|quote(X)                          | This routine returns a string which is the value of its argument suitable for inclusion into another SQL statement. Strings are surrounded by single-quotes with escapes on interior quotes as needed. BLOBs are encoded as hexadecimal literals. |
-|random()                          | Return a pseudo-random integer between -9223372036854775808 and +9223372036854775807. |
-|randomblob(N)                     | Return an N-byte blob containing pseudo-random bytes. If N is less than 1 then a 1-byte random blob is returned. Hint: applications can generate globally unique identifiers using this function together with hex() and/or lower() like this: hex(randomblob(16)) OR: lower(hex(randomblob(16))) |
-|replace(X,Y,Z)                    | Return a string formed by substituting string Z for every occurrence of string Y in string X. If Y is an empty string then return X unchanged. If Z is not initially a string, it is cast to a UTF-8 string prior to processing. |
-|round(X) <br/> round(X,Y)         | Round off the number X to Y digits to the right of the decimal point. If the Y argument is omitted, 0 is assumed. |
-|rtrim(X) <br/ >rtrim(X,Y)         | Return a string formed by removing any and all characters that appear in Y from the right side of X. If the Y argument is omitted, removes spaces from the right side of X. |
-|soundex(X)                        | Compute the soundex encoding of the string X. The string "?000" is returned if the argument is NULL. |
-|sqlite_source_id()                | Returns a string that identifies the specific version of the SQLite library source code that was used: the date and time that the source code was checked in followed by the SHA1 hash for that check-in. |
-|sqlite_version()                  | Return the version string for the SQLite library the software is based upon. |
-|substr(X, Y, Z> <br/> substr(X,Y) | Return a substring of input string X that begins with the Y-th character and which is Z characters long. If Z is omitted then all character through the end of the string are returned. The left-most character of X is number 1. If Y is negative the the first character of the substring is found by counting from the right rather than the left. If X is string then characters indices refer to actual UTF-8 characters. If X is a BLOB then the indices refer to bytes. |
-|trim(X) <br/> trim(X,Y)           | Return a string formed by removing any and all characters that appear in Y from both ends of X. If the Y argument is omitted, removes spaces from both ends of X. |
-|typeof(X)                         | Return the type of the expression X. The only return values are "null", "integer", "real", "text", "datetime" and "blob". |
-|unicode(X)                        | Returns the numeric unicode code point corresponding to the first character of the string X. If the argument is not a string then the result is undefined. |
-|upper(X)                          | Return a copy of input string X converted to all upper-case letters. The implementation of this function uses the C library routine toupper() which means it may not work correctly on non-ASCII UTF-8 strings. |
-|comdb2_version(X)                 | Return a string that describes the version of the software. It has a format "release (version)", eg: "R5 (v97966)" Supported in R5 since v93297 and R4 since v95511. If your database is running versions older than this, the function won't be available. |
-|zeroblob(N)                       | Return a BLOB consisting of N bytes of 0x00. |
+|abs(X)                            | <a id="abs"/> Return the absolute value of the numeric argument X. Return NULL if X is NULL. Return 0.0 if X is not a numeric value.                                |
+|char(X1,X2,...,XN)                | <a id="char"/> Return a string composed of characters having the unicode code point values of integers X1 through XN, respectively. |
+|coalesce(X,Y,...)                 | <a id="coalesce"/> Return a copy of the first non-NULL argument. If all arguments are NULL then NULL is returned. There must be at least 2 arguments. |
+|comdb2_version()                  | <a id="comdb2_version"/> Return a string that describes the version of the software. It has a format "release (version)", eg: "R5 (v97966)" Supported in R5 since v93297 and R4 since v95511. If your database is running versions older than this, the function won't be available. |
+|comdb2_prevquerycost()            | <a id="comdb2_prevquerycost"/> Return a string that describes the cost of the last query run on this connection. Requires a ```SET GETCOST ON``` is run on the connection first.
+|ifnull(X,Y)                       | <a id="ifnull"/> Return a copy of the first non-NULL argument. If both arguments are NULL then NULL is returned. This behaves the same as |
+|instr(X,Y)                        | <a id="instr"/> Find the first occurrence of string Y within string X and returns the number of prior characters plus 1, or 0 if Y is nowhere found within X. Or, if X and Y are both BLOBs, then return one more than the number bytes prior to the first occurrence of Y, or 0 if Y does not occur anywhere within X. If both arguments X and Y are non-NULL and are not BLOBs then both are interpreted as strings. If either X or Y are NULL then the result is NULL. |
+|glob(X,Y)                         | <a id="glob"/> Equivalent to the expression "Y GLOB X". |
+|hex(X)                            | <a id="hex"/> The argument is interpreted as a BLOB. The result is a hexadecimal rendering of the content of that blob. |
+|length(X)                         | <a id="length"/> Return the string length of X in characters. If configured to support UTF-8, then the number of UTF-8 characters is returned, not the number of bytes. |
+|like(X, Y) <br/> like(X,Y,Z)      | <a id="like"/>Equivalent to the expression "Y LIKE X", or "Y LIKE X ESCAPE Z". |
+|lower(X)                          | <a id="lower"/>Return a copy of input string X converted to all lower-case letters. The implementation of this function uses the C library routine tolower() which means it may not work correctly on non-ASCII UTF-8 strings. |
+|trim(X) <br/> ltrim(X, Y)         | <a id="trim"/>Return a string formed by removing any and all characters that appear in Y from the left side of X. If the Y argument is omitted, removes spaces from the left side of X. |
+|max(X,Y,...)                      | <a id="max"/>Return the argument with the maximum value. Arguments may be strings in addition to numbers. The maximum value is determined by the usual sort order. Note that max() is a simple function when it has 2 or more arguments but converts to an aggregate function if given only a single argument. |
+|min(X,Y,...)                      | <a id="min"/>Return the argument with the minimum value. Arguments may be strings in addition to numbers. The minimum value is determined by the usual sort order. Note that min() is a simple function when it has 2 or more arguments but converts to an aggregate function if given only a single argument. |
+|nullif(X,Y)                       | <a id="nullif"/>Return the first argument if the arguments are different, otherwise return NULL. |
+|printf(FORMAT,...)                | <a id="printf"/>Works like the printf() function from the standard C library. The first argument is a format string that specifies how to construct the output string using values taken from subsequent arguments. If the FORMAT argument is missing or NULL then the result is NULL. The %n format is silently ignored and does not consume an argument. The %p format is an alias for %X. The %z format is interchangeable with %s. If there are too few arguments in the argument list, missing arguments are assumed to have a NULL value, which is translated into 0 or 0.0 for numeric formats or an empty string for %s. |
+|quote(X)                          | <a id="quote"/>This routine returns a string which is the value of its argument suitable for inclusion into another SQL statement. Strings are surrounded by single-quotes with escapes on interior quotes as needed. BLOBs are encoded as hexadecimal literals. |
+|random()                          | <a id="random"/>Return a pseudo-random integer between -9223372036854775808 and +9223372036854775807. |
+|randomblob(N)                     | <a id="randomblob"/>Return an N-byte blob containing pseudo-random bytes. If N is less than 1 then a 1-byte random blob is returned. Hint: applications can generate globally unique identifiers using this function together with hex() and/or lower() like this: hex(randomblob(16)) OR: lower(hex(randomblob(16))) |
+|replace(X,Y,Z)                    | <a id="replace"/>Return a string formed by substituting string Z for every occurrence of string Y in string X. If Y is an empty string then return X unchanged. If Z is not initially a string, it is cast to a UTF-8 string prior to processing. |
+|round(X) <br/> round(X,Y)         | <a id="round"/>Round off the number X to Y digits to the right of the decimal point. If the Y argument is omitted, 0 is assumed. |
+|rtrim(X) <br/ >rtrim(X,Y)         | <a id="rtrim"/>Return a string formed by removing any and all characters that appear in Y from the right side of X. If the Y argument is omitted, removes spaces from the right side of X. |
+|soundex(X)                        | <a id="soundex"/>Compute the soundex encoding of the string X. The string "?000" is returned if the argument is NULL. |
+|sqlite_source_id()                | <a id="sqlite_source_id"/>Returns a string that identifies the specific version of the SQLite library source code that was used: the date and time that the source code was checked in followed by the SHA1 hash for that check-in. |
+|sqlite_version()                  | <a id="sqlite_version"/>Return the version string for the SQLite library the software is based upon. |
+|substr(X, Y, Z> <br/> substr(X,Y) | <a id="substr"/>Return a substring of input string X that begins with the Y-th character and which is Z characters long. If Z is omitted then all character through the end of the string are returned. The left-most character of X is number 1. If Y is negative the the first character of the substring is found by counting from the right rather than the left. If X is string then characters indices refer to actual UTF-8 characters. If X is a BLOB then the indices refer to bytes. |
+|trim(X) <br/> trim(X,Y)           | <a id="trim"/>Return a string formed by removing any and all characters that appear in Y from both ends of X. If the Y argument is omitted, removes spaces from both ends of X. |
+|typeof(X)                         | <a id="typeof"/>Return the type of the expression X. The only return values are "null", "integer", "real", "text", "datetime" and "blob". |
+|unicode(X)                        | <a id="unicode"/>Returns the numeric unicode code point corresponding to the first character of the string X. If the argument is not a string then the result is undefined. |
+|upper(X)                          | <a id="upper"/>Return a copy of input string X converted to all upper-case letters. The implementation of this function uses the C library routine toupper() which means it may not work correctly on non-ASCII UTF-8 strings. |
+|comdb2_version(X)                 | <a id="comdb2_version"/>Return a string that describes the version of the software. It has a format "release (version)", eg: "R5 (v97966)" Supported in R5 since v93297 and R4 since v95511. If your database is running versions older than this, the function won't be available. |
+|zeroblob(N)                       | <a id="zeroblob"/>Return a BLOB consisting of N bytes of 0x00. |
 
 ### Aggregate functions
 
@@ -507,12 +578,12 @@ In any aggregate function that takes a single argument, that argument can be pre
 
 |Function                                | Description                                                                 |
 |----------------------------------------|-----------------------------------------------------------------------------|
-|avg(X)                                  | Return the average value of all non-NULL X within a group. String and BLOB values that do not look like numbers are interpreted as 0. The result of avg() is always a floating point value even if all inputs are integers.|
-|count(*)                                | The first form return a count of the number of times that X is not NULL in a group. The second form (with no argument) returns the total number of rows in the group. |
-|max(X)                                  | Return the maximum value of all values in the group. The usual sort order is used to determine the maximum. |
-|min(X)                                  | Return the minimum non-NULL value of all values in the group. The usual sort order is used to determine the minimum. NULL is only returned if all values in the group are NULL. |
-|sum(X) <br/> total(X)                   | Return the numeric sum of all non-NULL values in the group. If there are no non-NULL input rows then sum() returns NULL but total() returns 0.0. NULL is not normally a helpful result for the sum of no rows but the SQL standard requires it and most other SQL database engines implement sum() that way so Comdb2 does it in the same way in order to be compatible. The non-standard total() function is provided as a convenient way to work around this design problem in the SQL language.  The result of total() is always a floating point value. The result of sum() is an integer value if all non-NULL inputs are integers. If any input to sum() is neither an integer or a NULL then sum() returns a floating point value which might be an approximation to the true sum.  Sum() will throw an "integer overflow" exception if all inputs are integers or NULL and an integer overflow occurs at any point during the computation. Total() never throws an exception. |
-|group_concat(X) <br/> group_concat(X,Y) |  The group_concat() function returns a string which is the concatenation of all non-NULL values of X. If parameter Y is present then it is used as the separator between instances of X. A comma (",") is used as the separator if Y is omitted. The order of the concatenated elements is arbitrary. |
+|avg(X)                                  | <a id="avg"/>Return the average value of all non-NULL X within a group. String and BLOB values that do not look like numbers are interpreted as 0. The result of avg() is always a floating point value even if all inputs are integers.|
+|count(*)                                | <a id="count"/>The first form return a count of the number of times that X is not NULL in a group. The second form (with no argument) returns the total number of rows in the group. |
+|max(X)                                  | <a id="max"/>Return the maximum value of all values in the group. The usual sort order is used to determine the maximum. |
+|min(X)                                  | <a id="min"/>Return the minimum non-NULL value of all values in the group. The usual sort order is used to determine the minimum. NULL is only returned if all values in the group are NULL. |
+|sum(X) <br/> total(X)                   | <a id="sum"/>Return the numeric sum of all non-NULL values in the group. If there are no non-NULL input rows then sum() returns NULL but total() returns 0.0. NULL is not normally a helpful result for the sum of no rows but the SQL standard requires it and most other SQL database engines implement sum() that way so Comdb2 does it in the same way in order to be compatible. The non-standard total() function is provided as a convenient way to work around this design problem in the SQL language.  The result of total() is always a floating point value. The result of sum() is an integer value if all non-NULL inputs are integers. If any input to sum() is neither an integer or a NULL then sum() returns a floating point value which might be an approximation to the true sum.  Sum() will throw an "integer overflow" exception if all inputs are integers or NULL and an integer overflow occurs at any point during the computation. Total() never throws an exception. |
+|group_concat(X) <br/> group_concat(X,Y) | <a id="group_concat"/> The group_concat() function returns a string which is the concatenation of all non-NULL values of X. If parameter Y is present then it is used as the separator between instances of X. A comma (",") is used as the separator if Y is omitted. The order of the concatenated elements is arbitrary. |
 
 ## SET statements
 

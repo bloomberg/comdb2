@@ -131,7 +131,7 @@ static int mark_sc_in_llmeta(struct schema_change_type *s)
 static int propose_sc(struct schema_change_type *s)
 {
     /* Check that all nodes are ready to do this schema change. */
-    int rc = broadcast_sc_start(sc_seed, gbl_mynode, time(NULL));
+    int rc = broadcast_sc_start(sc_seed, sc_host, time(NULL));
     if (rc != 0) {
         rc = SC_PROPOSE_FAIL;
         sc_errf(s, "unable to gain agreement from all nodes to do schema "
@@ -178,7 +178,6 @@ static int master_downgrading(struct schema_change_type *s)
             LOGMSG_WARN,
             "Master node downgrading - new master will resume schemachange\n");
         gbl_schema_change_in_progress = 0;
-        stopsc = 0;
         return SC_MASTER_DOWNGRADE;
     }
     return SC_OK;
@@ -204,7 +203,7 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int free_sc)
 
 static int set_original_tablename(struct schema_change_type *s)
 {
-    struct db *db = getdbbyname(s->table);
+    struct dbtable *db = get_dbtable_by_name(s->table);
     if (db) {
         strncpy0(s->table, db->dbname, sizeof(s->table));
         return 0;
@@ -220,8 +219,8 @@ int do_alter_table_shard(struct ireq *iq, int indx, int maxindx, void *tran)
     int rc;
 
     if (!s->timepart_dbs) {
-        s->timepart_dbs = (struct db **)calloc(maxindx, sizeof(struct db *));
-        s->timepart_newdbs = (struct db **)calloc(maxindx, sizeof(struct db *));
+        s->timepart_dbs = (struct dbtable **)calloc(maxindx, sizeof(struct dbtable *));
+        s->timepart_newdbs = (struct dbtable **)calloc(maxindx, sizeof(struct dbtable *));
         s->timepart_nshards = maxindx;
     }
 
@@ -235,7 +234,7 @@ int do_alter_table_shard(struct ireq *iq, int indx, int maxindx, void *tran)
     return rc;
 }
 
-static void check_for_idx_rename(struct db *newdb, struct db *olddb)
+static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
 {
     if (!newdb || !newdb->plan) return;
 
@@ -278,7 +277,7 @@ static int do_alter_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
     int rc;
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
 
@@ -372,23 +371,59 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
     return rc;
 }
 
+static int check_table_version(struct ireq *iq)
+{
+    if (iq->sc->addonly || iq->sc->resume)
+        return 0;
+    int rc, bdberr;
+    unsigned long long version;
+    rc = bdb_table_version_select(iq->sc->table, NULL, &version, &bdberr);
+    if (rc != 0) {
+        errstat_set_strf(&iq->errstat,
+                         "failed to get version for table:%s rc:%d",
+                         iq->sc->table, rc);
+        sc_errf(iq->sc, "failed to get version for table:%s rc:%d\n",
+                iq->sc->table, rc);
+        iq->errstat.errval = ERR_SC;
+        return SC_INTERNAL_ERROR;
+    }
+    if (iq->usedbtablevers != version) {
+        errstat_set_strf(&iq->errstat,
+                         "stale version for table:%s master:%d replicant:%d",
+                         iq->sc->table, version, iq->usedbtablevers);
+        sc_errf(iq->sc, "stale version for table:%s master:%d replicant:%d\n",
+                iq->sc->table, version, iq->usedbtablevers);
+        iq->errstat.errval = ERR_SC;
+        return SC_INTERNAL_ERROR;
+    }
+    return 0;
+}
+
 static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
                   scdone_t type)
 {
     int rc;
     struct schema_change_type *s = iq->sc;
-
     if (s->finalize_only) {
         return s->sc_rc;
     }
-    if (type != alter) wrlock_schema_lk();
+    if (type != alter)
+        wrlock_schema_lk();
     set_original_tablename(s);
-    if (!s->resume) set_sc_flgs(s);
-    if ((rc = mark_sc_in_llmeta_tran(s, NULL))) goto end; // non-tran ??
-    propose_sc(s);
+    if ((rc = check_table_version(iq)) != 0) { // non-tran ??
+        goto end;
+    }
+    if (!s->resume)
+        set_sc_flgs(s);
+    if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
+        goto end;
+    broadcast_sc_start(sc_seed, sc_host, time(NULL)); // dont care rcode
     rc = pre(iq, NULL); // non-tran ??
     if (type == alter && master_downgrading(s)) {
         s->sc_rc = SC_MASTER_DOWNGRADE;
+        errstat_set_strf(
+            &iq->errstat,
+            "Master node downgrading - new master will resume schemachange\n");
         return SC_MASTER_DOWNGRADE;
     }
     if (rc) {
@@ -400,14 +435,15 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
     }
 end:
     s->sc_rc = rc;
-    if (type != alter) unlock_schema_lk();
+    if (type != alter)
+        unlock_schema_lk();
     broadcast_sc_end(sc_seed);
     return rc;
 }
 
 int do_alter_queues(struct schema_change_type *s)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc, bdberr;
 
     set_original_tablename(s);
@@ -430,7 +466,7 @@ int do_alter_queues(struct schema_change_type *s)
 
 int do_alter_stripes(struct schema_change_type *s)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc, bdberr;
 
     set_original_tablename(s);
@@ -515,9 +551,10 @@ int do_schema_change(struct schema_change_type *s)
     init_fake_ireq(thedb, &iq);
     iq.sc = s;
     if (s->db == NULL) {
-        s->db = getdbbyname(s->table);
+        s->db = get_dbtable_by_name(s->table);
     }
     iq.usedb = s->db;
+    iq.usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = &iq;
     arg->trans = NULL;
@@ -767,7 +804,7 @@ int resume_schema_change(void)
 /****************** Functions down here will likely be moved elsewhere *****/
 
 /* this assumes threads are not active in db */
-int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
+int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
                         tran_type *tran)
 {
     char *tmpname;
@@ -798,10 +835,13 @@ int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
                    "Found existing tempdb: %s, attempting to resume an in "
                    "progress schema change\n",
                    tmpname);
-        else
-            logmsg(LOGMSG_INFO,
-                   "Didn't find existing tempdb: %s, creating a new one\n",
+        else {
+            logmsg(LOGMSG_ERROR,
+                   "Didn't find existing tempdb: %s, aborting schema change\n",
                    tmpname);
+            free(tmpname);
+            return -1;
+        }
     }
 
     if (!db->handle) /* did not/could not open existing one, creating new one */
@@ -838,7 +878,7 @@ int open_temp_db_resume(struct db *db, char *prefix, int resume, int temp,
  * new.tablename file versions causing horrifying bugs.
  * @return returns 0 on success; !0 otherwise
  */
-int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb, tran_type *tran)
+int verify_new_temp_sc_db(struct dbtable *p_db, struct dbtable *p_newdb, tran_type *tran)
 {
     int i;
     int bdberr;
@@ -933,12 +973,12 @@ int verify_new_temp_sc_db(struct db *p_db, struct db *p_newdb, tran_type *tran)
 }
 
 /* close and remove the temp table after a failed schema change. */
-int delete_temp_table(struct ireq *iq, struct db *newdb)
+int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
 {
     struct schema_change_type *s = iq->sc;
     tran_type *tran = NULL;
     int i, rc, bdberr;
-    struct db *usedb_sav;
+    struct dbtable *usedb_sav;
 
     rc = bdb_close_only(newdb->handle, &bdberr);
     if (rc) {
@@ -1011,7 +1051,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
         return rc;
     }
 
-    struct db *db = iq->usedb;
+    struct dbtable *db = iq->usedb;
     bdb_lock_table_write(db->handle, tran);
     int ra, ba;
     if ((rc = get_db_compress(db, &ra)) != 0) goto out;
@@ -1043,7 +1083,7 @@ out:
     return rc;
 }
 
-int dryrun_int(struct schema_change_type *s, struct db *db, struct db *newdb,
+int dryrun_int(struct schema_change_type *s, struct dbtable *db, struct dbtable *newdb,
                struct scinfo *scinfo)
 {
     int changed;

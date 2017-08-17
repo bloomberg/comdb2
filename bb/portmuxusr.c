@@ -65,7 +65,7 @@ int gbl_pmux_route_enabled = 1;
     instance=secdb
 */
 
-static int portmux_port = 5105;
+int portmux_port = 5105;
 
 enum {
     TIMEOUTMS = 10000,
@@ -76,8 +76,9 @@ enum {
 };
 static int portmux_default_timeout = TIMEOUTMS;
 static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
-/* sizeof(addr.sun_path) == 108 */
-static char PORTMUX_UNIX_SOCKET[108] = "/tmp/portmux.socket";
+
+static const char *gbl_portmux_unix_socket_default = "/tmp/portmux.socket";
+char *gbl_portmux_unix_socket;
 
 /*make these private for now*/
 static int get_portmux_port(void);
@@ -532,15 +533,25 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
     /*connect to portmux unix socket*/
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    /*sizeof(PORTMUX_UNIX_SOCKET) == 19*/
-    strncpy(addr.sun_path, PORTMUX_UNIX_SOCKET, sizeof(addr.sun_path));
-    len = offsetof(struct sockaddr_un, sun_path) + strlen(PORTMUX_UNIX_SOCKET);
+
+    if (strlen(gbl_portmux_unix_socket) >= sizeof(addr.sun_path)) {
+        logmsg(LOGMSG_ERROR, "%s:%d Portmux unix socket path too long.",
+               __func__, __LINE__);
+        return -1;
+    } else {
+        strncpy(addr.sun_path, gbl_portmux_unix_socket,
+                strlen(gbl_portmux_unix_socket));
+    }
+
+    len = offsetof(struct sockaddr_un, sun_path) +
+          strlen(gbl_portmux_unix_socket);
+
     if (connect(listenfd, (struct sockaddr *)&addr, len) < 0) {
         if ((errno != ENOENT) && (errno != ECONNREFUSED)) {
             logmsg(LOGMSG_ERROR, "%s:%d error connecting to portmux "
-                            "on %s errno[%d]=%s\n",
-                    __func__, __LINE__, PORTMUX_UNIX_SOCKET, errno,
-                    strerror(errno));
+                                 "on %s errno[%d]=%s\n",
+                   __func__, __LINE__, gbl_portmux_unix_socket, errno,
+                   strerror(errno));
         }
         close(listenfd);
         return -1;
@@ -728,9 +739,10 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
 
     if (fds->listenfd >= 0) {
         /*recovered unix socket connection*/
-        logmsg(LOGMSG_ERROR, "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n",
-                __func__, __LINE__, PORTMUX_UNIX_SOCKET, fds->listenfd,
-                fds->app, fds->service, fds->instance);
+        logmsg(LOGMSG_ERROR,
+               "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n", __func__,
+               __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
+               fds->service, fds->instance);
         fds->nretries = 0;
     } else {
         /* If we have tcp connectivity then we can stop trying to
@@ -740,9 +752,9 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
             /*too many attempts to get unix socket
              *connectivity drop it and only use tcp port*/
             logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
-                            "too many retries %d will only use port# %d\n",
-                    __func__, __LINE__, PORTMUX_UNIX_SOCKET, fds->app,
-                    fds->service, fds->instance, fds->nretries, fds->port);
+                                 "too many retries %d will only use port# %d\n",
+                   __func__, __LINE__, gbl_portmux_unix_socket, fds->app,
+                   fds->service, fds->instance, fds->nretries, fds->port);
             fds->recov_conn = 0 /*FALSE*/;
         }
     }
@@ -1212,9 +1224,10 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
 
     if (fds->listenfd >= 0) {
         /*recovered unix socket connection*/
-        logmsg(LOGMSG_ERROR, "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n",
-                __func__, __LINE__, PORTMUX_UNIX_SOCKET, fds->listenfd,
-                fds->app, fds->service, fds->instance);
+        logmsg(LOGMSG_ERROR,
+               "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n", __func__,
+               __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
+               fds->service, fds->instance);
         fds->nretries = 0;
     } else {
         /* If we have tcp connectivity then we can stop trying to
@@ -1224,9 +1237,9 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
             /*too many attempts to get unix socket
              *connectivity drop it and only use tcp port*/
             logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
-                            "too many retries %d will only use port# %d\n",
-                    __func__, __LINE__, PORTMUX_UNIX_SOCKET, fds->app,
-                    fds->service, fds->instance, fds->nretries, fds->port);
+                                 "too many retries %d will only use port# %d\n",
+                   __func__, __LINE__, gbl_portmux_unix_socket, fds->app,
+                   fds->service, fds->instance, fds->nretries, fds->port);
             fds->recov_conn = 0 /*FALSE*/;
             return 2;
         }
@@ -1756,40 +1769,41 @@ void set_portmux_port(int port)
     portmux_port = port;
 }
 
-int set_portmux_bind_path(char *path)
+int set_portmux_bind_path(const char *path)
 {
-    int rc = -1;
-    if (strlen(path) < sizeof(PORTMUX_UNIX_SOCKET)) {
-      strncpy(PORTMUX_UNIX_SOCKET, path, sizeof(PORTMUX_UNIX_SOCKET));
-      rc = 0;
+    path = (path) ? path : gbl_portmux_unix_socket_default;
+
+    if (strlen(path) < sizeof(((struct sockaddr_un *)0)->sun_path)) {
+        free(gbl_portmux_unix_socket);
+        gbl_portmux_unix_socket = strdup(path);
+        return (gbl_portmux_unix_socket) ? 0 : -1;
     }
-    return rc;
+    logmsg(LOGMSG_ERROR, "%s:%d Portmux unix socket path too long.", __func__,
+           __LINE__);
+    return -1;
 }
 
-int portmux_hello(char *host, char *name) {
+int portmux_hello(char *host, char *name)
+{
     struct in_addr addr;
     int port;
     int fd;
     int rc;
 
     rc = tcpresolve(host, &addr, &port);
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     fd = tcpconnect_to(addr, get_portmux_port(), 0, 5000);
-    if (fd == -1)
-        return 1;
+    if (fd == -1) return 1;
     portmux_denagle(fd);
 
     SBUF2 *sb = sbuf2open(fd, SBUF2_WRITE_LINE | SBUF2_NO_CLOSE_FD);
     sbuf2printf(sb, "hello %s\n", name);
     rc = sbuf2flush(sb);
-    if (rc < 0)
-        return 2;
+    if (rc < 0) return 2;
     sbuf2close(sb);
     return 0;
 }
-
 
 #ifdef PORTMUXUSR_TESTSUITE
 /* here's makefile
@@ -2208,6 +2222,10 @@ int main(int argc, char *argv[])
     if (argc < 1) {
         usage(stdout);
         exit(0);
+    }
+
+    if (set_portmux_bind_path(NULL)) {
+        exit(1);
     }
 
     if (server_mode) {

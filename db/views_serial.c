@@ -490,33 +490,10 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
     cson_object *cson_obj;
     const char *first_shard;
     const char *type;
-    struct db *db;
+    struct dbtable *db;
     int rc;
     char *err_partname;
     int err_shardidx;
-
-
-    /* check to see if the name exists either as a table, or part of a 
-       different partition */
-    rc = comdb2_partition_check_name_reuse(first_shard, &err_partname, 
-                                           &err_shardidx);
-    if(rc) {
-        if (rc != VIEW_ERR_EXIST)
-            abort();
-
-        if(err_shardidx == -1) {
-            snprintf(err->errstr, sizeof(err->errstr), 
-                     "Partition name \"%s\" matches seed shard in partition \"%s\"",
-                     name, err_partname);
-        } else {
-            snprintf(err->errstr, sizeof(err->errstr), 
-                     "Partition name \"%s\" matches shard %d in partition \"%s\"",
-                     name, err_shardidx, err_partname);
-        }
-        err->errval = VIEW_ERR_PARAM;
-        free(err_partname);
-        goto error;
-    }
 
     cson_obj = cson_value_get_object(cson);
 
@@ -565,7 +542,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
 
     /* make sure the name is not overlapping a table name (this breaks in sqlite
      */
-    db = getdbbyname(view->name);
+    db = get_dbtable_by_name(view->name);
     if (db) {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr),
@@ -579,7 +556,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
        check if the table exists !
  TODO: add support for alias to work with remote tables
      */
-    db = getdbbyname(first_shard);
+    db = get_dbtable_by_name(first_shard);
     if (!db) {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr), "Table %s does not exist",
@@ -587,6 +564,8 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
         goto error;
     }
 
+    /* check to see if the name exists either as a table, or part of a
+       different partition */
     rc = comdb2_partition_check_name_reuse(first_shard, &err_partname, 
                                            &err_shardidx);
     if(rc) {

@@ -323,7 +323,7 @@ set all_graphs {
     }
   }
   truncate {
-    line TRUNCATE /table-name
+    line TRUNCATE TABLE /table-name
   }
   analyze {stack
     {line ANALYZE {or /table-name ALL} {opt /percent-coverage}}
@@ -415,25 +415,35 @@ set all_graphs {
       loop
       {line
           {or 
-              {line u_short}
-              {line short}
-              {line u_int}
-              {line int}
-              {line longlong}
-              {line cstring}
-              {line vutf8}
-              {line blob}
-              {line byte}
-              {line datetime}
-              {line datetimeus}
-              {line intervalds}
-              {line intervaldsus}
-              {line intervalym}
-              {line decimal32}
-              {line decimal64}
-              {line decimal128}
+              {line
+                  {or
+                      {line u_short}
+                      {line short}
+                      {line u_int}
+                      {line int}
+                      {line longlong}
+                      {line datetime}
+                      {line datetimeus}
+                      {line intervalds}
+                      {line intervaldsus}
+                      {line intervalym}
+                      {line decimal32}
+                      {line decimal64}
+                      {line decimal128}
+                  }
+                  {line /column-name}
+              }
+              {line cstring /column-name [ size ] }
+              {line
+                  {or
+                      {line vutf8}
+                      {line blob}
+                      {line byte}
+                  }
+                  {line /column-name {opt [ size ] }}
+              }
           }
-          {line /column-name {opt [ size ] } {opt DBSTORE = /literal-value}}
+          {line {opt DBSTORE = /literal-value}}
       }
   }
 
@@ -502,5 +512,76 @@ set all_graphs {
           }
   }
 
-  
+  create-table-ddl {
+      stack
+      {line CREATE TABLE {opt IF NOT EXISTS}}
+      {line {opt db-name .} table-name}
+      {line (
+          {loop
+              {line column-name column-type
+                  {opt {loop { column-constraint } { , } } } }
+              { , }
+          }
+          {line ) }
+      }
+      {loop {line table-constraint } { , } }
+      {line {opt table-options }}
+  }
+
+  column-constraint {
+      or
+      {line DEFAULT expr }
+      {line NULL }
+      {line NOT NULL }
+      {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
+      {line UNIQUE }
+      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line WITH DBPAD = signed-number }
+  }
+
+  table-constraint {
+      or
+      {line PRIMARY KEY ( column-list ) }
+      {line UNIQUE ( column-list ) }
+      {stack
+          {line FOREIGN KEY ( column-list ) }
+          {line REFERENCES ref-table-name ( ref-column-list ) }
+      }
+  }
+
+  column-list {
+      loop
+      {line column-name {opt {or {line ASC } {line DESC } } } }
+      { , }
+  }
+
+  alter-table-ddl {
+      stack
+      {line ALTER TABLE {opt db-name .} table-name }
+      {opt
+          {loop
+              {or
+                  {line ADD column-name column-type
+                      {opt {loop {line column-constraint } { , } } }
+                  }
+                  {line DROP {opt COLUMN} column-name }
+              }
+              { , }
+          }
+      }
+  }
+
+  create-index {
+      stack
+      {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
+      {line {opt db-name } index-name ON table-name
+          ( {loop {line column-name } { , } } ) }
+      {line {opt WITH DATACOPY } {opt WHERE expr } }
+  }
+
+  drop-index {
+      stack
+      {line DROP INDEX {opt {line IF EXISTS } } }
+      {line index-name {opt {line ON table-name } } }
+  }
 }

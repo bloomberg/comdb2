@@ -1706,9 +1706,8 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
     pIndex->bUnordered = 0;
     decodeIntArray((char*)z, nCol, aiRowEst, pIndex->aiRowLogEst, pIndex);
     if( pIndex->pPartIdxWhere==0 ) pTable->nRowLogEst = pIndex->aiRowLogEst[0];
-    /* COMDB2 MODIFICATION: assign noskipscan parameter, only if not disabled 
-    ** already.  */ 
-    if( !pIndex->noSkipScan ){
+    /* COMDB2 MODIFICATION: assign noskipscan, only if not foreign table */ 
+    if( pIndex->pTable->iDb == 0){
       pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName, 
                                                            pIndex->zName);
 #ifdef DEBUG
@@ -2000,6 +1999,10 @@ int sqlite3AnalysisLoad(sqlite3 *db, int iDb){
 
   assert( iDb>=0 && iDb<db->nDb );
   assert( db->aDb[iDb].pBt!=0 );
+
+  /* AZ: put disabler loader here */
+  void get_disable_skipscan_all();
+  get_disable_skipscan_all();
 
   /* Clear any prior statistics */
   assert( sqlite3SchemaMutexHeld(db, iDb, 0) );

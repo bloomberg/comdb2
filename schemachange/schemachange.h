@@ -156,16 +156,16 @@ struct schema_change_type {
     /********************** it will change eventually (do not try to serialize)
      * ************/
 
-    struct db *db;
-    struct db *newdb;
+    struct dbtable *db;
+    struct dbtable *newdb;
     struct scplan plan; /**** TODO This is an abomination, i know. Yet still
                            much better than on the stack where I found it.
                              At least this datastructure lives as much as the
                            whole schema change (I will change this in the
                            future)*/
 
-    struct db **timepart_dbs; /* support for timepart views */
-    struct db **timepart_newdbs;
+    struct dbtable **timepart_dbs; /* support for timepart views */
+    struct dbtable **timepart_newdbs;
     int timepart_nshards;
 
     /*********************** temporary fields for table upgrade
@@ -313,6 +313,7 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
 int add_schema_change_tables();
 
 extern unsigned long long get_genid(bdb_state_type *, unsigned int dtastripe);
+extern unsigned long long get_next_sc_seed(bdb_state_type *);
 
 int appsock_schema_change(SBUF2 *sb, int *keepsocket);
 

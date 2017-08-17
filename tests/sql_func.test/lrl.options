@@ -1,4 +1,0 @@
-table t t.csc2
-dtastripe 4
-blobstripe
-round_robin_stripes

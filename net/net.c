@@ -1967,7 +1967,7 @@ static char *prhexval(char str[], void *val, int nbytes)
 }
 
 static int stack_flush_min = 50;
-static int explicit_flush_trace = 0;
+int explicit_flush_trace = 0;
 
 void net_enable_explicit_flush_trace(void) { explicit_flush_trace = 1; }
 
@@ -2491,7 +2491,7 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
     int rc;
     host_node_type *ptr;
 
-#ifdef DEBUG
+#ifdef DEBUGNET
     fprintf(stderr, "%s: adding %s\n", __func__, hostname);
 #endif
 
@@ -4628,15 +4628,16 @@ done:
 // MAXSUBNETS + Slot for the Non-dedicated net
 static char *subnet_suffices[MAXSUBNETS + 1] = {0};
 static uint8_t num_dedicated_subnets = 0;
+uint8_t _non_dedicated_subnet = 0;
 
-void net_add_nondedicated_subnet()
+int net_add_nondedicated_subnet(void *context, void *value)
 {
-    static uint8_t _non_dedicated_subnet = 0;
     // increment num_dedicated_subnets only once for non dedicated subnet
     if (0 == _non_dedicated_subnet) {
         _non_dedicated_subnet = 1;
         num_dedicated_subnets++;
     }
+    return 0;
 }
 
 int net_add_to_subnets(const char *suffix, const char *lrlname)
@@ -4680,7 +4681,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 
     if (num_dedicated_subnets == 0) {
 #ifdef DEBUG
-        host_node_printf(host_node_ptr,
+        host_node_printf(LOGMSG_USER, host_node_ptr,
                          "Connecting to default hostname/subnet '%s'\n",
                          host_node_ptr->host);
 #endif
@@ -4706,7 +4707,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 
 #ifdef DEBUG
             host_node_printf(
-                host_node_ptr,
+                LOGMSG_USER, host_node_ptr,
                 "Connecting to dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif
@@ -4715,7 +4716,7 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 #ifdef DEBUG
         else
             host_node_printf(
-                host_node_ptr,
+                LOGMSG_USER, host_node_ptr,
                 "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
                 rephostname, counter);
 #endif

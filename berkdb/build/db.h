@@ -56,6 +56,7 @@
 #endif
 
 #include "dbinc/atomic.h"
+#include "tunables.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -405,9 +406,10 @@ struct __db_dbt {
 #define	DB_LOCK_YOUNGEST_EVER	11	/* Select locker for youngest
 					   transaction including old
 					   reincarnations. */
-#define  DB_LOCK_MINWRITE_EVER   12	/* Select locker with min
+#define	DB_LOCK_MINWRITE_EVER	12	/* Select locker with min
 					   writelocks including old
 					   reincarnations. */
+#define	DB_LOCK_MAX		12	/* Max deadlock mode. */
 
 /* Flag values for lock_vec(), lock_get(). */
 #define	DB_LOCK_NOWAIT		0x001	/* Don't wait on unavailable lock. */
@@ -2063,7 +2065,6 @@ struct __db_env {
 	int				/* Sleep after writing max buffers. */
 			 mp_maxwrite_sleep;
 	double		 mp_multiple;	/* Multiplier for hash buckets. */
-	int		 mp_perfect_ckp;	/* 1: Use perfect ckp. 0: Don't */
 
 	/* Number of recovery pages for each backing DB_MPOOLFILE. */
 	int		 mp_recovery_pages;
@@ -2086,6 +2087,7 @@ struct __db_env {
 	u_int32_t	 tx_max;	/* Maximum number of transactions. */
 	time_t		 tx_timestamp;	/* Recover to specific timestamp. */
 	db_timeout_t	 tx_timeout;	/* Timeout for transactions. */
+	int		 tx_perfect_ckp;	/* 1: Use perfect ckp. 0: Don't */
 
 	/*******************************************************
 	 * Private: owned by DB.

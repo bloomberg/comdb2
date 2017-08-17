@@ -1127,7 +1127,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		logc = NULL;
 
 		/* Flush everything to disk, we are losing the log. */
-		if ((ret = __memp_sync(dbenv, NULL, NULL)) != 0)
+		if ((ret = __memp_sync(dbenv, NULL)) != 0)
 			 goto err;
 
 		region->last_ckp = ((DB_TXNHEAD *)txninfo)->ckplsn;
@@ -1742,7 +1742,7 @@ __recover_logfile_pglogs(dbenv)
 					bdb_set_gbl_recoverable_lsn(&lsn,
 					    ckp_args->timestamp);
 					got_recoverable_lsn = 1;
-					logmsg(LOGMSG_ERROR, "set gbl_recoverable_lsn as [%d][%d]\n",
+					logmsg(LOGMSG_WARN, "set gbl_recoverable_lsn as [%d][%d]\n",
 					    lsn.file, lsn.offset);
 				}
 			}

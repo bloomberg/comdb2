@@ -31,16 +31,16 @@
 typedef struct constraint_table constraint_table;
 
 constraint_table *new_constraint_table(struct dbenv *env, int *bdberr);
-int constraint_insert_add_op(constraint_table *tbl, struct db *db, void *record,
+int constraint_insert_add_op(constraint_table *tbl, struct dbtable *db, void *record,
                              unsigned long long genid);
-int constraint_insert_delete_op(constraint_table *tbl, struct db *db,
+int constraint_insert_delete_op(constraint_table *tbl, struct dbtable *db,
                                 void *data, unsigned long long genid);
 int close_constraint_table(constraint_table *tbl);
-int constraint_insert_update_op(constraint_table *tbl, struct db *db,
+int constraint_insert_update_op(constraint_table *tbl, struct dbtable *db,
                                 unsigned long long oldgenid,
                                 unsigned long long newgenid, void *oldrecord,
                                 void *newrecord);
-int constraint_genid_added(constraint_table *tbl, struct db *db,
+int constraint_genid_added(constraint_table *tbl, struct dbtable *db,
                            unsigned long long genid);
 int resolve_constraints(constraint_table *tbl, void *tran, Vdbe *vdbe);
 

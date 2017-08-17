@@ -222,6 +222,10 @@ latency than the [early](#early) setting.
 Disable really early replication acks.  Goes back to default behavior: ack a transaction only after all the log records for it 
 are applied against the data.
 
+### testcompr
+
+This command can be used to test the available compression algorithms on a sampled subset of a table, that way user can see which algorithm is best suited for the given table. To run it you can issue `testcompr table <tbl>`. There are two parameters you can set: `testcompr percent <value>` to set the percentage of the table to sample, default is set to 10%, and `testcompr max <value>` to set the max number of records to process, set to 0 to process all records, default is set to 300,000.
+
 ### repscon
 
 Like [scon](#scon-and-scof), turns on per-second reporting of replication/acknowledgment times to other nodes.

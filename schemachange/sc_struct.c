@@ -605,8 +605,8 @@ int unpack_schema_change_type(struct schema_change_type *s, void *packed,
     return 0; /* success */
 }
 
-void print_schemachange_info(struct schema_change_type *s, struct db *db,
-                             struct db *newdb)
+void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
+                             struct dbtable *newdb)
 {
     char *info;
     int olddb_compress;
@@ -704,7 +704,7 @@ void print_schemachange_info(struct schema_change_type *s, struct db *db,
     }
 }
 
-void set_schemachange_options_tran(struct schema_change_type *s, struct db *db,
+void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable *db,
                                    struct scinfo *scinfo, tran_type *tran)
 {
     int rc;
@@ -735,7 +735,7 @@ void set_schemachange_options_tran(struct schema_change_type *s, struct db *db,
     if (s->instant_sc == -1) s->instant_sc = scinfo->olddb_instant_sc;
 }
 
-void set_schemachange_options(struct schema_change_type *s, struct db *db,
+void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
                               struct scinfo *scinfo)
 {
     return set_schemachange_options_tran(s, db, scinfo, NULL);
@@ -743,11 +743,11 @@ void set_schemachange_options(struct schema_change_type *s, struct db *db,
 
 int print_status(struct schema_change_type *s)
 {
-    struct db *db = NULL;
+    struct dbtable *db = NULL;
     struct scinfo scinfo = {0};
     int bthashsz;
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         sbuf2printf(s->sb, ">Table %s does not exists\n", s->table);
         sbuf2printf(s->sb, "FAILED\n");
@@ -812,11 +812,10 @@ int print_status(struct schema_change_type *s)
  * llmeta this function will do it for us */
 int reload_schema(char *table, const char *csc2, tran_type *tran)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
     int bdberr;
     int foundix = -1;
-    int i;
     int bthashsz;
 
     /* regardless of success, the fact that we are getting asked to do this is
@@ -824,7 +823,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
      * suspect. */
     gbl_sc_commit_count++;
 
-    db = getdbbyname(table);
+    db = get_dbtable_by_name(table);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema: invalid table %s\n", table);
         return -1;
@@ -832,7 +831,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
     if (csc2) {
         /* genuine schema change. */
-        struct db *newdb;
+        struct dbtable *newdb;
         int changed = 0;
 
         rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
@@ -840,11 +839,9 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return rc;
         }
 
-        for (i = 0; i < thedb->num_dbs; i++) {
-            if (strcasecmp(thedb->dbs[i]->dbname, table) == 0) foundix = i;
-        }
+        foundix = getdbidxbyname(table);
         if (foundix == -1) {
-            logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", table);
+            logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
             exit(1);
         }
 
@@ -925,7 +922,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         free_db_and_replace(db, newdb);
         fix_constraint_pointers(db, newdb);
-        memset(newdb, 0xff, sizeof(struct db));
+        memset(newdb, 0xff, sizeof(struct dbtable));
         free(newdb);
 
         commit_schemas(table);

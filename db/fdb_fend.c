@@ -54,7 +54,6 @@ extern int gbl_fdb_allow_cross_classes;
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
-extern int gbl_new_indexes;
 
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
@@ -461,7 +460,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
 
     fdb = calloc(1, sizeof(*fdb));
     if (!fdb) {
-        logmsg(LOGMSG_ERROR, "%s: OOM %d bytes!\n", __func__, sizeof(fdb));
+        logmsg(LOGMSG_ERROR, "%s: OOM %d bytes!\n", __func__, sizeof(*fdb));
         goto done;
     }
 
@@ -762,7 +761,7 @@ retry_find_table:
 
         *version = fdb_table_version(found_ent->_version);
     } else {
-        *version == 0;
+        *version = 0;
     }
 
     if (initial) {
@@ -1154,10 +1153,8 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     fdb_t *fdb;
     int rc = FDB_NOERR;
     int created = 0;
-    int node = -1;
     int local = 0;
     enum mach_class lvl = 0;
-    char *host;
     char errstr[256];
     char *perrstr;
 
@@ -1186,7 +1183,6 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
         }
     }
 
-    /* discover node */
     if (!local) {
         pthread_mutex_lock(&fdb->dbcon_mtx);
         rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
@@ -1217,9 +1213,6 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
             }
             goto error; /* new_fdb bumped up users, need to decrement that */
         }
-    } else {
-        /* node should be 0, which is local */
-        assert(node == 0);
     }
 
     /* the bellow will exclusively lock fdb, and bump users before releasing
@@ -1669,11 +1662,6 @@ static int insert_table_entry_from_packedsqlite(fdb_t *fdb, fdb_tbl_t *tbl,
     }
     if (where)
         where[1] = ' ';
-
-    if (gbl_new_indexes) {
-        tbl->ix_partial = 1;
-        tbl->ix_expr = 1;
-    }
 
     /*
     printf("Saved pointer %p\n", row);
@@ -2248,8 +2236,9 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
 
     if (isuuid) {
         comdb2uuid(fdbc->ciduuid);
+        memcpy(fdbc->tid, tid, sizeof(uuid_t));
     } else {
-        *((unsigned long long *)fdbc->ciduuid) = comdb2fastseed();
+        *((unsigned long long *)fdbc->cid) = comdb2fastseed();
         memcpy(fdbc->tid, tid, sizeof(unsigned long long));
     }
     fdbc->flags = flags;
@@ -2347,7 +2336,7 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
 
     if (ent && is_sqlite_stat(ent->name)) {
         pCur->fdbc = fdbc_if =
-            fdb_sqlstat_cache_cursor_open(clnt, fdb, (ent) ? ent->name : NULL);
+            fdb_sqlstat_cache_cursor_open(clnt, fdb, ent->name);
         if (!fdbc_if) {
             logmsg(LOGMSG_ERROR, "%s: failed to open fdb cursor\n", __func__);
 
@@ -3175,8 +3164,9 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 
     /* this should be an sql thread */
     thd = pthread_getspecific(query_info_key);
-    if (thd)
-        clnt = thd->sqlclntstate;
+    if (!thd) return NULL;
+
+    clnt = thd->sqlclntstate;
 
     /* remote sql stats are implemented as a critical region
        I was told that mutex is faster, lul
@@ -3741,7 +3731,8 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     if (rc) {
         bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
         errstat_set_rc(&clnt->osql.xerr, rc);
-        errstat_set_str(&clnt->osql.xerr, tran->errstr);
+        if (tran->errstr) // TODO: this can be non-null even when no error
+            errstat_set_str(&clnt->osql.xerr, tran->errstr);
         clnt->osql.error_is_remote = 1;
     } else {
         errstat_set_rc(&clnt->osql.xerr, 0);
@@ -3888,6 +3879,9 @@ int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
         return FDB_ERR_GENERIC;
     }
     op = tokdup(tok, ltok);
+    if (!op) {
+        return FDB_ERR_MALLOC;
+    }
 
     tok = segtok(line, llen, &st, &ltok);
     if (ltok == 0)
@@ -4656,8 +4650,7 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
         iarr =
             (int *)realloc(fdb_state->fdb_last_status,
                            (fdb_state->n_fdb_affinities + 1) * sizeof(char *));
-        if (!arr)
-            return FDB_ERR_MALLOC;
+        if (!iarr) return FDB_ERR_MALLOC;
 
         fdb_state->fdb_last_status = iarr;
 

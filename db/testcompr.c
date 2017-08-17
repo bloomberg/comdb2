@@ -73,7 +73,7 @@ typedef struct {
     unsigned long long genid;
     int fndlen;
     char fnddta[MAXLRL];
-    struct db *db;
+    struct dbtable *db;
     size_t blob_len[MAXBLOBS];
     void *blob_ptrs[MAXBLOBS];
 
@@ -87,7 +87,7 @@ typedef struct {
 
 static int blob_compress(CompStruct *comp)
 {
-    struct db *db = comp->db;
+    struct dbtable *db = comp->db;
     const int numblobs = db->numblobs;
     int bdberr = 0;
     int rc;
@@ -246,7 +246,7 @@ static void print_compr_stat(CompStruct *comp, const char *prefix, SizeEst *est)
     char szbuf[64];
     double cmp_dta, cmp_blob;
     double sav_dta, sav_blob;
-    struct db *db = comp->db;
+    struct dbtable *db = comp->db;
 
     cmp_dta = (double)est->dtasz / comp->uncompressed.dtasz;
     cmp_blob =
@@ -316,7 +316,7 @@ static void *handle_comptest_thd(void *_arg)
         blob_pos[i] = i;
     }
     for (i = 0; i < thedb->num_dbs; i++) {
-        struct db *db = thedb->dbs[i];
+        struct dbtable *db = thedb->dbs[i];
         if (strcmp(arg->table, "cdb2justcrle") == 0) {
             comp.just_crle = 1;
         } else if (strcmp(arg->table, "-all") != 0) {

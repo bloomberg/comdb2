@@ -177,7 +177,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     public void lookup() throws NoDbHostFoundException {
-        BBSysUtils.getDbHosts(this);
+        BBSysUtils.getDbHosts(this, false);
     }
 
     /* attribute setters - bb precious */
@@ -1281,6 +1281,10 @@ public class Comdb2Handle extends AbstractConnection {
             cleanup_query_list();
         }
 
+        // We've run out of retries: if this was a begin, set inTxn to false
+        if (isBegin)
+            inTxn = false;
+
         tdlog(Level.FINER, "Maximum retries done: returning IO_ERROR, is_rollback=%b", is_rollback);
         return is_rollback ? 0 : Errors.CDB2ERR_TRAN_IO_ERROR;
     }
@@ -1812,7 +1816,7 @@ readloop:
            Re-check information about db. */
         if (!isDirectCpu && refresh_dbinfo_if_failed) {
             try {
-                lookup();
+                BBSysUtils.getDbHosts(this, true);
                 reopen(false);
             } catch (NoDbHostFoundException e) {
                 logger.log(Level.SEVERE, "Failed to refresh dbinfo", e);

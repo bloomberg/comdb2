@@ -25,6 +25,8 @@ for mach in $machs ; do
         ssh $mach "sudo iptables -D INPUT -s $m -p tcp --destination-port $p -j DROP -w" < /dev/null >/dev/null 2>&1
         #echo ssh $mach "sudo iptables -D INPUT -s $m -p udp --destination-port $p -j DROP -w"
         ssh $mach "sudo iptables -D INPUT -s $m -p udp --destination-port $p -j DROP -w" < /dev/null >/dev/null 2>&1
+
+        ssh $mach "sudo kill -CONT \$(cat /tmp/$db.pid)" < /dev/null >/dev/null 2>&1
     done
 
 done

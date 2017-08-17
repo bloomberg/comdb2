@@ -342,8 +342,10 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     if (gbl_crypto) {
         // generate random password for temp tables
-        char passwd[64];
-        RAND_bytes(passwd, 63);
+        char passwd[64]; passwd[0] = 0;
+        while (passwd[0] == 0) {
+            RAND_bytes(passwd, 63);
+        }
         passwd[63] = 0;
         if ((rc = dbenv_temp->set_encrypt(dbenv_temp, passwd,
                                           DB_ENCRYPT_AES)) != 0) {

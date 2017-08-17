@@ -59,6 +59,7 @@
 #endif
 
 extern void fsnapf(FILE *, void *, int);
+extern int db_is_stopped(void);
 
 struct ack_info_t {
     uint32_t hdrsz;
@@ -130,11 +131,18 @@ static unsigned int fail_udp = 0;
 static unsigned int recd_udp = 0;
 static unsigned int recl_udp = 0; /* problem with recv'd len */
 static unsigned int rect_udp = 0; /* problem with recv'd to */
-static int ack_trace = 0;
 
-void enable_ack_trace(void) { ack_trace = 1; }
+int gbl_ack_trace = 0;
 
-void disable_ack_trace(void) { ack_trace = 0; }
+void enable_ack_trace(void)
+{
+    gbl_ack_trace = 1;
+}
+
+void disable_ack_trace(void)
+{
+    gbl_ack_trace = 0;
+}
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
 {
@@ -149,7 +157,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     static unsigned long long lpcnt = 0;
 
     cnt++;
-    if (ack_trace && (now = time(NULL)) > lastpr) {
+    if (gbl_ack_trace && (now = time(NULL)) > lastpr) {
         fprintf(stderr,
                 "Sending ack %d:%d, generation=%u cnt=%llu diff=%llu, udp=%d\n",
                 permlsn.file, permlsn.offset, generation, cnt, cnt - lpcnt,
@@ -384,7 +392,7 @@ struct thdpool *gbl_udppfault_thdpool = NULL;
 
 int udppfault_thdpool_init(void)
 {
-    gbl_udppfault_thdpool = thdpool_create("UDP PREFAULT pool", 0);
+    gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
 
     thdpool_set_exit(gbl_udppfault_thdpool);
 
@@ -493,7 +501,7 @@ static void *udp_reader(void *arg)
     uint8_t *p_buf, *p_buf_end;
     filepage_type fp;
 
-    while (1) {
+    while (!db_is_stopped()) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
@@ -1040,8 +1048,8 @@ out:
     return rc;
 }
 
-
-const char * get_hostname_with_crc32(bdb_state_type *bdb_state, int hash)
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     if(crc32c(repinfo->myhost, strlen(repinfo->myhost)) == hash)

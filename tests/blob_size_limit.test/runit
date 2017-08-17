@@ -1,0 +1,38 @@
+#!/bin/bash
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table t"
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t { `cat t.csc2` }"
+
+(
+./comdb2_blobtest $dbname 1 1
+./comdb2_blobtest $dbname 2 10
+./comdb2_blobtest $dbname 3 100
+./comdb2_blobtest $dbname 4 1000
+./comdb2_blobtest $dbname 5 10000
+./comdb2_blobtest $dbname 6 100000
+./comdb2_blobtest $dbname 7 1000000
+./comdb2_blobtest $dbname 8 10000000
+./comdb2_blobtest $dbname 9  100000000
+./comdb2_blobtest $dbname 10 267386880
+./comdb2_blobtest $dbname 11 267386881
+./comdb2_blobtest $dbname 12 300000000
+) > out.txt 2>&1
+cdb2sql -s $testreq ${CDB2_OPTIONS} $dbname default "select a, length(b) from t order by a" >> out.txt
+
+diff out.txt expected.txt >/dev/null
+if [[ $? -ne 0 ]]; then
+    echo "failed"
+    echo "see diffs here: $HOSTNAME"
+    echo "> diff ${PWD}/expected.txt ${PWD}/out.txt"
+    diff ${PWD}/expected.txt ${PWD}/out.txt
+    exit 1
+else
+    echo "passed"
+    exit 0
+fi

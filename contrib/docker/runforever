@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# This exists to let the 'dev' container stay up, and allow users to 
+# attach to it to run cdb2sql against the cluster.
+
+while :; do
+    sleep 1
+done

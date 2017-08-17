@@ -115,7 +115,7 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
 int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
                         unsigned long long *genid)
 {
-    struct db *sdb;
+    struct dbtable *sdb;
     int rc;
     int fndrc;
     int fndlen;
@@ -218,7 +218,7 @@ int stat1_ondisk_record(struct ireq *iq, char *tbl, char *ix, char *stat,
 int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
                             unsigned long long *genid)
 {
-    struct db *sdb;
+    struct dbtable *sdb;
     int rc;
     int fndrc;
     int fndlen;

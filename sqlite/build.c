@@ -1035,7 +1035,6 @@ i16 sqlite3ColumnOfIndex(Index *pIdx, i16 iCol){
   return -1;
 }
 
-extern int gbl_new_indexes;
 /*
 ** Begin constructing a new table representation in memory.  This is
 ** the first of several action routines that get called in response
@@ -1160,14 +1159,8 @@ void sqlite3StartTable(
   pTable->nRef = 1;
   pTable->nRowLogEst = 200; assert( 200==sqlite3LogEst(1048576) );
   /* COMDB2 MODIFICATION */
-  if (gbl_new_indexes) {
-      pTable->hasPartIdx = 1;
-      pTable->hasExprIdx = 1;
-  }
-  else {
-      pTable->hasPartIdx = 0;
-      pTable->hasExprIdx = 0;
-  }
+  pTable->hasPartIdx = 0;
+  pTable->hasExprIdx = 0;
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;
 
@@ -4163,6 +4156,8 @@ void sqlite3SrcListAssignCursors(Parse *pParse, SrcList *pList, int is_recording
       if (pItem->iCursor < (MAX_CURSOR_IDS/sizeof(int))) {
         /* COMDB2 MODIFICATION */
         if( is_recording ){
+          Vdbe *v = sqlite3GetVdbe(pParse);
+          comdb2SetRecording(v);
           SET_CURSOR_RECORDING(pParse, pItem->iCursor);
         }else{
           CLR_CURSOR_RECORDING(pParse, pItem->iCursor);

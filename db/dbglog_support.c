@@ -44,6 +44,7 @@
 #include <cdb2_constants.h>
 #include <cdb2api.h>
 #include <logmsg.h>
+#include <str0.h>
 
 /* dbglog + //DBSTATS support.  We have lots of interaces to
  sql, so here's
@@ -170,24 +171,18 @@ int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
             query_info->n_components--;
             continue;
         }
-
         stats[i].nfind = c->nfind;
         stats[i].nnext = c->nnext;
         stats[i].nwrite = c->nwrite;
         stats[i].ix = c->ix;
         stats[i].table[0] = 0;
-        if (c->u.db) {
-            if (c->remote) {
-                snprintf(stats[i].table, sizeof(stats[i].table), "%s.%s",
-                         fdb_table_entry_dbname(c->u.fdb),
-                         fdb_table_entry_tblname(c->u.fdb));
-            } else {
-                strncpy(stats[i].table, c->u.db->dbname,
-                        sizeof(stats[i].table));
-            }
-            stats[i].table[sizeof(stats[i].table) - 1] = 0;
+        if (c->fdb) {
+            snprintf0(stats[i].table, sizeof(stats[i].table), "%s.%s",
+                      fdb_table_entry_dbname(c->fdb),
+                      fdb_table_entry_tblname(c->fdb));
+        } else if (c->lcl_tbl_name[0]) {
+            strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }
-
         i++;
     }
     return 0;
@@ -294,18 +289,19 @@ void dump_client_query_stats(SBUF2 *sb, struct client_query_stats *st)
 #define RETURN_DBGLOG_ERROR(errstr)                                            \
     {                                                                          \
         int errstr_len = strlen(errstr) + 1;                                   \
+        int irc;                                                               \
         rsp.rcode = -1;                                                        \
         rsp.followlen = errstr_len;                                            \
         if (!(fsqlresp_put(&rsp, p_fsqlresp, p_fsqlresp_end))) {               \
-            logmsg(LOGMSG_ERROR, "%s line %d: error writing fsqlresp header\n",\
-                    __func__, __LINE__);                                       \
+            logmsg(LOGMSG_ERROR,                                               \
+                   "%s line %d: error writing fsqlresp header\n", __func__,    \
+                   __LINE__);                                                  \
             rc = -1;                                                           \
             goto done;                                                         \
         }                                                                      \
-        rc =                                                                   \
+        irc =                                                                  \
             sbuf2fwrite((char *)&fsqlrespbuf, sizeof(struct fsqlresp), 1, sb); \
-        if (rc == 1)                                                           \
-            rc = sbuf2fwrite((char *)errstr, errstr_len, 1, sb);               \
+        if (irc == 1) sbuf2fwrite((char *)errstr, errstr_len, 1, sb);          \
         sbuf2flush(sb);                                                        \
         rc = -1;                                                               \
         goto done;                                                             \

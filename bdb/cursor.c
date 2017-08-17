@@ -217,6 +217,8 @@ extern DB_LSN bdb_latest_commit_lsn;
 extern uint32_t bdb_latest_commit_gen;
 extern pthread_cond_t bdb_asof_current_lsn_cond;
 
+extern int db_is_stopped(void);
+
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
 static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
                                  int *bdberr);
@@ -1710,7 +1712,7 @@ static void *pglogs_asof_thread(void *arg)
     struct commit_list *lcommit, *bcommit, *next;
     int pollms, ret;
 
-    while (1) {
+    while (!db_is_stopped()) {
         // Remove list
         int count, i, dont_poll = 0, drain_limit;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
@@ -8144,12 +8146,19 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         if (parallel_count) {
             pthread_join(thds[i], &ret);
         }
-        rc |= args[i].rc;
+        if (args[i].rc == DB_LOCK_DEADLOCK) {
+            rc = BDBERR_DEADLOCK;
+            break;
+        } else if (args[i].rc != DB_NOTFOUND) {
+            rc = -1;
+            break;
+        }
+        rc = 0;
         count += args[i].count;
     }
     if (parallel_count) {
         pthread_attr_destroy(&attr);
     }
-    *rcnt = count;
-    return rc == DB_NOTFOUND ? 0 : -1;
+    if (rc == 0) *rcnt = count;
+    return rc;
 }

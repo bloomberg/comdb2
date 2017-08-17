@@ -45,14 +45,14 @@ void reset_aa_counter(char *tblname)
 
     BDB_READLOCK(__func__);
 
-    struct db *db = getdbbyname(tblname);
-    if (!db) {
+    struct dbtable *tbl = get_dbtable_by_name(tblname);
+    if (!tbl) {
         BDB_RELLOCK();
         return;
     }
 
-    db->aa_saved_counter = 0;
-    db->aa_lastepoch = time(NULL);
+    tbl->aa_saved_counter = 0;
+    tbl->aa_lastepoch = time(NULL);
 
     if (save_freq > 0 && thedb->master == gbl_mynode) {
         // save updated counter
@@ -60,7 +60,7 @@ void reset_aa_counter(char *tblname)
         bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
 
         char epoch[30] = {0};
-        sprintf(epoch, "%d", db->aa_lastepoch);
+        sprintf(epoch, "%d", tbl->aa_lastepoch);
         bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
     }
 
@@ -68,7 +68,7 @@ void reset_aa_counter(char *tblname)
 
     ctrace("AUTOANALYZE: Analyzed Table %s, reseting counter to %d and last "
            "run time %s",
-           db->dbname, db->aa_saved_counter, ctime(&db->aa_lastepoch));
+           tbl->dbname, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
 }
 
 static inline void loc_print_date(const time_t *timep)
@@ -139,35 +139,35 @@ int load_auto_analyze_counters(void)
     int save_freq = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ);
 
     for (int i = 0; i < thedb->num_dbs; i++) {
-        struct db *db = thedb->dbs[i];
-        if (is_sqlite_stat(db->dbname))
+        struct dbtable *tbl = thedb->dbs[i];
+        if (is_sqlite_stat(tbl->dbname))
             continue;
 
-        db->aa_saved_counter = 0;
-        db->aa_lastepoch = 0;
+        tbl->aa_saved_counter = 0;
+        tbl->aa_lastepoch = 0;
         if (save_freq > 0) {
-            get_saved_counter_epoch(db->dbname, &db->aa_saved_counter,
-                                    &db->aa_lastepoch);
+            get_saved_counter_epoch(tbl->dbname, &tbl->aa_saved_counter,
+                                    &tbl->aa_lastepoch);
 
             ctrace("AUTOANALYZE: Loading table %s, count %d, last run time %s",
-                   db->dbname, db->aa_saved_counter, ctime(&db->aa_lastepoch));
+                   tbl->dbname, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
         }
     }
 
     return 0;
 }
 
-static int get_num_rows_from_stat1(struct db *tbldb)
+static long long get_num_rows_from_stat1(struct dbtable *tbldb)
 {
     char fnd_txt[64] = {0};
     char ix_txt[128] = {0};
     char *rec = NULL;
-    int val = 0;
+    long long val = 0;
     struct ireq iq;
     tran_type *trans = NULL;
 
     init_fake_ireq(thedb, &iq);
-    iq.usedb = getdbbyname("sqlite_stat1");
+    iq.usedb = get_dbtable_by_name("sqlite_stat1");
 
     int rc = trans_start(&iq, NULL, &trans);
     if (rc) {
@@ -257,39 +257,39 @@ void stat_auto_analyze(void)
            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ));
     int include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
 
-    if (NULL == getdbbyname("sqlite_stat1")) {
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
         logmsg(LOGMSG_USER, "ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
         return;
     }
 
     for (int i = 0; i < thedb->num_dbs; i++) {
-        struct db *db = thedb->dbs[i];
-        if (is_sqlite_stat(db->dbname))
+        struct dbtable *tbl = thedb->dbs[i];
+        if (is_sqlite_stat(tbl->dbname))
             continue;
 
-        unsigned prev = db->saved_write_count[RECORD_WRITE_DEL] +
-                        db->saved_write_count[RECORD_WRITE_INS];
-        unsigned curr = db->write_count[RECORD_WRITE_DEL] +
-                        db->write_count[RECORD_WRITE_INS];
+        unsigned prev = tbl->saved_write_count[RECORD_WRITE_DEL] +
+                        tbl->saved_write_count[RECORD_WRITE_INS];
+        unsigned curr = tbl->write_count[RECORD_WRITE_DEL] +
+                        tbl->write_count[RECORD_WRITE_INS];
 
         if (include_updates) {
-            prev += db->saved_write_count[RECORD_WRITE_UPD];
-            curr += db->write_count[RECORD_WRITE_UPD];
+            prev += tbl->saved_write_count[RECORD_WRITE_UPD];
+            curr += tbl->write_count[RECORD_WRITE_UPD];
         }
 
         int delta = curr - prev;
-        int newautoanalyze_counter = db->aa_saved_counter + delta;
+        int newautoanalyze_counter = tbl->aa_saved_counter + delta;
 
         double new_aa_percnt = 0;
         if (newautoanalyze_counter > 0)
             new_aa_percnt =
-                (100.0 * newautoanalyze_counter) / get_num_rows_from_stat1(db);
+                (100.0 * newautoanalyze_counter) / get_num_rows_from_stat1(tbl);
 
         logmsg(LOGMSG_USER, "Table %s, aa counter=%d (saved %d, new %d, percent of tbl "
                "%.2f), last run time=",
-               db->dbname, newautoanalyze_counter, db->aa_saved_counter, delta,
+               tbl->dbname, newautoanalyze_counter, tbl->aa_saved_counter, delta,
                (new_aa_percnt > 100 ? 100 : new_aa_percnt));
-        loc_print_date(&db->aa_lastepoch);
+        loc_print_date(&tbl->aa_lastepoch);
         logmsg(LOGMSG_USER, "\n");
     }
 }
@@ -311,7 +311,7 @@ void *auto_analyze_main(void *unused)
         return NULL; // nothing to do
     }
 
-    if (NULL == getdbbyname("sqlite_stat1")) {
+    if (NULL == get_dbtable_by_name("sqlite_stat1")) {
 #ifdef DEBUG
         printf("ANALYZE REQUIRES sqlite_stat1 to run but table is MISSING\n");
 #endif
@@ -350,15 +350,15 @@ void *auto_analyze_main(void *unused)
             gbl_schema_change_in_progress) // should not be writing
             break;
 
-        struct db *db = thedb->dbs[i];
-        if (is_sqlite_stat(db->dbname))
+        struct dbtable *tbl = thedb->dbs[i];
+        if (is_sqlite_stat(tbl->dbname))
             continue;
 
         // should we track this table? check analyzethreshold if zero, dont
         // track
         long long thresholdvalue = 0;
         int bdberr = 0;
-        int rc = bdb_get_analyzethreshold_table(NULL, db->dbname,
+        int rc = bdb_get_analyzethreshold_table(NULL, tbl->dbname,
                                                 &thresholdvalue, &bdberr);
         if (rc != 0)
             printf("bdb_get_analyzethreshold_table rc = %d, bdberr=%d\n", rc,
@@ -366,25 +366,25 @@ void *auto_analyze_main(void *unused)
         else if (thresholdvalue == 0)
             continue;
 
-        int curr_count[] = {db->write_count[RECORD_WRITE_INS],
-                            db->write_count[RECORD_WRITE_UPD],
-                            db->write_count[RECORD_WRITE_DEL]};
-        unsigned prev = db->saved_write_count[RECORD_WRITE_DEL] +
-                        db->saved_write_count[RECORD_WRITE_INS];
+        int curr_count[] = {tbl->write_count[RECORD_WRITE_INS],
+                            tbl->write_count[RECORD_WRITE_UPD],
+                            tbl->write_count[RECORD_WRITE_DEL]};
+        unsigned prev = tbl->saved_write_count[RECORD_WRITE_DEL] +
+                        tbl->saved_write_count[RECORD_WRITE_INS];
         unsigned curr =
             curr_count[RECORD_WRITE_DEL] + curr_count[RECORD_WRITE_INS];
 
         if (include_updates) {
-            prev += db->saved_write_count[RECORD_WRITE_UPD];
+            prev += tbl->saved_write_count[RECORD_WRITE_UPD];
             curr += curr_count[RECORD_WRITE_UPD];
         }
 
         int delta = curr - prev;
-        int newautoanalyze_counter = db->aa_saved_counter + delta;
+        int newautoanalyze_counter = tbl->aa_saved_counter + delta;
         double new_aa_percnt = 0;
 
         if (newautoanalyze_counter > 0) {
-            long long int num = get_num_rows_from_stat1(db);
+            long long int num = get_num_rows_from_stat1(tbl);
             new_aa_percnt =
                 100.0 * (newautoanalyze_counter - min_percent_jitter) / num;
         }
@@ -396,24 +396,24 @@ void *auto_analyze_main(void *unused)
         if (!auto_analyze_running && !gbl_schema_change_in_progress &&
             !analyze_is_running() &&
             ((newautoanalyze_counter > min_ops &&
-              now - db->aa_lastepoch > min_time) ||
+              now - tbl->aa_lastepoch > min_time) ||
              (min_percent > 0 && new_aa_percnt > min_percent))) {
             if (min_percent > 0 && new_aa_percnt > min_percent &&
                 !((newautoanalyze_counter > min_ops &&
-                   now - db->aa_lastepoch > min_time)))
+                   now - tbl->aa_lastepoch > min_time)))
                 ctrace("AUTOANALYZE: Forcing analyze because new_aa_percnt %f "
                        "> min_percent %d\n",
                        new_aa_percnt, min_percent);
 
             ctrace("AUTOANALYZE: Analyzing Table %s, counters (%d, %d); last "
                    "run time %s\n",
-                   db->dbname, db->aa_saved_counter, delta,
-                   ctime(&db->aa_lastepoch));
+                   tbl->dbname, tbl->aa_saved_counter, delta,
+                   ctime(&tbl->aa_lastepoch));
             auto_analyze_running = true; // will be reset by
                                          // auto_analyze_table()
             pthread_t analyze;
             char *tblname = strdup(
-                (char *)db->dbname); // will be freed in auto_analyze_table()
+                (char *)tbl->dbname); // will be freed in auto_analyze_table()
             pthread_create(&analyze, &gbl_pthread_attr_detached,
                            auto_analyze_table, tblname);
         } else if (delta > 0 && save_freq > 0 &&
@@ -421,17 +421,17 @@ void *auto_analyze_main(void *unused)
                        0) { // save updated counter
             ctrace("AUTOANALYZE: Table %s, saving counter (%d, %d); last run "
                    "time %s\n",
-                   db->dbname, db->aa_saved_counter, delta,
-                   ctime(&db->aa_lastepoch));
+                   tbl->dbname, tbl->aa_saved_counter, delta,
+                   ctime(&tbl->aa_lastepoch));
             char str[12] = {0};
             sprintf(str, "%d", newautoanalyze_counter);
-            bdb_set_table_parameter(NULL, db->dbname, aa_counter_str, str);
+            bdb_set_table_parameter(NULL, tbl->dbname, aa_counter_str, str);
         }
 
-        db->aa_saved_counter = newautoanalyze_counter;
-        db->saved_write_count[RECORD_WRITE_DEL] = curr_count[RECORD_WRITE_DEL];
-        db->saved_write_count[RECORD_WRITE_UPD] = curr_count[RECORD_WRITE_UPD];
-        db->saved_write_count[RECORD_WRITE_INS] = curr_count[RECORD_WRITE_INS];
+        tbl->aa_saved_counter = newautoanalyze_counter;
+        tbl->saved_write_count[RECORD_WRITE_DEL] = curr_count[RECORD_WRITE_DEL];
+        tbl->saved_write_count[RECORD_WRITE_UPD] = curr_count[RECORD_WRITE_UPD];
+        tbl->saved_write_count[RECORD_WRITE_INS] = curr_count[RECORD_WRITE_INS];
     }
     unlock_schema_lk();
 

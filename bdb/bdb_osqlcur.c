@@ -434,12 +434,20 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
-                release_locks("update shadows");
+                rc = release_locks("update shadows");
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
                        !(rand() % gbl_sql_random_release_interval)) {
-                release_locks("random release update shadows");
+                rc = release_locks("random release update shadows");
                 released_locks = 1;
+            }
+
+            /* Generation changed: ask client to retry */
+            if (rc != 0) {
+                logcur->close(logcur, 0);
+                logmsg(LOGMSG_ERROR, "%s release_locks %d %d\n", __func__, rc);
+                *bdberr = BDBERR_NOT_DURABLE;
+                return -1;
             }
         }
 
@@ -672,13 +680,7 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
     if (cur->shadow_tran && cur->shadow_tran->tranclass != TRANCLASS_SOSQL) {
         /* check genid cases the genid limit */
         switch (cur->shadow_tran->tranclass) {
-        case TRANCLASS_READCOMMITTED:
-            if (!cur->shadow_tran->ignore_newer_updates)
-                break;
-        /* fall through */
-        case TRANCLASS_QUERYISOLATION:
-            assert(cur->shadow_tran->ignore_newer_updates);
-        /* fall through */
+        case TRANCLASS_READCOMMITTED: break;
         case TRANCLASS_SERIALIZABLE:
         case TRANCLASS_SNAPISOL:
             if (/*!ignore_limit &&*/ cur->shadow_tran->startgenid &&

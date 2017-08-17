@@ -4343,14 +4343,16 @@ done:
 }
 
 int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, int *bdberr)
+                               unsigned long long *genid, unsigned int *host,
+                               int *bdberr)
 {
     int rc;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
     int fndlen;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
-    unsigned long long tmpgenid;
+    int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
+    uint8_t *data_buf = alloca(data_sz);
 
     *bdberr = BDBERR_NOERROR;
 
@@ -4363,22 +4365,29 @@ int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, &tmpgenid,
-                                   sizeof(tmpgenid), &fndlen, bdberr);
-    if (rc == 0)
-        *genid = tmpgenid;
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, key, data_buf,
+                                   data_sz, &fndlen, bdberr);
+    if (rc == 0) {
+        *genid = *(unsigned long long *)data_buf;
+        *host = ntohl(*(unsigned int *)(data_buf + sizeof(unsigned long long)));
+    }
     return rc;
 }
 
 int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, int *bdberr)
+                               unsigned long long genid, unsigned int host,
+                               int *bdberr)
 {
     int rc;
     int started_our_own_transaction = 0;
     char key[LLMETA_IXLEN] = {0};
     struct llmeta_file_type_key file_type_key;
-    unsigned long long genidlcl = genid;
     uint8_t *p_buf = (uint8_t *)key, *p_buf_end = (p_buf + LLMETA_IXLEN);
+
+    int data_sz = sizeof(unsigned long long) + sizeof(unsigned int);
+    uint8_t *data_buf = alloca(data_sz);
+    *(unsigned long long *)data_buf = genid;
+    *(unsigned int *)(data_buf + sizeof(unsigned long long)) = htonl(host);
 
     *bdberr = BDBERR_NOERROR;
 
@@ -4401,11 +4410,11 @@ int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
 
-    rc = bdb_get_disable_plan_genid(bdb_state, tran, &genid, bdberr);
+    rc = bdb_get_disable_plan_genid(bdb_state, tran, &genid, &host, bdberr);
     if (rc) { //not found, just add -- should refactor
         if (*bdberr == BDBERR_FETCH_DTA) {
-            rc = bdb_lite_add(llmeta_bdb_state, tran, &genidlcl,
-                              sizeof(unsigned long long), key, bdberr);
+            rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key,
+                              bdberr);
         } 
         goto done;
     }
@@ -4414,8 +4423,7 @@ int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
     if (rc && *bdberr != BDBERR_DEL_DTA)
         goto done;
 
-    rc = bdb_lite_add(llmeta_bdb_state, tran, &genidlcl,
-                      sizeof(unsigned long long), key, bdberr);
+    rc = bdb_lite_add(llmeta_bdb_state, tran, data_buf, data_sz, key, bdberr);
 
 done:
     if (started_our_own_transaction) {
@@ -5813,6 +5821,9 @@ static uint8_t *llmeta_analyzecoverage_key_type_put(
     return p_buf;
 }
 
+/* returns -1 if coverage is not set for this table 
+ * so analyze should use default coverage values
+ */
 int bdb_get_analyzecoverage_table(tran_type *input_trans, const char *tbl_name,
                                   int *coveragevalue, int *bdberr)
 {
@@ -6993,7 +7004,7 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state, tran, &version, bdberr);
+    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -7083,7 +7094,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* find the existing record, if any */
-    rc = bdb_table_version_select(bdb_state, tran, &version, bdberr);
+    rc = bdb_table_version_select(bdb_state->name, tran, &version, bdberr);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -7122,14 +7133,13 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_table_version_select(const char *tblname, tran_type *tran,
                              unsigned long long *version, int *bdberr)
 {
     struct llmeta_sane_table_version schema_version;
     char key[LLMETA_IXLEN] = {0};
     char fnddata[sizeof(*version)];
     int fnddatalen;
-    const char *tblname = bdb_state->name;
     int tblnamelen;
     uint8_t *p_buf, *p_buf_end;
     int retries;
@@ -7228,7 +7238,7 @@ retry:
 static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
                            int *len)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
     if (llmeta_bdb_state == NULL)
@@ -7253,7 +7263,7 @@ rep:
         *value = malloc(*len + 1);
         strncpy(*value, tmpstr, *len);
         (*value)[*len] = '\0';
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
         fprintf(
             stderr,
             "%s: bdb_lite_exact_fetch_tran found:%s *len:%d rc:%d bdberr:%d\n",
@@ -7261,7 +7271,7 @@ rep:
 #endif
         free(tmpstr);
     } else if (bdberr == BDBERR_FETCH_DTA) {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
         fprintf(stderr,
                 "%s: bdb_lite_exact_fetch_tran not found rc:%d bdberr:%d\n",
                 __func__, rc, bdberr);
@@ -7286,7 +7296,7 @@ static int llmeta_del_set_blob(void *parent_tran, llmetakey_t key,
                                const char *table, const char *value, int len,
                                int deleteonly)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
 #endif
     if (llmeta_bdb_state == NULL)
@@ -7325,7 +7335,7 @@ rep:
         goto err;
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     tmpstr[fndlen - 1] = '\0';
     fprintf(
         stderr,
@@ -7409,7 +7419,7 @@ int bdb_del_table_csonparameters(void *parent_tran, const char *table)
 int bdb_get_table_parameter(const char *table, const char *parameter,
                             char **value)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
     if (llmeta_bdb_state == NULL)
@@ -7445,7 +7455,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 
     cson_value *param = cson_object_get(rootObj, parameter);
     if (param == NULL) {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
         printf("param %s not found\n", parameter);
 #endif
         rc = 1;
@@ -7455,7 +7465,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
     cson_string const *str = cson_value_get_string(param);
     *value = strdup(cson_string_cstr(str));
 
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stdout, "%s\n", cson_string_cstr(str));
     fprintf(stdout, "%s\n", *value);
     { // print root object
@@ -7492,7 +7502,7 @@ out:
 int bdb_set_table_parameter(void *parent_tran, const char *table,
                             const char *parameter, const char *value)
 {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     fprintf(stderr, "%s()\n", __func__);
 #endif
     char *blob = NULL;
@@ -7530,7 +7540,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
     if (value == NULL) {
         cson_value *param = cson_object_get(rootObj, parameter);
         if (param == NULL) {
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
             printf("param %s not found -- nothing to do\n", parameter);
 #endif
             cson_value_free(rootV);
@@ -7552,7 +7562,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
                         cson_value_new_string(value, strlen(value)));
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_LLMETA
     { // print root object
         cson_object_iterator iter;
         rc = cson_object_iter_init(rootObj, &iter);
