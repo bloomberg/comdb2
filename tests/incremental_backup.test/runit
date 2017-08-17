@@ -98,11 +98,19 @@ function resetdb {
   make_backup t1-2_create_table
 }
 
+# Keep track of which test we're on to do special stuff for DROP TABLE test
+counter=3
+
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1-*.stmt`; do
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
-  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+
+  # Need to force checkpoint for DROP TABLE test
+  if [[ $counter -eq 7 ]] ; then
+      cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  fi
+  let counter=counter+1
   sleep 1
   make_backup $statement
 done
