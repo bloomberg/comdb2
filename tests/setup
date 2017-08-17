@@ -107,6 +107,7 @@ name    $DBNAME
 dir     $DBDIR
 
 setattr MASTER_REJECT_REQUESTS 0
+setattr directio 0
 EOPTIONS
 
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
