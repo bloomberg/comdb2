@@ -591,6 +591,46 @@ void sql_get_query_id(struct sql_thread *thd)
     }
 }
 
+static unsigned int query_path_component_hash(const void *key, int len)
+{
+    const struct query_path_component *q = key;
+    const char *name;
+    if (q->fdb == NULL) {
+        name = q->lcl_tbl_name;
+    } else {
+        name = fdb_table_entry_tblname(q->fdb);
+    }
+    struct {
+        int ix;
+        char name[strlen(name) + 1];
+    } x;
+    x.ix = q->ix;
+    strcpy(x.name, name);
+    return hash_default_fixedwidth((void*)&x, sizeof(x));
+}
+
+static int query_path_component_cmp(const void *key1, const void *key2, int len)
+{
+    const struct query_path_component *q1 = key1, *q2 = key2;
+    if (q1->ix != q2->ix) {
+        return 1;
+    }
+    const char *n1, *n2;
+    if (q1->fdb == NULL && q2->fdb == NULL) {
+        // both local
+        n1 = q1->lcl_tbl_name;
+        n2 = q2->lcl_tbl_name;
+    } else if (q1->fdb == NULL || q2->fdb == NULL) {
+        // mismatch
+        return 1;
+    } else {
+        // both remote
+        n1 = fdb_table_entry_tblname(q1->fdb);
+        n2 = fdb_table_entry_tblname(q2->fdb);
+    }
+    return strcmp(n1, n2);
+}
+
 struct sql_thread *start_sql_thread(void)
 {
     struct sql_thread *thd = calloc(1, sizeof(struct sql_thread));
@@ -599,14 +639,12 @@ struct sql_thread *start_sql_thread(void)
         return NULL;
     }
     listc_init(&thd->query_stats, offsetof(struct query_path_component, lnk));
-    thd->query_hash =
-        hash_init(offsetof(struct query_path_component, ix) + sizeof(int));
+    thd->query_hash = hash_init_user(query_path_component_hash,
+                                     query_path_component_cmp, 0, 0);
     pthread_mutex_init(&thd->lk, NULL);
-
     int rc = pthread_setspecific(query_info_key, thd);
     if (rc != 0)
         perror_errnum("start_sql_thread: pthread_setspecific", rc);
-
     pthread_mutex_lock(&gbl_sql_lock);
     listc_abl(&thedb->sql_threads, thd);
     pthread_mutex_unlock(&gbl_sql_lock);
@@ -6227,7 +6265,7 @@ done:
 }
 
 /* add the costs of the sorter to the thd costs */
-void addVbdeToThdCost(int type)
+void addVdbeToThdCost(int type)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd == NULL)
@@ -6241,7 +6279,7 @@ void addVbdeToThdCost(int type)
 }
 
 /* append the costs of the sorter to the thd query stats */
-void addVbdeSorterCost(const VdbeSorter *pSorter)
+void addVdbeSorterCost(const VdbeSorter *pSorter)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd == NULL)
@@ -6330,9 +6368,16 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             pCur->db->sqlixuse[pCur->ixnum] += (pCur->nfind + pCur->nmove);
     }
 
-    if (thd && pCur->cursor_class != CURSORCLASS_SQLITEMASTER) {
-        struct query_path_component fnd, *qc = NULL;
+    if (thd && thd->query_hash) {
+        // skip sqlite_master, sqlite_temp_master, sqlite_stat*
+        if (pCur->rootpage < 2 ||
+            (pCur->db && is_sqlite_stat(pCur->db->dbname))) {
+            goto skip;
+        }
 
+        struct query_path_component fnd, *qc = NULL;
+        fnd.fdb = 0;
+        fnd.lcl_tbl_name[0] = 0;
         if (pCur->bt && pCur->bt->is_remote) {
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
@@ -6342,8 +6387,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         }
         fnd.ix = pCur->ixnum;
 
-        if (thd->query_hash &&
-            NULL == (qc = hash_find(thd->query_hash, &fnd))) {
+        if ((qc = hash_find(thd->query_hash, &fnd)) == NULL) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
                 qc->fdb = fnd.fdb;
