@@ -7229,6 +7229,19 @@ retry_read:
 
         goto retry_read;
     } else if (hdr.type == FSQL_RESET) { /* Reset from sockpool.*/
+
+        if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+            /* Discard the pending transaction when receiving RESET from the
+               sockpool. We reach here if
+               1) the handle is in a open transaction, and
+               2) the last statement is a SELECT, and
+               3) the client closes the handle and donates the connection
+                  to the sockpool, and then,
+               4) the client creates a new handle and reuses the connection
+                  from the sockpool. */
+            handle_sql_intrans_unrecoverable_error(clnt);
+        }
+
         reset_clnt(clnt, sb, 0);
         clnt->tzname[0] = '\0';
         clnt->osql.count_changes = 1;
