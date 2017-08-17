@@ -102,6 +102,7 @@ function resetdb {
 resetdb
 for statement in `ls t1-*.stmt`; do
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
   sleep 1
   make_backup $statement
 done
