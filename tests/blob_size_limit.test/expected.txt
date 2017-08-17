@@ -1,0 +1,16 @@
+insert 113 blob size exceeds max for table 't'
+run b 113 blob size exceeds max for table 't'
+insert 113 blob size exceeds max for table 't'
+run b 113 blob size exceeds max for table 't'
+(a=1, length(b)=1)
+(a=2, length(b)=10)
+(a=3, length(b)=100)
+(a=4, length(b)=1000)
+(a=5, length(b)=10000)
+(a=6, length(b)=100000)
+(a=7, length(b)=1000000)
+(a=8, length(b)=10000000)
+(a=9, length(b)=100000000)
+(a=10, length(b)=267386880)
+(a=11, length(b)=0)
+(a=12, length(b)=0)

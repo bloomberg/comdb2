@@ -2791,7 +2791,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
              * downgrade
              * because it holds a bdb readlock.  Make sure I am still the master
              */
-            if (thedb->master != gbl_mynode) {
+            if (thedb->master != gbl_mynode || irc == ERR_NOMASTER) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 BACKOUT;
@@ -2867,8 +2867,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         /* keep track of which operation is currently done */
         reqerrstrhdrclr(iq);
-        reqerrstrhdr(iq, "OP #%d %s(%d): ", opnum, breq2a(hdr.opcode),
-                     hdr.opcode);
 
         thrman_wheref(thr_self, "%s [%s]", req2a(iq->opcode),
                       breq2a(hdr.opcode));

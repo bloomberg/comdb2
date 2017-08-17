@@ -21,7 +21,6 @@
 
 #include <str0.h>
 #include <logmsg.h>
-#include "crc32c.h"
 
 #include "schemachange.h"
 #include "sc_global.h"
@@ -33,6 +32,8 @@
 #include "sc_callbacks.h"
 #include "sc_schema.h"
 
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash);
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -47,7 +48,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         return SC_NOT_MASTER;
     }
 
-    if (!s->resume && sc_resuming &&
+    if (!s->resume &&
         (s->addonly || s->drop_table || s->fastinit || s->alteronly)) {
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
@@ -102,11 +103,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             pthread_mutex_unlock(&s->mtx);
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
-            logmsg(LOGMSG_INFO,
-                   "Resuming schema change: rqid [%llx %s] "
-                   "table %s, add %d, drop %d, fastinit %d, alter %d\n",
+            logmsg(LOGMSG_INFO, "Resuming schema change: rqid [%llx %s] "
+                                "table %s, add %d, drop %d, fastinit %d, alter "
+                                "%d, finalize_only %d\n",
                    s->rqid, us, s->table, s->addonly, s->drop_table,
-                   s->fastinit, s->alteronly);
+                   s->fastinit, s->alteronly, s->finalize_only);
 
         } else {
             int bdberr;
@@ -137,13 +138,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 }
                 free(packed_sc_data);
                 packed_sc_data = NULL;
-                rc = bdb_set_in_schema_change(NULL, stored_sc->table, NULL, 0,
-                                              &bdberr);
-                if (rc)
-                    logmsg(
-                        LOGMSG_ERROR,
-                        "%s: failed to cancel resuming schema change %d %d\n",
-                        __func__, rc, bdberr);
             }
             if (stored_sc && !stored_sc->fulluprecs &&
                 !stored_sc->partialuprecs &&
@@ -170,30 +164,40 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
     strcpy(s->original_master_node, gbl_mynode);
     unsigned long long seed;
+    const char *node = gbl_mynode;
     if (trans && s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
         logmsg(LOGMSG_INFO, "Starting schema change: "
                             "transactionally reuse seed 0x%llx\n",
                seed);
     } else if (s->resume) {
+        unsigned int host = 0;
         logmsg(LOGMSG_INFO, "Resuming schema change: fetching seed\n");
-        if ((rc = fetch_schema_change_seed(s, thedb, &seed))) {
+        if ((rc = fetch_schema_change_seed(s, thedb, &seed, &host))) {
             logmsg(LOGMSG_ERROR, "FAILED to fetch schema change seed\n");
             free_schema_change_type(s);
             return rc;
         }
-        logmsg(LOGMSG_INFO, "Resuming schema change: fetched seed 0x%llx\n",
-               seed);
+        node = get_hostname_with_crc32(thedb->bdb_env, host);
+        logmsg(
+            LOGMSG_INFO,
+            "Resuming schema change: fetched seed 0x%llx, original node %s\n",
+            seed, node);
+        if (stopsc) {
+            errstat_set_strf(&iq->errstat, "Master node downgrading - new "
+                                           "master will resume schemachange");
+            free_schema_change_type(s);
+            return SC_MASTER_DOWNGRADE;
+        }
     } else {
-        seed = get_genid(thedb->bdb_env, 0);
-        unsigned int *iptr = (unsigned int *)&seed;
-        iptr[1] = htonl(crc32c(gbl_mynode, strlen(gbl_mynode)));
+        seed = get_next_sc_seed(thedb->bdb_env);
         logmsg(LOGMSG_INFO, "Starting schema change: new seed 0x%llx\n", seed);
     }
 
-    rc = sc_set_running(1, seed, gbl_mynode, time(NULL));
+    rc = sc_set_running(1, seed, node, time(NULL));
     if (rc != 0) {
         if (!doing_upgrade || s->fulluprecs || s->partialuprecs) {
+            errstat_set_strf(&iq->errstat, "Schema change already in progress");
             free_schema_change_type(s);
             return SC_CANT_SET_RUNNING;
         } else {
@@ -214,7 +218,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                 sc_errf(s, "failed to cancel table upgrade threads\n");
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
-            } else if (sc_set_running(1, get_genid(thedb->bdb_env, 0),
+            } else if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env),
                                       gbl_mynode, time(NULL)) != 0) {
                 free_schema_change_type(s);
                 return SC_CANT_SET_RUNNING;
@@ -226,8 +230,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n",
                sc_seed);
         int bdberr;
-        int rc =
-            bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed, &bdberr);
+        int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed,
+                                            sc_host, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Couldn't save schema change seed\n");
         }
@@ -963,7 +967,7 @@ int sc_timepart_add_table(const char *existingTableName,
         goto error;
     }
 
-    if (sc_set_running(1, get_genid(thedb->bdb_env, 0), gbl_mynode,
+    if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
                        time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
@@ -1030,7 +1034,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         goto error;
     }
 
-    if (sc_set_running(1, get_genid(thedb->bdb_env, 0), gbl_mynode,
+    if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
                        time(NULL)) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
@@ -1061,10 +1065,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
 
     rc = do_schema_change(&sc);
     if (rc) {
-        if (sc_set_running(0, get_genid(thedb->bdb_env, 0), gbl_mynode,
-                           time(NULL)) != 0)
-
-            xerr->errval = SC_VIEW_ERR_SC;
+        xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
         goto error;
     }
@@ -1241,7 +1242,7 @@ int gbl_convert_sleep;
 int appsock_schema_change(SBUF2 *sb, int *keepsocket)
 {
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: entering\n", __func__);
 #endif
 
@@ -1305,7 +1306,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
     tok = strtok_r(line, delims, &lasts);
     while (tok) {
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
         printf("%s: parameter '%s'\n", __func__, tok);
 #endif
 
@@ -1431,7 +1432,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
         tok = strtok_r(NULL, delims, &lasts);
     }
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s:  sc.table '%s'\n", __func__, sc.table);
     printf("%s:  sc.aname '%s'\n", __func__, sc.aname);
 #endif
@@ -1546,7 +1547,7 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
      * make a new thread for this so that we have plenty of room to work. */
     if (sc.dryrun) {
         int rc;
-        if (sc_set_running(1, get_genid(thedb->bdb_env, 0), gbl_mynode,
+        if (sc_set_running(1, get_next_sc_seed(thedb->bdb_env), gbl_mynode,
                            time(NULL)) == 0) {
             rc = do_dryrun(&sc);
             sc_set_running(0, sc_seed, gbl_mynode, time(NULL));

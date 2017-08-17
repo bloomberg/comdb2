@@ -19,5 +19,3 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/*
 
 COPY build /
-
-ENTRYPOINT ["/opt/bb/bin/pmux", "-l"]

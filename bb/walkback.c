@@ -31,16 +31,6 @@ int gbl_warnthresh = 50;
 
 static unsigned long long count = 0, ivcount = 0;
 
-void walkback_disable(void)
-{
-    gbl_walkback_enabled = 0;
-}
-
-void walkback_enable(void)
-{
-    gbl_walkback_enabled = 1;
-}
-
 /* Reset counter if we're enabling */
 void walkback_set_warnthresh(int thresh)
 {

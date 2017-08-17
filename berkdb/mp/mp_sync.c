@@ -36,6 +36,7 @@ typedef struct {
 	roff_t	  track_off;		/* Page file offset. */
 	db_pgno_t track_pgno;		/* Page number. */
 	u_int32_t track_prio;		/* Priority. */
+	DB_LSN    track_tx_begin_lsn;	/* first dirty txn begin LSN. */
 } BH_TRACK;
 
 static int __bhcmp __P((const void *, const void *));
@@ -55,9 +56,6 @@ int bdb_the_lock_desired(void);
 #define BDB_READLOCK(idstr)     bdb_get_readlock(gbl_bdb_state, (idstr), __func__, __LINE__)
 #define BDB_RELLOCK()           bdb_rellock(gbl_bdb_state, __func__, __LINE__)
 int bdb_the_lock_designed(void);
-
-static int
- __memp_sync_restartable(DB_ENV *, DB_LSN *, int, const DB_LSN *);
 
 /*
  * __memp_sync_pp --
@@ -89,7 +87,7 @@ __memp_sync_pp(dbenv, lsnp)
 	if (rep_check)
 		__env_rep_enter(dbenv);
 	do {
-		ret = __memp_sync_restartable(dbenv, lsnp, 1, NULL);
+		ret = __memp_sync_restartable(dbenv, lsnp, 1, 1);
 		if (ret == DB_LOCK_DESIRED) {
 			if (rep_check)
 				__env_rep_exit(dbenv);
@@ -218,8 +216,8 @@ mempsync_thd(void *p)
 	int rc;
 	DB_LOGC *logc;
 	void *bdb_state;
-    DBT data_dbt;
-	DB_LSN lsn, sync_lsn, ckp_lsn;
+	DBT data_dbt;
+	DB_LSN lsn, sync_lsn;
 	DB_ENV *dbenv = p;
 	int rep_check = 0;
 
@@ -242,7 +240,6 @@ mempsync_thd(void *p)
 		/* latch the lsn */
 		lsn = mempsync_lsn;
 		sync_lsn = lsn;
-		ckp_lsn = lsn;
 		pthread_mutex_unlock(&mempsync_lk);
 
 		/*
@@ -261,7 +258,9 @@ mempsync_thd(void *p)
 		if (rep_check)
 			__env_rep_enter(dbenv);
 		do {
-			rc = __memp_sync_restartable(dbenv, &lsn, 1, &ckp_lsn);
+			/* We are replicant. So use whatever LSN master tells us
+			   and do not attempt to change it. */
+			rc = __memp_sync_restartable(dbenv, &lsn, 1, 1);
 			if (rep_check)
 				__env_rep_exit(dbenv);
 			BDB_RELLOCK();
@@ -361,12 +360,25 @@ __memp_sync_out_of_band(DB_ENV *dbenv, DB_LSN *lsn)
 	return 0;
 }
 
-static int
-__memp_sync_restartable(dbenv, lsnp, restartable, ckp_lsnp)
+/*
+ * __memp_sync_restartable --
+ *  If lsnp is NUL or perfect checkpoints is disabled,
+ *  the function guarantees that every dirty page whose LSN
+ *  is less than *lsnp is written to disk, upon success.
+ *  Otherwise, the function uses *lsnp (or as a hint,
+ *  if `fixed' is false) to determine the checkpoint LSN
+ *  which requires the least amount of I/O. Hence it is not
+ *  guaranteed every dirty page with LSN < *lsnp is written to disk.
+ *
+ * PUBLIC: int __memp_sync_restartable
+ * PUBLIC:     __P((DB_ENV *, DB_LSN *, int, int));
+ */
+int
+__memp_sync_restartable(dbenv, lsnp, restartable, fixed)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp;
 	int restartable;
-	const DB_LSN *ckp_lsnp;
+	int fixed;
 {
 	DB_MPOOL *dbmp;
 	MPOOL *mp;
@@ -385,19 +397,11 @@ __memp_sync_restartable(dbenv, lsnp, restartable, ckp_lsnp)
 			return (0);
 		}
 		R_UNLOCK(dbenv, dbmp->reginfo);
-	} else if (ckp_lsnp != NULL) {
-		/* If we've flushed to the checkpoint LSN, return success. */
-		R_LOCK(dbenv, dbmp->reginfo);
-		if (log_compare(ckp_lsnp, &mp->lsn) <= 0) {
-			R_UNLOCK(dbenv, dbmp->reginfo);
-			return (0);
-		}
-		R_UNLOCK(dbenv, dbmp->reginfo);
 	}
 
 	if ((ret =
 	    __memp_sync_int(dbenv, NULL, 0, DB_SYNC_CACHE, NULL,
-	    restartable, ckp_lsnp)) != 0)
+	    restartable, (dbenv->tx_perfect_ckp ? lsnp : NULL), fixed)) != 0)
 		 return (ret);
 
 	if (lsnp != NULL) {
@@ -415,15 +419,18 @@ __memp_sync_restartable(dbenv, lsnp, restartable, ckp_lsnp)
  * __memp_sync --
  *	DB_ENV->memp_sync.
  *
- * PUBLIC: int __memp_sync __P((DB_ENV *, DB_LSN *, const DB_LSN *));
+ * PUBLIC: int __memp_sync __P((DB_ENV *, DB_LSN *));
  */
 int
-__memp_sync(dbenv, lsnp, ckp_lsnp)
+__memp_sync(dbenv, lsnp)
 	DB_ENV *dbenv;
 	DB_LSN *lsnp;
-	const DB_LSN *ckp_lsnp;
 {
-	return __memp_sync_restartable(dbenv, lsnp, 0, ckp_lsnp);
+	/* Implementation note:
+	   To avoid confusion, we keep the original behavior of memp_sync():
+	   Flush everything in MPool so that we know for certain that
+	   dirty pages with LSN less than lsnp are written to disk. */
+	return __memp_sync_restartable(dbenv, lsnp, 0, 1);
 }
 
 /*
@@ -473,7 +480,8 @@ __memp_fsync(dbmfp)
 	if (F_ISSET(dbmfp->mfp, MP_TEMP))
 		return (0);
 
-	return (__memp_sync_int(dbmfp->dbenv, dbmfp, 0, DB_SYNC_FILE, NULL, 0, NULL));
+	return (__memp_sync_int(dbmfp->dbenv,
+			                dbmfp, 0, DB_SYNC_FILE, NULL, 0, NULL, 0));
 }
 
 /*
@@ -504,7 +512,8 @@ __mp_xxx_fh(dbmfp, fhp)
 	if ((*fhp = dbmfp->fhp) != NULL)
 		return (0);
 
-	return (__memp_sync_int(dbmfp->dbenv, dbmfp, 0, DB_SYNC_FILE, NULL, 0, NULL));
+	return (__memp_sync_int(dbmfp->dbenv,
+			                dbmfp, 0, DB_SYNC_FILE, NULL, 0, NULL, 0));
 }
 
 static pthread_once_t trickle_threads_once = PTHREAD_ONCE_INIT;
@@ -1059,16 +1068,19 @@ berk_memp_sync_alarm_ms(int x)
  *	Mpool sync internal function.
  *
  * PUBLIC: int __memp_sync_int
- * PUBLIC:     __P((DB_ENV *, DB_MPOOLFILE *, int, db_sync_op, int *, int, const DB_LSN *));
+ * PUBLIC:     __P((DB_ENV *, DB_MPOOLFILE *, int, db_sync_op, int *, int,
+ * PUBLIC:          DB_LSN *, int));
  */
 int
-__memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
+__memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
+                ckp_lsnp, fixed)
 	DB_ENV *dbenv;
 	DB_MPOOLFILE *dbmfp;
 	int trickle_max, *wrotep;
 	db_sync_op op;
 	int restartable;
-	const DB_LSN *ckp_lsnp;
+	DB_LSN *ckp_lsnp;
+	int fixed;
 {
 	BH *bhp;
 	BH_TRACK *bharray;
@@ -1090,7 +1102,40 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
 	db_pgno_t off_gather = 0;
 	int gathered = 0;
 	int delay_write = 0;
+	DB_LSN oldest_first_dirty_tx_begin_lsn;
+	int accum_sync, accum_skip;
+	BH_TRACK swap;
 
+	/*
+	 *  Perfect checkpoints: If the first dirty LSN is to the right
+	 *  of the checkpoint LSN, we don't need to sync the page.
+	 *
+	 *  The perfect checkpoints algorithm has 3 steps:
+	 *
+	 *  1) ckp_lsnp is obtained from active TXN list by our caller.
+	 *     Use it as our 1st guess of the oldest begin LSN.
+	 *
+	 *  2) Walk buffer bool. Add pages whose first dirty LSN is to
+	 *     the *LEFT* of the checkpoint LSN to bharray. If we find
+	 *     a page whose first dirty LSN is to the *RIGHT* of the
+	 *     checkpoint LSN, set the oldest begin LSN to the page's
+	 *     first dirty LSN. Keep in mind that pages added to bharray
+	 *     may not need written because we don't know the oldest
+	 *     begin LSN for sure, yet. However the value will converge
+	 *     to the real begin LSN as more pages are examined.
+	 *
+	 *  3) Now we have the real oldest begin LSN. Filter out
+	 *     pages whose first dirty LSN is to the right of
+	 *     the real oldest LSN.
+	 */
+
+	/* Perfect checkpoints step 1: first guess. */
+	if (ckp_lsnp != NULL)
+		oldest_first_dirty_tx_begin_lsn = *ckp_lsnp;
+	else
+		MAX_LSN(oldest_first_dirty_tx_begin_lsn);
+
+	accum_sync = accum_skip = 0;
 	dbmp = dbenv->mp_handle;
 	mp = dbmp->reginfo[0].primary;
 	pass = wrote = 0;
@@ -1109,25 +1154,13 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
 	if ((ret =
 		__os_malloc(dbenv, ar_max * sizeof(BH_TRACK), &bharray)) != 0)
 		return (ret);
-	if ((ret = __os_malloc(dbenv, ar_max * sizeof(BH *), &bhparray)) != 0) {
-		__os_free(dbenv, bharray);
-		return (ret);
-	}
-	if ((ret = __os_malloc(dbenv,
-	    ar_max * sizeof(DB_MPOOL_HASH *), &hparray)) != 0) {
-		__os_free(dbenv, bharray);
-		__os_free(dbenv, bhparray);
-		return (ret);
-	}
 	if ((ret =
 	     __os_malloc(dbenv, sizeof(struct trickler), &pt)) != 0) {
 		__os_free(dbenv, bharray);
-		__os_free(dbenv, bhparray);
-		__os_free(dbenv, hparray);
 		return (ret);
 	}
-
-
+	bhparray = NULL;
+	hparray = NULL;
 
 	/*
 	 * Walk each cache's list of buffers and mark all dirty buffers to be
@@ -1197,15 +1230,25 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
 				if (dbmfp == NULL && mfp->lsn_off == -1)
 					continue;
 
-				if (dbenv->mp_perfect_ckp && ckp_lsnp != NULL) {
-					/* If the first dirty LSN is to the right of the
-					   checkpoint LSN, we don't need to sync the page
-					   as recovery will work correctly against the log. */
-					if (log_compare(&bhp->first_dirty_lsn, ckp_lsnp) > 0) {
-						c_mp->stat.st_ckp_pages_skip++;
+				/* Perfect checkpoints step 2: compare and update. */
+				if (ckp_lsnp != NULL) {
+					/*
+					 * If log_compare returns 0, it means that the page was
+					 * first marked dirty by the TXN whose begin LSN is
+					 * oldest_first_dirty_tx_begin_lsn. We know that
+					 * the LSN is in the log, therefore the page can be
+					 * safely skipped.
+					 */
+					if (log_compare(&bhp->first_dirty_tx_begin_lsn,
+					                &oldest_first_dirty_tx_begin_lsn) >= 0) {
+						++accum_skip;
 						continue;
 					}
-					c_mp->stat.st_ckp_pages_sync++;
+					++accum_sync;
+
+					/* If we get not logged or zero LSN, ignore. */
+					if (!fixed && !IS_ZERO_LSN(bhp->first_dirty_tx_begin_lsn))
+						oldest_first_dirty_tx_begin_lsn = bhp->first_dirty_tx_begin_lsn;
 				}
 
 				/* Track the buffer, we want it. */
@@ -1213,6 +1256,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
 				bharray[ar_cnt].track_pgno = bhp->pgno;
 				bharray[ar_cnt].track_off = bhp->mf_offset;
 				bharray[ar_cnt].track_prio = bhp->priority;
+				bharray[ar_cnt].track_tx_begin_lsn = bhp->first_dirty_tx_begin_lsn;
 				ar_cnt++;
 
 				/*
@@ -1227,16 +1271,6 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
 						    sizeof(BH_TRACK),
 						    &bharray)) != 0)
 						break;
-					if ((ret = __os_realloc(dbenv,
-						    (ar_max * 2) *
-						    sizeof(DB_MPOOL_HASH *),
-						    &hparray)) != 0)
-						break;
-					if ((ret = __os_realloc(dbenv,
-						    (ar_max * 2) *
-						    sizeof(BH *),
-						    &bhparray)) != 0)
-						break;
 					ar_max *= 2;
 				}
 			}
@@ -1247,9 +1281,42 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable, ckp_lsnp)
 		}
 	}
 
+	/* Perfect checkpoints step 3: inplace filtration. */
+	if (ckp_lsnp != NULL) {
+		if (!fixed) {
+			*ckp_lsnp = oldest_first_dirty_tx_begin_lsn;
+			for (i = 0, j = ar_cnt; i < j;) {
+				if (log_compare(&bharray[i].track_tx_begin_lsn,
+				                &oldest_first_dirty_tx_begin_lsn) < 0)
+					++i;
+				else {
+					/* Swap i & j */
+					--j;
+					swap = bharray[i];
+					bharray[i] = bharray[j];
+					bharray[j] = swap;
+					/* Adjust stats */
+					--accum_sync;
+					++accum_skip;
+				}
+			}
+			ar_cnt = j;
+		}
+		c_mp->stat.st_ckp_pages_skip += accum_skip;
+		c_mp->stat.st_ckp_pages_sync += accum_sync;
+	}
+
 	/* If there no buffers to write, we're done. */
 	if (ar_cnt == 0)
 		goto done;
+
+	/* Allocate bhparray and hparray only after we know the exact value of ar_cnt.
+	   This way we are able to save memory and reduce allocation calls. */
+	if ((ret = __os_malloc(dbenv, ar_cnt * sizeof(BH *), &bhparray)) != 0)
+		goto err;
+	if ((ret = __os_malloc(dbenv,
+	                       ar_cnt * sizeof(DB_MPOOL_HASH *), &hparray)) != 0)
+		goto err;
 
 	/*
 	 * If writing in LRU, do so. Otherwise, write the buffers in

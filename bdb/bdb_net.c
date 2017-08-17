@@ -59,6 +59,7 @@
 #endif
 
 extern void fsnapf(FILE *, void *, int);
+extern int db_is_stopped(void);
 
 struct ack_info_t {
     uint32_t hdrsz;
@@ -391,7 +392,7 @@ struct thdpool *gbl_udppfault_thdpool = NULL;
 
 int udppfault_thdpool_init(void)
 {
-    gbl_udppfault_thdpool = thdpool_create("UDP PREFAULT pool", 0);
+    gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
 
     thdpool_set_exit(gbl_udppfault_thdpool);
 
@@ -500,7 +501,7 @@ static void *udp_reader(void *arg)
     uint8_t *p_buf, *p_buf_end;
     filepage_type fp;
 
-    while (1) {
+    while (!db_is_stopped()) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
@@ -1047,8 +1048,8 @@ out:
     return rc;
 }
 
-
-const char * get_hostname_with_crc32(bdb_state_type *bdb_state, int hash)
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     if(crc32c(repinfo->myhost, strlen(repinfo->myhost)) == hash)

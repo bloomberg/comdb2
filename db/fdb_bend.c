@@ -207,7 +207,6 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
     fdb_tran_t *trans;
 
     comdb2uuid_clear(zerouuid);
-    assert(flags == FDB_MSG_CURSOR_OPEN_SQL);
 
     /* create cursor */
     cur = (svc_cursor_t *)calloc(1, sizeof(svc_cursor_t));
@@ -342,8 +341,6 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
       outlen = 0; /* ?*/
    }
 
-
-   assert(flags == FDB_MSG_CURSOR_OPEN_SQL);
 
    /* create cursor */
    cur = (svc_cursor_t*)calloc(1, sizeof(svc_cursor_t) + outlen);
@@ -1384,7 +1381,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
 
     trans = &clnt->dbtran;
 
-    assert(trans == NULL);
+    assert(trans != NULL);
 
     pthread_mutex_lock(&clnt->dtran_mtx);
 

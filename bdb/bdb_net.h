@@ -20,6 +20,7 @@
 
 typedef struct bdb_state_tag bdb_state_type;
 char *print_addr(struct sockaddr_in *addr, char *buf);
-const char * get_hostname_with_crc32(bdb_state_type *bdb_state, int hash);
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash);
 
 #endif /* __bdb_net_h__ */

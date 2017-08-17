@@ -112,11 +112,7 @@ bool compare_checksum(
     // Keep a set of all .incr diff files to determine if there are any remaining at the end
     // Any remaining .incr files indiciate deleted files
     std::set<std::string>::iterator it = incr_files.find(filename + ".incr");
-    if(it == incr_files.end()){
-        std::ostringstream ss;
-        ss << "new incr file found mid backup of file: " << filename << std::endl;
-        throw SerialiseError(filename, ss.str());
-    } else {
+    if(it != incr_files.end()){
         incr_files.erase(it);
     }
 
@@ -490,7 +486,7 @@ void incr_deserialise_database(
                 throw Error(ss);
             }
 
-            if(manifest_sha != sha_fingerprint){
+            if(strncmp(manifest_sha.c_str(), sha_fingerprint.c_str(), 40) != 0){
                 std::ostringstream ss;
                 ss << "Mismatched SHA fingerprints: " << std::endl;
                 ss << "Found: " << sha_fingerprint << std::endl;

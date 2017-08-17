@@ -387,37 +387,6 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
                 goto pi_done;
             }
 
-            if (temp_newdb->dbenv->master == gbl_mynode) {
-                /* I am master: create new db */
-                logmsg(LOGMSG_DEBUG, "create new db\n");
-                temp_newdb->handle = bdb_create_tran(
-                    temp_newdb->dbname, thedb->basedir, temp_newdb->lrl,
-                    temp_newdb->nix, temp_newdb->ix_keylen,
-                    temp_newdb->ix_dupes, temp_newdb->ix_recnums,
-                    temp_newdb->ix_datacopy, temp_newdb->ix_collattr,
-                    temp_newdb->ix_nullsallowed, temp_newdb->numblobs + 1,
-                    thedb->bdb_env, 0, &bdberr, tran);
-                open_auxdbs(temp_newdb, 1);
-            } else {
-                /* I am NOT master: open replicated db */
-                logmsg(LOGMSG_DEBUG, "open replicated db\n");
-                temp_newdb->handle = bdb_open_more(
-                    temp_newdb->dbname, thedb->basedir, temp_newdb->lrl,
-                    temp_newdb->nix, temp_newdb->ix_keylen,
-                    temp_newdb->ix_dupes, temp_newdb->ix_recnums,
-                    temp_newdb->ix_datacopy, temp_newdb->ix_collattr,
-                    temp_newdb->ix_nullsallowed, temp_newdb->numblobs + 1,
-                    thedb->bdb_env, &bdberr);
-                open_auxdbs(temp_newdb, 0);
-            }
-            if (temp_newdb->handle == NULL) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed to open table %s/%s, rcode %d\n", __func__,
-                       thedb->basedir, temp_newdb->dbname, bdberr);
-                rc = SC_BDB_ERROR;
-                goto pi_done;
-            }
-
             thedb->dbs =
                 realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
             thedb->dbs[thedb->num_dbs++] = temp_newdb;
@@ -426,11 +395,6 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
             create_sqlmaster_records(tran);
             create_master_tables(); /* create sql statements */
             ret = new_indexes_syntax_check(iq);
-            if (bdb_close_only(temp_newdb->handle, &bdberr) != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed to close table %s/%s, rcode %d\n", __func__,
-                       thedb->basedir, temp_newdb->dbname, bdberr);
-            }
             newdb->ix_blob = temp_newdb->ix_blob;
             newdb->schema->ix_blob = newdb->ix_blob;
             delete_schema(temp_newdb_name);
@@ -562,10 +526,10 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
     } else
         rc = 0;
 
-    if (rc)
-        rc = SC_CONVERSION_FAILED;
-    else if (stopsc)
+    if (stopsc || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;
+    else if (rc)
+        rc = SC_CONVERSION_FAILED;
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);

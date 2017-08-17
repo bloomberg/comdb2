@@ -201,19 +201,20 @@ void unpack_full_file(
         throw Error("Stream contains files for data directory before data dir is known");
     }
 
-    std::string outfilename(datadestdir + "/" + filename);
-    std::unique_ptr<fdostream> of_ptr = output_file(outfilename, false, true);
-
-
     size_t pagesize = 0;
     bool checksums = false;
     bool file_is_sparse = false;
+    std::unique_ptr<fdostream> incr_of_ptr;
+    std::string outfilename(datadestdir + "/" + filename);
 
     if(is_data_file){
         FileInfo file_info = *file_info_pt;
         pagesize = file_info.get_pagesize();
         checksums = file_info.get_checksums();
         file_is_sparse = file_info.get_sparse();
+        incr_of_ptr = output_file(outfilename, false, true);
+    } else {
+        incr_of_ptr = output_file(outfilename, false, false);
     }
 
     if(pagesize == 0) {
@@ -246,6 +247,7 @@ void unpack_full_file(
     bool checksum_failure = false;
 
     unsigned long long readbytes = 0;
+
     while(bytesleft > 0)
     {
         readbytes = bytesleft;
@@ -280,86 +282,90 @@ void unpack_full_file(
         if (file_is_sparse &&
            (readbytes == pagesize) && (bytesleft > readbytes) )
         {
-           if (memcmp(empty_page, &buf[0], pagesize) == 0)
-           {
-              skipped_bytes += pagesize;
-              /* This data won't be counted towards file size.*/
-              recheck_count += readbytes;
-           }
-           else
-           {
-              if (skipped_bytes)
-              {
-                 if((of_ptr->skip(skipped_bytes)))
-                 {
+            if (memcmp(empty_page, &buf[0], pagesize) == 0)
+            {
+                skipped_bytes += pagesize;
+                /* This data won't be counted towards file size.*/
+                recheck_count += readbytes;
+            }
+            else
+            {
+                if (skipped_bytes)
+                {
+                    if((incr_of_ptr->skip(skipped_bytes)))
+                    {
+                        std::ostringstream ss;
+
+                        if (filename == "FLUFF")
+                            return;
+
+                        ss << "Error skipping " << filename << " after "
+                           << (filesize - bytesleft) << " bytes";
+                        throw Error(ss);
+                    }
+                    skipped_bytes = 0;
+                }
+                if (!incr_of_ptr->write((char*) buf, pagesize))
+                {
                     std::ostringstream ss;
 
                     if (filename == "FLUFF")
-                       return;
+                         return;
+
+                    ss << "Error Writing " << filename << " after "
+                       << (filesize - bytesleft) << " bytes"
+                       << errno << " " << strerror(errno);
+                    throw Error(ss);
+                }
+            }
+        }
+        else
+        {
+            uint64_t off = 0;
+            uint64_t nwrites = 0;
+            uint64_t bytes = readbytes;
+
+            if (file_is_sparse && skipped_bytes)
+            {
+                if((incr_of_ptr->skip(skipped_bytes)))
+                {
+                    std::ostringstream ss;
+
+                    if (filename == "FLUFF")
+                        return;
 
                     ss << "Error skipping " << filename << " after "
                        << (filesize - bytesleft) << " bytes";
                     throw Error(ss);
-                 }
-                 skipped_bytes = 0;
-              }
-              if (!of_ptr->write((char*) buf, pagesize))
-              {
-                 std::ostringstream ss;
+                }
+                skipped_bytes = 0;
+            }
 
-                 if (filename == "FLUFF")
-                    return;
+            while (bytes > 0)
+            {
+                int lim;
+                if (bytes < write_size)
+                    lim = bytes;
+                else
+                    lim = write_size;
 
-                 ss << "Error Writing " << filename << " after "
-                    << (filesize - bytesleft) << " bytes";
-                 throw Error(ss);
-              }
-           }
-        }
-        else
-        {
-           uint64_t off = 0;
-           uint64_t nwrites = 0;
-           uint64_t bytes = readbytes;
-           if (file_is_sparse && skipped_bytes)
-           {
-              if((of_ptr->skip(skipped_bytes)))
-              {
-                 std::ostringstream ss;
+                if (!incr_of_ptr->write((char*) &buf[off], lim)) {
 
-                 if (filename == "FLUFF")
-                    return;
+                    std::ostringstream ss;
 
+                    if (filename == "FLUFF")
+                        return;
 
-                 ss << "Error skipping " << filename << " after "
-                    << (filesize - bytesleft) << " bytes";
-                 throw Error(ss);
-              }
-              skipped_bytes = 0;
-           }
-           while (bytes > 0)
-           {
-              int lim;
-              if (bytes < write_size)
-                 lim = bytes;
-              else
-                 lim = write_size;
-              if (!of_ptr->write((char*) &buf[off], lim))
-              {
-                 std::ostringstream ss;
-
-                 if (filename == "FLUFF")
-                    return;
-
-                 ss << "Error Writing " << filename << " after "
-                    << (filesize - bytesleft) << " bytes";
-                 throw Error(ss);
-              }
-              nwrites++;
-              off += lim;
-              bytes -= lim;
-           }
-           // std::cerr << "wrote " << readbytes << " bytes in " << nwrites << " chunks" << std::endl;
+                    ss << "Error Writing " << filename << " after "
+                       << (filesize - bytesleft) << " bytes" << std::endl
+                       << errno << ": " << strerror(errno);
+                    throw Error(ss);
+                }
+                nwrites++;
+                off += lim;
+                bytes -= lim;
+            }
+            // std::cerr << "wrote " << readbytes << " bytes in " << nwrites << " chunks" << std::endl;
         }
         bytesleft -= readbytes;
         recheck_count -= readbytes;
@@ -417,7 +423,6 @@ void unpack_full_file(
        std::clog << " not sparse ";
 
     std::clog << std::endl;
-
 }
 
 void clear_log_folder(

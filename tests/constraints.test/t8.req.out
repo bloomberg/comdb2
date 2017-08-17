@@ -1,0 +1,24 @@
+(rows inserted=1)
+[insert into t1(uuid, value, dup_value) values(8888, 1, 1)] rc 0
+(rows inserted=1)
+[insert into t4(uuid, value) values(8888, 2)] rc 0
+(rows updated=1)
+[update t1 set uuid = 8887 where uuid = 8888] rc 0
+(uuid=8887, value=1)
+[select uuid, value from t1 where uuid > 8000 and uuid < 9000] rc 0
+(uuid=8887, value=2)
+[select uuid, value from t4 where uuid > 8000 and uuid < 9000] rc 0
+[rebuild t1] rc 0
+(rows updated=1)
+[update t1 set uuid = 8889 where uuid = 8887] rc 0
+(uuid=8889, value=1)
+[select uuid, value from t1 where uuid > 8000 and uuid < 9000] rc 0
+(uuid=8889, value=2)
+[select uuid, value from t4 where uuid > 8000 and uuid < 9000] rc 0
+(rows inserted=1)
+[insert into t1(uuid, value, dup_value) values(8886, 3, 1)] rc 0
+(rows inserted=1)
+[insert into t3(uuid, value) values(8886, 3)] rc 0
+(rows deleted=1)
+[delete from t1 where uuid = 8886] rc 0
+[select uuid, value from t3] rc 0

@@ -3602,22 +3602,25 @@ int sqlite3_file_control(sqlite3 *db, const char *zDbName, int op, void *pArg){
     sqlite3_file *fd;
     sqlite3BtreeEnter(pBtree);
     pPager = sqlite3BtreePager(pBtree);
-    assert( pPager!=0 );
-    fd = sqlite3PagerFile(pPager);
-    assert( fd!=0 );
-    if( op==SQLITE_FCNTL_FILE_POINTER ){
-      *(sqlite3_file**)pArg = fd;
-      rc = SQLITE_OK;
-    }else if( op==SQLITE_FCNTL_VFS_POINTER ){
-      *(sqlite3_vfs**)pArg = sqlite3PagerVfs(pPager);
-      rc = SQLITE_OK;
-    }else if( op==SQLITE_FCNTL_JOURNAL_POINTER ){
-      *(sqlite3_file**)pArg = sqlite3PagerJrnlFile(pPager);
-      rc = SQLITE_OK;
-    }else if( fd->pMethods ){
-      rc = sqlite3OsFileControl(fd, op, pArg);
-    }else{
-      rc = SQLITE_NOTFOUND;
+    /* COMDB2 MODIFICATION: pager is always NULL */
+    if( pPager ) {
+      assert( pPager!=0 );
+      fd = sqlite3PagerFile(pPager);
+      assert( fd!=0 );
+      if( op==SQLITE_FCNTL_FILE_POINTER ){
+        *(sqlite3_file**)pArg = fd;
+        rc = SQLITE_OK;
+      }else if( op==SQLITE_FCNTL_VFS_POINTER ){
+        *(sqlite3_vfs**)pArg = sqlite3PagerVfs(pPager);
+        rc = SQLITE_OK;
+      }else if( op==SQLITE_FCNTL_JOURNAL_POINTER ){
+        *(sqlite3_file**)pArg = sqlite3PagerJrnlFile(pPager);
+        rc = SQLITE_OK;
+      }else if( fd->pMethods ){
+        rc = sqlite3OsFileControl(fd, op, pArg);
+      }else{
+        rc = SQLITE_NOTFOUND;
+      }
     }
     sqlite3BtreeLeave(pBtree);
   }

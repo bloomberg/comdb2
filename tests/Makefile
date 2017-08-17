@@ -5,16 +5,18 @@ export TESTSROOTDIR:=$(shell pwd)
 
 SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ )
 ifeq ($(SRCHOME),)
-SRCHOME:=$(TESTSROOTDIR)/..
+  SRCHOME:=$(TESTSROOTDIR)/..
 endif
 export SRCHOME
 
 export TESTID:=$(shell tools/get_random.sh)
 CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
+# get md5sum of executable use check when running every test in a series
+export COMDB2MD5SUM:=$(shell md5sum ${SRCHOME}/comdb2 | cut -d ' ' -f1)
 
 
-basicops_nokey:
+basicops_nokey: executables
 	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
@@ -25,6 +27,14 @@ basicops_nokey:
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
+
+executables: execomdb2 exesqlreplay execdb2sql execomdb2ar exepmux
+execomdb2: ; @command -v ${SRCHOME}/comdb2 &> /dev/null
+exesqlreplay: ; @command -v ${SRCHOME}/cdb2_sqlreplay &> /dev/null
+execdb2sql: ; @command -v ${SRCHOME}/cdb2sql &> /dev/null
+execomdb2ar: ; @command -v ${SRCHOME}/comdb2ar &> /dev/null
+exepmux: ; @command -v ${SRCHOME}/pmux &> /dev/null
+
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)

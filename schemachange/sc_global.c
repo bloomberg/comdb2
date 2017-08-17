@@ -21,6 +21,8 @@
 #include "sc_global.h"
 #include "logmsg.h"
 #include "sc_callbacks.h"
+#include "bbinc/cheapstack.h"
+#include "crc32c.h"
 
 pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -29,7 +31,7 @@ pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
 volatile int gbl_schema_change_in_progress = 0;
 volatile int gbl_lua_version = 0;
 uint64_t sc_seed;
-static char *sc_host;
+uint32_t sc_host; /* crc32 of machine name */
 static time_t sc_time;
 int gbl_default_livesc = 1;
 int gbl_default_plannedsc = 1;
@@ -115,8 +117,8 @@ const char *get_sc_to_name(const char *name)
 
 void wait_for_sc_to_stop(void)
 {
+    stopsc = 1;
     if (gbl_schema_change_in_progress) {
-        stopsc = 1;
         logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
         int retry = 10;
         while (gbl_schema_change_in_progress && retry--) {
@@ -125,6 +127,11 @@ void wait_for_sc_to_stop(void)
         logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
                10 - retry);
     }
+}
+
+void allow_sc_to_run(void)
+{
+    stopsc = 0;
 }
 
 /* Atomically set the schema change running status, and mark it in glm for
@@ -140,9 +147,9 @@ void wait_for_sc_to_stop(void)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(int running, uint64_t seed, char *host, time_t time)
+int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
 {
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
@@ -167,11 +174,11 @@ int sc_set_running(int running, uint64_t seed, char *host, time_t time)
     gbl_schema_change_in_progress = running;
     if (running) {
         sc_seed = seed;
-        sc_host = host;
+        sc_host = crc32c(host, strlen(host));
         sc_time = time;
     } else {
         sc_seed = 0;
-        sc_host = NULL;
+        sc_host = 0;
         sc_time = 0;
         gbl_sc_resume_start = 0;
     }

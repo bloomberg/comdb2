@@ -12,5 +12,5 @@ done
 (name='China')
 done
 done
-[commit] failed with rc 230 OP #3 BLOCK2_SEQV2(824): transaction is not serializable
+[commit] failed with rc 230 transaction is not serializable
 done

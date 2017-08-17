@@ -280,6 +280,7 @@ docs/sqlitegen/all.html
 docs/sqlitegen/syntax_linkage.tcl
 docker/maven.m2/
 contrib/docker/build
+contrib/docker/volumes
 
 # editor files
 .vscode
