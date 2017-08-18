@@ -37,6 +37,11 @@ function make_backup {
   echo " "
 }
 
+function force_checkpoint {
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+}
+
+
 function test_restoredb {
   testname=$1
   restorecmd="cat "
@@ -54,7 +59,7 @@ function test_restoredb {
   count=0
   cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > sqloutput 2>&1
   sqloutput=$(echo sqloutput)
-  while [ $sqloutput != "\(1=1\)" -a $count -le 5 ]; do
+  while [ $sqloutput != "\(1=1\)" -a $count -le 30 ]; do
       sleep 1
       let count=count+1
       cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > sqloutput 2>&1
@@ -91,27 +96,18 @@ function resetdb {
   mkdir -p ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
 
   cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
-  sleep 1
+  force_checkpoint
   make_base
   cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
-  sleep 1
+  force_checkpoint
   make_backup t1-2_create_table
 }
-
-# Keep track of which test we're on to do special stuff for DROP TABLE test
-counter=3
 
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1-*.stmt`; do
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
-
-  # Need to force checkpoint for DROP TABLE test
-  if [[ $counter -eq 7 ]] ; then
-      cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
-  fi
-  let counter=counter+1
-  sleep 1
+  force_checkpoint
   make_backup $statement
 done
 
@@ -130,6 +126,7 @@ done
 resetdb
 for i in $(seq 1 10); do
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+  # Need to sleep briefly so that multiple pushnext's aren't processed as the same one
   sleep 2
 done
 cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
