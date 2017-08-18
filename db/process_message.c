@@ -55,7 +55,7 @@ extern int __berkdb_fsync_alarm_ms;
 #include "memdebug.h"
 #include "verify.h"
 #include "switches.h"
-#include "sequences.h"
+// #include "sequences.h"
 
 #include "osqlrepository.h"
 #include "osqlcomm.h"
