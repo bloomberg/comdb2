@@ -360,10 +360,9 @@ int genid_contains_time(bdb_state_type *bdb_state)
     return bdb_state->genid_format == LLMETA_GENID_ORIGINAL;
 }
 
-
 static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
-                                      unsigned int dtafile, DB_LSN *lsn,
-                                      uint32_t generation)
+                                          unsigned int dtafile, DB_LSN *lsn,
+                                          uint32_t generation, uint64_t seed)
 {
     unsigned int *iptr;
     unsigned long long genid;
@@ -375,7 +374,11 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     int prwarn = 0;
 
     Pthread_mutex_lock(&(bdb_state->gblcontext_lock));
-    seed48 = get_genid_counter48(bdb_state->gblcontext);
+    if (!seed)
+        seed48 = get_genid_counter48(bdb_state->gblcontext);
+    else
+        seed48 = seed;
+
     while (seed48 >= 0x0000ffffffffffffULL) {
         /* This database needs a clean dump & load (or we need to expand our
          * genids */
@@ -423,7 +426,10 @@ static unsigned long long get_genid_48bit(bdb_state_type *bdb_state,
     return genid;
 }
 
-
+void seed_genid48(bdb_state_type *bdb_state, uint64_t seed)
+{
+    get_genid_48bit(bdb_state, 0, NULL, 0, seed);
+}
 
 static unsigned long long get_genid_timebased(bdb_state_type *bdb_state,
                                       unsigned int dtafile, DB_LSN *lsn,
@@ -535,7 +541,7 @@ unsigned long long get_genid_int(bdb_state_type *bdb_state,
     if (bdb_state->genid_format == LLMETA_GENID_48BIT)
 #endif
     {
-        return get_genid_48bit(bdb_state, dtafile, lsn, generation);
+        return get_genid_48bit(bdb_state, dtafile, lsn, generation, 0);
     }
     else {
         return get_genid_timebased(bdb_state, dtafile, lsn, generation);
@@ -545,6 +551,20 @@ unsigned long long get_genid_int(bdb_state_type *bdb_state,
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile)
 {
     return get_genid_int(bdb_state, dtafile, NULL, 0);
+}
+
+/* Return the next sc seed to use for schema change. */
+unsigned long long get_next_sc_seed(bdb_state_type *bdb_state)
+{
+    extern int gbl_llmeta_open;
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    if (gbl_llmeta_open == 0)
+        return 0ULL;
+
+    /* Always use time based genids for sc seeds */
+    return get_genid_timebased(bdb_state, 0, NULL, 0);
 }
 
 unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state)

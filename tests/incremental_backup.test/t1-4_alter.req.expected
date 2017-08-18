@@ -1,0 +1,3 @@
+(id=1, name='test')
+(id=2, name='two')
+[SELECT * FROM t1] rc 0

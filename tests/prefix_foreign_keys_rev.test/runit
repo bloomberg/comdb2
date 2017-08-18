@@ -75,7 +75,7 @@ for testcase in $files ; do
 
     # applying a filter to change
     # from
-    #   [insert into t3 values(3,99)] 443 failed with rc 3 OP #2 BLOCK_SEQ(800): verify key constraint cannot resolve constraint table 't1' index 'a'
+    #   [insert into t3 values(3,99)] 443 failed with rc 3 verify key constraint cannot resolve constraint table 't1' index 'a'
     # to
     #   [insert into t3 values(3,99)] failed with rc 3
     #sed "s/[0-9]* \(failed with rc [0-9]*\).*/\1/g" ${output}.1 > $output

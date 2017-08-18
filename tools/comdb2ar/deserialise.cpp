@@ -349,9 +349,7 @@ void deserialise_database(
         bool legacy_mode,
         bool& is_disk_full,
         bool run_with_done_file,
-        bool incr_mode,
-        const std::string& incr_path,
-        bool keep_all_logs
+        bool incr_mode
 )
 // Deserialise a database from serialised from received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files
@@ -492,9 +490,7 @@ void deserialise_database(
                     sha_fingerprint,
                     percent_full,
                     force_mode,
-                    is_disk_full,
-                    incr_path,
-                    keep_all_logs
+                    is_disk_full
                 );
             }
             break;
@@ -732,48 +728,49 @@ void deserialise_database(
             }
             else
             {
-               uint64_t off = 0;
-               uint64_t nwrites = 0;
-               uint64_t bytes = readbytes;
-               if (file_is_sparse && skipped_bytes)
-               {
-                  if((of_ptr->skip(skipped_bytes)))
-                  {
-                     std::ostringstream ss;
+                uint64_t off = 0;
+                uint64_t nwrites = 0;
+                uint64_t bytes = readbytes;
 
-                     if (filename == "FLUFF")
-                        return;
+                if (file_is_sparse && skipped_bytes)
+                {
+                    if((of_ptr->skip(skipped_bytes)))
+                    {
+                        std::ostringstream ss;
 
+                        if (filename == "FLUFF")
+                            return;
 
-                     ss << "Error skipping " << filename << " after "
-                        << (filesize - bytesleft) << " bytes";
-                     throw Error(ss);
-                  }
-                  skipped_bytes = 0;
-               }
-               while (bytes > 0)
-               {
-                  int lim;
-                  if (bytes < write_size)
-                     lim = bytes;
-                  else
-                     lim = write_size;
-                  if (!of_ptr->write((char*) &buf[off], lim))
-                  {
-                     std::ostringstream ss;
+                        ss << "Error skipping " << filename << " after "
+                           << (filesize - bytesleft) << " bytes";
+                        throw Error(ss);
+                    }
+                    skipped_bytes = 0;
+                }
 
-                     if (filename == "FLUFF")
-                        return;
+                while (bytes > 0)
+                {
+                    int lim;
+                    if (bytes < write_size)
+                        lim = bytes;
+                    else
+                        lim = write_size;
+                    if (!of_ptr->write((char*) &buf[off], lim))
+                    {
+                        std::ostringstream ss;
 
-                     ss << "Error Writing " << filename << " after "
-                        << (filesize - bytesleft) << " bytes";
-                     throw Error(ss);
-                  }
-                  nwrites++;
-                  off += lim;
-                  bytes -= lim;
-               }
-               // std::cerr << "wrote " << readbytes << " bytes in " << nwrites << " chunks" << std::endl;
+                        if (filename == "FLUFF")
+                            return;
+
+                            ss << "Error Writing " << filename << " after "
+                               << (filesize - bytesleft) << " bytes";
+                            throw Error(ss);
+                    }
+                    nwrites++;
+                    off += lim;
+                    bytes -= lim;
+                }
+                // std::cerr << "wrote " << readbytes << " bytes in " << nwrites << " chunks" << std::endl;
             }
             bytesleft -= readbytes;
             recheck_count -= readbytes;

@@ -19,6 +19,7 @@ static const char revid[] = "$Id: mp_fset.c,v 11.30 2003/09/13 19:26:21 bostic E
 #include "dbinc/db_shash.h"
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
+#include "dbinc/txn.h"
 
 /*
  * __memp_fset_pp --
@@ -84,6 +85,7 @@ __memp_fset(dbmfp, pgaddr, flags)
 	DB_MPOOL_HASH *hp;
 	MPOOL *c_mp;
 	u_int32_t n_cache;
+	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	dbmp = dbenv->mp_handle;
@@ -109,10 +111,9 @@ __memp_fset(dbmfp, pgaddr, flags)
 		atomic_inc(env, &hp->hash_page_dirty);
 		atomic_inc(env, &c_mp->stat.st_page_dirty);
 		F_SET(bhp, BH_DIRTY);
-		if (dbenv->mp_perfect_ckp) {
-			/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
-			bhp->first_dirty_lsn = LSN(pgaddr);
-		}
+		/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
+		if (dbenv->tx_perfect_ckp)
+			bhp->first_dirty_tx_begin_lsn = __txn_get_first_dirty_begin_lsn(LSN(pgaddr));
 	}
 	if (LF_ISSET(DB_MPOOL_DISCARD))
 		F_SET(bhp, BH_DISCARD);

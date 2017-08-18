@@ -1,0 +1,140 @@
+#!/bin/bash
+# Test basic functionality for incremental backups
+
+dbname=$1
+
+if [[ -z "$dbname" ]] ; then
+  echo dbname missing
+  exit 1
+fi
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function make_base {
+  basename=${TMPDIR}/backups/t1-1_base.tar
+  backuplist+=(t1-1_base.tar)
+  comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  echo "~~~~~~~~~~"
+  echo $basename
+  echo "  DONE WITH BASE"
+  echo " "
+}
+
+function make_backup {
+  fullbackupname=$1
+  backupname=${fullbackupname%.*}.tar
+  backuplist+=($backupname)
+  backuploc=${TMPDIR}/backups/${backupname}
+
+  comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  echo "~~~~~~~~~~"
+  echo ${TMPDIR}/backups/${backupname}
+  echo "  DONE WITH INCREMENT"
+  echo " "
+}
+
+function test_restoredb {
+  testname=$1
+  restorecmd="cat "
+  for i in $(seq 0 $2); do
+    restorecmd="$restorecmd ${TMPDIR}/backups/${backuplist[i]} "
+  done
+
+  echo $restorecmd
+  $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
+
+  echo "~~~~~~~~~~"
+  $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.lrl -pidfile ${TMPDIR}/${db}.pid &
+  echo $dbpid
+  # wait for db to launch
+  count=0
+  cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > sqloutput 2>&1
+  sqloutput=$(echo sqloutput)
+  while [ $sqloutput != "\(1=1\)" -a $count -le 5 ]; do
+      sleep 1
+      let count=count+1
+      cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > sqloutput 2>&1
+      sqloutput=$(echo sqloutput)
+  done
+
+  if [ $count -ge 30 ] ; then
+    failwith "DB Startup exceeded"
+  fi
+  echo " "
+
+  cdb2sql ${CDB2_OPTIONS} -f $1 ${dbname}_restore default > ${testname}.output 2>&1
+  cat ${testname}.output
+  diff ${testname}.expected ${testname}.output
+  if [[ $? -ne 0 ]] ; then
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testname}) has failed!!!"
+    echo " "
+    echo " "
+    kill -9 $(cat ${TMPDIR}/${db}.pid)
+    exit 1
+  fi
+
+  echo "${testname} passed"
+  echo " "
+
+  kill -9 $(cat ${TMPDIR}/${db}.pid)
+  rm -rf ${TMPDIR}/restore/*
+}
+
+function resetdb {
+  backuplist=()
+  rm -rf ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+  mkdir -p ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+
+  cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
+  sleep 1
+  make_base
+  cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
+  sleep 1
+  make_backup t1-2_create_table
+}
+
+# Keep track of which test we're on to do special stuff for DROP TABLE test
+counter=3
+
+# BASIC FUNCTIONALITY TEST
+resetdb
+for statement in `ls t1-*.stmt`; do
+  cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+
+  # Need to force checkpoint for DROP TABLE test
+  if [[ $counter -eq 7 ]] ; then
+      cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  fi
+  let counter=counter+1
+  sleep 1
+  make_backup $statement
+done
+
+echo "~~~~~~~~~~"
+echo "  Moving on to restoration"
+echo " "
+
+counter=0
+
+for testreq in `ls t1-*.req`; do
+  test_restoredb $testreq $counter
+  let counter=counter+1
+done
+
+# PUSH NEXT TEST FOR RECOVERY WITH LOG HOLES
+resetdb
+for i in $(seq 1 10); do
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+  sleep 2
+done
+cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
+make_backup push_next_inserts
+test_restoredb t2.req 2
+
+echo "Test Successful"
+exit 0

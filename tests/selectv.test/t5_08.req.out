@@ -9,7 +9,7 @@ done
 done
 (rows updated=1)
 done
-[commit] failed with rc -103 OP #3 BLOCK2_SEQV2(824): constraints error, no genid
+[commit] failed with rc -103 constraints error, no genid
 done
 (rows updated=1)
 done

@@ -173,7 +173,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     if (!(sc_live && usedb->sc_from == iq->usedb)) {
         return 0;
     }
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
            newgenid);
 #endif
@@ -269,7 +269,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
                          int *rrn)
 
 {
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("live_sc_post_add_int: looking at genid %llx\n", genid);
 #endif
     // this is an INSERT of new row so add_record to sc_to
@@ -304,7 +304,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
 
     if ((origflags & RECFLAGS_NO_CONSTRAINTS) && usedb->sc_to->n_constraints) {
         int rebuild = usedb->sc_to->plan && usedb->sc_to->plan->dta_plan;
-#ifdef DEBUG
+#ifdef DEBUG_SC
         fprintf(stderr, "live_sc_post_add_int: need to "
                         "verify_record_constraint genid 0x%llx\n",
                 genid);
@@ -380,7 +380,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
 {
     struct dbtable *usedb = iq->usedb;
 
-#ifdef DEBUG
+#ifdef DEBUG_SC
     fprintf(stderr, "live_sc_post_update_int: oldgenid 0x%llx, newgenid "
                     "0x%llx, deferredAdd %d\n",
             oldgenid, newgenid, deferredAdd);
@@ -781,7 +781,7 @@ void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet)
      * it was done. */
     unsigned int *iptr = (unsigned int *)&sc_seed;
 
-    *mach = get_hostname_with_crc32(thedb->bdb_env, ntohl(iptr[1]));
+    *mach = get_hostname_with_crc32(thedb->bdb_env, sc_host);
     *timet = ntohl(iptr[0]);
     return;
 }

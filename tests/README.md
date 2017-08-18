@@ -62,22 +62,26 @@ are torn down after the test is over.
 4. To help you write the test, you can start the db in iterative mode by doing
    ```sh
       cd testname.test
-      echo "export TESTSROOTDIR?=$(shell readlink -f $(PWD)/..)" > Makefile
-      echo "include ../testcase.mk" >> Makefile
-      make setup TESTID=1234 TESTSROOTDIR=\`readlink -f ${PWD}/..\`
+      echo ' 
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
+' > Makefile
+
+      make setup
    ```
    
    if you want to have test directories in a particular location, set TESTDIR:
    ```sh
-      make setup TESTID=1234 TESTSROOTDIR=\`readlink -f ${PWD}/..\=\` TESTDIR=/tmp/somedirfortest
+      make setup TESTDIR=/tmp/somedirfortest
    ```
 
 
-For reference, if you already have the test directory properly populated, and
-you can run make setup as follows:
-```sh
-    make setup TESTID=1234 TESTSROOTDIR=$(readlink -f $PWD/..)
-```
+If you already have the test directory properly populated, and
+you can run `make` to run the test case. 
+If you want to run the commands manually, you can type `make setup`,
 then follow the instructions printed by the above command.
 
 

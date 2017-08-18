@@ -92,7 +92,6 @@ extern int gbl_rowlocks_bench_logical_rectype;
 extern int n_fstrap;
 extern unsigned long long gbl_sql_deadlock_reconstructions;
 extern unsigned long long gbl_sql_deadlock_failures;
-extern int gbl_net_lmt_upd_incoherent_nodes;
 extern int gbl_dump_sql_dispatched;
 extern int gbl_dump_fsql_response;
 extern int gbl_time_osql;
@@ -103,15 +102,12 @@ extern int gbl_test_badwrite_intvl;
 extern int gbl_skip_ratio_trace;
 extern int gbl_test_blob_race;
 extern int gbl_test_badwrite_zerop_intvl;
-extern int gbl_move_deadlk_max_attempt;
-extern int gbl_lock_conflict_trace;
 extern unsigned long long gbl_verify_retry;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_update_shadows_interval;
 extern int gbl_notimeouts;
 
 void debug_bulktraverse_data(char *tbl);
@@ -129,11 +125,8 @@ int berkdb_get_max_rep_retries();
 
 void walkback_set_warnthresh(int thresh);
 int walkback_get_warnthresh(void);
-void walkback_disable(void);
-void walkback_enable(void);
 
 extern int gbl_osql_verify_retries_max;
-extern int gbl_blocksql_grace;
 extern bool gbl_rcache;
 
 static pthread_mutex_t testguard = PTHREAD_MUTEX_INITIALIZER;
@@ -674,6 +667,7 @@ void *handle_exit_thd(void *arg)
 
     /* XXX this should probably have a timeout */
     stop_threads(thedb);
+    allow_sc_to_run();
 
     /* now that we are taking no more requests and have halted all request
      * threads, take a final snapshot of our queues (this helps things
@@ -694,7 +688,6 @@ void *handle_exit_thd(void *arg)
 
     return NULL;
 }
-
 
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
@@ -877,21 +870,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
            logmsg(LOGMSG_USER, "sync cluster done. \n");
         }
-    } else if (tokcmp(tok, ltok, "net_lmt_upd_incoherent_nodes") == 0) {
-        int num = -1;
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (tok && ltok > 0)
-            num = toknum(tok, ltok);
-        if (num >= 0) {
-
-           logmsg(LOGMSG_USER, "Setting replication update threshold to %d%%\n", num);
-
-            gbl_net_lmt_upd_incoherent_nodes = num;
-        } else {
-            logmsg(LOGMSG_ERROR, "Incorrect argument; specify the percent of queue "
-                            "to be used by replication update!\n");
-        }
     } else if (tokcmp(tok, ltok, "enableprefersosql") == 0) {
         if (!gbl_sql_tranlevel_sosql_pref) {
             gbl_sql_tranlevel_sosql_pref = 1;
@@ -927,22 +905,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "pushnext") == 0) {
         push_next_log();
     }
-
-#if 0
-   else if (tokcmp(tok,ltok,"netdon")==0)
-   {
-      net_direct_write_on(dbenv->handle_sibling);
-   }
-   else if (tokcmp(tok,ltok,"netdof")==0)
-   {
-      net_direct_write_off(dbenv->handle_sibling);
-   }
-   else if (tokcmp(tok,ltok,"netdbg")==0)
-   {
-      tok=segtok(line,lline,&st,&ltok);
-      net_direct_write_trace_lvl(dbenv->handle_sibling, toknum(tok,ltok));
-   }
-#endif
     else if (tokcmp(tok, ltok, "netpoll") == 0) {
         int pval;
         tok = segtok(line, lline, &st, &ltok);
@@ -1024,52 +986,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "enable_pageorder_recsz_check") == 0) {
         logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
-    }
-
-    else if (tokcmp(tok, ltok, "simulate_rowlock_deadlock") == 0) {
-        int num;
-        tok = segtok(line, sizeof(line), &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Need to specify rowlock deadlock interval.\n");
-            return -1;
-        }
-        num = toknum(tok, ltok);
-        if (num == 0) {
-            logmsg(LOGMSG_USER, "Disabling rowlock_deadlock simulator.\n");
-            gbl_simulate_rowlock_deadlock_interval = 0;
-        } else if (num < 2) {
-            logmsg(LOGMSG_ERROR, "Invalid rowlock_deadlock interval.\n");
-        } else {
-            logmsg(LOGMSG_USER, "Will throw a rowlock deadlock every %d tries.\n",
-                    num);
-            gbl_simulate_rowlock_deadlock_interval = num;
-        }
-    } else if (tokcmp(tok, ltok, "debug_rowlocks") == 0) {
-        if (gbl_debug_rowlocks) {
-           logmsg(LOGMSG_USER, "Debug-rowlocks flag is already enabled.\n");
-        } else {
-            gbl_debug_rowlocks = 1;
-           logmsg(LOGMSG_USER, "Enabled debug rowlocks flag.\n");
-        }
-    } else if (tokcmp(tok, ltok, "nodebug_rowlocks") == 0) {
-        if (!gbl_debug_rowlocks) {
-            logmsg(LOGMSG_USER, "Debug-rowlocks flag is already disabled.\n");
-        } else {
-            gbl_debug_rowlocks = 0;
-            logmsg(LOGMSG_USER, "Disabled debug rowlocks flag.\n");
-        }
-    } else if (tokcmp(tok, ltok, "disable_tagged_api") == 0) {
-        logmsg(LOGMSG_USER, "Disabled tagged api requests.\n");
-        gbl_disable_tagged_api = 1;
-    } else if (tokcmp(tok, ltok, "enable_tagged_api") == 0) {
-        logmsg(LOGMSG_USER, "Enabled tagged api requests.\n");
-        gbl_disable_tagged_api = 0;
-    } else if (tokcmp(tok, ltok, "disable_selectv_range_check") == 0) {
-        logmsg(LOGMSG_USER, "Disabled selectv range check.\n");
-        gbl_selectv_rangechk = 0;
-    } else if (tokcmp(tok, ltok, "enable_selectv_range_check") == 0) {
-        logmsg(LOGMSG_USER, "Enabled selectv range check.\n");
-        gbl_selectv_rangechk = 1;
     } else if (tokcmp(tok, ltok, "get_newsi_status") == 0) {
        logmsg(LOGMSG_USER, "new snapshot is %s; new snapshot logging is %s; new snapshot "
                "as-of is %s\n",
@@ -1082,38 +998,18 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0 && (thresh = toknum(tok, ltok)) >= 0) {
             walkback_set_warnthresh(thresh);
-            logmsg(LOGMSG_USER, 
-                    "Set walkback warn-threshold to %d walkbacks per second\n",
-                    thresh);
+            logmsg(LOGMSG_USER,
+                   "Set walkback warn-threshold to %d walkbacks per second\n",
+                   thresh);
         } else {
             thresh = walkback_get_warnthresh();
             if (thresh > 0) {
-                logmsg(LOGMSG_USER, 
-                        "Warn for %d or more walkbacks in the past second\n",
-                        thresh);
+                logmsg(LOGMSG_USER,
+                       "Warn for %d or more walkbacks in the past second\n",
+                       thresh);
             } else {
                 logmsg(LOGMSG_USER, "Walkback warning is disabled\n");
             }
-        }
-    } else if (tokcmp(tok, ltok, "stack_disable") == 0) {
-        walkback_disable();
-        logmsg(LOGMSG_USER, "Disabled walkbacks\n");
-    } else if (tokcmp(tok, ltok, "stack_enable") == 0) {
-        walkback_enable();
-        logmsg(LOGMSG_USER, "Enabled walkbacks\n");
-    } else if (tokcmp(tok, ltok, "disable_overflow_page_trace") == 0) {
-        if (gbl_disable_overflow_page_trace) {
-           logmsg(LOGMSG_USER, "Overflow page trace is not enabled\n");
-        } else {
-            gbl_disable_overflow_page_trace = 1;
-           logmsg(LOGMSG_USER, "Disabled berkdb overflow page trace.\n");
-        }
-    } else if (tokcmp(tok, ltok, "enable_overflow_page_trace") == 0) {
-        if (!gbl_disable_overflow_page_trace) {
-            logmsg(LOGMSG_USER, "Overflow page trace is already enabled\n");
-        } else {
-            gbl_disable_overflow_page_trace = 0;
-           logmsg(LOGMSG_USER, "Enabled berkdb overflow page trace.\n");
         }
     } else if (tokcmp(tok, ltok, "pageordertrace") == 0) {
         if (gbl_enable_pageorder_trace) {
@@ -1194,20 +1090,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "enable_pageorder_recsz_check") == 0) {
        logmsg(LOGMSG_USER, "Enabled pageorder records per page check\n");
         bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_DISABLE_PAGEORDER_RECSZ_CHK, 0);
-    } else if (tokcmp(tok, ltok, "disable_overflow_page_trace") == 0) {
-        if (gbl_disable_overflow_page_trace) {
-           logmsg(LOGMSG_USER, "Overflow page trace is not enabled\n");
-        } else {
-            gbl_disable_overflow_page_trace = 1;
-           logmsg(LOGMSG_USER, "Disabled berkdb overflow page trace.\n");
-        }
-    } else if (tokcmp(tok, ltok, "enable_overflow_page_trace") == 0) {
-        if (!gbl_disable_overflow_page_trace) {
-           logmsg(LOGMSG_USER, "Overflow page trace is already enabled\n");
-        } else {
-            gbl_disable_overflow_page_trace = 0;
-           logmsg(LOGMSG_USER, "Enabled berkdb overflow page trace.\n");
-        }
     } else if (tokcmp(tok, ltok, "disable_osql_prefault") == 0) {
         if (!gbl_osqlpfault_threads) {
            logmsg(LOGMSG_USER, "Osql io prefault is already disabled\n");
@@ -1234,20 +1116,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
            logmsg(LOGMSG_USER, "Osql io prefault is DISABLED\n");
         }
         thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
-    } else if (tokcmp(tok, ltok, "enable_prefault_udp") == 0) {
-        if (gbl_prefault_udp) {
-           logmsg(LOGMSG_USER, "prefault upd was already enabled on this node\n");
-        } else {
-            gbl_prefault_udp = 1;
-           logmsg(LOGMSG_USER, "Enabled prefault upd on this node\n");
-        }
-    } else if (tokcmp(tok, ltok, "disable_prefault_udp") == 0) {
-        if (!gbl_prefault_udp) {
-           logmsg(LOGMSG_USER, "prefault upd was disabled on this node\n");
-        } else {
-            gbl_prefault_udp = 0;
-           logmsg(LOGMSG_USER, "Disabled prefault upd on this node\n");
-        }
     } else if (tokcmp(tok, ltok, "set_udp_prefault_latency") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok) {
@@ -1264,12 +1132,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
            logmsg(LOGMSG_USER, "prefault upd was disabled on this node\n");
         }
         thdpool_print_stats(stdout, gbl_udppfault_thdpool);
-    } else if (tokcmp(tok, ltok, "page_compact_target_ff") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        gbl_pg_compact_target_ff =
-            (ltok <= 0) ? 0.693 : (toknumd(tok, ltok) / 100.0F);
-        logmsg(LOGMSG_USER, "set page compact target fill ratio to %.2f%%\n",
-               gbl_pg_compact_target_ff * 100);
     } else if (tokcmp(tok, ltok, "page_compact_thresh_ff") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         double tmpthresh =
@@ -1281,12 +1143,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_USER, "set page compact fill ratio threshold to %.2f%%\n",
                     gbl_pg_compact_thresh * 100);
         }
-    } else if (tokcmp(line, ltok, "max_num_compact_pages_per_txn") == 0) {
-        tok = segtok(line, sizeof(line), &st, &ltok);
-        if (ltok <= 0)
-            logmsg(LOGMSG_ERROR, "Expected # for max_num_compact_pages_per_txn.\n");
-        else
-            gbl_max_num_compact_pages_per_txn = (unsigned int)toknum(tok, ltok);
     } else if (tokcmp(tok, ltok, "get_page_compact_status") == 0) {
         if (gbl_pg_compact_thresh > 0) {
            logmsg(LOGMSG_USER, "Page compact enabled. Thresh %.2f%%. Target %.2f%%.\n",
@@ -1295,15 +1151,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
            logmsg(LOGMSG_USER, "Page compact is disabled.\n");
         }
         thdpool_print_stats(stdout, gbl_pgcompact_thdpool);
-    } else if (tokcmp(tok, ltok, "update_shadows_interval") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok) {
-            gbl_update_shadows_interval = toknum(tok, ltok);
-           logmsg(LOGMSG_USER, "setting update_shadows_interval to %d\n",
-                   gbl_update_shadows_interval);
-        } else {
-           logmsg(LOGMSG_USER, "update_shadows_interval requires an argument\n");
-        }
     } else if (tokcmp(tok, ltok, "pageordertrace") == 0) {
         if (gbl_enable_pageorder_trace) {
            logmsg(LOGMSG_USER, "pageorder trace already on\n");
@@ -1317,20 +1164,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             gbl_enable_pageorder_trace = 0;
            logmsg(LOGMSG_USER, "pageorder trace disabled\n");
-        }
-    } else if (tokcmp(tok, ltok, "deadlkon") == 0) {
-        if (gbl_disable_deadlock_trace) {
-            logmsg(LOGMSG_USER, "deadlock report already on\n");
-        } else {
-            gbl_disable_deadlock_trace = 1;
-           logmsg(LOGMSG_USER, "deadlock report turned on\n");
-        }
-    } else if (tokcmp(tok, ltok, "deadlkoff") == 0) {
-        if (!gbl_disable_deadlock_trace) {
-           logmsg(LOGMSG_USER, "deadlock report already off\n");
-        } else {
-            gbl_disable_deadlock_trace = 0;
-           logmsg(LOGMSG_USER, "deadlock report turned off\n");
         }
     } else if (tokcmp(tok, ltok, "delfiles") == 0) {
         char table[MAXTABLELEN];
@@ -1990,11 +1823,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         watchdog_disable();
     }
 
-    else if (tokcmp(tok, ltok, "notimeout") == 0) {
-        logmsg(LOGMSG_USER, "disabling timeouts\n");
-        gbl_notimeouts = 1;
-    }
-
     else if (tokcmp(tok, ltok, "watch") == 0) {
         logmsg(LOGMSG_USER, "enabling watcher thread\n");
         watchdog_enable();
@@ -2298,31 +2126,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_USER, "set commit delay max to %d ms\n", z);
     }
 
-    else if (tokcmp(tok, ltok, "lock_conflict_trace") == 0) {
-        logmsg(LOGMSG_USER, "Enabling lock-conflict trace.\n");
-        gbl_lock_conflict_trace = 1;
-    }
-
-    else if (tokcmp(tok, ltok, "no_lock_conflict_trace") == 0) {
-        logmsg(LOGMSG_USER, "Disabling lock-conflict trace.\n");
-        gbl_lock_conflict_trace = 0;
-    }
-
-    else if (tokcmp(tok, ltok, "move_deadlock_max_attempt") == 0) {
-        int z;
-        tok = segtok(line, lline, &st, &ltok);
-        z = toknum(tok, ltok);
-        gbl_move_deadlk_max_attempt = z;
-        logmsg(LOGMSG_USER, "setting deadlock-on-move max-attempts to %d\n", z);
-    }
-
-    else if (tokcmp(tok, ltok, "blocksql_grace") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        gbl_blocksql_grace = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "setting blocksql grace timeout to %d seconds\n",
-                gbl_blocksql_grace);
-    }
-
     else if (tokcmp(tok, ltok, "maxt") == 0) {
         int z;
         tok = segtok(line, lline, &st, &ltok);
@@ -2491,6 +2294,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     } else if (tokcmp(tok, ltok, "ckp_sleep_before_sync") == 0) {
         /* Don't document the msgtrap -
            it is for debugging/testing only. */
+        extern int gbl_ckp_sleep_before_sync;
         tok = segtok(line, lline, &st, &ltok);
         gbl_ckp_sleep_before_sync = (ltok != 0) ? toknum(tok, ltok) : 5;
         logmsg(LOGMSG_USER, "gbl_ckp_sleep_before_sync is now %d milliseconds\n",
@@ -3008,209 +2812,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         int bdberr;
 
         tok = segtok(line, lline, &st, &ltok);
-        /*
-      if (tokcmp(tok,ltok,"set")==0)
-      {
-         tok=segtok(line,lline,&st,&ltok);
-
-         if (tokcmp(tok,ltok,"password")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, password);
-
-            rc = bdb_user_password_set(dbenv->bdb_env, NULL, 
-                  user, password, &bdberr);
-            if (!rc)
-            {
-               fprintf( stderr,"set password for %s\n", user);
-            }
-            else
-            {
-               fprintf( stderr,"FAILED set password for %s rc=%d bdberr=%d\n",
-                     user, rc, bdberr);
-            }
-         }
-         else if (tokcmp(tok,ltok,"read")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, table);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            rc = bdb_tbl_access_read_set(dbenv->bdb_env, NULL,
-                  table, user, &bdberr);
-            if (!rc)
-            {
-               fprintf( stderr,"set read for %s and table %s\n", 
-                     user, table);
-            }
-            else
-            {
-               fprintf( stderr,"FAILED set read for %s rc=%d bdberr=%d\n",
-                     user, rc, bdberr);
-            }
-         }
-         else if (tokcmp(tok,ltok,"write")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, table);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            rc = bdb_tbl_access_write_set(dbenv->bdb_env, NULL,
-                  table, user, &bdberr);
-            if (!rc)
-            {
-               fprintf( stderr,"set write for %s and table %s\n", 
-                     user, table);
-            }
-            else
-            {
-               fprintf( stderr,"FAILED set write for %s rc=%d bdberr=%d\n",
-                     user, rc, bdberr);
-            }
-         }
-         else if (tokcmp(tok,ltok,"authentication")==0)
-         {
-            rc = bdb_authentication_set(dbenv->bdb_env, NULL,
-                  &bdberr);
-            if (rc == 0)
-            {
-               fprintf(stderr, "authentication enabled\n");
-            }
-            else
-            {
-               fprintf(stderr,"FAILED enable authentication rc=%d bdberr=%d\n",
-                     rc, bdberr);
-            }
-         }
-         else if (tokcmp(tok,ltok,"tableXnode")==0)
-         {
-            rc = bdb_accesscontrol_tableXnode_set(dbenv->bdb_env, NULL,
-                  &bdberr);
-            if (rc == 0)
-            {
-               fprintf(stderr, "enabled access control tableXnode\n");
-            }
-            else
-            {
-               fprintf(stderr,"FAILED enable tableXnode rc=%d bdberr=%d\n",
-                     rc, bdberr);
-            }
-         }
-         else
-         {
-            fprintf( stderr, "unrecognized \"%.*s\"\n", ltok, tok);
-         }
-      }
-      else if (tokcmp(tok,ltok,"get")==0)
-      {
-         tok=segtok(line,lline,&st,&ltok);
-
-         if (tokcmp(tok,ltok,"read")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, table);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            rc = bdb_tbl_access_read_get(dbenv->bdb_env, NULL,
-                  table, user, &bdberr);
-            fprintf(stderr, "rc = %d (\"%s\")\n", rc, 
-                  (rc==0)?"enabled":"disabled");
-         }
-         else if (tokcmp(tok,ltok,"write")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, table);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            rc = bdb_tbl_access_write_get(dbenv->bdb_env, NULL,
-                  table, user, &bdberr);
-            fprintf(stderr, "rc = %d (\"%s\")\n", rc,
-                  (rc==0)?"enabled":"disabled");
-
-         }
-         else if (tokcmp(tok,ltok,"authentication")==0)
-         {
-            rc = bdb_authentication_get(dbenv->bdb_env, NULL,
-                  &bdberr);
-            fprintf(stderr, "rc = %d (\"%s\")\n", rc,
-                  (rc==0)?"enabled":"disabled");
-         }
-         else if (tokcmp(tok,ltok,"tableXnode")==0)
-         {
-            rc = bdb_accesscontrol_tableXnode_get(dbenv->bdb_env, NULL,
-                  &bdberr);
-            fprintf(stderr, "rc = %d (\"%s\")\n", rc,
-                  (rc==0)?"enabled":"disabled");
-         }
-         else
-         {
-            fprintf( stderr, "unrecognized \"%.*s\"\n", ltok, tok);
-         }
-      }
-      else if( tokcmp(tok, ltok, "del")==0)
-      {
-
-         tok=segtok(line,lline,&st,&ltok);
-
-         if (tokcmp(tok,ltok,"read")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, table);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            rc = bdb_tbl_access_read_delete(dbenv->bdb_env, NULL,
-                  table, user, &bdberr);
-            if (rc == 0)
-            {
-               fprintf(stderr, "deleted read for %s and table %s\n",
-                     user, table);
-            }
-            else
-            {
-               fprintf(stderr,"FAILED delete read for %s rc=%d bdberr=%d\n",
-                     user, rc, bdberr);
-            }
-         }
-         else if (tokcmp(tok,ltok,"write")==0)
-         {
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, table);
-
-            tok=segtok(line,lline,&st,&ltok);
-            tokcpy(tok, ltok, user);
-
-            rc = bdb_tbl_access_write_delete(dbenv->bdb_env, NULL,
-                  table, user, &bdberr);
-            if (rc == 0)
-            {
-               fprintf(stderr, "deleted write for %s and table %s\n",
-                     user, table);
-            }
-            else
-            {
-               fprintf(stderr,"FAILED delete write for %s rc=%d bdberr=%d\n",
-                     user, rc, bdberr);
-            }
-         }
-         else
-         {
-            fprintf( stderr,"unknown option \"%.*s\"\n", ltok, tok);
-         }
-      }
-      else */ if (tokcmp(tok, ltok, "list") == 0) {
+        if (tokcmp(tok, ltok, "list") == 0) {
             rc = bdb_llmeta_list_records(thedb->bdb_env, &bdberr);
             if (rc) {
                 logmsg(LOGMSG_ERROR, 
@@ -5387,10 +4989,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "logdel") == 0) {
             bdb_blkseq_dumplogs(thedb->bdb_env);
         }
-    } else if (tokcmp(tok, ltok, "master_swing_osql_verbose") == 0) {
-        gbl_master_swing_osql_verbose = 1;
-    } else if (tokcmp(tok, ltok, "master_swing_osql_verbose_off") == 0) {
-        gbl_master_swing_osql_verbose = 0;
     } else if (tokcmp(tok, ltok, "panic") == 0) {
         bdb_panic(thedb->bdb_env);
     } else if (tokcmp(tok, ltok, "debug_logreq") == 0) {
@@ -5492,6 +5090,21 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             // mtrap memstat always go to printf()
             comdb2ma_stats(prefix, verbose, hr, ord, grp, 0);
         }
+    } else if (tokcmp(tok, ltok, "get_genid") == 0) {
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "get_genid requires a stripe\n");
+            return -1;
+        }
+        int dtafile = toknum(tok, ltok);
+        unsigned long long flipgenid = 0;
+        unsigned long long genid = get_genid(thedb->bdb_env, dtafile);
+        int *flipptr = (int *)&flipgenid;
+        int *genptr = (int *)&genid;
+        flipptr[0] = htonl(genptr[1]);
+        flipptr[1] = htonl(genptr[0]);
+        logmsg(LOGMSG_USER, "0x%016llx 0x%016llx %llu\n", genid, flipgenid,
+               genid);
     } else if (tokcmp(tok, ltok, "partitions") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "roll") == 0) {
@@ -5554,16 +5167,24 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 free(table);
             }
         }
-    } else if (tokcmp(tok, ltok, "goslow") == 0) {
-        extern int gbl_goslow;
-        gbl_goslow = 1;
-    } else if (tokcmp(tok, ltok, "gofast") == 0) {
-        extern int gbl_goslow;
-        gbl_goslow = 0;
     } else if (tokcmp(tok, ltok, "logmsg") == 0) {
         logmsg_process_message(line, lline);
     } else {
-        logmsg(LOGMSG_ERROR, "unknown command <%.*s>\n", ltok, tok);
+        comdb2_tunable_err rc;
+
+        /*
+          As we are here, it could be a dynamic tunable. Let's try looking
+          it up in the global tunables' list and updating it, if found.
+        */
+        rc = handle_lrl_tunable(tok, ltok, line + st, lline - st, DYNAMIC);
+        switch (rc) {
+        case TUNABLE_ERR_OK: break;
+        case TUNABLE_ERR_INVALID_TUNABLE:
+            logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
+            break;
+        default: logmsg(LOGMSG_ERROR, tunable_error(rc));
+        }
+        return rc;
     }
     return 0;
 }

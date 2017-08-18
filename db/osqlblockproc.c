@@ -1281,14 +1281,11 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* go through the complete list and apply all the changes */
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
-
-        /* TODO: add an extended error structure to be passed back to the client
-         */
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
                                       err, logsb, dbc, osql_process_packet);
-
-        if (out_rc)
+        if (out_rc) {
             break;
+        }
     }
 #if 0
     /* we will apply these outside a transaction */
