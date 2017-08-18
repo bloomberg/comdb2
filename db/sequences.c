@@ -19,6 +19,8 @@
 
 extern struct dbenv *thedb;
 
+int gbl_sequence_replicant_distribution = 0;
+
 /**
  *  Returns the next value for a specified sequence object. If the sequence name
  *  cannot be found, -1 is returned. If the next value is greater than the max

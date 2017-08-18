@@ -4225,6 +4225,8 @@ void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
     }
 }
 
+extern int gbl_sequence_replicant_distribution;
+
 /**
  * Requests a sequence number from master
  *
@@ -4233,7 +4235,7 @@ void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
  * name and wait for an ack with the sequence number
  *
  */
-int request_sequence_num_from_master(bdb_state_type *bdb_state,
+int request_sequence_num_int(bdb_state_type *bdb_state,
                                      const char *name_in, long long *val)
 {
     const uint8_t *p_buf, *p_buf_end;
@@ -4260,10 +4262,22 @@ int request_sequence_num_from_master(bdb_state_type *bdb_state,
             logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not "
                                  "generate sequence value\n",
                    __func__);
-            return -1;
+            return rc;
         }
 
         return 0;
+    }
+
+    // TODO: Call seq_next_val() if rep distribution
+    if (gbl_sequence_replicant_distribution) {
+        rc = seq_next_val(NULL, name, val);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not "
+                                 "generate sequence value\n",
+                   __func__);
+            return rc;
+        }
     }
 
     // I am not master, contact master for value
