@@ -1,24 +1,76 @@
 #!/bin/bash
-# Test basic functionality for incremental backups
+# Test functionality for incremental backups with concurrent writeload
 #export debug=1
 [[ $debug == 1 ]] && set -x
 
 dbname=$1
+insertpid=-1
+updatepid=-1
+deletepid=-1
 
 if [[ -z "$dbname" ]] ; then
   echo dbname missing
   exit 1
 fi
 
+function killwriters
+{
+    if [[ "$insertpid" != "-1" ]]; then
+        kill -9 $insertpid
+    fi
+    if [[ "$updatepid" != "-1" ]]; then
+        kill -9 $updatepid
+    fi
+    if [[ "$deletepid" != "-1" ]]; then
+        kill -9 $deletepid
+    fi
+}
+
 function failexit
 {
     [[ $debug == 1 ]] && set -x
     echo "Failed $1"
+    killwriters
     exit -1
+}
+
+function deleter
+{
+    while :; do 
+        cdb2sql ${CDB2_OPTIONS} $dbname default "delete from load where 1 limit 10"
+    done
+}
+
+function updater
+{
+    while :; do 
+        cdb2sql ${CDB2_OPTIONS} $dbname default "update load set data=x'2222' where 1 limit 100"
+        cdb2sql ${CDB2_OPTIONS} $dbname default "update load set name='yyy' where 1 limit 100"
+    done
+}
+
+function inserter
+{
+    insertsql=${TMPDIR}/insert.sql
+    echo "BEGIN" > $insertsql
+    c=0
+    # If these are too big we run the risk of having an open transaction
+    # while we are trying to do a checkpoint, which could set the recovertolsn
+    # value prior to the output that we're trying to verify
+    while [[ $c -lt 100 ]]; do
+        echo "INSERT INTO load VALUES ($c, 'xxx', x'1234')" >> $insertsql
+        let c=c+1
+    done
+    echo "COMMIT" >> $insertsql
+
+    while :; do 
+        cdb2sql ${CDB2_OPTIONS} -f $insertsql $dbname default
+    done
 }
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
+  sleep 1
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
 }
 
@@ -112,6 +164,17 @@ function resetdb {
   make_backup t1-2_create_table
 }
 
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
+
+inserter &
+insertpid=$!
+sleep 1
+updater &
+updatepid=$!
+sleep 1
+deleter &
+deletepid=$!
+
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1-*.stmt`; do
@@ -141,6 +204,7 @@ done
 cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
 test_restoredb t2.req 2
+killwriters
 
 echo "Test Successful"
 exit 0

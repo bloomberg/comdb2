@@ -1,0 +1,11 @@
+schema
+{
+    int  id
+    cstring name[5]
+    blob data
+}
+
+keys
+{
+    "key" = id
+}
