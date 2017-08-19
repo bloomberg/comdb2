@@ -17,6 +17,7 @@ static char elsieid[] = "@(#)localtime.c	8.5";
 /*LINTLIBRARY*/
 
 #include <strings.h>
+#include <assert.h>
 
 #include "private.h"
 #include "tzfile.h"
@@ -198,6 +199,9 @@ static char lcl_TZname[TZ_STRLEN_MAX + 1];
 static int lcl_is_set;
 static int gmt_is_set;
 
+/* Information about time zone files. */
+static char *tzdir;
+
 char *tzname[2] = {wildabbr, wildabbr};
 
 /*
@@ -348,7 +352,7 @@ register const int doextend;
         if (name[0] == ':') ++name;
         doaccess = name[0] == '/';
         if (!doaccess) {
-            if ((p = TZDIR) == NULL) return -1;
+            if ((p = tzdir) == NULL) return -1;
             if ((strlen(p) + strlen(name) + 1) >= sizeof fullname) return -1;
             (void)strcpy(fullname, p);
             (void)strcat(fullname, "/");
@@ -1920,7 +1924,7 @@ register const int doextend;
         if (name[0] == ':') ++name;
         doaccess = name[0] == '/';
         if (!doaccess) {
-            if ((p = TZDIR) == NULL) return -1;
+            if ((p = tzdir) == NULL) return -1;
 
             if ((strlen(p) + strlen(name) + 1) >= sizeof fullname) return -1;
 
@@ -2174,6 +2178,11 @@ void tz_hash_init(void)
     logmsg(LOGMSG_INFO, "initialized tz hash table\n");
 }
 
+void tz_hash_free(void)
+{
+    hash_free(tz_hash_tbl);
+}
+
 static struct db_state *find_tz(const char *name)
 {
     char key[NAME_KEY_MAX];
@@ -2210,8 +2219,6 @@ static int db_tzset(name) register const char *name;
 {
     int rc;
     if (lcl_is_set > 0 && strcmp(lcl_TZname, name) == 0) return 0;
-    lcl_is_set = strlen(name) < sizeof lcl_TZname;
-    if (lcl_is_set) (void)strcpy(lcl_TZname, name);
 
     if (*name == '\0') {
         /*
@@ -2244,6 +2251,9 @@ static int db_tzset(name) register const char *name;
     }
 
     db_settzname();
+
+    lcl_is_set = strlen(name) < sizeof lcl_TZname;
+    if (lcl_is_set) (void)strcpy(lcl_TZname, name);
 
     return 0;
 }
@@ -2758,8 +2768,13 @@ struct tm *const tmp;
     return ret;
 }
 
-char *gbl_tzdir;
-void tz_set_dir(char *dir)
+void set_tzdir(char *dir)
 {
-    gbl_tzdir = dir;
+    assert(tzdir == 0);
+    tzdir = dir;
+}
+
+void free_tzdir()
+{
+    free(tzdir);
 }
