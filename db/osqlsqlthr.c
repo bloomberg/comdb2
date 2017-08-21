@@ -1295,7 +1295,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
 
-    if (clnt->sql_query && clnt->high_availability)
+    if (clnt->sql_query && get_high_availability(clnt))
     {
         assert (clnt->sql_query->has_cnonce);
         assert (clnt->sql_query->cnonce.len > 0 &&
@@ -1303,7 +1303,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
 
     if (clnt->sql_query && clnt->sql_query->has_cnonce &&
-        clnt->high_availability &&
+        get_high_availability(clnt) &&
         (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN)) {
 
         if (osql->rqid == OSQL_RQID_USE_UUID) {

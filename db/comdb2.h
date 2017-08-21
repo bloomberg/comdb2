@@ -3634,6 +3634,10 @@ int set_rowlocks(void *trans, int enable);
    1: Return conversion error instead */
 extern int gbl_upd_null_cstr_return_conv_err;
 
+/* High availability getter & setter */
+int get_high_availability(struct sqlclntstate *clnt);
+void set_high_availability(struct sqlclntstate *clnt, int val);
+
 /* Update the tunable at runtime. */
 comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value);
 /* Update the tunable read from lrl file. */

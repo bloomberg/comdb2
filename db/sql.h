@@ -495,7 +495,7 @@ struct sqlclntstate {
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
     int8_t skip_feature;
-    int8_t high_availability;
+    int8_t high_availability_flag;
     int8_t hasql_on;
 
     int8_t has_recording;

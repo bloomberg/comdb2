@@ -926,6 +926,28 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
     return 0;
 }
 
+int gbl_debug_high_availability_flag = 0;
+
+void set_high_availability(struct sqlclntstate *clnt, int val)
+{
+    clnt->high_availability_flag = val;
+    if (gbl_debug_high_availability_flag) {
+        logmsg(LOGMSG_ERROR, "td %u setting clnt->high_availability to %d\n",
+               (uint32_t)pthread_self(), val);
+        cheap_stack_trace();
+    }
+}
+
+int get_high_availability(struct sqlclntstate *clnt)
+{
+    if (gbl_debug_high_availability_flag) {
+        logmsg(LOGMSG_ERROR, "td %u get_high_availability returns %d\n",
+               (uint32_t)pthread_self(), clnt->high_availability_flag);
+        cheap_stack_trace();
+    }
+    return clnt->high_availability_flag;
+}
+
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
@@ -1058,7 +1080,7 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2SQLRESPONSE__Snapshotinfo snapshotinfo =                               \
         CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                 \
                                                                                \
-    if (clnt->high_availability) {                                             \
+    if (get_high_availability(clnt)) {                                             \
         int file = 0, offset = 0, rc;                                          \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
             sql_response.error_code = CDB2ERR_CHANGENODE;                      \
@@ -1731,7 +1753,7 @@ static void update_snapshot_info(struct sqlclntstate *clnt)
                 clnt->want_query_effects = 1;
                 if ((clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
                      clnt->dbtran.mode == TRANLEVEL_SERIAL) &&
-                    clnt->high_availability) {
+                    get_high_availability(clnt)) {
                     clnt->send_one_row = 1;
                     clnt->skip_feature = 0;
                 }
@@ -2212,7 +2234,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                         pthread_self(), __func__, __LINE__, rc);
                             }
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                            rc = clnt->high_availability
+                            rc = get_high_availability(clnt)
                                      ? CDB2ERR_CHANGENODE
                                      : SQLHERR_MASTER_TIMEOUT;
                         }
@@ -2245,7 +2267,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                         logmsg(LOGMSG_ERROR, "td=%u no-shadow-tran %s line %d, returning %d\n",
                             pthread_self(), __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
-                        rc = clnt->high_availability ? CDB2ERR_CHANGENODE
+                        rc = get_high_availability(clnt) ? CDB2ERR_CHANGENODE
                                                      : SQLHERR_MASTER_TIMEOUT;
                         logmsg(LOGMSG_ERROR, 
                                 "td=%u no-shadow-tran %s line %d, returning %d\n",
@@ -3211,7 +3233,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
                    clnt->sql_query ? clnt->sql_query->retry : -1);
         }
         return 0;
-    } else if (clnt->high_availability == 0) {
+    } else if (get_high_availability(clnt) == 0) {
         if (gbl_extended_sql_debug_trace) {
             logmsg(LOGMSG_USER,
                    "td=%u %s line %d returning -1, high_availability=0\n",
@@ -3240,7 +3262,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
      **/
 
     /* Retry case has flag lit on "begin" */
-    if (clnt->high_availability && clnt->is_newsql && clnt->sql_query &&
+    if (get_high_availability(clnt) && clnt->is_newsql && clnt->sql_query &&
         clnt->sql_query->retry && clnt->sql_query->snapshot_info &&
         (strncasecmp(clnt->sql, "begin", 5) == 0) &&
         clnt->sql_query->snapshot_info->file) {
@@ -3264,7 +3286,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
                     "%s line %d cnonce '%s' not setting snapshot info: ha=%d, "
                     "is_newsql=%d sql_query=%p retry=%d snapshot_info=[%d][%d] "
                     "sql='%s'\n",
-                    __func__, __LINE__, cnonce, clnt->high_availability,
+                    __func__, __LINE__, cnonce, get_high_availability(clnt),
                     clnt->is_newsql, clnt->sql_query,
                     (clnt->sql_query) ? clnt->sql_query->retry : -1,
                     (clnt->sql_query && clnt->sql_query->snapshot_info)
@@ -7391,17 +7413,6 @@ retry_read:
     }
 
     return query;
-}
-
-int gbl_debug_high_availability_flag = 0;
-static inline void set_high_availability(struct sqlclntstate *clnt, int val)
-{
-    clnt->high_availability = val;
-    if (gbl_debug_high_availability_flag) {
-        logmsg(LOGMSG_ERROR, "td %u setting clnt->high_availability to %d\n",
-               (uint32_t)pthread_self(), val);
-        cheap_stack_trace();
-    }
 }
 
 static int process_set_commands(struct sqlclntstate *clnt)
