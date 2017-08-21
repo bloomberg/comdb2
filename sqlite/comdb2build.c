@@ -2312,11 +2312,12 @@ static char *gen_key_name(struct comdb2_ddl_context *ctx, const char *tabname,
     return keyname;
 }
 
-#define PK "PRIMARY_KEY"
+#define COMDB2_PK "PRIMARY_KEY"
 
 static int is_pk(const char *key)
 {
-    return (((strncasecmp(key, PK, sizeof(PK) - 1)) == 0) ? 1 : 0);
+    return (((strncasecmp(key, COMDB2_PK, sizeof(COMDB2_PK) - 1)) == 0) ? 1
+                                                                        : 0);
 }
 
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
@@ -3199,7 +3200,7 @@ void comdb2AddPrimaryKey(
 
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
-    key->csctag = comdb2_strdup(ctx->mem, PK);
+    key->csctag = comdb2_strdup(ctx->mem, COMDB2_PK);
     if (key->csctag == 0) goto oom;
 
     key->flags = SCHEMA_INDEX;
