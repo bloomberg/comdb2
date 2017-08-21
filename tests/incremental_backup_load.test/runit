@@ -38,7 +38,8 @@ function checkload
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
-  sleep 1
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  sleep 5
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
 }
 
