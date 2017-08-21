@@ -1,7 +1,6 @@
 #!/bin/bash
-# Test functionality for incremental backups with concurrent writeload
-export debug=1
-export sleeptime=30
+# Test basic functionality for incremental backups
+#export debug=1
 [[ $debug == 1 ]] && set -x
 
 dbname=$1
@@ -11,34 +10,15 @@ if [[ -z "$dbname" ]] ; then
   exit 1
 fi
 
-function killwriters
-{
-    touch ./testcase.done
-}
-
 function failexit
 {
     [[ $debug == 1 ]] && set -x
     echo "Failed $1"
-    killwriters
     exit -1
-}
-
-function checkload
-{
-    [[ $debug == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $dbname default "select count(*) from load" >/dev/null 2>&1
-    r=$?
-    if [[ $r != 0 ]]; then
-        echo "Count load returns $r"
-        killwriters
-        exit 1
-    fi
 }
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
-  sleep 1
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
 }
 
@@ -80,6 +60,12 @@ function test_restoredb {
   echo $restorecmd
   $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
   egrep -v "cluster nodes" ${TMPDIR}/restore/${dbname}.lrl > ${TMPDIR}/restore/${dbname}.single.lrl
+
+  # Rename some files
+  mv ${TMPDIR}/restore/${dbname}.txn ${TMPDIR}/restore/${dbname}_restore.txn
+  mv ${TMPDIR}/restore/${dbname}.llmeta.dta ${TMPDIR}/restore/${dbname}_restore.llmeta.dta
+  mv ${TMPDIR}/restore/${dbname}.metadata.dta ${TMPDIR}/restore/${dbname}_restore.metadata.dta
+  mv ${TMPDIR}/restore/${dbname}_file_vers_map ${TMPDIR}/restore/${dbname}_restore_file_vers_map
 
   echo "~~~~~~~~~~"
   $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
@@ -133,19 +119,9 @@ function resetdb {
   make_backup t1-2_create_table
 }
 
-rm ./testcase.done
-cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
-
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-sleep 1
-( timeout ${TEST_TIMEOUT} ./updater.sh ) &
-sleep 1
-( timeout ${TEST_TIMEOUT} ./deleter.sh ) &
-
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1-*.stmt`; do
-  sleep $sleeptime
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
   force_checkpoint
   make_backup $statement
@@ -172,7 +148,6 @@ done
 cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
 test_restoredb t2.req 2
-killwriters
 
 echo "Test Successful"
 exit 0
