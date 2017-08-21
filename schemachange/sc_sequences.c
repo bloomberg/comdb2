@@ -273,8 +273,11 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
     }
 
     // Increment
+    long long restart_val = seq->next_start_val;
     long long increment = seq->increment;
     if (modified & SEQ_INC) {
+        // Relies on the next_start_val being last possible dispensed val + old increment
+        restart_val = seq->next_start_val - increment + increment_in;
         increment = increment_in;
     }
 
@@ -291,7 +294,6 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
     }
 
     // Restart Val
-    long long restart_val = seq->next_start_val;
     if (modified & SEQ_RESTART_TO_START_VAL) {
         restart_val = start_val;
 
