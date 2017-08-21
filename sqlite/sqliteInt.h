@@ -3427,7 +3427,7 @@ struct TreeView {
   int iLevel;             /* Which level of the tree we are on */
   u8  bLine[100];         /* Draw vertical in column i if bLine[i] is true */
 };
-#endif /* SQLITE_DEBUG */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 
 /*
 ** Assuming zIn points to the first byte of a UTF-8 character,
