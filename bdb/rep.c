@@ -4049,7 +4049,8 @@ extern int seq_next_val(tran_type *tran, char *name, long long *val);
 static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf,
                                          const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || MAXTABLELEN > (p_buf_end - p_buf)) return NULL;
+    if (p_buf_end < p_buf || MAXTABLELEN > (p_buf_end - p_buf))
+        return NULL;
 
     p_buf = buf_put(name, MAXTABLELEN, p_buf, p_buf_end);
     return p_buf;
@@ -4058,7 +4059,8 @@ static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf,
 static const uint8_t *sequence_num_request_get(char *name, const uint8_t *p_buf,
                                                const uint8_t *p_buf_end)
 {
-    if (p_buf_end < p_buf || MAXTABLELEN > (p_buf_end - p_buf)) return NULL;
+    if (p_buf_end < p_buf || MAXTABLELEN > (p_buf_end - p_buf))
+        return NULL;
 
     p_buf = buf_get(name, MAXTABLELEN, p_buf, p_buf_end);
     return p_buf;
@@ -4164,7 +4166,8 @@ void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
     bdb_state_type *bdb_state = usr_ptr;
     repinfo_type *repinfo = bdb_state->repinfo;
 
-    if (bdb_state->parent) bdb_state = bdb_state->parent;
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
 
     if (repinfo->master_host != repinfo->myhost) {
         logmsg(LOGMSG_ERROR, "%s returning bad rcode because i am not master\n",
@@ -4235,8 +4238,8 @@ extern int gbl_sequence_replicant_distribution;
  * name and wait for an ack with the sequence number
  *
  */
-int request_sequence_num_int(bdb_state_type *bdb_state,
-                                     const char *name_in, long long *val)
+int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
+                             long long *val)
 {
     const uint8_t *p_buf, *p_buf_end;
     uint8_t *buf = NULL;
@@ -4325,7 +4328,8 @@ int request_sequence_num_int(bdb_state_type *bdb_state,
                "%s line %d: payload size to small: len is %d, i want"
                " at least %d\n",
                __func__, __LINE__, buflen, sizeof(long long));
-        if (buf) free(buf);
+        if (buf)
+            free(buf);
 
         return -1;
     }
@@ -4338,7 +4342,8 @@ int request_sequence_num_int(bdb_state_type *bdb_state,
     if (!(p_buf = sequence_num_response_get(&value, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s line %d error unpacking sequence value\n",
                __func__, __LINE__);
-        if (buf) free(buf);
+        if (buf)
+            free(buf);
 
         return -2;
     }

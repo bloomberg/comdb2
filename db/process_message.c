@@ -1845,18 +1845,16 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             int idx;
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
-                logmsg(LOGMSG_USER,"------ Sequence %d ------\nName: %s\nStart Val: %lld\nMin Val: %lld\nMax Val: %lld\nInc: %lld\nCycle?: %s\nChunk Size: %lld\nNext Start Val: %lld\nSequence Exhausted?: %s\n",
-                    idx+1,
-                    seq->name,
-                    seq->start_val,
-                    seq->min_val,
-                    seq->max_val,
-                    seq->increment,
-                    seq->cycle ? "true": "false",
-                    seq->chunk_size,
-                    seq->next_start_val,
-                    seq->flags & SEQUENCE_EXHAUSTED ? "true" : "false"
-                );
+                logmsg(LOGMSG_USER, "------ Sequence %d ------\nName: "
+                                    "%s\nStart Val: %lld\nMin Val: %lld\nMax "
+                                    "Val: %lld\nInc: %lld\nCycle?: %s\nChunk "
+                                    "Size: %lld\nNext Start Val: "
+                                    "%lld\nSequence Exhausted?: %s\n",
+                       idx + 1, seq->name, seq->start_val, seq->min_val,
+                       seq->max_val, seq->increment,
+                       seq->cycle ? "true" : "false", seq->chunk_size,
+                       seq->next_start_val,
+                       seq->flags & SEQUENCE_EXHAUSTED ? "true" : "false");
             }
         } else if (tokcmp(tok, ltok, "ranges") == 0) {
             tok = segtok(line, lline, &st, &ltok);

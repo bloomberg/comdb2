@@ -641,21 +641,24 @@ typedef struct {
 
 /* SEQUENCE object attributes */
 typedef struct {
-    int version; /* Sequence attr struct version */
+    int version;            /* Sequence attr struct version */
     char name[MAXTABLELEN]; /* Identifier */
 
     /* Dispensing */
     sequence_range_t *range_head; /* Pointer to the head range node*/
 
     /* Basic Attributes */
-    long long min_val; /* Values dispensed must be greater than or equal to min_val */
-    long long max_val; /* Values dispensed must be less than or equal to max_val */
+    long long
+        min_val; /* Values dispensed must be greater than or equal to min_val */
+    long long
+        max_val; /* Values dispensed must be less than or equal to max_val */
     long long start_val; /* Start value for the sequence*/
-    long long increment; /* Normal difference between two consecutively dispensed values */
-    bool cycle; /* If cycling values is permitted */
+    long long increment; /* Normal difference between two consecutively
+                            dispensed values */
+    bool cycle;          /* If cycling values is permitted */
 
     /* Synchronization with llmeta */
-    long long chunk_size; /* Number of values to allocate from llmeta */
+    long long chunk_size;     /* Number of values to allocate from llmeta */
     long long next_start_val; /* Starting value of the next chunk */
 
     /* Flags */

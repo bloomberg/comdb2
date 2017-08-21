@@ -560,13 +560,13 @@ static int replicant_reload_views(const char *name)
 /**
  * Updates in-memory representations of a specified sequence when
  * schema change is executed.
- * 
+ *
  * @param bdb_state_type *bdb_state
  * @param const char seq_name[]
- * @param scdone_t type 
+ * @param scdone_t type
  */
-int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[],
-                                scdone_t type)
+int update_sequence_description(bdb_state_type *bdb_state,
+                                const char seq_name[], scdone_t type)
 {
     void *tran = NULL;
     int rc = 0;
@@ -600,18 +600,19 @@ int update_sequence_description(bdb_state_type *bdb_state, const char seq_name[]
             thedb->sequences[thedb->num_sequences] = NULL;
         }
     }
-    
-    if (type == llmeta_sequence_add || type == llmeta_sequence_alter ) {
+
+    if (type == llmeta_sequence_add || type == llmeta_sequence_alter) {
         // Sequence attributes
-        long long min_val; // Minimum value 
-        long long max_val; // Maximum value
+        long long min_val;   // Minimum value
+        long long max_val;   // Maximum value
         long long increment; // Value to increment by for dispensed values
         long long start_val; // Start value for the sequence
-        long long next_start_val; // First valid value of the next allocated chunk
+        long long
+            next_start_val;   // First valid value of the next allocated chunk
         long long chunk_size; // Size of allocated chunk
-        bool cycle; // Flag for cyclic behaviour in sequence
-        char flags; // Flags for sequence (cdb2_constants.h)
-        
+        bool cycle;           // Flag for cyclic behaviour in sequence
+        char flags;           // Flags for sequence (cdb2_constants.h)
+
         // Get sequence configuration from llmeta
         rc = bdb_llmeta_get_sequence(tran, name, &min_val, &max_val, &increment,
                                      &cycle, &start_val, &next_start_val,
@@ -638,7 +639,7 @@ done:
     if (name) {
         free(name);
     }
-    
+
     if (tran) {
         bdb_set_tran_lockerid(tran, lid);
         rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);

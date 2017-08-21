@@ -299,8 +299,8 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
                     p_buf_end);
     p_buf = buf_put(&s->seq_restart_val, sizeof(s->seq_restart_val), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&s->seq_modified, sizeof(s->seq_modified), p_buf,
-                    p_buf_end);
+    p_buf =
+        buf_put(&s->seq_modified, sizeof(s->seq_modified), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -523,8 +523,8 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                                p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->seq_restart_val, sizeof(s->seq_restart_val),
                                p_buf, p_buf_end);
-    p_buf = (uint8_t *)buf_get(&s->seq_modified, sizeof(s->seq_modified),
-                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_modified, sizeof(s->seq_modified), p_buf,
+                               p_buf_end);
 
     return p_buf;
 }

@@ -490,7 +490,8 @@ int do_alter_stripes(struct schema_change_type *s)
     return rc;
 }
 
-int do_add_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *trans)
+int do_add_sequence(struct schema_change_type *s, struct ireq *iq,
+                    tran_type *trans)
 {
     wrlock_schema_lk();
     int rc = do_add_sequence_int(s, iq, trans);
@@ -498,7 +499,8 @@ int do_add_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *tr
     return rc;
 }
 
-int do_drop_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *trans)
+int do_drop_sequence(struct schema_change_type *s, struct ireq *iq,
+                     tran_type *trans)
 {
     wrlock_schema_lk();
     int rc = do_drop_sequence_int(s, iq, trans);
@@ -506,7 +508,8 @@ int do_drop_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *t
     return rc;
 }
 
-int do_alter_sequence(struct schema_change_type *s, struct ireq *iq, tran_type *trans)
+int do_alter_sequence(struct schema_change_type *s, struct ireq *iq,
+                      tran_type *trans)
 {
     wrlock_schema_lk();
     int rc = do_alter_sequence_int(s, iq, trans);
