@@ -603,9 +603,9 @@ static void sequenceNextVal(sqlite3_context *context, int argc,
 
     const unsigned char *seq_name = sqlite3_value_text(argv[0]);
 
-    long long *val;
+    long long val;
 
-    int rc = request_sequence_num(sqlite3_value_text(argv[0]), val);
+    int rc = request_sequence_num(sqlite3_value_text(argv[0]), &val);
 
     if (rc) {
         if (rc == -1) {
@@ -619,7 +619,7 @@ static void sequenceNextVal(sqlite3_context *context, int argc,
         return;
     }
 
-    sqlite3_result_int64(context, *val);
+    sqlite3_result_int64(context, val);
 }
 
 /* 36 characters + trailing '\0' - taken from `man uuid_unparse` */
