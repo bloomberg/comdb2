@@ -49,16 +49,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <util.h>
-extern struct timeval logfile_relink_time;
-extern struct timeval logfile_insert_time;
-extern struct timeval client_insert_time;
-extern struct timeval client_relink_time;
-extern struct timeval ltran_insert_time;
-extern struct timeval ltran_relink_time;
-extern struct timeval txn_insert_time;
-extern struct timeval txn_relink_time;
 extern struct timeval logical_undo_time;
-extern pthread_mutex_t newsi_stat_mutex;
 #endif
 
 /**
@@ -1243,9 +1234,7 @@ static int bdb_osql_trn_create_backfill(bdb_state_type *bdb_state,
 #ifdef NEWSI_STAT
         gettimeofday(&after, NULL);
         timeval_diff(&before, &after, &diff);
-        Pthread_mutex_lock(&newsi_stat_mutex);
         timeval_add(&logical_undo_time, &diff, &logical_undo_time);
-        Pthread_mutex_unlock(&newsi_stat_mutex);
 #endif
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -1335,9 +1324,7 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
     timeval_diff(&before, &after, &diff);
-    Pthread_mutex_lock(&newsi_stat_mutex);
     timeval_add(&logical_undo_time, &diff, &logical_undo_time);
-    Pthread_mutex_unlock(&newsi_stat_mutex);
 #endif
 
     if (dirty && !shadcur) {

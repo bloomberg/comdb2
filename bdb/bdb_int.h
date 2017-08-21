@@ -256,7 +256,6 @@ struct ltran_pglogs_key {
     DB_LSN logical_commit_lsn; /* lsn of the physical commit of the logical
                                   transaction */
     hash_t *pglogs_hashtbl;
-    hash_t *relinks_hashtbl;
 };
 
 struct timestamp_lsn_key {
@@ -275,6 +274,7 @@ typedef struct {
     unsigned char fileid[DB_FILE_ID_LEN];
     struct temp_table *tmptbl;
     struct temp_cursor *tmpcur;
+    pthread_mutex_t mtx;
 #ifdef NEWSI_DEBUG_POOL
     void *pool;
 #endif
