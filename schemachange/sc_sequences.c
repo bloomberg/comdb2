@@ -132,9 +132,8 @@ int do_add_sequence_int(struct schema_change_type *s, struct ireq *iq,
     }
 
     // Create new sequence in memory
-    sequence_t *seq =
-        new_sequence(name, min_val, max_val, increment, cycle,
-                     start_val, chunk_size, flags, start_val);
+    sequence_t *seq = new_sequence(name, min_val, max_val, increment, cycle,
+                                   start_val, chunk_size, flags, start_val);
 
     if (seq == NULL) {
         reqerrstr(iq, ERR_SC, "can't create sequence \"%s\"\n", name);
@@ -172,9 +171,10 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
 
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
-        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n",
+                  name);
         sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
-        
+
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -188,7 +188,7 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
             }
 
             cleanup_sequence(thedb->sequences[thedb->num_sequences]);
-            
+
             thedb->sequences[thedb->num_sequences] = NULL;
 
             // Remove llmeta record
@@ -242,18 +242,20 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
 
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
-        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n",
+                  name);
         sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
-        
+
         return SC_TABLE_DOESNOT_EXIST;
     }
 
     sequence_t *seq = getsequencebyname(name);
     if (seq == NULL) {
         // Failed to find sequence with specified name
-        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n", name);
+        reqerrstr(iq, ERR_SC, "sequence with name \"%s\" does not exists\n",
+                  name);
         sc_errf(s, "sequence with name \"%s\" does not exists\n", name);
-        
+
         return SC_TABLE_DOESNOT_EXIST;
     }
 
@@ -276,7 +278,8 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
     long long restart_val = seq->next_start_val;
     long long increment = seq->increment;
     if (modified & SEQ_INC) {
-        // Relies on the next_start_val being last possible dispensed val + old increment
+        // Relies on the next_start_val being last possible dispensed val + old
+        // increment
         restart_val = seq->next_start_val - increment + increment_in;
         increment = increment_in;
     }

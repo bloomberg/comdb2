@@ -61,13 +61,13 @@ struct dest {
 
 /* Enum for sequence options (type member)*/
 enum {
-    SEQ_MIN_VAL = 1, // Minimum Value
-    SEQ_MAX_VAL = 2, // Maximum Value
-    SEQ_INC = 4, // Increment by Value
-    SEQ_CYCLE = 8, // Flag for cyclic sequence
-    SEQ_START_VAL = 16, // Start Value
-    SEQ_CHUNK_SIZE = 32, // Size of chunk to dispense
-    SEQ_RESTART_VAL = 64, // Value to restart a sequence to
+    SEQ_MIN_VAL = 1,               // Minimum Value
+    SEQ_MAX_VAL = 2,               // Maximum Value
+    SEQ_INC = 4,                   // Increment by Value
+    SEQ_CYCLE = 8,                 // Flag for cyclic sequence
+    SEQ_START_VAL = 16,            // Start Value
+    SEQ_CHUNK_SIZE = 32,           // Size of chunk to dispense
+    SEQ_RESTART_VAL = 64,          // Value to restart a sequence to
     SEQ_RESTART_TO_START_VAL = 128 // Flag to restart sequence to start val
 };
 

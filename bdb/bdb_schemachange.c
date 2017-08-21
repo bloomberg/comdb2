@@ -251,7 +251,8 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, int *bdberr)
 {
     bdb_state_type *p_bdb_state = bdb_state;
-    if (bdb_state->parent) p_bdb_state = bdb_state->parent;
+    if (bdb_state->parent)
+        p_bdb_state = bdb_state->parent;
 
     return llog_scdone_tran(p_bdb_state, bdb_state->name, type, tran, bdberr);
 }

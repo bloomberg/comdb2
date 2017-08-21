@@ -882,7 +882,8 @@ sequence_t *getsequencebyname(const char *name)
     int i;
     /*should be changed to a hash table*/
     for (i = 0; i < thedb->num_sequences; i++)
-        if (thedb->sequences[i] && strcasecmp(thedb->sequences[i]->name, name) == 0)
+        if (thedb->sequences[i] &&
+            strcasecmp(thedb->sequences[i]->name, name) == 0)
             return thedb->sequences[i];
     return NULL;
 }
@@ -1569,7 +1570,8 @@ sequence_t *new_sequence(char *name, long long min_val, long long max_val,
     return new_seq;
 }
 
-void remove_sequence_ranges(sequence_t *seq){
+void remove_sequence_ranges(sequence_t *seq)
+{
     if (seq == NULL) {
         return;
     }
@@ -2253,14 +2255,15 @@ static int llmeta_load_sequences(struct dbenv *dbenv)
     }
 
     for (i = 0; i < num_found_sequences; i++) {
-        long long min_val; // Minimum value 
-        long long max_val; // Maximum value
+        long long min_val;   // Minimum value
+        long long max_val;   // Maximum value
         long long increment; // Value to increment by for dispensed values
         long long start_val; // Start value for the sequence
-        long long next_start_val; // First valid value of the next allocated chunk
+        long long
+            next_start_val;   // First valid value of the next allocated chunk
         long long chunk_size; // Size of allocated chunk
-        bool cycle; // Flag for cyclic behaviour in sequence
-        char flags; // Flags for sequence (cdb2_constants.h)
+        bool cycle;           // Flag for cyclic behaviour in sequence
+        char flags;           // Flags for sequence (cdb2_constants.h)
 
         char *name = seq_names[i];
 
@@ -3759,8 +3762,9 @@ static int init(int argc, char **argv)
         }
 
         if (llmeta_load_sequences(thedb)) {
-            logmsg(LOGMSG_FATAL, "could not load sequences from the low level meta "
-                            "table\n");
+            logmsg(LOGMSG_FATAL,
+                   "could not load sequences from the low level meta "
+                   "table\n");
             return -1;
         }
 

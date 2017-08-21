@@ -135,16 +135,18 @@ typedef enum {
     LLMETA_CURR_ANALYZE_COUNT = 29,
     LLMETA_LAST_ANALYZE_COUNT = 30,
     LLMETA_LAST_ANALYZE_EPOCH = 31,
-    LLMETA_FDB_TABLENAME_ALIAS =32/* table name to replace a full path
-                                  DBNAME.TABLENAME */
+    LLMETA_FDB_TABLENAME_ALIAS = 32 /* table name to replace a full path
+                                    DBNAME.TABLENAME */
     ,
-    LLMETA_TABLE_VERSION      = 33/* reliable table version, updated by any schema change
-                            */
+    LLMETA_TABLE_VERSION =
+        33 /* reliable table version, updated by any schema change
+     */
     ,
-    LLMETA_TABLE_PARAMETERS   = 34/* store various parameter values for tables stored
-                               as a blob */
+    LLMETA_TABLE_PARAMETERS =
+        34 /* store various parameter values for tables stored
+        as a blob */
     ,
-    LLMETA_ROWLOCKS_STATE     = 35
+    LLMETA_ROWLOCKS_STATE = 35
     /* for some reason we skip 36 */
     ,
     LLMETA_TABLE_USER_OP = 37 /* The user can use DDL-like commands on the table
@@ -156,8 +158,8 @@ typedef enum {
     LLMETA_LUA_AFUNC = 41,
     LLMETA_VERSIONED_SP = 42,
     LLMETA_DEFAULT_VERSIONED_SP = 43,
-    LLMETA_TABLE_USER_SCHEMA    = 44,
-    LLMETA_USER_PASSWORD_HASH   = 45,
+    LLMETA_TABLE_USER_SCHEMA = 44,
+    LLMETA_USER_PASSWORD_HASH = 45,
     LLMETA_SEQUENCE_ATTR = 46 /* sequence object attributes */
 } llmetakey_t;
 
@@ -1513,9 +1515,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s: *ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s: *ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /*fail on all other errors*/
@@ -1635,8 +1637,8 @@ static int bdb_new_file_version(
     if (!(llmeta_file_type_dbname_file_num_put(&file_type_dbname_file_num_key,
                                                p_key_buf, p_key_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -1785,8 +1787,8 @@ bdb_del_file_versions_int(tran_type *trans, /* must be !NULL */
 
     if (!p_buf) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -2358,8 +2360,8 @@ static int bdb_get_file_version(
     if (!(p_buf = llmeta_file_type_dbname_file_num_put(
               &file_type_dbname_file_num_key, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -2378,9 +2380,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s: *ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s: *ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /*fail on all other errors*/
@@ -2551,9 +2553,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s:*ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /*fail on all other errors*/
@@ -2781,8 +2783,8 @@ int bdb_new_csc2(tran_type *input_trans, /* if this is !NULL it will be used as
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -2833,8 +2835,8 @@ retry:
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
+               __func__);
         goto backout;
     }
 
@@ -2934,8 +2936,8 @@ int bdb_get_csc2_highest(tran_type *trans, /* transaction to use, may be NULL */
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -2984,8 +2986,9 @@ retry:
         p_buf_end = p_buf + key_offset + sizeof(*csc2_vers);
         if (!(p_buf = (uint8_t *)llmeta_file_type_dbname_csc2_vers_key_get(
                   &p_file_type_dbname_csc2_vers_key, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR,
-                  "%s: llmeta_file_type_dbname_csc2_vers_key_get returns NULL\n",
+            logmsg(
+                LOGMSG_ERROR,
+                "%s: llmeta_file_type_dbname_csc2_vers_key_get returns NULL\n",
                 __func__);
             *bdberr = BDBERR_MISC;
             return -1;
@@ -3090,8 +3093,8 @@ int bdb_get_csc2(tran_type *tran, /* transaction to use, may be NULL */
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
+               __func__);
         logmsg(LOGMSG_ERROR, "%s: possible tablename length error?\n", __func__);
         *bdberr = BDBERR_MISC;
         return -1;
@@ -3132,8 +3135,8 @@ retry:
     if (!(p_buf = llmeta_file_type_dbname_csc2_vers_key_put(
               &(p_file_type_dbname_csc2_vers_key), p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR,
-                "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
-                __func__);
+               "%s: llmeta_file_type_dbname_csc2_vers_key_put returns NULL\n",
+               __func__);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -3150,9 +3153,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s:*ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         return -1;
@@ -3238,7 +3241,8 @@ bdb_commit_temp_file_version(bdb_state_type *bdb_state, tran_type *tran,
     } else {
         newtablename = bdb_unprepend_new_prefix(bdb_state->name, bdberr);
         if (*bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR,
+            logmsg(
+                LOGMSG_ERROR,
                 "%s: database name (%s) does"
                 " not start with new.SOMETHING., it is not a temporary table\n",
                 __func__, bdb_state->name);
@@ -3532,9 +3536,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s: *ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s: *ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /* it's ok if no data was found, fail on all other errors*/
@@ -3819,9 +3823,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s:*ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /* it's ok if no data was found, fail on all other errors*/
@@ -3998,7 +4002,8 @@ retry:
         const uint8_t *p_buf_end = p_buf + LLMETA_IXLEN;
         if (!(p_buf = llmeta_file_type_spname_lua_vers_key_get(
                   &p_file_type_spname_lua_vers_key, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR,
+            logmsg(
+                LOGMSG_ERROR,
                 "%s: llmeta_file_type_spname_lua_vers_key_get returns NULL\n",
                 __func__);
             *bdberr = BDBERR_MISC;
@@ -4080,7 +4085,8 @@ retry:
         uint8_t *p_buf_end = p_buf + LLMETA_IXLEN;
         if (!(p_buf = (uint8_t *)llmeta_file_type_spname_lua_vers_key_get(
                   &p_file_type_spname_lua_vers_key, p_buf, p_buf_end))) {
-            logmsg(LOGMSG_ERROR,
+            logmsg(
+                LOGMSG_ERROR,
                 "%s: llmeta_file_type_spname_lua_vers_key_get returns NULL\n",
                 __func__);
             *bdberr = BDBERR_MISC;
@@ -5894,9 +5900,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s:*ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /* it's ok if no data was found, fail on all other errors*/
@@ -6137,9 +6143,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s:*ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /* it's ok if no data was found, fail on all other errors*/
@@ -6201,9 +6207,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s:*ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s:*ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /* it's ok if no data was found, fail on all other errors*/
@@ -6726,8 +6732,8 @@ retry:
             rc = -1;
         } else {
             logmsg(LOGMSG_ERROR,
-                    "%s: unrecognized error adding row rc=%d bdberr=%d!\n",
-                    __func__, rc, bdberr);
+                   "%s: unrecognized error adding row rc=%d bdberr=%d!\n",
+                   __func__, rc, bdberr);
             if (errstr)
                 *errstr = strdup("unhandled error");
             rc = -1;
@@ -6815,8 +6821,8 @@ retry:
         }
 
         logmsg(LOGMSG_ERROR,
-                "%s: unrecognized error fetching row rc=%d bdberr=%d!\n",
-                __func__, rc, bdberr);
+               "%s: unrecognized error fetching row rc=%d bdberr=%d!\n",
+               __func__, rc, bdberr);
         if (errstr)
             *errstr = strdup("unhandled read error");
 
@@ -6876,8 +6882,8 @@ retry:
             rc = -1;
         } else {
             logmsg(LOGMSG_ERROR,
-                    "%s: unrecognized error adding row rc=%d bdberr=%d!\n",
-                    __func__, rc, bdberr);
+                   "%s: unrecognized error adding row rc=%d bdberr=%d!\n",
+                   __func__, rc, bdberr);
             if (errstr)
                 *errstr = strdup("unhandled error");
             rc = -1;
@@ -7219,9 +7225,9 @@ retry:
                 goto retry;
 
             logmsg(LOGMSG_ERROR,
-                    "%s: *ERROR* bdb_lite_exact_fetch too much contention "
-                    "%d count %d\n",
-                    __func__, *bdberr, retries);
+                   "%s: *ERROR* bdb_lite_exact_fetch too much contention "
+                   "%d count %d\n",
+                   __func__, *bdberr, retries);
         }
 
         /*fail on all other errors*/
@@ -7945,15 +7951,19 @@ struct seq_data {
     int version; /* Sequence attr struct version */
 
     /* Basic Attributes */
-    long long min_val; /* Values dispensed must be greater than or equal to min_val */
-    long long max_val; /* Values dispensed must be less than or equal to max_val */
+    long long
+        min_val; /* Values dispensed must be greater than or equal to min_val */
+    long long
+        max_val; /* Values dispensed must be less than or equal to max_val */
     long long increment; /* Normal difference between two consecutively
                             dispensed values */
     bool cycle;          /* If cycling values is permitted */
 
     /* Synchronization with llmeta */
-    long long start_val; /* Start value of the sequence changed by a START WITH */
-    long long next_start_val; /* Next value to be dispensed from llmeta into memory */
+    long long
+        start_val; /* Start value of the sequence changed by a START WITH */
+    long long
+        next_start_val; /* Next value to be dispensed from llmeta into memory */
     long long chunk_size; /* Number of values to allocate from llmeta */
 
     /* Flags */
@@ -7963,7 +7973,8 @@ struct seq_data {
 static uint8_t *llmeta_sequence_key_put(struct seq_key *key, char *p_buf,
                                         char *p_buf_end)
 {
-    if (p_buf_end - p_buf < sizeof(struct seq_key)) return NULL;
+    if (p_buf_end - p_buf < sizeof(struct seq_key))
+        return NULL;
     p_buf = buf_put(&key->file_type, sizeof(key->file_type), p_buf, p_buf_end);
     p_buf = buf_no_net_put(&key->name, sizeof(key->name), p_buf, p_buf_end);
     return p_buf;
@@ -7972,7 +7983,8 @@ static uint8_t *llmeta_sequence_key_put(struct seq_key *key, char *p_buf,
 static uint8_t *llmeta_sequence_key_get(struct seq_key *key, char *p_buf,
                                         char *p_buf_end)
 {
-    if (p_buf_end - p_buf < sizeof(struct seq_key)) return NULL;
+    if (p_buf_end - p_buf < sizeof(struct seq_key))
+        return NULL;
     p_buf = (uint8_t *)buf_get(&key->file_type, sizeof(key->file_type), p_buf,
                                p_buf_end);
     p_buf = (uint8_t *)buf_no_net_get(&key->name, sizeof(key->name), p_buf,
@@ -8007,7 +8019,8 @@ static struct seq_data *llmeta_sequence_data_get(char *p_buf, char *p_buf_end)
     struct seq_data *data = NULL;
 
     data = calloc(1, sizeof(struct seq_data));
-    if (data == NULL) goto bad_alloc;
+    if (data == NULL)
+        goto bad_alloc;
 
     // Place data in sd
     p_buf = (uint8_t *)buf_get(&data->version, sizeof(int), p_buf, p_buf_end);
@@ -8026,12 +8039,14 @@ static struct seq_data *llmeta_sequence_data_get(char *p_buf, char *p_buf_end)
                                p_buf_end);
     p_buf = (uint8_t *)buf_get(&data->flags, sizeof(char), p_buf, p_buf_end);
 
-    if (p_buf == NULL) goto bad_alloc;
+    if (p_buf == NULL)
+        goto bad_alloc;
 
     return data;
 
 bad_alloc:
-    if (data) free(data);
+    if (data)
+        free(data);
     return NULL;
 }
 
@@ -8098,16 +8113,19 @@ int bdb_llmeta_add_sequence(tran_type *tran, char *name, long long min_val,
 
 int bdb_llmeta_alter_sequence(tran_type *tran, char *name, long long min_val,
                               long long max_val, long long increment,
-                              bool cycle, long long start_val, long long next_start_val,
-                              long long chunk_size, char flags, int *bdberr)
+                              bool cycle, long long start_val,
+                              long long next_start_val, long long chunk_size,
+                              char flags, int *bdberr)
 {
     int rc;
 
     /* delete and add */
     rc = bdb_llmeta_drop_sequence(tran, name, bdberr);
-    if (rc) goto done;
+    if (rc)
+        goto done;
     rc = bdb_llmeta_add_sequence(tran, name, min_val, max_val, increment, cycle,
-                                 start_val, next_start_val, chunk_size, flags, bdberr);
+                                 start_val, next_start_val, chunk_size, flags,
+                                 bdberr);
 
 done:
     return rc;
@@ -8176,11 +8194,13 @@ unsigned long long number_of_valid_values(long long min, long long max,
  * @param long long max_val Sequence maximum value
  * @param long long increment Sequence increment
  * @param bool cycle Whether the sequence has cyclic behaviour
- * @param long long chunk_size Size of the chunk of values to preallocate from llmeta
+ * @param long long chunk_size Size of the chunk of values to preallocate from
+ * llmeta
  * @param char *flags Pointer to flags for the sequence
  * @param long long start_val Start value of the sequence
  * @param long long *next_start_val Start value of the next dispensed chunk
- * @param sequence_range_t **range_head pointer to pointer of the start of ranges
+ * @param sequence_range_t **range_head pointer to pointer of the start of
+ * ranges
  * @param int *bdberr BDB error
  */
 int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
@@ -8194,7 +8214,8 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     long long new_start_val;
     int rc = 0;
 
-    // Check if sequence is exhausted. Flag indicates new chunk cannot be allocated.
+    // Check if sequence is exhausted. Flag indicates new chunk cannot be
+    // allocated.
     // There may still be allocated chunks with valid values.
     if (*flags & SEQUENCE_EXHAUSTED) {
         logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
@@ -8202,8 +8223,10 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     }
 
     if (*next_start_val > max_val || *next_start_val < min_val) {
-        logmsg(LOGMSG_ERROR, "Sequence %s next_start_val (%lld) is incorrect. Something is very wrong.\n", name, *next_start_val, max_val, min_val);
-        
+        logmsg(LOGMSG_ERROR, "Sequence %s next_start_val (%lld) is incorrect. "
+                             "Something is very wrong.\n",
+               name, *next_start_val, max_val, min_val);
+
         return -2;
     }
 
@@ -8211,24 +8234,27 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     tran_type *t = tran ? tran : bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
 
     // Check sequence rules
-    unsigned long long max_uniq_values = number_of_valid_values(min_val, max_val, increment);
+    unsigned long long max_uniq_values =
+        number_of_valid_values(min_val, max_val, increment);
     unsigned long long
         values_before_cycle; /* Number of values that can be dispensed before
                                 hitting the max or min of the sequence */
 
     if (increment > 0) {
         // Increasing sequence
-        values_before_cycle = number_of_valid_values(*next_start_val, max_val, increment);
-        
+        values_before_cycle =
+            number_of_valid_values(*next_start_val, max_val, increment);
+
         if (values_before_cycle <= chunk_size) {
             if (cycle) {
-                new_start_val = min_val;  
+                new_start_val = min_val;
             } else {
                 // No more values in sequence after this chunk is dispensed
                 *flags |= SEQUENCE_EXHAUSTED;
-                
+
                 if (values_before_cycle == 0) {
-                    logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
+                    logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n",
+                           name);
                     return -1;
                 }
 
@@ -8248,11 +8274,11 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
             new_range->min_val = *next_start_val;
             new_range->current = *next_start_val;
             new_range->max_val = *next_start_val + increment * (chunk_size - 1);
-
         }
     } else {
         // Decreasing sequence
-        values_before_cycle = number_of_valid_values(min_val, *next_start_val, increment);
+        values_before_cycle =
+            number_of_valid_values(min_val, *next_start_val, increment);
 
         if (values_before_cycle <= chunk_size) {
             if (cycle) {
@@ -8260,12 +8286,13 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
             } else {
                 // No more values in sequence after this chunk is dispensed
                 *flags |= SEQUENCE_EXHAUSTED;
-                
+
                 if (values_before_cycle == 0) {
-                    logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
+                    logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n",
+                           name);
                     return -1;
                 }
-                
+
                 new_start_val = *next_start_val;
             }
 
@@ -8276,7 +8303,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
         } else {
             // Normal case
             new_start_val = *next_start_val + increment * chunk_size;
-           
+
             // Form new range node
             new_range->min_val = *next_start_val + increment * (chunk_size - 1);
             new_range->current = *next_start_val;
@@ -8286,7 +8313,8 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
 
     // Write new start value to llmeta
     rc = bdb_llmeta_alter_sequence(t, name, min_val, max_val, increment, cycle,
-                              start_val, new_start_val, chunk_size, *flags, bdberr);
+                                   start_val, new_start_val, chunk_size, *flags,
+                                   bdberr);
 
     // Set the new values for next value and next start value
     *next_start_val = new_start_val;
@@ -8326,8 +8354,10 @@ int bdb_llmeta_get_sequence_names(char **sequence_names, size_t max_seqs,
             fsnapf(stdout, key, LLMETA_IXLEN);
             return -1;
         }
-        if (sk.file_type != LLMETA_SEQUENCE_ATTR) break;
-        if (num_seqs >= max_seqs) break;
+        if (sk.file_type != LLMETA_SEQUENCE_ATTR)
+            break;
+        if (num_seqs >= max_seqs)
+            break;
         logmsg(LOGMSG_USER, ">> sequence: %s\n", sk.name);
         sequence_names[num_seqs] = strdup(sk.name);
         num_seqs++;
@@ -8371,8 +8401,8 @@ int bdb_llmeta_get_sequence(tran_type *tran, char *name, long long *min_val,
         goto done;
     }
 
-    rc = bdb_lite_exact_fetch_alloc_tran(llmeta_bdb_state, tran, key, &dta, &foundlen,
-                                    bdberr);
+    rc = bdb_lite_exact_fetch_alloc_tran(llmeta_bdb_state, tran, key, &dta,
+                                         &foundlen, bdberr);
     if (rc) {
         *bdberr == BDBERR_FETCH_DTA;
         goto done;
@@ -8399,8 +8429,10 @@ int bdb_llmeta_get_sequence(tran_type *tran, char *name, long long *min_val,
     free(sd);
     sd = NULL;
 done:
-    if (dta) free(dta);
-    if (sd) free(sd);
+    if (dta)
+        free(dta);
+    if (sd)
+        free(sd);
     return rc;
 }
 
