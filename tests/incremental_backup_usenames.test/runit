@@ -3,7 +3,7 @@
 #export debug=1
 [[ $debug == 1 ]] && set -x
 
-dbname=$1
+export dbname=$1
 
 if [[ -z "$dbname" ]] ; then
   echo dbname missing
