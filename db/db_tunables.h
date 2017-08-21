@@ -1281,5 +1281,8 @@ REGISTER_TUNABLE("abort_on_bad_upgrade",
                  "Abort in upgrade current-generation exceeds ctrl-gen.",
                  TUNABLE_BOOLEAN, &gbl_abort_on_incorrect_upgrade,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.",
+                 TUNABLE_BOOLEAN, &gbl_poll_in_pg_free_recover,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

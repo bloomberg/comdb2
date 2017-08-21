@@ -570,6 +570,20 @@ unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile)
     return get_genid_int(bdb_state, dtafile, NULL, 0);
 }
 
+/* Return the next sc seed to use for schema change. */
+unsigned long long get_next_sc_seed(bdb_state_type *bdb_state)
+{
+    extern int gbl_llmeta_open;
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    if (gbl_llmeta_open == 0)
+        return 0ULL;
+
+    /* Always use time based genids for sc seeds */
+    return get_genid_timebased(bdb_state, 0, NULL, 0);
+}
+
 unsigned long long bdb_get_a_genid(bdb_state_type *bdb_state)
 {
     return get_genid(bdb_state, 0);

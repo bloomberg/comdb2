@@ -3098,6 +3098,7 @@ static void close_sp_int(SP sp, int freesp)
     comdb2ma mspace = sp->mspace;
     free_spversion(sp);
     comdb2ma_destroy(mspace);
+    free(sp);
 }
 
 static int db_create_thread_int(Lua lua, const char *funcname)

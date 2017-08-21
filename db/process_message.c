@@ -669,6 +669,7 @@ void *handle_exit_thd(void *arg)
 
     /* XXX this should probably have a timeout */
     stop_threads(thedb);
+    allow_sc_to_run();
 
     /* now that we are taking no more requests and have halted all request
      * threads, take a final snapshot of our queues (this helps things

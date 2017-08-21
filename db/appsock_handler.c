@@ -409,7 +409,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             break;
         st = 0;
 
-#ifdef DEBUG
+#ifdef DEBUGQUERY
         printf("line '%s'\n", line);
 #endif
 

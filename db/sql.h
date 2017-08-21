@@ -518,16 +518,13 @@ struct sqlclntstate {
 
 /* Query stats. */
 struct query_path_component {
-    union {
-        struct dbtable *db;           /* local db, or tmp if NULL */
-        struct fdb_tbl_ent *fdb; /* remote db */
-    } u;
+    struct fdb_tbl_ent *fdb; /* null: local_tbl_name */
+    char lcl_tbl_name[MAXTABLELEN];
     int ix;
     int nfind;
     int nnext;
     int nwrite;
     int nblobs;
-    int remote; /* mark this as remote, see *u */
     LINKC_T(struct query_path_component) lnk;
 };
 

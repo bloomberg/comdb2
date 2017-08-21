@@ -196,6 +196,14 @@ int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
     if (!logical_tran->physical_tran &&
         (rc = start_physical_transaction(bdb_state, logical_tran, outtran) !=
               0)) {
+        int ismaster;
+        ismaster =
+            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+        if (!ismaster && !bdb_state->in_recovery) {
+            logmsg(LOGMSG_ERROR,
+                   "Master change while getting physical tran.\n");
+            return BDBERR_READONLY;
+        }
         return rc;
     }
     *outtran = logical_tran->physical_tran;

@@ -19,6 +19,7 @@ while [[ $try -lt 30 ]] ; do
                         exit 1
                     fi
                     sleep 1
+                    dbn=$(cdb2sql -tabs db${db} default 'select comdb2_dbname()')
                     try=$(($try+1))
                 done
                 echo "Ok."

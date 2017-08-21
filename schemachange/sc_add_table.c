@@ -283,7 +283,7 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
         return rc;
     }
 
-    if ((rc = bdb_table_version_select(db->handle, tran, &db->tableversion,
+    if ((rc = bdb_table_version_select(db->dbname, tran, &db->tableversion,
                                        &bdberr)) != 0) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;

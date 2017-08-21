@@ -3140,7 +3140,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
 {
     if (thd->stmt_table) {
         delete_stmt_table(thd->stmt_table);
-        thd->stmt_table = NULL;
+        init_stmt_table(&thd->stmt_table);
         thd->param_stmt_head = NULL;
         thd->param_stmt_tail = NULL;
         thd->noparam_stmt_head = NULL;
@@ -7247,6 +7247,19 @@ retry_read:
 
         goto retry_read;
     } else if (hdr.type == FSQL_RESET) { /* Reset from sockpool.*/
+
+        if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+            /* Discard the pending transaction when receiving RESET from the
+               sockpool. We reach here if
+               1) the handle is in a open transaction, and
+               2) the last statement is a SELECT, and
+               3) the client closes the handle and donates the connection
+                  to the sockpool, and then,
+               4) the client creates a new handle and reuses the connection
+                  from the sockpool. */
+            handle_sql_intrans_unrecoverable_error(clnt);
+        }
+
         reset_clnt(clnt, sb, 0);
         clnt->tzname[0] = '\0';
         clnt->osql.count_changes = 1;
@@ -7827,9 +7840,8 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     if (do_query_on_master_check(&clnt, sql_query))
         goto done;
 
-#if DEBUG
-    printf("\n Query %s length %d", sql_query->sql_query.data,
-           sql_query->sql_query.len);
+#ifdef DEBUGQUERY
+    printf("\n Query '%s'\n", sql_query->sql_query);
 #endif
 
     pthread_mutex_init(&clnt.wait_mutex, NULL);
@@ -9761,7 +9773,7 @@ void start_internal_sql_clnt(struct sqlclntstate *clnt)
 
 int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
 {
-#ifdef DEBUG
+#ifdef DEBUGQUERY
     printf("run_internal_sql_clnt() sql '%s'\n", sql);
 #endif
     clnt->sql = sql;

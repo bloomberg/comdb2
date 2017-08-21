@@ -1727,8 +1727,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
         if (rc == 0 && (strcasecmp(schema->tag, ".ONDISK") == 0 ||
                         strcasecmp(schema->tag, ".NEW..ONDISK") == 0)) {
             if (alt == 0) {
-                char *tmp_altname = strdup(altname);
-                add_tag_alias(dbname, s, tmp_altname);
+                add_tag_alias(dbname, s, altname);
             } else {
                 snprintf(tmptagname, sizeof(tmptagname), ".NEW.%s", altname);
                 add_tag_alias(dbname, s, tmptagname);
@@ -2016,6 +2015,9 @@ void convert_failure_reason_str(const struct convert_failure *reason,
         break;
     case CONVERT_FAILED_BAD_BLOB_PROGRAMMER:
         str = "bad blob programming";
+        break;
+    case CONVERT_FAILED_BLOB_SIZE:
+        str = "blob size exceeds max";
         break;
     case CONVERT_OK:
         str = "no error";
@@ -6748,7 +6750,7 @@ void update_dbstore(struct dbtable *db)
                        "PANIC!!\n",
                        db->dbname, __func__, from->name, tag);
                 /* FIXME */
-                exit(1);
+                abort();
             }
 
             if (db->versmap[v][i] != i || from->type != to->type ||
@@ -6766,7 +6768,7 @@ void update_dbstore(struct dbtable *db)
                         logmsg(LOGMSG_FATAL, "%s: %s() @ %d calloc failed!! PANIC!!\n",
                                db->dbname, __func__, __LINE__);
                         /* FIXME */
-                        exit(1);
+                        abort();
                     }
                     rc = SERVER_to_SERVER(
                         from->in_default, from->in_default_len,
@@ -6779,7 +6781,7 @@ void update_dbstore(struct dbtable *db)
                                "PANIC!!\n",
                                db->dbname, __func__, __LINE__);
                         /* FIXME */
-                        exit(1);
+                        abort();
                     }
                 }
             }

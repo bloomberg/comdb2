@@ -3161,8 +3161,10 @@ split:	ret = stack = 0;
 		 */
 
         /* Invalidate the cursor before releasing the pagelock */
-		cp->pgno = PGNO_INVALID;
-		cp->indx = 0;
+		if (own == 0) {
+			cp->pgno = PGNO_INVALID;
+			cp->indx = 0;
+		}
 
 		/*
 		 * Discard any locks and pinned pages (the locks are discarded
