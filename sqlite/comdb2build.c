@@ -2228,6 +2228,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx, int nconstraints,
     /* Keys section */
     struct comdb2_schema *current_key;
     int nkeys = 0;
+
     LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
     {
         if (current_key->schema != 0) ++nkeys;
@@ -2317,6 +2318,14 @@ static char *gen_key_name(struct comdb2_ddl_context *ctx, const char *tabname,
     return keyname;
 }
 
+#define COMDB2_PK "PRIMARY_KEY"
+
+static int is_pk(const char *key)
+{
+    return (((strncasecmp(key, COMDB2_PK, sizeof(COMDB2_PK) - 1)) == 0) ? 1
+                                                                        : 0);
+}
+
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     char *csc2;
@@ -2331,7 +2340,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           During ALTER TABLE, the fields are deleted by simply setting
           them to 0.
         */
-        if (current_column->field != 0) ncolumns++;
+        if (current_column->field == 0) continue;
+        ncolumns++;
     }
 
     /* Check whether there is at least one column. */
@@ -2341,6 +2351,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     int unnamed_keys = 0;
+    int pk_count = 0;
     char keyname[100];
     struct comdb2_schema *current_key;
     LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
@@ -2359,6 +2370,39 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             current_key->schema->csctag =
                 gen_key_name(ctx, ctx->name, current_key->schema);
             if (current_key->schema->csctag == 0) goto oom;
+        }
+
+        /*
+          Properties of primary keys:
+          * Unique
+          * Columns must not allow NULLs
+          * Must be only one per table
+        */
+        if (is_pk(current_key->schema->csctag)) {
+            struct comdb2_field *col;
+
+            if (++pk_count > 1) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Multiple primary key definitions.");
+                goto cleanup;
+            }
+
+            /* Primary keys mustn't be dup. */
+            assert(((current_key->schema->flags & SCHEMA_DUP) == 0));
+
+            /* Also make sure none of its columns allow NULLs. (n^2)*/
+            for (int i = 0; i < current_key->schema->nmembers; i++) {
+                LISTC_FOR_EACH(&ctx->column_list, col, lnk)
+                {
+                    /* Ignore deleted fields. */
+                    if (col->field == 0) continue;
+
+                    if (strcasecmp(current_key->schema->member[i].name,
+                                   col->name) == 0) {
+                        col->field->flags |= NO_NULL;
+                    }
+                }
+            }
         }
     }
 
@@ -2381,32 +2425,36 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* Find the "non-dropped" child key for current constraint. */
         LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
         {
-            if (current_key->schema != 0 &&
-                current_constraint->constraint->ncols ==
-                    current_key->schema->nmembers) {
-                /*
-                  Let's start by assuming that we have found a matching key.
-                */
-                key_found = 1;
-                ncols = current_key->schema->nmembers;
-                for (int i = 0; i < ncols; ++i) {
-                    if (strcasecmp(current_constraint->constraint->column[i],
-                                   current_key->schema->member[i].name)) {
-                        /* Mismatch */
-                        key_found = 0;
-                        break;
-                    }
-                }
-                if (key_found == 1) {
-                    child_key = current_key->schema;
+            /* Key has been dropped. */
+            if (current_key->schema == 0) continue;
+
+            /* Not the matching key. */
+            if (current_constraint->constraint->ncols !=
+                current_key->schema->nmembers)
+                continue;
+
+            /*
+              Let's start by assuming that we have found a matching key.
+            */
+            key_found = 1;
+            ncols = current_key->schema->nmembers;
+            for (int i = 0; i < ncols; ++i) {
+                if (strcasecmp(current_constraint->constraint->column[i],
+                               current_key->schema->member[i].name)) {
+                    /* Mismatch */
+                    key_found = 0;
                     break;
                 }
+            }
+            if (key_found == 1) {
+                child_key = current_key->schema;
+                break;
             }
         }
         if (key_found == 0) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "A matching key for the FOREIGN KEY was "
-                                    "not found in the child table '%s'",
+                                    "not found in the child table '%s'.",
                             ctx->name);
             goto cleanup;
         }
@@ -2430,9 +2478,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         for (int i = 0; i < parent_table->schema->nix; i++) {
             if (parent_table->schema->ix[i]->nmembers ==
                 current_constraint->constraint->ncols) {
-                /*
-                  Let's start by assuming that we have found a matching key.
-                */
+                /* Let's start by assuming that we have a matching key. */
                 key_found = 1;
                 ncols = current_constraint->constraint->ncols;
                 for (int j = 0; j < ncols; j++) {
@@ -2922,13 +2968,6 @@ void comdb2CreateTableEnd(
         assert(ctx == 0);
         sqlite3EndTable(pParse, pCons, pEnd, tabOpts, 0);
         return;
-    } else {
-        /* Comdb2 table; check if Sqlite specific WITHOUT ROWID is used. */
-        if (tabOpts != 0) {
-            setError(pParse, SQLITE_ERROR,
-                     "WITHOUT ROWID is not supported in Comdb2.");
-            goto cleanup;
-        }
     }
 
     if (ctx == 0) {
@@ -3040,7 +3079,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     LISTC_FOR_EACH(&ctx->column_list, current, lnk)
     {
         if (strcasecmp(field->name, current->name) == 0) {
-            setError(pParse, SQLITE_ERROR, "Duplicate column name.");
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.",
+                            current->name);
             goto cleanup;
         }
     }
@@ -3212,15 +3253,9 @@ void comdb2AddPrimaryKey(
 
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
+    key->csctag = comdb2_strdup(ctx->mem, COMDB2_PK);
+    if (key->csctag == 0) goto oom;
 
-    if (pParse->constraintName.n != 0) {
-        key->csctag = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                     pParse->constraintName.n);
-        if (key->csctag == 0) goto oom;
-    } else {
-        key->csctag = comdb2_strdup(ctx->mem, "PRIMARY_KEY");
-        if (key->csctag == 0) goto oom;
-    }
     key->flags = SCHEMA_INDEX;
 
     /*
@@ -3310,11 +3345,6 @@ void comdb2AddIndex(
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
 
-    if (pParse->constraintName.n != 0) {
-        key->csctag = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                     pParse->constraintName.n);
-        if (key->csctag == 0) goto oom;
-    }
     key->flags = SCHEMA_INDEX;
 
     /*
@@ -3436,6 +3466,13 @@ void comdb2CreateIndex(
     keyname = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
     if (keyname == 0) goto oom;
     sqlite3Dequote(keyname);
+
+    if (is_pk(keyname)) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse,
+                        "PRIMARY KEY cannot be created using CREATE INDEX.");
+        goto cleanup;
+    }
 
     for (int i = 0; i < table->schema->nix; i++) {
         if ((strcasecmp(table->schema->ix[i]->csctag, keyname)) == 0) {
@@ -3663,10 +3700,17 @@ void comdb2CreateForeignKey(
         constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct constraint));
         if (constraint == 0) goto oom;
 
-        constraint->ncols = pToCol->nExpr;
         constraint->referenced_table = comdb2_strndup(ctx->mem, pTo->z, pTo->n);
         if (constraint->referenced_table == 0) goto oom;
         sqlite3Dequote(constraint->referenced_table);
+
+        /*
+          Number of referenced columns in the FK could not be zero. Though
+          some DBMS servers allow this. PG picks the primary key from the
+          referenced table.
+         */
+        assert(pToCol && pToCol->nExpr > 0);
+        constraint->ncols = pToCol->nExpr;
 
         int n;
         for (int i = 0; i < pToCol->nExpr; i++) {
