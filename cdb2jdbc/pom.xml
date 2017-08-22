@@ -21,6 +21,7 @@ limitations under the License. -->
   <properties>
     <maven.compiler.source>1.6</maven.compiler.source>
     <maven.compiler.target>1.6</maven.compiler.target>
+    <env.skipTests>true</env.skipTests>
   </properties>
   <dependencies>
     <dependency>
@@ -91,7 +92,7 @@ limitations under the License. -->
         <artifactId>maven-surefire-plugin</artifactId>
         <version>2.12.4</version>
         <configuration>
-          <skipTests>true</skipTests>
+          <skipTests>${env.skipTests}</skipTests>
         </configuration>
       </plugin>
       <plugin>

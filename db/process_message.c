@@ -144,6 +144,8 @@ void set_cursor_rowlocks(int cr);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
+extern unsigned long long get_genid(bdb_state_type *bdb_state,
+                                    unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
 

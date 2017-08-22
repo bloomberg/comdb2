@@ -89,8 +89,7 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     public String getDatabaseProductName() throws SQLException {
-        String version = getDatabaseProductVersion();
-        return "Comdb2(" + version + ")";
+        return "Comdb2";
     }
 
     public String getDatabaseProductVersion() throws SQLException {

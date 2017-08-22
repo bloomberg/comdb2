@@ -626,11 +626,6 @@ static void *udp_reader(void *arg)
             print_ping_rtt(info);
             break;
 
-        case USER_TYPE_DURABLE_LSN:
-            data = ack_info_data(info);
-            receive_durable_lsn(NULL, bdb_state, from, USER_TYPE_DURABLE_LSN,
-                                data, info->len, 0);
-            break;
 
         default:
             printf("%s: recd unknown packet type:%d from:%d\n", __func__, type,
@@ -893,82 +888,6 @@ void ping_node(bdb_state_type *bdb_state, char *to)
 {
     if (send_timestamp(bdb_state, to, USER_TYPE_TCP_TIMESTAMP) > 0) {
         debug_trace("sent ping %d -> %d", bdb_state->repinfo->mynode, to);
-    }
-}
-
-uint8_t *
-udp_durable_lsn_type_put(const udp_durable_lsn_t *p_udp_durable_lsn_type,
-                         uint8_t *p_buf, uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || UDP_DURABLE_LSN_TYPE_LEN > p_buf_end - p_buf)
-        return NULL;
-    p_buf = buf_put(&(p_udp_durable_lsn_type->lsn.file),
-                    sizeof(p_udp_durable_lsn_type->lsn.file), p_buf, p_buf_end);
-    p_buf =
-        buf_put(&(p_udp_durable_lsn_type->lsn.offset),
-                sizeof(p_udp_durable_lsn_type->lsn.offset), p_buf, p_buf_end);
-    p_buf =
-        buf_put(&(p_udp_durable_lsn_type->generation),
-                sizeof(p_udp_durable_lsn_type->generation), p_buf, p_buf_end);
-    return p_buf;
-}
-
-const uint8_t *
-udp_durable_lsn_type_get(udp_durable_lsn_t *p_udp_durable_lsn_type,
-                         const uint8_t *p_buf, const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || UDP_DURABLE_LSN_TYPE_LEN > p_buf_end - p_buf)
-        return NULL;
-    p_buf = buf_get(&(p_udp_durable_lsn_type->lsn.file),
-                    sizeof(p_udp_durable_lsn_type->lsn.file), p_buf, p_buf_end);
-    p_buf =
-        buf_get(&(p_udp_durable_lsn_type->lsn.offset),
-                sizeof(p_udp_durable_lsn_type->lsn.offset), p_buf, p_buf_end);
-    p_buf =
-        buf_get(&(p_udp_durable_lsn_type->generation),
-                sizeof(p_udp_durable_lsn_type->generation), p_buf, p_buf_end);
-    return p_buf;
-}
-
-static void send_durable_lsn(bdb_state_type *bdb_state, const char *to,
-                             DB_LSN *lsn, uint32_t generation)
-{
-    ack_info *info;
-    uint8_t *p_buf, *p_buf_end;
-    udp_durable_lsn_t udp_durable_lsn;
-
-    new_ack_info(info, UDP_DURABLE_LSN_TYPE_LEN, bdb_state->repinfo->myhost);
-    info->from = 0;
-    info->to = 0;
-    info->type = USER_TYPE_DURABLE_LSN;
-    udp_durable_lsn.lsn = *lsn;
-    udp_durable_lsn.generation = generation;
-    p_buf = ack_info_data(info);
-    p_buf_end = p_buf + UDP_DURABLE_LSN_TYPE_LEN;
-
-    if ((p_buf = udp_durable_lsn_type_put(&udp_durable_lsn, p_buf,
-                                          p_buf_end)) == NULL)
-        abort();
-
-    // printf("sending durable lsn "PR_LSN" to %s\n", PARM_LSNP(lsn), to);
-
-    udp_send(bdb_state, info, to);
-}
-
-void udp_send_durable_lsn(bdb_state_type *bdb_state, DB_LSN *lsn, uint32_t gen)
-{
-    repinfo_type *repinfo = bdb_state->repinfo;
-    const char *nodes[REPMAX];
-
-    if (lsn->file == 0) {
-        fprintf(stderr, "Broadcasting insane durable lsn?  Aborting.\n");
-        abort();
-    }
-
-    int i = net_get_all_nodes(repinfo->netinfo, nodes);
-
-    while (i--) {
-        send_durable_lsn(bdb_state, nodes[i], lsn, gen);
     }
 }
 
