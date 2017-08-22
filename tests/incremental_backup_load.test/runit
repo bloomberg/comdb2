@@ -11,6 +11,12 @@ if [[ -z "$dbname" ]] ; then
   exit 1
 fi
 
+if [[ -n "$CLUSTER" ]]; then
+    export machine=$(echo $CLUSTER | awk '{print $1}')
+else
+    export machine=""
+fi
+
 function killwriters
 {
     touch ./testcase.done
@@ -48,7 +54,11 @@ function make_base {
   force_checkpoint
   basename=${TMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
-  comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  if [[ -n "${CLUSTER}" ]]; then
+      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+  else
+      comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  fi
   echo "~~~~~~~~~~"
   echo $basename
   echo "  DONE WITH BASE"
@@ -62,8 +72,11 @@ function make_backup {
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
   backuploc=${TMPDIR}/backups/${backupname}
-
-  comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  if [[ -n "${CLUSTER}" ]]; then
+      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+  else
+      comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  fi
   echo "~~~~~~~~~~"
   echo ${TMPDIR}/backups/${backupname}
   echo "  DONE WITH INCREMENT"
