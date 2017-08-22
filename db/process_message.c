@@ -1843,6 +1843,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
         if (tokcmp(tok, ltok, "print") == 0) {
             int idx;
+            extern int gbl_sequence_replicant_distribution;
+            logmsg(LOGMSG_USER, "rep distro %s\n",
+                   gbl_sequence_replicant_distribution ? "true" : "false");
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
                 logmsg(LOGMSG_USER, "------ Sequence %d ------\nName: "

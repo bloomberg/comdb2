@@ -16,6 +16,7 @@
 
 #include "sequences.h"
 #include <int_overflow.h>
+#include <bdb_int.h>
 
 extern struct dbenv *thedb;
 
@@ -30,7 +31,8 @@ int gbl_sequence_replicant_distribution = 0;
  *  @param name char * Name of the sequence
  *  @param val long long * Reference to output location
  */
-int seq_next_val(tran_type *tran, char *name, long long *val)
+int seq_next_val(tran_type *tran, char *name, long long *val,
+                 bdb_state_type *bdb_state)
 {
     sequence_t *seq = getsequencebyname(name);
     sequence_range_t *temp;
@@ -50,10 +52,6 @@ int seq_next_val(tran_type *tran, char *name, long long *val)
     // Check for remaining values.
     // seq->next_val is only valid if remaining values > 0
     if (seq->range_head == NULL) {
-        pthread_mutex_unlock(&seq->seq_lk);
-
-        // TODO: Check if master, if not go to master
-
         // Create new node range
         node = malloc(sizeof(sequence_range_t));
 
@@ -64,21 +62,38 @@ int seq_next_val(tran_type *tran, char *name, long long *val)
             goto done;
         }
 
-        // No remaining values, allocate new chunk into range
-        rc = bdb_llmeta_get_sequence_chunk(
-            tran, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
-            seq->chunk_size, &seq->flags, seq->start_val, &seq->next_start_val,
-            node, &bdberr);
+        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+            // TODO: I am master, generate and return value
+            // if (bdb_state->attr->master_lease &&
+            //     !verify_master_leases(thedb, __func__, __LINE__)) {
+            //     logmsg(LOGMSG_ERROR, "%s line %d failed verifying master
+            //     leases\n",
+            //            __func__, __LINE__);
+            //     return -2;
+            // }
 
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "can't retrive new chunk for sequence \"%s\"\n", name);
-            free(node);
-            goto done;
+            // No remaining values, allocate new chunk into range
+            rc = bdb_llmeta_get_sequence_chunk(
+                tran, name, seq->min_val, seq->max_val, seq->increment,
+                seq->cycle, seq->chunk_size, &seq->flags, seq->start_val,
+                &seq->next_start_val, node, &bdberr);
+
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "can't retrive new chunk for sequence \"%s\"\n", name);
+                free(node);
+                goto done;
+            }
+
+        } else {
+            // I am replicant (rep distribution must be on)
+            pthread_mutex_unlock(&seq->seq_lk);
+
+            // TODO: Call to master for new range
+
+            // Get lock for in-memory object
+            pthread_mutex_lock(&seq->seq_lk);
         }
-
-        // Get lock for in-memory object
-        pthread_mutex_lock(&seq->seq_lk);
 
         // Insert node into ranges linked list
         insert_sequence_range(seq, node);
