@@ -4,8 +4,3 @@ schema
     cstring name[5]
     blob data
 }
-
-keys
-{
-dup    "key" = id
-}

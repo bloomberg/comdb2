@@ -30,8 +30,8 @@ function checkload
     cdb2sql ${CDB2_OPTIONS} $dbname default "select count(*) from load" >/dev/null 2>&1
     r=$?
     if [[ $r != 0 ]]; then
-        echo "Count load returns $r"
         killwriters
+        echo "Count load returns $r"
         exit 1
     fi
 }
@@ -86,12 +86,12 @@ function test_restoredb {
   $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
   # wait for db to launch
   count=0
-  cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > ./sqloutput 2>&1
+  cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
   sqloutput=$(cat ./sqloutput)
   while [ "$sqloutput" != "(1=1)" -a $count -le 30 ]; do
       sleep 1
       let count=count+1
-      cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > ./sqloutput 2>&1
+      cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
       sqloutput=$(cat ./sqloutput)
   done
 
@@ -101,10 +101,11 @@ function test_restoredb {
   fi
   echo " "
 
-  cdb2sql ${CDB2_OPTIONS} -f $1 ${dbname}_restore default > ${testname}.output 2>&1
+  cdb2sql -f $1 ${dbname}_restore local > ${testname}.output 2>&1
   cat ${testname}.output
   diff ${testname}.expected ${testname}.output
   if [[ $? -ne 0 ]] ; then
+    killwriters
     echo "  ^^^^^^^^^^^^"
     echo "The above testcase (${testname}) has failed!!!"
     echo " "
@@ -135,8 +136,12 @@ function resetdb {
 }
 
 rm ./testcase.done
+cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE load"
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
 
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
 ( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
 sleep 1
 ( timeout ${TEST_TIMEOUT} ./updater.sh ) &

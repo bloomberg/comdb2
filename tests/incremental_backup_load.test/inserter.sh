@@ -6,7 +6,7 @@ c=0
 # If these are too big we run the risk of having an open transaction
 # while we are trying to do a checkpoint, which could set the recovertolsn
 # value prior to the output that we're trying to verify
-while [[ $c -lt 100 ]]; do
+while [[ $c -lt 10 ]]; do
     echo "INSERT INTO load VALUES ($c, 'xxx', x'1234')" >> $insertsql
     let c=c+1
 done

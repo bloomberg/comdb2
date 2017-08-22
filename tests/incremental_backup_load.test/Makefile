@@ -1,2 +1,8 @@
-include $(TESTSROOTDIR)/testcase.mk
 export TEST_TIMEOUT=10m
+
+ifeq ($(TESTSROOTDIR),)
+	include ../testcase.mk
+else
+	include $(TESTSROOTDIR)/testcase.mk
+endif
+
