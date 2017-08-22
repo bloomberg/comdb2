@@ -1,1 +1,1 @@
-[SELECT * FROM t1] failed with rc -3 no such table: t1
+[SELECT * FROM t1 order by id] failed with rc -3 no such table: t1
