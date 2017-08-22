@@ -12331,7 +12331,7 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
     pthread_mutex_init(&clnt.write_lock, NULL);
     pthread_mutex_init(&clnt.dtran_mtx, NULL);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
-    clnt.high_availability = 0;
+    set_high_availability(&clnt, 0);
     clnt.sql = sql;
     clnt.verify_indexes = 1;
     clnt.schema_mems = &sm;

@@ -718,7 +718,6 @@ int gbl_rowlocks_deadlock_trace = 0;
 
 int gbl_durable_wait_seqnum_test = 0;
 int gbl_durable_replay_test = 0;
-int gbl_durable_block_test = 0;
 int gbl_durable_set_trace = 0;
 int gbl_durable_calc_trace = 0;
 int gbl_dumptxn_at_commit = 0;
@@ -5000,10 +4999,6 @@ static void register_all_int_switches()
     register_int_switch("durable_replay_test",
                         "Enables periodic durable failures in blkseq replay",
                         &gbl_durable_replay_test);
-    register_int_switch(
-        "durable_block_test",
-        "Return periodic durability failures from bdb_durable_block",
-        &gbl_durable_block_test);
     register_int_switch("durable_set_trace",
                         "Print trace set durable and commit lsn trace",
                         &gbl_durable_set_trace);

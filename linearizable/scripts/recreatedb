@@ -101,7 +101,9 @@ if [[ "$add_tables" == 1 ]]; then
 fi
 cdb2sql $db @localhost "exec procedure sys.cmd.send('exit')" > /dev/null 2>&1
 wait_for_db_down $db
-
+cat >> $cpdir/$db.lrl <<EOF
+cluster nodes $machines
+EOF
 printf "copying to cluster "
 for m in $machines; do
     printf "%s " $m
