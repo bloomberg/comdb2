@@ -1,13 +1,20 @@
 #!/bin/bash
 # Test basic functionality for incremental backups
-#export debug=1
+# export debug=1
 [[ $debug == 1 ]] && set -x
 
 export dbname=$1
 
+
 if [[ -z "$dbname" ]] ; then
   echo dbname missing
   exit 1
+fi
+
+if [[ -n "$CLUSTER" ]]; then
+    export machine=$(echo $CLUSTER | awk '{print $1}')
+else
+    export machine=""
 fi
 
 function failexit
@@ -19,7 +26,9 @@ function failexit
 
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
+  cdb2sql ${CDB2_OPTIONS} $dbname default "insert into load values(1, 'xxx', x'1234')"
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  sleep 10
 }
 
 function make_base {
@@ -27,7 +36,11 @@ function make_base {
   force_checkpoint
   basename=${TMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
-  comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  if [[ -n "${CLUSTER}" ]]; then
+      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+  else
+      comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  fi
   echo "~~~~~~~~~~"
   echo $basename
   echo "  DONE WITH BASE"
@@ -41,8 +54,11 @@ function make_backup {
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
   backuploc=${TMPDIR}/backups/${backupname}
-
-  comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  if [[ -n "${CLUSTER}" ]]; then
+      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+  else
+      comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  fi
   echo "~~~~~~~~~~"
   echo ${TMPDIR}/backups/${backupname}
   echo "  DONE WITH INCREMENT"
@@ -65,12 +81,12 @@ function test_restoredb {
   $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
   # wait for db to launch
   count=0
-  cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > ./sqloutput 2>&1
+  cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
   sqloutput=$(cat ./sqloutput)
   while [ "$sqloutput" != "(1=1)" -a $count -le 30 ]; do
       sleep 1
       let count=count+1
-      cdb2sql ${CDB2_OPTIONS} ${dbname}_restore default "select 1" > ./sqloutput 2>&1
+      cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
       sqloutput=$(cat ./sqloutput)
   done
 
@@ -80,7 +96,7 @@ function test_restoredb {
   fi
   echo " "
 
-  cdb2sql ${CDB2_OPTIONS} -f $1 ${dbname}_restore default > ${testname}.output 2>&1
+  cdb2sql -f $1 ${dbname}_restore local > ${testname}.output 2>&1
   cat ${testname}.output
   diff ${testname}.expected ${testname}.output
   if [[ $? -ne 0 ]] ; then
@@ -112,6 +128,9 @@ function resetdb {
   force_checkpoint
   make_backup t1-2_create_table
 }
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE load"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
 
 # BASIC FUNCTIONALITY TEST
 resetdb
