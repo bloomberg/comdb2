@@ -4044,7 +4044,8 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     return;
 }
 
-extern int seq_next_val(tran_type *tran, char *name, long long *val);
+extern int seq_next_val(tran_type *tran, char *name, long long *val,
+                        bdb_state_type *bdb_state);
 
 static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf,
                                          const uint8_t *p_buf_end)
@@ -4112,7 +4113,7 @@ void *get_next_sequence_value(void *arg)
     bdb_thread_event(args->bdb_state, BDBTHR_EVENT_START_RDWR);
 
     // Generate value
-    int rc = seq_next_val(NULL, name, &value);
+    int rc = seq_next_val(NULL, name, &value, args->bdb_state);
     free(name);
 
     if (rc) {
@@ -4259,7 +4260,7 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
         }
 
         // Generate sequence value
-        rc = seq_next_val(NULL, name, val);
+        rc = seq_next_val(NULL, name, val, bdb_state);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not "
@@ -4271,19 +4272,20 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
         return 0;
     }
 
-    // TODO: Call seq_next_val() if rep distribution
+    // Call seq_next_val() if rep distribution
     if (gbl_sequence_replicant_distribution) {
-        rc = seq_next_val(NULL, name, val);
+        rc = seq_next_val(NULL, name, val, bdb_state);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not "
                                  "generate sequence value\n",
                    __func__);
-            return rc;
         }
+
+        return rc;
     }
 
-    // I am not master, contact master for value
+    // I am not master and rep distribution is off, contact master for value
     // Pack sequence name
     char data[MAXTABLELEN] = {0};
     uint8_t *p_buf_req = data;
