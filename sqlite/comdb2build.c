@@ -2318,7 +2318,7 @@ static char *gen_key_name(struct comdb2_ddl_context *ctx, const char *tabname,
     return keyname;
 }
 
-#define COMDB2_PK "PRIMARY_KEY"
+#define COMDB2_PK "COMDB2_PK"
 
 static int is_pk(const char *key)
 {
