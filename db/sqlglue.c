@@ -4824,6 +4824,7 @@ done:
  ** This is so that appropriate space can be allocated in the journal file
  ** when it is created..
  */
+int free_seq_curval(void *obj, void *arg);
 
 int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
 {
@@ -4878,6 +4879,12 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
             rc = SQLITE_NOMEM;
             goto done;
         }
+    }
+
+    // Clear current values after transaction
+    if (clnt->osql.seq_curval) {
+        hash_for(clnt->osql.seq_curval, free_seq_curval, NULL);
+        hash_clear(clnt->osql.seq_curval);
     }
 
     if (clnt->arr) {
@@ -4956,7 +4963,7 @@ int retrieveCurrentSequence(const char *seq, long long *val)
 
     if (!osql->seq_curval || !(fnd = hash_find(osql->seq_curval, seq))) {
         logmsg(LOGMSG_ERROR,
-               "Could not find sequence \"%s\" in the current value hash", seq);
+               "Could not find sequence \"%s\" in the current value hash\n", seq);
         return -1;
     }
 

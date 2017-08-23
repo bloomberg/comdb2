@@ -620,7 +620,7 @@ int tran2req(int dbtran)
     return OSQL_REQINV;
 }
 
-static int free_seq_curval(void *obj, void *arg)
+int free_seq_curval(void *obj, void *arg)
 {
     struct seq_curval_struct *curval = (struct seq_curval_struct *)obj;
     free(curval);
