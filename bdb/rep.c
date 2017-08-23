@@ -4044,9 +4044,18 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     return;
 }
 
+// Sequence related functions from db layer
 int seq_next_val(tran_type *tran, char *name, long long *val,
                  bdb_state_type *bdb_state);
 int generate_replicant_sequence_range(char *name, sequence_range_t *range);
+extern int gbl_sequence_replicant_distribution;
+
+// Arguments to get_next_sequence_value
+struct seq_thd_args {
+    char *name;
+    void *ack_handle;
+    bdb_state_type *bdb_state;
+};
 
 /**
  * Buffer Packer for sequence number requests (master-only distro)
@@ -4156,13 +4165,6 @@ static const uint8_t *sequence_range_response_get(sequence_range_t *range,
     return p_buf;
 }
 
-// Arguments to get_next_sequence_value
-struct seq_next_val_thd {
-    char *name;
-    void *ack_handle;
-    bdb_state_type *bdb_state;
-};
-
 /**
  * Get sequence value and ack
  *
@@ -4172,7 +4174,7 @@ struct seq_next_val_thd {
  */
 void *get_next_sequence_value(void *arg)
 {
-    struct seq_next_val_thd *args = arg;
+    struct seq_thd_args *args = arg;
     void *ack_handle = args->ack_handle;
     char *name = args->name;
     long long value;
@@ -4285,7 +4287,7 @@ void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
     }
 
     // Generate value from seq_next_val in a new thread
-    struct seq_next_val_thd *args = malloc(sizeof(struct seq_next_val_thd));
+    struct seq_thd_args *args = malloc(sizeof(struct seq_thd_args));
     args->name = name;
     args->ack_handle = ack_handle;
     args->bdb_state = bdb_state;
@@ -4300,8 +4302,6 @@ void receive_sequence_num_request(void *ack_handle, void *usr_ptr,
         return;
     }
 }
-
-extern int gbl_sequence_replicant_distribution;
 
 /**
  * Requests a sequence number from master
@@ -4438,7 +4438,7 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
  */
 void *get_next_sequence_range(void *arg)
 {
-    struct seq_next_val_thd *args = arg;
+    struct seq_thd_args *args = arg;
     void *ack_handle = args->ack_handle;
     char *name = args->name;
 
@@ -4569,7 +4569,7 @@ void receive_sequence_range_request(void *ack_handle, void *usr_ptr,
     }
 
     // Generate value from seq_next_val in a new thread
-    struct seq_next_val_thd *args = malloc(sizeof(struct seq_next_val_thd));
+    struct seq_thd_args *args = malloc(sizeof(struct seq_thd_args));
     args->name = name;
     args->ack_handle = ack_handle;
     args->bdb_state = bdb_state;
