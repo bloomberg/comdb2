@@ -8219,7 +8219,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     // There may still be allocated chunks with valid values.
     if (*flags & SEQUENCE_EXHAUSTED) {
         logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n", name);
-        return -1;
+        return -5;
     }
 
     if (*next_start_val > max_val || *next_start_val < min_val) {
@@ -8255,7 +8255,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                 if (values_before_cycle == 0) {
                     logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n",
                            name);
-                    return -1;
+                    return -5;
                 }
 
                 new_start_val = *next_start_val;
@@ -8290,7 +8290,7 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
                 if (values_before_cycle == 0) {
                     logmsg(LOGMSG_ERROR, "No more sequence values for '%s'\n",
                            name);
-                    return -1;
+                    return -5;
                 }
 
                 new_start_val = *next_start_val;
@@ -8322,8 +8322,12 @@ int bdb_llmeta_get_sequence_chunk(tran_type *tran, char *name,
     if (tran == NULL) {
         if (rc == 0)
             rc = bdb_tran_commit(llmeta_bdb_state, t, bdberr);
-        else
-            rc = bdb_tran_abort(llmeta_bdb_state, t, bdberr);
+        else if (bdb_tran_abort(llmeta_bdb_state, t, bdberr)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s %s Something is very wrong. bdb_tran_abort failed.\n",
+                   __func__, __LINE__);
+            // TODO: more severe error?
+        }
     }
 
     return rc;

@@ -608,7 +608,7 @@ static void sequenceNextVal(sqlite3_context *context, int argc,
     int rc = request_sequence_num(sqlite3_value_text(argv[0]), &val);
 
     if (rc) {
-        if (rc == -1) {
+        if (rc == -5) {
             sqlite3_result_error(context, "No more sequence values avaliable",
                                  -1);
             return;

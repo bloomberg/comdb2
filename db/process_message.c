@@ -55,7 +55,6 @@ extern int __berkdb_fsync_alarm_ms;
 #include "memdebug.h"
 #include "verify.h"
 #include "switches.h"
-// #include "sequences.h"
 
 #include "osqlrepository.h"
 #include "osqlcomm.h"
@@ -1843,9 +1842,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
         if (tokcmp(tok, ltok, "print") == 0) {
             int idx;
-            extern int gbl_sequence_replicant_distribution;
-            logmsg(LOGMSG_USER, "rep distro %s\n",
-                   gbl_sequence_replicant_distribution ? "true" : "false");
             for (idx = 0; idx < thedb->num_sequences; idx++) {
                 sequence_t *seq = thedb->sequences[idx];
                 logmsg(LOGMSG_USER, "------ Sequence %d ------\nName: "
@@ -1862,6 +1858,11 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else if (tokcmp(tok, ltok, "ranges") == 0) {
             tok = segtok(line, lline, &st, &ltok);
 
+            if (ltok == 0) {
+                logmsg(LOGMSG_USER, "Try Again\n");
+                return -1;
+            }
+
             int idx;
             sequence_t *seq = getsequencebyname(tok);
             if (seq == NULL) {
@@ -1871,7 +1872,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             logmsg(LOGMSG_USER, "------ Sequence %s ------\nHEAD\n", tok);
 
             sequence_range_t *node = seq->range_head;
-            sequence_range_t *toFree;
             while (node) {
                 logmsg(LOGMSG_USER, "  -> %lld - %lld (%lld)\n", node->min_val,
                        node->max_val, node->current);

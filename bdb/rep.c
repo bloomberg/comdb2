@@ -4044,9 +4044,13 @@ void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
     return;
 }
 
-extern int seq_next_val(tran_type *tran, char *name, long long *val,
-                        bdb_state_type *bdb_state);
+int seq_next_val(tran_type *tran, char *name, long long *val,
+                 bdb_state_type *bdb_state);
+int generate_replicant_sequence_range(char *name, sequence_range_t *range);
 
+/**
+ * Buffer Packer for sequence number requests (master-only distro)
+ */
 static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf,
                                          const uint8_t *p_buf_end)
 {
@@ -4057,6 +4061,9 @@ static uint8_t *sequence_num_request_put(char *name, uint8_t *p_buf,
     return p_buf;
 }
 
+/**
+ * Buffer Unpack for sequence number requests (master-only distro)
+ */
 static const uint8_t *sequence_num_request_get(char *name, const uint8_t *p_buf,
                                                const uint8_t *p_buf_end)
 {
@@ -4067,6 +4074,9 @@ static const uint8_t *sequence_num_request_get(char *name, const uint8_t *p_buf,
     return p_buf;
 }
 
+/**
+ * Buffer Packer for sequence number responses (master-only distro)
+ */
 static uint8_t *sequence_num_response_put(long long *value, uint8_t *p_buf,
                                           const uint8_t *p_buf_end)
 {
@@ -4077,6 +4087,9 @@ static uint8_t *sequence_num_response_put(long long *value, uint8_t *p_buf,
     return p_buf;
 }
 
+/**
+ * Buffer Unpacker for sequence number responses (master-only distro)
+ */
 static const uint8_t *sequence_num_response_get(long long *value,
                                                 const uint8_t *p_buf,
                                                 const uint8_t *p_buf_end)
@@ -4085,6 +4098,61 @@ static const uint8_t *sequence_num_response_get(long long *value,
         return NULL;
 
     p_buf = buf_get(value, sizeof(long long), p_buf, p_buf_end);
+    return p_buf;
+}
+
+/**
+ * Buffer Packer for sequence range requests (rep distro)
+ */
+static uint8_t *sequence_range_request_put(char *name, uint8_t *p_buf,
+                                           const uint8_t *p_buf_end)
+{
+    return sequence_num_request_put(name, p_buf, p_buf_end);
+}
+
+/**
+* Buffer Unpack for sequence range requests (rep distro)
+*/
+static const uint8_t *sequence_range_request_get(char *name,
+                                                 const uint8_t *p_buf,
+                                                 const uint8_t *p_buf_end)
+{
+    return sequence_num_request_get(name, p_buf, p_buf_end);
+}
+
+/**
+* Buffer Packer for sequence range responses (rep distro)
+*/
+static uint8_t *sequence_range_response_put(sequence_range_t *range,
+                                            uint8_t *p_buf,
+                                            const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || sizeof(sequence_range_t) > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_put(&range->min_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&range->max_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&range->current, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_put(&range->next, sizeof(sequence_range_t *), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+/**
+* Buffer Unpacker for sequence range responses (rep distro)
+*/
+static const uint8_t *sequence_range_response_get(sequence_range_t *range,
+                                                  const uint8_t *p_buf,
+                                                  const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || sizeof(sequence_range_t) > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_get(&range->min_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_get(&range->max_val, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_get(&range->current, sizeof(long long), p_buf, p_buf_end);
+    p_buf = buf_get(&range->next, sizeof(sequence_range_t *), p_buf, p_buf_end);
+
     return p_buf;
 }
 
@@ -4122,6 +4190,10 @@ void *get_next_sequence_value(void *arg)
                __func__);
         net_ack_message(ack_handle, 5);
         ack_handle == NULL;
+
+        // Call bdb destructor
+        bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE_RDWR);
+        free(args);
         return NULL;
     }
 
@@ -4270,10 +4342,9 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
         }
 
         return 0;
-    }
 
-    // Call seq_next_val() if rep distribution
-    if (gbl_sequence_replicant_distribution) {
+    } else if (gbl_sequence_replicant_distribution) {
+        // Call seq_next_val() if rep distribution
         rc = seq_next_val(NULL, name, val, bdb_state);
 
         if (rc) {
@@ -4283,16 +4354,263 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
         }
 
         return rc;
+
+    } else {
+        // I am not master and rep distribution is off, contact master for value
+
+        // Pack sequence name
+        char data[MAXTABLELEN] = {0};
+        uint8_t *p_buf_req = data;
+        const uint8_t *p_buf_end_req = p_buf_req + MAXTABLELEN;
+
+        if ((p_buf_req = sequence_num_request_put(name, p_buf_req,
+                                                  p_buf_end_req)) == NULL) {
+            logmsg(
+                LOGMSG_ERROR,
+                "%s returning bad rcode because i can't pack sequence name\n",
+                __func__);
+            return -1;
+        }
+
+        // Send message to master
+        start_time = gettimeofday_ms();
+        if ((rc = net_send_message_payload_ack(
+                 bdb_state->repinfo->netinfo_signal,
+                 bdb_state->repinfo->master_host, USER_TYPE_REQ_SEQUENCE_NUM,
+                 (void *)&data, MAXTABLELEN, (uint8_t **)&buf, &buflen, 1,
+                 waitms)) != 0) {
+            end_time = gettimeofday_ms();
+
+            if (rc == NET_SEND_FAIL_TIMEOUT) {
+                logmsg(LOGMSG_WARN, "%s line %d: timed out waiting for "
+                                    "sequence num from master %s "
+                                    "after %u ms\n",
+                       __func__, __LINE__, bdb_state->repinfo->master_host,
+                       end_time - start_time);
+            } else {
+                logmsg(LOGMSG_USER,
+                       "%s line %d: net_send_message_payload_ack returns %d\n",
+                       __func__, __LINE__, rc);
+            }
+
+            return rc;
+        }
+
+        // Check payload size
+        if (buflen < sizeof(long long)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d: payload size to small: len is %d, i want"
+                   " at least %d\n",
+                   __func__, __LINE__, buflen, sizeof(long long));
+            if (buf)
+                free(buf);
+
+            return -1;
+        }
+
+        // Unpack sequence number
+        long long value;
+        p_buf = buf;
+        p_buf_end = p_buf + buflen;
+
+        if (!(p_buf = sequence_num_response_get(&value, p_buf, p_buf_end))) {
+            logmsg(LOGMSG_ERROR, "%s line %d error unpacking sequence value\n",
+                   __func__, __LINE__);
+            if (buf)
+                free(buf);
+
+            return -2;
+        }
+        free(buf);
+
+        // Return value from master
+        *val = value;
+        return 0;
+    }
+}
+
+/**
+ * Get sequence range and ack
+ *
+ * Generate a sequence range and return it with an ack to the original
+ * requestor. This is done in a seperate thread so aquiring the lock_key doesn't
+ * block the reader thread.
+ */
+void *get_next_sequence_range(void *arg)
+{
+    struct seq_next_val_thd *args = arg;
+    void *ack_handle = args->ack_handle;
+    char *name = args->name;
+
+    // Init bdb locks
+    bdb_thread_event(args->bdb_state, BDBTHR_EVENT_START_RDWR);
+
+    // Generate value
+    sequence_range_t *range = malloc(sizeof(sequence_range_t));
+    if (range == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s can't allocate memory for new chunk for sequence \"%s\"\n",
+               __func__, name);
+        net_ack_message(ack_handle, 5); // TODO: mesage rc codes
+        ack_handle == NULL;
+
+        // Call bdb destructor
+        bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE_RDWR);
+        free(name);
+        free(args);
+        return NULL;
     }
 
-    // I am not master and rep distribution is off, contact master for value
+    int rc = generate_replicant_sequence_range(name, range);
+    free(name);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i could not "
+                             "generate sequence value\n",
+               __func__);
+        net_ack_message(ack_handle, 5);
+        ack_handle == NULL;
+
+        // Call bdb destructor
+        bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE_RDWR);
+        free(args);
+        free(range);
+        return NULL;
+    }
+
+    // Pack sequence number
+    uint8_t buf[sizeof(sequence_range_t)];
+    uint8_t *p_buf, *p_buf_end;
+    p_buf = buf;
+    p_buf_end = p_buf + sizeof(sequence_range_t);
+
+    if (sequence_range_response_put(range, p_buf, p_buf_end) == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s returning bad rcode because i can't pack sequence range\n",
+               __func__);
+        net_ack_message(ack_handle, 6);
+        ack_handle == NULL;
+
+        // Call bdb destructor
+        bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE_RDWR);
+        free(args);
+        free(range);
+        return NULL;
+    }
+
+    // Ack message with sequence num as payload
+    net_ack_message_payload(ack_handle, 0, buf, sizeof(sequence_range_t));
+    ack_handle == NULL;
+
+    // Call bdb destructor
+    bdb_thread_event(args->bdb_state, BDBTHR_EVENT_DONE_RDWR);
+    free(range);
+    free(args);
+}
+
+/**
+ * Net Message handler for sequence range requests from reps
+ *
+ * Generates a sequence range for sequence specified in payload
+ * and returns to requestor
+ *
+ */
+void receive_sequence_range_request(void *ack_handle, void *usr_ptr,
+                                    char *from_host, int usertype, void *dta,
+                                    int dtalen, uint8_t is_tcp)
+{
+    bdb_state_type *bdb_state = usr_ptr;
+    repinfo_type *repinfo = bdb_state->repinfo;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    if (repinfo->master_host != repinfo->myhost) {
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i am not master\n",
+               __func__);
+        net_ack_message(ack_handle, 1);
+        ack_handle == NULL;
+        return;
+    }
+
+    if (bdb_state->attr->master_lease &&
+        !verify_master_leases(bdb_state, __func__, __LINE__)) {
+        logmsg(LOGMSG_ERROR,
+               "%s returning bad rcode because i don't have enough "
+               "leases\n",
+               __func__);
+        net_ack_message(ack_handle, 2);
+        ack_handle == NULL;
+        return;
+    }
+
+    // Unpack sequence name
+    char *name = malloc(sizeof(char) * MAXTABLELEN);
+    if (name == NULL) {
+        logmsg(LOGMSG_ERROR, "%s returning bad rcode because i can't allocate "
+                             "mem for sequence name\n",
+               __func__);
+        net_ack_message(ack_handle, 3);
+        ack_handle == NULL;
+        return;
+    }
+
+    const uint8_t *p_buf_req = (uint8_t *)dta;
+    const uint8_t *p_buf_end_req = p_buf_req + MAXTABLELEN;
+
+    if ((sequence_num_request_get(name, p_buf_req, p_buf_end_req)) == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s returning bad rcode because i can't unpack sequence name\n",
+               __func__);
+        net_ack_message(ack_handle, 3);
+        ack_handle == NULL;
+        free(name);
+        return;
+    }
+
+    // Generate value from seq_next_val in a new thread
+    struct seq_next_val_thd *args = malloc(sizeof(struct seq_next_val_thd));
+    args->name = name;
+    args->ack_handle = ack_handle;
+    args->bdb_state = bdb_state;
+    pthread_t tid;
+
+    if (pthread_create(&tid, NULL, get_next_sequence_range, args)) {
+        logmsg(LOGMSG_ERROR,
+               "%s returning bad rcode because thread could not be created\n",
+               __func__);
+        net_ack_message(ack_handle, 4);
+        ack_handle == NULL;
+
+        if (args)
+            free(args);
+        if (name)
+            free(name);
+
+        return;
+    }
+}
+
+int request_sequence_range_from_master(bdb_state_type *bdb_state,
+                                       const char *name_in,
+                                       sequence_range_t *range)
+{
+    const uint8_t *p_buf, *p_buf_end;
+    uint8_t *buf = NULL;
+    int buflen = 0;
+    int waitms = 1000;
+    int rc;
+    uint64_t start_time, end_time;
+    char *name = strdup(name_in);
+
+    // I am not master, contact master for range
     // Pack sequence name
     char data[MAXTABLELEN] = {0};
     uint8_t *p_buf_req = data;
     const uint8_t *p_buf_end_req = p_buf_req + MAXTABLELEN;
 
-    if ((p_buf_req = sequence_num_request_put(name, p_buf_req,
-                                              p_buf_end_req)) == NULL) {
+    if ((p_buf_req = sequence_range_request_put(name, p_buf_req,
+                                                p_buf_end_req)) == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s returning bad rcode because i can't pack sequence name\n",
                __func__);
@@ -4303,18 +4621,17 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
     start_time = gettimeofday_ms();
     if ((rc = net_send_message_payload_ack(
              bdb_state->repinfo->netinfo_signal,
-             bdb_state->repinfo->master_host, USER_TYPE_REQ_SEQUENCE_NUM,
+             bdb_state->repinfo->master_host, USER_TYPE_REQ_SEQUENCE_RANGE,
              (void *)&data, MAXTABLELEN, (uint8_t **)&buf, &buflen, 1,
              waitms)) != 0) {
         end_time = gettimeofday_ms();
 
         if (rc == NET_SEND_FAIL_TIMEOUT) {
-            logmsg(
-                LOGMSG_WARN,
-                "%s line %d: timed out waiting for sequence num from master %s "
-                "after %u ms\n",
-                __func__, __LINE__, bdb_state->repinfo->master_host,
-                end_time - start_time);
+            logmsg(LOGMSG_WARN, "%s line %d: timed out waiting for sequence "
+                                "range from master %s "
+                                "after %u ms\n",
+                   __func__, __LINE__, bdb_state->repinfo->master_host,
+                   end_time - start_time);
         } else {
             logmsg(LOGMSG_USER,
                    "%s line %d: net_send_message_payload_ack returns %d\n",
@@ -4325,11 +4642,11 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
     }
 
     // Check payload size
-    if (buflen < sizeof(long long)) {
+    if (buflen < sizeof(sequence_range_t)) {
         logmsg(LOGMSG_ERROR,
                "%s line %d: payload size to small: len is %d, i want"
                " at least %d\n",
-               __func__, __LINE__, buflen, sizeof(long long));
+               __func__, __LINE__, buflen, sizeof(sequence_range_t));
         if (buf)
             free(buf);
 
@@ -4337,11 +4654,10 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
     }
 
     // Unpack sequence number
-    long long value;
     p_buf = buf;
     p_buf_end = p_buf + buflen;
 
-    if (!(p_buf = sequence_num_response_get(&value, p_buf, p_buf_end))) {
+    if (!(p_buf = sequence_range_response_get(range, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s line %d error unpacking sequence value\n",
                __func__, __LINE__);
         if (buf)
@@ -4349,10 +4665,8 @@ int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
 
         return -2;
     }
-    free(buf);
 
-    // Return value from master
-    *val = value;
+    free(buf);
     return 0;
 }
 
