@@ -4824,7 +4824,16 @@ done:
  ** This is so that appropriate space can be allocated in the journal file
  ** when it is created..
  */
-int free_seq_curval(void *obj, void *arg);
+void clear_seq_curval(struct sqlclntstate *clnt);
+
+void sqlite3BtreeHaltHook(Vdbe *vdbe)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+
+    if (!clnt->in_client_trans)
+        clear_seq_curval(clnt);
+}
 
 int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
 {
@@ -4881,11 +4890,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
         }
     }
 
-    // Clear current values after transaction
-    if (clnt->osql.seq_curval) {
-        hash_for(clnt->osql.seq_curval, free_seq_curval, NULL);
-        hash_clear(clnt->osql.seq_curval);
-    }
 
     if (clnt->arr) {
         currangearr_free(clnt->arr);

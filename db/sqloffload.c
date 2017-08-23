@@ -651,7 +651,7 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     }
     if (osql->seq_curval) {
         hash_for(osql->seq_curval, free_seq_curval, NULL);
-        hash_clear(osql->seq_curval);
+        hash_free(osql->seq_curval);
         osql->seq_curval = NULL;
     }
 
