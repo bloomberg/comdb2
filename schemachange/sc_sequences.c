@@ -71,6 +71,7 @@ int do_add_sequence_int(struct schema_change_type *s, struct ireq *iq,
     char flags = 0;
     SBUF2 *sb = s->sb;
     int rc = 0;
+    int lid;
     int bdberr;
 
     // Check that name is valid
@@ -82,6 +83,9 @@ int do_add_sequence_int(struct schema_change_type *s, struct ireq *iq,
                 MAXTABLELEN - 1);
         return SC_INVALID_OPTIONS;
     }
+
+    bdb_get_tran_lockerid(trans, &lid);
+    bdb_lock_seq_write_fromlid(thedb->bdb_env, name, lid);
 
     // Check for duplicate name
     if (!(getsequencebyname(name) == NULL)) {
@@ -166,6 +170,7 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
     int rc;
     int bdberr;
     int i;
+    int lid;
     char *name = s->table;
     SBUF2 *sb = s->sb;
 
@@ -177,6 +182,9 @@ int do_drop_sequence_int(struct schema_change_type *s, struct ireq *iq,
 
         return SC_TABLE_DOESNOT_EXIST;
     }
+
+    bdb_get_tran_lockerid(trans, &lid);
+    bdb_lock_seq_write_fromlid(thedb->bdb_env, name, lid);
 
     for (i = 0; i < thedb->num_sequences; i++) {
         if (strcasecmp(thedb->sequences[i]->name, name) == 0) {
@@ -238,7 +246,11 @@ int do_alter_sequence_int(struct schema_change_type *s, struct ireq *iq,
     int modified = s->seq_modified;
     SBUF2 *sb = s->sb;
     int rc = 0;
+    int lid;
     int bdberr;
+
+    bdb_get_tran_lockerid(trans, &lid);
+    bdb_lock_seq_write_fromlid(thedb->bdb_env, name, lid);
 
     if (thedb->num_sequences == 0) {
         // No Sequences Defined
