@@ -601,6 +601,7 @@ int update_sequence_description(bdb_state_type *bdb_state,
         }
     }
 
+    /* Replicant will already have the lock */
     if (type == llmeta_sequence_add || type == llmeta_sequence_alter) {
         // Sequence attributes
         long long min_val;   // Minimum value
