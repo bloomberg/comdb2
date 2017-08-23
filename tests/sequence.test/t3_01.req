@@ -1,0 +1,26 @@
+create sequence test3
+select currval("test3")
+select nextval("test3")
+select currval("test3")
+select nextval("test3"), currval("test3"), nextval("test3"), currval("test3"), currval("test3")
+alter sequence test3 restart
+
+begin
+select currval("test3")
+rollback
+
+begin
+select nextval("test3")
+select currval("test3")
+select nextval("test3"), currval("test3"), nextval("test3"), currval("test3"), currval("test3")
+commit
+select currval("test3")
+alter sequence test3 restart
+
+begin
+select nextval("test3")
+select currval("test3")
+select nextval("test3"), currval("test3"), nextval("test3"), currval("test3"), currval("test3")
+rollback
+select currval("test3")
+drop sequence test3
