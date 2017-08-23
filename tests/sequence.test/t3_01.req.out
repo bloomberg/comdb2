@@ -1,0 +1,13 @@
+[select currval("test3")] failed with rc 300 Current value of sequence could not be found
+(nextval("test3")=1)
+[select currval("test3")] failed with rc 300 Current value of sequence could not be found
+(nextval("test3")=2, currval("test3")=2, nextval("test3")=3, currval("test3")=3, currval("test3")=3)
+[select currval("test3")] failed with rc 300 Current value of sequence could not be found
+(nextval("test3")=1)
+(currval("test3")=1)
+(nextval("test3")=2, currval("test3")=2, nextval("test3")=3, currval("test3")=3, currval("test3")=3)
+[select currval("test3")] failed with rc 300 Current value of sequence could not be found
+(nextval("test3")=1)
+(currval("test3")=1)
+(nextval("test3")=2, currval("test3")=2, nextval("test3")=3, currval("test3")=3, currval("test3")=3)
+[select currval("test3")] failed with rc 300 Current value of sequence could not be found

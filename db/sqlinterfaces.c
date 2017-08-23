@@ -6404,11 +6404,7 @@ void reset_clnt_flags(struct sqlclntstate *clnt)
     clnt->writeTransaction = 0;
     clnt->has_recording = 0;
 
-    // Clear current values after transaction
-    if (clnt->osql.seq_curval) {
-        hash_for(clnt->osql.seq_curval, free_seq_curval, NULL);
-        hash_clear(clnt->osql.seq_curval);
-    }
+    clear_seq_curval(clnt);
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
