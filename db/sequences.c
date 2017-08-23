@@ -28,13 +28,10 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
                          uint32_t line);
 
 /**
- *  Returns the next value for a specified sequence object. If the sequence
- * name
- *  cannot be found, -1 is returned. If the next value is greater than the
- * max
- *  or less than min value, for ascending or descending sequences
- * respectively,
- *  and cycle is not enabled, <error>.
+ * Returns the next value for a specified sequence object. If the sequence name
+ * cannot be found, -1 is returned. If the next value is greater than the max or
+ * less than min value, for ascending or descending sequences respectively, and
+ * cycle is not enabled, <error>.
  *
  *  @param name char * Name of the sequence
  *  @param val long long * Reference to output location
@@ -74,10 +71,12 @@ int seq_next_val(tran_type *tran, char *name, long long *val,
             // I am master, generate and return value
             if (bdb_state->attr->master_lease &&
                 !verify_master_leases(bdb_state, __func__, __LINE__)) {
-                logmsg(LOGMSG_ERROR, "%s line %d failed verifying master leases\n",
-                       __func__,
+                logmsg(LOGMSG_ERROR,
+                       "%s line %d failed verifying master leases\n", __func__,
                        __LINE__);
-                return -2;
+                rc = -1;
+                free(node);
+                goto done;
             }
 
             // No remaining values, allocate new chunk into range
