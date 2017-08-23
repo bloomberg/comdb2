@@ -309,7 +309,7 @@ found on the [table schema](table_schema.html) page).
 The second approach, added in version 7.0, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using ```CREATE TABLE (II)``` implicitly creates a
-```UNIQUE``` index named ```PRIMARY_KEY``` with all key columns marked
+```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
 ```NOT NULL```.
 
 See also:
