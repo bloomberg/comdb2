@@ -212,3 +212,11 @@ contrib/docker/volumes
 
 # editor files
 .vscode
+
+# windows files
+*.obj
+*.exe
+*.pdb
+*.dll
+*.lib
+*.exp
