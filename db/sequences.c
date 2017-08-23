@@ -21,6 +21,9 @@
 extern struct dbenv *thedb;
 
 int gbl_sequence_replicant_distribution = 0;
+int request_sequence_range_from_master(bdb_state_type *bdb_state,
+                                       const char *name_in,
+                                       sequence_range_t *val);
 
 /**
  *  Returns the next value for a specified sequence object. If the sequence name
@@ -90,6 +93,14 @@ int seq_next_val(tran_type *tran, char *name, long long *val,
             pthread_mutex_unlock(&seq->seq_lk);
 
             // TODO: Call to master for new range
+            rc = request_sequence_range_from_master(bdb_state, name, node);
+
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "can't retrive new chunk for sequence \"%s\"\n", name);
+                free(node);
+                goto done;
+            }
 
             // Get lock for in-memory object
             pthread_mutex_lock(&seq->seq_lk);
@@ -201,6 +212,38 @@ int insert_sequence_range(sequence_t *seq, sequence_range_t *node)
     } else {
         seq->range_head = node;
         node->next = NULL;
+    }
+
+    return 0;
+}
+
+int generate_replicant_sequence_range(char *name, sequence_range_t *range)
+{
+    int rc = 0;
+    int bdberr = 0;
+    sequence_t *seq = getsequencebyname(name);
+
+    if (seq == NULL) {
+        // Failed to find sequence with specified name
+        logmsg(LOGMSG_ERROR, "Sequence %s cannot be found\n", name);
+        return -1;
+    }
+
+    // Get lock for in-memory object
+    pthread_mutex_lock(&seq->seq_lk);
+
+    rc = bdb_llmeta_get_sequence_chunk(
+        NULL, name, seq->min_val, seq->max_val, seq->increment, seq->cycle,
+        seq->chunk_size, &seq->flags, seq->start_val, &seq->next_start_val,
+        range, &bdberr);
+
+    // Get lock for in-memory object
+    pthread_mutex_unlock(&seq->seq_lk);
+
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't retrive new chunk for sequence \"%s\"\n",
+               name);
+        return rc;
     }
 
     return 0;

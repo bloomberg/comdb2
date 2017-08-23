@@ -948,7 +948,6 @@ int get_high_availability(struct sqlclntstate *clnt)
     return clnt->high_availability_flag;
 }
 
-int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in, long long *val);
 int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
                              long long *val);
 

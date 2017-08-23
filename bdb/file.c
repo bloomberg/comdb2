@@ -2566,6 +2566,10 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
                          USER_TYPE_REQ_SEQUENCE_NUM,
                          receive_sequence_num_request);
 
+    net_register_handler(bdb_state->repinfo->netinfo_signal,
+                         USER_TYPE_REQ_SEQUENCE_RANGE,
+                         receive_sequence_range_request);
+
     /* register our net library appsock wedge.  this lets us return
        the usr ptr containing the bdb state to the caller instead
        of the netinfo pointer */

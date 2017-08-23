@@ -25,5 +25,6 @@ int seq_next_val(tran_type *tran, char *name, long long *val,
 int sequences_master_change();
 int sequences_master_upgrade();
 int insert_sequence_range(sequence_t *seq, sequence_range_t *node);
+int generate_replicant_sequence_range(char *name, sequence_range_t *range);
 
 #endif
