@@ -1,3 +1,5 @@
-create sequence test2
+create sequence if not exists test2
+create sequence if not exists test2
 insert into t (id) values (nextval("test2"))
 select id from t
+drop sequence test2
