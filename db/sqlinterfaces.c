@@ -6398,7 +6398,6 @@ void clear_seq_curval(struct sqlclntstate *clnt)
     }
 }
 
-
 void reset_clnt_flags(struct sqlclntstate *clnt)
 {
     clnt->writeTransaction = 0;

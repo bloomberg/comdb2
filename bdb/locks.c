@@ -167,8 +167,7 @@ int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
     /* sequence lock */
     else if (lklen == SEQLOCK_KEY_SIZE) {
         snprintf(out, outlen, "sequencelock, %*s", 30, (char *)lkname);
-    } 
-    else {
+    } else {
         snprintf(out, outlen, "unknown lock %d\n", lklen);
         abort();
     }

@@ -39,7 +39,7 @@ int verify_master_leases(bdb_state_type *bdb_state, const char *func,
  *  @param val long long * Reference to output location
  */
 static int seq_next_val_int(tran_type *tran, char *name, long long *val,
-                 bdb_state_type *bdb_state)
+                            bdb_state_type *bdb_state)
 {
     sequence_t *seq = getsequencebyname(name);
     sequence_range_t *temp;
