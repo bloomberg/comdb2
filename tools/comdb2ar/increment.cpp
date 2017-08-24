@@ -246,10 +246,8 @@ ssize_t serialise_incr_file(
     uint8_t *pagebuf = NULL;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
-    posix_memalign((void**) &char_pagebuf, 512, pagesize);
     posix_memalign((void**) &pagebuf, 512, pagesize);
 #else
-    char_pagebuf = (char*) memalign(512, pagesize);
     pagebuf = (uint8_t*) memalign(512, pagesize);
 #endif
 
@@ -266,17 +264,15 @@ ssize_t serialise_incr_file(
             it = pages.begin();
             it != pages.end();
             ++it){
-
+tryagain:
         ifs.seekg(pagesize * *it, ifs.beg);
-        ifs.read(&char_pagebuf[0], pagesize);
+        ifs.read(&pagebuf[0], pagesize);
         ssize_t bytes_read = ifs.gcount();
         if(bytes_read < pagesize) {
             std::ostringstream ss;
             ss << "read error";
             throw SerialiseError(filename, ss.str());
         }
-
-        std::memcpy(pagebuf, char_pagebuf, pagesize);
 
         uint32_t cksum;
         bool cksum_verified;
@@ -289,8 +285,7 @@ ssize_t serialise_incr_file(
                 throw SerialiseError(filename, ss.str());
             }
 
-            --it;
-            continue;
+            goto tryagain;
         }
 
         retry = 5;
