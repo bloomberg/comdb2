@@ -1,0 +1,13 @@
+create sequence TeSt5
+select nextval("tEsT5")
+select nextval("tesT5")
+select nextval("TEsT5")
+select nextval("test5")
+select nextval("TEST5")
+alter sequence test5 restart
+select nextval("tEsT5")
+select nextval("tesT5")
+select nextval("TEsT5")
+select nextval("test5")
+select nextval("TEST5")
+drop sequence tesT5
