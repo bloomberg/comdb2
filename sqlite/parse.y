@@ -193,6 +193,285 @@ columnlist ::= columnlist COMMA columnname carglist.
 columnlist ::= columnname carglist.
 columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 
+///////////////////// COMDB2 SEQUENCE arguments ////////////////////////////
+
+%include {
+  #include <limits.h>
+  #include <errno.h>
+
+  typedef struct {
+    int type;
+    long long data;
+  } seq_arg;
+
+  typedef struct {
+    /* Basic Attributes */
+    long long min_val; /* Values dispensed must be greater than or equal to min_val */
+    long long max_val; /* Values dispensed must be less than or equal to max_val */
+    long long increment; /* Normal difference between two consecutively dispensed values */
+    long long cycle; /* If cycling values is permitted */
+    long long start_val; /* Value from START WITH from CREATE*/
+    long long restart_val; /* Value from RESTART WITH from ALTER  */
+    long long chunk_size; /* Number of values to allocate from llmeta */
+    int modified; /* Flags indicating which fields were modified */
+  } seq_args;
+}
+
+// Rule for long long ints
+%type longlong {long long}
+longlong(A) ::= ulonglong(A).
+longlong(A) ::= MINUS INTEGER(B). {
+  // Null terminate string
+  char out[B.n + 2];
+  memcpy(out+1, B.z, B.n+1);
+  out[B.n+1] = '\0';
+  out[0] = '-';
+
+  errno = 0;
+  A = strtoll(out, NULL, 10);
+
+  if ((errno == ERANGE && (A == LONG_MAX || A == LONG_MIN))
+            || (errno != 0 && A == 0)) {
+    sqlite3ErrorMsg(pParse, "Number underflows or overflows");
+  }
+}
+
+// Rule for non-negative long long 
+// (not to be confused with unsigned long long)
+%type ulonglong {long long}
+ulonglong(A) ::= INTEGER(B). {
+  // Null terminate string
+  char out[B.n + 1];
+  memcpy(out, B.z, B.n);
+  out[B.n] = '\0';
+
+  errno = 0;
+  A = strtoll(out, NULL, 10);
+
+  if ((errno == ERANGE && (A == LONG_MAX || A == LONG_MIN))
+            || (errno != 0 && A == 0)) {
+    sqlite3ErrorMsg(pParse, "Number underflows or overflows");
+  }
+}
+
+%type sequence_args {seq_args}
+sequence_args(A) ::= sequence_arg(B) sequence_args(C). {
+  // Copy previous set of options
+  A = C;
+
+  if (B.type < 0){
+    return;
+  } else if (A.modified & B.type) {
+    return sqlite3ErrorMsg(pParse, "conflicting or redundant options");
+  }
+
+  switch(B.type) {
+    case SEQ_MIN_VAL:
+      A.min_val = B.data;
+      break;
+    case SEQ_MAX_VAL:
+      A.max_val = B.data;
+      break;
+    case SEQ_INC:
+      if (B.data < 0){
+        // Change default min_val and max_val
+        if (!(A.modified & SEQ_MIN_VAL))
+          A.min_val = LLONG_MIN;
+        if (!(A.modified & SEQ_MAX_VAL))
+          A.max_val = -1;
+        if (!(A.modified & SEQ_START_VAL))
+          A.start_val = A.max_val;
+      }
+      A.increment = B.data;
+      break;
+    case SEQ_CYCLE:
+      A.cycle = B.data;
+      break;
+    case SEQ_START_VAL:
+      A.start_val = B.data;
+      break;
+    case SEQ_CHUNK_SIZE:
+      A.chunk_size = B.data;
+      break;
+  }
+
+  // Mark field as modified from default
+  A.modified |= B.type;
+}
+sequence_args(A) ::= . {
+  // Defaults
+  A.min_val = 1;
+  A.max_val = LLONG_MAX;
+  A.increment = 1;
+  A.cycle = 0;
+  A.start_val = A.min_val;
+  A.chunk_size = 1;
+
+  A.modified = 0;
+}
+
+%type sequence_arg {seq_arg}
+sequence_arg(A) ::= sequence_start_with(A).
+sequence_arg(A) ::= sequence_increment_by(A).
+sequence_arg(A) ::= sequence_min_value(A).
+sequence_arg(A) ::= sequence_max_value(A).
+sequence_arg(A) ::= sequence_cycle(A).
+sequence_arg(A) ::= sequence_chunk(A).
+
+%type sequence_start_with {seq_arg}
+sequence_start_with(A) ::= START WITH longlong(B). {
+  A.type = SEQ_START_VAL;
+  A.data = B;
+}
+sequence_start_with(A) ::= START longlong(B). {
+  A.type = SEQ_START_VAL;
+  A.data = B;
+}
+
+%type sequence_increment_by {seq_arg}
+sequence_increment_by(A) ::= INCREMENT BY longlong(B). {
+  A.type = SEQ_INC;
+  A.data = B;
+}
+sequence_increment_by(A) ::= INCREMENT longlong(B). {
+  A.type = SEQ_INC;
+  A.data = B;
+}
+
+%type sequence_min_value {seq_arg}
+sequence_min_value(A) ::= MINVALUE longlong(B). {
+  A.type = SEQ_MIN_VAL;
+  A.data = B;
+}
+sequence_min_value(A) ::= NO MINVALUE. {
+  A.type = -1;
+}
+
+%type sequence_max_value {seq_arg}
+sequence_max_value(A) ::= MAXVALUE longlong(B). {
+  A.type = SEQ_MAX_VAL;
+  A.data = B;
+}
+sequence_max_value(A) ::= NO MAXVALUE. {
+  A.type = -1;
+}
+
+%type sequence_cycle {seq_arg}
+sequence_cycle(A) ::= CYCLE. {
+  A.type = SEQ_CYCLE;
+  A.data = 1;
+}
+sequence_cycle(A) ::= NO CYCLE. {
+  A.type = SEQ_CYCLE;
+  A.data = 0;
+}
+
+%type sequence_chunk {seq_arg}
+sequence_chunk(A) ::= CHUNK ulonglong(B). {
+  A.type = SEQ_CHUNK_SIZE ;
+  A.data = B;
+}
+sequence_chunk(A) ::= NO CHUNK. {
+  A.type = -1;
+}
+
+///////////////////// COMDB2 CREATE SEQUENCE statement ////////////////////////////
+
+cmd ::= createkw SEQUENCE ifnotexists(E) nm(N) sequence_args(A). {
+  // Null terminate string
+  char name[N.n + 1];
+  memcpy(name, N.z, N.n);
+  name[N.n] = '\0';
+
+  comdb2CreateSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,E);
+}
+
+///////////////////// COMDB2 DROP SEQUENCE statement ////////////////////////////
+
+cmd ::= DROP SEQUENCE nm(N). {
+  // Null terminate string
+  char name[N.n + 1];
+  memcpy(name, N.z, N.n);
+  name[N.n] = '\0';
+
+  comdb2DropSequence(pParse,name);
+}
+
+///////////////////// COMDB2 ALTER SEQUENCE statement ////////////////////////////
+
+cmd ::= ALTER SEQUENCE nm(N) alter_sequence_args(A). {
+  // Null terminate string
+  char name[N.n + 1];
+  memcpy(name, N.z, N.n);
+  name[N.n] = '\0';
+
+  comdb2AlterSequence(pParse,name,A.min_val,A.max_val,A.increment,A.cycle,A.start_val,A.chunk_size,A.restart_val,A.modified);
+}
+
+%type sequence_restart_with {seq_arg}
+sequence_restart_with(A) ::= RESTART WITH longlong(B). {
+  A.type = SEQ_RESTART_VAL;
+  A.data = B;
+}
+sequence_restart_with(A) ::= RESTART longlong(B). {
+  A.type = SEQ_RESTART_VAL;
+  A.data = B;
+}
+sequence_restart_with(A) ::= RESTART. {
+  // Will be marked in A.modified
+  A.type = SEQ_RESTART_TO_START_VAL;
+}
+
+%type alter_sequence_arg {seq_arg}
+alter_sequence_arg(A) ::= sequence_arg(A). // All other sequence options
+alter_sequence_arg(A) ::= sequence_restart_with(A).
+
+
+// Alter sequence adds RESTART option
+%type alter_sequence_args {seq_args}
+alter_sequence_args(A) ::= alter_sequence_arg(B) alter_sequence_args(C). {
+  // Copy previous set of options
+  A = C;
+
+  if (B.type < 0){
+    return;
+  } else if (A.modified & B.type) {
+    return sqlite3ErrorMsg(pParse, "conflicting or redundant options");
+  }
+
+  switch(B.type) {
+    case SEQ_MIN_VAL:
+      A.min_val = B.data;
+      break;
+    case SEQ_MAX_VAL:
+      A.max_val = B.data;
+      break;
+    case SEQ_INC:
+      A.increment = B.data;
+      break;
+    case SEQ_CYCLE:
+      A.cycle = B.data;
+      break;
+    case SEQ_START_VAL:
+      A.start_val = B.data;
+      break;
+    case SEQ_CHUNK_SIZE:
+      A.chunk_size = B.data;
+      break;
+    case SEQ_RESTART_VAL:
+      if (A.modified & SEQ_RESTART_TO_START_VAL) {
+        return sqlite3ErrorMsg(pParse, "conflicting or redundant options");
+      }
+      A.restart_val = B.data;
+  }
+
+  // Mark field as modified from default
+  A.modified |= B.type;
+}
+alter_sequence_args(A) ::= . {
+  A.modified = 0;
+}
+
 // Define operator precedence early so that this is the first occurrence
 // of the operator tokens in the grammer.  Keeping the operators together
 // causes them to be assigned integer values that are close together,
@@ -239,13 +518,14 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
 //
 // COMDB2 KEYWORDS  
 //
-  ADD AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT CHECK CONSTRAINT
-  COMMITSLEEP CONSUMER CONVERTSLEEP COVERAGE CRLE DATA DATABLOB DATACOPY DBPAD
-  DEFERRABLE DISABLE DRYRUN ENABLE FOR FOREIGN FUNCTION GENID48 GET GRANT
-  IPU ISC KW LUA LZ4 NONE ODH OFF OP OPTIONS PARTITION PASSWORD PERIOD
-  PROCEDURE PUT REBUILD READ REC REFERENCES RESERVED RETENTION REVOKE RLE
-  ROWLOCKS SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE THREADS THRESHOLD TIME
-  TRUNCATE TUNABLE VERSION WRITE DDL USERSCHEMA ZLIB .
+  ADD AGGREGATE ALIAS AUTHENTICATION BLOBFIELD BULKIMPORT CHECK CHUNK
+  COMMITSLEEP CONSTRAINT CONSUMER CONVERTSLEEP COVERAGE CRLE CYCLE DATA DATABLOB
+  DATACOPY DBPAD DDL DEFERRABLE DISABLE DRYRUN ENABLE FOR FOREIGN FUNCTION
+  GENID48 GET GRANT INCREMENT IPU ISC KW LUA LZ4 MAXVALUE MINVALUE NONE ODH
+  OFF OP OPTIONS PARTITION PASSWORD PERIOD PROCEDURE PUT READ REBUILD REC
+  REFERENCES RESERVED RESTART RETENTION REVOKE RLE ROWLOCKS SCALAR SCHEMACHANGE
+  SEQUENCE SKIPSCAN START SUMMARIZE THREADS THRESHOLD TIME TRUNCATE TUNABLE
+  USERSCHEMA VERSION WRITE ZLIB .
 %wildcard ANY.
 
 
@@ -331,6 +611,7 @@ ccons ::= WITH DBPAD EQ INTEGER(X). {
 }
 
 // The optional AUTOINCREMENT keyword
+// TODO: Modify for sequences
 %type autoinc {int}
 autoinc(X) ::= .          {X = 0;}
 %ifdef COMDB2_UNSUPPORTED
@@ -462,7 +743,7 @@ cmd ::= select(X).  {
         pLoop->pNext = pNext;
         pLoop->selFlags |= SF_Compound;
       }
-      if( (p->selFlags & SF_MultiValue)==0 && 
+      if( (p->selFlags & SF_MultiValue)==0 &&
         (mxSelect = pParse->db->aLimit[SQLITE_LIMIT_COMPOUND_SELECT])>0 &&
         cnt>mxSelect
       ){
@@ -563,7 +844,7 @@ values(A) ::= values(A) COMMA LP exprlist(Y) RP. {
   }
 }
 
-/* COMDB2 MODIFICATION 
+/* COMDB2 MODIFICATION
  * add the SELECTV instruction */
 oneselect(A) ::= SELECTV distinct(D) selcollist(W) from(X) where_opt(Y)
                  groupby_opt(P) having_opt(Q) orderby_opt(Z) limit_opt(L). {
@@ -685,7 +966,7 @@ dbnm(A) ::= DOT nm(X). {A = X;}
 
 %type fullname {SrcList*}
 %destructor fullname {sqlite3SrcListDelete(pParse->db, $$);}
-fullname(A) ::= nm(X) dbnm(Y).  
+fullname(A) ::= nm(X) dbnm(Y).
    {A = sqlite3SrcListAppend(pParse->db,0,&X,&Y); /*A-overwrites-X*/}
 
 %type joinop {int}
@@ -708,8 +989,8 @@ on_opt(N) ::= .             {N = 0;}
 // with z pointing to the token data and n containing the number of bytes
 // in the token.
 //
-// If there is a "NOT INDEXED" clause, then (z==0 && n==1), which is 
-// normally illegal. The sqlite3SrcListIndexedBy() function 
+// If there is a "NOT INDEXED" clause, then (z==0 && n==1), which is
+// normally illegal. The sqlite3SrcListIndexedBy() function
 // recognizes and interprets this as a special case.
 //
 %type indexed_opt {Token}
@@ -717,7 +998,7 @@ indexed_opt(A) ::= .                 {A.z=0; A.n=0;}
 
 /* COMDB2 MODIFICATION
  * sqlite itself discourages use of these clauses and we want
- * to avoid having developers write queries that mess with the 
+ * to avoid having developers write queries that mess with the
  * planner
  * indexed_opt(A) ::= INDEXED BY nm(X). {A = X;}
  * indexed_opt(A) ::= NOT INDEXED.      {A.z=0; A.n=1;}
@@ -770,9 +1051,9 @@ having_opt(A) ::= HAVING expr(X).  {A = X.pExpr;}
 
 // The destructor for limit_opt will never fire in the current grammar.
 // The limit_opt non-terminal only occurs at the end of a single production
-// rule for SELECT statements.  As soon as the rule that create the 
+// rule for SELECT statements.  As soon as the rule that create the
 // limit_opt non-terminal reduces, the SELECT statement rule will also
-// reduce.  So there is never a limit_opt non-terminal on the stack 
+// reduce.  So there is never a limit_opt non-terminal on the stack
 // except as a transient.  So there is never anything to destroy.
 //
 //%destructor limit_opt {
@@ -781,15 +1062,15 @@ having_opt(A) ::= HAVING expr(X).  {A = X.pExpr;}
 //}
 limit_opt(A) ::= .                    {A.pLimit = 0; A.pOffset = 0;}
 limit_opt(A) ::= LIMIT expr(X).       {A.pLimit = X.pExpr; A.pOffset = 0;}
-limit_opt(A) ::= LIMIT expr(X) OFFSET expr(Y). 
+limit_opt(A) ::= LIMIT expr(X) OFFSET expr(Y).
                                       {A.pLimit = X.pExpr; A.pOffset = Y.pExpr;}
-limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y). 
+limit_opt(A) ::= LIMIT expr(X) COMMA expr(Y).
                                       {A.pOffset = X.pExpr; A.pLimit = Y.pExpr;}
 
 /////////////////////////// The DELETE statement /////////////////////////////
 //
 %ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W) 
+cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
         orderby_opt(O) limit_opt(L). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
@@ -820,7 +1101,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+  sqlite3ExprListCheckLength(pParse,Y,"set list");
   W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "UPDATE");
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
   sqlite3Update(pParse,X,Y,W.pExpr,R);
@@ -831,7 +1112,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
         where_opt(W).  {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+  sqlite3ExprListCheckLength(pParse,Y,"set list");
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
   sqlite3Update(pParse,X,Y,W.pExpr,R);
 }
@@ -872,7 +1153,7 @@ cmd ::= with(W) insert_cmd(R) INTO fullname(X) idlist_opt(F) DEFAULT VALUES.
 %type insert_cmd {int}
 insert_cmd(A) ::= INSERT orconf(R).   {A = R;}
 %ifdef COMDB2_UNSUPPORTED
-insert_cmd(A) ::= REPLACE.            {A = OE_Replace;} 
+insert_cmd(A) ::= REPLACE.            {A = OE_Replace;}
 %endif
 
 %type idlist_opt {IdList*}
@@ -925,7 +1206,7 @@ idlist(A) ::= nm(Y).
       }
 #if SQLITE_MAX_EXPR_DEPTH>0
       p->nHeight = 1;
-#endif  
+#endif
     }
     pOut->pExpr = p;
     pOut->zStart = t.z;
@@ -1109,7 +1390,7 @@ expr(A) ::= expr(A) likeop(OP) expr(Y) ESCAPE expr(E).  [LIKE_KW]  {
   ){
     pOperand->pExpr = sqlite3PExpr(pParse, op, pOperand->pExpr, 0, 0);
     pOperand->zEnd = &pPostOp->z[pPostOp->n];
-  }                           
+  }
 }
 
 expr(A) ::= expr(A) ISNULL|NOTNULL(E).   {spanUnaryPostfix(pParse,@E,&A,&E);}
@@ -1133,7 +1414,7 @@ expr(A) ::= expr(A) NOT NULL(E). {spanUnaryPostfix(pParse,TK_NOTNULL,&A,&E);}
 //
 // If expr2 is NULL then code as TK_ISNULL or TK_NOTNULL.  If expr2
 // is any other expression, code as TK_IS or TK_ISNOT.
-// 
+//
 expr(A) ::= expr(A) IS expr(Y).     {
   spanBinaryExpr(pParse,TK_IS,&A,&Y);
   binaryToUnaryIfNull(pParse, Y.pExpr, A.pExpr, TK_ISNULL);
@@ -1161,7 +1442,7 @@ expr(A) ::= expr(A) IS NOT expr(Y). {
 
 
 
-expr(A) ::= NOT(B) expr(X).  
+expr(A) ::= NOT(B) expr(X).
               {spanUnaryPrefix(&A,pParse,@B,&X,&B);/*A-overwrites-B*/}
 expr(A) ::= BITNOT(B) expr(X).
               {spanUnaryPrefix(&A,pParse,@B,&X,&B);/*A-overwrites-B*/}
@@ -1181,7 +1462,7 @@ expr(A) ::= expr(A) between_op(N) expr(X) AND expr(Y). [BETWEEN] {
     A.pExpr->x.pList = pList;
   }else{
     sqlite3ExprListDelete(pParse->db, pList);
-  } 
+  }
   exprNot(pParse, N, &A);
   A.zEnd = Y.zEnd;
 }
@@ -1293,11 +1574,11 @@ case_exprlist(A) ::= WHEN expr(Y) THEN expr(Z). {
 %type case_else {Expr*}
 %destructor case_else {sqlite3ExprDelete(pParse->db, $$);}
 case_else(A) ::=  ELSE expr(X).         {A = X.pExpr;}
-case_else(A) ::=  .                     {A = 0;} 
+case_else(A) ::=  .                     {A = 0;}
 %type case_operand {Expr*}
 %destructor case_operand {sqlite3ExprDelete(pParse->db, $$);}
-case_operand(A) ::= expr(X).            {A = X.pExpr; /*A-overwrites-X*/} 
-case_operand(A) ::= .                   {A = 0;} 
+case_operand(A) ::= expr(X).            {A = X.pExpr; /*A-overwrites-X*/}
+case_operand(A) ::= .                   {A = 0;}
 
 %type exprlist {ExprList*}
 %destructor exprlist {sqlite3ExprListDelete(pParse->db, $$);}
@@ -1419,7 +1700,7 @@ cmd ::= VACUUM nm(X).          {sqlite3Vacuum(pParse,&X);}
 cmd ::= PRAGMA nm(X) dbnm(Z).                {sqlite3Pragma(pParse,&X,&Z,0,0);}
 cmd ::= PRAGMA nm(X) dbnm(Z) EQ nmnum(Y).    {sqlite3Pragma(pParse,&X,&Z,&Y,0);}
 cmd ::= PRAGMA nm(X) dbnm(Z) LP nmnum(Y) RP. {sqlite3Pragma(pParse,&X,&Z,&Y,0);}
-cmd ::= PRAGMA nm(X) dbnm(Z) EQ minus_num(Y). 
+cmd ::= PRAGMA nm(X) dbnm(Z) EQ minus_num(Y).
                                              {sqlite3Pragma(pParse,&X,&Z,&Y,1);}
 cmd ::= PRAGMA nm(X) dbnm(Z) LP minus_num(Y) RP.
                                              {sqlite3Pragma(pParse,&X,&Z,&Y,1);}
@@ -1445,7 +1726,7 @@ cmd ::= createkw trigger_decl(A) BEGIN trigger_cmd_list(S) END(Z). {
   sqlite3FinishTrigger(pParse, S, &all);
 }
 
-trigger_decl(A) ::= temp(T) TRIGGER ifnotexists(NOERR) nm(B) dbnm(Z) 
+trigger_decl(A) ::= temp(T) TRIGGER ifnotexists(NOERR) nm(B) dbnm(Z)
                     trigger_time(C) trigger_event(D)
                     ON fullname(E) foreach_clause when_clause(G). {
   sqlite3BeginTrigger(pParse, &B, &Z, C, D.a, D.b, E, G, T, NOERR);
@@ -1479,20 +1760,20 @@ trigger_cmd_list(A) ::= trigger_cmd_list(A) trigger_cmd(X) SEMI. {
   A->pLast->pNext = X;
   A->pLast = X;
 }
-trigger_cmd_list(A) ::= trigger_cmd(A) SEMI. { 
+trigger_cmd_list(A) ::= trigger_cmd(A) SEMI. {
   assert( A!=0 );
   A->pLast = A;
 }
 
 // Disallow qualified table names on INSERT, UPDATE, and DELETE statements
-// within a trigger.  The table to INSERT, UPDATE, or DELETE is always in 
+// within a trigger.  The table to INSERT, UPDATE, or DELETE is always in
 // the same database as the table that the trigger fires on.
 //
 %type trnm {Token}
 trnm(A) ::= nm(A).
 trnm(A) ::= nm DOT nm(X). {
   A = X;
-  sqlite3ErrorMsg(pParse, 
+  sqlite3ErrorMsg(pParse,
         "qualified table names are not allowed on INSERT, UPDATE, and DELETE "
         "statements within triggers");
 }
@@ -1517,9 +1798,9 @@ tridxby ::= NOT INDEXED. {
 
 %type trigger_cmd {TriggerStep*}
 %destructor trigger_cmd {sqlite3DeleteTriggerStep(pParse->db, $$);}
-// UPDATE 
+// UPDATE
 trigger_cmd(A) ::=
-   UPDATE orconf(R) trnm(X) tridxby SET setlist(Y) where_opt(Z).  
+   UPDATE orconf(R) trnm(X) tridxby SET setlist(Y) where_opt(Z).
    {A = sqlite3TriggerUpdateStep(pParse->db, &X, Y, Z.pExpr, R);}
 
 // INSERT
@@ -1537,14 +1818,14 @@ trigger_cmd(A) ::= select(X).
 // The special RAISE expression that may occur in trigger programs
 expr(A) ::= RAISE(X) LP IGNORE RP(Y).  {
   spanSet(&A,&X,&Y);  /*A-overwrites-X*/
-  A.pExpr = sqlite3PExpr(pParse, TK_RAISE, 0, 0, 0); 
+  A.pExpr = sqlite3PExpr(pParse, TK_RAISE, 0, 0, 0);
   if( A.pExpr ){
     A.pExpr->affinity = OE_Ignore;
   }
 }
 expr(A) ::= RAISE(X) LP raisetype(T) COMMA nm(Z) RP(Y).  {
   spanSet(&A,&X,&Y);  /*A-overwrites-X*/
-  A.pExpr = sqlite3PExpr(pParse, TK_RAISE, 0, 0, &Z); 
+  A.pExpr = sqlite3PExpr(pParse, TK_RAISE, 0, 0, &Z);
   if( A.pExpr ) {
     A.pExpr->affinity = (char)T;
   }
@@ -2066,8 +2347,14 @@ cmd ::= DROP LUA CONSUMER nm(A). {
 
 /* ALTER TABLE (CSC2) */
 cmd ::= comdb2_alter_table_csc2.
-comdb2_alter_table_csc2 ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
-  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,D);
+
+/* DRYRUN could not be reduced to two non-terminal rules because (DRYRUN and empty).
+Parser fails in that case*/
+comdb2_alter_table_csc2 ::= DRYRUN ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,1);
+}
+comdb2_alter_table_csc2 ::= ALTER TABLE nm(Y) dbnm(Z) comdb2opt(O) NOSQL(C). {
+  comdb2AlterTableCSC2(pParse,&Y,&Z,O,&C,0);
 }
 
 /* ALTER TABLE (Comdb2) */
@@ -2075,8 +2362,14 @@ cmd ::= alter_table alter_table_action_list. {
   comdb2AlterTableEnd(pParse);
 }
 
-alter_table ::= dryrun(D) ALTER TABLE nm(Y) dbnm(Z) . {
-  comdb2AlterTableStart(pParse,&Y,&Z,D);
+/* DRYRUN could not be reduced to two non-terminal rules because (DRYRUN and empty).
+Parser fails in that case*/
+alter_table ::= DRYRUN ALTER TABLE nm(Y) dbnm(Z) . {
+  comdb2AlterTableStart(pParse,&Y,&Z,1);
+}
+
+alter_table ::= ALTER TABLE nm(Y) dbnm(Z) . {
+  comdb2AlterTableStart(pParse,&Y,&Z,0);
 }
 
 alter_table_action_list ::= .
@@ -2095,8 +2388,4 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
 %endif
-
-%type dryrun {int}
-dryrun(D) ::= DRYRUN.  {D=1;}
-dryrun(D) ::= . {D=0;}
 /* vim: set ft=lemon: */

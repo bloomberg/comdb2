@@ -1,0 +1,15 @@
+create sequence abcdefghijklmnopqrstuvwxyz12345 increment by 9223372036854775807 start with -9223372036854775808 minvalue -9223372036854775808 maxvalue 9223372036854775807
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+alter sequence abcdefghijklmnopqrstuvwxyz12345 restart cycle
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345")
+select nextval("abcdefghijklmnopqrstuvwxyz12345"), currval("abcdefghijklmnopqrstuvwxyz12345")
+alter sequence abcdefghijklmnopqrstuvwxyz12345 increment by 9223372036854775808
+alter sequence abcdefghijklmnopqrstuvwxyz12345 start with -9223372036854775809
+drop sequence abcdefghijklmnopqrstuvwxyz12345
+create sequence abcdefghijklmnopqrstuvwxyz123456

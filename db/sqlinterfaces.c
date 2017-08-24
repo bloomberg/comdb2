@@ -948,6 +948,14 @@ int get_high_availability(struct sqlclntstate *clnt)
     return clnt->high_availability_flag;
 }
 
+int request_sequence_num_int(bdb_state_type *bdb_state, const char *name_in,
+                             long long *val);
+
+int request_sequence_num(const char *name, long long *val)
+{
+    return request_sequence_num_int(thedb->bdb_env, name, val);
+}
+
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
@@ -2085,6 +2093,8 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
+int free_seq_curval(void *obj, void *arg);
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -2109,7 +2119,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     reqlog_set_cost(thd->logger, 0);
     reqlog_set_rows(thd->logger, rows);
-
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
@@ -6380,10 +6389,21 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->ncontext = 0;
 }
 
+void clear_seq_curval(struct sqlclntstate *clnt)
+{
+    // Clear current values after transaction
+    if (clnt->osql.seq_curval) {
+        hash_for(clnt->osql.seq_curval, free_seq_curval, NULL);
+        hash_clear(clnt->osql.seq_curval);
+    }
+}
+
 void reset_clnt_flags(struct sqlclntstate *clnt)
 {
     clnt->writeTransaction = 0;
     clnt->has_recording = 0;
+
+    clear_seq_curval(clnt);
 }
 
 static void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)

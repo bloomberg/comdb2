@@ -10,6 +10,7 @@ services:
     volumes:
       - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
       - ./volumes/node1:/db
+      - ./volumes/dumps:/dumps
     expose: [5105]
     cap_add:
       - ALL
@@ -21,6 +22,7 @@ services:
     volumes:
       - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
       - ./volumes/node2:/db
+      - ./volumes/dumps:/dumps
     expose: [5105]
     cap_add:
       - ALL
@@ -32,6 +34,7 @@ services:
     volumes:
       - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
       - ./volumes/node3:/db
+      - ./volumes/dumps:/dumps
     expose: [5105]
     cap_add:
       - ALL
@@ -43,6 +46,7 @@ services:
     volumes:
       - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
       - ./volumes/node4:/db
+      - ./volumes/dumps:/dumps
     expose: [5105]
     cap_add:
       - ALL
@@ -54,6 +58,7 @@ services:
     volumes:
       - ./cluster-entrypoint.sh:/cluster-entrypoint.sh
       - ./volumes/node5:/db
+      - ./volumes/dumps:/dumps
     expose: [5105]
     cap_add:
       - ALL

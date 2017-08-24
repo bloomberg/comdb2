@@ -135,7 +135,12 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->drop_table) + sizeof(s->original_master_node) +
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
-        sizeof(s->is_sfunc) + sizeof(s->is_afunc);
+        sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->addseq) +
+        sizeof(s->dropseq) + sizeof(s->alterseq) + sizeof(s->seq_min_val) +
+        sizeof(s->seq_max_val) + sizeof(s->seq_increment) +
+        sizeof(s->seq_cycle) + sizeof(s->seq_start_val) +
+        sizeof(s->seq_chunk_size) + sizeof(s->seq_restart_val) +
+        sizeof(s->seq_modified);
 
     return s->packed_len;
 }
@@ -278,6 +283,24 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->defaultsp, sizeof(s->defaultsp), p_buf, p_buf_end);
     p_buf = buf_put(&s->is_sfunc, sizeof(s->is_sfunc), p_buf, p_buf_end);
     p_buf = buf_put(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->addseq, sizeof(s->addseq), p_buf, p_buf_end);
+    p_buf = buf_put(&s->dropseq, sizeof(s->dropseq), p_buf, p_buf_end);
+    p_buf = buf_put(&s->alterseq, sizeof(s->alterseq), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->seq_min_val, sizeof(s->seq_min_val), p_buf, p_buf_end);
+    p_buf = buf_put(&s->seq_max_val, sizeof(s->seq_max_val), p_buf, p_buf_end);
+    p_buf =
+        buf_put(&s->seq_increment, sizeof(s->seq_increment), p_buf, p_buf_end);
+    p_buf = buf_put(&s->seq_cycle, sizeof(s->seq_cycle), p_buf, p_buf_end);
+    p_buf =
+        buf_put(&s->seq_start_val, sizeof(s->seq_start_val), p_buf, p_buf_end);
+    p_buf = buf_put(&s->seq_chunk_size, sizeof(s->seq_chunk_size), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&s->seq_restart_val, sizeof(s->seq_restart_val), p_buf,
+                    p_buf_end);
+    p_buf =
+        buf_put(&s->seq_modified, sizeof(s->seq_modified), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -480,6 +503,28 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         (uint8_t *)buf_get(&s->is_sfunc, sizeof(s->is_sfunc), p_buf, p_buf_end);
     p_buf =
         (uint8_t *)buf_get(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->addseq, sizeof(s->addseq), p_buf, p_buf_end);
+    p_buf =
+        (uint8_t *)buf_get(&s->dropseq, sizeof(s->dropseq), p_buf, p_buf_end);
+    p_buf =
+        (uint8_t *)buf_get(&s->alterseq, sizeof(s->alterseq), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_min_val, sizeof(s->seq_min_val), p_buf,
+                               p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_max_val, sizeof(s->seq_max_val), p_buf,
+                               p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_increment, sizeof(s->seq_increment),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_cycle, sizeof(s->seq_cycle), p_buf,
+                               p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_start_val, sizeof(s->seq_start_val),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_chunk_size, sizeof(s->seq_chunk_size),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_restart_val, sizeof(s->seq_restart_val),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->seq_modified, sizeof(s->seq_modified), p_buf,
+                               p_buf_end);
 
     return p_buf;
 }

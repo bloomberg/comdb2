@@ -43,5 +43,7 @@
 #define MAXTABLELEN 32
 #define MAXTAGLEN 64
 #define REPMAX 32
+#define SEQUENCE_EXHAUSTED                                                     \
+    0x01 /* Flag for indicating all values dispensed for a sequence */
 
 #endif

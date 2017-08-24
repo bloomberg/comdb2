@@ -44,11 +44,16 @@ typedef enum scdone {
     genid48_disable,
     lua_sfunc,
     lua_afunc,
+    llmeta_sequence_add,
+    llmeta_sequence_alter,
+    llmeta_sequence_drop,
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, int *bdberr);
 int bdb_llog_scdone(bdb_state_type *, scdone_t, int wait, int *bdberr);
+int bdb_llog_sequences_tran(bdb_state_type *bdb_state, char *name,
+                            scdone_t type, tran_type *tran, int *bdberr);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_analyze(bdb_state_type *, int wait, int *bdberr);
 int bdb_llog_views(bdb_state_type *, char *name, int wait, int *bdberr);

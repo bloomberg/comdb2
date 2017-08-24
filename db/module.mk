@@ -22,7 +22,7 @@ db_SOURCES:=db/comdb2.c db/endian.c db/handle_buf.c db/sltdbt.c		\
     db/comdb2uuid.c db/printlog.c db/autoanalyze.c db/marshal.c		\
     db/sqllog.c db/llops.c db/rowlocks_bench.c db/plugin.c db/views.c	\
     db/views_cron.c db/views_persist.c db/trigger.c db/bpfunc.c		\
-    db/ssl_bend.c db/db_tunables.c db/config.c
+    db/ssl_bend.c db/db_tunables.c db/config.c db/sequences.c
 db_OBJS:=$(db_SOURCES:.c=.o)
 
 # Defined in the top level makefile

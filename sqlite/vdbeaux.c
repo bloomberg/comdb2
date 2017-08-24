@@ -2654,6 +2654,8 @@ int sqlite3VdbeCheckFk(Vdbe *p, int deferred){
 ** lock contention, return SQLITE_BUSY.  If SQLITE_BUSY is returned, it
 ** means the close did not happen and needs to be repeated.
 */
+void sqlite3BtreeHaltHook(Vdbe *vdbe);
+
 int sqlite3VdbeHalt(Vdbe *p){
 
   int rc;                         /* Used to store transient return codes */
@@ -2675,6 +2677,7 @@ int sqlite3VdbeHalt(Vdbe *p){
   ** one, or the complete transaction if there is no statement transaction.
   */
 
+  sqlite3BtreeHaltHook(p);
   if( db->mallocFailed ){
     p->rc = SQLITE_NOMEM_BKPT;
   }

@@ -197,6 +197,8 @@ void process_need_ack(void *ack_handle, void *usr_ptr, int fromnode,
 {
     int rc;
     rc = net_ack_message(ack_handle, 0);
+    ack_state = NULL;
+
     if (rc != 0) {
         fprintf(stderr, "%s: net_ack_message for node %d failed %d\n", __func__,
                 fromnode, rc);

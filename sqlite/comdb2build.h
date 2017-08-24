@@ -39,8 +39,6 @@
 #define SET_ANALYZE_THREAD(opt, val) opt += (val & 0xFFFF)
 #define GET_ANALYZE_THREAD(opt) (opt & 0xFFFF)
 
-
-
 int  readIntFromToken(Token* t, int *rst);
 int  comdb2SqlSchemaChange_tran(OpFunc *arg);
 void comdb2CreateTableCSC2(Parse *, Token *, Token *, int, Token *, int, int);
@@ -107,6 +105,16 @@ void comdb2timepartRetention(Parse*, Token*, Token*, int val);
 void comdb2enableAuth(Parse* pParse, int on);
 void comdb2setPassword(Parse* pParse, Token* password, Token* nm);
 void comdb2deletePassword(Parse* pParse, Token* nm);
+
+void comdb2CreateSequence(Parse *pParse, char *name, long long min_val,
+                          long long max_val, long long inc, bool cycle,
+                          long long start_val, long long chunk_size, bool err);
+void comdb2AlterSequence(Parse *pParse, char *name, long long min_val,
+                         long long max_val, long long inc, bool cycle,
+                         long long start_val, long long chunk_size,
+                         long long restart_val, int flags);
+void comdb2DropSequence(Parse *pParse, char *name);
+
 int  comdb2genidcontainstime(void);
 void comdb2schemachangeCommitsleep(Parse* pParse, int num);
 void comdb2schemachangeConvertsleep(Parse* pParse, int num);

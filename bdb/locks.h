@@ -104,7 +104,9 @@ void bdb_dump_my_lock_state(FILE *out);
 #define MINMAXFLUFF_LEN 10
 #define KEYFLUFF_LEN 12
 #define SHORT_TABLENAME_LEN 28
+#define SHORT_SEQNAME_LEN 30
 #define TABLE_CRC_LEN 4
+#define SEQ_CRC_LEN 4
 #define ROWLOCK_FLUFF_LEN 2
 
 #define ROWLOCK_KEY_SIZE (FILEID_LEN + ROWLOCK_FLUFF_LEN + 8)
@@ -113,6 +115,7 @@ void bdb_dump_my_lock_state(FILE *out);
 #define IXHASH_KEY_SIZE (FILEID_LEN + ROWLOCK_FLUFF_LEN + 8)
 #define STRIPELOCK_KEY_SIZE (FILEID_LEN)
 #define TABLELOCK_KEY_SIZE (SHORT_TABLENAME_LEN + TABLE_CRC_LEN)
+#define SEQLOCK_KEY_SIZE (SHORT_SEQNAME_LEN + SEQ_CRC_LEN)
 
 /* Make sure these are different */
 BB_COMPILE_TIME_ASSERT(rowlock_sizes_row_minmax,
@@ -134,6 +137,9 @@ void bdb_checklock(bdb_state_type *bdb_state);
 int bdb_lock_table_read(bdb_state_type *, tran_type *);
 
 int bdb_lock_table_read_fromlid(bdb_state_type *, int lid);
+int bdb_lock_seq_read_fromlid(bdb_state_type *, const char *seq, void *lk,
+                              int lid);
+int bdb_lock_seq_write_fromlid(bdb_state_type *, const char *seq, int lid);
 int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
                                void *lkname, int mode, void *lk);
 int berkdb_lock_rowlock(bdb_state_type *bdb_state, int lid, int flags,

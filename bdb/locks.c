@@ -22,6 +22,7 @@
    minmax lock:      31  bytes  :  fileid(20) + fluff(10) + min0/max1(1)
    stripe lock:      20  bytes  :  fileid(20)
    table lock:       32  bytes  :  shorttablename(28) + crc32(4)
+   sequence lock:    34  bytes  :  shortseqname(30) + crc32(4)
 
    additionally berkeley already uses the following locks:
 
@@ -125,7 +126,7 @@ int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
         snprintf(out, outlen, "hashed row lock?");
     }
     /* row lock */
-    else if (lklen == 30) {
+    else if (lklen == ROWLOCK_KEY_SIZE) {
         unsigned long long genid;
         memcpy(&genid, ((char *)lkname) + 22, sizeof(unsigned long long));
         rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
@@ -136,7 +137,7 @@ int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
             snprintf(out, outlen, "rowlock %s %016llx", file, genid);
     }
     /* minmax lock */
-    else if (lklen == 31) {
+    else if (lklen == MINMAX_KEY_SIZE) {
         char minmax = 0;
         memcpy(&minmax, ((char *)lkname) + 30, sizeof(char));
         rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
@@ -148,20 +149,24 @@ int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
                      minmax == 0 ? "min" : "max");
     }
     /* stripe lock */
-    else if (lklen == 20) {
+    else if (lklen == STRIPELOCK_KEY_SIZE) {
         rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
         if (rc)
             snprintf(out, outlen, "stripelock, unknown file");
         else
             snprintf(out, outlen, "stripelock %s", file);
     }
-    /* stripe lock */
-    else if (lklen == 32) {
+    /* table lock */
+    else if (lklen == TABLELOCK_KEY_SIZE) {
         rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
         if (rc)
             snprintf(out, outlen, "tablelock, unknown file");
         else
             snprintf(out, outlen, "tablelock %s", file);
+    }
+    /* sequence lock */
+    else if (lklen == SEQLOCK_KEY_SIZE) {
+        snprintf(out, outlen, "sequencelock, %*s", 30, (char *)lkname);
     } else {
         snprintf(out, outlen, "unknown lock %d\n", lklen);
         abort();
@@ -327,6 +332,29 @@ int form_stripelock_keyname(bdb_state_type *bdb_state, int stripe,
     return 0;
 }
 
+int form_seqlock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
+{
+    int len;
+    u_int32_t cksum;
+
+    bzero(keynamebuf, SEQLOCK_KEY_SIZE);
+    bzero(dbt_out, sizeof(DBT));
+
+    len = strlen(name);
+
+    memcpy(keynamebuf, name, MIN(len, SHORT_SEQNAME_LEN));
+
+    if (len > SHORT_SEQNAME_LEN) {
+        cksum = crc32c(name, len);
+        memcpy(keynamebuf + SHORT_SEQNAME_LEN, &cksum, sizeof(u_int32_t));
+    }
+
+    dbt_out->data = keynamebuf;
+    dbt_out->size = SEQLOCK_KEY_SIZE;
+
+    return 0;
+}
+
 int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
 {
     int len;
@@ -348,6 +376,38 @@ int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
     dbt_out->size = TABLELOCK_KEY_SIZE;
 
     return 0;
+}
+
+static int bdb_lock_seq_int(DB_ENV *dbenv, const char *seqname, int lid,
+                            DB_LOCK *dblk, int how)
+{
+    DBT lk;
+    int rc;
+    int lockmode;
+    char name[SEQLOCK_KEY_SIZE];
+
+    rc = form_seqlock_keyname(seqname, name, &lk);
+    if (rc)
+        return rc;
+
+    if (how == BDB_LOCK_READ)
+        lockmode = DB_LOCK_READ;
+    else if (how == BDB_LOCK_WRITE)
+        lockmode = DB_LOCK_WRITE;
+    else {
+        logmsg(LOGMSG_ERROR, "%s unknown lock mode %d requested\n", __func__,
+               how);
+        return BDBERR_BADARGS;
+    }
+
+    rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, dblk);
+
+#ifdef DEBUG_LOCKS
+    fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", pthread_self(),
+            __func__, how, name, lid);
+#endif
+
+    return rc;
 }
 
 /* FNV-1a */
@@ -679,6 +739,18 @@ int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
 {
     return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
                               BDB_LOCK_READ);
+}
+
+int bdb_lock_seq_read_fromlid(bdb_state_type *bdb_state, const char *seq,
+                              void *dblk, int lid)
+{
+    return bdb_lock_seq_int(bdb_state->dbenv, seq, lid, dblk, BDB_LOCK_READ);
+}
+int bdb_lock_seq_write_fromlid(bdb_state_type *bdb_state, const char *seq,
+                               int lid)
+{
+    DB_LOCK dblk;
+    return bdb_lock_seq_int(bdb_state->dbenv, seq, lid, &dblk, BDB_LOCK_WRITE);
 }
 
 int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)

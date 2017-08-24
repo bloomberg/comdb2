@@ -5,10 +5,12 @@
 #include "comdb2vdbe.h"
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 #include <schemachange.h>
 #include <sc_lua.h>
 #include <comdb2.h>
+#include <sequences.h>
 #include <bdb_api.h>
 #include <osqlsqlthr.h>
 #include <sqloffload.h>
@@ -163,6 +165,49 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     return SQLITE_OK;
 }
 
+static inline int chkAndCopySequence(Vdbe* v, Parse* pParse, char *dst,
+    const char* name, size_t max_length, int mustexist)
+{
+    char tmp_dst[MAXTABLELEN];
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+
+    /* Remove quotes if any. */
+    if ((name[0] == '\'') && (name[max_length-2] == '\'')) {
+      strncpy(tmp_dst, name+1, max_length-2);
+      /* Guarantee null termination. */
+      tmp_dst[max_length - 3] = '\0';
+    } else {
+      strncpy(tmp_dst, name, max_length);
+      /* Guarantee null termination. */
+      tmp_dst[max_length - 1] = '\0';
+    }
+
+    strncpy(dst, tmp_dst, MAXTABLELEN);
+
+    // Make lowercase
+    char *pstr = dst;
+    while (*pstr) {
+        *pstr = (char)tolower(*pstr);
+        *pstr++;
+    }
+
+    sequence_t *seq = getsequencebyname(dst);
+
+    if (seq == NULL && mustexist)
+    {
+        setError(pParse, SQLITE_ERROR, "Sequence not found");
+        return SQLITE_ERROR;
+    }
+
+    if (seq != NULL && !mustexist)
+    {
+        setError(pParse, SQLITE_ERROR, "Sequence already exists");
+        return SQLITE_ERROR;
+    }
+
+    return SQLITE_OK;
+}
+
 static inline int create_string_from_token(Vdbe* v, Parse* pParse, char** dst, Token* t)
 {
     *dst = (char*) malloc (t->n + 1);
@@ -230,6 +275,22 @@ static inline int chkAndCopyTableTokens(Vdbe *v, Parse *pParse, char *dst,
         return setError(pParse, SQLITE_MISUSE, "Tablename is too long");
 
     if ((rc = chkAndCopyTable(pParse, dst, t1->z, max_size, mustexist)))
+        return rc;
+
+    return SQLITE_OK;
+}
+
+static inline int chkAndCopySequenceNames(Vdbe *v, Parse *pParse, char *dst,
+   char *name, int mustexist)
+{
+ 
+    int rc;
+    int max_size = strlen(name) + 1;
+
+    if (max_size > MAXTABLELEN)
+        return setError(pParse, SQLITE_MISUSE, "Sequence Name is too long");
+
+    if ((rc = chkAndCopySequence(v, pParse, dst, name, max_size, mustexist)))
         return rc;
 
     return SQLITE_OK;
@@ -1533,6 +1594,132 @@ void comdb2deletePassword(Parse* pParse, Token* nm)
 clean_arg:
     free_bpfunc_arg(arg);  
 }
+
+/****************************** SEQUENCES *******************************/
+void comdb2CreateSequence(
+    Parse *pParse, /* Parser context */
+    char *name, /* Name of sequence */
+    long long min_val,
+    long long max_val,
+    long long inc,
+    bool cycle,
+    long long start_val,
+    long long chunk_size,
+    bool noErr
+)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    // Do not error if IF NOT EXISTS was supplied
+    if (noErr && getsequencebyname(name) != NULL) goto out;
+
+    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 0))
+        goto out;
+
+    comdb2WriteTransaction(pParse);
+
+    v->readOnly = 0;
+    sc->type = DBTYPE_SEQUENCE;
+    sc->addseq = 1;
+
+    sc->seq_min_val = min_val;
+    sc->seq_max_val = max_val;
+    sc->seq_increment = inc;
+    sc->seq_cycle = cycle;
+    sc->seq_chunk_size = chunk_size;
+    sc->seq_start_val = start_val;
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
+void comdb2AlterSequence(
+    Parse *pParse, /* Parser context */
+    char *name, /* Name of sequence */
+    long long min_val,
+    long long max_val,
+    long long inc,
+    bool cycle,
+    long long start_val,
+    long long chunk_size,
+    long long restart_val,
+    int modified
+)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 1))
+        goto out;
+
+    comdb2WriteTransaction(pParse);
+
+    v->readOnly = 0;
+    sc->type = DBTYPE_SEQUENCE;
+    sc->alterseq = 1;
+
+    sc->seq_min_val = min_val;
+    sc->seq_max_val = max_val;
+    sc->seq_increment = inc;
+    sc->seq_cycle = cycle;
+    sc->seq_chunk_size = chunk_size;
+    sc->seq_start_val = start_val;
+    sc->seq_restart_val = restart_val;
+    sc->seq_modified = modified;
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
+void comdb2DropSequence(Parse *pParse, char *name)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v = sqlite3GetVdbe(pParse);
+
+    struct schema_change_type *sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (chkAndCopySequenceNames(v, pParse, sc->table, name, 1))
+        goto out;
+
+    comdb2WriteTransaction(pParse);
+
+    v->readOnly = 0;
+    sc->type = DBTYPE_SEQUENCE;
+    sc->dropseq = 1;
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                        (vdbeFuncArgFree)&free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
 
 int comdb2genidcontainstime(void)
 {

@@ -587,6 +587,86 @@ static void randomBlob(
   }
 }
 
+/** 
+ * Function for returning next sequence values
+ */
+int request_sequence_num(const char *name, long long *val);
+void saveCurrentSequnce(const char *seq, long long val);
+int retrieveCurrentSequence(const char *seq, long long *val);
+
+static void sequenceNextVal(sqlite3_context *context, int argc,
+                            sqlite3_value **argv)
+{
+    UNUSED_PARAMETER(argc);
+
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        return;
+    }
+
+    const unsigned char *seq_name_const = sqlite3_value_text(argv[0]);
+    char *seq_name = strdup(seq_name_const);
+
+    // Make lowercase
+    char *pstr = seq_name;
+    while (*pstr) {
+        *pstr = (char)tolower(*pstr);
+        *pstr++;
+    }
+
+    long long val;
+
+    int rc = request_sequence_num(seq_name, &val);
+
+    if (rc) {
+        if (rc == -5) {
+            sqlite3_result_error(context, "No more sequence values avaliable",
+                                 -1);
+            return;
+        }
+
+        sqlite3_result_error(context, "Sequence number could not be generated",
+                             -1);
+        return;
+    }
+
+    // Save generated value in current sql thread
+    saveCurrentSequnce(seq_name, val);
+
+    sqlite3_result_int64(context, val);
+}
+
+static void sequenceCurVal(sqlite3_context *context, int argc,
+                           sqlite3_value **argv)
+{
+    UNUSED_PARAMETER(argc);
+
+    if (sqlite3_value_type(argv[0]) != SQLITE_TEXT) {
+        return;
+    }
+
+    const unsigned char *seq_name_const = sqlite3_value_text(argv[0]);
+    char *seq_name = strdup(seq_name_const);
+
+    // Make lowercase
+    char *pstr = seq_name;
+    while (*pstr) {
+        *pstr = (char)tolower(*pstr);
+        *pstr++;
+    }
+
+    long long val;
+
+    int rc = retrieveCurrentSequence(seq_name, &val);
+
+    if (rc) {
+        sqlite3_result_error(
+            context, "Current value of sequence could not be found", -1);
+        return;
+    }
+
+    sqlite3_result_int64(context, val);
+}
+
 /* 36 characters + trailing '\0' - taken from `man uuid_unparse` */
 #define GUID_STR_LENGTH 37
 
@@ -2204,6 +2284,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
+    FUNCTION(nextval             ,1,0,0, sequenceNextVal),
+    FUNCTION(currval             ,1,0,0, sequenceCurVal),
 #endif
 #ifdef SQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
     FUNCTION(unknown,           -1, 0, 0, unknownFunc      ),

@@ -4824,6 +4824,16 @@ done:
  ** This is so that appropriate space can be allocated in the journal file
  ** when it is created..
  */
+void clear_seq_curval(struct sqlclntstate *clnt);
+
+void sqlite3BtreeHaltHook(Vdbe *vdbe)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+
+    if (!clnt->in_client_trans)
+        clear_seq_curval(clnt);
+}
 
 int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
 {
@@ -4945,6 +4955,45 @@ done:
                 "BeginTrans(pBt %d, wrflag %d)      = %s (rc=%d)\n",
                 pBt->btreeid, wrflag, sqlite3ErrStr(rc), rc);
     return rc;
+}
+
+int retrieveCurrentSequence(const char *seq, long long *val)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &clnt->osql;
+    struct seq_curval_struct *fnd;
+
+    if (!osql->seq_curval || !(fnd = hash_find(osql->seq_curval, seq))) {
+        logmsg(LOGMSG_ERROR,
+               "Could not find sequence \"%s\" in the current value hash\n",
+               seq);
+        return -1;
+    }
+
+    *val = fnd->curval;
+    return 0;
+}
+
+void saveCurrentSequnce(const char *seq, long long val)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &clnt->osql;
+    struct seq_curval_struct *fnd;
+
+    /* No need to lock: this is session-based */
+    if (!osql->seq_curval) {
+        osql->seq_curval = hash_init_str(0);
+    }
+
+    if (!(fnd = hash_find(osql->seq_curval, seq))) {
+        fnd = malloc(sizeof(*fnd));
+        strncpy(fnd->name, seq, sizeof(fnd->name));
+        hash_add(osql->seq_curval, fnd);
+    }
+
+    fnd->curval = val;
 }
 
 /*

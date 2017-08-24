@@ -1,0 +1,12 @@
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=-9223372036854775808)
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=-1)
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=9223372036854775806)
+[select nextval("abcdefghijklmnopqrstuvwxyz12345")] failed with rc 300 No more sequence values avaliable
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=-9223372036854775808)
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=-1)
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=9223372036854775806)
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=-9223372036854775808)
+(nextval("abcdefghijklmnopqrstuvwxyz12345")=-1, currval("abcdefghijklmnopqrstuvwxyz12345")=-1)
+[alter sequence abcdefghijklmnopqrstuvwxyz12345 increment by 9223372036854775808] failed with rc -3 Number underflows or overflows
+[alter sequence abcdefghijklmnopqrstuvwxyz12345 start with -9223372036854775809] failed with rc -3 Number underflows or overflows
+[create sequence abcdefghijklmnopqrstuvwxyz123456] failed with rc -3 Sequence Name is too long

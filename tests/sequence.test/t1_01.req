@@ -1,0 +1,22 @@
+create sequence test1
+select nextval("test1")
+alter sequence test1 increment by 2
+select nextval("test1")
+select nextval("test1")
+alter sequence test1 restart
+select nextval("test1")
+select nextval("test1")
+alter sequence test1 minvalue -600 maxvalue -598 start with -600 cycle restart
+select nextval("test1")
+select nextval("test1")
+select nextval("test1")
+select nextval("test1")
+select nextval("test1")
+alter sequence test1 maxvalue 0
+select nextval("test1")
+select nextval("test1")
+select nextval("test1")
+alter sequence test1 increment -1
+select nextval("test1")
+select nextval("test1")
+drop sequence test1

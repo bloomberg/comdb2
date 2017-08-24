@@ -66,6 +66,7 @@ typedef long long tranid_t;
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <bb_stdint.h>
 #include <sbuf2.h>
@@ -124,6 +125,7 @@ typedef long long tranid_t;
 
 #define MAX_NUM_TABLES 1024
 #define MAX_NUM_QUEUES 1024
+#define MAX_NUM_SEQUENCES 1024
 
 #define BBIPC_KLUDGE_LEN 8
 
@@ -543,7 +545,8 @@ enum {
     DBTYPE_TAGGED_TABLE = 1,
     DBTYPE_QUEUE = 2,
     DBTYPE_MORESTRIPE = 3, /* fake type used in schema change code */
-    DBTYPE_QUEUEDB = 4
+    DBTYPE_QUEUEDB = 4,
+    DBTYPE_SEQUENCE = 5
 };
 
 /* Copied verbatim from bdb_api.h since we don't expose that file to most
@@ -635,6 +638,34 @@ typedef struct {
     char *table[MAXCONSTRAINTS];
     char *keynm[MAXCONSTRAINTS];
 } constraint_t;
+
+/* SEQUENCE object attributes */
+typedef struct {
+    int version;            /* Sequence attr struct version */
+    char name[MAXTABLELEN]; /* Identifier */
+
+    /* Dispensing */
+    sequence_range_t *range_head; /* Pointer to the head range node*/
+
+    /* Basic Attributes */
+    long long
+        min_val; /* Values dispensed must be greater than or equal to min_val */
+    long long
+        max_val; /* Values dispensed must be less than or equal to max_val */
+    long long start_val; /* Start value for the sequence*/
+    long long increment; /* Normal difference between two consecutively
+                            dispensed values */
+    bool cycle;          /* If cycling values is permitted */
+
+    /* Synchronization with llmeta */
+    long long chunk_size;     /* Number of values to allocate from llmeta */
+    long long next_start_val; /* Starting value of the next chunk */
+
+    /* Flags */
+    char flags; /* Flags for the sequence object*/
+
+    pthread_mutex_t seq_lk; /* mutex for protecting the value dispensing */
+} sequence_t;
 
 struct managed_component {
     int dbnum;
@@ -924,6 +955,10 @@ struct dbenv {
     int num_qdbs;
     struct dbtable **qdbs;
     hash_t *qdb_hash;
+
+    /* sequences */
+    int num_sequences;
+    sequence_t **sequences;
 
     /* Special SPs */
     int num_lua_sfuncs;
@@ -1931,6 +1966,7 @@ struct dbtable *getfdbbynameenv(
     const char *name); /* look up foreign db by name with given env */
 struct dbtable *
 getqueuebyname(const char *name); /*look up managed queue db's by name*/
+sequence_t *getsequencebyname(const char *name);
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
 
 int get_elect_time_microsecs(void); /* get election time in seconds */
@@ -2342,6 +2378,13 @@ int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fnddta, int *fndlen, int *recnum, int maxlen);
 int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
+
+sequence_t *new_sequence(char *name, long long min_val, long long max_val,
+                         long long increment, bool cycle, long long start_val,
+                         long long chunk_size, char flags,
+                         long long next_start_val);
+void cleanup_sequence(sequence_t *seq);
+void remove_sequence_ranges(sequence_t *seq);
 
 int put_db_odh(struct dbtable *db, tran_type *, int odh);
 int get_db_odh(struct dbtable *db, int *odh);

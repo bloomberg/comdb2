@@ -1284,5 +1284,10 @@ REGISTER_TUNABLE("abort_on_bad_upgrade",
 REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.",
                  TUNABLE_BOOLEAN, &gbl_poll_in_pg_free_recover,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "sequence_replicant_distribution",
+    "Distribute sequence values from replicants. Monotonicity not guaranteed",
+    TUNABLE_BOOLEAN, &gbl_sequence_replicant_distribution, READONLY, NULL, NULL,
+    NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
