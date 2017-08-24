@@ -603,7 +603,15 @@ static void sequenceNextVal(sqlite3_context *context, int argc,
         return;
     }
 
-    const unsigned char *seq_name = sqlite3_value_text(argv[0]);
+    const unsigned char *seq_name_const = sqlite3_value_text(argv[0]);
+    char *seq_name = strdup(seq_name_const);
+
+    // Make lowercase
+    char *pstr = seq_name;
+    while (*pstr) {
+        *pstr = (char)tolower(*pstr);
+        *pstr++;
+    }
 
     long long val;
 
@@ -636,7 +644,15 @@ static void sequenceCurVal(sqlite3_context *context, int argc,
         return;
     }
 
-    const unsigned char *seq_name = sqlite3_value_text(argv[0]);
+    const unsigned char *seq_name_const = sqlite3_value_text(argv[0]);
+    char *seq_name = strdup(seq_name_const);
+
+    // Make lowercase
+    char *pstr = seq_name;
+    while (*pstr) {
+        *pstr = (char)tolower(*pstr);
+        *pstr++;
+    }
 
     long long val;
 
