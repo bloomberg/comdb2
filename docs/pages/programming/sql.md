@@ -362,6 +362,8 @@ will drop the association between a stored procedure and the trigger/consumer/fu
 will no longer fire.  All SQL connections running the consumer procedure will stop with an error.  The named functions
 will no longer be callable from SQL.
 
+```DROP SEQUENCE``` will drop the specified sequence.  If the sequence doesn't exist, the statement will return an error,
+
 ### ALTER TABLE
 
 ALTER TABLE (I):
@@ -441,6 +443,30 @@ The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
 INDEX``` command without ```ON``` will drop an index with the specified name.
 It, however, would fail if there are multiple indexes in the database with the
 same name. The support for ```DROP INDEX``` was added in version 7.0.
+
+### CREATE SEQUENCE
+
+![CREATE SEQUENCE](images/create-sequence.gif)
+
+The `CREATE SEQUENCE` statement creates a new sequence generator. If the sequence generator already exists, the statement returns an error unless the `IF NOT EXISTS` clause is present. See [ALTER SEQUENCE](#alter-sequence) for parameter definitions. The support for `CREATE SEQUENCE` was added in version 7.0.
+
+### ALTER SEQUENCE
+
+![ALTER SEQUENCE](images/alter-sequence.gif)
+
+The `ALTER SEQUENCE` statement will change the definition of the named sequence generator to the one provided. The support for `ALTER SEQUENCE` was added in version 7.0.
+
+Parameter | Definition | Valid Values | Default 
+--- | --- | --- | --- 
+*name* | Name of the sequence to be altered | 1 to 31 characters |
+INCREMENT [BY] *increment* | Value to increment sequence by. | -2<sup>63</sup> to 2<sup>63</sup>-1 | 1 
+MINVALUE *minimum-value* | Minimum value distributed by a sequence. | -2<sup>63</sup> to 2<sup>63</sup>-1 | 1 (increasing sequence) or -2<sup>63</sup> (decreasing sequence)
+MAXVALUE *maximum-value* | Maximum value distributed by a sequence. | -2<sup>63</sup> to 2<sup>63</sup>-1 | 2<sup>63</sup>-1 (increasing sequence) or -1 (decreasing sequence)
+START [WITH] *start-value* | First value to be distributed by a sequence. | -2<sup>63</sup> to 2<sup>63</sup>-1 | 1
+CHUNK *chunk-size* | Chunks enable sequence values to be preallocated into memory for faster value distribution. The chunk size is the number of values to preallocate into memory. The minimum value of chunk size is 1 and would result in a disk access each time a sequence value is requested. | 1 to 2<sup>63</sup>-1 | 1
+[NO] CYCLE | CYCLE and NO CYCLE specify if a sequence should wrap around the last value when it is reached or not, respectively. When the last value of the sequence is reached and CYCLE is specified and the sequence is increasing (increment > 0), the next value would be the specified minimum value. If the sequence is decreasing (increment < 0 ), the next value would be the specified maximum value. | | NO CYCLE
+RESTART | Restarts the sequence to the specified start value. | | 
+RESTART [WITH] *restart-value* | First value to be distributed by a sequence after the ALTER completes. | -2<sup>63</sup> to 2<sup>63</sup>-1 |
 
 ## Access control
 

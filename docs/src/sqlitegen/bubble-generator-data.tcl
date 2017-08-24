@@ -320,6 +320,7 @@ set all_graphs {
         {line {or TRIGGER CONSUMER} /procedure-name}
         {line {or SCALAR AGGREGATE} FUNCTION /procedure-name}}}
       {line TIME PARTITION /partition-name}
+      {line SEQUENCE /sequence-name}
     }
   }
   truncate {
@@ -583,5 +584,55 @@ set all_graphs {
       stack
       {line DROP INDEX {opt {line IF EXISTS } } }
       {line index-name {opt {line ON table-name } } }
+  }
+
+  create-sequence {
+      stack
+      {line CREATE SEQUENCE {opt IF NOT EXISTS} sequence-name}
+      {opt
+            {loop
+                {or
+                    {line INCREMENT {opt BY} increment}
+                    {or
+                        {line MINVALUE minimum-value}
+                        {line NO MINVALUE}
+                    }
+                    {or
+                        {line MAXVALUE maximum-value}
+                        {line NO MAXVALUE}
+                    }
+                    {line START {opt WITH} start-value}
+                    {line CHUNK chunk-size}
+                    {line {opt NO} CYCLE}
+                }
+            }
+      }
+  }
+
+  alter-sequence {
+      stack
+      {line ALTER SEQUENCE sequence-name}
+      {opt
+            {loop
+                {or
+                    {line INCREMENT {opt BY} increment}
+                    {or
+                        {line MINVALUE minimum-value}
+                        {line NO MINVALUE}
+                    }
+                    {or
+                        {line MAXVALUE maximum-value}
+                        {line NO MAXVALUE}
+                    }
+                    {line START {opt WITH} start-value}
+                    {line CHUNK chunk-size}
+                    {line {opt NO} CYCLE}
+                    {or
+                        {line RESTART}
+                        {line RESTART {opt WITH} restart-value}
+                    }  
+                }
+            }
+      }
   }
 }
