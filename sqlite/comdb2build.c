@@ -184,6 +184,13 @@ static inline int chkAndCopySequence(Vdbe* v, Parse* pParse, char *dst,
 
     strncpy(dst, tmp_dst, MAXTABLELEN);
 
+    // Make lowercase
+    char *pstr = dst;
+    while (*pstr) {
+        *pstr = (char)tolower(*pstr);
+        *pstr++;
+    }
+
     sequence_t *seq = getsequencebyname(dst);
 
     if (seq == NULL && mustexist)
