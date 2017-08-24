@@ -4890,7 +4890,6 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
         }
     }
 
-
     if (clnt->arr) {
         currangearr_free(clnt->arr);
         clnt->arr = NULL;
@@ -4967,7 +4966,8 @@ int retrieveCurrentSequence(const char *seq, long long *val)
 
     if (!osql->seq_curval || !(fnd = hash_find(osql->seq_curval, seq))) {
         logmsg(LOGMSG_ERROR,
-               "Could not find sequence \"%s\" in the current value hash\n", seq);
+               "Could not find sequence \"%s\" in the current value hash\n",
+               seq);
         return -1;
     }
 
