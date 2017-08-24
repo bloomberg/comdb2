@@ -7,7 +7,7 @@ c=0
 # while we are trying to do a checkpoint, which could set the recovertolsn
 # value prior to the output that we're trying to verify
 while [[ $c -lt 10 ]]; do
-    echo "INSERT INTO load VALUES ($c, 'xxx', x'1234')" >> $insertsql
+    echo "INSERT INTO load VALUES ($c, 'xxx', x'1234', x'1234', x'1234', x'1234', x'1234', x'1234', x'1234', x'1234')" >> $insertsql
     let c=c+1
 done
 echo "COMMIT" >> $insertsql

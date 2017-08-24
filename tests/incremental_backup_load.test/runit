@@ -156,6 +156,10 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }
 ( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
 ( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
 ( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
 sleep 1
 ( timeout ${TEST_TIMEOUT} ./updater.sh ) &
 sleep 1
