@@ -98,7 +98,7 @@ static int seq_next_val_int(tran_type *tran, char *name, long long *val,
             // I am replicant (rep distribution must be on)
             pthread_mutex_unlock(&seq->seq_lk);
 
-            // TODO: Call to master for new range
+            // Call to master for new range
             rc = request_sequence_range_from_master(bdb_state, name, node);
 
             if (rc) {
@@ -158,14 +158,15 @@ int seq_next_val(tran_type *tran, char *name, long long *val,
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
     int rc, lid = bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran);
-    char *dblk;
+    DB_LOCK dblk;
 
     /* Get curtran & use lockid from there.  Can this be a deadlock victim? */
     if (rc = bdb_lock_seq_read_fromlid(bdb_state, name, (void *)&dblk, lid)) {
         return SQLITE_DEADLOCK;
     }
+
     rc = seq_next_val_int(tran, name, val, bdb_state);
-    bdb_release_lock(bdb_state, (void *)dblk);
+    bdb_release_lock(bdb_state, (void *)&dblk);
     return rc;
 }
 
