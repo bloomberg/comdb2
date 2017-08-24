@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
+#include <xstring.h>
 #include <schemachange.h>
 #include <sc_lua.h>
 #include <comdb2.h>
@@ -181,15 +182,8 @@ static inline int chkAndCopySequence(Vdbe* v, Parse* pParse, char *dst,
       /* Guarantee null termination. */
       tmp_dst[max_length - 1] = '\0';
     }
-
     strncpy(dst, tmp_dst, MAXTABLELEN);
-
-    // Make lowercase
-    char *pstr = dst;
-    while (*pstr) {
-        *pstr = (char)tolower(*pstr);
-        *pstr++;
-    }
+    strlower(dst);
 
     sequence_t *seq = getsequencebyname(dst);
 

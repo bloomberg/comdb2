@@ -19,6 +19,7 @@
 #include "vdbeInt.h"
 #include <unistd.h>
 #include <uuid/uuid.h>
+#include <xstring.h>
 
 #include <memcompare.c>
 
@@ -605,6 +606,7 @@ static void sequenceNextVal(sqlite3_context *context, int argc,
 
     const unsigned char *seq_name_const = sqlite3_value_text(argv[0]);
     char *seq_name = strdup(seq_name_const);
+    strlower(seq_name);
 
     // Make lowercase
     char *pstr = seq_name;
@@ -646,13 +648,7 @@ static void sequenceCurVal(sqlite3_context *context, int argc,
 
     const unsigned char *seq_name_const = sqlite3_value_text(argv[0]);
     char *seq_name = strdup(seq_name_const);
-
-    // Make lowercase
-    char *pstr = seq_name;
-    while (*pstr) {
-        *pstr = (char)tolower(*pstr);
-        *pstr++;
-    }
+    strlower(seq_name);
 
     long long val;
 
