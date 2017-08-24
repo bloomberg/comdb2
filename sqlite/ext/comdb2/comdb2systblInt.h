@@ -18,6 +18,7 @@ const sqlite3_module systblKeywordsModule;
 const sqlite3_module systblLimitsModule;
 const sqlite3_module systblTunablesModule;
 const sqlite3_module systblThreadPoolsModule;
+const sqlite3_module systblSequencesModule;
 const sqlite3_module completionModule; // in ext/misc
 
 /* Simple yes/no answer for booleans */

@@ -38,6 +38,7 @@ sqlite/ext/comdb2/keywords.o        \
 sqlite/ext/comdb2/limits.o          \
 sqlite/ext/comdb2/tunables.o        \
 sqlite/ext/comdb2/threadpools.o     \
+sqlite/ext/comdb2/sequences.o        \
 sqlite/ext/misc/completion.o        \
 sqlite/ext/misc/series.o            \
 sqlite/ext/misc/json1.o
