@@ -66,6 +66,7 @@ void pool_clear(pool_t *p);
 
 /* DUMP INFO FOR DEBUGGING */
 void pool_dump(pool_t *p, char *name);
+void pool_dumpx(pool_t *p, char *name);
 
 /* RETURN STATS */
 void pool_info(pool_t *p, int *npool, int *nused, int *nblocks);

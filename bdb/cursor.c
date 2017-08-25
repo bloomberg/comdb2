@@ -172,7 +172,7 @@ extern pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
 extern DB_LSN bdb_gbl_recoverable_lsn;
 extern int32_t bdb_gbl_recoverable_timestamp;
 
-static hash_t *bdb_asof_ltran_hash;
+static hash_t *bdb_asof_cursor_hash;
 extern pthread_mutex_t bdb_asof_current_lsn_mutex;
 extern DB_LSN bdb_asof_current_lsn;
 extern DB_LSN bdb_latest_commit_lsn;
@@ -865,6 +865,63 @@ static pool_t *logfile_tmptbl_hashkey_pool = NULL;
 static pthread_mutex_t logfile_tmptbl_hashkey_pool_lk;
 #endif
 
+void bdb_newsi_mempool_stat()
+{
+    Pthread_mutex_lock(&fileid_pglogs_queue_lk);
+    pool_dumpx(fileid_pglogs_queue_pool, "fileid_pglogs_queue_pool");
+    Pthread_mutex_unlock(&fileid_pglogs_queue_lk);
+
+    Pthread_mutex_lock(&pglogs_queue_cursor_lk);
+    pool_dumpx(pglogs_queue_cursor_pool, "pglogs_queue_cursor_pool");
+    Pthread_mutex_unlock(&pglogs_queue_cursor_lk);
+
+    Pthread_mutex_lock(&ltran_pglogs_key_lk);
+    pool_dumpx(ltran_pglogs_key_pool, "ltran_pglogs_key_pool");
+    Pthread_mutex_unlock(&ltran_pglogs_key_lk);
+
+    Pthread_mutex_lock(&asof_cursor_lk);
+    pool_dumpx(asof_cursor_pool, "asof_cursor_pool");
+    Pthread_mutex_unlock(&asof_cursor_lk);
+
+    Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
+    pool_dumpx(pglogs_commit_list_pool, "pglogs_commit_list_pool");
+    Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
+    pool_dumpx(pglogs_queue_key_pool, "pglogs_queue_key_pool");
+    Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_key_pool_lk);
+    pool_dumpx(pglogs_key_pool, "pglogs_key_pool");
+    Pthread_mutex_unlock(&pglogs_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
+    pool_dumpx(pglogs_logical_key_pool, "pglogs_logical_key_pool");
+    Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
+    pool_dumpx(pglogs_lsn_list_pool, "pglogs_lsn_list_pool");
+    Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
+    pool_dumpx(pglogs_lsn_commit_list_pool, "pglogs_lsn_commit_list_pool");
+    Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_relink_key_pool_lk);
+    pool_dumpx(pglogs_relink_key_pool, "pglogs_relink_key_pool");
+    Pthread_mutex_unlock(&pglogs_relink_key_pool_lk);
+
+    Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
+    pool_dumpx(pglogs_relink_list_pool, "pglogs_relink_list_pool");
+    Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
+
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+    Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
+    pool_dumpx(logfile_tmptbl_hashkey_pool, "logfile_tmptbl_hashkey_pool");
+    Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#endif
+}
+
 static pthread_mutex_t del_queue_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static struct fileid_pglogs_queue *allocate_fileid_pglogs_queue()
@@ -1446,7 +1503,8 @@ static int copy_queue_key_to_global(bdb_state_type *bdb_state,
             typestr = "???";
             break;
         }
-        logmsg(LOGMSG_USER, "%s: processing %s commit-lsn [%d][%d] count %llu\n", __func__,
+        logmsg(LOGMSG_INFO,
+               "%s: processing %s commit-lsn [%d][%d] count %llu\n", __func__,
                typestr, key->commit_lsn.file, key->commit_lsn.offset, count);
         lastpr = now;
     }
@@ -1535,15 +1593,19 @@ retrieve_fileid_pglogs_queue(unsigned char *fileid, int create)
     return fileid_queue;
 }
 
-int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
-                          struct fileid_pglogs_queue *queue, DB_LSN minlsn)
+static int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
+                                 struct fileid_pglogs_queue *queue,
+                                 DB_LSN minlsn, struct asof_cursor *cur)
 {
     struct pglogs_queue_key *qe, *prev_qe, *del_qe = NULL;
+    struct pglogs_queue_key *curqe = NULL;
 
     // Grab this in write mode
     // Consumers will grab in read-mode until they anchor against the list by
     // finding an LSN that is greater than their start LSN.
     pthread_rwlock_wrlock(&queue->queue_lk);
+    if (cur)
+        curqe = cur->cur;
     qe = LISTC_BOT(&queue->queue_keys);
 
     while (qe && (prev_qe = qe->lnk.prev)) {
@@ -1555,16 +1617,34 @@ int bdb_clean_pglog_queue(bdb_state_type *bdb_state,
         qe = prev_qe;
     }
 
+#ifdef ASOF_TRACE
+    char *buf;
+    unsigned count = 0;
+#endif
+
     if (!del_qe) {
-        pthread_rwlock_unlock(&queue->queue_lk);
-        return 0;
+        goto done;
     }
 
     /* Remove from the TOP of the list and return */
     do {
         qe = listc_rtl(&queue->queue_keys);
+        /* adjust asof queue cursor */
+        if (curqe == qe)
+            cur->cur = NULL;
         return_pglogs_queue_key(qe);
+#ifdef ASOF_TRACE
+        count++;
+#endif
     } while (qe != del_qe);
+
+done:
+#ifdef ASOF_TRACE
+    hexdumpbuf(queue->fileid, DB_FILE_ID_LEN, &buf);
+    logmsg(LOGMSG_INFO, "%s: fileid[%s], minlsn[%d][%d], count %u\n", __func__,
+           buf, minlsn.file, minlsn.offset, count);
+    free(buf);
+#endif
 
     pthread_rwlock_unlock(&queue->queue_lk);
 
@@ -1607,7 +1687,7 @@ int bdb_clean_pglogs_queues(bdb_state_type *bdb_state)
         if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
             abort();
 
-        bdb_clean_pglog_queue(bdb_state, queue, lsn);
+        bdb_clean_pglog_queue(bdb_state, queue, lsn, NULL);
         free(qh.fileids[i]);
     }
 
@@ -1798,7 +1878,7 @@ void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
 {
     int i;
     pthread_mutex_lock(&logfile_pglogs_repo_mutex);
-    for (i = last_logfile; i <= filenum; i++) {
+    for (i = first_logfile; i <= filenum; i++) {
         struct logfile_pglogs_entry *e;
         if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
             hash_del(logfile_pglogs_repo, e);
@@ -1807,6 +1887,7 @@ void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
             bdb_return_logfile_relinks_hashtbl(e->relinks_hashtbl, bdb_state);
             pthread_mutex_destroy(&e->pglogs_mutex);
             free(e);
+            logmsg(LOGMSG_INFO, "%s: deleted filenum %d\n", __func__, filenum);
         }
     }
     first_logfile = (filenum + 1);
@@ -1907,6 +1988,10 @@ static inline void set_del_lsn(const char *func, unsigned int line,
                                DB_LSN *old_del_lsn, DB_LSN *new_del_lsn)
 {
     *old_del_lsn = *new_del_lsn;
+#ifdef ASOF_TRACE
+    logmsg(LOGMSG_INFO, "%s:%d del_lsn[%d][%d]\n", func, line,
+           new_del_lsn->file, new_del_lsn->offset);
+#endif
 }
 
 static void *pglogs_asof_thread(void *arg)
@@ -1921,6 +2006,7 @@ static void *pglogs_asof_thread(void *arg)
         // Remove list
         int count, i, dont_poll = 0, drain_limit;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};
+        DB_LSN max_commit_lsn_in_queue = {0};
         // drain_limit = bdb_state->attr->asof_thread_drain_limit;
 
         // Get commit list
@@ -1969,16 +2055,17 @@ static void *pglogs_asof_thread(void *arg)
             if (!(queue = retrieve_fileid_pglogs_queue(fileid, 0)))
                 abort();
 
-            if ((cur = hash_find(bdb_asof_ltran_hash, fileid)) == NULL) {
+            if ((cur = hash_find(bdb_asof_cursor_hash, fileid)) == NULL) {
                 cur = allocate_asof_cursor();
                 memcpy(cur->fileid, fileid, DB_FILE_ID_LEN);
                 cur->cur = NULL;
-                hash_add(bdb_asof_ltran_hash, cur);
+                hash_add(bdb_asof_cursor_hash, cur);
             }
 
             pthread_rwlock_rdlock(&queue->queue_lk);
             last = LISTC_BOT(&queue->queue_keys);
             top = LISTC_TOP(&queue->queue_keys);
+            current = cur->cur;
 
             if ((current = cur->cur) == NULL) {
                 current = top;
@@ -1998,10 +2085,9 @@ static void *pglogs_asof_thread(void *arg)
                 while (fnd && fnd->type != PGLOGS_QUEUE_PAGE)
                     fnd = fnd->lnk.prev;
 
-                if (fnd && log_compare(&fnd->commit_lsn, &del_lsn) < 0) {
-                    assert(fnd->commit_lsn.file);
-                    set_del_lsn(__func__, __LINE__, &del_lsn, &fnd->commit_lsn);
-                }
+                if (fnd &&
+                    log_compare(&fnd->commit_lsn, &max_commit_lsn_in_queue) > 0)
+                    max_commit_lsn_in_queue = fnd->commit_lsn;
             }
 
             if (do_current && current) {
@@ -2025,6 +2111,10 @@ static void *pglogs_asof_thread(void *arg)
             cur->cur = current;
         }
 
+        if (max_commit_lsn_in_queue.file &&
+            log_compare(&max_commit_lsn_in_queue, &del_lsn) < 0)
+            set_del_lsn(__func__, __LINE__, &del_lsn, &max_commit_lsn_in_queue);
+
         // Loop again to delete
         for (i = 0; i < qh.index; i++) {
             struct fileid_pglogs_queue *queue;
@@ -2035,20 +2125,29 @@ static void *pglogs_asof_thread(void *arg)
                 abort();
 
             if (queue->deleteme &&
-                (cur = hash_find(bdb_asof_ltran_hash, fileid)) &&
+                (cur = hash_find(bdb_asof_cursor_hash, fileid)) &&
                 (cur->cur == LISTC_BOT(&queue->queue_keys))) {
                 struct pglogs_queue_key *qe;
                 pthread_mutex_lock(&pglogs_queue_lk);
                 hash_del(pglogs_queue_fileid_hash, queue);
                 pthread_mutex_unlock(&pglogs_queue_lk);
-                while ((qe = listc_rtl(&queue->queue_keys)))
+#ifdef ASOF_TRACE
+                char *buf;
+                hexdumpbuf(queue->fileid, DB_FILE_ID_LEN, &buf);
+                logmsg(LOGMSG_INFO, "%s: delete queue fileid[%s]\n", __func__,
+                       buf);
+                free(buf);
+#endif
+                while ((qe = listc_rtl(&queue->queue_keys)) != NULL)
                     return_pglogs_queue_key(qe);
                 return_fileid_pglogs_queue(queue);
                 assert(cur);
-                hash_del(bdb_asof_ltran_hash, cur);
+                hash_del(bdb_asof_cursor_hash, cur);
                 return_asof_cursor(cur);
-            } else
-                bdb_clean_pglog_queue(bdb_state, queue, del_lsn);
+            } else {
+                cur = hash_find(bdb_asof_cursor_hash, fileid);
+                bdb_clean_pglog_queue(bdb_state, queue, del_lsn, cur);
+            }
         }
 
         // This should be the largest commit-lsn
@@ -2163,7 +2262,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
 
         logfile_pglogs_repo_ready = 1;
 
-        bdb_asof_ltran_hash =
+        bdb_asof_cursor_hash =
             hash_init_o(offsetof(struct asof_cursor, fileid),
                         DB_FILE_ID_LEN * sizeof(unsigned char));
         pthread_mutex_init(&bdb_asof_current_lsn_mutex, NULL);
@@ -2359,6 +2458,18 @@ static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
                                         unsigned char *fileid, db_pgno_t pgno,
                                         DB_LSN lsn, DB_LSN commit_lsn)
 {
+/*
+char *buf;
+hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
+printf("%s: adding lsn [%u][%u] to hash %p, ent %p", __func__, lsn.file,
+       lsn.offset, pglogs_hashtbl, pglogs_ent);
+printf(" FILEID[%s] ", buf);
+printf(" PGNO[%d] ", pgno);
+printf(" LSN[%d:%d] ", lsn.file, lsn.offset);
+printf(" COMMIT_LSN[%d:%d] ", commit_lsn.file, commit_lsn.offset);
+printf("\n");
+free(buf);
+*/
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     pglogs_tmptbl_key rec = {0};
     int bdberr;
@@ -2372,19 +2483,6 @@ static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
     rec.pgno = pgno;
     rec.lsn = lsn;
     rec.commit_lsn = commit_lsn;
-
-    /*
-    char *buf;
-    hexdumpbuf(fileid, DB_FILE_ID_LEN, &buf);
-    printf("%s: added lsn [%u][%u] to hash %p, ent %p", __func__, lsn.file,
-           lsn.offset, pglogs_hashtbl, pglogs_ent);
-    printf(" FILEID[%s] ", buf);
-    printf(" PGNO[%d] ", pgno);
-    printf(" LSN[%d:%d] ", lsn.file, lsn.offset);
-    printf(" COMMIT_LSN[%d:%d] ", commit_lsn.file, commit_lsn.offset);
-    printf("\n");
-    free(buf);
-    */
 
     return bdb_temp_table_insert(bdb_state, pglogs_ent->tmpcur, &rec,
                                  sizeof(pglogs_tmptbl_key), NULL, 0, &bdberr);
@@ -2981,6 +3079,12 @@ int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
     pthread_mutex_unlock(&del_queue_lk);
 
     if (fileid_queue) {
+#ifdef ASOF_TRACE
+        char *buf;
+        hexdumpbuf(fileid_queue->fileid, DB_FILE_ID_LEN, &buf);
+        logmsg(LOGMSG_INFO, "%s: delete queue fileid[%s]\n", __func__, buf);
+        free(buf);
+#endif
         while ((qe = listc_rtl(&fileid_queue->queue_keys)) != NULL)
             return_pglogs_queue_key(qe);
         return_fileid_pglogs_queue(fileid_queue);
