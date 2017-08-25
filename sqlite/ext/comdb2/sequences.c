@@ -29,6 +29,8 @@
 
 /*
 comdb2_sequences: query various attributes of sequences.
+
+next_start_val would only be valid on master
 */
 
 typedef struct {
@@ -45,6 +47,8 @@ enum {
     SEQUENCE_COLUMN_STARTVAL,
     SEQUENCE_COLUMN_NEXT_STARTVAL,
     SEQUENCE_COLUMN_CHUNK,
+    SEQUENCE_COLUMN_CYCLE,
+    SEQUENCE_COLUMN_EXHAUSTED,
 };
 
 static int systblSequencesConnect(sqlite3 *db, void *pAux, int argc,
@@ -56,7 +60,7 @@ static int systblSequencesConnect(sqlite3 *db, void *pAux, int argc,
     rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_sequences(\"name\", "
                                   "\"min_val=\", \"max_val\", \"increment\", "
                                   "\"start_val\", \"next_start_val\", "
-                                  "\"chunk_size\")");
+                                  "\"chunk_size\", \"cycle\", \"exhausted\")");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -155,6 +159,13 @@ static int systblSequencesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         break;
     case SEQUENCE_COLUMN_CHUNK:
         sqlite3_result_int64(ctx, sequence->chunk_size);
+        break;
+    case SEQUENCE_COLUMN_CYCLE:
+        sqlite3_result_text(ctx, YESNO(sequence->cycle), -1, NULL);
+        break;
+    case SEQUENCE_COLUMN_EXHAUSTED:
+        sqlite3_result_text(ctx, YESNO(sequence->flags & SEQUENCE_EXHAUSTED),
+                            -1, NULL);
         break;
     default:
         assert(0);
