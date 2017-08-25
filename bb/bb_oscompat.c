@@ -2397,9 +2397,18 @@ int bb_getpeercred(int fd, pid_t *pid, uid_t *euid, gid_t *egid)
     return bb_getpeercred_silent(fd, pid, euid, egid, /* silent */ 0);
 }
 
-int bb_readdir(DIR *d, void *buf, struct dirent **dent)
-{
+int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
+#ifdef _LINUX_SOURCE
+    int rc;
+    *dent = readdir(d);
+    if (*dent == NULL)
+        return errno;
+    memcpy(buf, *dent, sizeof(struct dirent));
+    return 0;
+#else
+    int rc;
     return readdir_r(d, buf, dent);
+#endif
 }
 
 #ifdef BB_OSCOMPAT_TESTPROGRAM
