@@ -275,7 +275,7 @@ tryagain:
         }
 
         uint32_t cksum;
-        bool cksum_verified;
+        bool cksum_verified = false;
         verify_checksum(pagebuf, pagesize, false, false,
                             &cksum_verified, &cksum);
         if(!cksum_verified){

@@ -154,9 +154,7 @@ void verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swapped,
                                     : __ham_func4(page, pagesize);
     *verify_cksum = calc;
     *(uint32_t *)chksum_ptr = orig_chksum;
-    if (calc == chksum) {
-        *verify_bool = true;
-    }
+    *verify_bool = (calc == chksum);
     return;
 }
 
