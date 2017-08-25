@@ -67,6 +67,10 @@ entries:
       url: /constraints.html
       output: web
 
+    - title: Sequence Generators
+      url: /sequences.html
+      output: web
+
     - title: C API
       url: /c_api.html
       output: web
