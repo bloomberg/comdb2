@@ -382,8 +382,6 @@ static void *fstdump_hndlr(void *arg_)
     return NULL;
 }
 
-int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset);
-
 static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
                              struct thr_handle *thr_self)
 {
@@ -634,17 +632,15 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             sbuf2flush(sb);
 
             if (cmd == cmd_logdelete3) {
-                int file, offset;
-                rc = bdb_get_lsn(thedb->bdb_env, &file, &offset);
+                rc = bdb_recovery_start_lsn(thedb->bdb_env, recovery_lsn,
+                                            sizeof(recovery_lsn));
                 if (rc) {
                     logmsg(LOGMSG_ERROR, "bdb_recovery_start_lsn rc %d\n", rc);
                     snprintf(recovery_command, sizeof(recovery_command),
                              "-fullrecovery");
                 } else {
-                    snprintf(recovery_lsn, sizeof(recovery_lsn), "%d:%d", file, 
-                            offset);
                     snprintf(recovery_command, sizeof(recovery_command),
-                             "-recovertolsn %s", recovery_lsn);
+                             "-recovery_lsn %s", recovery_lsn);
                 }
             }
 
