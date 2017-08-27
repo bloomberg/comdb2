@@ -1,16 +1,16 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
-   
+
        http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and 
+   See the License for the specific language governing permissions and
    limitations under the License.
  */
 
@@ -76,6 +76,9 @@ uint32_t crc32c_software(const uint8_t* buf, uint32_t sz, uint32_t crc)
 }
 
 #ifdef __x86_64__
+
+#include <smmintrin.h>
+#include <wmmintrin.h>
 
 /* Fwd declare available methods to compute crc32c */
 static uint32_t crc32c_sse_pcl(const uint8_t *buf, uint32_t sz, uint32_t crc);
@@ -149,9 +152,9 @@ static inline uint32_t crc32c_8s(const uint8_t *buf, uint32_t sz, uint32_t crc);
 
 // Intel White Paper: Fast CRC Computation for iSCSI Polynomial Using CRC32 Instruction
 #define THREESOME			\
-c1 = __builtin_ia32_crc32di(c1, b1[i]);	\
-c2 = __builtin_ia32_crc32di(c2, b2[i]);	\
-c3 = __builtin_ia32_crc32di(c3, b3[i]);	\
+c1 = _mm_crc32_u64(c1, b1[i]);	\
+c2 = _mm_crc32_u64(c2, b2[i]);	\
+c3 = _mm_crc32_u64(c3, b3[i]);	\
 ++i;
 
 /* Compute chksum processing 8 bytes at a time */
@@ -162,20 +165,20 @@ static inline uint32_t crc32c_8s(const uint8_t *buf, uint32_t sz, uint32_t crc)
 	const uint64_t *b = (uint64_t *) buf;
 	const uint64_t *e = b + (sz / 8);
 	while (b < e) {
-		crc = __builtin_ia32_crc32di(crc, *b);
+		crc = _mm_crc32_u64(crc, *b);
 		++b;
 	}
 	buf = (uint8_t *) b;
 	intptr_t diff = end - buf;
 	int i = 0;
 	switch (diff) {
-	case 7: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 6: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 5: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 4: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 3: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 2: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 1: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
+	case 7: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 6: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 5: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 4: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 3: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 2: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 1: crc = _mm_crc32_u8(crc, buf[i]); ++i;
 	}
 	return crc;
 }
@@ -225,16 +228,16 @@ static uint32_t crc32c_sse_pcl(const uint8_t *buf, uint32_t sz, uint32_t crc)
 		REPEAT_127(THREESOME);
 
 		// Combine three results
-		x1[0] = __builtin_ia32_crc32di(c1, b1[127]); // block 1 crc
-		x2[0] = __builtin_ia32_crc32di(c2, b2[127]); // block 2 crc
+		x1[0] = _mm_crc32_u64(c1, b1[127]); // block 1 crc
+		x2[0] = _mm_crc32_u64(c2, b2[127]); // block 2 crc
 
-		x1 = __builtin_ia32_pclmulqdq128(x1, K, 0x00); // mul by K[0]
-		x2 = __builtin_ia32_pclmulqdq128(x2, K, 0x10); // mul by K[1]
-		x1 = __builtin_ia32_pxor128(x1, x2);
+		x1 = _mm_clmulepi64_si128(x1, K, 0x00); // mul by K[0]
+		x2 = _mm_clmulepi64_si128(x2, K, 0x10); // mul by K[1]
+		x1 = _mm_xor_si128(x1, x2);
 
 		out = x1[0];    // boring scalar operations
 		out ^= b3[127];
-		out = __builtin_ia32_crc32di(c3, out);
+		out = _mm_crc32_u64(c3, out);
 
 		buf += _3K;
 		sz -= _3K;
@@ -254,13 +257,13 @@ uint32_t crc32c_until_aligned(const uint8_t **buf_, uint32_t *sz_, uint32_t crc)
 	if (adj > sz) adj = sz;
 	int i = 0;
 	switch (adj) {
-	case 7: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 6: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 5: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 4: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 3: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 2: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
-	case 1: crc = __builtin_ia32_crc32qi(crc, buf[i]); ++i;
+	case 7: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 6: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 5: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 4: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 3: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 2: crc = _mm_crc32_u8(crc, buf[i]); ++i;
+	case 1: crc = _mm_crc32_u8(crc, buf[i]); ++i;
 		sz -= adj;
 		*sz_ = sz;
 		*buf_ = buf + i;
@@ -279,7 +282,7 @@ static inline uint32_t crc32c_1024_sse_int(const uint8_t *buf, uint32_t crc)
 	const uint64_t *b3 = &b8[85];
 	c2 = c3 = 0;
 
-	c1 = __builtin_ia32_crc32di(crc, b8[0]);
+	c1 = _mm_crc32_u64(crc, b8[0]);
 	int i = 0;
 	REPEAT_42(THREESOME);
 
@@ -296,7 +299,7 @@ static inline uint32_t crc32c_1024_sse_int(const uint8_t *buf, uint32_t crc)
 	tmp ^= ((uint64_t) mul_table1_672[(c1 >> 16) & 0xFF]) << 16;
 	tmp ^= ((uint64_t) mul_table1_672[(c1 >> 24) & 0xFF]) << 24;
 
-	return __builtin_ia32_crc32di(c3, tmp);
+	return _mm_crc32_u64(c3, tmp);
 }
 
 #endif // Intel only
