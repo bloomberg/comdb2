@@ -57,6 +57,7 @@ void incr_deserialise_database(
     std::string& sha_fingerprint,
     unsigned percent_full,
     bool force_mode,
+    std::vector<std::string>& options,
     bool& is_disk_full
 );
 // Deserialise an incremental backup from STDOUT

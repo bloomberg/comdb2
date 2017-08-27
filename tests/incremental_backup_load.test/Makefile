@@ -1,4 +1,4 @@
-export TEST_TIMEOUT=10m
+export TEST_TIMEOUT=40m
 
 ifeq ($(TESTSROOTDIR),)
 	include ../testcase.mk

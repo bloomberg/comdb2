@@ -45,8 +45,10 @@ function checkload
 function force_checkpoint {
   [[ $debug == 1 ]] && set -x
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
-  sleep 5
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  sleep 10
   cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
 }
 
 function make_base {
@@ -92,7 +94,7 @@ function test_restoredb {
   done
 
   echo $restorecmd
-  $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
+  $restorecmd | comdb2ar x -x $comdb2task -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
   egrep -v "cluster nodes" ${TMPDIR}/restore/${dbname}.lrl > ${TMPDIR}/restore/${dbname}.single.lrl
 
   echo "~~~~~~~~~~"
@@ -168,6 +170,7 @@ sleep 1
 # BASIC FUNCTIONALITY TEST
 resetdb
 for statement in `ls t1-*.stmt`; do
+  force_checkpoint
   sleep $sleeptime
   cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
   force_checkpoint

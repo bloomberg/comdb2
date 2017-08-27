@@ -118,6 +118,7 @@ void deserialise_database(
   const std::string *p_datadestdir,
   bool strip_cluster_info,
   bool strip_consumer_info,
+  bool run_full_recovery,
   const std::string& comdb2_task,
   unsigned percent_full,
   bool force_mode,

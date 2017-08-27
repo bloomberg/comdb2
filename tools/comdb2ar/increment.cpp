@@ -356,6 +356,7 @@ void incr_deserialise_database(
     std::string& sha_fingerprint,
     unsigned percent_full,
     bool force_mode,
+    std::vector<std::string>& options,
     bool& is_disk_full
 )
 // Read from STDIN to deserialise an incremental backup
@@ -369,7 +370,6 @@ void incr_deserialise_database(
     std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>> updated_files;
     std::set<std::string> deleted_files;
     std::vector<std::string> file_order;
-    std::vector<std::string> options;
 
     while(true) {
 
@@ -393,12 +393,10 @@ void incr_deserialise_database(
             if(!done_with_incr){
                 std::clog << "done with increment" << std::endl << std::endl;
                 done_with_incr = true;
-
                 new_files.clear();
                 updated_files.clear();
                 deleted_files.clear();
                 file_order.clear();
-                options.clear();
             }
             continue;
         }
@@ -472,6 +470,7 @@ void incr_deserialise_database(
             manifest_read = true;
             std::string manifest_sha;
             std::string manifest_text = read_incr_manifest(filesize);
+            options.clear();
             if(!process_incr_manifest(manifest_text, datadestdir,
                     updated_files, new_files, deleted_files,
                     file_order, options, manifest_sha)){

@@ -314,6 +314,7 @@ int main(int argc, char *argv[])
              p_datadest,
              strip_cluster_info,
              strip_consumer_info,
+             run_full_recovery,
              comdb2_task,
              percent_full,
              force_mode,

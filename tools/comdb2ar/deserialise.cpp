@@ -109,6 +109,7 @@ bool read_octal_ull(const char *str, size_t len, unsigned long long& number)
 static void process_manifest(
         const std::string& text,
         std::map<std::string, FileInfo>& manifest_map,
+        bool& run_full_recovery,
         std::string& origlrlname,
         std::vector<std::string> &options
         )
@@ -141,6 +142,10 @@ static void process_manifest(
                     std::clog << "Bad File directive on line "
                         << lineno << " of MANIFEST" << std::endl;
                 }
+            } else if(tok == "SupportFilesOnly") {
+                // If serialisation contains sources only then no need to run
+                // full recovery.
+                run_full_recovery = false;
             } else if(tok == "OrigLrlFile") {
 
                // llmeta renames the lrl file
@@ -343,6 +348,7 @@ void deserialise_database(
         const std::string *p_datadestdir,
         bool strip_cluster_info,
         bool strip_consumer_info,
+        bool run_full_recovery,
         const std::string& comdb2_task,
         unsigned percent_full,
         bool force_mode,
@@ -490,6 +496,7 @@ void deserialise_database(
                     sha_fingerprint,
                     percent_full,
                     force_mode,
+                    options,
                     is_disk_full
                 );
             }
@@ -837,7 +844,7 @@ void deserialise_database(
         }
 
         if(is_manifest) {
-            process_manifest(text, manifest_map, origlrlname, options);
+            process_manifest(text, manifest_map, run_full_recovery, origlrlname, options);
 
         } else if(is_lrl) {
 
@@ -891,6 +898,38 @@ void deserialise_database(
     if(!inited_txn_dir) {
         throw Error("No valid lrl file seen or txn dir not inited");
     }
+
+    // Run full recovery
+    if(run_full_recovery) {
+        std::ostringstream cmdss;
+
+        if (run_with_done_file)
+           cmdss << "comdb2_stdout_redir ";
+        
+        cmdss<< comdb2_task << " " 
+             << dbname << " -lrl "
+             << main_lrl_file 
+             << " -fullrecovery";
+
+        for (int i = 0; i < options.size(); i++) {
+            cmdss << " " << options[i];
+        }
+
+        std::clog << "Running full recovery: " << cmdss.str() << std::endl;
+
+        errno = 0;
+        int rc = std::system(cmdss.str().c_str());
+        if(rc != 0) {
+            std::ostringstream ss;
+            ss << "Full recovery command '" << cmdss.str() << "' failed rc "
+                << rc << " errno " << errno << std::endl;
+            throw Error(ss);
+        }
+        std::clog << "Full recovery successful" << std::endl;
+    }
+
+
+
 
     // Remove the copylock file
     if(!copylock_file.empty()) {
