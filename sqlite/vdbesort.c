@@ -1801,7 +1801,8 @@ static int vdbeSorterFlushPMA(VdbeSorter *pSorter){
 */
 int sqlite3VdbeSorterWrite(
   const VdbeCursor *pCsr,         /* Sorter cursor */
-  Mem *pVal                       /* Memory cell containing record */
+  Mem *pVal,                      /* Memory cell containing record */
+  u8 *pbFlush                     /* Destination to write bFlush to */
 ){
   VdbeSorter *pSorter;
   int rc = SQLITE_OK;             /* Return Code */
@@ -1864,6 +1865,9 @@ int sqlite3VdbeSorterWrite(
       pSorter->list.szPMA = 0;
       pSorter->iMemory = 0;
       assert( rc!=SQLITE_OK || pSorter->list.pList==0 );
+    }
+    if ( pbFlush!=NULL ){
+      *pbFlush = (u8)bFlush;
     }
   }
 

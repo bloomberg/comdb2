@@ -1,0 +1,23 @@
+0	Init	0	21	0		00	Start at 21
+1	SorterOpen	1	3	0	k(1,B)	00	
+2	OpenRead	0	4	0	2	00	root=4 iDb=0; t
+3	ColumnsUsed	0	0	0	3	00	
+4	Explain	0	0	0	SCAN TABLE t (1048576 rows)	00	
+5	Rewind	0	11	0		00	
+6	Column	0	1	2	4096	20	r[2]=t.b
+7	Column	0	0	1		00	r[1]=t.i
+8	MakeRecord	1	2	3		00	r[3]=mkrec(r[1..2])
+9	SorterInsert	1	3	0		00	
+10	Next	0	6	0		01	
+11	OpenPseudo	2	4	3		00	3 columns in r[4]
+12	SorterSort	1	19	0		00	
+13	SorterData	1	4	2		00	r[4]=data
+14	Column	2	1	2		00	r[2]=b
+15	SeekRowid	-1	17	2		00	intkey=r[2]
+16	Column	-1	-1	2		00	r[2]=b
+17	ResultRow	2	1	0		00	output=r[2]
+18	SorterNext	1	13	0		00	
+19	Close	0	0	0		00	
+20	Halt	0	0	0		00	
+21	Transaction	0	0	0	0	01	usesStmtJournal=0
+22	Goto	0	1	0		00	

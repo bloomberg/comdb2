@@ -1,0 +1,20 @@
+#!/bin/sh
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+./genidsort $dbnm
+if [ "$?" != "0" ]; then
+  echo "genidsort failed." >&2
+  exit 1
+fi
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "explain select b from t order by i" >output.actual
+diff output.actual output.expected
+if [ "$?" != "0" ]; then
+  echo "Query plan mismatch." >&2
+  exit 1
+fi
+
+echo "Passed."
+exit 0

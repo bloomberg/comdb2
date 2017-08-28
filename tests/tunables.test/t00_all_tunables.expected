@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=899)
+(TUNABLES_COUNT=900)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -328,6 +328,7 @@
 (name='genid_comp_threshold', description='Try to compress rowids if the record data is smaller than this size.', type='INTEGER', value='60', read_only='N')
 (name='genidplusplus', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='genids', description='', type='BOOLEAN', value='ON', read_only='N')
+(name='genidsort_sz_thresh', description='', type='INTEGER', value='4096', read_only='N')
 (name='gofast', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='goose_replication_for_incoherent_nodes', description='Call for election for nodes affected by COMMITDELAYBEHINDTHRESH.', type='BOOLEAN', value='OFF', read_only='N')
 (name='goslow', description='', type='BOOLEAN', value='OFF', read_only='N')
