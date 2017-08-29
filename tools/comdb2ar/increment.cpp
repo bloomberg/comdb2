@@ -193,6 +193,7 @@ bool compare_checksum(
                     file_expanded = true;
                     *data_size += pagesize;
                     bytesleft -= pagesize;
+                    ret = true;
                     continue;
                 }
             }
