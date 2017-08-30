@@ -803,8 +803,9 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     private boolean isBeginQuery(String sql) {
-        if (sql.equalsIgnoreCase("begin") ||
-            sql.ReplaceAll("\\s+"," ").equalsIgnoreCase("start transaction")) {
+        String query = sql.trim().toLowerCase();
+        if (query.startsWith("begin") ||
+            query.ReplaceAll("\\s+"," ").startsWith("start transaction")) {
             return true;
         }
         return false;
