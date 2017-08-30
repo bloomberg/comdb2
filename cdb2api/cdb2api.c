@@ -3285,7 +3285,9 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
 */
 static inline int is_begin_query(const char *sql)
 {
-    if (!sql) return 0;
+    if (!sql) {
+        return 0;
+    }
 
     if (strncasecmp(sql, "begin", 5) == 0) {
         return 1;
