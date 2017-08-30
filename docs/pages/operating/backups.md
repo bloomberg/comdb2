@@ -40,7 +40,7 @@ lz4 -d stdin stdout < /db/backups/customerdb.20170202083014.lz4 | comdb2ar x /db
 Deserializes `/db/backups/customerdb.20170202083014.lz4`, placing both the lrl files and data files in the
 `/db/customerdb` directory.
 
-## Comdb2's Incremental Backup System
+## Incremental Backups
 
 Operators can use the comdb2 archive utility (comdb2ar) to create a full "increment-mode" backup, and then subsequently, to create any number of incremental backups.
 Incremental backups are overlaid in-order on top of the original full-backup to restore the database to its state as of the most recent increment.
