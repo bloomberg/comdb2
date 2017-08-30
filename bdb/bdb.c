@@ -211,15 +211,11 @@ int bdb_get_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 
 int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset)
 {
-    seqnum_type seqnum;
-    int rc;
-
-    rc = bdb_get_seqnum(bdb_state, &seqnum);
-    if (rc == 0) {
-        *logfile = seqnum.lsn.file;
-        *offset = seqnum.lsn.file;
-    }
-    return rc;
+    DB_LSN outlsn;
+    __log_txn_lsn(bdb_state->dbenv, &outlsn, NULL, NULL);
+    *logfile = outlsn.file;
+    *offset = outlsn.offset;
+    return 0;
 }
 
 int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,

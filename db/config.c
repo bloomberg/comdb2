@@ -102,7 +102,9 @@ static void replace_args(int argc, char *argv[])
         } else if (strcasecmp(argv[ii], "-recovertolsn") == 0) {
             argv[ii] = "--recovertolsn";
         } else if (strcasecmp(argv[ii], "-recovery_lsn") == 0) {
-            argv[ii] = "--recovery_lsn";
+            argv[ii] = "--recoverylsn";
+        } else if (strcasecmp(argv[ii], "-recoverylsn") == 0) {
+            argv[ii] = "--recoverylsn";
         } else if (strcasecmp(argv[ii], "-pidfile") == 0) {
             argv[ii] = "--pidfile";
         } else if (strcasecmp(argv[ii], "-help") == 0) {
