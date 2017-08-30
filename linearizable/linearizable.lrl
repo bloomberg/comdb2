@@ -75,8 +75,25 @@ on debug_sqlthd_failures
 # Force random get_curtran failures
 on random_get_curtran_failures
 
+# Lets see durable lsns
+on wait_for_seqnum_trace
+
+# This isn't being set sometimes: try to understand why
+debug_high_availability_flag on
+
+# Try to understand this
+abort_on_incorrect_ha_flag on
+
+
+block_set_commit_genid_trace on
+
+# Print a message when writing a dummy record
+write_dummy_trace on
 # Abort on invalid query info key
 # on abort_invalid_query_info_key
+
+# Abort if we try to upgrade
+# abort_on_bad_upgrade on
 
 # Make sure that the blkseq code works correctly
 #on test_blkseq_replay

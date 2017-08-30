@@ -23,8 +23,6 @@
 #include <dbqueue.h>
 #include <translistener.h>
 
-#define LISTC_NEXT(currentp, linkv) ((currentp)->linkv.next)
-
 typedef struct trigger trigger;
 struct trigger {
   LINKC_T(trigger) lnk;

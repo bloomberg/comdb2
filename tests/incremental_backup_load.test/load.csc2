@@ -1,0 +1,13 @@
+schema
+{
+    int  id
+    cstring name[5]
+    blob data
+    blob data2
+    blob data3
+    blob data4
+    blob data5
+    blob data6
+    blob data7
+    blob data8
+}

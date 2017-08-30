@@ -86,7 +86,7 @@ free_iobuf(void *p)
 	struct iobuf *b = p;
 
 	free(b->buf);
-	comdb2_free(b);
+	free(b);
 }
 
 static void
@@ -110,7 +110,7 @@ get_aligned_buffer(void *buf, size_t bufsz, int copy)
 
 	b = pthread_getspecific(iobufkey);
 	if (b == NULL) {
-		b = comdb2_malloc_berkdb(sizeof(struct iobuf));
+		b = malloc(sizeof(struct iobuf));
 		b->sz = bufsz;
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
 		if (posix_memalign(&b->buf, 512, bufsz))
@@ -204,7 +204,7 @@ __berkdb_direct_read(int fd, void *buf, size_t bufsz)
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
 			goto done_verify;
 		}
-		checkbuf = comdb2_malloc_berkdb(bufsz);
+		checkbuf = malloc(bufsz);
 		verify_bytes_read = pread(nfd, checkbuf, bufsz, off);
 		if (verify_bytes_read == -1) {
 			logmsg(LOGMSG_ERROR, "pread verify %d %s\n", errno, strerror(errno));
@@ -230,7 +230,7 @@ done_verify:
 		if (nfd != -1)
 			close(nfd);
 		if (checkbuf)
-			comdb2_free(checkbuf);
+			free(checkbuf);
 
 		if (verify_failed)
 			return -1;
@@ -324,7 +324,7 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
 			goto done_verify;
 		}
-		checkbuf = comdb2_malloc_berkdb(bufsz);
+		checkbuf = malloc(bufsz);
 		rc = pread(nfd, checkbuf, bufsz, off);
 		if (rc == -1) {
             logmsg(LOGMSG_ERROR, "pread verify %d %s\n", errno, strerror(errno));
@@ -349,7 +349,7 @@ done_verify:
 		if (nfd != -1)
 			close(nfd);
 		if (checkbuf)
-			comdb2_free(checkbuf);
+			free(checkbuf);
 
 		if (verify_failed)
 			return -1;

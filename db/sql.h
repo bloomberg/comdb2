@@ -291,6 +291,8 @@ void currange_free(CurRange *cr);
 struct stored_proc;
 struct lua_State;
 
+enum early_verify_error { EARLY_ERR_VERIFY = 1, EARLY_ERR_SELECTV = 2 };
+
 /* Client specific sql state */
 struct sqlclntstate {
 
@@ -493,7 +495,7 @@ struct sqlclntstate {
     int8_t wrong_db;
     int8_t is_lua_sql_thread;
     int8_t skip_feature;
-    int8_t high_availability;
+    int8_t high_availability_flag;
     int8_t hasql_on;
 
     int8_t has_recording;
@@ -516,16 +518,13 @@ struct sqlclntstate {
 
 /* Query stats. */
 struct query_path_component {
-    union {
-        struct dbtable *db;           /* local db, or tmp if NULL */
-        struct fdb_tbl_ent *fdb; /* remote db */
-    } u;
+    struct fdb_tbl_ent *fdb; /* null: local_tbl_name */
+    char lcl_tbl_name[MAXTABLELEN];
     int ix;
     int nfind;
     int nnext;
     int nwrite;
     int nblobs;
-    int remote; /* mark this as remote, see *u */
     LINKC_T(struct query_path_component) lnk;
 };
 

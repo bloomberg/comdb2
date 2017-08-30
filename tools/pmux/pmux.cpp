@@ -109,8 +109,8 @@ static int dealloc_fd(const char *svc)
     fdmap_mutex.lock();
     const auto &i = fd_map.find(key);
     if (i == fd_map.end()) {
-      fdmap_mutex.unlock();
-      return 0;
+        fdmap_mutex.unlock();
+        return 0;
     }
     if (i->second > 0)
         close(i->second);
@@ -280,17 +280,17 @@ int maybe_write(int fd, const void *buf, size_t count)
 {
     if (count == 0)
         return 0;
-	count = 1 + rand() % count;
-	return write(fd, buf, count);
+    count = 1 + rand() % count;
+    return write(fd, buf, count);
 }
 
 int maybe_read(int fd, void *buf, size_t count)
 {
     if (count == 0)
         return 0;
-	count = 1 + rand() % ((count > 5) ? 5 : count);
-	printf("read %d\n", count);
-	return read(fd, buf, count);
+    count = 1 + rand() % ((count > 5) ? 5 : count);
+    printf("read %d\n", count);
+    return read(fd, buf, count);
 }
 #define write maybe_write
 #define read maybe_read
@@ -299,46 +299,47 @@ int maybe_read(int fd, void *buf, size_t count)
 static void conn_printf(connection &c, const char *fmt, ...);
 static int dealloc_port(const char *svc);
 
-static int tcp_listen(uint16_t port) {
-	int rc;
-	int fd;
-	fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (fd == -1) {
+static int tcp_listen(uint16_t port)
+{
+    int rc;
+    int fd;
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == -1) {
         syslog(LOG_ERR, "socket: %d %s", errno, strerror(errno));
-		return -1;
-	}
+        return -1;
+    }
 
-	int reuse = 1;
-	rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
-	if (rc == -1) {
+    int reuse = 1;
+    rc = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
+    if (rc == -1) {
         syslog(LOG_ERR, "setsockopt: %d %s", errno, strerror(errno));
-		return rc;
-	}
+        return rc;
+    }
 
-	struct sockaddr_in bindaddr = {0};
-	bindaddr.sin_family = AF_INET;
-	bindaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	bindaddr.sin_port = htons(port);
-	rc = bind(fd, (struct sockaddr *)&bindaddr, sizeof(bindaddr));
-	if (rc == -1) {
+    struct sockaddr_in bindaddr = {0};
+    bindaddr.sin_family = AF_INET;
+    bindaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    bindaddr.sin_port = htons(port);
+    rc = bind(fd, (struct sockaddr *)&bindaddr, sizeof(bindaddr));
+    if (rc == -1) {
         syslog(LOG_ERR, "bind: %d %s", errno, strerror(errno));
-		return rc;
-	}
-	rc = listen(fd, SOMAXCONN);
-	if (rc == -1) {
+        return rc;
+    }
+    rc = listen(fd, SOMAXCONN);
+    if (rc == -1) {
         syslog(LOG_ERR, "listen: %d %s", errno, strerror(errno));
-		return rc;
-	}
-	if (port == 0) { // get allocated port
-		struct sockaddr_in portaddr = {0};
-		socklen_t len = sizeof(portaddr);
-		rc = getsockname(fd, (struct sockaddr *)&portaddr, &len);
-		if (rc == -1) {
+        return rc;
+    }
+    if (port == 0) { // get allocated port
+        struct sockaddr_in portaddr = {0};
+        socklen_t len = sizeof(portaddr);
+        rc = getsockname(fd, (struct sockaddr *)&portaddr, &len);
+        if (rc == -1) {
             syslog(LOG_ERR, "getsockname: %d %s", errno, strerror(errno));
-			return rc;
-		}
-		port = htons(portaddr.sin_port);
-	}
+            return rc;
+        }
+        port = htons(portaddr.sin_port);
+    }
 #ifdef VERBOSE
     syslog(LOG_INFO, "pmux port:%d\n", port);
 #endif
@@ -352,22 +353,21 @@ static int use_port(const char *svc, int port)
     // remember the old service->port mapping, if any
     int usedport = get_port(svc);
 
-	if (i == free_ports.end()) {
+    if (i == free_ports.end()) {
         /* service can tell us over and over that it's using the port, that's
          * fine */
-		if (usedport == port)
-			return 0;
+        if (usedport == port)
+            return 0;
 
         fprintf(stderr, "%s -- not using port, not on free list:%d\n", svc,
                 port);
         return -1;
-	}
-	else {
-		// was the service using a different port before?  remove that mapping
-		if (usedport != -1)
-			dealloc_port(svc);
-	}
-	free_ports.erase(i);
+    } else {
+        // was the service using a different port before?  remove that mapping
+        if (usedport != -1)
+            dealloc_port(svc);
+    }
+    free_ports.erase(i);
 
     std::pair<std::string, int> kv(svc, port);
     port_map.insert(kv);
@@ -377,13 +377,13 @@ static int use_port(const char *svc, int port)
 
 static int alloc_port(const char *svc)
 {
-	const auto &i = free_ports.begin();
-	if (i == free_ports.end()) {
+    const auto &i = free_ports.begin();
+    if (i == free_ports.end()) {
         syslog(LOG_ERR, "%s -- exhausted free ports", __func__);
-		return -1;
-	}
-	int port = *i;
-	free_ports.erase(i);
+        return -1;
+    }
+    int port = *i;
+    free_ports.erase(i);
 
     std::pair<std::string, int> kv(svc, port);
     port_map.insert(kv);
@@ -408,25 +408,24 @@ static int dealloc_port(const char *svc)
 static char hexmap[] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 static void hprintf(FILE *f, char *b, size_t s)
 {
-	fprintf(f, "0x");
-	for (int i = 0; i < s; ++i) {
-		if (i % 4 == 0)
-			fprintf(f, " ");
-		fprintf(f, "%c%c", hexmap[(b[i] & 0xf0) >> 4],
-			hexmap[b[i] & 0x0f]);
-	}
-	fprintf(f, "\n");
+    fprintf(f, "0x");
+    for (int i = 0; i < s; ++i) {
+        if (i % 4 == 0)
+            fprintf(f, " ");
+        fprintf(f, "%c%c", hexmap[(b[i] & 0xf0) >> 4],
+            hexmap[b[i] & 0x0f]);
+    }
+    fprintf(f, "\n");
 }
 #endif
 
-static bool invalid_fd(const struct pollfd &fd) { 
-    return fd.fd == -1; 
-}
+static bool invalid_fd(const struct pollfd &fd) { return fd.fd == -1; }
 
 static bool is_local(struct in_addr addr)
 {
     for (auto local_addr : local_addresses) {
-        if (local_addr.s_addr == addr.s_addr) return true;
+        if (local_addr.s_addr == addr.s_addr)
+            return true;
     }
 
     return false;
@@ -437,8 +436,7 @@ static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
     auto freefd = std::find_if(fds.begin(), fds.end(), invalid_fd);
     if (freefd != fds.end()) {
         *freefd = {.fd = fd, .events = POLLIN, .revents = 0};
-    }
-    else {
+    } else {
         if (fds.size() >= open_max) {
             return 1;
         }
@@ -460,11 +458,10 @@ static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
 
 static void used(connection &c)
 {
-	for (auto &port : port_map) {
+    for (auto &port : port_map) {
         conn_printf(c, "port %-7d name %s\n", port.second, port.first.c_str());
-	}
+    }
 }
-
 
 static void conn_printf(connection &c, const char *fmt, ...)
 {
@@ -491,7 +488,8 @@ static int route_to_instance(char *svc, int fd)
     }
 }
 
-void disallowed_write(connection &c, char *cmd) {
+void disallowed_write(connection &c, char *cmd)
+{
     char *ip = inet_ntoa(c.addr);
     syslog(LOG_INFO, "attempt to write (%s) from remote connection %s\n", cmd,
            ip);
@@ -510,7 +508,8 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in)
 
     cmd = strtok_r(in, " ", &sav);
     connection &c = connections[fd.fd];
-    if (cmd == NULL) goto done;
+    if (cmd == NULL)
+        goto done;
 
 again:
     if (strcmp(cmd, "reg") == 0) {
@@ -669,7 +668,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
             /* found something - run it */
             int len = pos - off;
             c.inbuf[pos] = 0;
-            if (pos > 1 && c.inbuf[pos - 1] == '\r') 
+            if (pos > 1 && c.inbuf[pos - 1] == '\r')
                 c.inbuf[pos - 1] = 0;
             rc = run_cmd(fd, fds, c.inbuf + off);
             off = pos + 1;
@@ -691,13 +690,13 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
 
 static int do_accept(struct pollfd &fd, std::vector<struct pollfd> &fds)
 {
-	struct sockaddr_in req = {0};
-	socklen_t len = sizeof(req);
-	int rfd = accept(fd.fd, (struct sockaddr *)&req, &len);
-	if (rfd == -1) {
+    struct sockaddr_in req = {0};
+    socklen_t len = sizeof(req);
+    int rfd = accept(fd.fd, (struct sockaddr *)&req, &len);
+    if (rfd == -1) {
         syslog(LOG_WARNING, "accept: %d %s", errno, strerror(errno));
-		return 0;
-	}
+        return 0;
+    }
 #ifdef VERBOSE
     char *ip;
     ip = inet_ntoa(req.sin_addr);
@@ -736,7 +735,8 @@ static bool init_local_names()
 static bool init(std::vector<std::pair<int, int>> port_ranges)
 {
 
-    if (!init_local_names()) return false;
+    if (!init_local_names())
+        return false;
 
     for (auto &range : port_ranges) {
 #ifdef VERBOSE
@@ -779,51 +779,51 @@ static int poll_loop(const std::vector<int> &ports,
 #ifdef VERBOSE
             syslog(LOG_INFO, "wrote %d/%d bytes\n", bytes_written, out.size());
 #endif
-			if (bytes_written == -1)
-				unwatchfd(fd);
-			else if (bytes_written < out.size()) {
-				// wrote partial - put the unwritten piece back
+            if (bytes_written == -1)
+                unwatchfd(fd);
+            else if (bytes_written < out.size()) {
+                // wrote partial - put the unwritten piece back
                 out = std::string(
                     out.substr(bytes_written, out.size() - bytes_written));
-				wl.push_front(out);
-			}
-			if (wl.size() == 0)
-				fd.events &= ~POLLOUT; 
-			// else we've consumed one output string, and we're done with it
-		} else if (fd.revents & POLLERR || fd.revents & POLLHUP ||
-			   fd.revents & POLLNVAL) {
+                wl.push_front(out);
+            }
+            if (wl.size() == 0)
+                fd.events &= ~POLLOUT;
+            // else we've consumed one output string, and we're done with it
+        } else if (fd.revents & POLLERR || fd.revents & POLLHUP ||
+                   fd.revents & POLLNVAL) {
             if (std::find(ports.begin(), ports.end(), fd.fd) != ports.end()) {
-				// accept() fd error
-				// should restart server
-				abort();
-			}
-			unwatchfd(fd);
-		} else {
-			fd.revents = 0;
-		}
-	}
-	return rc;
+                // accept() fd error
+                // should restart server
+                abort();
+            }
+            unwatchfd(fd);
+        } else {
+            fd.revents = 0;
+        }
+    }
+    return rc;
 }
 
 static int make_range(char *s, std::pair<int, int> &range)
 {
-	std::string orig(s);
-	char *sav;
-	char *first = strtok_r(s, ":", &sav);
-	char *second = strtok_r(NULL, ":", &sav);
-	if (first == NULL || second == NULL) {
+    std::string orig(s);
+    char *sav;
+    char *first = strtok_r(s, ":", &sav);
+    char *second = strtok_r(NULL, ":", &sav);
+    if (first == NULL || second == NULL) {
         syslog(LOG_ERR, "bad port range -> %s\n", orig.c_str());
-		return 1;
-	}
-	range = std::make_pair(atoi(first), atoi(second));
-	return 0;
+        return 1;
+    }
+    range = std::make_pair(atoi(first), atoi(second));
+    return 0;
 }
 
 static int usage(int rc)
 {
     printf("usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path] "
-	       "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n");
-	return rc;
+           "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n");
+    return rc;
 }
 
 #ifdef _SUN_SOURCE
@@ -832,60 +832,60 @@ static int usage(int rc)
 
 int main(int argc, char **argv)
 {
-	sigignore(SIGPIPE);
+    sigignore(SIGPIPE);
 #   ifndef LOG_PERROR
 #       define LOG_PERROR 0
 #   endif
     openlog("pmux", LOG_NDELAY | LOG_PERROR, LOG_USER);
 
-	open_max = sysconf(_SC_OPEN_MAX);
-	if (open_max == -1) {
+    open_max = sysconf(_SC_OPEN_MAX);
+    if (open_max == -1) {
         syslog(LOG_WARNING, "sysconf(_SC_OPEN_MAX): %d %s ", errno,
                strerror(errno));
-		open_max = 20;
+        open_max = 20;
         syslog(LOG_WARNING, "setting open_max to:%ld\n", open_max);
-	}
-	char *host = getenv("HOSTNAME");
-	if (host == NULL) {
-		long hostname_max = sysconf(_SC_HOST_NAME_MAX);
-		if (hostname_max == -1) {
+    }
+    char *host = getenv("HOSTNAME");
+    if (host == NULL) {
+        long hostname_max = sysconf(_SC_HOST_NAME_MAX);
+        if (hostname_max == -1) {
             syslog(LOG_WARNING, "sysconf(_SC_HOST_NAME_MAX): %d %s ", errno,
                    strerror(errno));
-			hostname_max = 255;
+            hostname_max = 255;
             syslog(LOG_WARNING, "setting hostname_max to:%ld\n", hostname_max);
-		}
-		char myhost[hostname_max + 1];
-		int rc = gethostname(myhost, hostname_max);
-		myhost[hostname_max] = '\0';
-		if (rc == 0)
-			host = strdup(myhost);
-	}
-	if (host == NULL) {
+        }
+        char myhost[hostname_max + 1];
+        int rc = gethostname(myhost, hostname_max);
+        myhost[hostname_max] = '\0';
+        if (rc == 0)
+            host = strdup(myhost);
+    }
+    if (host == NULL) {
         syslog(LOG_CRIT,
                "Can't figure out hostname: please export HOSTNAME.\n");
-		return EXIT_FAILURE;
-	}
-	const char *cluster = "prod";
-	const char *dbname = "pmuxdb";
-	std::vector<int> listen_ports = {5105};
-	std::vector<std::pair<int, int>> port_ranges{{19000, 19999}};
-	bool default_ports = true;
-	bool default_range = true;
-    enum { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
-    bool store_mode = MODE_NONE;
-	std::pair<int, int> custom_range;
-	int c;
+        return EXIT_FAILURE;
+    }
+    const char *cluster = "prod";
+    const char *dbname = "pmuxdb";
+    std::vector<int> listen_ports = {5105};
+    std::vector<std::pair<int, int>> port_ranges{{19000, 19999}};
+    bool default_ports = true;
+    bool default_range = true;
+    enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2DB };
+    store_mode store_mode = MODE_NONE;
+    std::pair<int, int> custom_range;
+    int c;
     struct sockaddr_un serv_addr;
     while ((c = getopt(argc, argv, "hc:d:b:p:r:lnf")) != -1) {
-		switch (c) {
-		case 'h':
-			return usage(EXIT_SUCCESS);
-			break;
-		case 'c':
-			cluster = strdup(optarg);
-			break;
-		case 'd':
-			dbname = strdup(optarg);
+        switch (c) {
+        case 'h':
+            return usage(EXIT_SUCCESS);
+            break;
+        case 'c':
+            cluster = strdup(optarg);
+            break;
+        case 'd':
+            dbname = strdup(optarg);
             break;
         case 'b':
             if (strlen(optarg) >= sizeof(serv_addr.sun_path)) {
@@ -894,38 +894,38 @@ int main(int argc, char **argv)
             }
             strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
             store_mode = MODE_COMDB2DB;
-			break;
-		case 'p':
-			if (default_ports) {
-				listen_ports.resize(0);
-				default_ports = false;
-			}
-			listen_ports.push_back(atoi(optarg));
-			break;
-		case 'r':
-			if (default_range) {
-				port_ranges.resize(0);
-				default_range = false;
-			}
-			if (make_range(optarg, custom_range) != 0) {
-				return usage(EXIT_FAILURE);
-			}
-			port_ranges.push_back(custom_range);
-			break;
-		case '?':
-			return usage(EXIT_FAILURE);
-			break;
-		case 'l':
+            break;
+        case 'p':
+            if (default_ports) {
+                listen_ports.resize(0);
+                default_ports = false;
+            }
+            listen_ports.push_back(atoi(optarg));
+            break;
+        case 'r':
+            if (default_range) {
+                port_ranges.resize(0);
+                default_range = false;
+            }
+            if (make_range(optarg, custom_range) != 0) {
+                return usage(EXIT_FAILURE);
+            }
+            port_ranges.push_back(custom_range);
+            break;
+        case '?':
+            return usage(EXIT_FAILURE);
+            break;
+        case 'l':
             store_mode = MODE_LOCAL;
             break;
         case 'n':
             store_mode = MODE_NONE;
-			break;
-		case 'f':
-			foreground_mode=true;
-			break;
-		}
-	}
+            break;
+        case 'f':
+            foreground_mode=true;
+            break;
+        }
+    }
 
     try {
         if (store_mode == MODE_LOCAL)
@@ -934,7 +934,7 @@ int main(int argc, char **argv)
             pmux_store.reset(new no_store());
         else
             pmux_store.reset(new comdb2_store(host, dbname, cluster));
-    } catch(std::exception &e) {
+    } catch (std::exception &e) {
         std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;
     }
@@ -944,19 +944,19 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-	std::vector<int> afds;
-	std::vector<struct pollfd> pfds; // fds to poll
-	pfds.reserve(open_max);
-	for (auto port : listen_ports) {
-		int fd = tcp_listen(port);
-		if (fd == -1) {
+    std::vector<int> afds;
+    std::vector<struct pollfd> pfds; // fds to poll
+    pfds.reserve(open_max);
+    for (auto port : listen_ports) {
+        int fd = tcp_listen(port);
+        if (fd == -1) {
             syslog(LOG_CRIT, "tcplisten rc:%d for port:%d\n", fd, port);
-			return EXIT_FAILURE;
-		}
-		afds.push_back(fd);
-		struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
-		pfds.push_back(pfd);
-	}
+            return EXIT_FAILURE;
+        }
+        afds.push_back(fd);
+        struct pollfd pfd = {.fd = fd, .events = POLLIN, .revents = 0};
+        pfds.push_back(pfd);
+    }
 
     if (store_mode == MODE_LOCAL)
         pmux_store.reset(new sqlite_store());
@@ -970,7 +970,7 @@ int main(int argc, char **argv)
     for (auto port : listen_ports)
         pmux_store->sav_port("pmux", port);
 
-	if (!foreground_mode) {
+    if (!foreground_mode) {
 #ifndef _IBM_SOURCE
         daemon(0, 0);
 #endif

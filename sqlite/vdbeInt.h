@@ -69,6 +69,10 @@ typedef struct SorterList SorterList;
 typedef struct SortSubtask SortSubtask;
 typedef struct SorterFile SorterFile;
 
+/* COMDB2 MODIFICATION */
+void addVdbeSorterCost(const VdbeSorter *);
+void addVdbeToThdCost(int type);
+
 struct SorterFile {
   sqlite3_file *pFd;              /* File handle */
   i64 iEof;                       /* Bytes of data stored in pFd */

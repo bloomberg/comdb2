@@ -3861,7 +3861,6 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
             return -1;
         }
 
-        int ntype = osql_net_type_to_net_uuid_type(type);
         type = osql_net_type_to_net_uuid_type(type);
     } else {
         if (send_dk) {
@@ -6390,7 +6389,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
             iq->have_snap_info = 1;
 
-            assert(!memcmp(&snap_info, iq->snap_info, sizeof(snap_uid_t)));
+            assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
 
         /* p_buf is pointing at client_query_stats if there is one */
@@ -7055,7 +7054,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
         }
 
-        return rc == SC_COMMIT_PENDING || !rc ? 0 : ERR_SC;
+        if (!rc || rc == SC_COMMIT_PENDING)
+            return 0;
+        else if (rc == SC_MASTER_DOWNGRADE)
+            return ERR_NOMASTER;
+        else
+            return ERR_SC;
     } break;
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;
@@ -7908,6 +7912,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
             sbuf2flush(logsb);
         }
 
+        type = osql_net_type_to_net_uuid_type(type);
         offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0);
     } else {
         osql_recgenid_rpl_t recgenid_rpl = {0};
@@ -8016,7 +8021,7 @@ netinfo_type *osql_get_netinfo(void)
 int osqlpfthdpool_init(void)
 {
     int i = 0;
-    gbl_osqlpfault_thdpool = thdpool_create("OSQL PREFAULT pool", 0);
+    gbl_osqlpfault_thdpool = thdpool_create("osqlpfaultpool", 0);
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_osqlpfault_thdpool);

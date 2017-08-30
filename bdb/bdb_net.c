@@ -59,6 +59,7 @@
 #endif
 
 extern void fsnapf(FILE *, void *, int);
+extern int db_is_stopped(void);
 
 struct ack_info_t {
     uint32_t hdrsz;
@@ -391,7 +392,7 @@ struct thdpool *gbl_udppfault_thdpool = NULL;
 
 int udppfault_thdpool_init(void)
 {
-    gbl_udppfault_thdpool = thdpool_create("UDP PREFAULT pool", 0);
+    gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
 
     thdpool_set_exit(gbl_udppfault_thdpool);
 
@@ -500,7 +501,7 @@ static void *udp_reader(void *arg)
     uint8_t *p_buf, *p_buf_end;
     filepage_type fp;
 
-    while (1) {
+    while (!db_is_stopped()) {
 #ifdef UDP_DEBUG
         struct sockaddr_in addr;
         struct sockaddr_in *paddr = &addr;
@@ -625,11 +626,6 @@ static void *udp_reader(void *arg)
             print_ping_rtt(info);
             break;
 
-        case USER_TYPE_DURABLE_LSN:
-            data = ack_info_data(info);
-            receive_durable_lsn(NULL, bdb_state, from, USER_TYPE_DURABLE_LSN,
-                                data, info->len, 0);
-            break;
 
         default:
             printf("%s: recd unknown packet type:%d from:%d\n", __func__, type,
@@ -895,82 +891,6 @@ void ping_node(bdb_state_type *bdb_state, char *to)
     }
 }
 
-uint8_t *
-udp_durable_lsn_type_put(const udp_durable_lsn_t *p_udp_durable_lsn_type,
-                         uint8_t *p_buf, uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || UDP_DURABLE_LSN_TYPE_LEN > p_buf_end - p_buf)
-        return NULL;
-    p_buf = buf_put(&(p_udp_durable_lsn_type->lsn.file),
-                    sizeof(p_udp_durable_lsn_type->lsn.file), p_buf, p_buf_end);
-    p_buf =
-        buf_put(&(p_udp_durable_lsn_type->lsn.offset),
-                sizeof(p_udp_durable_lsn_type->lsn.offset), p_buf, p_buf_end);
-    p_buf =
-        buf_put(&(p_udp_durable_lsn_type->generation),
-                sizeof(p_udp_durable_lsn_type->generation), p_buf, p_buf_end);
-    return p_buf;
-}
-
-const uint8_t *
-udp_durable_lsn_type_get(udp_durable_lsn_t *p_udp_durable_lsn_type,
-                         const uint8_t *p_buf, const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || UDP_DURABLE_LSN_TYPE_LEN > p_buf_end - p_buf)
-        return NULL;
-    p_buf = buf_get(&(p_udp_durable_lsn_type->lsn.file),
-                    sizeof(p_udp_durable_lsn_type->lsn.file), p_buf, p_buf_end);
-    p_buf =
-        buf_get(&(p_udp_durable_lsn_type->lsn.offset),
-                sizeof(p_udp_durable_lsn_type->lsn.offset), p_buf, p_buf_end);
-    p_buf =
-        buf_get(&(p_udp_durable_lsn_type->generation),
-                sizeof(p_udp_durable_lsn_type->generation), p_buf, p_buf_end);
-    return p_buf;
-}
-
-static void send_durable_lsn(bdb_state_type *bdb_state, const char *to,
-                             DB_LSN *lsn, uint32_t generation)
-{
-    ack_info *info;
-    uint8_t *p_buf, *p_buf_end;
-    udp_durable_lsn_t udp_durable_lsn;
-
-    new_ack_info(info, UDP_DURABLE_LSN_TYPE_LEN, bdb_state->repinfo->myhost);
-    info->from = 0;
-    info->to = 0;
-    info->type = USER_TYPE_DURABLE_LSN;
-    udp_durable_lsn.lsn = *lsn;
-    udp_durable_lsn.generation = generation;
-    p_buf = ack_info_data(info);
-    p_buf_end = p_buf + UDP_DURABLE_LSN_TYPE_LEN;
-
-    if ((p_buf = udp_durable_lsn_type_put(&udp_durable_lsn, p_buf,
-                                          p_buf_end)) == NULL)
-        abort();
-
-    // printf("sending durable lsn "PR_LSN" to %s\n", PARM_LSNP(lsn), to);
-
-    udp_send(bdb_state, info, to);
-}
-
-void udp_send_durable_lsn(bdb_state_type *bdb_state, DB_LSN *lsn, uint32_t gen)
-{
-    repinfo_type *repinfo = bdb_state->repinfo;
-    const char *nodes[REPMAX];
-
-    if (lsn->file == 0) {
-        fprintf(stderr, "Broadcasting insane durable lsn?  Aborting.\n");
-        abort();
-    }
-
-    int i = net_get_all_nodes(repinfo->netinfo, nodes);
-
-    while (i--) {
-        send_durable_lsn(bdb_state, nodes[i], lsn, gen);
-    }
-}
-
 /* vim: set sw=4 ts=4 et: */
 static int prepare_pg_compact_msg(bdb_state_type *bdb_state, ack_info *info,
                                   int32_t fileid, uint32_t size,
@@ -1047,8 +967,8 @@ out:
     return rc;
 }
 
-
-const char * get_hostname_with_crc32(bdb_state_type *bdb_state, int hash)
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
     if(crc32c(repinfo->myhost, strlen(repinfo->myhost)) == hash)

@@ -31,6 +31,9 @@
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
 
+/* Separator for composite tunable components. */
+#define COMPOSITE_TUNABLE_SEP '.'
+
 extern int gbl_allow_lua_print;
 extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
@@ -119,6 +122,12 @@ extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
+extern int gbl_block_set_commit_genid_trace;
+extern int gbl_debug_high_availability_flag;
+extern int gbl_abort_on_unset_ha_flag;
+extern int gbl_write_dummy_trace;
+extern int gbl_abort_on_incorrect_upgrade;
+extern int gbl_poll_in_pg_free_recover;
 
 extern long long sampling_threshold;
 
@@ -160,6 +169,10 @@ extern int max_replication_trans_retries;
 /* net/net.c */
 extern int explicit_flush_trace;
 
+/* bdb/genid.c */
+unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
+void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
+
 #include <stdbool.h>
 extern bool gbl_rcache;
 
@@ -182,10 +195,10 @@ static int dir_verify(void *context, void *basedir)
     return 0;
 }
 
-static const char *init_with_compr_value(void *context)
+static void *init_with_compr_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
-    return bdb_algo2compr(*(int *)tunable->var);
+    return (void *)bdb_algo2compr(*(int *)tunable->var);
 }
 
 static int init_with_compr_update(void *context, void *algo)
@@ -262,7 +275,7 @@ static int enable_sql_stmt_caching_update(void *context, void *value)
     return 0;
 }
 
-static const char *enable_sql_stmt_caching_value(void *context)
+static void *enable_sql_stmt_caching_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
@@ -270,7 +283,7 @@ static const char *enable_sql_stmt_caching_value(void *context)
                          sizeof(struct enable_sql_stmt_caching_st));
          i++) {
         if (enable_sql_stmt_caching_vals[i].code == *(int *)tunable->var) {
-            return enable_sql_stmt_caching_vals[i].name;
+            return (void *)enable_sql_stmt_caching_vals[i].name;
         }
     }
     return "unknown";
@@ -304,17 +317,44 @@ static int checkctags_update(void *context, void *value)
     return 1;
 }
 
-static const char *checkctags_value(void *context)
+static void *checkctags_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
     for (int i = 0;
          i < (sizeof(checkctags_vals) / sizeof(struct checkctags_st)); i++) {
         if (checkctags_vals[i].code == *(int *)tunable->var) {
-            return checkctags_vals[i].name;
+            return (void *)checkctags_vals[i].name;
         }
     }
     return "unknown";
+}
+
+static void *next_genid_value(void *context)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    static char genid_str[64];
+    unsigned long long flipgenid, genid = get_genid(thedb->bdb_env, 0);
+
+    int *genptr = (int *)&genid, *flipptr = (int *)&flipgenid;
+
+    flipptr[0] = htonl(genptr[1]);
+    flipptr[1] = htonl(genptr[0]);
+
+    snprintf(genid_str, sizeof(genid_str), "0x%016llx 0x%016llx %llu", genid,
+             flipgenid, genid);
+
+    return (void *)genid_str;
+}
+
+static int genid_seed_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    char *seedstr = (char *)value;
+    unsigned long long seed;
+    seed = strtoll(seedstr, 0, 16);
+    seed_genid48(thedb->bdb_env, seed);
+    return 0;
 }
 
 /*
@@ -597,7 +637,7 @@ static int hostname_update(void *context, void *value)
 int ctrace_set_rollat(void *unused, void *value);
 
 /* Return the value for sql_tranlevel_default. */
-static const char *sql_tranlevel_default_value()
+static void *sql_tranlevel_default_value()
 {
     switch (gbl_sql_tranlevel_default) {
     case SQL_TDEF_COMDB2: return "COMDB2";
@@ -701,6 +741,7 @@ int free_gbl_tunables()
         free(gbl_tunables->array[i]);
     }
     hash_free(gbl_tunables->hash);
+    free(gbl_tunables->array);
     pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
     gbl_tunables = 0;
@@ -726,11 +767,20 @@ int register_tunable(comdb2_tunable tunable)
       registered.
     */
     if ((t = hash_find_readonly(gbl_tunables->hash, &tunable.name))) {
-        /* TODO(Nirbhay): This should be either ERROR or FATAL. */
-        logmsg(LOGMSG_DEBUG, "Tunable '%s' already registered..\n",
-               tunable.name);
+        /*
+          Overwrite & reuse the existing slot.
 
-        /* Overwrite & reuse the existing slot. */
+          Berkdb tunables are registered during the creation of the main bdb
+          environment (dbenv_open()). But, right before that, we also create
+          blkseq db, which also tries to create env and thus (pre-)register
+          same set of berkdb tunables. We tolerate this by simply overwriting
+          them when creating the main bdb environment. The subsequent calls
+          to db_env_create() has no effect here as gbl_tunables->freeze is set
+          and we return above ignoring the request to (re-)register/overwrite
+          same tunables all over again.
+
+          (See bdb_open_int() & berkdb/env/env_attr.c)
+        */
         free_tunable(t);
 
         already_exists = 1;
@@ -753,8 +803,10 @@ int register_tunable(comdb2_tunable tunable)
     }
     t->type = tunable.type;
 
-    if (!tunable.var) {
-        logmsg(LOGMSG_ERROR, "%s: Tunable must have a value.\n", __func__);
+    if (!tunable.var && !tunable.value && (tunable.type != TUNABLE_COMPOSITE)) {
+        logmsg(LOGMSG_ERROR, "%s: A non-composite Tunable with no var pointer "
+                             "set, must have its value function defined.\n",
+               __func__);
         goto err;
     }
     t->var = tunable.var;
@@ -799,6 +851,7 @@ const char *tunable_type(comdb2_tunable_type type)
     case TUNABLE_BOOLEAN: return "BOOLEAN";
     case TUNABLE_STRING: return "STRING";
     case TUNABLE_ENUM: return "ENUM";
+    case TUNABLE_COMPOSITE: return "COMPOSITE";
     default: assert(0);
     }
 }
@@ -920,7 +973,7 @@ static int parse_bool(const char *value, int *num)
 #define DO_VERIFY(t, value)                                                    \
     if (t->verify && t->verify(t, (void *)value)) {                            \
         logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);         \
-        return 1; /* Verification failure. */                                  \
+        return TUNABLE_ERR_INVALID_VALUE; /* Verification failure. */          \
     }
 
 /*
@@ -933,17 +986,17 @@ static int parse_bool(const char *value, int *num)
     if (ret) {                                                                 \
         logmsg(LOGMSG_ERROR, "Failed to update the value of tunable '%s'.\n",  \
                t->name);                                                       \
-    }                                                                          \
-    return ret;
+        return TUNABLE_ERR_INTERNAL;                                           \
+    }
 
 /*
   Update the tunable.
 
   @return
     0           Success
-    1           Failure
+    >0          Failure
 */
-static int update_tunable(comdb2_tunable *t, const char *value)
+static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
 {
     char *tok;
     char buf[MAX_TUNABLE_VALUE_SIZE];
@@ -961,7 +1014,7 @@ static int update_tunable(comdb2_tunable *t, const char *value)
 
         if ((ret = parse_int(buf, &num))) {
             logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return 1;
+            return TUNABLE_ERR_INVALID_VALUE;
         }
 
         /*
@@ -972,12 +1025,12 @@ static int update_tunable(comdb2_tunable *t, const char *value)
             if (((t->flags & NOZERO) != 0) && (num <= 0)) {
                 logmsg(LOGMSG_ERROR,
                        "Invalid argument for '%s' (should be > 0).\n", t->name);
-                return 1;
+                return TUNABLE_ERR_INVALID_VALUE;
             } else if (num < 0) {
                 logmsg(LOGMSG_ERROR,
                        "Invalid argument for '%s' (should be >= 0).\n",
                        t->name);
-                return 1;
+                return TUNABLE_ERR_INVALID_VALUE;
             }
         }
 
@@ -1004,7 +1057,7 @@ static int update_tunable(comdb2_tunable *t, const char *value)
 
         if ((ret = parse_double(buf, &num))) {
             logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return 1;
+            return TUNABLE_ERR_INVALID_VALUE;
         }
 
         /*
@@ -1015,12 +1068,12 @@ static int update_tunable(comdb2_tunable *t, const char *value)
             if (((t->flags & NOZERO) != 0) && (num <= 0)) {
                 logmsg(LOGMSG_ERROR,
                        "Invalid argument for '%s' (should be > 0).\n", t->name);
-                return 1;
+                return TUNABLE_ERR_INVALID_VALUE;
             } else if (num < 0) {
                 logmsg(LOGMSG_ERROR,
                        "Invalid argument for '%s' (should be >= 0).\n",
                        t->name);
-                return 1;
+                return TUNABLE_ERR_INVALID_VALUE;
             }
         }
 
@@ -1042,7 +1095,7 @@ static int update_tunable(comdb2_tunable *t, const char *value)
 
         if ((ret = parse_bool(buf, &num))) {
             logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return 1;
+            return TUNABLE_ERR_INVALID_VALUE;
         }
 
         /* Inverse the value, if needed. */
@@ -1079,10 +1132,15 @@ static int update_tunable(comdb2_tunable *t, const char *value)
     }
     /* ENUM types must have at least value and update functions defined. */
     case TUNABLE_ENUM: {
+        /* The following 2 must be set for ENUM tunables. */
+        assert(t->update);
+        assert(t->value);
+
         PARSE_TOKEN;
         DO_VERIFY(t, buf);
-        assert(t->update);
         DO_UPDATE(t, buf);
+        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %s\n", t->name,
+               (const char *)t->value(t));
         break;
     }
     default: assert(0);
@@ -1094,7 +1152,7 @@ static int update_tunable(comdb2_tunable *t, const char *value)
         logmsg(LOGMSG_WARN,
                "Found junk in the value supplied for tunable '%s'\n", t->name);
     }
-    return 0;
+    return TUNABLE_ERR_OK;
 }
 
 /*
@@ -1102,25 +1160,24 @@ static int update_tunable(comdb2_tunable *t, const char *value)
 
   @return
     0           Success
-    1           Failure
-    -1          Not a registered tunable
+    >0          Failure
 */
-int handle_runtime_tunable(const char *name, const char *value)
+comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
 {
     comdb2_tunable *t;
-    int ret;
+    comdb2_tunable_err ret;
 
     assert(gbl_tunables);
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &name))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", name);
-        return -1;
+        logmsg(LOGMSG_DEBUG, "Non-registered tunable '%s'.\n", name);
+        return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
     if ((t->flags & READONLY) != 0) {
-        logmsg(LOGMSG_ERROR, "Attempt to update a READ-ONLY tunable '%s'.\n",
+        logmsg(LOGMSG_DEBUG, "Attempt to update a READ-ONLY tunable '%s'.\n",
                name);
-        return 1;
+        return TUNABLE_ERR_READONLY;
     }
 
     pthread_mutex_lock(&gbl_tunables->mu);
@@ -1130,33 +1187,50 @@ int handle_runtime_tunable(const char *name, const char *value)
     return ret;
 }
 
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
 /*
-  Update the tunable read from lrl file.
+  Update the tunable read from lrl file or updated at runtime via
+  process_command().
 
   @return
     0           Success
-    1           Failure
-    -1          Not a registered tunable
+    >0          Failure
 */
 
-int handle_lrl_tunable(char *name, int name_len, char *value, int value_len)
+comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
+                                      int value_len, int flags)
 {
     comdb2_tunable *t;
     char buf[MAX_TUNABLE_VALUE_SIZE];
     char *tok;
-    int ret;
     int st = 0;
     int ltok;
+    int len;
+    comdb2_tunable_err ret;
 
     assert(gbl_tunables);
 
-    memcpy(buf, name, name_len);
-    buf[name_len] = 0;
+    /* Avoid buffer overrun. */
+    len = MIN(name_len, sizeof(buf) - 1);
+    memcpy(buf, name, len);
+    buf[len] = 0;
     tok = &buf[0];
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", name);
-        return -1;
+        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        return TUNABLE_ERR_INVALID_TUNABLE;
+    }
+
+    /* Only proceed if we were asked to process READEARLY tunables. */
+    if ((flags & READEARLY) && ((t->flags & READEARLY) == 0)) {
+        return TUNABLE_ERR_OK;
+    }
+
+    if ((flags & DYNAMIC) && ((t->flags & READONLY) != 0)) {
+        logmsg(LOGMSG_ERROR, "Attempt to update a READ-ONLY tunable '%s'.\n",
+               name);
+        return TUNABLE_ERR_READONLY;
     }
 
     /* Check if we have a value specified after the name. */
@@ -1179,13 +1253,10 @@ int handle_lrl_tunable(char *name, int name_len, char *value, int value_len)
         } else {
             logmsg(LOGMSG_ERROR,
                    "An argument must be specified for tunable '%s'", t->name);
-            return 1; /* Error */
+            return TUNABLE_ERR_INVALID_VALUE; /* Error */
         }
     } else {
-        /*
-          Remove leading space(s) and copy rest of the value in the buffer to
-          be processed by update_tunable().
-        */
+        /* Remove leading space(s). */
         char *val = value;
         int len = value_len;
         while (*val && isspace(*val)) {
@@ -1193,12 +1264,35 @@ int handle_lrl_tunable(char *name, int name_len, char *value, int value_len)
             len--;
         }
 
+        /* Check whether its a composite tunable. */
+        if (t->type == TUNABLE_COMPOSITE) {
+            /* Prepare the name of the composite tunable. */
+            buf[name_len] = COMPOSITE_TUNABLE_SEP;
+            memcpy(buf + name_len + 1, tok, ltok);
+            /* No need to null-terminate */
+
+            /* Fix new value and its length */
+            val = tok + ltok;
+            len = len - ltok;
+            while (*val && isspace(*val)) {
+                val++;
+                len--;
+            }
+
+            return handle_lrl_tunable(buf, name_len + ltok + 1, val, len,
+                                      flags);
+        }
+
         /* Safety check. */
         if (len > sizeof(buf)) {
             logmsg(LOGMSG_ERROR, "Line too long in the lrl file.\n");
-            return 1;
+            return TUNABLE_ERR_INVALID_VALUE;
         }
 
+        /*
+          Copy rest of the value in the buffer to be processed by
+          update_tunable().
+        */
         memcpy(buf, val, len);
         buf[len] = 0;
     }
@@ -1208,5 +1302,17 @@ int handle_lrl_tunable(char *name, int name_len, char *value, int value_len)
     /* Reset the EMPTY flag. */
     t->flags &= ~EMPTY;
 
-    return (ret) ? 1 : 0;
+    return ret;
+}
+
+const char *tunable_error(comdb2_tunable_err code)
+{
+    switch (code) {
+    case TUNABLE_ERR_INTERNAL: return "Internal error, check server log";
+    case TUNABLE_ERR_INVALID_TUNABLE: return "Invalid tunable";
+    case TUNABLE_ERR_INVALID_VALUE: return "Invalid tunable value";
+    case TUNABLE_ERR_READONLY:
+        return "Cannot modify READ-ONLY tunable at runtime";
+    }
+    return "????";
 }

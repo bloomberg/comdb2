@@ -664,6 +664,13 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
         }
     }
 
+    osql->timings.commit_start = osql_log_time();
+
+/* send results of sql processing to block master */
+/* if (thd->sqlclntstate->query_stats)*/
+
+retry:
+
     /* Release our locks.  Only table locks should be held at this point. */
     if (clnt->dbtran.cursor_tran) {
         rc = bdb_free_curtran_locks(thedb->bdb_env, clnt->dbtran.cursor_tran,
@@ -678,12 +685,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
         }
     }
 
-    osql->timings.commit_start = osql_log_time();
-
-/* send results of sql processing to block master */
-/* if (thd->sqlclntstate->query_stats)*/
-
-retry:
     rc = osql_send_commit_logic(clnt, req2netrpl(type));
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d: failed to send commit to master rc was %d\n", __FILE__,
@@ -1295,7 +1296,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
     osql->tran_ops = 0; /* reset transaction size counter*/
 
-    if (clnt->sql_query && clnt->high_availability)
+    if (clnt->sql_query && get_high_availability(clnt))
     {
         assert (clnt->sql_query->has_cnonce);
         assert (clnt->sql_query->cnonce.len > 0 &&
@@ -1303,7 +1304,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
 
     if (clnt->sql_query && clnt->sql_query->has_cnonce &&
-        clnt->high_availability &&
+        get_high_availability(clnt) &&
         (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN)) {
 
         if (osql->rqid == OSQL_RQID_USE_UUID) {
@@ -1632,7 +1633,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 *
 */
 int osql_schemachange_logic(struct schema_change_type *sc,
-                            struct sql_thread *thd)
+                            struct sql_thread *thd, int usedb)
 {
     struct sqlclntstate *clnt = thd->sqlclntstate;
     osqlstate_t *osql = &clnt->osql;
@@ -1660,6 +1661,13 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
                __FILE__, __LINE__, __func__, rc);
     }
-    return osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid, sc,
-                                  NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+    if (usedb) {
+        rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
+                             NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+    }
+    if (rc == SQLITE_OK) {
+        rc = osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,
+                                    sc, NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+    }
+    return rc;
 }

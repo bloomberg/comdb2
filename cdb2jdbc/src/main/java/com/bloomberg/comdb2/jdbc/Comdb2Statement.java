@@ -142,8 +142,15 @@ public class Comdb2Statement implements Statement {
     public int executeUpdate(String sql) throws SQLException {
         String lowerCase = sql.toLowerCase().trim();
 
-        if (!lowerCase.startsWith("delete") && !lowerCase.startsWith("update")
-                && !lowerCase.startsWith("insert"))
+        if (!lowerCase.startsWith("delete") &&
+            !lowerCase.startsWith("update") &&
+            !lowerCase.startsWith("insert") &&
+            /** ^^^^^^ DML
+                            DDL vvvvvv  **/
+            !lowerCase.startsWith("create") &&
+            !lowerCase.startsWith("alter") &&
+            !lowerCase.startsWith("drop") &&
+            !lowerCase.startsWith("truncate"))
             throw Comdb2Connection.createSQLException(hndl.errorString(),
                     Constants.Errors.CDB2ERR_PREPARE_ERROR, sql, hndl.getLastThrowable());
 

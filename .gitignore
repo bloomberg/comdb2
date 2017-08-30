@@ -1,72 +1,11 @@
 # libraries
-comdb2rle/libcomdb2rle.a
-bb/libbb.a
-bdb/libbdblib.a
-protobuf/libcdb2protobuf.a
-protobuf/libcdb2protobuf.so
-cdb2api/libcdb2api.a
-cdb2api/libcdb2api.so
-csc2/libcsc2lib.a
-lua/liblua.a
-sqlite/libsqlite.a
-crc32c/libcrc32c.a
-net/libnet.a
-datetime/libtz.a
-dlmalloc/libdlmalloc.a
-berkdb/libdb.a
-util/libutil.a
-dfp/decNumber/libdfpal.a
-schemachange/libschemachange.a
-cson/libcson.a
-sockpool/libsockpool.a
-
-# loose object files
 *.o
-bb/libbb.o
-bdb/*.o
-bdb/extern.list
-berkdb/btree/*.o
-berkdb/common/*.o
-berkdb/crypto/*.o
-berkdb/crypto/mersenne/*.o
-berkdb/db/*.o
-berkdb/dbm/*.o
-berkdb/dbreg/*.o
-berkdb/env/*.o
-berkdb/fileops/*.o
-berkdb/hash/*.o
-berkdb/hmac/*.o
-berkdb/hsearch/*.o
-berkdb/lock/*.o
-berkdb/log/*.o
-berkdb/mp/*.o
-berkdb/mutex/*.o
-berkdb/os/*.o
-berkdb/qam/*.o
-berkdb/rep/*.o
-berkdb/txn/*.o
-berkdb/xa/*.o
-cdb2api/*.o
-comdb2rle/*.o
-comdb2sc/*.o
-crc32c/*.o
-csc2/*.o
-datetime/*.o
-dfp/decNumber/*.o
-dfp/dfpal/*.o
-dlmalloc/*.o
-lua/*.o
-net/*.o
-protobuf/google/protobuf-c/*.o
-protobuf/*.o
-sqlite/*.o
-util/*.o
-sqlite/inline/serialget.o
-sqlite/inline/memcompare.o
-sqlite/inline/vdbecompare.o
+*.a
+*.so
 
 # loose dependency files
 *.d
+*.Td
 
 # generated headers
 berkdb/dbinc_auto/*_auto.h
@@ -93,6 +32,7 @@ csc2/y.output
 sqlite/parse.h.temp
 sqlite/parse.out
 bdb/int.list
+bdb/extern.list
 bdb/template
 
 # generated source
@@ -115,10 +55,6 @@ berkdb/fileops/fileops_auto.c
 berkdb/hash/hash_auto.c
 berkdb/qam/qam_auto.c
 
-# dependency files
-*.d
-*.Td
-
 # generated tools
 sqlite/mkkeywordhash
 sqlite/lemon
@@ -131,13 +67,6 @@ cdb2sockpool
 comdb2ar
 cdb2_sqlreplay
 cdb2_perf
-
-# built tool libraries
-libcomdb2ar.a
-libcdb2sql.a
-libcdb2sockpool.a
-libcdb2util.a
-libcdb2_sqlreplay.a
 
 # fluff produced by various tools that tends to accumulate
 *.sw[op]
@@ -270,7 +199,6 @@ tests/tools/crle
 jepsen/ctest/test*
 jepsen/killcluster/*out*
 
-*.d
 tests/test_*
 tests/pmux.sqlite
 
@@ -280,6 +208,7 @@ docs/sqlitegen/all.html
 docs/sqlitegen/syntax_linkage.tcl
 docker/maven.m2/
 contrib/docker/build
+contrib/docker/volumes
 
 # editor files
 .vscode

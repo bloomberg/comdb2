@@ -1271,23 +1271,30 @@ void __dbenv_set_durable_lsn __P((dbenv, lsnp, generation))
 
 	pthread_mutex_lock(&dbenv->durable_lsn_lk);
 
-    if (dbenv->durable_generation < generation || 
-            log_compare(&dbenv->durable_lsn, lsnp) <= 0) {
-
-        dbenv->durable_generation = generation;
-        dbenv->durable_lsn = *lsnp;
-
-        if (gbl_durable_set_trace) {
-            logmsg(LOGMSG_USER, 
-                    "Set durable lsn to [%d][%d] generation %u\n",
-                    dbenv->durable_lsn.file, dbenv->durable_lsn.offset,
-                    dbenv->durable_generation);
-        }
-
-        if (lsnp->file == 0) {
-            logmsg(LOGMSG_FATAL, "Aborting on attempt to set durable lsn file to 0\n");
+        if (generation > dbenv->durable_generation &&
+            log_compare(lsnp, &dbenv->durable_lsn) < 0) {
+            logmsg(LOGMSG_FATAL, "Aborting on reversing durable lsn\n");
             abort();
         }
+
+        if (dbenv->durable_generation < generation ||
+            log_compare(&dbenv->durable_lsn, lsnp) <= 0) {
+
+            dbenv->durable_generation = generation;
+            dbenv->durable_lsn = *lsnp;
+
+            if (gbl_durable_set_trace) {
+                logmsg(LOGMSG_USER,
+                       "Set durable lsn to [%d][%d] generation %u\n",
+                       dbenv->durable_lsn.file, dbenv->durable_lsn.offset,
+                       dbenv->durable_generation);
+            }
+
+            if (lsnp->file == 0) {
+                logmsg(LOGMSG_FATAL,
+                       "Aborting on attempt to set durable lsn file to 0\n");
+                abort();
+            }
     }
     else {
         /* This can happen if two commit threads can race against each other */

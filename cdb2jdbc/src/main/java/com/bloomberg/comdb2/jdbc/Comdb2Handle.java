@@ -1281,6 +1281,10 @@ public class Comdb2Handle extends AbstractConnection {
             cleanup_query_list();
         }
 
+        // We've run out of retries: if this was a begin, set inTxn to false
+        if (is_begin)
+            inTxn = false;
+
         tdlog(Level.FINER, "Maximum retries done: returning IO_ERROR, is_rollback=%b", is_rollback);
         return is_rollback ? 0 : Errors.CDB2ERR_TRAN_IO_ERROR;
     }

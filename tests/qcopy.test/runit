@@ -1,0 +1,27 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -e
+
+COPYDIR=$DBDIR/copy
+mkdir $COPYDIR
+$SRCHOME/db/copycomdb2 -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
+cd $COPYDIR
+grep -v name ${DBNAME}.lrl > tmp && mv tmp ${DBNAME}.lrl
+NEWNAME="qcopy$$test"
+echo "name $NEWNAME" >> ${DBNAME}.lrl
+$comdb2task $NEWNAME --create --lrl ${DBNAME}.lrl
+$comdb2task $NEWNAME --lrl ${DBNAME}.lrl &
+
+trap "cdb2sql $NEWNAME \"exec procedure sys.cmd.send('exit')\"" EXIT
+
+while :; do 
+    # cdb2sql may fail if the db isn't up yet
+    set +e
+    out=$(cdb2sql -tabs $NEWNAME local 'select 1') ||
+    [[ "$out" = "1" ]] && break
+    set -e
+    sleep 1
+done
+
+exit 0

@@ -903,7 +903,8 @@ out:	if (pagep != NULL)
 	REC_CLOSE;
 }
 
-
+#include <poll.h>
+int gbl_poll_in_pg_free_recover;
 
 /*
  * __db_pg_free_recover_int --
@@ -926,14 +927,17 @@ __db_pg_free_recover_int(dbenv, argp, file_dbp, lsnp, mpf, op, data)
 
 	meta = NULL;
 	pagep = NULL;
-	/*
-	 * Fix up the freed page.  If we're redoing the operation we get the
-	 * page and explicitly discard its contents, then update its LSN.  If
-	 * we're undoing the operation, we get the page and restore its header.
-	 * Create the page if necessary, we may be freeing an aborted
-	 * create.
-	 */
-	if ((ret = __memp_fget(mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
+
+        if (gbl_poll_in_pg_free_recover) poll(0, 0, 100);
+
+        /*
+         * Fix up the freed page.  If we're redoing the operation we get the
+         * page and explicitly discard its contents, then update its LSN.  If
+         * we're undoing the operation, we get the page and restore its header.
+         * Create the page if necessary, we may be freeing an aborted
+         * create.
+         */
+        if ((ret = __memp_fget(mpf, &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
 		goto out;
 	modified = 0;
 	(void)__ua_memcpy(&copy_lsn, &LSN(argp->header.data), sizeof(DB_LSN));

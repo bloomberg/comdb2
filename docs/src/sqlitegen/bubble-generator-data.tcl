@@ -323,7 +323,7 @@ set all_graphs {
     }
   }
   truncate {
-    line TRUNCATE /table-name
+    line TRUNCATE TABLE /table-name
   }
   analyze {stack
     {line ANALYZE {or /table-name ALL} {opt /percent-coverage}}
@@ -449,11 +449,13 @@ set all_graphs {
 
   key-section {
       loop
-      {line
-          {opt dup}
-          {opt datacopy}
+      {stack
           {line
-              /string-literal =
+              {opt dup}
+              {opt datacopy}
+              {line /string-literal = }
+          }
+          {stack
               {loop {line
                         {opt <DESCEND>}
                         {or
@@ -490,7 +492,14 @@ set all_graphs {
   }
 
   constraint-section {
-      loop {line /keyname -> /table-name : /keyname}
+      loop
+      {stack
+          {line /keyname -> < /ref-table-name : /ref-keyname > }
+          {line
+              {opt on update cascade}
+              {opt on delete cascade}
+          }
+      }
   }
 
   table-event {
@@ -512,5 +521,76 @@ set all_graphs {
           }
   }
 
-  
+  create-table-ddl {
+      stack
+      {line CREATE TABLE {opt IF NOT EXISTS}}
+      {line {opt db-name .} table-name}
+      {line (
+          {loop
+              {line column-name column-type
+                  {opt {loop { column-constraint } { , } } } }
+              { , }
+          }
+          {line ) }
+      }
+      {loop {line table-constraint } { , } }
+      {line {opt table-options }}
+  }
+
+  column-constraint {
+      or
+      {line DEFAULT expr }
+      {line NULL }
+      {line NOT NULL }
+      {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
+      {line UNIQUE }
+      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line WITH DBPAD = signed-number }
+  }
+
+  table-constraint {
+      or
+      {line PRIMARY KEY ( column-list ) }
+      {line UNIQUE ( column-list ) }
+      {stack
+          {line FOREIGN KEY ( column-list ) }
+          {line REFERENCES ref-table-name ( ref-column-list ) }
+      }
+  }
+
+  column-list {
+      loop
+      {line column-name {opt {or {line ASC } {line DESC } } } }
+      { , }
+  }
+
+  alter-table-ddl {
+      stack
+      {line ALTER TABLE {opt db-name .} table-name }
+      {opt
+          {loop
+              {or
+                  {line ADD column-name column-type
+                      {opt {loop {line column-constraint } { , } } }
+                  }
+                  {line DROP {opt COLUMN} column-name }
+              }
+              { , }
+          }
+      }
+  }
+
+  create-index {
+      stack
+      {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
+      {line {opt db-name } index-name ON table-name
+          ( {loop {line column-name } { , } } ) }
+      {line {opt WITH DATACOPY } {opt WHERE expr } }
+  }
+
+  drop-index {
+      stack
+      {line DROP INDEX {opt {line IF EXISTS } } }
+      {line index-name {opt {line ON table-name } } }
+  }
 }

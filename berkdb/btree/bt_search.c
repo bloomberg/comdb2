@@ -935,7 +935,7 @@ found:	*exactp = 1;
 notfound:
 	INTERNAL_PTR_CHECK(cp == dbc->internal);
 	/* Keep the page locked for serializability. */
-	cp->pgno = h->pgno;
+	dbc->lastpage = h->pgno;
 
 	(void)__memp_fput(mpf, h, 0);
 	(void)__TLPUT(dbc, lock);

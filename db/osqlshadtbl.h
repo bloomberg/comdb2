@@ -141,6 +141,12 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
                           unsigned long long genid);
 
 /**
+ * Check if a genid was recorded
+ */
+int is_genid_recorded(struct sql_thread *thd, int tblnum,
+                      unsigned long long genid);
+
+/**
  * Record a schemachange for this transaction
  *
  */

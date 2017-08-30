@@ -1387,7 +1387,7 @@ static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
     int i;
     int rc;
     int len;
-#if DEBUG
+#ifdef DEBUG
     printf("send_decom_all() entering...");
 #endif
 
@@ -1500,7 +1500,7 @@ static int bdb_flush_int(bdb_state_type *bdb_state, int *bdberr, int force)
     start = time_epochms();
     rc = ll_checkpoint(bdb_state, force);
     if (rc != 0) {
-logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
+        logmsg(LOGMSG_ERROR, "txn_checkpoint err %d\n", rc);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -5003,6 +5003,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
         (bdb_state->callback->whoismaster_rtn)(bdb_state,
                                                bdb_state->repinfo->master_host);
 
+    allow_sc_to_run();
     BDB_RELLOCK();
 
     watchdog_cancel_alarm();
@@ -5270,11 +5271,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         rc = pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
         if (rc) {
             logmsg(LOGMSG_FATAL, "durable_lsn_lk failed\n");
-            exit(1);
-        }
-        rc = pthread_cond_init(&bdb_state->durable_lsn_wait, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "durable_lsn_wait failed\n");
             exit(1);
         }
     }
@@ -8281,7 +8277,7 @@ void populate_deleted_files(bdb_state_type *bdb_state)
     DB_LSN lsn;
     DB_LSN prev_lsn;
     file_set_t *fs;
-    file_set_t *prev_fs;
+    file_set_t *prev_fs = NULL;
     int rc;
 
     logmsg(LOGMSG_INFO, "Checking for removed files\n");

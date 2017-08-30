@@ -1,0 +1,204 @@
+#!/bin/bash
+# Test functionality for incremental backups with concurrent writeload
+export debug=1
+export sleeptime=30
+[[ $debug == 1 ]] && set -x
+
+export dbname=$1
+
+if [[ -z "$dbname" ]] ; then
+  echo dbname missing
+  exit 1
+fi
+
+if [[ -n "$CLUSTER" ]]; then
+    export machine=$(echo $CLUSTER | awk '{print $1}')
+else
+    export machine=""
+fi
+
+function killwriters
+{
+    touch ./testcase.done
+}
+
+function failexit
+{
+    [[ $debug == 1 ]] && set -x
+    echo "Failed $1"
+    killwriters
+    exit -1
+}
+
+function checkload
+{
+    [[ $debug == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $dbname default "select count(*) from load" >/dev/null 2>&1
+    r=$?
+    if [[ $r != 0 ]]; then
+        killwriters
+        echo "Count load returns $r"
+        exit 1
+    fi
+}
+
+function force_checkpoint {
+  [[ $debug == 1 ]] && set -x
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+  sleep 10
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('flush')"
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('bdb logstat')"
+}
+
+function make_base {
+  [[ $debug == 1 ]] && set -x
+  force_checkpoint
+  basename=${TMPDIR}/backups/t1-1_base.tar
+  backuplist+=(t1-1_base.tar)
+  if [[ -n "${CLUSTER}" ]]; then
+      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+  else
+      comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+  fi
+  echo "~~~~~~~~~~"
+  echo $basename
+  echo "  DONE WITH BASE"
+  echo " "
+}
+
+function make_backup {
+  [[ $debug == 1 ]] && set -x
+  force_checkpoint
+  fullbackupname=$1
+  backupname=${fullbackupname%.*}.tar
+  backuplist+=($backupname)
+  backuploc=${TMPDIR}/backups/${backupname}
+  if [[ -n "${CLUSTER}" ]]; then
+      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+  else
+      comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+  fi
+  echo "~~~~~~~~~~"
+  echo ${TMPDIR}/backups/${backupname}
+  echo "  DONE WITH INCREMENT"
+  echo " "
+}
+
+function test_restoredb {
+  [[ $debug == 1 ]] && set -x
+  testname=$1
+  restorecmd="cat "
+  for i in $(seq 0 $2); do
+    restorecmd="$restorecmd ${TMPDIR}/backups/${backuplist[i]} "
+  done
+
+  echo $restorecmd
+  $restorecmd | comdb2ar x -x $comdb2task -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
+  egrep -v "cluster nodes" ${TMPDIR}/restore/${dbname}.lrl > ${TMPDIR}/restore/${dbname}.single.lrl
+
+  echo "~~~~~~~~~~"
+  $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
+  # wait for db to launch
+  count=0
+  cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
+  sqloutput=$(cat ./sqloutput)
+  while [ "$sqloutput" != "(1=1)" -a $count -le 30 ]; do
+      sleep 1
+      let count=count+1
+      cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
+      sqloutput=$(cat ./sqloutput)
+  done
+
+  if [ $count -ge 30 ] ; then
+    kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
+    failexit "DB Startup exceeded"
+  fi
+  echo " "
+
+  cdb2sql -f $1 ${dbname}_restore local > ${testname}.output 2>&1
+  cat ${testname}.output
+  diff ${testname}.expected ${testname}.output
+  if [[ $? -ne 0 ]] ; then
+    killwriters
+    echo "  ^^^^^^^^^^^^"
+    echo "The above testcase (${testname}) has failed!!!"
+    echo " "
+    echo " "
+    kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
+    exit 1
+  fi
+
+  echo "${testname} passed"
+  echo " "
+
+  kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
+  rm -rf ${TMPDIR}/restore/*
+}
+
+function resetdb {
+  [[ $debug == 1 ]] && set -x
+  backuplist=()
+  rm -rf ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+  mkdir -p ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+
+  cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
+  force_checkpoint
+  make_base
+  cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE t1  { `cat t1.csc2 ` }" || failexit "create failed"
+  force_checkpoint
+  make_backup t1-2_create_table
+}
+
+rm ./testcase.done
+cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE load"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
+
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+sleep 1
+( timeout ${TEST_TIMEOUT} ./updater.sh ) &
+sleep 1
+( timeout ${TEST_TIMEOUT} ./deleter.sh ) &
+
+# BASIC FUNCTIONALITY TEST
+resetdb
+for statement in `ls t1-*.stmt`; do
+  force_checkpoint
+  sleep $sleeptime
+  cdb2sql ${CDB2_OPTIONS} -f $statement $dbname default
+  force_checkpoint
+  make_backup $statement
+done
+
+echo "~~~~~~~~~~"
+echo "  Moving on to restoration"
+echo " "
+
+counter=0
+
+for testreq in `ls t1-*.req`; do
+  test_restoredb $testreq $counter
+  let counter=counter+1
+done
+
+# PUSH NEXT TEST FOR RECOVERY WITH LOG HOLES
+resetdb
+for i in $(seq 1 10); do
+  cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('pushnext')"
+  # Need to sleep briefly so that multiple pushnext's aren't processed as the same one
+  sleep 2
+done
+cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
+make_backup push_next_inserts
+test_restoredb t2.req 2
+killwriters
+
+echo "Test Successful"
+exit 0

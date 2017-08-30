@@ -7,12 +7,26 @@ permalink: table_schema.html
 
 ## Overview
 
-Unlike many other relational database systems, Comdb2 does not use SQL for its data definition language.  The language it uses is
-declarative rather than imperative.  The entire schema per table is presented to the database at once.  It's up to the database to
-figure out which indices to add/remove/modify, which fields to grow, shrink, etc.  A table definition has a several sections: the 
-[constants](#constants-section), the [table definition](#schema-section), the [keys](#key-section), and the [constraints](#constraints-section). 
+Comdb2 provides two ways to define or modify a table schema. A declarative
+language (discussed here) and the standard data definition language, like
+other relational database systems. The support for latter was added in version
+7.0, discussed in [SQL language](sql.html) in more details.
 
-Comments begin with ```//``` and go until the end of the line.  There's no multi-line comments.
+In the first approach, Comdb2 supports a language that is declarative rather
+than imperative. The entire schema per table is presented to the database at
+once.  It's up to the database to figure out which indices to add/remove/modify,
+which fields to grow, shrink, etc.  A table definition has a several sections:
+
+* [Constants](#constants-section)
+
+* [Table definition](#schema-section)
+
+* [Keys](#key-section)
+
+* [Constraints](#constraints-section)
+
+Comments begin with ```//``` and go until the end of the line. Multi-line
+comments enclosed in ```/* ... */``` are also supported.
 
 ## Constants section
 
