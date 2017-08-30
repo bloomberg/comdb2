@@ -45,6 +45,11 @@ set all_graphs {
   begin-stmt {
      line BEGIN {optx TRANSACTION AS OF DATETIME /datetime-literal}
   }
+
+  start-trans-stmt {
+     line START TRANSACTION {optx AS OF DATETIME /datetime-literal}
+  }
+
   commit-stmt {
      line COMMIT
   }

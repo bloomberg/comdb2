@@ -15,6 +15,7 @@ in Comdb2 and SQLite are not identical however.  Some things have been taken awa
 ### BEGIN
 
 ![BEGIN](images/begin-stmt.gif)
+![START TRANSACTION](images/start-trans-stmt.gif)
 
 Begin a transaction. The impact of this changes somewhat based on the sessions transaction level 
 ([```SET TRANSACTION```](#set-transaction)).  See the [transaction model](transaction_model.html) 

@@ -1,0 +1,3 @@
+(COUNT(*)=4=1)
+[COMMIT] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't1' index 0
+(COUNT(*)=4=1)

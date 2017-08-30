@@ -1476,7 +1476,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
     if (str && *str) {
         str = skipws(str);
 
-        if (str && *str) {
+        if (*str) {
             /* skip "transaction" if any */
             if (!strncasecmp(str, "transaction", 11)) {
                 str += 11;
@@ -1488,30 +1488,30 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                 if (!strncasecmp(str, "as", 2)) {
                     str += 2;
                     str = skipws(str);
-                    if (str && *str) {
+                    if (*str) {
                         if (!strncasecmp(str, "of", 2)) {
                             str += 2;
                             str = skipws(str);
                         }
                     } else {
-                        logmsg(LOGMSG_ERROR, 
+                        logmsg(LOGMSG_ERROR,
                                "Incorrect syntax, use begin ... as of ...\n");
                         return -1;
                     }
                 } else {
-                    logmsg(LOGMSG_USER, 
-                            "Incorrect syntax, use begin ... as of ...\n");
+                    logmsg(LOGMSG_USER,
+                           "Incorrect syntax, use begin ... as of ...\n");
                     return -1;
                 }
             } else
                 return 0;
 
-            if (str && *str) {
+            if (*str) {
                 if (!strncasecmp(str, "datetime", 8)) {
                     str += 8;
                     str = skipws(str);
 
-                    if (str && *str) {
+                    if (*str) {
                         /* convert this to a decimal and pass it along */
                         server_datetime_t sdt;
                         struct field_conv_opts_tz convopts = {0};
@@ -1527,7 +1527,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
                                 str, strlen(str) + 1, 0,
                                 (struct field_conv_opts *)&convopts, NULL, &sdt,
                                 sizeof(sdt), &outdtsz, NULL, NULL)) {
-                            logmsg(LOGMSG_ERROR, 
+                            logmsg(LOGMSG_ERROR,
                                    "Failed to parse snapshot datetime value\n");
                             return -1;
                         }
@@ -1669,6 +1669,27 @@ static void update_snapshot_info(struct sqlclntstate *clnt)
     }
 }
 
+/*
+  Checks whether the query is either "begin" or "start transaction".
+*/
+static inline int is_begin_query(const char *sql)
+{
+    if (!sql) {
+        return 0;
+    }
+
+    if (strncasecmp(sql, "begin", 5) == 0) {
+        return 1;
+    } else if (strncasecmp(sql, "start ", 6) == 0) {
+        sql += 6;
+        sql = skipws((char *)sql);
+        if (strncasecmp(sql, "transaction", 11) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /**
  * Cluster here all pre-sqlite parsing, detecting requests that
  * are not handled by sqlite (transaction commands, pragma, stored proc,
@@ -1683,7 +1704,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
 
     /* begin, commit, rollback should arrive over the socket only
        for socksql, recom, snapisol and serial */
-    if (!strncasecmp(clnt->sql, "begin", 5)) {
+    if (is_begin_query(clnt->sql)) {
         clnt->snapshot = 0;
 
         /*fprintf(stderr, "got begin\n");*/
@@ -2892,13 +2913,16 @@ static int typestr_to_type(const char *ctype)
     }
 }
 
-static int is_with_statement(char *sql)
+static int is_with_statement(const char *sql)
 {
-    if (!sql)
+    if (!sql) {
         return 0;
-    sql = skipws(sql);
-    if (strncasecmp(sql, "with", 4) == 0)
+    }
+
+    sql = skipws((char *)sql);
+    if (strncasecmp(sql, "with", 4) == 0) {
         return 1;
+    }
     return 0;
 }
 
@@ -3163,8 +3187,7 @@ static int is_snap_uid_retry(struct sqlclntstate *clnt)
     /* Retry case has flag lit on "begin" */
     if (get_high_availability(clnt) && clnt->is_newsql && clnt->sql_query &&
         clnt->sql_query->retry && clnt->sql_query->snapshot_info &&
-        (strncasecmp(clnt->sql, "begin", 5) == 0) &&
-        clnt->sql_query->snapshot_info->file) {
+        clnt->sql_query->snapshot_info->file && is_begin_query(clnt->sql)) {
 
         clnt->snapshot_file = clnt->sql_query->snapshot_info->file;
         clnt->snapshot_offset = clnt->sql_query->snapshot_info->offset;

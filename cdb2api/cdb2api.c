@@ -3280,6 +3280,26 @@ static inline void consume_previous_query(cdb2_hndl_tp *hndl)
         goto retry_queries;                                                    \
     } while (0);
 
+/*
+  Checks whether the query is either "begin" or "start transaction".
+*/
+static inline int is_begin_query(const char *sql)
+{
+    if (!sql) return 0;
+
+    if (strncasecmp(sql, "begin", 5) == 0) {
+        return 1;
+    } else if (strncasecmp(sql, "start ", 6) == 0) {
+        sql += 6;
+        while (*sql && isspace(*sql))
+            sql++;
+        if (strncasecmp(sql, "transaction", 11) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
@@ -3311,7 +3331,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
         return rc;
     }
 
-    if (strncasecmp(sql, "begin", 5) == 0) {
+    if (is_begin_query(sql)) {
         if (hndl->debug_trace) {
             fprintf(stderr, "td %u:%d setting is_begin flag\n",
                     (uint32_t)pthread_self(), __LINE__);
@@ -4020,7 +4040,7 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     hndl->temp_trans = 0;
 
     if (hndl->is_hasql && !hndl->in_trans &&
-        (strncasecmp(sql, "set", 3) != 0 && strncasecmp(sql, "begin", 5) != 0 &&
+        (strncasecmp(sql, "set", 3) != 0 && !is_begin_query(sql) &&
          strncasecmp(sql, "commit", 6) != 0 &&
          strncasecmp(sql, "rollback", 8) != 0)) {
         rc = cdb2_run_statement_typed_int(hndl, "begin", 0, NULL, __LINE__);

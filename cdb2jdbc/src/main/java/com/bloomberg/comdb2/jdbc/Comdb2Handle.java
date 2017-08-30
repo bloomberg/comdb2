@@ -802,6 +802,14 @@ public class Comdb2Handle extends AbstractConnection {
         return false;
     }
 
+    private boolean isBeginQuery(String sql) {
+        if (sql.equalsIgnoreCase("begin") ||
+            sql.ReplaceAll("\\s+"," ").equalsIgnoreCase("start transaction")) {
+            return true;
+        }
+        return false;
+    }
+
     private int runStatementInt(String sql, List<Integer> types) {
         int commitSnapshotFile = 0;
         int commitSnapshotOffset = 0;
@@ -856,7 +864,7 @@ public class Comdb2Handle extends AbstractConnection {
 
         boolean is_begin = false, is_commit = false, is_rollback = false;
 
-        if (lowerSql.equals("begin"))
+        if (isBeginQuery(lowerSql))
             is_begin = true;
         else if (lowerSql.equals("commit"))
             is_commit = true;
@@ -1349,7 +1357,7 @@ public class Comdb2Handle extends AbstractConnection {
         if (isHASql && !inTxn) {
             String locase = sql.toLowerCase().trim();
 
-            if (!locase.startsWith("set") && !locase.startsWith("begin") &&
+            if (!locase.startsWith("set") && !isBeginQuery(locase) &&
                 !locase.startsWith("commit") && !locase.startsWith("rollback")) {
 
                 rc = runStatementInt("begin", null);
