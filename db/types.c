@@ -9576,7 +9576,7 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
         }
         /* check range for positive exponents; first nibble is 8 for new format!
          */
-        if ((highnibble & 0x080) && (highnibble != 0x080)) {
+        if (highnibble & 0x080) {
             return 0;
         }
         return 1;
