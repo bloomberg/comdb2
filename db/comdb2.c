@@ -5313,7 +5313,9 @@ int main(int argc, char **argv)
     if (comdb2ma_stats_cron() != 0)
         abort();
 
-    local_rep_sched();
+    if (gbl_poll_rep_remote)
+        local_rep_sched();
+
     if (process_deferred_options(thedb, DEFERRED_SEND_COMMAND, NULL,
                                  deferred_do_commands)) {
         logmsg(LOGMSG_FATAL, "failed to process deferred options\n");

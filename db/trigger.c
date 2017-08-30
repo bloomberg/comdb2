@@ -199,8 +199,9 @@ void local_rep_sched();
 static void *local_rep_event(void *arg1, void *arg2, void *arg3, void *arg4,
                              struct errstat *err)
 {
+    GET_BDB_STATE_CAST(bdb_state, void *);
     if (gbl_poll_rep_remote) {
-        if (gbl_ready) exec_repsp();
+        if (gbl_ready && bdb_amimaster(bdb_state)) exec_repsp();
         local_rep_sched();
     }
     return NULL;
