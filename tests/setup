@@ -151,18 +151,18 @@ copy_files_to_cluster()
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}"
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2"
-        scp -o StrictHostKeyChecking=no $comdb2ar $node:${SRCHOME} 
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        scp -o StrictHostKeyChecking=no $comdb2ar $node:${SRCHOME}
         scp -o StrictHostKeyChecking=no $comdb2task $node:${SRCHOME}
         # stop pmux on nodes first before copying and starting it
         if [ -n "$PMUXPORT" ] ; then
-            ssh -o StrictHostKeyChecking=no $node "$stop_pmux"
+            ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
         fi
         scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
         echo start pmux on $node if not running 
         set +e
-        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' ${SRCHOME}/$pmux_cmd"
+        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' ${SRCHOME}/$pmux_cmd" < /dev/null
         set -e
     done
 }
@@ -256,7 +256,7 @@ else
             compare_md5_sum $loc_comdb2md5sum
             continue        # no copying to self
         else 
-            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $comdb2task" | cut -d ' ' -f1`
+            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $comdb2task" < /dev/null | cut -d ' ' -f1`
             compare_md5_sum $loc_comdb2md5sum
         fi
         ${SRCHOME}/db/copycomdb2 $DBDIR/${DBNAME}.lrl ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy

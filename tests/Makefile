@@ -96,5 +96,5 @@ clean: testclean
 
 testclean:
 	@rm -rf test_[0-9]*
-	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*';)
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*' < /dev/null;)
 	@$(MAKE) -C tools clean
