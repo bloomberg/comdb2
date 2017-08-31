@@ -55,7 +55,9 @@ comdb2ar_SOURCES:=appsock.cpp comdb2ar.cpp db_wrap.cpp		\
 		   file_info.cpp logholder.cpp lrlerror.cpp	\
 		   repopnewlrl.cpp riia.cpp serialise.cpp	\
 		   serialiseerror.cpp tar_header.cpp util.cpp	\
-		   chksum.cpp
+		   chksum.cpp increment.cpp incr_manifest.cpp \
+		   incr_deserialise.cpp
+
 comdb2ar_OBJS:=$(patsubst %.cpp,tools/comdb2ar/%.o,		\
 	$(filter %.cpp,$(comdb2ar_SOURCES)))			\
 	$(patsubst %.c,tools/comdb2ar/%.o,			\

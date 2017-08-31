@@ -1064,7 +1064,7 @@ __db_c_get_dup(dbc_arg, dbc_dup, key, data, flags)
 			dbc_arg->lastpage =
 			    ((BTREE_CURSOR *)dbc_n->internal)->firstleaf;
 		} else if (flags == DB_SET) {
-			dbc_arg->lastpage = dbc_n->internal->pgno;
+			dbc_arg->lastpage = dbc_n->lastpage;
 		}
 	}
 

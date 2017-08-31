@@ -9,6 +9,8 @@
 #include "riia.h"
 #include "serialiseerror.h"
 #include "tar_header.h"
+#include "increment.h"
+#include "util.h"
 
 #include <cassert>
 #include <cstring>
@@ -33,6 +35,8 @@ extern "C" {
 #include <poll.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <openssl/sha.h>
+#include <iomanip>
 
 #include <stdlib.h>
 
@@ -114,8 +118,8 @@ static void serialise_string(const std::string& filename,
  * that defines this properly */
 void *memalign(size_t boundary, size_t size);
 
-static void serialise_file(const FileInfo& file, volatile iomap *iomap=NULL, 
-        const std::string altpath="")
+static void serialise_file(const FileInfo& file, volatile iomap *iomap=NULL, const std::string altpath="",
+                            const std::string incr_path="", bool incr_create = false)
 // Serialise a single file, in tape archive format, onto stdout.  The input
 // filename is expected to be an absolute path.  The name recorded in the
 // tape archive will be relative to dbdir.  Input files outside of dbdir
@@ -162,7 +166,7 @@ reopen:
             /* Any other files can go missing intraday (eg: after a schema change).
              * If it turns out it's needed, recovery will fail anyway.  So continue
              * despite this file being unavailable. */
-            std::clog << "Error opening file " << file.get_filepath() 
+            std::clog << "Error opening file " << file.get_filepath()
                       <<", err: " << std::strerror(errno) << std::endl;
             return;
         }
@@ -181,7 +185,7 @@ reopen:
         st.st_mode = stalt.st_mode;
         st.st_uid = stalt.st_uid;
         st.st_gid = stalt.st_gid;
-    } 
+    }
 
     // Ignore special files
     if(!S_ISREG(st.st_mode)) {
@@ -209,7 +213,7 @@ reopen:
     }
     size_t bufsize = pagesize;
     int num_waits = 0;
-    
+
     while((bufsize << 1) <= MAX_BUF_SIZE) {
         bufsize <<= 1;
     }
@@ -263,11 +267,30 @@ reopen:
 
             int retry = 5;
             ssize_t n = 0;
+
+            std::string incrFilename = incr_path + "/" + filename + ".incr";
+            std::ofstream incrFile(incrFilename,
+                                    std::ofstream::binary |
+                                    std::ofstream::trunc);
+
             while (n < bytesread && retry) {
-                if (verify_checksum(pagebuf + n, pagesize, file.get_crypto(), file.get_swapped())) {
+                bool verify_bool = false;
+                PAGE * pagep = (PAGE *) (pagebuf + n);
+                uint32_t verify_cksum;
+                verify_checksum(pagebuf + n, pagesize, file.get_crypto(), file.get_swapped(), &verify_bool, &verify_cksum);
+
+                if(verify_bool){
                     // checksum verified
                     n += pagesize;
                     retry = 5;
+
+                    // If we are in incremental mode, on initial backup creation we want to create the diff files
+                    if(incr_create){
+                        incrFile.write((char *) &(LSN(pagep).file), 4);
+                        incrFile.write((char *) &(LSN(pagep).offset), 4);
+                        incrFile.write((char *) &verify_cksum, 4);
+                    }
+
                     continue;
                 }
 
@@ -291,7 +314,7 @@ reopen:
                     ss << "serialise_file:lseek:rewind: " << std::strerror(errno);
                     throw SerialiseError(filename, ss.str());
                 }
-                
+
                 ssize_t nread, totalread = 0;
                 while (totalread < pagesize) {
                     nread = read(fd, &pagebuf[0] + n + totalread,
@@ -342,7 +365,7 @@ reopen:
 
     std::clog << "a " << filename << " size=" << st.st_size
               << " pagesize=" << pagesize;
-    
+
     if (file.get_sparse())
        std::clog << " not sparse ";
 
@@ -350,6 +373,8 @@ reopen:
     if(head.used_gnu()) {
         std::clog << " (encoded using gnu extension)";
     }
+
+
     std::clog << std::endl;
     if (pagebuf)
         free(pagebuf);
@@ -467,7 +492,7 @@ static void parse_lrl_file(const std::string& lrlpath,
                     throw LRLError(lrlpath, lineno, "missing database directory");
                 }
                 *p_dbdir = tok;
-                
+
             } else if(tok == "use_llmeta") {
                 *p_llmeta = true;
 
@@ -524,8 +549,10 @@ void serialise_database(
   bool strip_cluster_info,
   bool support_files_only,
   bool run_with_done_file,
-  bool kludge_write,
-  bool do_direct_io
+  bool do_direct_io,
+  bool incr_create,
+  bool incr_gen,
+  const std::string& incr_path
 )
 // Serialise a database into tape archive format and write it to stdout.
 // If support_only is true then only support files (lrl and schema) will
@@ -562,7 +589,7 @@ void serialise_database(
 
     // Iterator for logvec
     std::vector<int>::iterator logit;
-    
+
     // Current logfile, log errors
     int curlog=0, logerr=0;
 
@@ -582,6 +609,16 @@ void serialise_database(
             nonames = true;
 
         /* if we couldn't figure it out, we'll go by what parse_lrl_file told us */
+    }
+
+    // Create the directory for incremental backups if needed
+    if (incr_create) {
+        struct stat sb;
+
+        if(!(stat(incr_path.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode))){
+            std::string cmd("mkdir -p " + incr_path);
+            system(cmd.c_str());
+        }
     }
 
     if (strip_cluster_info && has_cluster_info) {
@@ -646,7 +683,7 @@ void serialise_database(
         origlrlname = dbname + ".lrl"; /* save the current path */
         lrlpath = newlrlpath;
 
-        parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged, 
+        parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged,
                 &support_files, &table_names, &queue_names, &nonames, &has_cluster_info);
     }
 
@@ -680,6 +717,15 @@ void serialise_database(
     if(!support_files_only) {
         listdir(dbdir_files, dbdir);
         listdir(dbtxndir_files, dbtxndir);
+    }
+
+    // List of incremental comparison files to determine new/updated/deleted files
+    std::list<std::string> incr_files_list;
+    std::set<std::string> incr_files;
+    if(incr_gen) {
+        listdir(incr_files_list, incr_path);
+        incr_files_list.remove_if(is_not_incr_file);
+        incr_files = std::set<std::string>(incr_files_list.begin(), incr_files_list.end());
     }
 
     // If it's an llmeta db then look for the file version map too.
@@ -720,7 +766,6 @@ void serialise_database(
         table_names.insert(dbname);
     }
 
-
     // If the database is running, connect to it and instruct it to pause
     // log file deletion.  This must be done before we construct our picture
     // of what files to backup since if new files are created after this
@@ -730,14 +775,26 @@ void serialise_database(
     if(disable_log_deletion && !support_files_only) {
         log_holder = std::unique_ptr<LogHolder>(new LogHolder(dbname));
     }
-    
+
 
     // Based on what we read from the lrl, it's time to create the definitive
     // set of files to back up.  For data files we record the file names and
     // the page sizes to use.
     std::list<FileInfo> data_files;
+
     std::string abspath;
     long long lowest_log = -1;
+
+    // Vector of files that need to be backed up in incremental mode
+    std::vector<FileInfo> incr_data_files;
+    // Vector of pages that need to be backed up for the corresponding files
+    std::vector<FileInfo> new_files;
+
+    // Vector of pages index aligned with each file to serialise
+    std::vector<std::vector<uint32_t>> page_number_vec;
+
+    // Total size of backed up pages
+    ssize_t total_data_size = 0;
 
     if(!support_files_only) {
 
@@ -764,12 +821,12 @@ void serialise_database(
             }
         }
 
-        // sort 
+        // sort
         std::sort( logvec.begin(), logvec.end () );
 
         for ( logit = logvec.begin() ; logit != logvec.end() ; logit++ )
         {
-            // First iteration 
+            // First iteration
             if( logit == logvec.begin() )
             {
                 // curlog = *logit;
@@ -859,9 +916,9 @@ void serialise_database(
                 DB_Wrap db(abspath);
                 size_t pagesize = db.get_pagesize();
                 bool checksums = db.get_checksums();
-		bool crypto = db.get_crypto();
+                bool crypto = db.get_crypto();
                 bool sparse = db.get_sparse();
-		bool swapped = db.get_swapped();
+                bool swapped = db.get_swapped();
 
                 data_files.push_back(FileInfo(FileInfo::BERKDB_FILE,
                       abspath, dbdir, pagesize, checksums, crypto, sparse, do_direct_io, swapped));
@@ -893,24 +950,99 @@ void serialise_database(
 
     // Construct a manifest which will give the page sizes of all the files
     std::ostringstream manifest;
-    manifest << "# Manifest for serialisation of " << dbname << std::endl;
-    if(support_files_only) {
-        manifest << "SupportFilesOnly" << std::endl;
-        if (origlrlname != "")
-        {
-           manifest <<"OrigLrlFile "<< origlrlname<< std::endl;
+
+    // Non-incremental mode or increment creation mode
+    if(!incr_gen){
+        manifest << "# Manifest for serialisation of " << dbname << std::endl;
+        if(support_files_only) {
+            manifest << "SupportFilesOnly" << std::endl;
+            if (origlrlname != "")
+            {
+               manifest <<"OrigLrlFile "<< origlrlname<< std::endl;
+            }
         }
-    }
 
-    for(std::list<FileInfo>::const_iterator
-            it = data_files.begin();
-            it != data_files.end();
-            ++it) {
-            write_manifest_entry(manifest, *it);
-    }
+        for(std::list<FileInfo>::const_iterator
+                it = data_files.begin();
+                it != data_files.end();
+                ++it) {
+                write_manifest_entry(manifest, *it);
+        }
 
-    // Find a recovery point after the copy, and record it in the manifest
-    if (!support_files_only) {
+        // Find a recovery point after the copy, and record it in the manifest
+        if (!support_files_only) {
+            std::clog << "logdelete version " << log_holder->version() << std::endl;
+            if (log_holder->version() >= 3) {
+                std::string recovery_options = log_holder->recovery_options();
+                if (!recovery_options.empty()) {
+                    manifest << "Option " << recovery_options <<std::endl;
+                }
+            }
+        }
+
+        // Serialise the manifest file
+        serialise_string("MANIFEST", manifest.str());
+
+    // Incremental Mode
+    } else {
+        manifest << "# Manifest for serialisation of increment produced on "
+            << getDTString() << std::endl;
+
+
+        for(std::list<FileInfo>::const_iterator
+                it = data_files.begin();
+                it != data_files.end();
+                ++it) {
+
+            std::vector<uint32_t> pages_list;
+            ssize_t data_size = 0;
+
+            // Diff the page checksums for each file to find what has been changed
+            if(compare_checksum(*it, incr_path, pages_list, &data_size, incr_files)) {
+                // If pages list is empty but compare_checksum returned true, it's a new file
+                if(pages_list.empty()){
+                    new_files.push_back(*it);
+                    write_incr_manifest_entry(manifest, *it, pages_list);
+                // Keep track of the file name and the list of pages to be backed-up
+                } else {
+                    incr_data_files.push_back(*it);
+                    page_number_vec.push_back(pages_list);
+                    write_incr_manifest_entry(manifest, *it, pages_list);
+                    total_data_size += data_size;
+                }
+            }
+        }
+
+        if(incr_data_files.size() != page_number_vec.size()){
+            std::ostringstream ss;
+            ss << "data files and page vectors don't align";
+            throw Error(ss);
+        }
+
+        // filename for the SHA fingerprint that asserts that increments are applied in the correct order
+        std::string sha_filename = "";
+        // Any leftover .incr files indicate that that file has been deleted or that it is the SHA file
+        for(std::set<std::string>::const_iterator
+                it = incr_files.begin();
+                it != incr_files.end();
+                ++it){
+            // If it's the SHA fingerprint file, mark it then move onto the next file
+            if((*it).substr((*it).length() - 4) == ".sha"){
+                sha_filename = *it;
+                continue;
+            }
+
+            // Remove diff files corresponding to deleted files and mark them
+            std::string true_filename = incr_path + "/" + *it;
+            if(remove(true_filename.c_str()) != 0){
+                std::ostringstream ss;
+                ss << "error deleting file: " << *it;
+                throw Error(ss);
+            }
+            write_del_manifest_entry(manifest, *it);
+        }
+
+        // Find a recovery point after the copy, and record it in the manifest
         std::clog << "logdelete version " << log_holder->version() << std::endl;
         if (log_holder->version() >= 3) {
             std::string recovery_options = log_holder->recovery_options();
@@ -918,11 +1050,22 @@ void serialise_database(
                 manifest << "Option " << recovery_options <<std::endl;
             }
         }
-    }
-    
 
-    // Serialise the manifest file
-    serialise_string("MANIFEST", manifest.str());
+        // Read and note the previous increment's SHA fingerprint
+        if(sha_filename.empty()){
+            std::ostringstream ss;
+            ss << "No previous SHA fingerprint";
+            throw Error(ss);
+        } else {
+            std::string sha_fingerprint = get_sha_fingerprint(sha_filename, incr_path);
+            manifest << "PREV " << sha_fingerprint << std::endl;
+        }
+
+        // Serialise the manifest file
+        serialise_string("INCR_MANIFEST", manifest.str());
+
+    }
+
 
     std::string iomapfile;
     std::ostringstream ss;
@@ -939,47 +1082,89 @@ void serialise_database(
 
     RIIA_fd fd_guard(fd);
 
-    // Serialise the files that we found to stdout.  First do support files.
-    // We may have to make the paths absolute in some cases as this wasn't
-    // done before.  Never touch the lrl path though.
-    bool islrl = true;
-    for(std::list<std::string>::const_iterator it = support_files.begin();
-            it != support_files.end();
-            ++it) {
-        abspath = *it;
+    // Serialise files in normal mode/initial backup mode
+    if(!incr_gen){
 
-        if(!abspath.empty() && abspath[0] != '/') {
-            // Behave like comdb2 - look for support files (resource files,
-            // .csc2 files and .lrl files) relative to the lrl file.
-            std::string lrldir(lrlpath);
-            makedirname(lrldir);
-            if(!lrldir.empty()) {
-                makeabs(abspath, lrldir, *it);
+        // Serialise the files that we found to stdout.  First do support files.
+        // We may have to make the paths absolute in some cases as this wasn't
+        // done before.  Never touch the lrl path though.
+        bool islrl = true;
+        for(std::list<std::string>::const_iterator it = support_files.begin();
+                it != support_files.end();
+                ++it) {
+            abspath = *it;
+
+            if(!abspath.empty() && abspath[0] != '/') {
+                // Behave like comdb2 - look for support files (resource files,
+                // .csc2 files and .lrl files) relative to the lrl file.
+                std::string lrldir(lrlpath);
+                makedirname(lrldir);
+                if(!lrldir.empty()) {
+                    makeabs(abspath, lrldir, *it);
+                }
+            }
+            if (islrl && strippedpath != "") {
+                serialise_file(FileInfo(FileInfo::SUPPORT_FILE, abspath, dbdir), iom, strippedpath);
+            } else {
+                serialise_file(FileInfo(FileInfo::SUPPORT_FILE, abspath, dbdir), iom);
+            }
+            islrl = false;
+        }
+
+        // Now do optional files (if any)
+        for (std::list<std::string>::const_iterator it = optional_files.begin();
+                it != optional_files.end(); ++it) {
+            try {
+                abspath = *it;
+                makeabs(abspath, dbdir, *it);
+                serialise_file(FileInfo(FileInfo::OPTIONAL_FILE, abspath, dbdir), iom);
+            }
+            catch (SerialiseError &err) {
+                std::cerr << "Warning: " << *it << ": " << err.what() << std::endl;
             }
         }
-        if (islrl && strippedpath != "") {
-            serialise_file(FileInfo(FileInfo::SUPPORT_FILE, abspath, dbdir), iom, strippedpath);
-        } else {
-            serialise_file(FileInfo(FileInfo::SUPPORT_FILE, abspath, dbdir), iom);
-        }
-        islrl = false;
-    }
 
-    // Now do optional files (if any)
-    for (std::list<std::string>::const_iterator it = optional_files.begin();
-            it != optional_files.end(); ++it) {
-        try {
-            abspath = *it;
-            makeabs(abspath, dbdir, *it);
-            serialise_file(FileInfo(FileInfo::OPTIONAL_FILE, abspath, dbdir), iom);
-        }
-        catch (SerialiseError &err) {
-            std::cerr << "Warning: " << *it << ": " << err.what() << std::endl;
-        }
-    }
+        // Now do data files
+        if(!support_files_only) {
 
-    // Now do data files
-    if(!support_files_only) {
+            // Grab the checkpoint file, pretend its a logfile
+            std::string absfile;
+            std::cerr<<"Serializing checkpoint"<<std::endl;
+            makeabs(absfile, dbtxndir, "checkpoint");
+            serialise_file(FileInfo(FileInfo::LOG_FILE, absfile, dbdir));
+
+            long long log_number(lowest_log);
+            for(std::list<FileInfo>::const_iterator
+                    it = data_files.begin();
+                    it != data_files.end();
+                    ++it) {
+
+                // First, serialise any complete log files that are in the .txn
+                // directory and notify the running database that they can now be
+                // archived.
+                long long old_log_number(log_number);
+                serialise_log_files(dbtxndir, dbdir, log_number, true);
+                if(log_number != old_log_number && log_holder.get()) {
+                    log_holder->release_log(log_number - 1);
+                }
+
+                // Ok, now serialise this file.
+                serialise_file(*it, iom, "", incr_path, incr_create);
+            }
+
+            // Serialise all remaining log files, including incomplete ones
+            serialise_log_files(dbtxndir, dbdir, log_number, false);
+        }
+
+    // Serialise files for incremental backup
+    } else {
+        struct stat st;
+
+        st.st_mode = 0664;
+        st.st_uid = getuid();
+        st.st_gid = getgid();
+        st.st_mtime = time(NULL);
+        st.st_size = total_data_size;
 
         // Grab the checkpoint file, pretend its a logfile
         std::string absfile;
@@ -988,10 +1173,63 @@ void serialise_database(
         serialise_file(FileInfo(FileInfo::LOG_FILE, absfile, dbdir));
 
         long long log_number(lowest_log);
-        for(std::list<FileInfo>::const_iterator
-                it = data_files.begin();
-                it != data_files.end();
-                ++it) {
+
+        // First, serialise any complete log files that are in the .txn
+        // directory and notify the running database that they can now be
+        // archived.
+        // TODO: Figure out how to serialise logs after each file without
+        // disrupting the page data file
+        long long old_log_number(log_number);
+        serialise_log_files(dbtxndir, dbdir, log_number, true);
+        if(log_number != old_log_number && log_holder.get()) {
+            log_holder->release_log(log_number - 1);
+        }
+
+        // Write the header
+        TarHeader head;
+        head.set_filename(getDTString() + ".data");
+        head.set_attrs(st);
+        head.set_checksum();
+
+        if(writeall(1, head.get().c, sizeof(tar_block_header))
+                != sizeof(tar_block_header)) {
+            std::ostringstream ss;
+            ss << "error writing tar block header: " << std::strerror(errno);
+            throw Error(ss.str());
+        }
+
+        // Iterate through the files, index-aligning with the list of changed pages
+        std::vector<FileInfo>::const_iterator data_it = incr_data_files.begin();
+        std::vector<std::vector<uint32_t>>::const_iterator
+            page_it = page_number_vec.begin();
+
+        ssize_t data_written = 0;
+
+        // Serialise the database's changed pages
+        while(data_it != incr_data_files.end()){
+            data_written += serialise_incr_file(*data_it, *page_it, incr_path);
+
+            ++data_it;
+            ++page_it;
+        }
+
+        // The length of the output must be a multiple of 512 bytes
+        size_t bytesleft = total_data_size & (512 - 1);
+        bytesleft = 512 - bytesleft;
+        if(bytesleft > 0 && bytesleft < 512) {
+            writepadding(bytesleft);
+        }
+
+        if(data_written != total_data_size){
+            ss <<"file sizes changed during incremental backup";
+            throw Error(ss);
+        }
+
+        // Serialise new files
+        for(std::vector<FileInfo>::const_iterator new_it = new_files.begin();
+                new_it != new_files.end();
+                *new_it++
+        ) {
 
             // First, serialise any complete log files that are in the .txn
             // directory and notify the running database that they can now be
@@ -1003,11 +1241,38 @@ void serialise_database(
             }
 
             // Ok, now serialise this file.
-            serialise_file(*it, iom);
+            serialise_file(*new_it, iom, "", incr_path, true);
         }
+
 
         // Serialise all remaining log files, including incomplete ones
         serialise_log_files(dbtxndir, dbdir, log_number, false);
+    }
+
+    // Generate fingerprint SHA file
+    if(incr_create || incr_gen){
+        unsigned char obuf[20];
+
+        std::string dt_string = getDTString();
+
+        // SHA the date time to get a pseudorandom fingerprint to check increment order
+        SHA1((unsigned char *) dt_string.c_str(), dt_string.length() + 1, obuf);
+
+        std::ostringstream ss;
+        for(int i = 0; i < 20; ++i){
+            ss << std::hex << std::setw(2) << std::setfill('0') << +obuf[i];
+        }
+
+        std::clog << "Calculated SHA fingerprint as: " << ss.str() << std::endl;
+
+        // Serialise the SHA file
+        serialise_string("fingerprint.sha", ss.str());
+
+        // Write the SHA file so that the next increment can know it
+        std::string sha_filename = incr_path + "/fingerprint.sha";
+        std::ofstream sha_file(sha_filename, std::ofstream::trunc);
+
+        sha_file.write(ss.str().c_str(), 40);
     }
 
     // Release the database for log file deletion.

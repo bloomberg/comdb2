@@ -803,6 +803,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug)
                         reqpushprefixf(iq, "VERBKYCNSTRT CASCADE DEL:");
                     /* TODO verify we have proper schema change locks */
+
+                    iq->usedbtablevers = iq->usedb->tableversion;
                     rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err,
                                     &idx, BLOCK2_DELKL, 0);
                     if (iq->debug)
@@ -847,6 +849,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug)
                         reqpushprefixf(iq, "VERBKYCNSTRT CASCADE UPD:");
                     /* TODO verify we have proper schema change locks */
+
+                    iq->usedbtablevers = iq->usedb->tableversion;
                     rc = upd_record(
                         iq, trans, NULL, /*primkey*/
                         rrn, genid,

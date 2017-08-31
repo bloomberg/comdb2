@@ -144,6 +144,8 @@ void set_cursor_rowlocks(int cr);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
+extern unsigned long long get_genid(bdb_state_type *bdb_state,
+                                    unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
 
@@ -667,6 +669,7 @@ void *handle_exit_thd(void *arg)
 
     /* XXX this should probably have a timeout */
     stop_threads(thedb);
+    allow_sc_to_run();
 
     /* now that we are taking no more requests and have halted all request
      * threads, take a final snapshot of our queues (this helps things

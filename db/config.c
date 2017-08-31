@@ -102,7 +102,9 @@ static void replace_args(int argc, char *argv[])
         } else if (strcasecmp(argv[ii], "-recovertolsn") == 0) {
             argv[ii] = "--recovertolsn";
         } else if (strcasecmp(argv[ii], "-recovery_lsn") == 0) {
-            argv[ii] = "--recovery_lsn";
+            argv[ii] = "--recoverylsn";
+        } else if (strcasecmp(argv[ii], "-recoverylsn") == 0) {
+            argv[ii] = "--recoverylsn";
         } else if (strcasecmp(argv[ii], "-pidfile") == 0) {
             argv[ii] = "--pidfile";
         } else if (strcasecmp(argv[ii], "-help") == 0) {
@@ -1375,9 +1377,11 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
         int rc = stat(confdir, &st);
         if (rc == 0 && S_ISDIR(st.st_mode)) {
             if (read_config_dir(dbenv, confdir)) {
+                free(confdir);
                 return 0;
             }
         }
+        free(confdir);
     } else {
         /* disable loading comdb2.lrl and comdb2_local.lrl with an absolute
          * path in /bb/bin. comdb2.lrl and comdb2_local.lrl in the pwd are

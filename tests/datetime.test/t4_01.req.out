@@ -1,0 +1,5 @@
+[select cast('20170816 qqqqqqq' as datetime)] failed with rc 113 cast to datetime failed
+[select cast('20170816 qqqqqqq' as datetime)] failed with rc 113 cast to datetime failed
+[select cast('20170816 qqqqqqq' as datetime)] failed with rc 113 cast to datetime failed
+[select cast('20170816 qqqqqqq' as datetime)] failed with rc 113 cast to datetime failed
+[select cast('20170816 qqqqqqq' as datetime)] failed with rc 113 cast to datetime failed

@@ -21,14 +21,16 @@ public:
     bool get_checksums() const;
 
     bool get_crypto() const;
-    
+
     bool get_sparse() const;
 
     bool get_swapped() const;
 };
 
-bool verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swap);
+void verify_checksum(uint8_t *page, size_t pagesize, bool crypto, bool swap,
+        bool *verify_bool, uint32_t *verify_cksum);
 // Verify the checksum on a regular Berkeley DB page.  Returns true if
 // the checksum is correct, false otherwise
 
+uint32_t calculate_checksum(uint8_t *page, size_t pagesize);
 #endif // INCLUDED_DB_WRAP
