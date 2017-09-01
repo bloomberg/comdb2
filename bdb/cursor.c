@@ -312,7 +312,7 @@ static void print_cursor_keys(bdb_cursor_impl_t *cur, int which)
         cur->rl->key(cur->rl, &loc_key_rl, &bdberr);
         cur->rl->keysize(cur->rl, &loc_keysize_rl, &bdberr);
 
-        hexdump(loc_key_rl, loc_keysize_rl);
+        hexdump(LOGMSG_USER, loc_key_rl, loc_keysize_rl);
         logmsg(LOGMSG_USER, "\n");
     }
     if (which & BDB_SHOW_SD && cur->sd) {
@@ -322,7 +322,7 @@ static void print_cursor_keys(bdb_cursor_impl_t *cur, int which)
         cur->sd->key(cur->sd, &loc_key_sd, &bdberr);
         cur->sd->keysize(cur->sd, &loc_keysize_sd, &bdberr);
 
-        hexdump(loc_key_sd, loc_keysize_sd);
+        hexdump(LOGMSG_USER, loc_key_sd, loc_keysize_sd);
         logmsg(LOGMSG_USER, "\n");
     }
 }
@@ -834,6 +834,11 @@ int timestamp_lsn_keycmp(void *_, int key1len, const void *key1, int key2len,
     return 0;
 }
 
+static LISTC_T(struct commit_list) pglogs_commit_list;
+static hash_t *pglogs_queue_fileid_hash;
+static pthread_mutex_t pglogs_queue_lk;
+
+#ifdef NEWSI_MEMPOOL
 static pool_t *fileid_pglogs_queue_pool = NULL;
 static pool_t *pglogs_queue_cursor_pool = NULL;
 static pool_t *ltran_pglogs_key_pool = NULL;
@@ -847,11 +852,10 @@ static pool_t *pglogs_lsn_commit_list_pool = NULL;
 static pool_t *pglogs_relink_key_pool = NULL;
 static pool_t *pglogs_relink_list_pool = NULL;
 
-static LISTC_T(struct commit_list) pglogs_commit_list;
-static pthread_mutex_t fileid_pglogs_queue_lk;
-static pthread_mutex_t pglogs_queue_cursor_lk;
-static pthread_mutex_t ltran_pglogs_key_lk;
-static pthread_mutex_t asof_cursor_lk;
+static pthread_mutex_t fileid_pglogs_queue_pool_lk;
+static pthread_mutex_t pglogs_queue_cursor_pool_lk;
+static pthread_mutex_t ltran_pglogs_key_pool_lk;
+static pthread_mutex_t asof_cursor_pool_lk;
 static pthread_mutex_t pglogs_commit_list_pool_lk;
 static pthread_mutex_t pglogs_queue_key_pool_lk;
 static pthread_mutex_t pglogs_key_pool_lk;
@@ -860,31 +864,32 @@ static pthread_mutex_t pglogs_lsn_list_pool_lk;
 static pthread_mutex_t pglogs_lsn_commit_list_pool_lk;
 static pthread_mutex_t pglogs_relink_key_pool_lk;
 static pthread_mutex_t pglogs_relink_list_pool_lk;
-static pthread_mutex_t pglogs_queue_lk;
-static hash_t *pglogs_queue_fileid_hash;
-
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
 static pool_t *logfile_tmptbl_hashkey_pool = NULL;
 static pthread_mutex_t logfile_tmptbl_hashkey_pool_lk;
 #endif
+#else
+static comdb2ma newsi_ma;
+#endif
 
+#ifdef NEWSI_MEMPOOL
 void bdb_newsi_mempool_stat()
 {
-    Pthread_mutex_lock(&fileid_pglogs_queue_lk);
+    Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
     pool_dumpx(fileid_pglogs_queue_pool, "fileid_pglogs_queue_pool");
-    Pthread_mutex_unlock(&fileid_pglogs_queue_lk);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_pool_lk);
 
-    Pthread_mutex_lock(&pglogs_queue_cursor_lk);
+    Pthread_mutex_lock(&pglogs_queue_cursor_pool_lk);
     pool_dumpx(pglogs_queue_cursor_pool, "pglogs_queue_cursor_pool");
-    Pthread_mutex_unlock(&pglogs_queue_cursor_lk);
+    Pthread_mutex_unlock(&pglogs_queue_cursor_pool_lk);
 
-    Pthread_mutex_lock(&ltran_pglogs_key_lk);
+    Pthread_mutex_lock(&ltran_pglogs_key_pool_lk);
     pool_dumpx(ltran_pglogs_key_pool, "ltran_pglogs_key_pool");
-    Pthread_mutex_unlock(&ltran_pglogs_key_lk);
+    Pthread_mutex_unlock(&ltran_pglogs_key_pool_lk);
 
-    Pthread_mutex_lock(&asof_cursor_lk);
+    Pthread_mutex_lock(&asof_cursor_pool_lk);
     pool_dumpx(asof_cursor_pool, "asof_cursor_pool");
-    Pthread_mutex_unlock(&asof_cursor_lk);
+    Pthread_mutex_unlock(&asof_cursor_pool_lk);
 
     Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
     pool_dumpx(pglogs_commit_list_pool, "pglogs_commit_list_pool");
@@ -924,149 +929,202 @@ void bdb_newsi_mempool_stat()
     Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
 #endif
 }
+#endif
 
 static pthread_mutex_t del_queue_lk = PTHREAD_MUTEX_INITIALIZER;
 
 static struct fileid_pglogs_queue *allocate_fileid_pglogs_queue()
 {
     struct fileid_pglogs_queue *q;
-    Pthread_mutex_lock(&fileid_pglogs_queue_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
     q = pool_getablk(fileid_pglogs_queue_pool);
-    Pthread_mutex_unlock(&fileid_pglogs_queue_lk);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     q->pool = fileid_pglogs_queue_pool;
+#endif
+#else
+    q = comdb2_malloc(newsi_ma, sizeof(struct fileid_pglogs_queue));
 #endif
     return q;
 }
 
 void return_fileid_pglogs_queue(struct fileid_pglogs_queue *q)
 {
-    Pthread_mutex_lock(&fileid_pglogs_queue_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&fileid_pglogs_queue_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(q->pool == fileid_pglogs_queue_pool);
 #endif
     pool_relablk(fileid_pglogs_queue_pool, q);
-    Pthread_mutex_unlock(&fileid_pglogs_queue_lk);
+    Pthread_mutex_unlock(&fileid_pglogs_queue_pool_lk);
+#else
+    comdb2_free(q);
+#endif
 }
 
 static struct pglogs_queue_cursor *allocate_pglogs_queue_cursor(void)
 {
     struct pglogs_queue_cursor *c;
-    Pthread_mutex_lock(&pglogs_queue_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&pglogs_queue_cursor_pool_lk);
     c = pool_getablk(pglogs_queue_cursor_pool);
-    Pthread_mutex_unlock(&pglogs_queue_cursor_lk);
+    Pthread_mutex_unlock(&pglogs_queue_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     c->pool = pglogs_queue_cursor_pool;
+#endif
+#else
+    c = comdb2_malloc(newsi_ma, sizeof(struct pglogs_queue_cursor));
 #endif
     return c;
 }
 
 void return_pglogs_queue_cursor(struct pglogs_queue_cursor *c)
 {
-    Pthread_mutex_lock(&pglogs_queue_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&pglogs_queue_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(c->pool == pglogs_queue_cursor_pool);
 #endif
     pool_relablk(pglogs_queue_cursor_pool, c);
-    Pthread_mutex_unlock(&pglogs_queue_cursor_lk);
+    Pthread_mutex_unlock(&pglogs_queue_cursor_pool_lk);
+#else
+    comdb2_free(c);
+#endif
 }
 
 static struct ltran_pglogs_key *allocate_ltran_pglogs_key(void)
 {
     struct ltran_pglogs_key *k;
-    Pthread_mutex_lock(&ltran_pglogs_key_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&ltran_pglogs_key_pool_lk);
     k = pool_getablk(ltran_pglogs_key_pool);
-    Pthread_mutex_unlock(&ltran_pglogs_key_lk);
+    Pthread_mutex_unlock(&ltran_pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     k->pool = ltran_pglgos_key_pool;
+#endif
+#else
+    k = comdb2_malloc(newsi_ma, sizeof(struct ltran_pglogs_key));
 #endif
     return k;
 }
 
 static void return_ltran_pglogs_key(struct ltran_pglogs_key *k)
 {
-    Pthread_mutex_lock(&ltran_pglogs_key_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&ltran_pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(k->pool == ltran_pglogs_key_pool);
 #endif
     pool_relablk(ltran_pglogs_key_pool, k);
-    Pthread_mutex_unlock(&ltran_pglogs_key_lk);
+    Pthread_mutex_unlock(&ltran_pglogs_key_pool_lk);
+#else
+    comdb2_free(k);
+#endif
 }
 
 static struct asof_cursor *allocate_asof_cursor(void)
 {
     struct asof_cursor *a;
-    Pthread_mutex_lock(&asof_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&asof_cursor_pool_lk);
     a = pool_getablk(asof_cursor_pool);
-    Pthread_mutex_unlock(&asof_cursor_lk);
+    Pthread_mutex_unlock(&asof_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     a->pool = asof_cursor_pool;
+#endif
+#else
+    a = comdb2_malloc(newsi_ma, sizeof(struct asof_cursor));
 #endif
     return a;
 }
 
 static void return_asof_cursor(struct asof_cursor *a)
 {
-    Pthread_mutex_lock(&asof_cursor_lk);
+#ifdef NEWSI_MEMPOOL
+    Pthread_mutex_lock(&asof_cursor_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(a->pool == asof_cursor_pool);
 #endif
     pool_relablk(asof_cursor_pool, a);
-    Pthread_mutex_unlock(&asof_cursor_lk);
+    Pthread_mutex_unlock(&asof_cursor_pool_lk);
+#else
+    comdb2_free(a);
+#endif
 }
 
 static struct commit_list *allocate_pglogs_commit_list(void)
 {
-    struct commit_list *q;
+    struct commit_list *c;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
-    q = pool_getablk(pglogs_commit_list_pool);
+    c = pool_getablk(pglogs_commit_list_pool);
     Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
-    q->pool = pglogs_commit_list_pool;
+    c->pool = pglogs_commit_list_pool;
 #endif
-    return q;
+#else
+    c = comdb2_malloc(newsi_ma, sizeof(struct commit_list));
+#endif
+    return c;
 }
 
 static void return_pglogs_commit_list(struct commit_list *c)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_commit_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_commit_list_pool);
 #endif
     pool_relablk(pglogs_commit_list_pool, c);
     Pthread_mutex_unlock(&pglogs_commit_list_pool_lk);
+#else
+    comdb2_free(c);
+#endif
 }
 
 struct pglogs_queue_key *allocate_pglogs_queue_key(void)
 {
     struct pglogs_queue_key *q;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
     q = pool_getablk(pglogs_queue_key_pool);
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     q->pool = pglogs_queue_key_pool;
 #endif
+#else
+    q = comdb2_malloc(newsi_ma, sizeof(struct pglogs_queue_key));
+#endif
     return q;
 }
 
 void return_pglogs_queue_key(struct pglogs_queue_key *qk)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_queue_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_queue_key_pool);
 #endif
     pool_relablk(pglogs_queue_key_pool, qk);
     Pthread_mutex_unlock(&pglogs_queue_key_pool_lk);
+#else
+    comdb2_free(qk);
+#endif
 }
 
 struct pglogs_key *allocate_pglogs_key(void)
 {
     struct pglogs_key *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_key_pool_lk);
     r = pool_getablk(pglogs_key_pool);
     Pthread_mutex_unlock(&pglogs_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_key_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct pglogs_key));
 #endif
     return r;
 }
@@ -1074,11 +1132,15 @@ struct pglogs_key *allocate_pglogs_key(void)
 struct pglogs_logical_key *allocate_pglogs_logical_key(void)
 {
     struct pglogs_logical_key *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_logical_key_pool_lk);
     r = pool_getablk(pglogs_logical_key_pool);
     Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_logical_key_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct pglogs_logical_key));
 #endif
     return r;
 }
@@ -1086,33 +1148,45 @@ struct pglogs_logical_key *allocate_pglogs_logical_key(void)
 struct lsn_list *allocate_lsn_list(void)
 {
     struct lsn_list *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
     r = pool_getablk(pglogs_lsn_list_pool);
     Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_lsn_list_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct lsn_list));
+#endif
     return r;
 }
 
 void deallocate_lsn_list(struct lsn_list *r)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_lsn_list_pool);
 #endif
     pool_relablk(pglogs_lsn_list_pool, r);
     Pthread_mutex_unlock(&pglogs_lsn_list_pool_lk);
+#else
+    comdb2_free(r);
+#endif
 }
 
 struct lsn_commit_list *allocate_lsn_commit_list(void)
 {
     struct lsn_commit_list *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
     r = pool_getablk(pglogs_lsn_commit_list_pool);
     Pthread_mutex_unlock(&pglogs_lsn_commit_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_lsn_commit_list_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct lsn_commit_list));
 #endif
     return r;
 }
@@ -1120,11 +1194,15 @@ struct lsn_commit_list *allocate_lsn_commit_list(void)
 struct pglogs_relink_key *allocate_pglogs_relink_key(void)
 {
     struct pglogs_relink_key *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_key_pool_lk);
     r = pool_getablk(pglogs_relink_key_pool);
     Pthread_mutex_unlock(&pglogs_relink_key_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_relink_key_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct pglogs_relink_key));
 #endif
     return r;
 }
@@ -1132,23 +1210,31 @@ struct pglogs_relink_key *allocate_pglogs_relink_key(void)
 struct relink_list *allocate_relink_list(void)
 {
     struct relink_list *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
     r = pool_getablk(pglogs_relink_list_pool);
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = pglogs_relink_list_pool;
 #endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(struct relink_list));
+#endif
     return r;
 }
 
 void deallocate_relink_list(struct relink_list *r)
 {
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(r->pool == pglogs_relink_list_pool);
 #endif
     pool_relablk(pglogs_relink_list_pool, r);
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
+#else
+    comdb2_free(r);
+#endif
 }
 
 static int return_pglogs_relink_key(void *obj, void *arg)
@@ -1156,6 +1242,7 @@ static int return_pglogs_relink_key(void *obj, void *arg)
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_relink_list_pool_lk);
     while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
@@ -1170,6 +1257,12 @@ static int return_pglogs_relink_key(void *obj, void *arg)
 #endif
     pool_relablk(pglogs_relink_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_relink_key_pool_lk);
+#else
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
+        comdb2_free(ent);
+    }
+    comdb2_free(obj);
+#endif
     return 0;
 }
 
@@ -1178,6 +1271,7 @@ static int return_pglogs_logical_key(void *obj, void *arg)
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_commit_list_pool_lk);
     while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
@@ -1193,6 +1287,12 @@ static int return_pglogs_logical_key(void *obj, void *arg)
 #endif
     pool_relablk(pglogs_logical_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_logical_key_pool_lk);
+#else
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
+        comdb2_free(ent);
+    }
+    comdb2_free(obj);
+#endif
     return 0;
 }
 
@@ -1201,6 +1301,7 @@ static int return_pglogs_key(void *obj, void *arg)
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
     void *ent;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&pglogs_lsn_list_pool_lk);
     while (list && ((ent = listc_rtl(list)) != NULL)) {
 #ifdef NEWSI_DEBUG_POOL
@@ -1215,6 +1316,12 @@ static int return_pglogs_key(void *obj, void *arg)
 #endif
     pool_relablk(pglogs_key_pool, obj);
     Pthread_mutex_unlock(&pglogs_key_pool_lk);
+#else
+    while (list && ((ent = listc_rtl(list)) != NULL)) {
+        comdb2_free(ent);
+    }
+    comdb2_free(obj);
+#endif
     return 0;
 }
 
@@ -1243,11 +1350,15 @@ logfile_pglog_hashkey *allocate_logfile_pglog_hashkey(void)
 {
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     logfile_pglog_hashkey *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
     r = pool_getablk(logfile_tmptbl_hashkey_pool);
     Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = logfile_tmptbl_hashkey_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(logfile_pglog_hashkey));
 #endif
     return r;
 #else
@@ -1279,12 +1390,16 @@ static int return_logfile_pglog_hashkey(void *obj, void *arg)
         rc = 0;
     }
     pthread_mutex_destroy(&ent->mtx);
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(ent->pool == logfile_tmptbl_hashkey_pool);
 #endif
     pool_relablk(logfile_tmptbl_hashkey_pool, obj);
     Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#else
+    comdb2_free(obj);
+#endif
     return 0;
 }
 #endif
@@ -1305,11 +1420,15 @@ logfile_relink_hashkey *allocate_logfile_relink_hashkey(void)
 {
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     logfile_relink_hashkey *r;
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
     r = pool_getablk(logfile_tmptbl_hashkey_pool);
     Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     r->pool = logfile_tmptbl_hashkey_pool;
+#endif
+#else
+    r = comdb2_malloc(newsi_ma, sizeof(logfile_relink_hashkey));
 #endif
     return r;
 #else
@@ -1341,12 +1460,16 @@ static int return_logfile_relink_hashkey(void *obj, void *arg)
         rc = 0;
     }
     pthread_mutex_destroy(&ent->mtx);
+#ifdef NEWSI_MEMPOOL
     Pthread_mutex_lock(&logfile_tmptbl_hashkey_pool_lk);
 #ifdef NEWSI_DEBUG_POOL
     assert(ent->pool == logfile_tmptbl_hashkey_pool);
 #endif
     pool_relablk(logfile_tmptbl_hashkey_pool, obj);
     Pthread_mutex_unlock(&logfile_tmptbl_hashkey_pool_lk);
+#else
+    comdb2_free(obj);
+#endif
     return 0;
 }
 #endif
@@ -1370,6 +1493,7 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     if (!gbl_new_snapisol)
         return 0;
 
+#ifdef NEWSI_MEMPOOL
     fileid_pglogs_queue_pool = pool_setalloc_init(
         sizeof(struct fileid_pglogs_queue), stepup, malloc, free);
     pglogs_queue_cursor_pool = pool_setalloc_init(
@@ -1395,10 +1519,10 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     pglogs_relink_list_pool =
         pool_setalloc_init(sizeof(struct relink_list), stepup, malloc, free);
 
-    pthread_mutex_init(&fileid_pglogs_queue_lk, NULL);
-    pthread_mutex_init(&pglogs_queue_cursor_lk, NULL);
-    pthread_mutex_init(&ltran_pglogs_key_lk, NULL);
-    pthread_mutex_init(&asof_cursor_lk, NULL);
+    pthread_mutex_init(&fileid_pglogs_queue_pool_lk, NULL);
+    pthread_mutex_init(&pglogs_queue_cursor_pool_lk, NULL);
+    pthread_mutex_init(&ltran_pglogs_key_pool_lk, NULL);
+    pthread_mutex_init(&asof_cursor_pool_lk, NULL);
     pthread_mutex_init(&pglogs_commit_list_pool_lk, NULL);
     pthread_mutex_init(&pglogs_queue_key_pool_lk, NULL);
     pthread_mutex_init(&pglogs_key_pool_lk, NULL);
@@ -1407,12 +1531,14 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
     pthread_mutex_init(&pglogs_lsn_commit_list_pool_lk, NULL);
     pthread_mutex_init(&pglogs_relink_key_pool_lk, NULL);
     pthread_mutex_init(&pglogs_relink_list_pool_lk, NULL);
-
 #ifdef NEWSI_ASOF_USE_TEMPTABLE
     assert(sizeof(logfile_pglog_hashkey) == sizeof(logfile_relink_hashkey));
     logfile_tmptbl_hashkey_pool =
         pool_setalloc_init(sizeof(logfile_pglog_hashkey), stepup, malloc, free);
     pthread_mutex_init(&logfile_tmptbl_hashkey_pool_lk, NULL);
+#endif
+#else
+    newsi_ma = comdb2ma_create(0, 0, "newsi", COMDB2MA_MT_SAFE);
 #endif
 
     return 0;
@@ -3112,7 +3238,8 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
     struct page_logical_lsn_key *keylist =
         (struct page_logical_lsn_key *)pglogs;
 
-    if (!gbl_new_snapisol || !bdb_gbl_ltran_pglogs_hash_ready || !bdb_gbl_ltran_pglogs_hash_processed)
+    if (!gbl_new_snapisol || !bdb_gbl_ltran_pglogs_hash_ready ||
+        !bdb_gbl_ltran_pglogs_hash_processed)
         return 0;
 
 #ifdef NEWSI_STAT
@@ -3123,8 +3250,9 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
     rc = bdb_update_timestamp_lsn(bdb_state, timestamp, logical_commit_lsn,
                                   context);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s failed to update bdb_gbl_timestamp_lsn, rc = %d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s failed to update bdb_gbl_timestamp_lsn, rc = %d\n", __func__,
+               rc);
         return rc;
     }
 
@@ -4921,9 +5049,9 @@ step1:
             }
 #if MERGE_DEBUG
             printf("FOUND:\n\tkeylen=%d\n\tkey=\"", keysize_sd);
-            hexdump(key_sd, keysize_sd);
+            hexdump(LOGMSG_USER, key_sd, keysize_sd);
             printf("\"\n\tdatalen=%d\n\tdata=\"", dtasize_sd);
-            hexdump(dta_sd, dtasize_sd);
+            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
             printf("\"\n");
 #endif
         }
@@ -4949,25 +5077,25 @@ step1:
         printf("find bdb_btree_merge RL_PO\n");
         if (dta_rl) {
             printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
         } else {
             printf("dta_rl == NULL\n");
         }
         if (dta_po) {
             printf("dta_po == \n");
-            hexdump(dta_po, dtasize_po);
+            hexdump(LOGMSG_USER, dta_po, dtasize_po);
         } else {
             printf("dta_po == NULL\n");
         }
         if (key_rl) {
             printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            hexdump(LOGMSG_USER, key_rl, keysize_rl);
         } else {
             printf("key_rl == NULL\n");
         }
         if (key_po) {
             printf("key_po == \n");
-            hexdump(key_po, keysize_po);
+            hexdump(LOGMSG_USER, key_po, keysize_po);
         } else {
             printf("key_po == NULL\n");
         }
@@ -4987,25 +5115,25 @@ step1:
         printf("find bdb_btree_merge PO_SD\n");
         if (dta_po) {
             printf("dta_po == \n");
-            hexdump(dta_po, dtasize_po);
+            hexdump(LOGMSG_USER, dta_po, dtasize_po);
         } else {
             printf("dta_po == NULL\n");
         }
         if (dta_sd) {
             printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         } else {
             printf("dta_sd == NULL\n");
         }
         if (key_po) {
             printf("key_po == \n");
-            hexdump(key_po, keysize_po);
+            hexdump(LOGMSG_USER, key_po, keysize_po);
         } else {
             printf("key_po == NULL\n");
         }
         if (key_sd) {
             printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            hexdump(LOGMSG_USER, key_sd, keysize_sd);
         } else {
             printf("key_sd == NULL\n");
         }
@@ -5024,25 +5152,25 @@ step1:
         printf("find bdb_btree_merge BDBC_DT\n");
         if (dta_rl) {
             printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
         } else {
             printf("dta_rl == NULL\n");
         }
         if (dta_sd) {
             printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         } else {
             printf("dta_sd == NULL\n");
         }
         if (key_rl) {
             printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            hexdump(LOGMSG_USER, key_rl, keysize_rl);
         } else {
             printf("key_rl == NULL\n");
         }
         if (key_sd) {
             printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            hexdump(LOGMSG_USER, key_sd, keysize_sd);
         } else {
             printf("key_sd == NULL\n");
         }
@@ -5070,25 +5198,25 @@ step1:
         printf("find bdb_btree_merge BDBC_IX\n");
         if (dta_rl) {
             printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
         } else {
             printf("dta_rl == NULL\n");
         }
         if (dta_sd) {
             printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         } else {
             printf("dta_sd == NULL\n");
         }
         if (key_rl) {
             printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            hexdump(LOGMSG_USER, key_rl, keysize_rl);
         } else {
             printf("key_rl == NULL\n");
         }
         if (key_sd) {
             printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            hexdump(LOGMSG_USER, key_sd, keysize_sd);
         } else {
             printf("key_sd == NULL\n");
         }
@@ -5745,25 +5873,25 @@ step1:
         printf("move bdb_btree_merge BDBC_DT\n");
         if (dta_rl) {
             printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
         } else {
             printf("dta_rl == NULL\n");
         }
         if (dta_sd) {
             printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         } else {
             printf("dta_sd == NULL\n");
         }
         if (key_rl) {
             printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            hexdump(LOGMSG_USER, key_rl, keysize_rl);
         } else {
             printf("key_rl == NULL\n");
         }
         if (key_sd) {
             printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            hexdump(LOGMSG_USER, key_sd, keysize_sd);
         } else {
             printf("key_sd == NULL\n");
         }
@@ -5779,25 +5907,25 @@ step1:
         printf("move bdb_btree_merge BDBC_IX\n");
         if (dta_rl) {
             printf("dta_rl == \n");
-            hexdump(dta_rl, dtasize_rl);
+            hexdump(LOGMSG_USER, dta_rl, dtasize_rl);
         } else {
             printf("dta_rl == NULL\n");
         }
         if (dta_sd) {
             printf("dta_sd == \n");
-            hexdump(dta_sd, dtasize_sd);
+            hexdump(LOGMSG_USER, dta_sd, dtasize_sd);
         } else {
             printf("dta_sd == NULL\n");
         }
         if (key_rl) {
             printf("key_rl == \n");
-            hexdump(key_rl, keysize_rl);
+            hexdump(LOGMSG_USER, key_rl, keysize_rl);
         } else {
             printf("key_rl == NULL\n");
         }
         if (key_sd) {
             printf("key_sd == \n");
-            hexdump(key_sd, keysize_sd);
+            hexdump(LOGMSG_USER, key_sd, keysize_sd);
         } else {
             printf("key_sd == NULL\n");
         }

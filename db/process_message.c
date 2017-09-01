@@ -997,10 +997,12 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                gbl_new_snapisol_logging ? "ENABLED" : "DISABLED",
                gbl_new_snapisol_asof ? "ENABLED" : "DISABLED");
         bdb_osql_trn_clients_status();
+#ifdef NEWSI_MEMPOOL
         if (gbl_new_snapisol) {
             logmsg(LOGMSG_USER, "newsi memory pool stat:\n");
             bdb_newsi_mempool_stat();
         }
+#endif
 #ifdef NEWSI_STAT
         bdb_print_logfile_pglogs_stat();
     } else if (tokcmp(tok, ltok, "clear_newsi_status") == 0) {
