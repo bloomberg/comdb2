@@ -3114,7 +3114,7 @@ static int bdb_update_relinks_fileid_queues(void *bdb_state,
 
 static int bdb_update_pglogs_fileid_queues(
     void *bdb_state, unsigned long long logical_tranid, int is_logical_commit,
-    DB_LSN commit_lsn, struct page_logical_lsn_key *keylist, unsigned int nkeys)
+    DB_LSN commit_lsn, uint32_t gen, struct page_logical_lsn_key *keylist, unsigned int nkeys)
 {
     int j, count;
     struct fileid_pglogs_queue *fileid_queue = NULL;
@@ -3172,6 +3172,8 @@ static int bdb_update_pglogs_fileid_queues(
         lcommit->logical_tranid = logical_tranid;
         pthread_mutex_lock(&bdb_asof_current_lsn_mutex);
         listc_abl(&pglogs_commit_list, lcommit);
+        bdb_latest_commit_lsn = commit_lsn;
+        bdb_latest_commit_gen = gen;
         pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
     }
 
@@ -3227,8 +3229,8 @@ struct pglog_queue_heads {
 int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
                                   unsigned int nkeys, int is_logical_commit,
                                   unsigned long long logical_tranid,
-                                  DB_LSN logical_commit_lsn, int32_t timestamp,
-                                  unsigned long long context)
+                                  DB_LSN logical_commit_lsn, uint32_t gen,
+                                  int32_t timestamp, unsigned long long context)
 {
     int rc = 0;
     int bdberr = 0;
@@ -3254,7 +3256,7 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
     }
 
     bdb_update_pglogs_fileid_queues(bdb_state, logical_tranid,
-                                    is_logical_commit, logical_commit_lsn,
+                                    is_logical_commit, logical_commit_lsn, gen,
                                     keylist, nkeys);
 
 #ifdef NEWSI_STAT
