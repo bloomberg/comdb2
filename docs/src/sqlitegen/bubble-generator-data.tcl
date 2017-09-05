@@ -544,7 +544,7 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
-      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line foreign-key-def }
       {line WITH DBPAD = signed-number }
   }
 
@@ -552,9 +552,25 @@ set all_graphs {
       or
       {line PRIMARY KEY ( column-list ) }
       {line UNIQUE ( column-list ) }
-      {stack
-          {line FOREIGN KEY ( column-list ) }
-          {line REFERENCES ref-table-name ( ref-column-list ) }
+      {line FOREIGN KEY ( column-list ) foreign-key-def}
+  }
+
+  foreign-key-def {
+      stack
+      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {opt
+          {loop
+              {line ON
+                  {or
+                      {line UPDATE}
+                      {line DELETE}
+                  }
+                  {or
+                      {line NO ACTION}
+                      {line CASCADE}
+                  }
+              }
+          }
       }
   }
 
