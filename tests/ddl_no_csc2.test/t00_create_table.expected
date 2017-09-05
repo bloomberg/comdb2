@@ -490,11 +490,24 @@ constraints
 	}
 ')
 [CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1)] failed with rc -3 near ")": syntax error
+[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE SET NULL)] failed with rc -3 Actions other than cascading delete and update are currently not supported in Comdb2.
+[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE SET DEFAULT)] failed with rc -3 Actions other than cascading delete and update are currently not supported in Comdb2.
+[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE RESTRICT)] failed with rc -3 Actions other than cascading delete and update are currently not supported in Comdb2.
+[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE junk)] failed with rc -3 near "junk": syntax error
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
 (tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t4', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
+(tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
+(tablename='t5', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
@@ -519,6 +532,48 @@ constraints
 	}
 ')
 (type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" (i);', csc2=NULL)
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+constraints
+	{
+		"COMDB2_PK" -> <"t1":"COMDB2_PK"> on delete cascade 
+	}
+')
+(type='index', name='$COMDB2_PK_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_6CBCA552" on "t3" (i);', csc2=NULL)
+(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+constraints
+	{
+		"COMDB2_PK" -> <"t1":"COMDB2_PK"> on update cascade on delete cascade 
+	}
+')
+(type='index', name='$COMDB2_PK_23FD3395', tbl_name='t4', rootpage=11, sql='create index "$COMDB2_PK_23FD3395" on "t4" (i);', csc2=NULL)
+(type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int);', csc2='schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+constraints
+	{
+		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
+	}
+')
+(type='index', name='$COMDB2_PK_3AE602D4', tbl_name='t5', rootpage=13, sql='create index "$COMDB2_PK_3AE602D4" on "t5" (i);', csc2=NULL)
 [INSERT INTO t1 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't1'. unable to add record rc = 318
 [INSERT INTO t2 VALUES(NULL)] failed with rc 4 Null constraint violation for column 'i' on table 't2'. unable to add record rc = 318
 [INSERT INTO t3 VALUES(1, NULL)] failed with rc 4 Null constraint violation for column 'j' on table 't3'. unable to add record rc = 318
