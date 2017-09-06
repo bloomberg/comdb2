@@ -54,8 +54,8 @@
 
 /* bdb routines to support schema change */
 
-int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
-                   const char table[], int fastinit)
+static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
+                   const char table[], const char *newtable, int fastinit)
 {
     int rc;
     bdb_state_type *bdb_state;
@@ -78,7 +78,8 @@ int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
 
     /* TODO fail gracefully now that inline? */
     /* reload the changed table (if necesary) and update the schemas in memory*/
-    if ((rc = bdb_state->callback->scdone_rtn(bdb_state_in, table, fastinit))) {
+    if ((rc = bdb_state->callback->scdone_rtn(bdb_state_in, table,
+                                              (char*)newtable, fastinit))) {
         if (rc == BDBERR_DEADLOCK)
             rc = DB_LOCK_DEADLOCK;
         logmsg(LOGMSG_ERROR, "bdb_scdone_int: callback failed\n");
@@ -93,12 +94,18 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
 {
     int rc = 0;
     const char *table = (const char *)scdoneop->table.data;
+    const char *newtable = NULL;
 
     uint32_t type;
     assert(sizeof(type) == scdoneop->fastinit.size);
     memcpy(&type, scdoneop->fastinit.data, sizeof(type));
     scdone_t sctype = ntohl(type);
 
+    if(sctype == rename_table) {
+        assert(strlen(table)+1 < scdoneop->table.size);
+        newtable = &table[strlen(table)+1];
+    }
+ 
     switch (op) {
     /* for an UNDO record, berkeley expects us to set prev_lsn */
     case DB_TXN_FORWARD_ROLL:
@@ -110,7 +117,8 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
 
     /* make a copy of the row that's being deleted. */
     case DB_TXN_APPLY:
-        rc = bdb_scdone_int(dbenv->app_private, scdoneop->txnid, table, sctype);
+        rc = bdb_scdone_int(dbenv->app_private, scdoneop->txnid, table,
+                            newtable, sctype);
         break;
 
     case DB_TXN_SNAPISOL:
@@ -220,7 +228,8 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
 }
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, int *bdberr)
+                         tran_type *tran, const char *newtable,
+                         int *bdberr)
 {
     int rc = 0;
     DBT *dtbl = NULL;
@@ -235,6 +244,15 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         bzero(dtbl, sizeof(DBT));
         dtbl->data = bdb_state->name;
         dtbl->size = strlen(bdb_state->name) + 1;
+        if (type == rename_table) {
+            assert(newtable);
+            int len = dtbl->size+strlen(newtable)+1;
+            char *mashup = alloca(len);
+            memcpy(mashup, dtbl->data, dtbl->size);
+            memcpy(mashup+dtbl->size, newtable, strlen(newtable)+1);
+            dtbl->data = mashup;
+            dtbl->size = len; 
+        }
     }
 
     dtype.data = &sctype;

@@ -28,6 +28,18 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 
+static int reload_rename_table(const char *name, const char *newtable)
+{
+    struct db *db = getdbbyname(name);
+   
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
+        return -1;
+    }
+
+    return rename_db(db, newtable);
+}
+
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
     int bdberr, rc;
@@ -562,7 +574,7 @@ static int replicant_reload_views(const char *name)
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
 int scdone_callback(bdb_state_type *bdb_state, const char table[],
-                    scdone_t type)
+                    void *arg, scdone_t type)
 {
     switch (type) {
     case luareload:
@@ -584,6 +596,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
+    case rename_table: return reload_rename_table(table, (char*)arg);
     }
 
     int add_new_db = 0;
