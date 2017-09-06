@@ -101,10 +101,10 @@ install: all
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
 	rm -f db/copycomdb2.q
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
 	install -D cdb2_sqlreplay $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay
 	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
 	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
