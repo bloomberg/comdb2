@@ -2476,9 +2476,10 @@ gap_check:		max_lsn_dbtp = NULL;
 
 		__memp_sync_out_of_band(dbenv, &rp->lsn);
 		break;
+	case DB___txn_regop_rowlocks:
+        printf("Here\n");
 	case DB___txn_regop:
 	case DB___txn_regop_gen:
-	case DB___txn_regop_rowlocks:
 		;
 		extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
 		extern int gbl_dumptxn_at_commit;
