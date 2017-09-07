@@ -115,8 +115,10 @@ inline static void fill_mem_str(Mem *m, char *str)
     if(str) {
         m->z = str;
         m->n = strlen(str);
+        m->flags = MEM_Str | MEM_Ephem;
+    } else {
+        m->flags = MEM_Null;
     }
-    m->flags = MEM_Str | MEM_Ephem;
 }
 inline static void fill_mem_int(Mem *m, int val)
 {
