@@ -304,7 +304,6 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
    svc_cursor_t   *cur;
    bdb_state_type *state;
    int            bdberr = 0;
-   int            tblnum;
    int            ixnum;
    int            outlen;
    int            rc;
@@ -315,16 +314,15 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
       /* TODO: check the version here, after transaction is created */
 
       struct sql_thread *thd = pthread_getspecific(query_info_key);
-      get_sqlite_tblnum_and_ixnum(thd, rootpage, &tblnum, &ixnum);
+      db = get_sqlite_db(thd, rootpage, &ixnum);
 
-      if (tblnum<0 || tblnum >=thedb->num_dbs || thedb->dbs[tblnum]->nix < ixnum)
+      if (!db)
       {
          fprintf(stderr, "%s: failed to retrieve bdb_state for table rootpage=%d\n", 
                __func__, rootpage);
          return NULL;
       }
 
-      db = thedb->dbs[tblnum];
       sc = (ixnum<0)?db->schema:db->ixschema[ixnum];
       state = thedb->dbs[tblnum]->handle;
 

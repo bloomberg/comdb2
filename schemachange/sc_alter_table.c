@@ -393,7 +393,7 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
             /* Add table to the hash. */
             hash_add(thedb->db_hash, temp_newdb);
             create_sqlmaster_records(tran);
-            create_master_tables(); /* create sql statements */
+            create_sqlite_master(); /* create sql statements */
             ret = new_indexes_syntax_check(iq);
             newdb->ix_blob = temp_newdb->ix_blob;
             newdb->schema->ix_blob = newdb->ix_blob;
@@ -401,7 +401,7 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
             delete_db(temp_newdb_name);
             cleanup_newdb(temp_newdb);
             create_sqlmaster_records(tran);
-            create_master_tables(); /* create sql statements */
+            create_sqlite_master(); /* create sql statements */
             if (ret) {
                 sc_errf(s, "New indexes syntax error\n");
                 ret = SC_CSC2_ERROR;
@@ -732,7 +732,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         sc_errf(s, "create_sqlmaster_records failed\n");
         goto failed;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     for (indx = 0; indx < maxindx; indx++) {
         db = dbs[indx];
