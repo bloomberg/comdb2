@@ -6874,6 +6874,9 @@ void freeschema(struct schema *schema)
 void freedb_int(struct dbtable *db, struct dbtable *replace)
 {
     int i;
+    int dbs_idx;
+
+    dbs_idx = db->dbs_idx;
 
     free(db->lrlfname);
     free(db->dbname);
@@ -6909,9 +6912,10 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
         }
     }
 
-    if (replace)
+    if (replace) {
         memcpy(db, replace, sizeof(struct dbtable));
-    else
+        db->dbs_idx = dbs_idx;
+    } else
         free(db);
 }
 
