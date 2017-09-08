@@ -8577,7 +8577,6 @@ enum intv_enum {
         sec = -sec;                                                            \
         if (frac) {                                                            \
             sec--;                                                             \
-            frac = IPOW10(prec) - frac;                                        \
         }                                                                      \
     }                                                                          \
                                                                                \
@@ -10542,7 +10541,6 @@ int SERVER_INTVDSUS_to_CLIENT_PSTR2(S2C_FUNKY_ARGS)
         sec = -sec;                                                            \
         if (from_frac) {                                                       \
             sec--;                                                             \
-            from_frac = IPOW10(from_prec) - from_frac;                         \
         }                                                                      \
     }                                                                          \
                                                                                \
@@ -11681,7 +11679,6 @@ int CLIENT_INTVDSUS_to_SERVER_BCSTR(C2S_FUNKY_ARGS)
                                                                                \
     if (cin.sign == -1 && cin.from_frac) {                                     \
         sec--;                                                                 \
-        from_frac = IPOW10(from_prec) - from_frac;                             \
     }                                                                          \
                                                                                \
     int8_to_int8b(sec, (int8b *)&sec);                                         \
