@@ -623,12 +623,12 @@
                       (->> (gen/mix [w cas cas r])
                            (gen/clients)
                            (gen/stagger 1/10)
-                           (gen/time-limit 300)
+                           (gen/time-limit 10)
                            with-nemesis)
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
        :model       (model/cas-register-comdb2 [1 1])
-       :time-limit   300
+       :time-limit   180
        :recovery-time  30
        :checker     (checker/compose
                       {:perf  (checker/perf)

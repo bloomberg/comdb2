@@ -137,7 +137,7 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 )"
+stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) && sleep 2 && killall pmux || echo PMUX DOWN"
 
 COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
 export COMDB2AR_EXOPTS="-x $comdb2task"
@@ -153,6 +153,7 @@ copy_files_to_cluster()
 
         ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "killall pmux || echo PMUX DOWN" < /dev/null
         scp -o StrictHostKeyChecking=no $comdb2ar $node:${SRCHOME}
         scp -o StrictHostKeyChecking=no $comdb2task $node:${SRCHOME}
         # stop pmux on nodes first before copying and starting it
