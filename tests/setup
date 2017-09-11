@@ -22,6 +22,8 @@ for required in $vars; do
 #    echo "$required=$q"
 done
 
+DBDIR=$(realpath $DBDIR)
+
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
 

@@ -1694,7 +1694,7 @@ retry_connect:
         if (ret != 0)
             continue;
         hndl->connected_host = i;
-        hndl->hosts_connected[i] == 1;
+        hndl->hosts_connected[i] = 1;
         return 0;
     }
 

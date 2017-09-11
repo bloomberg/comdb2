@@ -294,6 +294,10 @@ Table constraint:
 
 ![TABLE CONSTRAINT](images/table-constraint.gif)
 
+Foreign key definition:
+
+![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
+
 Table options:
 
 ![TABLE OPTIONS](images/table-options.gif)

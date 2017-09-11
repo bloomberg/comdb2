@@ -9378,10 +9378,10 @@ int emit_sql_row(struct sqlthdstate *thd, struct column_info *cols,
         cols = malloc(ncols * sizeof(struct column_info));
         for (col = 0; col < ncols; col++) {
             const char *ctype = sqlite3_column_decltype(stmt, col);
+            const size_t size = sizeof(cols[col].column_name);
             cols[col].type = typestr_to_type(ctype);
-            snprintf(cols[col].column_name, sizeof(cols[col]), "%s",
+            snprintf(cols[col].column_name, size, "%s",
                      sqlite3_column_name(stmt, col));
-            cols[col].column_name[sizeof(cols[col]) - 1] = 0;
         }
         created_cols = 1;
     }
