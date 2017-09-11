@@ -823,11 +823,11 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
             if (strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                  if (hndl && (strcasecmp(hndl->cluster, "default") == 0)) {
-                    strcpy(hndl->cluster, tok);
-                  } else if (!hndl) {
-                    strcpy(cdb2_default_cluster, tok);
-                  }
+                    if (hndl && (strcasecmp(hndl->cluster, "default") == 0)) {
+                        strcpy(hndl->cluster, tok);
+                    } else if (!hndl) {
+                        strcpy(cdb2_default_cluster, tok);
+                    }
                 }
             } else if (strcasecmp("room", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
