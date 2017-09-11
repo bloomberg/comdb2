@@ -1408,7 +1408,10 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
     if (rc)
         return -1;
     rc = process_local_shadtbl_sc(clnt, bdberr);
-    if (rc) return -1;
+    if (rc == ERR_SC)
+        return ERR_SC;
+    if (rc)
+        return -1;
 
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {
@@ -2632,7 +2635,7 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
 }
 
 int osql_save_schemachange(struct sql_thread *thd,
-                           struct schema_change_type *sc)
+                           struct schema_change_type *sc, int usedb)
 {
     struct sqlclntstate *clnt = thd->sqlclntstate;
     osqlstate_t *osql = &thd->sqlclntstate->osql;
@@ -2640,7 +2643,8 @@ int osql_save_schemachange(struct sql_thread *thd,
     int bdberr = 0;
     void *packed_sc_data = NULL;
     size_t packed_sc_data_len;
-    int count = 0;
+    /* packed_sc_key[0]: sc seqnum; packed_sc_key[1]: db version */
+    int packed_sc_key[2] = {0, -1};
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
         !clnt->in_client_trans)
@@ -2669,10 +2673,16 @@ int osql_save_schemachange(struct sql_thread *thd,
                __func__, sc->table);
         return -1;
     }
-    if (clnt->ddl_tables)
-        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL, &count, NULL, NULL);
-    rc = bdb_temp_table_put(thedb->bdb_env, osql->sc_tbl, &count, sizeof(int),
-                            packed_sc_data, packed_sc_data_len, NULL, &bdberr);
+    if (clnt->ddl_tables) {
+        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL, &(packed_sc_key[0]),
+                  NULL, NULL);
+    }
+    if (usedb) {
+        packed_sc_key[1] = comdb2_table_version(sc->table);
+    }
+    rc = bdb_temp_table_put(thedb->bdb_env, osql->sc_tbl, &packed_sc_key,
+                            sizeof(packed_sc_key), packed_sc_data,
+                            packed_sc_data_len, NULL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error saving sc table for \'%s\'\n", __func__,
                sc->table);
@@ -2691,6 +2701,8 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
     struct temp_cursor *cur = osql->sc_cur;
     void *packed_sc_data = NULL;
     size_t packed_sc_data_len;
+    int *packed_sc_key;
+    size_t packed_sc_key_len;
 
     if (!cur) {
         return 0;
@@ -2707,8 +2719,12 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
 
     while (rc == 0) {
         struct schema_change_type *sc = NULL;
+        packed_sc_key = bdb_temp_table_key(cur);
+        packed_sc_key_len = bdb_temp_table_keysize(cur);
         packed_sc_data = bdb_temp_table_data(cur);
         packed_sc_data_len = bdb_temp_table_datasize(cur);
+
+        assert(packed_sc_key_len == (sizeof(int) * 2));
 
         sc = new_schemachange_type();
         if (!sc) {
@@ -2718,6 +2734,25 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
         if (unpack_schema_change_type(sc, packed_sc_data, packed_sc_data_len)) {
             logmsg(LOGMSG_ERROR, "%s: failed to unpack sc\n", __func__);
             return -1;
+        }
+
+        if (packed_sc_key[1] >= 0 &&
+            packed_sc_key[1] != comdb2_table_version(sc->table)) {
+            free_schema_change_type(sc);
+            osql->xerr.errval = ERR_SC;
+            errstat_cat_str(&(osql->xerr),
+                            "stale table version for schema change");
+            return ERR_SC;
+        } else if (packed_sc_key[1] >= 0) {
+            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, sc->table,
+                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb,
+                                 packed_sc_key[1]);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: error writting record to master in offload mode!\n",
+                       __func__);
+                return SQLITE_INTERNAL;
+            }
         }
 
         rc = osql_send_schemachange(osql->host, osql->rqid, osql->uuid, sc,

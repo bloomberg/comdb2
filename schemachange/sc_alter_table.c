@@ -83,8 +83,14 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
         /* these checks should be present in dryrun_int as well */
         if (changed == SC_BAD_NEW_FIELD) {
             sc_errf(s, "cannot add new field without dbstore or null\n");
+            if (s->iq)
+                reqerrstr(s->iq, ERR_SC,
+                          "cannot add new field without dbstore or null");
         } else if (changed == SC_BAD_INDEX_CHANGE) {
             sc_errf(s, "cannot change index referenced by other tables\n");
+            if (s->iq)
+                reqerrstr(s->iq, ERR_SC,
+                          "cannot change index referenced by other tables");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;
