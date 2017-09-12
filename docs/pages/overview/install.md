@@ -84,8 +84,6 @@ Installing (from source or a package) creates a directory structure like this:
 ├── lib
 │   ├── libcdb2api.a
 │   ├── libcdb2api.so
-│   └── libcdb2protobuf.a
-│   └── libcdb2protobuf.so
 └── var
     └── cdb2
         ├── databases

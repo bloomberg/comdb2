@@ -278,9 +278,9 @@ bdb_osql_trn_t *bdb_osql_trn_register(bdb_state_type *bdb_state,
     }
 
     // Always get the durable lsn from master
-    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL || 
-        shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) && 
-        durable_lsns && bdb_state->attr->request_durable_lsn_from_master) {
+    if ((shadow_tran->tranclass == TRANCLASS_SNAPISOL ||
+         shadow_tran->tranclass == TRANCLASS_SERIALIZABLE) &&
+        durable_lsns) {
         DB_LSN my_lsn, dur_lsn, arg_lsn;
         uint32_t my_gen;
 
@@ -405,39 +405,6 @@ done:
     if (pthread_mutex_unlock(&trn_repo_mtx)) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_unlock %d %d\n", rc, errno);
         *bdberr = BDBERR_BADARGS;
-    }
-
-    /* Always block and wait for our commit-lsn to become durable. 
-     * If we have requested a durable lsn from the master, we still
-     * need to make sure that the local lsn is equivalent.  Waiting
-     * for the current lsn & gen to become durable covers this case. */
-    if (!rc && durable_lsns) {
-        DB_LSN wait_lsn;
-        uint32_t wait_gen;
-
-        if (durable_lsn.file) {
-            wait_lsn = durable_lsn;
-            wait_gen = durable_gen;
-        }
-        else {
-            wait_lsn = shadow_tran->snapy_commit_lsn;
-            wait_gen = shadow_tran->snapy_commit_generation;
-        }
-
-        if (rc = bdb_durable_block(bdb_state, &wait_lsn, 
-                    wait_gen, durable_lsn.file?1:0)) {
-            logmsg(LOGMSG_WARN, "%s failed waiting for [%d][%d] to become durable "
-                    "(client should retry)\n",
-                    __func__, shadow_tran->snapy_commit_lsn.file,
-                    shadow_tran->snapy_commit_lsn.offset);
-            pthread_mutex_lock(&trn_repo_mtx);
-            listc_rfl(&trn_repo->trns, trn);
-            pthread_mutex_unlock(&trn_repo_mtx);
-            pthread_mutex_destroy(&trn->log_mtx);
-            free(trn);
-            *bdberr = BDBERR_NOT_DURABLE;
-            return NULL;
-        }
     }
 
     if (gbl_new_snapisol) {

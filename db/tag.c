@@ -1727,8 +1727,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
         if (rc == 0 && (strcasecmp(schema->tag, ".ONDISK") == 0 ||
                         strcasecmp(schema->tag, ".NEW..ONDISK") == 0)) {
             if (alt == 0) {
-                char *tmp_altname = strdup(altname);
-                add_tag_alias(dbname, s, tmp_altname);
+                add_tag_alias(dbname, s, altname);
             } else {
                 snprintf(tmptagname, sizeof(tmptagname), ".NEW.%s", altname);
                 add_tag_alias(dbname, s, tmptagname);

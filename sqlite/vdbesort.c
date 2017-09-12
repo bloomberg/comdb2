@@ -1056,11 +1056,6 @@ static void vdbeSorterRecordFree(sqlite3 *db, SorterRecord *pRecord){
   }
 }
 
-/* COMDB2 MODIFICATION */
-/* forward declarations */
-void addVbdeSorterCost(const VdbeSorter *pCsr);
-void addVbdeToThdCost(int type);
-
 /*
 ** Free all resources owned by the object indicated by argument pTask. All 
 ** fields of *pTask are zeroed before returning.
@@ -1287,7 +1282,7 @@ void sqlite3VdbeSorterClose(sqlite3 *db, VdbeCursor *pCsr){
   pSorter = pCsr->uc.pSorter;
   if( pSorter ){
     /* COMDB2 MODIFICATION */
-    addVbdeSorterCost(pSorter);
+    addVdbeSorterCost(pSorter);
 
     sqlite3VdbeSorterReset(db, pSorter);
     sqlite3_free(pSorter->list.aMemory);
@@ -1833,7 +1828,7 @@ int sqlite3VdbeSorterWrite(
 
   assert( pSorter );
   /* COMDB2 MODIFICATION */
-  addVbdeToThdCost(VDBESORTER_WRITE);
+  addVdbeToThdCost(VDBESORTER_WRITE);
   pSorter->nwrite++;
 
 
@@ -2676,7 +2671,7 @@ int sqlite3VdbeSorterNext(sqlite3 *db, const VdbeCursor *pCsr, int *pbEof){
   assert( pCsr->eCurType==CURTYPE_SORTER );
   pSorter = pCsr->uc.pSorter;
   /* COMDB2 MODIFICATION */
-  addVbdeToThdCost(VDBESORTER_MOVE);
+  addVdbeToThdCost(VDBESORTER_MOVE);
   pSorter->nmove++;
 
   assert( pSorter->bUsePMA || (pSorter->pReader==0 && pSorter->pMerger==0) );

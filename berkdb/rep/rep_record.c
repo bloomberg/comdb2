@@ -956,13 +956,14 @@ send:			if (__rep_send_message(dbenv,
 			R_LOCK(dbenv, &dblp->reginfo);
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
-            logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                    __func__, __LINE__);
-			(void)__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0,
-			    NULL);
-		}
-		/*
+                        logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER: "
+                                            "gen=%u egen=%d\n",
+                               __func__, __LINE__, rep->gen, rep->egen);
+                        (void)__rep_send_message(dbenv, db_eid_broadcast,
+                                                 REP_NEWMASTER, &lsn, NULL, 0,
+                                                 NULL);
+                }
+                /*
 		 * Otherwise, clients just ignore it.
 		 */
 		goto errlock;
@@ -6050,12 +6051,6 @@ __rep_verify_match(dbenv, rp, savetime)
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 	    __func__, prevlsn.file, prevlsn.offset, trunclsn.file,
 	    trunclsn.offset);
-
-	/* 
-	 * Closes a race: until the txn_regop, new snapshots start with genid 0.  The first 
-	 * commit-record will be applied to all of their shadows.
-	 */
-    set_commit_context(0, NULL, &trunclsn, NULL, 0);
 
 	/*
 	 * The log has been truncated (either directly by us or by __db_apprec)

@@ -1282,7 +1282,7 @@ public class Comdb2Handle extends AbstractConnection {
         }
 
         // We've run out of retries: if this was a begin, set inTxn to false
-        if (isBegin)
+        if (is_begin)
             inTxn = false;
 
         tdlog(Level.FINER, "Maximum retries done: returning IO_ERROR, is_rollback=%b", is_rollback);

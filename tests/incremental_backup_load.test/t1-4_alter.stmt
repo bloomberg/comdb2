@@ -1,0 +1,10 @@
+ALTER TABLE t1 {
+    schema {
+        int id
+        cstring name[5]
+    }
+
+    keys {
+        "key" = name
+    }
+}

@@ -122,6 +122,11 @@ extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
+extern int gbl_block_set_commit_genid_trace;
+extern int gbl_debug_high_availability_flag;
+extern int gbl_abort_on_unset_ha_flag;
+extern int gbl_write_dummy_trace;
+extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
 
 extern long long sampling_threshold;
@@ -736,6 +741,7 @@ int free_gbl_tunables()
         free(gbl_tunables->array[i]);
     }
     hash_free(gbl_tunables->hash);
+    free(gbl_tunables->array);
     pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
     gbl_tunables = 0;

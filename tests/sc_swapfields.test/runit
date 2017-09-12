@@ -201,6 +201,7 @@ while [ ! -f alter1.done ] ; do
         failexit " error inserting out=$out"
     fi
     j=$((j+1))
+    sleep 0.001
 done
 
 

@@ -53,20 +53,12 @@ pbuf_SOURCES:=sqlquery.pb-c.c sqlresponse.pb-c.c bpfunc.pb-c.c
 pbuf_abs_SOURCES:=$(foreach src,$(pbuf_SOURCES),protobuf/$(src))
 pbuf_OBJS:=$(patsubst %.c,%.o,$(pbuf_abs_SOURCES))
 
-protobuf/libcdb2protobuf.a: $(pbuf_OBJS)
-	$(AR) $(ARFLAGS) $@ $^
-
-protobuf/libcdb2protobuf.so: $(pbuf_OBJS)
-	$(CC) $(CFLAGS) $(SHARED) $^ -o $@
-
 $(pbuf_OBJS): $(pbuf_MEMGEN)
 
 .PRECIOUS: %.pb-c.c
 %.pb-c.c: %.proto
 	protoc-c -Iprotobuf $(<) --c_out=protobuf
 
-ARS+=protobuf/libcdb2protobuf.a
-ARS+=protobuf/libcdb2protobuf.so
 OBJS+=$(pbuf_OBJS)
 # Everything in protobuf is generated
 GENC+=$(pbuf_abs_SOURCES)

@@ -7054,7 +7054,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
         }
 
-        return rc == SC_COMMIT_PENDING || !rc ? 0 : ERR_SC;
+        if (!rc || rc == SC_COMMIT_PENDING)
+            return 0;
+        else if (rc == SC_MASTER_DOWNGRADE)
+            return ERR_NOMASTER;
+        else
+            return ERR_SC;
     } break;
     case OSQL_BPFUNC: {
         uint8_t *p_buf_end = (uint8_t *)msg + sizeof(osql_bpfunc_t) + msglen;

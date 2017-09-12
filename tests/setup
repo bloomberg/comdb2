@@ -22,6 +22,8 @@ for required in $vars; do
 #    echo "$required=$q"
 done
 
+DBDIR=$(realpath $DBDIR)
+
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
 
@@ -200,8 +202,12 @@ done >> $DBDIR/${DBNAME}.lrl
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
 PARAMS="$DBNAME --no-global-lrl"
+
+# The script occasionally fails here. Let's find out what the rc is.
+set +e
 $comdb2task --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS  >$TESTDIR/logs/${DBNAME}.init 2>&1
 rc=$?
+set -e
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
     echo "Error rc=$rc while initializing DB, see $TESTDIR/logs/${DBNAME}.init "

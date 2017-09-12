@@ -1557,7 +1557,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     if ((hndl->firstresponse &&
          (!hndl->lastresponse ||
           (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
-        (!hndl->firstresponse)) {
+        (!hndl->firstresponse) || hndl->in_trans) {
         sbuf2close(sb);
     } else {
         sbuf2free(sb);
@@ -1694,7 +1694,7 @@ retry_connect:
         if (ret != 0)
             continue;
         hndl->connected_host = i;
-        hndl->hosts_connected[i] == 1;
+        hndl->hosts_connected[i] = 1;
         return 0;
     }
 
