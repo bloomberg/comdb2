@@ -368,7 +368,6 @@ comment:	T_COMMENT
 */
 
 keystruct:	T_KEYS '{' multikeydef '}' 
-        |
 		;
 
 multikeydef:	keydef multikeydef
