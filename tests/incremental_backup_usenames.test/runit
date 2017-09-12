@@ -4,6 +4,7 @@
 [[ $debug == 1 ]] && set -x
 
 export dbname=$1
+export COMDB2AR_EXOPTS="-x $comdb2task"
 
 
 if [[ -z "$dbname" ]] ; then
@@ -37,9 +38,9 @@ function make_base {
   basename=${TMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+      ssh $machine "${SRCHOME}/comdb2ar $COMDB2AR_EXOPTS c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
   else
-      comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+      comdb2ar $COMDB2AR_EXOPTS c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
   fi
   echo "~~~~~~~~~~"
   echo $basename
@@ -55,9 +56,9 @@ function make_backup {
   backuplist+=($backupname)
   backuploc=${TMPDIR}/backups/${backupname}
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+      ssh $machine "${SRCHOME}/comdb2ar $COMDB2AR_EXOPTS c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
   else
-      comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+      comdb2ar $COMDB2AR_EXOPTS c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
   fi
   echo "~~~~~~~~~~"
   echo ${TMPDIR}/backups/${backupname}
@@ -74,7 +75,7 @@ function test_restoredb {
   done
 
   echo $restorecmd
-  $restorecmd | comdb2ar x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
+  $restorecmd | comdb2ar $COMDB2AR_EXOPTS x -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
   egrep -v "cluster nodes" ${TMPDIR}/restore/${dbname}.lrl > ${TMPDIR}/restore/${dbname}.single.lrl
 
   # Rename some files
