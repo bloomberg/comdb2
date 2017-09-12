@@ -82,7 +82,7 @@ int gbl_sc_thd_failed = 0;
 /* All writer threads have to grab the lock in read/write mode.  If a live
  * schema change is in progress then they have to do extra stuff. */
 int sc_live = 0;
-/*static pthread_rwlock_t sc_rwlock = PTHREAD_RWLOCK_INITIALIZER;*/
+pthread_rwlock_t sc_live_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 int schema_change = SC_NO_CHANGE; /*static int schema_change_doomed = 0;*/
 
@@ -233,9 +233,11 @@ void reset_sc_stat()
  * change (removing temp tables etc). */
 void live_sc_off(struct dbtable *db)
 {
+    pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_to = NULL;
     db->sc_from = NULL;
     sc_live = 0;
+    pthread_rwlock_unlock(&sc_live_rwlock);
 }
 
 int reload_lua()

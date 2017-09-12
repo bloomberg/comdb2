@@ -534,9 +534,10 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
                         const void *old_dta, unsigned long long del_keys,
                         blob_buffer_t *oldblobs)
 {
-
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
     if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
-        return 0;
+        goto out;
     }
 
     int stripe = get_dtafile_from_genid(genid);
@@ -544,27 +545,29 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
         logmsg(LOGMSG_ERROR,
                "live_sc_post_delete: genid 0x%llx stripe %d out of range!\n",
                genid, stripe);
-        return 0;
+        goto out;
     }
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
     if (!sc_genids[stripe]) {
         /* A genid of zero is invalid.  So, if the schema change cursor is at
          * genid zero it means pretty conclusively that it hasn't done anything
          * yet so we cannot possibly be behind the cursor. */
-        return 0;
+        goto out;
     }
 
     int is_gen_gt_scptr = is_genid_right_of_stripe_pointer(
         iq->usedb->handle, genid, sc_genids[stripe]);
     if (is_gen_gt_scptr) {
-        return 0;
+        goto out;
     }
 
     /* genid is older than schema change position - a delete from new
      * table will be required. */
 
-    return live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys,
-                                   oldblobs);
+    rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
+out:
+    pthread_rwlock_unlock(&sc_live_rwlock);
+    return rc;
 }
 
 int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
@@ -572,28 +575,35 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
                      blob_buffer_t *blobs, size_t maxblobs, int origflags,
                      int *rrn)
 {
-    if (!sc_live || iq->usedb->sc_from != iq->usedb) return 0;
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
+    if (!sc_live || iq->usedb->sc_from != iq->usedb) {
+        goto out;
+    }
 
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
         logmsg(LOGMSG_ERROR,
                "live_sc_post_add: genid 0x%llx stripe %d out of range!\n",
                genid, stripe);
-        return 0;
+        goto out;
     }
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
     if (!sc_genids[stripe]) {
         /* A genid of zero is invalid.  So, if the schema change cursor is at
          * genid zero it means pretty conclusively that it hasn't done anything
          * yet so we cannot possibly be behind the cursor. */
-        return 0;
+        goto out;
     }
     if (is_genid_right_of_stripe_pointer(iq->usedb->handle, genid,
                                          sc_genids[stripe])) {
-        return 0;
+        goto out;
     }
-    return live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
-                                maxblobs, origflags, rrn);
+    rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
+                              maxblobs, origflags, rrn);
+out:
+    pthread_rwlock_unlock(&sc_live_rwlock);
+    return rc;
 }
 
 /* should be really called live_sc_post_update_delayed_key_adds() */
@@ -601,9 +611,12 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len)
 {
-
-    return live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
-                                                    ins_keys, od_len);
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
+    rc = live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
+                                                  ins_keys, od_len);
+    pthread_rwlock_unlock(&sc_live_rwlock);
+    return rc;
 }
 
 /* Updating of a record when schemachange is going means we have to check
@@ -635,8 +648,10 @@ int live_sc_post_update(struct ireq *iq, void *trans,
                         int rrn, int deferredAdd, blob_buffer_t *oldblobs,
                         blob_buffer_t *newblobs)
 {
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
     if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
-        return 0;
+        goto out;
     }
 
     int stripe = get_dtafile_from_genid(oldgenid);
@@ -644,14 +659,14 @@ int live_sc_post_update(struct ireq *iq, void *trans,
         logmsg(LOGMSG_ERROR,
                "live_sc_post_update: oldgenid 0x%llx stripe %d out of range!\n",
                oldgenid, stripe);
-        return 0;
+        goto out;
     }
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
     if (!sc_genids[stripe]) {
         /* A genid of zero is invalid.  So, if the schema change cursor is at
          * genid zero it means pretty conclusively that it hasn't done anything
          * yet so we cannot possibly be behind the cursor. */
-        return 0;
+        goto out;
     }
     /*
     if(get_dtafile_from_genid(newgenid) != stripe)
@@ -666,7 +681,6 @@ int live_sc_post_update(struct ireq *iq, void *trans,
         iq->usedb->handle, oldgenid, sc_genids[stripe]);
     int is_newgen_gt_scptr = is_genid_right_of_stripe_pointer(
         iq->usedb->handle, newgenid, sc_genids[stripe]);
-    int rc = 0;
 
     // spelling this out for legibility, various situations:
     if (is_newgen_gt_scptr &&
@@ -708,6 +722,8 @@ int live_sc_post_update(struct ireq *iq, void *trans,
 
     if (iq->debug) reqpopprefixes(iq, 1);
 
+out:
+    pthread_rwlock_unlock(&sc_live_rwlock);
     return rc;
 }
 
