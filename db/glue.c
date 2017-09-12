@@ -3580,8 +3580,11 @@ int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
     struct start_sc *sc;
     int len;
     const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
+    if (from == NULL) {
+        from = "unknown";
+    }
 
-    len = offsetof(struct start_sc, host) + strlen(gbl_mynode) + 1;
+    len = offsetof(struct start_sc, host) + strlen(from) + 1;
 
     sc = alloca(len);
     sc->seed = flibc_htonll(seed);

@@ -174,7 +174,7 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
     gbl_schema_change_in_progress = running;
     if (running) {
         sc_seed = seed;
-        sc_host = crc32c(host, strlen(host));
+        sc_host = host ? crc32c(host, strlen(host)) : 0;
         sc_time = time;
     } else {
         sc_seed = 0;

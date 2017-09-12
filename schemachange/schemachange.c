@@ -182,7 +182,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         logmsg(
             LOGMSG_INFO,
             "Resuming schema change: fetched seed 0x%llx, original node %s\n",
-            seed, node);
+            seed, node ? node : "(unknown)");
         if (stopsc) {
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
