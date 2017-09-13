@@ -1,4 +1,8 @@
-include $(TESTSROOTDIR)/testcase.mk
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
 include $(TESTSROOTDIR)/../main.mk
 export TEST_TIMEOUT=3m
 CFLAGS+=-I$(TESTSROOTDIR)/../bbinc -D_GNU_SOURCE
