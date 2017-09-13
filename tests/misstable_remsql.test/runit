@@ -108,8 +108,8 @@ chmod +666 $srcdbdir/$srcdbname.tmpdbs/*
 chmod +666 $srcdbdir/$srcdbname.txn/*
 
 #echo "Creating archive"
-echo "comdb2ar c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4"
-comdb2ar c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4
+echo "$COMDB2AR_EXE c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4"
+$COMDB2AR_EXE c $srclrl | /bb/bin/lz4 stdin stdout > ${srcdbdir}/db.lz4
 
 a_ssh=
 a_scp=
@@ -154,8 +154,8 @@ for node in `echo ${cluster} | tr ":" "\n"`; do
       echo "Failed to copy ${srcdbdir}/db.lz4 to $nodename"
       exit 1
    fi
-   echo $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | comdb2ar -C preserve x ${srcdbdir}"
-   $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | comdb2ar -C preserve x ${srcdbdir}"
+   echo $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | $COMDB2AR_EXE -C preserve x ${srcdbdir}"
+   $a_ssh $nodename "/bb/bin/lz4 -d ${srcdbdir}/db.lz4 stdout | $COMDB2AR_EXE -C preserve x ${srcdbdir}"
    if (( $? != 0 )) ; then
       echo "Failed to extract ${srcdbdir}/db.lz4 on $nodename"
       exit 1

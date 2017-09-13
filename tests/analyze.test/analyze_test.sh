@@ -290,7 +290,7 @@ function countrecs
     # print enter-function
     [[ "$ttrc" == "1" ]] && echo "countrecs $1 $2" 2>&1
 
-    x=$(cdb2sql --tabs ${CDB2_OPTIONS} $db default "select count(*) from $tbl" 2>&1)
+    x=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "select count(*) from $tbl" 2>&1)
 
     echo $x
     return 0
@@ -372,7 +372,7 @@ function countrand
         b=$(( RANDOM % b_scale ))
         c=$(( RANDOM % c_scale ))
         d=$(( RANDOM % d_scale ))
-        x=$( cdb2sql ${CDB2_OPTIONS} $db default "select count(*) from $tbl where a=$a and b=$b and c=$c and d=$d" 2>&1 )
+        x=$( $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "select count(*) from $tbl where a=$a and b=$b and c=$c and d=$d" 2>&1 )
 
         [[ "$verbose" == "1" ]] && echo >&2 "$x"
 
@@ -423,7 +423,7 @@ function explain_query
     typeset tbl=$2
 
     # run command
-    cdb2sql ${CDB2_OPTIONS} $db default "explain select * from $tbl where a=1 and b=2 and c=3 and d=4"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "explain select * from $tbl where a=1 and b=2 and c=3 and d=4"
 }
 
 
@@ -529,7 +529,7 @@ function get_sqlite_stat
     typeset ix=$3
 
     #run
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "select stat from sqlite_stat1 where tbl='$tbl' and idx like '\$${ix}_%'" 2>&1 
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "select stat from sqlite_stat1 where tbl='$tbl' and idx like '\$${ix}_%'" 2>&1 
     return 0
 }
 
@@ -779,7 +779,7 @@ function analyze_all_opts_driver
     #-T compression threads
     #-t concurrent analyze threads 
 #cdb2sql --tabs ${CDB2_OPTIONS} $db default "ANALYZE $cm OPTIONS THREADS $tbt, SUMMARIZE $cmt"
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"\",\"$cmp\")" | grep -v "Analyze completed table"
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"\",\"$cmp\")" | grep -v "Analyze completed table"
     return $?
 }
 
@@ -800,7 +800,7 @@ function analyze_opts_driver
     # run 
     #was comdb2sc -c $cmp -T $cmt -H $thr $db analyze $tbl
     #sql:  'analyze 3 OPTIONS threads 3, SUMMARIZE 4'
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"$tbl\",\"$cmp\")" | grep -v "Analyze completed table"
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"$tbl\",\"$cmp\")" | grep -v "Analyze completed table"
     return $?
 }
 
@@ -817,7 +817,7 @@ function analyze_all_driver
 
     # run 
     #comdb2sc -c $cmp $db analyze
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"\",\"$cmp\")" | grep -v "Analyze completed table"
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"\",\"$cmp\")" | grep -v "Analyze completed table"
     return $?
 }
 
@@ -835,7 +835,7 @@ function analyze_driver
 
     # run 
     #comdb2sc -c $cmp $db analyze $tbl
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"$tbl\",\"$cmp\")" | grep -v "Analyze completed table"
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.analyze(\"$tbl\",\"$cmp\")" | grep -v "Analyze completed table"
     return $?
 }
 
@@ -852,7 +852,7 @@ function backout_driver
 
     # run
     #comdb2sc -b $db analyze $tbl
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.send(\"analyze backout $tbl\")" >> backout.res
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.send(\"analyze backout $tbl\")" >> backout.res
     return $?
 }
 
@@ -868,7 +868,7 @@ function backout_all_driver
 
     # run
     #comdb2sc -b $db analyze
-    cdb2sql --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.send(\"analyze backout\")" >> backout.res
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $db default "exec procedure sys.cmd.send(\"analyze backout\")" >> backout.res
     return $?
 }
 
