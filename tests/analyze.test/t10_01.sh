@@ -11,7 +11,7 @@ wpid=-1
 rpid=-1
 apid=-1
 
-cdb2sql ${CDB2_OPTIONS} $dbname default - <<EOF > /dev/null 2>&1
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<EOF > /dev/null 2>&1
 drop table if exists t10
 create table t10 {
 tag ondisk
@@ -101,7 +101,7 @@ function insert_rand_t10
     bsz=$(( (RANDOM % 17) * 2 ))
     bl=$(randbl $bsz)
 
-    out=$(cdb2sql ${CDB2_OPTIONS} $db default "insert into t10(id, b1) values ($id, x'$bl')" 2>&1)
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "insert into t10(id, b1) values ($id, x'$bl')" 2>&1)
     if [[ $? != 0 ]]; then
         echo "insert_rand_t10 failed, $out"
         exit 1
@@ -130,9 +130,9 @@ function update_rand_t10
     fi
 
     if [[ "1" == "$nullblob" ]]; then
-        out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t10 set id=$upid, b1=NULL where id=$id" 2>&1)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t10 set id=$upid, b1=NULL where id=$id" 2>&1)
     else
-        out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t10 set id=$upid, b1=x'$bl' where id=$id" 2>&1)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t10 set id=$upid, b1=x'$bl' where id=$id" 2>&1)
     fi
 
     if [[ $? != 0 ]]; then
@@ -153,7 +153,7 @@ function delete_rand_t10
     # Create a random id for t10
     x=$RANDOM ; id=$(( x % (maxt10 * 2) ))
 
-    out=$(cdb2sql ${CDB2_OPTIONS} $db default "delete from t10 where id=$id" 2>&1)
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "delete from t10 where id=$id" 2>&1)
 
     if [[ $? != 0 ]]; then
         echo "delete_rand_t10 failed, $out"
@@ -167,7 +167,7 @@ function sp_rand_t10
 {
     typeset db=$1
 
-    out=$(cdb2sql ${CDB2_OPTIONS} $db default "exec procedure test()" 2>&1)
+    out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "exec procedure test()" 2>&1)
 
     if [[ $? != 0 ]]; then
         echo "sp_rand_t10 failed, $out"
@@ -192,7 +192,7 @@ function writer
 function reader 
 {
     while true; do
-        cdb2sql ${CDB2_OPTIONS} -f t10.sql $dbname default > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} -f t10.sql $dbname default > /dev/null
         if [[ $? != 0 ]]; then
             echo "reader failed"
             exit 1
@@ -205,7 +205,7 @@ function reader
 function analyzer 
 {
     while true; do
-        cdb2sql ${CDB2_OPTIONS} $dbname default "analyze t10 100" > /dev/null
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default "analyze t10 100" > /dev/null
         if [[ $? != 0 ]]; then
             echo "analyzer failed"
             exit 1

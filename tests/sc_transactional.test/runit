@@ -17,8 +17,8 @@ if [ "x$dbnm" == "x" ] ; then
     failexit "need a DB name"
 fi
 
-if [ -z $comdb2task ] ; then
-   failexit '$comdb2task is not set'
+if [ -z $COMDB2_EXE ] ; then
+   failexit '$COMDB2_EXE is not set'
 fi
 
 function assertcnt 
