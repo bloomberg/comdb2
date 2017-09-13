@@ -151,7 +151,6 @@ insert_records()
         fi
         # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
-        sleep 0.01
     done
     echo "done inserting round $nout"
 }
@@ -172,7 +171,6 @@ update_records()
             continue
         fi
         let j=j+1
-        sleep 0.01
     done
     echo "done updating round $nout"
 }
@@ -193,7 +191,6 @@ delete_records()
             continue
         fi
         let j=j+1
-        sleep 0.01
     done
     echo "done updating round $nout"
 }
