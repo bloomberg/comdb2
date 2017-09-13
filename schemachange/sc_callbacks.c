@@ -312,9 +312,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                                       ins_keys, blobs, maxblobs, ".NEW..ONDISK",
                                       rebuild, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: verify_record_constraint "
-                   "rcode %d, genid 0x%llx\n",
+            logmsg(LOGMSG_ERROR, "%s: verify_record_constraint "
+                                 "rcode %d, genid 0x%llx\n",
                    __func__, rc, genid);
             logmsg(LOGMSG_ERROR, "Aborting schema change due to constraint "
                                  "violation in new schema\n");
@@ -380,9 +379,8 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
     struct dbtable *usedb = iq->usedb;
 
 #ifdef DEBUG_SC
-    fprintf(stderr,
-            "%s: oldgenid 0x%llx, newgenid "
-            "0x%llx, deferredAdd %d\n",
+    fprintf(stderr, "%s: oldgenid 0x%llx, newgenid "
+                    "0x%llx, deferredAdd %d\n",
             __func__, oldgenid, newgenid, deferredAdd);
 #endif
 
