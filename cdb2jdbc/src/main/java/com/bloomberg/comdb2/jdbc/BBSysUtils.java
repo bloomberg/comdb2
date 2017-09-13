@@ -154,12 +154,9 @@ public class BBSysUtils {
 
         String comdb2db_bdns = null;
         try {
-            if (hndl.defaultType == null)
-                comdb2db_bdns = String.format("%s.%s",
-                        hndl.comdb2dbName, hndl.dnssuffix);
-            else
-                comdb2db_bdns = String.format("%s-%s.%s",
-                        hndl.defaultType, hndl.comdb2dbName, hndl.dnssuffix);
+            comdb2db_bdns = String.format("%s-%s.%s",
+                    (hndl.defaultType == null) ? hndl.defaultType : hndl.myDbCluster,
+                    hndl.comdb2dbName, hndl.dnssuffix);
 
             InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
             for (int i = 0; i < inetAddress.length; i++) {
