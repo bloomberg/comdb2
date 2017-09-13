@@ -50,13 +50,13 @@ function cleanup {
         if [ $node == `hostname` ] ; then
             eval $deregister_db
         else
-            ssh -o StrictHostKeyChecking=no $node "${deregister_db}"
+            ssh -o StrictHostKeyChecking=no $node "${deregister_db}" < /dev/null
         fi
         if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
             if [ $node == `hostname` ]  ; then
                 rm -rf ${DBDIR}
             else
-                ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR}"
+                ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR}" < /dev/null
             fi
         fi
     done
