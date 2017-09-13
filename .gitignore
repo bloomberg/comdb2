@@ -201,6 +201,7 @@ jepsen/killcluster/*out*
 
 tests/test_*
 tests/pmux.sqlite
+tests/disabled.tests
 
 # generated images
 docs/site/images/*.gif

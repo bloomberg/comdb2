@@ -1,4 +1,4 @@
-all: basicops $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh))
+all: basicops disabled_tests $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh))
 
 
 export TESTSROOTDIR:=$(shell pwd)
@@ -56,6 +56,12 @@ basicops_nokey:
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
+
+# Keep it deferred
+DISABLED_TESTS = $(shell cat disabled.tests 2> /dev/null)
+disabled_tests:
+	$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1 > disabled.tests)
+	@echo "Disabled tests: $(DISABLED_TESTS)"
 
 
 basicops: basicops_nokey
@@ -117,6 +123,7 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 clean: testclean
 
 testclean:
+	@rm -f disabled.tests
 	@rm -rf test_[0-9]*
 	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*';)
 	@$(MAKE) -C tools clean
