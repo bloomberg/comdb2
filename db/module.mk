@@ -41,7 +41,7 @@ db_CPPFLAGS:=-I$(SRCHOME)/db -DCOMDB2_DB_COMPILE -DMSPACES		\
 $(SQLITE_FLAGS) -I$(SRCHOME)/berkdb/build -I$(SRCHOME)/berkdb/dbinc	\
 -I$(SRCHOME)/berkdb/dbinc_auto -I$(SRCHOME)/schemachange		\
 -I$(SRCHOME)/berkdb -I$(SRCHOME)/bbinc -I$(SRCHOME)/cson		\
--I$(SRCHOME)/bb -I$(SRCHOME)/sockpool -I.
+-I$(SRCHOME)/bb -I$(SRCHOME)/sockpool -I. $(OPTBBINCLUDE)
 
 VERSION?=$(shell dpkg-parsechangelog | grep Version | cut -d' ' -f2 | sed 's/-.*//')
 
