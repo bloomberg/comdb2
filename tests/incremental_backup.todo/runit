@@ -78,7 +78,7 @@ function test_restoredb {
   egrep -v "cluster nodes" ${TMPDIR}/restore/${dbname}.lrl > ${TMPDIR}/restore/${dbname}.single.lrl
 
   echo "~~~~~~~~~~"
-  $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
+  $COMDB2_EXE ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
   # wait for db to launch
   count=0
   cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
