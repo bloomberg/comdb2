@@ -10711,6 +10711,11 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
         pCur->is_btree_count = 0;
     }
     *pnEntry = count;
+
+    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
+                "Count(pCur %d)      = %s\n", pCur->cursorid,
+                sqlite3ErrStr(rc));
+
     return rc;
 }
 
