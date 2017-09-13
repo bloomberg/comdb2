@@ -33,16 +33,18 @@ ifeq ($(arch),Linux)
   POSTCOMPILE = mv -f $(@:.o=.Td) $(@:.o=.d)
   SHARED=-shared
   OPT_CFLAGS=-O3
+  TCLSH=tclsh
 else
 ifeq ($(arch),SunOS)
   CC=/bb/util/common/SS12_3-20131030/SUNWspro/bin/cc
   CXX=/bb/util/common/SS12_3-20131030/SUNWspro/bin/CC
   OPT_CFLAGS=-xO3 -xprefetch=auto,explicit
   CFLAGS_MISC=-xtarget=generic -fma=fused -xinline=%auto -xmemalign=8s
-  CFLAGS=-mt -xtarget=generic -xc99=all -errfmt=error
+  CFLAGS=-mt -xtarget=generic -xc99=all -errfmt=error -K PIC
   CFLAGS_DEFS=-D_POSIX_PTHREAD_SEMANTICS -D_POSIX_PTHREAD_SEMANTICS -D__FUNCTION__=__FILE__ -D_SYS_SYSMACROS_H
   CFLAGS_DEBUGGING=-g -xdebugformat=stabs
-  ARCHLIBS+=-lnsl -lsocket
+  SOCKETLIBS=-lnsl -lsocket
+  ARCHLIBS+=$(SOCKETLIBS)
   LIBREADLINE=$(BBSTATIC) -lreadline -lhistory $(BBDYN)
   UNWINDLIBS?=-lunwind
   CFLAGS_ARCHFLAGS=-D_SUN_SOURCE
@@ -54,6 +56,7 @@ ifeq ($(arch),SunOS)
   CXX11FLAGS=-std=c++11 $(CXXFLAGS)
   CXX11LDFLAGS=$(LDFLAGS)
   SHARED=-G
+  TCLSH=/usr/bin/tclsh
 else
 ifeq ($(arch),AIX)
   CC=/bb/util/version12-052015/usr/vacpp/bin/cc_r
@@ -62,6 +65,7 @@ ifeq ($(arch),AIX)
   CFLAGS_DEFS=-D__VACPP_MULTI__ -DMAXHOSTNAMELEN=64 -D_H_SYSMACROS
   CFLAGS_MISC=-qlanglvl=extc99 -qtls -qcpluscmt -qthreaded  -qdfp -qthreaded -qchars=signed -qro -qroconst -qkeyword=inline -qhalt=e -qxflag=dircache:71,256 -qxflag=new_pragma_comment_user -qxflag=NoKeepDebugMetaTemplateType -qfuncsect
   CFLAGS_DEBUGGING=-g
+  #CFLAGS_64+=-q64 -qlanglvl=extended0x
   CFLAGS_64+=-q64
   LDFLAGS+=-q64 -bmaxdata:0xb0000000/dsa -bbigtoc  -brtl -qtwolink
   CFLAGS_ARCHFLAGS=-D_IBM_SOURCE -Dibm
@@ -72,7 +76,7 @@ ifeq ($(arch),AIX)
   LIBREADLINE=-blibpath:/opt/bb/lib64:/usr/lib:/lib -lreadline -lhistory
   # Use GCC on IBM for C++11 code. Also requires different options for 64 bit.
   CXX11=/opt/swt/install/gcc-4.9.2/bin/g++
-  CXX11FLAGS=-std=c++11 -maix64
+  CXX11FLAGS=-std=c++11 -pthread -maix64
   CXX11LDFLAGS=-maix64
   BBLDPREFIX=-Wl,
   # Flags for generating dependencies
@@ -80,6 +84,7 @@ ifeq ($(arch),AIX)
   DEPFLAGS_CXX11 = -MT $@ -MMD -MP -MF $(@:.o=.Td)
   POSTCOMPILE = mv -f $(@:.o=.Td) $(@:.o=.d)
   SHARED=-G
+  TCLSH=tclsh
 endif
 endif
 endif

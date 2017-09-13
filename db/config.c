@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <sys/socket.h>
 
 #include "comdb2.h"
 #include "intern_strings.h"

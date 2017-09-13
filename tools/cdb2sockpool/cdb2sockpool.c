@@ -1183,7 +1183,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+#ifndef _IBM_SOURCE
     int dum = daemon(0, 0);
+#endif
 
     if (pthread_create_attrs(NULL, PTHREAD_CREATE_DETACHED, 64 * 1024,
                              accept_thd, (void *)(intptr_t)listenfd) != 0) {

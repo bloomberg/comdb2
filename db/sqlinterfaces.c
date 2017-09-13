@@ -1198,6 +1198,13 @@ static int toggle_case_sensitive_like(sqlite3 *db, int enable)
 }
 
 #ifdef DEBUG_SQLITE_MEMORY
+#ifdef __GLIBC__
+extern int backtrace(void**,int);
+extern void backtrace_symbols_fd(void*const*,int,int);
+#else
+# define backtrace(A,B) 1
+# define backtrace_symbols_fd(A,B,C)
+#endif
 
 #include <execinfo.h>
 

@@ -22,6 +22,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
 
@@ -706,14 +707,19 @@ static int do_accept(struct pollfd &fd, std::vector<struct pollfd> &fds)
     return watchfd(rfd, fds, req.sin_addr);
 }
 
+#if defined (_SUN_SOURCE) || defined (_IBM_SOURCE)
+#include <netdb.h>
+#endif
+
+
 static bool init_local_names()
 {
     struct hostent *me;
     me = gethostbyname("localhost");
 
     if (me == NULL) {
-        syslog(LOG_ERR, "gethostbyname(\"localhost\") %d %s\n", h_errno,
-               hstrerror(h_errno));
+        syslog(LOG_ERR, "gethostbyname(\"localhost\") %d %s\n", errno,
+               strerror(errno));
         return false;
     }
 
@@ -825,10 +831,6 @@ static int usage(int rc)
            "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n");
     return rc;
 }
-
-#ifdef _SUN_SOURCE
-#include <netdb.h>
-#endif
 
 int main(int argc, char **argv)
 {
