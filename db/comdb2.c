@@ -590,9 +590,13 @@ int gbl_new_indexes = 0;
 
 int gbl_optimize_truncate_repdb = 1;
 
-extern void tz_hash_init(void);
 static void set_datetime_dir(void);
-void tz_set_dir(char *dir);
+
+extern void tz_hash_init(void);
+extern void tz_hash_free(void);
+void set_tzdir(char *dir);
+void free_tzdir();
+
 extern void init_sql_hint_table();
 extern int bdb_osql_log_repo_init(int *bdberr);
 
@@ -715,7 +719,6 @@ int gbl_rowlocks_deadlock_trace = 0;
 
 int gbl_durable_wait_seqnum_test = 0;
 int gbl_durable_replay_test = 0;
-int gbl_durable_block_test = 0;
 int gbl_durable_set_trace = 0;
 int gbl_durable_calc_trace = 0;
 int gbl_dumptxn_at_commit = 0;
@@ -992,7 +995,6 @@ static void init_q_vars()
     q_sql_steps_all = quantize_new(100, 100000, "steps");
 }
 
-#ifdef DEBUG
 static void cleanup_q_vars()
 {
     quantize_free(q_min);
@@ -1007,7 +1009,6 @@ static void cleanup_q_vars()
     quantize_free(q_sql_steps_hour);
     quantize_free(q_sql_steps_all);
 }
-#endif
 
 /* Send an alert about the fact that I'm incoherent */
 static int send_incoherent_message(int num_online, int duration)
@@ -1410,10 +1411,7 @@ void clean_exit(void)
 
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
     rc = backend_close(thedb);
-    if (rc != 0)
-       logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
-
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
     if (COMDB2_SOCK_FSTSND_ENABLED()) {
         comdb2_shm_clr_flag(thedb->dbnum, CMDB2_SHMFLG_SOCK_FSTSND);
@@ -1429,8 +1427,7 @@ void clean_exit(void)
             indicator_file =
                 comdb2_location("marker", "%s.done", thedb->dbs[ii]->dbname);
             fd = creat(indicator_file, 0666);
-            if (fd != -1)
-                close(fd);
+            if (fd != -1) close(fd);
             free(indicator_file);
         }
     }
@@ -1439,20 +1436,26 @@ void clean_exit(void)
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
     fd = creat(indicator_file, 0666);
-    if (fd != -1)
-        close(fd);
+    if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
 
-#ifdef DEBUG
-    sleep(4); // wait for other threads to exit by themselves
+    /*
+      Wait for other threads to exit by themselves.
+      TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
+      them to quit.
+    */
+    sleep(4);
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
     cleanup_q_vars();
     cleanup_switches();
-#endif
     free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+
+    logmsg(LOGMSG_WARN, "goodbye\n");
 
     exit(0);
 }
@@ -1867,14 +1870,16 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
         tbl = get_dbtable_by_name(tblnames[i]);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "Can't find handle for table %s\n", tblnames[i]);
-            return -1;
+            rc = -1;
+            goto cleanup;
         }
 
         rc = bdb_get_csc2_highest(NULL, tblnames[i], &ver, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "couldn't get highest version number for %s\n",
                     tblnames[i]);
-            return 1;
+            rc = 1;
+            goto cleanup;
         }
 
         int isc = 0;
@@ -1894,7 +1899,8 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
 
                 if (s == NULL) {
                     free(csc2text);
-                    return 1;
+                    rc = 1;
+                    goto cleanup;
                 }
 
                 add_tag_schema(tbl->dbname, s);
@@ -1902,7 +1908,12 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
             }
         }
     }
-    return 0;
+cleanup:
+    for (i = 0; i < fndnumtbls; ++i) {
+        free(tblnames[i]);
+    }
+
+    return rc;
 }
 
 static int llmeta_load_queues(struct dbenv *dbenv)
@@ -2070,6 +2081,9 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
             rc = 1;
             break;
         }
+
+        /* Free the table name. */
+        free(tblnames[i]);
     }
 
     /* we have to do this after all the meta table lookups so that the hack in
@@ -3550,7 +3564,6 @@ static int init(int argc, char **argv)
         return -1;
     }
 
-    tz_hash_init();
     set_datetime_dir();
 
     /* get/set the table names from llmeta */
@@ -4604,7 +4617,7 @@ static void set_datetime_dir(void)
         abort();
     }
 
-    tz_set_dir(dir);
+    set_tzdir(dir);
 }
 
 static void iomap_on(void *p)
@@ -4993,10 +5006,6 @@ static void register_all_int_switches()
     register_int_switch("durable_replay_test",
                         "Enables periodic durable failures in blkseq replay",
                         &gbl_durable_replay_test);
-    register_int_switch(
-        "durable_block_test",
-        "Return periodic durability failures from bdb_durable_block",
-        &gbl_durable_block_test);
     register_int_switch("durable_set_trace",
                         "Print trace set durable and commit lsn trace",
                         &gbl_durable_set_trace);
@@ -5274,7 +5283,6 @@ int main(int argc, char **argv)
     */
     gbl_tunables->freeze = 1;
 
-    set_datetime_dir();
     set_timepart_and_handle_resume_sc();
 
     /* Creating a server context wipes out the db #'s dbcommon entries.

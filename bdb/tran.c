@@ -722,7 +722,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
             BDB_RELLOCK();
             logmsg(LOGMSG_ERROR, "Master change while getting logical tran.\n");
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
-            *bdberr = BDBERR_DEADLOCK;
+            *bdberr = BDBERR_READONLY;
             myfree(tran);
             return NULL;
         }
@@ -2333,18 +2333,16 @@ cleanup:
     case TRANCLASS_LOGICAL:
     case TRANCLASS_PHYSICAL:
     case TRANCLASS_BERK:
-        /* if we are the master and we free tran we need to
-           get rid of the stored reference so functions
-           like berkdb_send_rtn don't try to use it */
-        if (tran->master) {
-            rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-            if (rc != 0)
-                logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
-        }
-
         bdb_tran_free_shadows(bdb_state, tran);
-
         break;
+    }
+
+    /* if we are the master and we free tran we need to get rid of the stored
+     * reference so functions like berkdb_send_rtn don't try to use it */
+    if (tran->master) {
+        rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
     }
 
     if (tran->trak)

@@ -165,6 +165,7 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     long long val = 0;
     struct ireq iq;
     tran_type *trans = NULL;
+    char *stat1 = NULL;
 
     init_fake_ireq(thedb, &iq);
     iq.usedb = get_dbtable_by_name("sqlite_stat1");
@@ -207,17 +208,17 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
         goto abort;
     }
 
-    char *sta = get_field_from_sqlite_stat_rec(&iq, rec, "stat");
-    if (!sta) {
+    stat1 = get_field_from_sqlite_stat_rec(&iq, rec, "stat");
+    if (!stat1) {
         ctrace("%s: cannot find field in sqlite_stat1!\n", __func__);
         goto abort;
     }
 
     char *endptr;
     errno = 0; /* To distinguish success/failure after call */
-    val = strtoll(sta, &endptr, 10);
-    if (errno != 0 || endptr == sta)
-        printf("%s: Error converting '%s' '%lld'\n", __func__, sta, val);
+    val = strtoll(stat1, &endptr, 10);
+    if (errno != 0 || endptr == stat1)
+        printf("%s: Error converting '%s' '%lld'\n", __func__, stat1, val);
 #ifdef DEBUG
     else
         printf("table %s has %lld rows\n", tbldb->dbname, val);
@@ -226,6 +227,7 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
 abort:
     trans_abort(&iq, trans);
 out:
+    free(stat1);
     if (rec)
         free(rec);
     if (val == 0)

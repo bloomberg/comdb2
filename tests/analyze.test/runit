@@ -48,8 +48,8 @@ function fastinit
 
     # fastinit
     for tbl in $(cat $iter.fastinit) ; do
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"truncate $tbl\""
-        cdb2sql ${CDB2_OPTIONS} $db default "truncate $tbl"
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"truncate $tbl\""
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "truncate $tbl"
     done
 
     return 0
@@ -95,14 +95,14 @@ function runstepper
 }
 
 function comdb2dumpcsc {
-    cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn default "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'"
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $a_dbn default "select name from sqlite_master where type='table' and name not like '%sqlite_stat%'"
 }
 
 function init {
     for table in $(comdb2dumpcsc ); do
-        cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table $table"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $a_dbn default "drop table $table"
     done
-    cdb2sql ${CDB2_OPTIONS} $a_dbn default 'create table t1 {
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $a_dbn default 'create table t1 {
 schema 
 {
         int a
@@ -120,7 +120,7 @@ dup     "d" = d
 }
 }
 '
-cdb2sql ${CDB2_OPTIONS} $a_dbn default 'create table t2 {
+$CDB2SQL_EXE ${CDB2_OPTIONS} $a_dbn default 'create table t2 {
 schema 
 {
     int a
@@ -137,7 +137,7 @@ keys
 }
 }
 '
-cdb2sql ${CDB2_OPTIONS} $a_dbn default 'create table t3 {
+$CDB2SQL_EXE ${CDB2_OPTIONS} $a_dbn default 'create table t3 {
 schema 
 {
     int a
@@ -196,7 +196,7 @@ for testcase in $files ; do
     else
 
         # Be verbose
-        cmd="cdb2sql ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+        cmd="$CDB2SQL_EXE ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
         echo $cmd
 
         # run command

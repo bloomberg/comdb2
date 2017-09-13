@@ -1473,6 +1473,7 @@ struct sqlite3 {
 #define SQLITE_Transitive     0x0200   /* Transitive constraints */
 #define SQLITE_OmitNoopJoin   0x0400   /* Omit unused tables in joins */
 #define SQLITE_Stat34         0x0800   /* Use STAT3 or STAT4 data */
+#define SQLITE_CountOfView    0x1000   /* The count-of-view optimization */
 #define SQLITE_CursorHints    0x2000   /* Add OP_CursorHint opcodes */
 #define SQLITE_AllOpts        0xffff   /* All optimizations */
 
@@ -3427,7 +3428,7 @@ struct TreeView {
   int iLevel;             /* Which level of the tree we are on */
   u8  bLine[100];         /* Draw vertical in column i if bLine[i] is true */
 };
-#endif /* SQLITE_DEBUG */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 
 /*
 ** Assuming zIn points to the first byte of a UTF-8 character,

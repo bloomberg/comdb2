@@ -781,7 +781,7 @@ void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet)
      * it was done. */
     unsigned int *iptr = (unsigned int *)&sc_seed;
 
-    *mach = get_hostname_with_crc32(thedb->bdb_env, ntohl(iptr[1]));
+    *mach = get_hostname_with_crc32(thedb->bdb_env, sc_host);
     *timet = ntohl(iptr[0]);
     return;
 }

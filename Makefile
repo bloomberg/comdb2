@@ -31,9 +31,8 @@ modules:=net comdb2rle cdb2api csc2 schemachange berkdb sqlite bdb	\
 lua tools db sockpool
 include $(addsuffix /module.mk,$(modules))
 
-# The following object files make into cdb2api static
-# (libcdb2api.a & libcdb2protobuf.a) as well as dynamic
-# (libcdb2api.so & libcdb2protobuf.so) libraries and thus,
+# The following object files make into cdb2api static (libcdb2api.a)
+# as well as dynamic (libcdb2api.so) libraries and thus,
 # need an additional -fPIC (large model) flag.
 SPECIAL_OBJS:= cdb2api/cdb2api.o protobuf/%.o
 ifeq ($(arch),Linux)
@@ -102,10 +101,10 @@ install: all
 	sed "s|^PREFIX=|PREFIX=$(PREFIX)|" db/copycomdb2 > db/copycomdb2.q
 	install -D db/copycomdb2.q $(DESTDIR)$(PREFIX)/bin/copycomdb2
 	rm -f db/copycomdb2.q
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
-	[ -z "$(DESTDIR)" ] && rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_printlog && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_printlog || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_verify && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_verify || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_dump && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_dump || true
+	rm -f $(DESTDIR)$(PREFIX)/bin/cdb2_stat && ln $(DESTDIR)$(PREFIX)/bin/comdb2 $(DESTDIR)$(PREFIX)/bin/cdb2_stat || true
 	install -D cdb2_sqlreplay $(DESTDIR)$(PREFIX)/bin/cdb2_sqlreplay
 	install -D cdb2sockpool $(DESTDIR)$(PREFIX)/bin/cdb2sockpool
 	install -D cdb2sql $(DESTDIR)$(PREFIX)/bin/cdb2sql
@@ -122,8 +121,6 @@ install: all
 	install -D cdb2api/cdb2api.h $(DESTDIR)$(PREFIX)/include/cdb2api.h
 	install -D cdb2api/libcdb2api.a $(DESTDIR)$(PREFIX)/lib/libcdb2api.a
 	install -D cdb2api/libcdb2api.so $(DESTDIR)$(PREFIX)/lib/libcdb2api.so
-	install -D protobuf/libcdb2protobuf.a $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.a
-	install -D protobuf/libcdb2protobuf.so $(DESTDIR)$(PREFIX)/lib/libcdb2protobuf.so
 	install -D contrib/comdb2admin/supervisord_cdb2.conf $(DESTDIR)$(PREFIX)/etc/supervisord_cdb2.conf
 	install -D contrib/comdb2admin/comdb2admin $(DESTDIR)$(PREFIX)/bin/comdb2admin
 	-[ -z "$(DESTDIR)" ] && . db/installinfo || true
@@ -161,4 +158,3 @@ docker-build: build-build-container
 		--rm \
 		comdb2-build:$(VERSION) \
 		make DESTDIR=/comdb2 -j3 install
- 

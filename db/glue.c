@@ -298,13 +298,18 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                                 retries, &bdberr);
     } else {
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
-        if (iq->tranddl && sc) {
+        if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
             int get_physical_transaction(bdb_state_type * bdb_state,
                                          tran_type * logical_tran,
                                          tran_type * *outtran);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran);
+            if (rc == BDBERR_READONLY) {
+                trans_abort_logical(iq, *out_trans, NULL, 0, NULL, 0);
+                *out_trans = NULL;
+                bdberr = rc;
+            }
             if (rc) {
                 logmsg(LOGMSG_FATAL, "%s :failed to get physical_tran\n",
                        __func__);
@@ -603,7 +608,13 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
     int sync;
     int start_ms, end_ms;
 
-    sync = iq->sc_pending ? REP_SYNC_FULL : dbenv->rep_sync;
+    if (iq->sc_pending) {
+        sync = REP_SYNC_FULL;
+        adaptive = 0;
+        timeoutms = -1;
+    } else {
+        sync = dbenv->rep_sync;
+    }
 
     /*wait for synchronization, if necessary */
     start_ms = time_epochms();
@@ -647,6 +658,15 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "*WARNING* bdb_wait_seqnum:error syncing all nodes rc %d\n",
                    rc);
+        }
+        if (iq->sc_pending) {
+            /* TODO: I dont know what to do here. Schema change is already
+            ** commited but one or more replicants didn't get the messages
+            ** to reload table.
+            */
+            logmsg(LOGMSG_INFO, "Schema change scdone sync all nodes, rc %d\n",
+                   rc);
+            rc = 0;
         }
         break;
 
@@ -3553,10 +3573,13 @@ int broadcast_sc_end(uint64_t seed)
     return send_to_all_nodes(&seed, sizeof(seed), NET_STOP_SC, SCWAITTIME);
 }
 
-int broadcast_sc_start(uint64_t seed, char *from, time_t t)
+const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
+                                    unsigned int hash);
+int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
 {
     struct start_sc *sc;
     int len;
+    const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
 
     len = offsetof(struct start_sc, host) + strlen(gbl_mynode) + 1;
 

@@ -2794,7 +2794,7 @@ printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->hav
              * downgrade
              * because it holds a bdb readlock.  Make sure I am still the master
              */
-            if (thedb->master != gbl_mynode) {
+            if (thedb->master != gbl_mynode || irc == ERR_NOMASTER) {
                 numerrs = 1;
                 rc = ERR_NOMASTER; /*this is what bdb readonly error gets us */
                 BACKOUT;

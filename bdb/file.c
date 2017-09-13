@@ -5003,6 +5003,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
         (bdb_state->callback->whoismaster_rtn)(bdb_state,
                                                bdb_state->repinfo->master_host);
 
+    allow_sc_to_run();
     BDB_RELLOCK();
 
     watchdog_cancel_alarm();
@@ -5270,11 +5271,6 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
         rc = pthread_mutex_init(&bdb_state->durable_lsn_lk, NULL);
         if (rc) {
             logmsg(LOGMSG_FATAL, "durable_lsn_lk failed\n");
-            exit(1);
-        }
-        rc = pthread_cond_init(&bdb_state->durable_lsn_wait, NULL);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "durable_lsn_wait failed\n");
             exit(1);
         }
     }

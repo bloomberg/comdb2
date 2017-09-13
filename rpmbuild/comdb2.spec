@@ -34,13 +34,15 @@ rm -rf $RPM_BUILD_ROOT
 /opt/bb/bin/pmux
 /opt/bb/bin/comdb2ar
 /opt/bb/bin/cdb2_sqlreplay
+/opt/bb/bin/cdb2_dump
+/opt/bb/bin/cdb2_printlog
+/opt/bb/bin/cdb2_stat
+/opt/bb/bin/cdb2_verify
 /opt/bb/etc/cdb2/config/comdb2.d
 /opt/bb/include
 /opt/bb/include/cdb2api.h
 /opt/bb/lib/libcdb2api.a
 /opt/bb/lib/libcdb2api.so
-/opt/bb/lib/libcdb2protobuf.a
-/opt/bb/lib/libcdb2protobuf.so
 /opt/bb/lib/systemd/system/pmux.service
 /opt/bb/lib/systemd/system/cdb2sockpool.service
 /opt/bb/lib/systemd/system/supervisor_cdb2.service
@@ -65,10 +67,6 @@ chmod 755 /opt/bb/var /opt/bb/var/log
 echo 'PATH=$PATH:/opt/bb/bin' >> /home/comdb2/.bashrc
 chmod +x /home/comdb2/.bashrc
 chown comdb2:comdb2 /home/comdb2/.bashrc
-ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_dump
-ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_printlog
-ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_stat
-ln /opt/bb/bin/comdb2 /opt/bb/bin/cdb2_verify
 
 cp /opt/bb/usr/local/lib/pkgconfig/cdb2api.pc /usr/local/lib/pkgconfig/cdb2api.pc
 cp /opt/bb/lib/systemd/system/pmux.service /lib/systemd/system/

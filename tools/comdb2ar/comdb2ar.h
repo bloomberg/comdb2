@@ -1,16 +1,16 @@
 /*
    Copyright 2015 Bloomberg Finance L.P.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
-   
+
        http://www.apache.org/licenses/LICENSE-2.0
-   
+
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and 
+   See the License for the specific language governing permissions and
    limitations under the License.
  */
 
@@ -24,6 +24,9 @@
 
 #include <list>
 #include <string>
+#include <memory>
+
+#include "fdostream.h"
 
 
 const size_t MAX_BUF_SIZE = 4 * 1024 * 1024;
@@ -79,6 +82,16 @@ ssize_t readall(int fd, void *buf, size_t nbytes);
 // Read all the bytes requested from the given fd.  Returns the number of bytes
 // read, or -1 on error or 0 on eof.
 
+bool read_octal_ull(const char *str, size_t len, unsigned long long& number);
+
+std::unique_ptr<fdostream> output_file(
+  const std::string& filename,
+  bool make_sav, bool direct
+);
+
+void make_dirs(const std::string& dirname);
+
+void remove_all_old_files(std::string& datadir);
 
 void serialise_database(
   std::string lrlpath,
@@ -87,15 +100,17 @@ void serialise_database(
   bool strip_cluster_info,
   bool support_files_only,
   bool run_with_done_file,
-  bool kludge_write,
-  bool do_direct_io
+  bool do_direct_io,
+  bool incr_create,
+  bool incr_gen,
+  const std::string& incr_path
 );
 // Serialise a database into tape archive format and write it to stdout.
 // If support_only is true then only support files (lrl and schema) will
 // be serialised.  If disable_log_deletion and the database is running then
 // it will be advised to hold log file deletion until the backup is complete
 // (highly recommended!)
-// If legacy_mode is enabled, old file format are not removed after restore 
+// If legacy_mode is enabled, old file format are not removed after restore
 
 
 void deserialise_database(
@@ -103,12 +118,14 @@ void deserialise_database(
   const std::string *p_datadestdir,
   bool strip_cluster_info,
   bool strip_consumer_info,
+  bool run_full_recovery,
   const std::string& comdb2_task,
   unsigned percent_full,
   bool force_mode,
   bool legacy_mode,
   bool& is_disk_full,
-  bool run_with_done_file
+  bool run_with_done_file,
+  bool incr_mode
 );
 // Deserialise a database from serialised form received on stdin.
 // If lrldestdir and datadestdir are not NULL then the lrl and data files

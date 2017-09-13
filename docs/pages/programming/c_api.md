@@ -62,7 +62,7 @@ int cdb2_close(cdb2_hndl_tp *hndl);
 Description:
 
 This routine closes the cdb2 handle and releases all associated memory. 
-Depending on your [client setup](/clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
+Depending on your [client setup](clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
 
 Parameters:
 
@@ -417,7 +417,7 @@ int cdb2_set_comdb2db_config(char *cfg_file);
 Description:
 
 This function sets location of a config file the API uses to discover databases. 
-See the [Client Setup] section for more details.
+See the [Client setup](clients.html) section for more details.
 
 Parameters:
 

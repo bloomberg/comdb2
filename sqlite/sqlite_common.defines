@@ -36,6 +36,7 @@ SQLITE_FLAGS=                           \
 -DSQLITE_ENABLE_HIDDEN_COLUMNS          \
 -DSQLITE_OMIT_COMPILEOPTION_DIAGS       \
 -DSQLITE_OMIT_LOAD_EXTENSION            \
+-DSQLITE_COUNTOFVIEW_OPTIMIZATION       \
 -DSQLITE_ENABLE_SERIES                  \
 -DSQLITE_ENABLE_JSON1                   \
 -DSQLITE_CORE=1                         \

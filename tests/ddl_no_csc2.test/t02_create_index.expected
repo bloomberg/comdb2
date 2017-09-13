@@ -89,3 +89,19 @@ keys
 		int i null = yes 
 	}
 ')
+[CREATE INDEX 'COMDB2_PK' ON t1(i)] failed with rc -3 PRIMARY KEY cannot be created using CREATE INDEX.
+[CREATE INDEX 'COMDB2_PK' ON t2(i)] failed with rc -3 PRIMARY KEY cannot be created using CREATE INDEX.
+(tablename='t1')
+(tablename='t2')
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i 
+	}
+')
+(type='table', name='t2', tbl_name='t2', rootpage=5, sql='create table "t2"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')

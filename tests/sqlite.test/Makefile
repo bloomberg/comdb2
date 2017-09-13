@@ -1,9 +1,13 @@
-include $(TESTSROOTDIR)/testcase.mk
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
 include $(TESTSROOTDIR)/../main.mk
 export TEST_TIMEOUT=3m
 CFLAGS+=-I$(TESTSROOTDIR)/../bbinc -D_GNU_SOURCE
 
-CDB2LIBS=$(SYSPATH) $(SRCHOME)/cdb2api/libcdb2api.a $(SRCHOME)/protobuf/libcdb2protobuf.a -lprotobuf-c -lsqlite3 -lpthread -lssl -lcrypto
+CDB2LIBS=$(SYSPATH) $(SRCHOME)/cdb2api/libcdb2api.a -lprotobuf-c -lsqlite3 -lpthread -lssl -lcrypto
 
 tool: comdb2_sqltest
 

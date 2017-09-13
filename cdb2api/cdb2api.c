@@ -823,9 +823,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
             if (strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    if (hndl) {
+                    if (hndl && (strcasecmp(hndl->cluster, "default") == 0)) {
                         strcpy(hndl->cluster, tok);
-                    } else {
+                    } else if (!hndl) {
                         strcpy(cdb2_default_cluster, tok);
                     }
                 }
@@ -1557,7 +1557,7 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     if ((hndl->firstresponse &&
          (!hndl->lastresponse ||
           (hndl->lastresponse->response_type != RESPONSE_TYPE__LAST_ROW))) ||
-        (!hndl->firstresponse)) {
+        (!hndl->firstresponse) || hndl->in_trans) {
         sbuf2close(sb);
     } else {
         sbuf2free(sb);
@@ -1694,7 +1694,7 @@ retry_connect:
         if (ret != 0)
             continue;
         hndl->connected_host = i;
-        hndl->hosts_connected[i] == 1;
+        hndl->hosts_connected[i] = 1;
         return 0;
     }
 
