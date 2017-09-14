@@ -35,7 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "getopt.h"
+#include "bb_getopt_long.h"
 
 extern int    opterr;   /* if error message should be printed */
 extern int    optind;   /* index into parent argv vector */
@@ -46,7 +46,7 @@ extern char *optarg;    /* argument associated with option */
 #define _DIAGASSERT(x) assert(x)
 
 static char * __progname __MYP((char *));
-int getopt_internal __MYP((int, char * const *, const char *));
+static int getopt_internal __MYP((int, char * const *, const char *));
 
     static char *
 __progname(nargv0)
@@ -72,7 +72,7 @@ __progname(nargv0)
  * getopt --
  *  Parse argc/argv argument vector.
  */
-int
+static int
 getopt_internal(nargc, nargv, ostr)
     int nargc;
     char * const *nargv;
@@ -137,7 +137,7 @@ getopt_internal(nargc, nargv, ostr)
  *  Parse argc/argv argument vector.
  */
 int
-getopt_long(nargc, nargv, options, long_options, index)
+bb_getopt_long(nargc, nargv, options, long_options, index)
     int nargc;
     char ** nargv;
     char * options;
