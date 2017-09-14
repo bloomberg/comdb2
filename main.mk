@@ -65,7 +65,6 @@ ifeq ($(arch),AIX)
   CFLAGS_DEFS=-D__VACPP_MULTI__ -DMAXHOSTNAMELEN=64 -D_H_SYSMACROS
   CFLAGS_MISC=-qlanglvl=extc99 -qtls -qcpluscmt -qthreaded  -qdfp -qthreaded -qchars=signed -qro -qroconst -qkeyword=inline -qhalt=e -qxflag=dircache:71,256 -qxflag=new_pragma_comment_user -qxflag=NoKeepDebugMetaTemplateType -qfuncsect
   CFLAGS_DEBUGGING=-g
-  #CFLAGS_64+=-q64 -qlanglvl=extended0x
   CFLAGS_64+=-q64
   LDFLAGS+=-q64 -bmaxdata:0xb0000000/dsa -bbigtoc  -brtl -qtwolink
   CFLAGS_ARCHFLAGS=-D_IBM_SOURCE -Dibm
