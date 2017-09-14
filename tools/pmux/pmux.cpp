@@ -61,6 +61,7 @@
 #include "comdb2_store.h"
 #include "sqlite_store.h"
 #include "no_store.h"
+#include <bb_daemon.h>
 
 static std::map<std::string, int> port_map;
 static std::map<std::string, int> fd_map;
@@ -973,9 +974,7 @@ int main(int argc, char **argv)
         pmux_store->sav_port("pmux", port);
 
     if (!foreground_mode) {
-#ifndef _IBM_SOURCE
-        daemon(0, 0);
-#endif
+        bb_daemon();
     }
 
     init_router_mode();

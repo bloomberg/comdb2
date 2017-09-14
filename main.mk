@@ -33,7 +33,6 @@ ifeq ($(arch),Linux)
   POSTCOMPILE = mv -f $(@:.o=.Td) $(@:.o=.d)
   SHARED=-shared
   OPT_CFLAGS=-O3
-  TCLSH=tclsh
 else
 ifeq ($(arch),SunOS)
   CC=/bb/util/common/SS12_3-20131030/SUNWspro/bin/cc
@@ -43,8 +42,7 @@ ifeq ($(arch),SunOS)
   CFLAGS=-mt -xtarget=generic -xc99=all -errfmt=error -K PIC
   CFLAGS_DEFS=-D_POSIX_PTHREAD_SEMANTICS -D_POSIX_PTHREAD_SEMANTICS -D__FUNCTION__=__FILE__ -D_SYS_SYSMACROS_H
   CFLAGS_DEBUGGING=-g -xdebugformat=stabs
-  SOCKETLIBS=-lnsl -lsocket
-  ARCHLIBS+=$(SOCKETLIBS)
+  ARCHLIBS+=-lnsl -lsocket
   LIBREADLINE=$(BBSTATIC) -lreadline -lhistory $(BBDYN)
   UNWINDLIBS?=-lunwind
   CFLAGS_ARCHFLAGS=-D_SUN_SOURCE
@@ -56,7 +54,6 @@ ifeq ($(arch),SunOS)
   CXX11FLAGS=-std=c++11 $(CXXFLAGS)
   CXX11LDFLAGS=$(LDFLAGS)
   SHARED=-G
-  TCLSH=/usr/bin/tclsh
 else
 ifeq ($(arch),AIX)
   CC=/bb/util/version12-052015/usr/vacpp/bin/cc_r
@@ -83,9 +80,12 @@ ifeq ($(arch),AIX)
   DEPFLAGS_CXX11 = -MT $@ -MMD -MP -MF $(@:.o=.Td)
   POSTCOMPILE = mv -f $(@:.o=.Td) $(@:.o=.d)
   SHARED=-G
-  TCLSH=tclsh
 endif
 endif
+endif
+
+ifeq ($(TCLSH),)
+TCLSH := tclsh
 endif
 
 CFLAGS_DEFS+=-DBB_THREADED -D_REENTRANT -D_THREAD_SAFE
