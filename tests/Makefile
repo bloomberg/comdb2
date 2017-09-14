@@ -1,5 +1,5 @@
 all: basicops disabled_tests
-	@$(MAKE) -sk $(patsubst %.test,%,$(shell TESTDIR="${TESTDIR}" tools/get_tests_inorder.sh))
+	@$(MAKE) $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh ${TESTDIR}/disabled_tests.txt))
 
 
 export TESTSROOTDIR:=$(shell pwd)
