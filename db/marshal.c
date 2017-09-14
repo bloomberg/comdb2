@@ -65,8 +65,7 @@ void *marshal_add(marshal_t *mm, void *ptr, void (*free_mem_func)(void *))
     struct marshal_itm *itm;
     if (ptr == 0)
         return 0; /*dont add null ptr*/
-    if (free_mem_func == 0)
-        return 0; /*no free? why marshall.*/
+    if (free_mem_func == 0) return 0; /*no free? why marshall.*/
     if (hash_find(mm->h_ptrs, &ptr) != 0) {
         logmsg(LOGMSG_ERROR, "marshal_add:error dup add %p in %s\n", ptr, mm->name);
         return ptr;

@@ -708,10 +708,9 @@ static int do_accept(struct pollfd &fd, std::vector<struct pollfd> &fds)
     return watchfd(rfd, fds, req.sin_addr);
 }
 
-#if defined (_SUN_SOURCE) || defined (_IBM_SOURCE)
+#if defined(_SUN_SOURCE) || defined(_IBM_SOURCE)
 #include <netdb.h>
 #endif
-
 
 static bool init_local_names()
 {

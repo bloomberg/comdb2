@@ -23,7 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
-#if defined (_IBM_SOURCE)
+#if defined(_IBM_SOURCE)
 #include <openssl/objects.h>
 #include <openssl/ec.h>
 #endif

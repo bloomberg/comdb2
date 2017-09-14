@@ -12,4 +12,3 @@ int bb_daemon(void);
 #endif
 
 #endif /* __BB_DAEMON__ */
-
