@@ -70,7 +70,7 @@ extern int gbl_sc_thd_failed;
 /* All writer threads have to grab the lock in read/write mode.  If a live
  * schema change is in progress then they have to do extra stuff. */
 extern int sc_live;
-/* pthread_rwlock_t sc_rwlock = PTHREAD_RWLOCK_INITIALIZER;*/
+extern pthread_rwlock_t sc_live_rwlock;
 
 extern int schema_change; /*static int schema_change_doomed = 0;*/
 extern int stopsc;        /* stop schemachange, so it can resume */

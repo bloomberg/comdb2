@@ -346,6 +346,7 @@ int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
+    iq->use_handle = thedb->bdb_env;
     return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
 }
 
@@ -3580,8 +3581,11 @@ int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
     struct start_sc *sc;
     int len;
     const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
+    if (from == NULL) {
+        from = "unknown";
+    }
 
-    len = offsetof(struct start_sc, host) + strlen(gbl_mynode) + 1;
+    len = offsetof(struct start_sc, host) + strlen(from) + 1;
 
     sc = alloca(len);
     sc->seed = flibc_htonll(seed);
