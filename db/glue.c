@@ -5787,7 +5787,7 @@ void print_tableparams()
 
         char *tableparams = NULL;
         int tbplen = 0;
-        bdb_get_table_csonparameters(db->dbname, &tableparams, &tbplen);
+        bdb_get_table_csonparameters(NULL, db->dbname, &tableparams, &tbplen);
         if (tableparams) {
             logmsg(LOGMSG_USER, " tableparams: %10s", tableparams);
             free(tableparams);
@@ -6191,6 +6191,37 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     }
 
     return version;
+}
+
+
+/**
+ * Set schema for a specific table, used for pinning table to certain versions 
+ * upon re-creation (for example)
+ *
+ */
+int table_version_set(tran_type *tran, const char *tablename, 
+                      unsigned long long version)
+{
+    struct dbtable *db;
+    unsigned long long ret;
+    int rc;
+    int bdberr = 0;
+
+    if (is_tablename_queue(tablename, strlen(tablename))) 
+        return 0;
+
+    db = get_dbtable_by_name(tablename);
+    if (!db) {
+        ctrace("table unknown \"%s\"\n", tablename);
+        return -1;
+    }
+
+    rc = bdb_table_version_update(db->handle, tran, version, &bdberr);
+    if (!rc && bdberr) rc = -1;
+
+    db->tableversion = version;
+
+    return rc;
 }
 
 void *get_bdb_env(void) { return thedb->bdb_env; }
