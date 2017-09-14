@@ -22,6 +22,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
 
@@ -60,6 +61,7 @@
 #include "comdb2_store.h"
 #include "sqlite_store.h"
 #include "no_store.h"
+#include <bb_daemon.h>
 
 static std::map<std::string, int> port_map;
 static std::map<std::string, int> fd_map;
@@ -706,14 +708,18 @@ static int do_accept(struct pollfd &fd, std::vector<struct pollfd> &fds)
     return watchfd(rfd, fds, req.sin_addr);
 }
 
+#if defined(_SUN_SOURCE) || defined(_IBM_SOURCE)
+#include <netdb.h>
+#endif
+
 static bool init_local_names()
 {
     struct hostent *me;
     me = gethostbyname("localhost");
 
     if (me == NULL) {
-        syslog(LOG_ERR, "gethostbyname(\"localhost\") %d %s\n", h_errno,
-               hstrerror(h_errno));
+        syslog(LOG_ERR, "gethostbyname(\"localhost\") %d %s\n", errno,
+               strerror(errno));
         return false;
     }
 
@@ -825,10 +831,6 @@ static int usage(int rc)
            "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n");
     return rc;
 }
-
-#ifdef _SUN_SOURCE
-#include <netdb.h>
-#endif
 
 int main(int argc, char **argv)
 {
@@ -971,9 +973,7 @@ int main(int argc, char **argv)
         pmux_store->sav_port("pmux", port);
 
     if (!foreground_mode) {
-#ifndef _IBM_SOURCE
-        daemon(0, 0);
-#endif
+        bb_daemon();
     }
 
     init_router_mode();

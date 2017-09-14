@@ -600,13 +600,16 @@ static unsigned int query_path_component_hash(const void *key, int len)
     } else {
         name = fdb_table_entry_tblname(q->fdb);
     }
-    struct {
+
+    struct myx {
         int ix;
-        char name[strlen(name) + 1];
-    } x;
-    x.ix = q->ix;
-    strcpy(x.name, name);
-    return hash_default_fixedwidth((void*)&x, sizeof(x));
+        char name[1];
+    } * x;
+    int sz = offsetof(struct myx, name) + strlen(name) + 1;
+    x = alloca(sz);
+    x->ix = q->ix;
+    strcpy(x->name, name);
+    return hash_default_fixedwidth((void *)x, sz);
 }
 
 static int query_path_component_cmp(const void *key1, const void *key2, int len)
@@ -10712,9 +10715,8 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
     }
     *pnEntry = count;
 
-    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
-                "Count(pCur %d)      = %s\n", pCur->cursorid,
-                sqlite3ErrStr(rc));
+    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Count(pCur %d)      = %s\n",
+                pCur->cursorid, sqlite3ErrStr(rc));
 
     return rc;
 }

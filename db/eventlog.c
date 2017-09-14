@@ -23,6 +23,11 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#if defined(_IBM_SOURCE)
+#include <openssl/objects.h>
+#include <openssl/ec.h>
+#endif
+
 #include <zlib.h>
 
 #include "reqlog_int.h"

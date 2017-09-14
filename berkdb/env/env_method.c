@@ -385,19 +385,17 @@ __dbenv_get_home(dbenv, homep)
  * PUBLIC: int  __dbenv_set_alloc __P((DB_ENV *, void *(*)(size_t),
  * PUBLIC:          void *(*)(void *, size_t), void (*)(void *)));
  */
-int
-__dbenv_set_alloc(dbenv, mal_func, real_func, free_func)
-	DB_ENV *dbenv;
-	void *(*mal_func) __P((size_t));
-	void *(*real_func) __P((void *, size_t));
-	void (*free_func) __P((void *));
+int __dbenv_set_alloc(dbenv, mal_func, real_func, free_mem_func) DB_ENV *dbenv;
+void *(*mal_func)__P((size_t));
+void *(*real_func)__P((void *, size_t));
+void(*free_mem_func) __P((void *));
 {
 	ENV_ILLEGAL_AFTER_OPEN(dbenv, "DB_ENV->set_alloc");
 
 	dbenv->db_malloc = mal_func;
 	dbenv->db_realloc = real_func;
-	dbenv->db_free = free_func;
-	return (0);
+        dbenv->db_free = free_mem_func;
+        return (0);
 }
 
 /*

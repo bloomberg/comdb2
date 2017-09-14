@@ -7,8 +7,8 @@ tools_INCLUDE:=-I$(SRCHOME)/crc32c -I$(SRCHOME)/bbinc			\
 -I$(SRCHOME)/dlmalloc -I$(SRCHOME)/sockpool -I$(SRCHOME)/cson		\
 $(OPTBBINCLUDE)
 
-tools_SYSLIBS=$(BBSTATIC) -lprotobuf-c -lssl -lcrypto -llz4 $(BBDYN)	\
--lpthread -lrt -lm -lz $(ARCHLIBS)
+tools_SYSLIBS=$(BBLDPREFIX)$(BBSTATIC) -lprotobuf-c -lssl -lcrypto -llz4 \
+			  $(BBLDPREFIX)$(BBDYN)	-lpthread -lrt -lm -lz $(ARCHLIBS)
 
 tools_CPPFLAGS:=$(tools_INCLUDE) $(CPPFLAGS)
 tools_LDFLAGS:=$(LDFLAGS) $(LCLFLAGS)
@@ -32,15 +32,15 @@ cdb2sql: $(cdb2sql_OBJS)
 
 cdb2replay_OBJS:=tools/cdb2_sqlreplay/cdb2_sqlreplay.o
 cdb2replay_CFLAGS=-Icson
-cdb2replay_LDLIBS=-Lcson -lcson $(CDB2API) $(PROTOBUF) \
-                  -lprotobuf-c -lssl -lcrypto -lz -lpthread
+cdb2replay_LDLIBS=-Lcson -lcson -L$(SRCHOME)/cdb2api $(CDB2API) -L$(SRCHOME)/protobuf $(OPTBBRPATH) \
+				  $(PROTOBUF) -lprotobuf-c $(BBLDPREFIX)$(BBDYN) -lssl -lcrypto -lz -lpthread
 
 $(cdb2replay_OBJS): %.o: %.cpp $(LIBS_BIN)
 	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(cdb2replay_CFLAGS) $(CXX11FLAGS) -c $< -o $@
 
 
 cdb2_sqlreplay: $(cdb2replay_OBJS)
-	$(CXX11) $(tools_CPPFLAGS) $(LDFLAGS) $< $(cdb2replay_LDLIBS) -o $@
+	$(CXX11) $(CXX11LDFLAGS) $(tools_CPPFLAGS) $< $(cdb2replay_LDLIBS) -o $@ $(ARCHLIBS)
 
 # Cdb2sockpool - Use base rules, multiple object files
 cdb2sockpool_SOURCES:=utils.c settings.c cdb2sockpool.c
@@ -62,11 +62,15 @@ comdb2ar_OBJS:=$(patsubst %.cpp,tools/comdb2ar/%.o,		\
 	$(filter %.cpp,$(comdb2ar_SOURCES)))			\
 	$(patsubst %.c,tools/comdb2ar/%.o,			\
 	$(filter %.c,$(comdb2ar_SOURCES)))
-comdb2ar_LDLIBS+= $(BBSTATIC) $(BBLIB) $(CRC32C) -ldlmalloc $(DLMALLOC)		\
-		  $(BBDYN) -lpthread -lm -lssl -lcrypto -ldl -lrt -lz $(ARCHLIBS)
+
+comdb2ar_LDLIBS+= $(BBLDPREFIX)$(BBSTATIC) -Lcrc32c $(CRC32C) -L$(SRCHOME)/bb -lbb -L$(SRCHOME)/dlmalloc $(DLMALLOC) \
+		$(BBLDPREFIX)$(BBDYN) -lpthread -lm -lssl -lcrypto -ldl \
+		  -lrt -lz $(ARCHLIBS)
+
+comdb2ar_LDFLAGS:=$(CXX11LDFLAGS)
 
 comdb2ar: $(comdb2ar_OBJS)
-	$(CXX11) $(tools_LDFLAGS) $^ $(comdb2ar_LDLIBS) -o $@
+	$(CXX11) $(comdb2ar_LDFLAGS) $^ $(comdb2ar_LDLIBS) -o $@
 
 
 # Files that include db.h require COMDB2AR to be defined
@@ -80,7 +84,8 @@ tools/comdb2ar/serialise.o: tools_CPPFLAGS+=$(db_wrap_FLAGS)
 pmux_LDFLAGS=$(CXX11LDFLAGS) -L$(SRCHOME)/cdb2api       \
 -L$(SRCHOME)/protobuf -L$(SRCHOME)/bb $(OPTBBRPATH)
 pmux_LDLIBS=$(CDB2API) $(PROTOBUF) -lbb $(BBLDPREFIX)$(BBSTATIC) \
--lsqlite3 -lprotobuf-c -L$(SRCHOME)/dlmalloc -ldlmalloc $(BBLDPREFIX)$(BBDYN) -lpthread -ldl -lssl -lcrypto
+-lsqlite3 -lprotobuf-c -L$(SRCHOME)/dlmalloc -ldlmalloc $(BBLDPREFIX)$(BBDYN) \
+-pthread -ldl -lssl -lcrypto -lz
 ifeq ($(arch),Linux)
     pmux_LDLIBS+=-lrt
 else
@@ -91,12 +96,14 @@ endif
 
 pmux_SOURCES:=tools/pmux/pmux.cpp
 pmux_OBJS:=$(patsubst %.cpp,%.o,$(pmux_SOURCES))
+#
+#pmux_CPPFLAGS=-pthread
 
 pmux: $(pmux_OBJS)
 	$(CXX11) $(pmux_LDFLAGS) $< $(pmux_LDLIBS) -o $@
 
 $(pmux_OBJS): %.o: %.cpp $(LIBS_BIN)
-	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(CXX11FLAGS) -c $< -o $@
+	$(CXX11) $(CPPFLAGS) $(tools_CPPFLAGS) $(CXX11FLAGS) $(pmux_CPPFLAGS) -c $< -o $@
 
 # Cdb2_dump et al. - Needs more dependencies for the cdb2_ tools
 # Cdb2_dump and others. Omit cdb2_printlog for now because it needs
