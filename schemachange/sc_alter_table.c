@@ -506,9 +506,11 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         return -1;
     }
 
+    pthread_rwlock_wrlock(&sc_live_rwlock);
     sc_live = 1;
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
+    pthread_rwlock_unlock(&sc_live_rwlock);
     gbl_sc_resume_start = 0; // for resuming SC/toblock_main: pointers are set
     MEMORY_SYNC;
 
@@ -627,7 +629,9 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         /* Before this handle is closed, lets wait for all the db reads to
          * finish*/
 
+        pthread_rwlock_wrlock(&sc_live_rwlock);
         sc_live = 0;
+        pthread_rwlock_unlock(&sc_live_rwlock);
 
         /* No insert transactions should happen after this
            so lock the table. */

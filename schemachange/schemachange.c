@@ -182,7 +182,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         logmsg(
             LOGMSG_INFO,
             "Resuming schema change: fetched seed 0x%llx, original node %s\n",
-            seed, node);
+            seed, node ? node : "(unknown)");
         if (stopsc) {
             errstat_set_strf(&iq->errstat, "Master node downgrading - new "
                                            "master will resume schemachange");
@@ -530,20 +530,19 @@ done:
     return rc;
 }
 
-int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
-                        const void *old_dta, unsigned long long del_keys,
-                        blob_buffer_t *oldblobs)
+int live_sc_post_delete_int(struct ireq *iq, void *trans,
+                            unsigned long long genid, const void *old_dta,
+                            unsigned long long del_keys,
+                            blob_buffer_t *oldblobs)
 {
-
     if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
         return 0;
     }
 
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_delete: genid 0x%llx stripe %d out of range!\n",
-               genid, stripe);
+        logmsg(LOGMSG_ERROR, "%s: genid 0x%llx stripe %d out of range!\n",
+               __func__, genid, stripe);
         return 0;
     }
     unsigned long long *sc_genids = iq->usedb->sc_to->sc_genids;
@@ -563,16 +562,31 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
     /* genid is older than schema change position - a delete from new
      * table will be required. */
 
-    return live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys,
+    return live_sc_post_del_record(iq, trans, genid, old_dta, del_keys,
                                    oldblobs);
 }
 
-int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
-                     uint8_t *od_dta, unsigned long long ins_keys,
-                     blob_buffer_t *blobs, size_t maxblobs, int origflags,
-                     int *rrn)
+int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
+                        const void *old_dta, unsigned long long del_keys,
+                        blob_buffer_t *oldblobs)
 {
-    if (!sc_live || iq->usedb->sc_from != iq->usedb) return 0;
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
+
+    rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
+
+    pthread_rwlock_unlock(&sc_live_rwlock);
+    return rc;
+}
+
+int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
+                         uint8_t *od_dta, unsigned long long ins_keys,
+                         blob_buffer_t *blobs, size_t maxblobs, int origflags,
+                         int *rrn)
+{
+    if (!sc_live || iq->usedb->sc_from != iq->usedb) {
+        return 0;
+    }
 
     int stripe = get_dtafile_from_genid(genid);
     if (stripe < 0 || stripe >= gbl_dtastripe) {
@@ -592,8 +606,23 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
                                          sc_genids[stripe])) {
         return 0;
     }
-    return live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
-                                maxblobs, origflags, rrn);
+    return live_sc_post_add_record(iq, trans, genid, od_dta, ins_keys, blobs,
+                                   maxblobs, origflags, rrn);
+}
+
+int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
+                     uint8_t *od_dta, unsigned long long ins_keys,
+                     blob_buffer_t *blobs, size_t maxblobs, int origflags,
+                     int *rrn)
+{
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
+
+    rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
+                              maxblobs, origflags, rrn);
+
+    pthread_rwlock_unlock(&sc_live_rwlock);
+    return rc;
 }
 
 /* should be really called live_sc_post_update_delayed_key_adds() */
@@ -601,9 +630,14 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                              unsigned long long newgenid, const void *od_dta,
                              unsigned long long ins_keys, int od_len)
 {
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
 
-    return live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
-                                                    ins_keys, od_len);
+    rc = live_sc_post_update_delayed_key_adds_int(iq, trans, newgenid, od_dta,
+                                                  ins_keys, od_len);
+
+    pthread_rwlock_unlock(&sc_live_rwlock);
+    return rc;
 }
 
 /* Updating of a record when schemachange is going means we have to check
@@ -626,14 +660,14 @@ int live_sc_delayed_key_adds(struct ireq *iq, void *trans,
                                ^__SC ptr
        actually_update(oldgen to newgenid)
 */
-int live_sc_post_update(struct ireq *iq, void *trans,
-                        unsigned long long oldgenid, const void *old_dta,
-                        unsigned long long newgenid, const void *new_dta,
-                        unsigned long long ins_keys,
-                        unsigned long long del_keys, int od_len, int *updCols,
-                        blob_buffer_t *blobs, size_t maxblobs, int origflags,
-                        int rrn, int deferredAdd, blob_buffer_t *oldblobs,
-                        blob_buffer_t *newblobs)
+int live_sc_post_update_int(struct ireq *iq, void *trans,
+                            unsigned long long oldgenid, const void *old_dta,
+                            unsigned long long newgenid, const void *new_dta,
+                            unsigned long long ins_keys,
+                            unsigned long long del_keys, int od_len,
+                            int *updCols, blob_buffer_t *blobs, size_t maxblobs,
+                            int origflags, int rrn, int deferredAdd,
+                            blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
     if (!(sc_live && iq->usedb->sc_from == iq->usedb)) {
         return 0;
@@ -683,7 +717,7 @@ int live_sc_post_update(struct ireq *iq, void *trans,
             reqprintf(
                 iq, "C2: oldgenid 0x%llx ... scptr 0x%llx ... newgenid 0x%llx ",
                 oldgenid, sc_genids[stripe], newgenid);
-        rc = live_sc_post_delete_int(iq, trans, oldgenid, old_dta, del_keys,
+        rc = live_sc_post_del_record(iq, trans, oldgenid, old_dta, del_keys,
                                      oldblobs);
     } else if (!is_newgen_gt_scptr &&
                is_oldgen_gt_scptr) // case 3) newgenid  ..^...  oldgenid
@@ -692,8 +726,8 @@ int live_sc_post_update(struct ireq *iq, void *trans,
             reqprintf(
                 iq, "C3: newgenid 0x%llx ...scptr 0x%llx ... oldgenid 0x%llx ",
                 newgenid, sc_genids[stripe], oldgenid);
-        rc = live_sc_post_add_int(iq, trans, newgenid, new_dta, ins_keys, blobs,
-                                  maxblobs, origflags, &rrn);
+        rc = live_sc_post_add_record(iq, trans, newgenid, new_dta, ins_keys,
+                                     blobs, maxblobs, origflags, &rrn);
     } else if (!is_newgen_gt_scptr &&
                !is_oldgen_gt_scptr) // case 4) newgenid and oldgenid  ...^..
     {
@@ -701,13 +735,34 @@ int live_sc_post_update(struct ireq *iq, void *trans,
             reqprintf(iq,
                       "C4: oldgenid 0x%llx newgenid 0x%llx ... scptr 0x%llx",
                       oldgenid, newgenid, sc_genids[stripe]);
-        rc = live_sc_post_update_int(
+        rc = live_sc_post_upd_record(
             iq, trans, oldgenid, old_dta, newgenid, new_dta, ins_keys, del_keys,
             od_len, updCols, blobs, deferredAdd, oldblobs, newblobs);
     }
 
     if (iq->debug) reqpopprefixes(iq, 1);
 
+    return rc;
+}
+
+int live_sc_post_update(struct ireq *iq, void *trans,
+                        unsigned long long oldgenid, const void *old_dta,
+                        unsigned long long newgenid, const void *new_dta,
+                        unsigned long long ins_keys,
+                        unsigned long long del_keys, int od_len, int *updCols,
+                        blob_buffer_t *blobs, size_t maxblobs, int origflags,
+                        int rrn, int deferredAdd, blob_buffer_t *oldblobs,
+                        blob_buffer_t *newblobs)
+{
+    int rc = 0;
+    pthread_rwlock_rdlock(&sc_live_rwlock);
+
+    rc = live_sc_post_update_int(iq, trans, oldgenid, old_dta, newgenid,
+                                 new_dta, ins_keys, del_keys, od_len, updCols,
+                                 blobs, maxblobs, origflags, rrn, deferredAdd,
+                                 oldblobs, newblobs);
+
+    pthread_rwlock_unlock(&sc_live_rwlock);
     return rc;
 }
 
