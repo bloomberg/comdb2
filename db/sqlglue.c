@@ -11770,6 +11770,9 @@ unsigned long long comdb2_table_version(const char *tablename)
     struct dbtable *db;
     unsigned long long ret;
 
+    if (is_tablename_queue(tablename, strlen(tablename))) 
+        return 0;
+
     db = get_dbtable_by_name(tablename);
     if (!db) {
         ctrace("table unknown \"%s\"\n", tablename);
@@ -11778,6 +11781,7 @@ unsigned long long comdb2_table_version(const char *tablename)
 
     return db->tableversion;
 }
+
 
 void sqlite3RegisterDateTimeFunctions(void) {}
 
