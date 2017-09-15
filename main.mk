@@ -71,6 +71,7 @@ ifeq ($(arch),AIX)
   # I give up.  Can't link these statically.
   LIBREADLINE=-blibpath:/opt/bb/lib64:/usr/lib:/lib -lreadline -lhistory
   # Use GCC on IBM for C++11 code. Also requires different options for 64 bit.
+  # XXX The GCC runtime is not deployed on Bloomberg IBM machines
   CXX11=/opt/swt/install/gcc-4.9.2/bin/g++
   CXX11FLAGS=-std=c++11 -pthread -maix64
   CXX11LDFLAGS=-maix64
