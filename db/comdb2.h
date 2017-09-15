@@ -3570,11 +3570,11 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr);
  */
 unsigned long long table_version_select(struct dbtable *db, tran_type *tran);
 
-/** 
+/**
  *  Set the version to a specific version, required by timepartition
- *  
+ *
  */
-int table_version_set(tran_type *tran, const char *tablename, 
+int table_version_set(tran_type *tran, const char *tablename,
                       unsigned long long version);
 /**
  * Interface between partition roller and schema change */
@@ -3652,10 +3652,9 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
 
 int db_is_stopped(void);
 
-
 /**
  * check if a tablename is a queue
  */
-int is_tablename_queue(const char * tablename, int len);
+int is_tablename_queue(const char *tablename, int len);
 
 #endif /* !INCLUDED_COMDB2_H */

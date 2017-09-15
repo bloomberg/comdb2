@@ -1339,7 +1339,7 @@ void change_schemas_recover(char *table)
     if (db == NULL) {
         /* shouldn't happen */
         logmsg(LOGMSG_ERROR, "change_schemas_recover: invalid table %s\n",
-                table);
+               table);
         return;
     }
     backout_schemas(table);

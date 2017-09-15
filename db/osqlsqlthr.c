@@ -1666,15 +1666,15 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         unsigned long long version = 0;
         if (getdbidxbyname(sc->table) < 0) { // view
             char *viewname = timepart_newest_shard(sc->table, &version);
-            if(viewname) {
+            if (viewname) {
                 free(viewname);
             } else
                 usedb = 0;
         } else {
             version = comdb2_table_version(tblname);
         }
-        
-        if (usedb) 
+
+        if (usedb)
             rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
                                  NET_OSQL_BLOCK_RPL_UUID, osql->logsb, version);
     }

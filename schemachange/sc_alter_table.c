@@ -620,7 +620,8 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     if (newdb->version == 1) {
         /* newdb's version has been reset */
         bdberr = bdb_reset_csc2_version(transac, db->dbname, db->version);
-        if (bdberr != BDBERR_NOERROR) goto backout;
+        if (bdberr != BDBERR_NOERROR)
+            goto backout;
     }
 
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
@@ -628,15 +629,14 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     /* load new csc2 data */
     rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->dbname,
-            s->newcsc2);
+                                    s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
-                "trying again\n");
+                   "trying again\n");
         goto backout;
     }
 
-    if ((rc = set_header_and_properties(transac, newdb, s, 1,
-                    olddb_bthashsz)))
+    if ((rc = set_header_and_properties(transac, newdb, s, 1, olddb_bthashsz)))
         goto backout;
 
     /*update necessary versions and delete unnecessary files from newdb*/
@@ -646,15 +646,15 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     } else {
         logmsg(LOGMSG_INFO, " Updating versions without plan\n");
         /*set all metapointers to new files*/;
-        rc = bdb_commit_temp_file_version_all(newdb->handle, transac,
-                                              &bdberr);
+        rc = bdb_commit_temp_file_version_all(newdb->handle, transac, &bdberr);
     }
 
-    if (rc) goto backout;
+    if (rc)
+        goto backout;
 
     /* delete any new file versions this table has */
     if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||
-            bdberr != BDBERR_NOERROR) {
+        bdberr != BDBERR_NOERROR) {
         sc_errf(s, "%s: bdb_del_file_versions failed\n", __func__);
         goto backout;
     }
@@ -724,8 +724,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 
-    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle,
-            &bdberr);
+    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
     if (rc) {
         sc_errf(s, "Failed freeing old db, bdberr %d\n", bdberr);
         goto failed;
@@ -766,8 +765,8 @@ backout:
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->dbname, db->version, db->instant_schema_change, db->lrl,
-           db->odh, db->handle);
+           db->dbname, db->version, db->instant_schema_change, db->lrl, db->odh,
+           db->handle);
 
     return -1;
 

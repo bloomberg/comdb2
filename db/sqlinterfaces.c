@@ -5584,20 +5584,20 @@ check_version:
     }
 
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
-            /* need to refresh things; we need to grab views lock */
-        if(!got_views_lock) {
+        /* need to refresh things; we need to grab views lock */
+        if (!got_views_lock) {
             pthread_rwlock_unlock(&schema_lk);
 
             views_lock();
 
             pthread_rwlock_rdlock(&schema_lk);
 
-            got_views_lock = 1; 
-            if(thd->sqldb) {
+            got_views_lock = 1;
+            if (thd->sqldb) {
                 /* we kept engine, but the versions might have changed while
                  * we released the schema lock */
-              goto check_version;
-           }
+                goto check_version;
+            }
         }
 
         if (!thd->sqldb) {
@@ -5645,9 +5645,8 @@ check_version:
         }
     }
     clnt->no_transaction = 0;
-    if(got_views_lock)
+    if (got_views_lock)
         views_unlock();
-
 }
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)

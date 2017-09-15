@@ -6964,8 +6964,9 @@ void llmeta_list_tablename_alias(void)
 
 bdb_state_type *bdb_llmeta_bdb_state(void) { return llmeta_bdb_state; }
 
-static int bdb_table_version_upsert_int(bdb_state_type *bdb_state, tran_type *tran,
-        unsigned long long *val, int *bdberr)
+static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
+                                        tran_type *tran,
+                                        unsigned long long *val, int *bdberr)
 {
     struct llmeta_sane_table_version schema_version;
     char *tblname = bdb_state->name;
@@ -7037,13 +7038,10 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state, tran_type *tr
     }
 
     /* add new entry */
-    if (val) 
-    {
+    if (val) {
         version = *val;
-    }
-    else
-    {
-        version ++;
+    } else {
+        version++;
     }
 
     version = flibc_htonll(version);
@@ -7059,10 +7057,12 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state, tran_type *tr
 
 /**
  *  Increment the TABLE VERSION ENTRY for table "bdb_state->name".
- *  If an entry doesn't exist, an entry with value 1 is created (default 0 means non-existing)
+ *  If an entry doesn't exist, an entry with value 1 is created (default 0 means
+ * non-existing)
  *
  */
-int bdb_table_version_upsert( bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
+int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
+                             int *bdberr)
 {
     return bdb_table_version_upsert_int(bdb_state, tran, NULL, bdberr);
 }
@@ -7072,12 +7072,11 @@ int bdb_table_version_upsert( bdb_state_type *bdb_state, tran_type *tran, int *b
  * (It creates or, if existing, updates an entry)
  *
  */
-int bdb_table_version_update( bdb_state_type *bdb_state, tran_type *tran,
-        unsigned long long val, int *bdberr)
+int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long val, int *bdberr)
 {
     return bdb_table_version_upsert_int(bdb_state, tran, &val, bdberr);
 }
-
 
 /**
  *  Delete the TABLE VERSION ENTRY for table "bdb_state->name"
@@ -7424,7 +7423,8 @@ static inline int llmeta_set_blob(void *parent_tran, llmetakey_t key,
 /* return parameters for tbl into value
  * NB: caller needs to free that memory area
  */
-int bdb_get_table_csonparameters(tran_type *tran, const char *table, char **value, int *len)
+int bdb_get_table_csonparameters(tran_type *tran, const char *table,
+                                 char **value, int *len)
 {
     return llmeta_get_blob(LLMETA_TABLE_PARAMETERS, tran, table, value, len);
 }

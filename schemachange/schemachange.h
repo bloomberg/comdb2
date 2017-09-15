@@ -132,12 +132,10 @@ struct schema_change_type {
     int is_sfunc; /* lua scalar func */
     int is_afunc; /* lua agg func */
 
-
-
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
     int nothrevent;
-    int pagesize;            /* pagesize override to use */
+    int pagesize; /* pagesize override to use */
     int showsp;
     SBUF2 *sb; /* socket to sponsoring program */
     int must_close_sb;

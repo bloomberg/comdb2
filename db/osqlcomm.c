@@ -3463,7 +3463,7 @@ int is_tablename_queue(const char * tablename, int len)
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb, 
+                    char *tablename, int type, SBUF2 *logsb,
                     unsigned long long tableversion)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
@@ -6283,26 +6283,27 @@ static inline int is_write_request(int type)
         return 1;
     default:
         return 0;
-}
+    }
 }
 
 void free_cached_idx(uint8_t **cached_idx);
 
-int start_schema_change_tran_wrapper(const char *tblname, timepart_sc_arg_t *arg)
+int start_schema_change_tran_wrapper(const char *tblname,
+                                     timepart_sc_arg_t *arg)
 {
     struct schema_change_type *sc = arg->s;
     struct ireq *iq = sc->iq;
     int rc;
-    
+
     strncpy0(sc->table, tblname, sizeof(sc->table));
 
-    rc = start_schema_change_tran(iq, sc->tran); 
+    rc = start_schema_change_tran(iq, sc->tran);
     if (rc != SC_COMMIT_PENDING) {
         iq->sc = NULL;
     } else {
         iq->sc->sc_next = iq->sc_pending;
         iq->sc_pending = iq->sc;
-        if(arg->nshards == arg->indx+1) {
+        if (arg->nshards == arg->indx + 1) {
             /* last shard was done */
             bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
         } else {
@@ -6311,14 +6312,14 @@ int start_schema_change_tran_wrapper(const char *tblname, timepart_sc_arg_t *arg
             /* fields not cloned */
             new_sc->iq = sc->iq;
             new_sc->tran = sc->tran;
-            
+
             /* update the new sc */
             arg->s = new_sc;
             iq->sc = new_sc;
         }
     }
 
-    return (rc == SC_COMMIT_PENDING)?0:rc;
+    return (rc == SC_COMMIT_PENDING) ? 0 : rc;
 }
 
 /**
@@ -6462,20 +6463,21 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         if (unlikely(timepart_is_timepart(tablename, 1))) {
             char *newest_shard;
             unsigned long long ver;
-            
+
             newest_shard = timepart_newest_shard(tablename, &ver);
-            if(newest_shard) {
+            if (newest_shard) {
                 iq->usedbtablevers = ver;
                 free(newest_shard);
             } else {
                 logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
-                       "\n", __func__, tablename);
+                                     "\n",
+                       __func__, tablename);
 
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
                                          tablename, 0);
             }
         } else {
-            if ( is_tablename_queue(tablename, strlen(tablename)) ) {
+            if (is_tablename_queue(tablename, strlen(tablename))) {
                 iq->usedb = getqueuebyname(tablename);
 
             } else {
@@ -6485,7 +6487,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (iq->usedb == NULL) {
                 iq->usedb = iq->origdb;
                 logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s"
-                       "\n", __func__, dt.tablenamelen, tablename);
+                                     "\n",
+                       __func__, dt.tablenamelen, tablename);
 
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
                                          tablename, 0);
@@ -7101,7 +7104,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         sc->tran = ptran;
         if (sc->db) iq->usedb = sc->db;
 
-        if(!timepart_is_timepart(sc->table, 1)) {
+        if (!timepart_is_timepart(sc->table, 1)) {
             rc = start_schema_change_tran(iq, ptran);
             if (rc != SC_COMMIT_PENDING) {
                 iq->sc = NULL;
@@ -7114,9 +7117,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             timepart_sc_arg_t arg = {0};
             arg.s = sc;
             arg.s->iq = iq;
-            rc = timepart_foreach_shard(sc->table,
-                                        start_schema_change_tran_wrapper,
-                                        &arg, 0);
+            rc = timepart_foreach_shard(
+                sc->table, start_schema_change_tran_wrapper, &arg, 0);
         }
         iq->usedb = NULL;
 
