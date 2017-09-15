@@ -5905,16 +5905,22 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
     lua_getfield(lua, -1, oldnew);
     switch (type) {
     case SP_FIELD_INT16:
+        copypush(u.i16, int16_t, payload, ntohs, luabb_pushinteger);
+        break;
     case SP_FIELD_UINT16:
-        copypush(u.i16, uint16_t, payload, ntohs, luabb_pushinteger);
+        copypush(u.u16, uint16_t, payload, ntohs, luabb_pushinteger);
         break;
     case SP_FIELD_INT32:
+        copypush(u.i32, int32_t, payload, ntohl, luabb_pushinteger);
+        break;
     case SP_FIELD_UINT32:
-        copypush(u.i32, uint32_t, payload, ntohl, luabb_pushinteger);
+        copypush(u.u32, uint32_t, payload, ntohl, luabb_pushinteger);
         break;
     case SP_FIELD_INT64:
+        copypush(u.i64, int64_t, payload, flibc_ntohll, luabb_pushinteger);
+        break;
     case SP_FIELD_UINT64:
-        copypush(u.i64, uint64_t, payload, flibc_ntohll, luabb_pushinteger);
+        copypush(u.u64, uint64_t, payload, flibc_ntohll, luabb_pushinteger);
         break;
     case SP_FIELD_REAL32:
         copypush(u.f, float, payload, flibc_ntohf, luabb_pushreal);
