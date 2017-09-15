@@ -248,10 +248,14 @@ static void print_compr_stat(CompStruct *comp, const char *prefix, SizeEst *est)
     double sav_dta, sav_blob;
     struct dbtable *db = comp->db;
 
-    cmp_dta = (double)est->dtasz / comp->uncompressed.dtasz;
-    cmp_blob =
-        db->numblobs ? (double)est->blobsz / comp->uncompressed.blobsz : 1;
-
+    if (comp->uncompressed.dtasz == 0) {
+        /* empty table? */
+        cmp_dta = cmp_blob = 1;
+    } else {
+        cmp_dta = (double)est->dtasz / comp->uncompressed.dtasz;
+        cmp_blob =
+            db->numblobs ? (double)est->blobsz / comp->uncompressed.blobsz : 1;
+    }
     sav_dta = /*1.0 -*/ cmp_dta;
     sav_blob = /*1.0 -*/ cmp_blob;
 
