@@ -772,17 +772,16 @@ __db_set_lorder(dbp, db_lorder)
 	return (0);
 }
 
-static int
-__db_set_alloc(dbp, mal_func, real_func, free_func)
-	DB *dbp;
-	void *(*mal_func) __P((size_t));
-	void *(*real_func) __P((void *, size_t));
-	void (*free_func) __P((void *));
+static int __db_set_alloc(dbp, mal_func, real_func, free_mem_func) DB *dbp;
+void *(*mal_func)__P((size_t));
+void *(*real_func)__P((void *, size_t));
+void(*free_mem_func) __P((void *));
 {
 	DB_ILLEGAL_IN_ENV(dbp, "DB->set_alloc");
 	DB_ILLEGAL_AFTER_OPEN(dbp, "DB->set_alloc");
 
-	return (__dbenv_set_alloc(dbp->dbenv, mal_func, real_func, free_func));
+        return (
+            __dbenv_set_alloc(dbp->dbenv, mal_func, real_func, free_mem_func));
 }
 
 static int

@@ -4558,12 +4558,12 @@ WhereInfo *sqlite3WhereBegin(
   }
 #ifdef SQLITE_DEBUG
   {
-    Bitmask mx = 0;
-    for(ii=0; ii<pTabList->nSrc; ii++){
-      Bitmask m = sqlite3WhereGetMask(pMaskSet, pTabList->a[ii].iCursor);
-      assert( m>=mx );
-      mx = m;
-    }
+      Bitmask mx = 0;
+      for (ii = 0; ii < pTabList->nSrc; ii++) {
+          Bitmask m = sqlite3WhereGetMask(pMaskSet, pTabList->a[ii].iCursor);
+          assert(m >= mx);
+          mx = m;
+      }
   }
 #endif
 

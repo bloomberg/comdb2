@@ -14,13 +14,14 @@
    limitations under the License.
  */
 
-#include <getopt.h>
+#include <bb_getopt_long.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <sys/socket.h>
 
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -152,7 +153,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
 
     replace_args(argc, argv);
 
-    while ((c = getopt_long(argc, argv, "h", long_options, &options_idx)) !=
+    while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
            -1) {
         if (c == 'h') print_usage_and_exit();
         if (c == '?') return 1;

@@ -60,20 +60,19 @@ marshal_t *new_marshal(char *name)
 
 /*marshal a resource - returns ptr to passed in ptr. this is so you
   can  var=marshal_add(..., ptr) in one line */
-void *marshal_add(marshal_t *mm, void *ptr, void (*free_func)(void *))
+void *marshal_add(marshal_t *mm, void *ptr, void (*free_mem_func)(void *))
 {
     struct marshal_itm *itm;
     if (ptr == 0)
         return 0; /*dont add null ptr*/
-    if (free_func == 0)
-        return 0; /*no free? why marshall.*/
+    if (free_mem_func == 0) return 0; /*no free? why marshall.*/
     if (hash_find(mm->h_ptrs, &ptr) != 0) {
         logmsg(LOGMSG_ERROR, "marshal_add:error dup add %p in %s\n", ptr, mm->name);
         return ptr;
     }
     itm = (struct marshal_itm *)malloc(sizeof(*itm));
     itm->ptr = ptr;
-    itm->free = free_func;
+    itm->free = free_mem_func;
     listc_atl(&mm->l_itms,
               itm); /*add as first item on list... first one to be freed*/
     hash_add(mm->h_ptrs, itm);
