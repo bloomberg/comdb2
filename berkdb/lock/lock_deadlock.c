@@ -380,14 +380,14 @@ show_locker_info(DB_ENV *dbenv, DB_LOCKTAB *lt, DB_LOCKREGION *region,
 		logmsg(LOGMSG_USER, "%s:%d__lock_getlocker ret: %d\n",
 		    __func__, __LINE__, ret);
 	} else if (lockerp != NULL) {
-		logmsg(LOGMSG_USER, "lockerid=%lx, killme=%d, tid=%llx \n", idmap[lid].id,
+		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d, tid=%lx \n", idmap[lid].id,
 		    idmap[lid].killme, lockerp->tid);
 		struct __db_lock *lp =
 		    SH_LIST_FIRST(&lockerp->heldby, __db_lock);
 		__lock_printlock(lt, lp, 1, stdout);
 		unlock_locker_partition(region, lockerp->partition);
 	} else
-		logmsg(LOGMSG_USER, "lockerid=%lx, killme=%d\n", idmap[lid].id,
+		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d\n", idmap[lid].id,
 		    idmap[lid].killme);
 
 	unlock_lockers(region);
@@ -1286,7 +1286,7 @@ obj_loop:
 
 			if (verbose_deadlocks)
 				logmsg(LOGMSG_USER, 
-					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
+					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%lx\n",
 						lockerp, lockerp->id, lockerp->dd_id,
 						dd_id_array[lockerp->dd_id].count,
 						(has_master)? lockerp->master_locker : 0);
@@ -1354,7 +1354,7 @@ look_waiters:
 			dd_id_array[dd].valid = 1;
 
 			if (verbose_deadlocks)
-				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%x\n",
+				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%lx\n",
 					lockerp, lockerp->id, lockerp->dd_id,
 					dd_id_array[lockerp->dd_id].count,
 					(has_master)? lockerp->master_locker : 0);
@@ -1833,7 +1833,7 @@ __dd_abort(dbenv, info)
 
 	if (verbose_deadlocks)
 		logmsg(LOGMSG_USER, 
-			"%d %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%d parent_locker=%d\n",
+			"%lu %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%ld parent_locker=%ld\n",
 			pthread_self(), __FILE__, __LINE__, lockerp->id,
 			info->count, lockerp->id, lockerp->dd_id, lockerp->nlocks,
 			lockerp->npagelocks, lockerp->nwrites,

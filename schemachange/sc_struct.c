@@ -890,7 +890,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
             newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
             thedb->bdb_env, tran, &bdberr);
-        logmsg(LOGMSG_DEBUG, "reload_schema handle %08x bdberr %d\n",
+        logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
 
@@ -947,7 +947,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
-               "reload_schema (fastinit case) handle %08x bdberr %d\n",
+               "reload_schema (fastinit case) handle %p bdberr %d\n",
                db->handle, bdberr);
         if (!db->handle || bdberr != 0) return 1;
 

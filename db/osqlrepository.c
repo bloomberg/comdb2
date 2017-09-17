@@ -54,7 +54,7 @@ int osql_repository_init(void)
 
     tmp = (osql_repository_t *)calloc(sizeof(osql_repository_t), 1);
     if (!tmp) {
-        logmsg(LOGMSG_ERROR, "%s: cannot allocate %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: cannot allocate %zu bytes\n", __func__,
                 sizeof(osql_repository_t));
         return -1;
     }

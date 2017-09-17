@@ -898,7 +898,7 @@ struct javasp_rec *javasp_alloc_rec(const void *od_dta, size_t od_len,
 
     rec = malloc(sizeof(struct javasp_rec));
     if (!rec) {
-        logmsg(LOGMSG_ERROR, "javasp_alloc_rec: malloc %u failed\n",
+        logmsg(LOGMSG_ERROR, "javasp_alloc_rec: malloc %zu failed\n",
                 sizeof(struct javasp_rec));
         return NULL;
     }

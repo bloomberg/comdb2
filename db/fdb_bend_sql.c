@@ -439,10 +439,10 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     if (gbl_fdb_track) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%d commiting tid=%s\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%lu commiting tid=%s\n", pthread_self(),
                    comdb2uuidstr(clnt->osql.uuid, us));
         } else
-            logmsg(LOGMSG_USER, "%d commiting tid=%llx\n", pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(), clnt->osql.rqid);
     }
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
@@ -509,10 +509,10 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     if (gbl_fdb_track) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%d commiting tid=%s\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%lu commiting tid=%s\n", pthread_self(),
                    comdb2uuidstr(clnt->osql.uuid, us));
         } else
-            logmsg(LOGMSG_USER, "%d commiting tid=%llx\n", pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(), clnt->osql.rqid);
     }
     /* destroying curstran */
     if (clnt->dbtran.cursor_tran) {
@@ -580,13 +580,13 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n",
+        logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu getting a curtran\n",
                 pthread_self());
 
     /* we need a curtran for this one */
     if (!clnt->dbtran.cursor_tran) {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n",
+            logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu getting a curtran\n",
                     pthread_self());
 
         clnt->dbtran.cursor_tran =
@@ -599,7 +599,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
         *standalone = 1;
     } else {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_ERROR, "XYXYXY: thread %p part of transaction %llu\n",
+            logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu part of transaction %llu\n",
                     pthread_self(), clnt->osql.rqid);
 
         *standalone = 0;
@@ -679,7 +679,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
     if (standalone) {
         if (clnt->dbtran.cursor_tran) {
             if (gbl_fdb_track)
-                logmsg(LOGMSG_ERROR, "XYXYXY: thread %p releasing curtran\n",
+                logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu releasing curtran\n",
                         pthread_self());
 
             rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
@@ -698,7 +698,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
         }
     } else {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "XYXYXY: thread %p in transaction, keeping curtran\n",
+            logmsg(LOGMSG_USER, "XYXYXY: thread %lu in transaction, keeping curtran\n",
                     pthread_self());
     }
 

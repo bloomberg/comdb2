@@ -175,7 +175,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 rc = -1;
                 goto done;
             } else if (rc) {
-                logmsg(LOGMSG_ERROR, "queuedb %s consumer %d genid %llx put rc %d\n",
+                logmsg(LOGMSG_ERROR, "queuedb %s consumer %d genid %lx put rc %d\n",
                         bdb_state->name, i, k.genid, rc);
                 *bdberr = BDBERR_MISC;
                 rc = -1;
@@ -440,7 +440,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
         goto done;
     }
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "next key is consumer %d genid %016llx\n", fndk.consumer,
+        logmsg(LOGMSG_USER, "next key is consumer %d genid %016lx\n", fndk.consumer,
                fndk.genid);
     if (fndk.consumer != consumer) {
         /* pretend we didn't find anything - the next record is meant for
@@ -466,8 +466,8 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
 
     p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
     if (p_buf == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: can't decode header in queue %s\n", __func__,
-                dbt_data.size, bdb_state->name);
+        logmsg(LOGMSG_ERROR, "%s: can't decode header size %u in queue %s\n",
+               __func__, dbt_data.size, bdb_state->name);
         *bdberr = BDBERR_MISC; /* ... */
         rc = -1;
         goto done;
@@ -540,7 +540,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     k.consumer = consumer;
     k.genid = qfnd.genid;
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "consumer %d genid %016llx\n", consumer, k.genid);
+        logmsg(LOGMSG_USER, "consumer %d genid %016lx\n", consumer, k.genid);
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + QUEUEDB_KEY_LEN;
     p_buf = queuedb_key_put(&k, p_buf, p_buf_end);

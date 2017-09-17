@@ -352,7 +352,7 @@ int write_json(void *state, const void *src, unsigned int n)
 
 int write_logmsg(void *state, const void *src, unsigned int n)
 {
-    logmsg(LOGMSG_USER, "%.*s", n, src);
+    logmsg(LOGMSG_USER, "%.*s", n, (const char *)src);
     return 0;
 }
 
@@ -616,7 +616,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         if (rollat == 0)
             logmsg(LOGMSG_USER, "Turned off rolling\n");
         else {
-            logmsg(LOGMSG_USER, "Rolling logs after %d bytes\n", rollat);
+            logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
         }
         eventlog_nkeep = rollat;
     } else if (tokcmp(tok, ltok, "every") == 0) {

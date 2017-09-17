@@ -605,8 +605,8 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 k = (int *)blkseq->key.data;
                 if ((now - blkseq->time) >
                     bdb_state->attr->private_blkseq_maxage) {
-                    logmsg(LOGMSG_INFO, "Stopping at " PR_LSN ", blkseq age %d > max %d\n",
-                           lsn, now - blkseq->time,
+                    logmsg(LOGMSG_INFO, "Stopping at " PR_LSN ", blkseq age %ld > max %d\n",
+                           PARM_LSN(lsn), now - blkseq->time,
                            bdb_state->attr->private_blkseq_maxage);
                     break;
                 }

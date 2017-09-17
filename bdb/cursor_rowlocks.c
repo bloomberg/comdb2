@@ -2016,7 +2016,7 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
     /* I'm just looking for which function to instrument */
     if (debug_trace(berkdb) && exit_lkcount > 100 &&
         exit_lkcount > enter_lkcount) {
-        logmsg(LOGMSG_USER, "thd %x function %s %s %d lock-count incremented from "
+        logmsg(LOGMSG_USER, "thd %lx function %s %s %d lock-count incremented from "
                         "%d to %d\n",
                 pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe",
                 cur->idx, enter_lkcount, exit_lkcount);
@@ -2029,7 +2029,7 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
             bdb_state->dbenv, cur->curtran->lockerid, &page_lock_count);
 
         if (page_lock_count > cursor_count) {
-            logmsg(LOGMSG_USER, "thd %x function %s %s %d pagelock-count is "
+            logmsg(LOGMSG_USER, "thd %lx function %s %s %d pagelock-count is "
                             "%d cursor count is  %d\n",
                     pthread_self(), func,
                     cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
@@ -2037,7 +2037,7 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
         }
 
         if (cur->max_page_locks < page_lock_count) {
-            logmsg(LOGMSG_USER, "thd %x function %s %s %d incrementing max "
+            logmsg(LOGMSG_USER, "thd %lx function %s %s %d incrementing max "
                             "pagelock count from %d to %d\n",
                     pthread_self(), func,
                     cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
@@ -2085,12 +2085,12 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
             }
 
             /* Print */
-            logmsg(LOGMSG_USER, "Cur %p thd %d %s tbl %s %s how=%d srch='%s'\n",
+            logmsg(LOGMSG_USER, "Cur %p thd %lu %s tbl %s %s how=%d srch='%s'\n",
                     berkdb, pthread_self(), func, bdb_state->name,
                     curtypetostr(cur->type), how, srckeyp);
         } else {
             /* Print */
-            logmsg(LOGMSG_USER, "Cur %p thd %d %s tbl %s %s how=%d\n", berkdb,
+            logmsg(LOGMSG_USER, "Cur %p thd %lu %s tbl %s %s how=%d\n", berkdb,
                     pthread_self(), func, bdb_state->name,
                     curtypetostr(cur->type), how);
         }
@@ -2246,7 +2246,7 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
         } else {
             /* Print */
             logmsg(LOGMSG_USER, 
-                "Cur %p %s tbl %s how=%d returns %d lsn='%d:%d' bdberr=%d\n",
+                "Cur %p %s tbl %s type %s how=%d page %d index %d returns %d lsn='%d:%d' bdberr=%d\n",
                 berkdb, func, bdb_state->name, curtypetostr(cur->type), how,
                 rcode, r->page, r->index, lsn.file, lsn.offset, *bdberr);
         }

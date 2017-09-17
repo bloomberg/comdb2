@@ -794,7 +794,7 @@ int resume_schema_change(void)
         pthread_t tid;
         rc = pthread_create(&tid, NULL, sc_resuming_watchdog, NULL);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n");
+            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n", __FILE__);
     }
     pthread_mutex_unlock(&sc_resuming_mtx);
     return 0;

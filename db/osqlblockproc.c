@@ -189,7 +189,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     info = (blocksql_info_t *)calloc(1, sizeof(blocksql_info_t));
     if (!info) {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                 sizeof(blocksql_info_t));
         return -1;
     }
@@ -199,7 +199,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     tran = calloc(sizeof(blocksql_tran_t), 1);
     if (!tran) {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                sizeof(blocksql_tran_t));
         free(info);
         return -1;
@@ -335,7 +335,7 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             break;
 
         if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%d %s:%d blocksql session closing early\n",
+            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
                     pthread_self(), __FILE__, __LINE__);
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;
@@ -1089,7 +1089,7 @@ static int process_this_session(
 
     key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
     if (!key) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocated %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
                 sizeof(oplog_key_t));
         return -1;
     }
@@ -1127,7 +1127,7 @@ static int process_this_session(
         datalen = bdb_temp_table_datasize(dbc);
 
         if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%d %s:%d blocksql session closing early\n",
+            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
                     pthread_self(), __FILE__, __LINE__);
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;

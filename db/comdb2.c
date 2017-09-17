@@ -958,7 +958,7 @@ void showdbenv(struct dbenv *dbenv)
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
         logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii, dbenv->sibling_hostname[ii],
-               dbenv->sibling_port[ii]);
+               *dbenv->sibling_port[ii]);
     }
 }
 
@@ -2280,7 +2280,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016llx\n\tblob files\n",
+        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
                 p_db->dbname, flibc_htonll(version_num));
     else
         ctrace("table %s\n\tdata files: %016llx\n\tblob files\n", p_db->dbname,
@@ -2302,7 +2302,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016llx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
                     flibc_htonll(version_num));
         else
             ctrace("\t\tblob num %d: %016llx\n", i,
@@ -2327,7 +2327,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016llx\n", i,
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
                     flibc_htonll(version_num));
         else
             ctrace("\t\tindex num %d: %016llx\n", i,
@@ -4312,16 +4312,16 @@ void *statthd(void *p)
                 if (diff_nretries)
                     logmsg(LOGMSG_USER, " n_retries %d", diff_nretries);
                 if (diff_vreplays)
-                    logmsg(LOGMSG_USER, " vreplays %lld", diff_vreplays);
+                    logmsg(LOGMSG_USER, " vreplays %d", diff_vreplays);
                 if (diff_newsql)
-                    logmsg(LOGMSG_USER, " nnewsql %lld", diff_newsql);
+                    logmsg(LOGMSG_USER, " nnewsql %d", diff_newsql);
                 if (diff_ncommit_time)
                     logmsg(LOGMSG_USER, " n_commit_time %f ms",
-                           diff_ncommit_time / (1000 * diff_ncommits));
+                           (double)diff_ncommit_time / (1000 * diff_ncommits));
                 if (diff_bpool_hits)
-                    logmsg(LOGMSG_USER, " cache_hits %llu", diff_bpool_hits);
+                    logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %llu",
+                    logmsg(LOGMSG_USER, " cache_misses %lu",
                            diff_bpool_misses);
                 have_scon_stats = 1;
             }

@@ -277,7 +277,7 @@ int fdb_cache_init(int n)
     }
     fdbs.arr = (fdb_t **)calloc(n, sizeof(fdb_t *));
     if (!fdbs.arr) {
-        logmsg(LOGMSG_ERROR, "%s:OOM %d bytes!\n", __func__, n * sizeof(fdb_t *));
+        logmsg(LOGMSG_ERROR, "%s:OOM %zu bytes!\n", __func__, n * sizeof(fdb_t *));
         return -1;
     }
     fdbs.nalloc = n;
@@ -321,7 +321,7 @@ static int __cache_link_fdb(fdb_t *fdb)
     if (fdbs.nused == fdbs.nalloc) {
         ptr = realloc(fdbs.arr, sizeof(fdb_t *) * fdbs.nalloc * 2);
         if (!ptr) {
-            logmsg(LOGMSG_ERROR, "%s: OOM %d bytes\n", __func__,
+            logmsg(LOGMSG_ERROR, "%s: OOM %zu bytes\n", __func__,
                     sizeof(fdb_t *) * fdbs.nalloc * 2);
             rc = FDB_ERR_MALLOC;
             goto done;
@@ -389,7 +389,7 @@ static void __fdb_add_user(fdb_t *fdb)
     fdb->users++;
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%u %s %s users %d\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
                 fdb->dbname, fdb->users);
 
     assert(fdb->users > 0);
@@ -406,7 +406,7 @@ static void __fdb_rem_user(fdb_t *fdb)
     fdb->users--;
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%u %s %s users %d\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
                 fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
@@ -460,7 +460,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
 
     fdb = calloc(1, sizeof(*fdb));
     if (!fdb) {
-        logmsg(LOGMSG_ERROR, "%s: OOM %d bytes!\n", __func__, sizeof(*fdb));
+        logmsg(LOGMSG_ERROR, "%s: OOM %zu bytes!\n", __func__, sizeof(*fdb));
         goto done;
     }
 
@@ -568,7 +568,7 @@ static fdb_tbl_t *_alloc_table_fdb(fdb_t *fdb, const char *tblname)
 
     tbl = (fdb_tbl_t *)calloc(1, sizeof(*tbl));
     if (!tbl) {
-        logmsg(LOGMSG_USER, "%s: OOM %d bytes!\n", __func__, sizeof(fdb_tbl_t));
+        logmsg(LOGMSG_USER, "%s: OOM %zu bytes!\n", __func__, sizeof(fdb_tbl_t));
         return NULL;
     }
 
@@ -600,13 +600,13 @@ static int _table_exists(fdb_t *fdb, const char *table_name, int *version)
         if (table->need_version && table->version != table->need_version) {
             /* ok, stale; we need to garbage this one out */
             if (gbl_fdb_track)
-                logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" version %d required %d\n",
+                logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" version %llu required %d\n",
                     table->fdb->dbname, table->name, table->version,
                     table->need_version);
 
             if (__free_fdb_tbl(table, fdb)) {
                 logmsg(LOGMSG_ERROR, "Error clearing schema for table \"%s\" in db \"%s\"\n",
-                        table, fdb->dbname);
+                        table_name, fdb->dbname);
             }
 
             exists = 0;
@@ -769,7 +769,7 @@ retry_find_table:
         if (strncasecmp(table_name, "sqlite_stat1", 13) != 0) {
             rc = fix_table_stats(fdb, tbl, "sqlite_stat1");
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: OOM stat1 for %s\n", __func__, tbl);
+                logmsg(LOGMSG_ERROR, "%s: OOM stat1 for %p\n", __func__, tbl);
                 goto done;
             }
         }
@@ -1068,7 +1068,7 @@ static int __check_sqlite_stat(sqlite3 *db, fdb_tbl_ent_t *ent, Table *tab)
 {
     /* incorrect version, unlikely */
     if (unlikely(ent && tab && (tab->version != ent->tbl->version))) {
-        logmsg(LOGMSG_ERROR, "Stale cache for \"%s.%s\", sql version=%u != shared version=%u\n",
+        logmsg(LOGMSG_ERROR, "Stale cache for \"%s.%s\", sql version=%u != shared version=%llu\n",
             ent->tbl->fdb->dbname, tab->zName, tab->version, ent->tbl->version);
 
         return SQLITE_SCHEMA_REMOTE;
@@ -1485,7 +1485,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
     m = &mems[0];
     m->z = strdup(etype);
     if (!m->z) {
-        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %d\n", __LINE__, strlen(etype));
+        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %zu\n", __LINE__, strlen(etype));
         return FDB_ERR_MALLOC;
     }
     m->n = strlen(etype);
@@ -1494,7 +1494,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
     m++;
     m->z = strdup(name);
     if (!m->z) {
-        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %d\n", __LINE__, strlen(name));
+        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %zu\n", __LINE__, strlen(name));
         free(mems[0].z);
         return FDB_ERR_MALLOC;
     }
@@ -1504,7 +1504,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
     m++;
     m->z = strdup(tbl_name);
     if (!m->z) {
-        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %d\n", __LINE__, strlen(tbl_name));
+        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %zu\n", __LINE__, strlen(tbl_name));
         free(mems[0].z);
         free(mems[1].z);
         return FDB_ERR_MALLOC;
@@ -1519,7 +1519,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
     m++;
     m->z = strdup(sql);
     if (!m->z) {
-        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %d\n", __LINE__, strlen(sql));
+        logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %zu\n", __LINE__, strlen(sql));
         free(mems[0].z);
         free(mems[1].z);
         free(mems[2].z);
@@ -1532,7 +1532,7 @@ int create_sqlite_master_table(const char *etype, const char *name,
     if (csc2) {
         m->z = strdup(csc2);
         if (!m->z) {
-            logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %d\n", __LINE__, strlen(csc2));
+            logmsg(LOGMSG_ERROR, "ENOMEM: %d Malloc %zu\n", __LINE__, strlen(csc2));
             free(mems[0].z);
             free(mems[1].z);
             free(mems[2].z);
@@ -1619,7 +1619,7 @@ static int insert_table_entry_from_packedsqlite(fdb_t *fdb, fdb_tbl_t *tbl,
     char *where = NULL;
 
     if (!ent) {
-        logmsg(LOGMSG_ERROR, "%s: calloc OOM %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: calloc OOM %zu bytes\n", __func__,
                 sizeof(fdb_tbl_ent_t));
         return FDB_ERR_MALLOC;
     }
@@ -1970,9 +1970,9 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host)
         then = gettimeofday_ms();
 
         if (old == 0ULL) {
-            logmsg(LOGMSG_USER, "TTTTTT now=%lld 0 %lld\n", now, then - now);
+            logmsg(LOGMSG_USER, "TTTTTT now=%ld 0 %ld\n", now, then - now);
         } else {
-            logmsg(LOGMSG_USER, "TTTTTT now=%lld delta=%lld %lld\n", now, now - old,
+            logmsg(LOGMSG_USER, "TTTTTT now=%ld delta=%ld %ld\n", now, now - old,
                     then - now);
         }
         old = now;
@@ -3801,7 +3801,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt, fdb_tran_t *trans)
 
         if (rc) {
             logmsg(LOGMSG_ERROR, 
-                "%s: sending rollback to node %d tid=%llu failed with rc=%d\n",
+                "%s: sending rollback to node %s tid=%llu failed with rc=%d\n",
                 __func__, tran->host, *(unsigned long long *)tran->tid, rc);
         }
     }
@@ -4476,8 +4476,8 @@ int fdb_lock_table(sqlite3_stmt *pStmt, struct sqlclntstate *clnt, Table *tab,
 
         if (gbl_fdb_track) {
             if (ent) {
-                logmsg(LOGMSG_USER, "Stale cache for \"%s.%s\", sql version=%u != "
-                                "shared version=%u\n",
+                logmsg(LOGMSG_USER, "Stale cache for \"%s.%s\", sql version=%d != "
+                                "shared version=%llu\n",
                         db->zDbSName, tab->zName, tab->version,
                         ent->tbl->version);
             } else {
@@ -4521,7 +4521,7 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
                  ent->tbl->name);
         fqname[sizeof(fqname) - 1] = '\0';
 
-        logmsg(LOGMSG_ERROR, "Unlocking \"%s\" version %u\n", fqname,
+        logmsg(LOGMSG_ERROR, "Unlocking \"%s\" version %llu\n", fqname,
                 ent->tbl->version);
     }
 

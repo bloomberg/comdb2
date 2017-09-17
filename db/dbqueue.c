@@ -1091,7 +1091,7 @@ static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_q
                 mn = age / 60;
                 sc = age % 60;
 
-                logmsg(LOGMSG_USER, "    head item length %u age %u:%02u:%02u created %u %s",
+                logmsg(LOGMSG_USER, "    head item length %u age %u:%02u:%02u created %ld %s",
                        (unsigned)stats[ii].first_item_length, hr, mn, sc,
                        stats[ii].epoch, buf);
             } else if (consumer)

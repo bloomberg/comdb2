@@ -408,8 +408,8 @@ static int check_retry_conditions(Lua L, int initial)
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
 {
     logmsg(LOGMSG_DEBUG,
-           "%s waiting for %s elect_cookie:%d trigger_cookie:0x%llx\n",
-           __func__, reg->spname, ntohl(reg->elect_cookie), reg->trigger_cookie);
+           "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
+           __func__, reg->qname, ntohl(reg->elect_cookie), reg->trigger_cookie);
     int rc;
     SP sp = getsp(L);
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
@@ -427,8 +427,8 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
             return -1;
         }
     }
-    logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%llx\n",
-           __func__, rc, reg->spname, ntohl(reg->elect_cookie),
+    logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%lx\n",
+           __func__, rc, reg->qname, ntohl(reg->elect_cookie),
            reg->trigger_cookie);
     return rc;
 }
@@ -442,8 +442,8 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
     pthread_mutex_unlock(q->lock);
 
     logmsg(LOGMSG_DEBUG,
-           "%s waiting for %s elect_cookie:%d trigger_cookie:0x%llx\n",
-           __func__, q->info.spname, ntohl(q->info.elect_cookie),
+           "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
+           __func__, q->info.qname, ntohl(q->info.elect_cookie),
            q->info.trigger_cookie);
     int rc;
     int retry = 10;
@@ -460,8 +460,8 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
         default: retry = 0; break;
         }
     } while (retry > 0);
-    logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%llx\n",
-           __func__, rc, q->info.spname, ntohl(q->info.elect_cookie),
+    logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%lx\n",
+           __func__, rc, q->info.qname, ntohl(q->info.elect_cookie),
            q->info.trigger_cookie);
 }
 
@@ -2507,7 +2507,7 @@ static int send_column_info_for_result_set(SP sp, sqlite3_stmt *stmt, struct col
             cols[col].type = htonl(sp->clnt->type_overrides[col]);
     }
     else if (rc == SQLITE_DONE) {
-        /* Don't have first row to make type decisions, fall 
+        /* Don't have first row to make type decisions, fall
          * back overrides, or to sqlite's at last resort. */
         for (col = 0; col < ncols; col++) {
             cols[col].type = htonl(
@@ -2553,7 +2553,7 @@ static int send_column_info_for_result_set(SP sp, sqlite3_stmt *stmt, struct col
       sql_response.value = column_ptr;
       sql_response.error_code = 0;
 
-      sp->rc = newsql_write_response(sp->clnt, 1002, &sql_response, 
+      sp->rc = newsql_write_response(sp->clnt, 1002, &sql_response,
                                      1 /*flush*/, malloc, __func__, __LINE__);
     } else {
       resp.response = FSQL_COLUMN_DATA;

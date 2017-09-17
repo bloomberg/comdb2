@@ -536,7 +536,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
         tok = segtok(line, len, &st, &ltok);
         long long maxmmapsz = toknumll(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting sqlsortermaxmmapsize to %ld bytes\n",
+        logmsg(LOGMSG_INFO, "setting sqlsortermaxmmapsize to %lld bytes\n",
                maxmmapsz);
         sqlite3_config(SQLITE_CONFIG_MMAP_SIZE, SQLITE_DEFAULT_MMAP_SIZE,
                        maxmmapsz);
@@ -591,7 +591,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
         if (ltok >= sizeof(hostname)) {
             logmsg(LOGMSG_ERROR,
-                   "Unexpectedly long hostname %.*s len %d max %d\n", ltok,
+                   "Unexpectedly long hostname %.*s len %d max %zu\n", ltok,
                    hostname, ltok, sizeof(hostname));
             return -1;
         }
@@ -642,7 +642,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
                     logmsg(LOGMSG_ERROR,
-                           "host %.*s name too long (expected < %d)\n", ltok,
+                           "host %.*s name too long (expected < %lu)\n", ltok,
                            tok, sizeof(nodename));
                     return -1;
                 }

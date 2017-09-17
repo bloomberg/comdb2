@@ -1270,7 +1270,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
             if (rc) {
                 logmsg(LOGMSG_ERROR, 
                         "%s failed to cache table versions rc=%d bdberr=%d\n",
-                        __func__, rc, bdberr);
+                        __func__, rc, *bdberr);
             }
 
             /* register transaction so we start receiving log undos */
@@ -2473,7 +2473,7 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
         }
         curtran->id = curtran_counter++;
     } else {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                 sizeof(cursor_tran_t));
         *bdberr = BDBERR_MALLOC;
         BDB_RELLOCK();

@@ -87,7 +87,7 @@ inspect_page_hdr(DB *dbp, PAGE *h)
 {
 	logmsg(LOGMSG_USER, "file:%s leaf:%s\n"
 	    "lsn:%d-%d\t" "pgno:%d\t" "prev:%d\t" "next:%d\n"
-	    "hoffset:%d\t" "type:(%u) %u\t" "freespace:%d\t" "entries:%d\n"
+	    "hoffset:%d\t" "type:(%u) %u\t" "freespace:%lu\t" "entries:%d\n"
 	    "chksum:%s\t" "crypto:%s\t" "\n",
 	    dbp->fname, YESNO(ISLEAF(h)),
 	    LSN(h).file, LSN(h).offset, PGNO(h), PREV_PGNO(h), NEXT_PGNO(h),

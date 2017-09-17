@@ -309,7 +309,7 @@ static void thd_dump_nolock(void)
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
             opc = thd->iq->opcode;
-            logmsg(LOGMSG_USER, "busy  tid %-5d  time %5d ms  %-6s (%-3d) "
+            logmsg(LOGMSG_USER, "busy  tid %lu  time %5d ms  %-6s (%-3d) "
                                 "%-20s where %s %s\n",
                    thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc,
                    getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
@@ -317,7 +317,7 @@ static void thd_dump_nolock(void)
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
             cnt++;
-            logmsg(LOGMSG_USER, "idle  tid %-5d \n", thd->tid);
+            logmsg(LOGMSG_USER, "idle  tid %lu \n", thd->tid);
         }
     }
 
@@ -378,7 +378,7 @@ void thd_dump(void)
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
             logmsg(LOGMSG_USER,
-                   "busy  tid %-5d  time %5d ms  %-6s (%-3d) %-20s where %s "
+                   "busy  tid %lu  time %5d ms  %-6s (%-3d) %-20s where %s "
                    "%s\n",
                    thd->tid, U2M(nowus - thd->iq->nowus),
                    req2a(thd->iq->opcode), thd->iq->opcode, getorigin(thd->iq),
@@ -387,7 +387,7 @@ void thd_dump(void)
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
             cnt++;
-            logmsg(LOGMSG_USER, "idle  tid %-5d \n", thd->tid);
+            logmsg(LOGMSG_USER, "idle  tid %lu \n", thd->tid);
         }
     }
     UNLOCK(&lock);
@@ -457,7 +457,7 @@ static void *thd_req(void *vthd)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %d\n",
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
                 pthread_self());
         abort();
     }
@@ -471,7 +471,7 @@ static void *thd_req(void *vthd)
         (void *)create_constraint_table(&thdinfo->ct_id_key);
     if (thdinfo->ct_add_table == NULL) {
         logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint add table thd "
-                        "%d\n",
+                        "%lu\n",
                 pthread_self());
         abort();
     }
@@ -479,7 +479,7 @@ static void *thd_req(void *vthd)
         (void *)create_constraint_table(&thdinfo->ct_id_key);
     if (thdinfo->ct_del_table == NULL) {
         logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint delete table "
-                        "thd %d\n",
+                        "thd %lu\n",
                 pthread_self());
         abort();
     }
@@ -488,7 +488,7 @@ static void *thd_req(void *vthd)
     if (thdinfo->ct_add_index == NULL) {
         logmsg(LOGMSG_FATAL, 
                 "**aborting: cannot allocate constraint add index table "
-                "thd %d\n",
+                "thd %lu\n",
                 pthread_self());
         abort();
     }
@@ -1431,7 +1431,7 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         if (qtype != REQ_OFFLOAD && rc > gbl_maxqueue) {
             struct dbq_entry_t *nextrq = NULL;
             logmsg(LOGMSG_ERROR, 
-                    "THD=%d handle_buf:rejecting requests queue too full %d "
+                    "THD=%lu handle_buf:rejecting requests queue too full %d "
                     "(max %d)\n",
                     pthread_self(), rc, gbl_maxqueue);
 

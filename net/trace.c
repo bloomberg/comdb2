@@ -48,7 +48,7 @@ static void host_node_vprintf(loglvl lvl, host_node_type *host_node_ptr,
     */
 
     Pthread_mutex_lock(&trace_lock);
-    logmsg(lvl, "0x%x [%s %s%s fd %d] ", pthread_self(),
+    logmsg(lvl, "%08lx [%s %s%s fd %d] ", pthread_self(),
             netinfo_ptr->service, host_node_ptr->host, host_node_ptr->subnet,
             host_node_ptr->fd);
     logmsgv(lvl, fmt, ap);

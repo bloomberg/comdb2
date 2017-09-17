@@ -1022,7 +1022,8 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to", nm->n + lnm->n, nm->z, nm2->n +lnm2->n, nm2->z);
+    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
+           nm->z, nm2->n +lnm2->n, nm2->z);
 }
 
 /********************* ANALYZE ***************************************************/

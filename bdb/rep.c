@@ -626,7 +626,7 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
     for (i = 0; i < count; i++) {
         if (gblcontext == -1ULL) {
-            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %d\n", hostlist[i]);
+            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %s\n", hostlist[i]);
             cheap_stack_trace();
         }
 
@@ -846,7 +846,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                             "(rectype %d lsn %s)\n",
                     rectype, lsn_to_str(str, &tmp));
         else
-            logmsg(LOGMSG_USER, "--- berkdb told us to send to %d (%s) "
+            logmsg(LOGMSG_USER, "--- berkdb told us to send to %s (%s) "
                             "(rectype %d lsn %s)\n",
                     host, host, rectype, lsn_to_str(str, &tmp));
     }
@@ -963,7 +963,7 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     if (!gbl_rowlocks && !dontsend) {
 
                         if (gblcontext == -1ULL) {
-                            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %d\n",
+                            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %s\n",
                                     hostlist[i]);
                             cheap_stack_trace();
                         }
@@ -1192,7 +1192,7 @@ static void *elect_thread(void *args)
         return NULL;
     }
 
-    logmsg(LOGMSG_INFO, "thread 0x%x in election\n", pthread_self());
+    logmsg(LOGMSG_INFO, "thread 0x%lx in election\n", pthread_self());
 
     bdb_state->repinfo->in_election = 1;
 
@@ -1302,7 +1302,7 @@ elect_again:
         strcat(hoststring, " ");
     }
 
-    logmsg(LOGMSG_INFO, "0x%x: calling for election with cluster"
+    logmsg(LOGMSG_INFO, "0x%lx: calling for election with cluster"
         " of %d nodes (%d connected) : %s,  %f secs timeout and priority %d\n",
         pthread_self(), elect_count, num_connected, hoststring,
         ((double)elect_time) / 1000000.00, rep_pri);
@@ -1466,7 +1466,7 @@ void call_for_election_and_lose(bdb_state_type *bdb_state)
 */
 static void bdb_reopen(bdb_state_type *bdb_state)
 {
-    logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%x\n", pthread_self());
+    logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%lx\n", pthread_self());
 
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
@@ -1504,8 +1504,8 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
         goto done;
     } else {
         if (gbl_write_dummy_trace) {
-            logmsg(LOGMSG_USER, "%s: adding dummy record\n", __func__,
-                   bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
+            logmsg(LOGMSG_USER, "%s: adding dummy record for master %s, host %s\n",
+                   __func__, bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
         }
     }
 
@@ -1745,7 +1745,7 @@ static inline void defer_commits_int(bdb_state_type *bdb_state,
     cosec = (coherency_commit_timestamp / 1000);
     coms = (coherency_commit_timestamp % 1000);
     localtime_r(&cosec, &r);
-    logmsg(LOGMSG_INFO, "%s node %s deferred commits until %02d:%02d:%02d.%03d\n", func,
+    logmsg(LOGMSG_INFO, "%s node %s deferred commits until %02d:%02d:%02d.%03ld\n", func,
            host ? host : "<all>", r.tm_hour, r.tm_min, r.tm_sec, coms);
 }
 
@@ -2201,7 +2201,7 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
     if (current_leases >= ((total_nodes / 2) + 1)) {
         if (verify_trace && (last_rc == 0 || (now = time(NULL)) != lastpr)) {
             logmsg(LOGMSG_USER, "%s line %d verify_master_leases SUCCEEDED: we have %u "
-                    "current leases from %u nodes epoch=%u\n",
+                    "current leases from %u nodes epoch=%ld\n",
                     func, line, current_leases, total_nodes, time(NULL));
             lastpr = now;
         }
@@ -2214,7 +2214,7 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
 
     if (verify_trace && (last_rc == 1 || (now = time(NULL)) != lastpr)) {
         logmsg(LOGMSG_USER, "%s line %d verify_master_leases failed: we have %u "
-                        "current leases from %u nodes epoch=%u\n",
+                        "current leases from %u nodes epoch=%ld\n",
                 func, line, current_leases, total_nodes, time(NULL));
         lastpr = now;
     }
@@ -2304,8 +2304,8 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
             if (bdb_state->attr->master_lease_set_trace && (now = time(NULL)) > lastpr)
             {
-                logmsg(LOGMSG_USER, "%s: setting lease time for %s to %llu, current "
-                        "time is %llu issue time is %llu epoch is %u\n",
+                logmsg(LOGMSG_USER, "%s: setting lease time for %s to %lu, current "
+                        "time is %lu issue time is %lu epoch is %ld\n",
                         __func__, host, lease_time, base_ts, issue_time,
                         time(NULL));
                 lastpr = now;
@@ -2710,8 +2710,8 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     if ((coherent_state = bdb_state->coherent_state[nodeix(host)]) == STATE_INCOHERENT) {
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s is incoherent, not waiting\n", PARM_LSN(seqnum->lsn),
-                    host);
+            logmsg(LOGMSG_USER, PR_LSN " %s is incoherent, not waiting\n",
+                    PARM_LSN(seqnum->lsn), host);
         }
         return 1;
     }
@@ -2738,7 +2738,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s became incoherent, not waiting\n",
+            logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
                     PARM_LSN(seqnum->lsn), host);
         }
         return -2;
@@ -2758,7 +2758,7 @@ again:
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s is catching up, not waiting\n",
+            logmsg(LOGMSG_USER, PR_LSN " %s is catching up, not waiting\n",
                     PARM_LSN(seqnum->lsn), host);
         }
         return 1;
@@ -2823,7 +2823,7 @@ again:
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
             trigger_unregister_node(host);
             if (bdb_state->attr->wait_for_seqnum_trace) {
-                logmsg(LOGMSG_USER, " err waiting for seqnum: host %s no "
+                logmsg(LOGMSG_USER, PR_LSN " err waiting for seqnum: host %s no "
                         "longer connected\n",
                         PARM_LSN(seqnum->lsn), host);
             }
@@ -3063,7 +3063,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         for (i = 0; i < numnodes; i++) {
             if (bdb_state->rep_trace)
                 logmsg(LOGMSG_USER, 
-                        "waiting for initial NEWSEQ from node %d of >= <%s>\n",
+                        "waiting for initial NEWSEQ from node %s of >= <%s>\n",
                         nodelist[i], lsn_to_str(str, &(seqnum->lsn)));
 
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
@@ -3131,7 +3131,7 @@ got_ack:
         begin_time = time_epochms();
 
         if (bdb_state->rep_trace)
-            logmsg(LOGMSG_USER, "waiting for NEWSEQ from node %d of >= <%s> timeout %d\n",
+            logmsg(LOGMSG_USER, "waiting for NEWSEQ from node %s of >= <%s> timeout %d\n",
                     nodelist[i], lsn_to_str(str, &(seqnum->lsn)), waitms);
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
@@ -3472,7 +3472,7 @@ int send_myseqnum_to_master(bdb_state_type *bdb_state, int nodelay)
 
         count++;
         if ((now = time(NULL)) > lastpr && !bdb_state->attr->createdbs) {
-            logmsg(LOGMSG_WARN, "%s: get_myseqnum returned non-0, count=%llu\n",
+            logmsg(LOGMSG_WARN, "%s: get_myseqnum returned non-0, count=%lu\n",
                     __func__, count);
             lastpr = now;
         }
@@ -3508,7 +3508,7 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
                           sizeof(seqnum_type), nodelay);
 
             if (rc) {
-                logmsg(LOGMSG_ERROR, "0x%x %s:%d net_send rc=%d\n", pthread_self(),
+                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d\n", pthread_self(),
                         __FILE__, __LINE__, rc);
             }
         }
@@ -3704,7 +3704,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
-        logmsg(LOGMSG_WARN, "process_berkdb: DB_REP_NEWMASTER %s time=%u generation=%u\n",
+        logmsg(LOGMSG_WARN, "process_berkdb: DB_REP_NEWMASTER %s time=%ld generation=%u\n",
                 host, time(NULL), generation);
 
         /* Check if it's us. */
@@ -3834,7 +3834,7 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
             /* force this node to resync its log */
             if (bdb_state->attr->elect_on_mismatched_master) {
-                logmsg(LOGMSG_ERROR, "Call for election on strange msgtype on replicant\n",
+                logmsg(LOGMSG_ERROR, "Call for election on strange msgtype %d on replicant\n",
                         r);
                 call_for_election(bdb_state);
             } else
@@ -4099,8 +4099,8 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
 
         // Useless leases suggest intolerable time-skew..
         if ((now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_WARN, "%s: got useless lease: lease_base=%llu "
-                    "my_base=%llu lease_time=%u diff=%u total-useless=%llu\n",
+            logmsg(LOGMSG_WARN, "%s: got useless lease: lease_base=%lu "
+                    "my_base=%lu lease_time=%u diff=%lu total-useless=%lu\n",
                     __func__, colease.issue_time, base_ts, colease.lease_ms,
                     (base_ts - coherency_timestamp), no_lease_count);
             lastpr = now;
@@ -4933,7 +4933,7 @@ void *watcher_thread(void *arg)
                                       USER_TYPE_COMMITDELAYMORE, NULL, 0, 1);
 
                         if (rc != 0) {
-                            logmsg(LOGMSG_ERROR, "failed to send COMMITDELAYMORE to %d\n",
+                            logmsg(LOGMSG_ERROR, "failed to send COMMITDELAYMORE to %s\n",
                                     bdb_state->repinfo->master_host);
                         }
                     }
@@ -5238,7 +5238,7 @@ void *watcher_thread(void *arg)
                     time_t crt = time(NULL);
                     if (crt >= (gbl_lost_master_time +
                                 bdb_state->attr->nomaster_alert_seconds)) {
-                        logmsg(LOGMSG_WARN, "NOMASTER FOR %d seconds\n",
+                        logmsg(LOGMSG_WARN, "NOMASTER FOR %ld seconds\n",
                                 crt - gbl_lost_master_time);
                         gbl_ignore_lost_master_time = 1;
                     }
@@ -5254,7 +5254,7 @@ void *watcher_thread(void *arg)
 
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
-                logmsg(LOGMSG_DEBUG, "0x%x %s:%d %s: calling for election\n",
+                logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
                         pthread_self(), __FILE__, __LINE__, __func__);
 
                 call_for_election(bdb_state);
@@ -5474,7 +5474,7 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         end_time = gettimeofday_ms();
         if (rc == NET_SEND_FAIL_TIMEOUT) {
             logmsg(LOGMSG_WARN, "%s line %d: timed out waiting for start_lsn from master %s "
-                    "after %u ms\n", __func__, __LINE__, bdb_state->repinfo->master_host,
+                    "after %lu ms\n", __func__, __LINE__, bdb_state->repinfo->master_host,
                     end_time - start_time);
         }
         else {
