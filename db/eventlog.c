@@ -120,6 +120,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
     int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
     cson_array_reserve(arr, nfields);
+    CDB2SQLQUERY *sqlquery = clnt->sql_query;
 
     int blobno = 0;
     for (int i = 0; i < nfields; i++) {
@@ -134,8 +135,8 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             f = &params->member[i];
             buf = (char *)clnt->tagbuf;
         } else {
-            f = convert_client_field(clnt->sql_query->bindvars[i], &c_fld);
-            buf = clnt->sql_query->bindvars[i]->value.data;
+            f = convert_client_field(sqlquery->bindvars[i], &c_fld);
+            buf = sqlquery->bindvars[i]->value.data;
         }
 
         /* name of bound parameter */
@@ -171,14 +172,20 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             break;
         case CLIENT_REAL: {
             /* set type */
+            double dval;
             switch (dlen) {
-            case 4: strtype = "float"; break;
-            case 8: strtype = "doublefloat"; break;
+            case 4:
+                strtype = "float";
+                dval = *(float *)(buf + f->offset);
+                break;
+            case 8:
+                strtype = "doublefloat";
+                dval = *(double *)(buf + f->offset);
+                break;
             }
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
-            double dval = *(double *)(buf + f->offset);
             cson_object_set(bobj, "value", cson_value_new_double(dval));
             break;
         }
@@ -202,7 +209,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_BYTEARRAY:
         case CLIENT_BLOB:
         case CLIENT_VUTF8: {
-            void *byteval;
+            void *byteval = NULL;
             int datalen;
             int rc = 0;
 
@@ -218,8 +225,12 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             } else {
                 if (params) {
                     rc = get_blob_field(blobno, clnt, &byteval, &datalen);
-                    blobno++;
+                } else {
+                    byteval = buf;
+                    datalen = f->datalen;
                 }
+                if (rc == 0)
+                    blobno++;
             }
             if (rc == 0)
                 cson_object_set(bobj, "value",
@@ -271,6 +282,8 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
+        default:
+            assert(false && "Unknown type being bound");
         }
     }
 }
