@@ -843,7 +843,7 @@ static tmpcursor_t *open_shadow_int(bdb_state_type *bdb_state,
         *pshadows = (tran_shadow_t *)calloc(maxfile, sizeof(tran_shadow_t));
         if (!*pshadows) {
             logmsg(LOGMSG_ERROR, "%s: calloc error size %zu\n", __func__,
-                    maxfile * sizeof(tran_shadow_t));
+                   maxfile * sizeof(tran_shadow_t));
             *bdberr = BDBERR_BADARGS;
             return NULL;
         }
@@ -857,7 +857,7 @@ static tmpcursor_t *open_shadow_int(bdb_state_type *bdb_state,
             (tmptable_t **)calloc(maxstripe, sizeof(tmptable_t *));
         if (!(*pshadows)[file].tbls) {
             logmsg(LOGMSG_ERROR, "%s: calloc error size %zu\n", __func__,
-                    maxstripe * sizeof(tmptable_t *));
+                   maxstripe * sizeof(tmptable_t *));
             *bdberr = BDBERR_BADARGS;
             return NULL;
         }

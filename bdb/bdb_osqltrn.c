@@ -511,8 +511,8 @@ done:
             } else if (rc) {
                 // not able to recover back to that point
                 logmsg(LOGMSG_ERROR, "%s:%d unable to recover db to epoch %d, "
-                                "file %d, offset %d\n",
-                        __func__, __LINE__, epoch, file, offset);
+                                     "file %d, offset %d\n",
+                       __func__, __LINE__, epoch, file, offset);
                 *bdberr = BDBERR_NO_LOG;
             }
         }

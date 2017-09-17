@@ -493,7 +493,8 @@ static int handle_fastsql_requests_io_read(struct sqlthdstate *thd,
         }
 
         if (!p) {
-            logmsg(LOGMSG_ERROR, "%s: out of memory realloc %zu\n", __func__, bytes);
+            logmsg(LOGMSG_ERROR, "%s: out of memory realloc %zu\n", __func__,
+                   bytes);
             return -1;
         }
 
@@ -1041,8 +1042,8 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                        file, offset);
         if (gbl_extended_sql_debug_trace) {
             logmsg(LOGMSG_USER, "%s line %d start_file_offset snapinfo is "
-                            "[%d][%d], sqlengine-state is %d\n",
-                    __func__, __LINE__, *file, *offset, clnt->ctrl_sqlengine);
+                                "[%d][%d], sqlengine-state is %d\n",
+                   __func__, __LINE__, *file, *offset, clnt->ctrl_sqlengine);
         }
     }
     return rcode;
@@ -1568,8 +1569,8 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate)
 {
     if (gbl_track_sqlengine_states)
-        logmsg(LOGMSG_USER, "%lu: %p %s:%d %d->%d\n", pthread_self(), clnt, file, line,
-               clnt->ctrl_sqlengine, newstate);
+        logmsg(LOGMSG_USER, "%lu: %p %s:%d %d->%d\n", pthread_self(), clnt,
+               file, line, clnt->ctrl_sqlengine, newstate);
 
     if (newstate == SQLENG_WRONG_STATE) {
         logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from %s line %d.\n",
@@ -2192,17 +2193,17 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     rc = serial_commit(clnt, thd->sqlthd, clnt->tzname);
                     rcline = __LINE__;
                     if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER, 
-                                "td=%lu serial-txn %s line %d returns %d\n",
-                                pthread_self(), __func__, __LINE__, rc);
+                        logmsg(LOGMSG_USER,
+                               "td=%lu serial-txn %s line %d returns %d\n",
+                               pthread_self(), __func__, __LINE__, rc);
                     }
                 } else {
                     rc = snapisol_commit(clnt, thd->sqlthd, clnt->tzname);
                     rcline = __LINE__;
                     if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_ERROR, 
-                                "td=%lu snapshot-txn %s line %d returns %d\n",
-                                pthread_self(), __func__, __LINE__, rc);
+                        logmsg(LOGMSG_ERROR,
+                               "td=%lu snapshot-txn %s line %d returns %d\n",
+                               pthread_self(), __func__, __LINE__, rc);
                     }
                 }
                 /* if a transaction exists
@@ -2232,9 +2233,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                                                      __func__, __LINE__);
                             rcline = __LINE__;
                             if (gbl_extended_sql_debug_trace) {
-                                logmsg(LOGMSG_USER, "td=%lu %s line %d returning "
-                                                "converted-rc %d\n",
-                                        pthread_self(), __func__, __LINE__, rc);
+                                logmsg(LOGMSG_USER,
+                                       "td=%lu %s line %d returning "
+                                       "converted-rc %d\n",
+                                       pthread_self(), __func__, __LINE__, rc);
                             }
                         } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                             rc = get_high_availability(clnt)
@@ -2260,21 +2262,25 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                     }
                 } else {
                     if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER, 
-                                "td=%lu no-shadow-tran %s line %d, returning %d\n",
-                                pthread_self(), __func__, __LINE__, rc);
+                        logmsg(
+                            LOGMSG_USER,
+                            "td=%lu no-shadow-tran %s line %d, returning %d\n",
+                            pthread_self(), __func__, __LINE__, rc);
                     }
                     if (rc == SQLITE_ABORT) {
                         rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                  __func__, __LINE__);
-                        logmsg(LOGMSG_ERROR, "td=%lu no-shadow-tran %s line %d, returning %d\n",
+                        logmsg(
+                            LOGMSG_ERROR,
+                            "td=%lu no-shadow-tran %s line %d, returning %d\n",
                             pthread_self(), __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                         rc = get_high_availability(clnt) ? CDB2ERR_CHANGENODE
                                                      : SQLHERR_MASTER_TIMEOUT;
-                        logmsg(LOGMSG_ERROR, 
-                                "td=%lu no-shadow-tran %s line %d, returning %d\n",
-                                pthread_self(), __func__, __LINE__, rc);
+                        logmsg(
+                            LOGMSG_ERROR,
+                            "td=%lu no-shadow-tran %s line %d, returning %d\n",
+                            pthread_self(), __func__, __LINE__, rc);
                     }
                 }
             } else {
@@ -7443,8 +7449,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
         sqlstr = cdb2_skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_ERROR, "td %lu %s line %d processing set command '%s'\n",
-                        pthread_self(), __func__, __LINE__, sqlstr);
+                logmsg(LOGMSG_ERROR,
+                       "td %lu %s line %d processing set command '%s'\n",
+                       pthread_self(), __func__, __LINE__, sqlstr);
             }
             sqlstr += 3;
             sqlstr = cdb2_skipws(sqlstr);
@@ -7594,8 +7601,10 @@ static int process_set_commands(struct sqlclntstate *clnt)
                         set_high_availability(clnt, 1);
                         // clnt->high_availability = 1;
                         if (gbl_extended_sql_debug_trace) {
-                            logmsg(LOGMSG_USER, "td %lu %s line %d setting high_availability\n",
-                                    pthread_self(), __func__, __LINE__);
+                            logmsg(
+                                LOGMSG_USER,
+                                "td %lu %s line %d setting high_availability\n",
+                                pthread_self(), __func__, __LINE__);
                         }
                     }
                 } else {
@@ -7603,8 +7612,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     set_high_availability(clnt, 0);
                     // clnt->high_availability = 0;
                     if (gbl_extended_sql_debug_trace) {
-                        logmsg(LOGMSG_USER, "td %lu %s line %d clearing high_availability\n",
-                                pthread_self(), __func__, __LINE__);
+                        logmsg(LOGMSG_USER,
+                               "td %lu %s line %d clearing high_availability\n",
+                               pthread_self(), __func__, __LINE__);
                     }
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {

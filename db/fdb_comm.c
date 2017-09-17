@@ -704,8 +704,8 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
 
         rc = handle_remsql_session(sb, dbenv);
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%lu: %s: executed session rc=%d\n", pthread_self(),
-                    __func__, rc);
+            logmsg(LOGMSG_USER, "%lu: %s: executed session rc=%d\n",
+                   pthread_self(), __func__, rc);
 
         if (gbl_fdb_track_times) {
             then = gettimeofday_ms();
@@ -714,7 +714,7 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
                 logmsg(LOGMSG_USER, "RRRRRR now=%lu 0 %lu\n", now, then - now);
             } else {
                 logmsg(LOGMSG_USER, "RRRRRR now=%lu delta=%lu %lu\n", now,
-                        now - old, then - now);
+                       now - old, then - now);
             }
             old = now;
         }
@@ -736,7 +736,8 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
         }
     }
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu: %s: done processing\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "%lu: %s: done processing\n", pthread_self(),
+               __func__);
 
     return rc;
 }
@@ -2009,7 +2010,7 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     default:
         logmsg(LOGMSG_USER, "%s: %s unknown msg %d\n", __func__, prefix,
-                msg->hd.type);
+               msg->hd.type);
     }
 }
 
@@ -2180,15 +2181,15 @@ static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         break;
 
     case FDB_MSG_HBEAT:
-        logmsg(LOGMSG_USER, 
-                "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n", t,
-                prefix, sb, *(unsigned long long *)msg->hb.tid,
-                msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n", t,
+               prefix, sb, *(unsigned long long *)msg->hb.tid,
+               msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
         break;
 
     default:
         logmsg(LOGMSG_ERROR, "%s: %s unknown msg %d\n", __func__, prefix,
-                msg->hd.type);
+               msg->hd.type);
     }
 }
 
@@ -3302,7 +3303,7 @@ int fdb_remcur_index(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     }
     if (pIdx == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d malloc %zu failed\n", __func__, __LINE__,
-                sizeof(int) + ixlen);
+               sizeof(int) + ixlen);
         return -1;
     }
     *((int *)pIdx) = ixlen;

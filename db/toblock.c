@@ -493,8 +493,8 @@ static int forward_longblock_to_master(struct ireq *iq,
 
     if (mstr == bdb_master_dupe || mstr == db_eid_invalid) {
         if (iq->debug)
-            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__, mstr,
-                   getorigin(iq));
+            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
+                   mstr, getorigin(iq));
         return ERR_NOMASTER;
     }
 
@@ -548,8 +548,8 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
 
     if (mstr == bdb_master_dupe || mstr == db_eid_invalid) {
         if (iq->debug)
-            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__, mstr,
-                   getorigin(iq));
+            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
+                   mstr, getorigin(iq));
         return ERR_NOMASTER;
     }
 
@@ -884,9 +884,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         goto replay_error;
     } else if (datalen < sizeof(struct fstblk_header)) {
         int *seq = (int *)fstseqnum;
-        logmsg(LOGMSG_ERROR, "%s: %08x:%08x:%08x fstblk replay too small %d < %zu\n",
-                __func__, seq[0], seq[1], seq[2], datalen,
-                sizeof(struct fstblk_header));
+        logmsg(LOGMSG_ERROR,
+               "%s: %08x:%08x:%08x fstblk replay too small %d < %zu\n",
+               __func__, seq[0], seq[1], seq[2], datalen,
+               sizeof(struct fstblk_header));
         blkseq_line = __LINE__;
         goto replay_error;
     } else {
@@ -2770,7 +2771,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             if (verbose_deadlocks)
                 logmsg(LOGMSG_USER, "%lu %s:%d Using iq %p priority %d\n",
-                        pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                       pthread_self(), __FILE__, __LINE__, iq, iq->priority);
 
             irc =
                 trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
@@ -4126,8 +4127,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
                         if (!blob->data) {
                             logmsg(LOGMSG_ERROR, "BLOCK2_QBLOB: malloc "
-                                            "failed %zu\n",
-                                    blob->length);
+                                                 "failed %zu\n",
+                                   blob->length);
                             reqerrstr(iq, COMDB2_BLOB_RC_ALLOC,
                                       "malloc failed");
                             rc = ERR_INTERNAL;
@@ -5269,8 +5270,9 @@ backout:
        gonna execute fine */
     if (rc == ERR_NOMASTER && have_blkseq) {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%lu %s:%d Skipping add blkseq due to early bplog termination\n",
-                pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_USER, "%lu %s:%d Skipping add blkseq due to early "
+                                "bplog termination\n",
+                   pthread_self(), __FILE__, __LINE__);
 
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
@@ -5517,8 +5519,8 @@ add_blkseq:
                 trans_abort(iq, parent_trans);
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
-                    logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n", pthread_self(),
-                           __FILE__, __LINE__);
+                    logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n",
+                           pthread_self(), __FILE__, __LINE__);
                     if (iq->have_snap_info) {
                         outrc = do_replay_case(iq, iq->snap_info.key, iq->snap_info.keylen, 
                                 num_reqs, 0, replay_data, replay_len, __LINE__);
@@ -5528,8 +5530,8 @@ add_blkseq:
                                 replay_data, replay_len, __LINE__);
                     }
                     did_replay = 1;
-                    logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n", pthread_self(),
-                           __FILE__, __LINE__, outrc);
+                    logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n",
+                           pthread_self(), __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
 
                     goto cleanup;
@@ -5627,8 +5629,8 @@ add_blkseq:
             /* if it's a logical transaction and the commit fails we abort
              * inside the commit call */
             if (rc == IX_DUP) {
-                logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n", pthread_self(), __FILE__,
-                       __LINE__);
+                logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n",
+                       pthread_self(), __FILE__, __LINE__);
                 if (iq->have_snap_info) {
                     outrc = do_replay_case(iq, iq->snap_info.key, iq->snap_info.keylen, 
                             num_reqs, 0, replay_data, replay_len, __LINE__);
@@ -5638,8 +5640,8 @@ add_blkseq:
                             replay_data, replay_len, __LINE__);
                 }
                 did_replay = 1;
-                logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n", pthread_self(),
-                       __FILE__, __LINE__, outrc);
+                logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n",
+                       pthread_self(), __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
 
                 goto cleanup;
@@ -5895,7 +5897,7 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
 
     if (prcnt && gbl_print_blockp_stats) {
         logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
-                block_processor_ms);
+               block_processor_ms);
     }
 
     return rc;

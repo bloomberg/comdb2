@@ -264,8 +264,8 @@ static shad_tbl_t *open_shadtbl(struct BtCursor *pCur)
 
         tbl = create_shadtbl(pCur, clnt);
         if (!tbl) {
-            logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes!\n", __func__,
-                    sizeof(shad_tbl_t));
+            logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes!\n",
+                   __func__, sizeof(shad_tbl_t));
             return NULL;
         }
     }
@@ -720,7 +720,7 @@ static int create_tablecursor(bdb_state_type *bdb_env, struct tmp_table **ptbl,
 
     if (!tbl) {
         logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-                sizeof(struct tmp_table));
+               sizeof(struct tmp_table));
         return -1;
     }
 
@@ -807,7 +807,7 @@ static int save_dirty_keys(struct sqlclntstate *clnt, shad_tbl_t *tbl,
     prdk = calloc(1, sizeof(struct rec_dirty_keys));
     if (!prdk) {
         logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-                sizeof(struct rec_dirty_keys));
+               sizeof(struct rec_dirty_keys));
         return -1;
     }
 

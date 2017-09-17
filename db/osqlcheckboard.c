@@ -130,7 +130,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     if (!entry) {
         logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-                sizeof(unsigned long long));
+               sizeof(unsigned long long));
         return -1;
     }
 
@@ -755,7 +755,8 @@ inline int osql_chkboard_timedwait_commitrc(unsigned long long rqid,
             rc = 0; /* retry at higher level */
             xerr->errval = ERR_NOMASTER;
             if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_ERROR, "sosql: master changed %lu\n", pthread_self());
+                logmsg(LOGMSG_ERROR, "sosql: master changed %lu\n",
+                       pthread_self());
             goto done;
         }
 

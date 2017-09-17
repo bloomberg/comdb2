@@ -371,8 +371,10 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     logmsgf(LOGMSG_USER, out, "txn parallel: %ld\n", gbl_rep_trans_parallel);
     logmsgf(LOGMSG_USER, out, "txn serial: %ld\n", gbl_rep_trans_serial);
     logmsgf(LOGMSG_USER, out, "txn inline: %ld\n", gbl_rep_trans_inline);
-    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %ld\n", gbl_rep_rowlocks_multifile);
-    logmsgf(LOGMSG_USER, out, "txn deadlocked: %ld\n", gbl_rep_trans_deadlocked);
+    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %ld\n",
+            gbl_rep_rowlocks_multifile);
+    logmsgf(LOGMSG_USER, out, "txn deadlocked: %ld\n",
+            gbl_rep_trans_deadlocked);
     prn_lstat(lc_cache_hits);
     prn_lstat(lc_cache_misses);
     prn_stat(lc_cache_size);
@@ -2042,7 +2044,8 @@ void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
                     first = 0;
                     logmsg(LOGMSG_USER, "reptimes  ");
                 }
-                logmsg(LOGMSG_USER, "%s: %.2f %.2f   ", nodes[i], avg[0], avg[1]);
+                logmsg(LOGMSG_USER, "%s: %.2f %.2f   ", nodes[i], avg[0],
+                       avg[1]);
                 numdisplayed++;
             }
         }
@@ -2062,7 +2065,8 @@ void bdb_show_reptimes(bdb_state_type *bdb_state)
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     for (int i = 0; i < numnodes; i++) {
         if (bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]) {
-            logmsg(LOGMSG_USER, "%s %10.2f %10.2f\n", nodes[i],
+            logmsg(
+                LOGMSG_USER, "%s %10.2f %10.2f\n", nodes[i],
                 averager_avg(
                     bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]),
                 averager_avg(

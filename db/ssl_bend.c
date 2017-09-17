@@ -324,6 +324,5 @@ void ssl_stats(void)
         logmsg(LOGMSG_INFO, "Session Cache Size: %d\n",
                SSL_SESSION_CACHE_MAX_SIZE_DEFAULT);
     else
-        logmsg(LOGMSG_INFO, "Session Cache Size: %ld\n",
-               gbl_sess_cache_sz);
+        logmsg(LOGMSG_INFO, "Session Cache Size: %ld\n", gbl_sess_cache_sz);
 }

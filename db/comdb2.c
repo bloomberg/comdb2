@@ -957,8 +957,8 @@ void showdbenv(struct dbenv *dbenv)
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
-        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii, dbenv->sibling_hostname[ii],
-               *dbenv->sibling_port[ii]);
+        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii,
+               dbenv->sibling_hostname[ii], *dbenv->sibling_port[ii]);
     }
 }
 
@@ -2281,7 +2281,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
 
     if (err)
         logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
-                p_db->dbname, flibc_htonll(version_num));
+               p_db->dbname, flibc_htonll(version_num));
     else
         ctrace("table %s\n\tdata files: %016llx\n\tblob files\n", p_db->dbname,
                (long long unsigned int)flibc_htonll(version_num));
@@ -2303,7 +2303,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         }
         if (err)
             logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
-                    flibc_htonll(version_num));
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tblob num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -2328,7 +2328,7 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
 
         if (err)
             logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
-                    flibc_htonll(version_num));
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tindex num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -4321,8 +4321,7 @@ void *statthd(void *p)
                 if (diff_bpool_hits)
                     logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %lu",
-                           diff_bpool_misses);
+                    logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 have_scon_stats = 1;
             }
         }

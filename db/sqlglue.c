@@ -1669,8 +1669,9 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
             free(schema->sqlitetag);
         schema->sqlitetag = strdup(namebuf);
         if (schema->sqlitetag == NULL) {
-            logmsg(LOGMSG_ERROR, "%s malloc (strdup) failed - wanted %zu bytes\n",
-                    __func__, strlen(namebuf));
+            logmsg(LOGMSG_ERROR,
+                   "%s malloc (strdup) failed - wanted %zu bytes\n", __func__,
+                   strlen(namebuf));
             abort();
         }
 
@@ -3664,7 +3665,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                     malloc(sizeof(int) + pCur->keybuflen);
                 if (clnt->idxDelete[pCur->ixnum] == NULL) {
                     logmsg(LOGMSG_ERROR, "%s:%d malloc %lu failed\n", __func__,
-                            __LINE__, sizeof(int) + pCur->keybuflen);
+                           __LINE__, sizeof(int) + pCur->keybuflen);
                     rc = SQLITE_NOMEM;
                     goto done;
                 }
@@ -4976,7 +4977,7 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
                    (num_temp_tables + 1) * sizeof(struct temptable));
     if (unlikely(newp == NULL)) {
         logmsg(LOGMSG_ERROR, "%s: realloc(%lu) failed\n", __func__,
-                (num_temp_tables + 1) * sizeof(struct temptable));
+               (num_temp_tables + 1) * sizeof(struct temptable));
         rc = SQLITE_INTERNAL;
         goto done;
     }
@@ -5429,7 +5430,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                 clnt->idxDelete[pCur->ixnum] = malloc(sizeof(int) + mem.n);
                 if (clnt->idxDelete[pCur->ixnum] == NULL) {
                     logmsg(LOGMSG_ERROR, "%s:%d malloc %ld failed\n", __func__,
-                            __LINE__, sizeof(int) + mem.n);
+                           __LINE__, sizeof(int) + mem.n);
                     rc = SQLITE_NOMEM;
                     goto done;
                 }
@@ -6270,8 +6271,8 @@ again:
             nretries++;
             if (rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery\n",
+                           __func__, pthread_self());
 
                 return (rc == SQLITE_CLIENT_CHANGENODE) ? rc : SQLITE_DEADLOCK;
             }
@@ -6890,7 +6891,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->ondisk_key = malloc(key_size + sizeof(int));
     if (!cur->ondisk_key) {
         logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %lu failed\n", __func__,
-                key_size + sizeof(int));
+               key_size + sizeof(int));
         free(cur->sampled_idx);
         return SQLITE_INTERNAL;
     }
@@ -7579,11 +7580,12 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
                     cur->fdbc->name(cur));
         } else {
             uuidstr_t tus;
-            logmsg(LOGMSG_USER, "%s Created cursor cid=%llx with tid=%s rootp=%d "
-                            "db:tbl=\"%s:%s\"\n",
-                    __func__, *(unsigned long long *)cur->fdbc->id(cur),
-                    comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
-                    cur->fdbc->name(cur));
+            logmsg(LOGMSG_USER,
+                   "%s Created cursor cid=%llx with tid=%s rootp=%d "
+                   "db:tbl=\"%s:%s\"\n",
+                   __func__, *(unsigned long long *)cur->fdbc->id(cur),
+                   comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
+                   cur->fdbc->name(cur));
         }
     }
 
@@ -7687,7 +7689,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     cur->ondisk_key = malloc(key_size + sizeof(int));
     if (!cur->ondisk_key) {
         logmsg(LOGMSG_ERROR, "%s:malloc ondisk_key sz %lu failed\n", __func__,
-                key_size + sizeof(int));
+               key_size + sizeof(int));
         free(cur->ondisk_buf);
         return SQLITE_INTERNAL;
     }
@@ -7696,7 +7698,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         cur->fndkey = malloc(key_size + sizeof(int));
         if (!cur->fndkey) {
             logmsg(LOGMSG_ERROR, "%s:malloc fndkey sz %lu failed\n", __func__,
-                    key_size + sizeof(int));
+                   key_size + sizeof(int));
             free(cur->ondisk_buf);
             free(cur->ondisk_key);
             return SQLITE_INTERNAL;
@@ -8227,7 +8229,7 @@ int sqlite3BtreeInsert(
                 clnt->idxInsert[pCur->ixnum] = malloc(sizeof(int) + nKey);
                 if (clnt->idxInsert[pCur->ixnum] == NULL) {
                     logmsg(LOGMSG_ERROR, "%s:%d malloc %llu failed\n", __func__,
-                            __LINE__, sizeof(int) + nKey);
+                           __LINE__, sizeof(int) + nKey);
                     rc = SQLITE_NOMEM;
                     goto done;
                 }
@@ -8772,8 +8774,9 @@ int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
     }
 
     if (clnt->gen_changed) {
-        logmsg(LOGMSG_ERROR, "td %lu %s line %d calling get_curtran on gen_changed\n",
-                pthread_self(), __func__, __LINE__);
+        logmsg(LOGMSG_ERROR,
+               "td %lu %s line %d calling get_curtran on gen_changed\n",
+               pthread_self(), __func__, __LINE__);
         cheap_stack_trace();
     }
 
@@ -8859,8 +8862,8 @@ int put_curtran_int(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, &bdberr);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: %lu rc %d bdberror %d\n", __func__, pthread_self(),
-                rc, bdberr);
+        logmsg(LOGMSG_ERROR, "%s: %lu rc %d bdberror %d\n", __func__,
+               pthread_self(), rc, bdberr);
         ctrace("%s: rc %d bdberror %d\n", __func__, rc, bdberr);
         if (bdberr == BDBERR_BUG_KILLME) {
             /* should I panic? */
@@ -8978,7 +8981,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
             sleepms = 2000;
 
         logmsg(LOGMSG_ERROR, "THD %lu:recover_deadlock, and lock desired\n",
-                pthread_self());
+               pthread_self());
     } else if (ptrace)
         logmsg(LOGMSG_ERROR, "THD %lu:recover_deadlock\n", pthread_self());
 
@@ -9228,8 +9231,8 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return -1;
             }
         }
@@ -9423,8 +9426,8 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return -1;
             }
         }
@@ -9633,8 +9636,8 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else
-                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return -1;
             }
         }
@@ -10662,8 +10665,8 @@ static int _sockpool_get(const char *dbname, const char *service, char *host)
         socket_pool_get_ext(socket_type, 0, SOCKET_POOL_GET_GLOBAL, NULL, NULL);
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "%lu: Asked socket for %s got %d\n", pthread_self(),
-                socket_type, fd);
+        logmsg(LOGMSG_ERROR, "%lu: Asked socket for %s got %d\n",
+               pthread_self(), socket_type, fd);
 
     return fd;
 }
@@ -10690,7 +10693,7 @@ void disconnect_remote_db(const char *dbname, const char *service, char *host,
 
     if (gbl_fdb_track)
         logmsg(LOGMSG_ERROR, "%lu: Donating socket for %s\n", pthread_self(),
-                socket_type);
+               socket_type);
 
     /* this is used by fdb sql for now */
     socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0,

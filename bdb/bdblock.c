@@ -419,10 +419,10 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
 
         rc = pthread_rwlock_trywrlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
-            logmsg(LOGMSG_ERROR, 
-                    "trying writelock (%s %lu), last writelock is %s %lu\n",
-                    idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
-                    lock_handle->bdb_lock_write_holder);
+            logmsg(LOGMSG_ERROR,
+                   "trying writelock (%s %lu), last writelock is %s %lu\n",
+                   idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
+                   lock_handle->bdb_lock_write_holder);
 
             /*
              * Abort threads waiting on logical locks.
@@ -529,9 +529,10 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
         rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
-            logmsg(LOGMSG_INFO, "trying readlock (%s %lu), last writelock is %s %lu\n", idstr,
-                    pthread_self(), lock_handle->bdb_lock_write_idstr,
-                    lock_handle->bdb_lock_write_holder);
+            logmsg(LOGMSG_INFO,
+                   "trying readlock (%s %lu), last writelock is %s %lu\n",
+                   idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
+                   lock_handle->bdb_lock_write_holder);
 
             rc = pthread_rwlock_rdlock(lock_handle->bdb_lock);
             if (rc != 0) {
@@ -663,12 +664,12 @@ void bdb_checklock(bdb_state_type *bdb_state)
     if (lk == NULL || lk->lockref == 0)
         return; /* all good */
 
-    logmsg(LOGMSG_FATAL, 
-            "%lu %s: request terminated but thread is holding bdb lock!\n",
-            pthread_self(), __func__);
+    logmsg(LOGMSG_FATAL,
+           "%lu %s: request terminated but thread is holding bdb lock!\n",
+           pthread_self(), __func__);
     logmsg(LOGMSG_FATAL, "%lu %s: %s %s lockref=%u\n", pthread_self(), __func__,
-            locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-            lk->lockref);
+           locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
+           lk->lockref);
     abort_lk(lk);
 }
 

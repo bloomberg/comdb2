@@ -218,7 +218,7 @@ char *load_text_file(const char *filename)
     buf = malloc(buflen + 1);
     if (!buf) {
         logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %zu\n",
-                filename, buflen);
+               filename, buflen);
         return NULL;
     }
 
@@ -241,8 +241,9 @@ char *load_text_file(const char *filename)
             buflen += bytesread;
             newbuf = realloc(buf, buflen + 1);
             if (!newbuf) {
-                logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %zu\n",
-                        filename, buflen);
+                logmsg(LOGMSG_ERROR,
+                       "load_text_file: '%s' out of memory, need %zu\n",
+                       filename, buflen);
                 free(buf);
                 close(fd);
                 return NULL;

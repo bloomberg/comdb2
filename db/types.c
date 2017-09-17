@@ -13581,11 +13581,13 @@ int get_int_field(struct field *f, const uint8_t *buf, int64_t *out)
     switch (f->datalen) {
     case sizeof(short):
         *out = (short)htons(*(short *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "short: %ld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "short: %ld\n", *out);
         break;
     case sizeof(int):
         *out = (int)htonl(*(int *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "int: %ld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "int: %ld\n", *out);
         break;
     case sizeof(long long):
         *out = (long long)flibc_htonll(*(long long *)(buf + f->offset));
@@ -13640,7 +13642,8 @@ int get_real_field(struct field *f, const uint8_t *buf, double *out)
     switch (f->datalen) {
     case sizeof(float):
         dval = (double)flibc_htonf(*(float *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "float: %f\n", dval);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "float: %f\n", dval);
         break;
     case sizeof(double):
         dval = (double)flibc_htond(*(double *)(buf + f->offset));

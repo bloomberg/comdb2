@@ -250,7 +250,7 @@ static void *fstdump_thread(void *arg)
     sendrec = mymalloc(common->sendrecsz);
     if (!sendrec)
         logmsg(LOGMSG_ERROR, "fstdump_thread: mymalloc %zu failed (sendrec)\n",
-                common->sendrecsz);
+               common->sendrecsz);
     databuf = mymalloc(buffer_length);
     if (!databuf)
         logmsg(LOGMSG_ERROR, "fstdump_thread: mymalloc %u failed (databuf)\n",
@@ -879,9 +879,9 @@ done:
         int niov;
         unsigned char *rec = mymalloc(fstdump.sendrecsz);
         if (!rec)
-            logmsg(LOGMSG_ERROR, 
-                    "bdb_fstdumpdta_sendsz: mymalloc %zu failed at eof\n",
-                    fstdump.sendrecsz);
+            logmsg(LOGMSG_ERROR,
+                   "bdb_fstdumpdta_sendsz: mymalloc %zu failed at eof\n",
+                   fstdump.sendrecsz);
         else {
             bzero(rec, fstdump.sendrecsz);
 

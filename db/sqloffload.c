@@ -305,7 +305,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         rc = SQLITE_ABORT;
         if (gbl_extended_sql_debug_trace) {
             logmsg(LOGMSG_USER, "td=%lu %s line %d returning SQLITE_ABORT\n",
-                    pthread_self(), __func__, __LINE__);
+                   pthread_self(), __func__, __LINE__);
         }
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
@@ -358,7 +358,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
             logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
-                    pthread_self(), __func__, __LINE__, rc);
+                   pthread_self(), __func__, __LINE__, rc);
         }
     }
 
@@ -366,7 +366,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
             logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
-                    pthread_self(), __func__, __LINE__, rc);
+                   pthread_self(), __func__, __LINE__, rc);
         }
     }
 
@@ -396,8 +396,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
         /* close the block processor session and retrieve the result */
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%lu %s line %d committing\n", pthread_self(),
-                   __func__, __LINE__);
+            logmsg(LOGMSG_USER, "td=%lu %s line %d committing\n",
+                   pthread_self(), __func__, __LINE__);
         }
         rc = osql_sock_commit(clnt, osqlreq_type);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
@@ -410,7 +410,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         }
         if (gbl_extended_sql_debug_trace && rc) {
             logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
-                    pthread_self(), __func__, __LINE__, rc);
+                   pthread_self(), __func__, __LINE__, rc);
         }
     }
 
@@ -662,15 +662,15 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
 
     if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
         clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n", clnt,
-                clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
+               clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
         if (clnt->sql)
             logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
-        logmsg(LOGMSG_ERROR, "%p rqid %llx in USE! %lu\n", clnt, clnt->osql.rqid,
-                pthread_self());
+        logmsg(LOGMSG_ERROR, "%p rqid %llx in USE! %lu\n", clnt,
+               clnt->osql.rqid, pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();

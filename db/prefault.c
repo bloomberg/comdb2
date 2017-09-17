@@ -100,7 +100,7 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
 
     dbenv->prefaultiopool.guard = 0xabababab;
     logmsg(LOGMSG_DEBUG, "&(dbenv->prefaultiopool.guard) = %p\n",
-            &(dbenv->prefaultiopool.guard));
+           &(dbenv->prefaultiopool.guard));
 
     logmsg(LOGMSG_DEBUG, "prefault cond initialized\n");
     rc = pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
@@ -501,7 +501,7 @@ static void *prefault_io_thread(void *arg)
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
         logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
-                pthread_self());
+               pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;

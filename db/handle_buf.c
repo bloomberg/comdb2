@@ -458,7 +458,7 @@ static void *thd_req(void *vthd)
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
         logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
-                pthread_self());
+               pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;
@@ -470,26 +470,28 @@ static void *thd_req(void *vthd)
     thdinfo->ct_add_table =
         (void *)create_constraint_table(&thdinfo->ct_id_key);
     if (thdinfo->ct_add_table == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint add table thd "
-                        "%lu\n",
-                pthread_self());
+        logmsg(LOGMSG_FATAL,
+               "**aborting: cannot allocate constraint add table thd "
+               "%lu\n",
+               pthread_self());
         abort();
     }
     thdinfo->ct_del_table =
         (void *)create_constraint_table(&thdinfo->ct_id_key);
     if (thdinfo->ct_del_table == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting: cannot allocate constraint delete table "
-                        "thd %lu\n",
-                pthread_self());
+        logmsg(LOGMSG_FATAL,
+               "**aborting: cannot allocate constraint delete table "
+               "thd %lu\n",
+               pthread_self());
         abort();
     }
     thdinfo->ct_add_index =
         (void *)create_constraint_index_table(&thdinfo->ct_id_key);
     if (thdinfo->ct_add_index == NULL) {
-        logmsg(LOGMSG_FATAL, 
-                "**aborting: cannot allocate constraint add index table "
-                "thd %lu\n",
-                pthread_self());
+        logmsg(LOGMSG_FATAL,
+               "**aborting: cannot allocate constraint add index table "
+               "thd %lu\n",
+               pthread_self());
         abort();
     }
     pthread_setspecific(unique_tag_key, thdinfo);
@@ -1430,10 +1432,10 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         rc = q_reqs.count;
         if (qtype != REQ_OFFLOAD && rc > gbl_maxqueue) {
             struct dbq_entry_t *nextrq = NULL;
-            logmsg(LOGMSG_ERROR, 
-                    "THD=%lu handle_buf:rejecting requests queue too full %d "
-                    "(max %d)\n",
-                    pthread_self(), rc, gbl_maxqueue);
+            logmsg(LOGMSG_ERROR,
+                   "THD=%lu handle_buf:rejecting requests queue too full %d "
+                   "(max %d)\n",
+                   pthread_self(), rc, gbl_maxqueue);
 
             comdb2bma_yield_all();
             /* Dequeue the request I just queued. */

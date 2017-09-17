@@ -170,7 +170,8 @@ int fdb_svc_init(void)
 {
     center = (svc_center_t *)calloc(1, sizeof(svc_center_t));
     if (!center) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__, sizeof(svc_center_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(svc_center_t));
         return -1;
     }
 
@@ -641,8 +642,8 @@ again:
 
             if (recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return SQLITE_DEADLOCK;
             }
 

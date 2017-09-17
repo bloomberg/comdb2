@@ -408,7 +408,8 @@ void replication_stats(struct dbenv *dbenv)
                dbenv->total_timeouts_ms / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep time     %d\n",
                dbenv->total_reptime_ms / dbenv->num_txns);
-        logmsg(LOGMSG_USER, "   Max txn sz           %lu\n", dbenv->biggest_txn);
+        logmsg(LOGMSG_USER, "   Max txn sz           %lu\n",
+               dbenv->biggest_txn);
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
     }
@@ -2001,7 +2002,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
 
-            logmsg(LOGMSG_USER, "commit %u abort %u repcommit %llu retry %lu "
+            logmsg(LOGMSG_USER,
+                   "commit %u abort %u repcommit %llu retry %lu "
                    "verify retry %lld rep retry %llu max retry %d\n",
                    dbenv->txns_committed, dbenv->txns_aborted, txns_applied,
                    n_retries, gbl_verify_tran_replays, rep_retry, max_retries);
@@ -2326,7 +2328,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         if (ltok >= sizeof(fname) - 1) {
-            logmsg(LOGMSG_ERROR, "Invalid file name: too long (max %zu)\n", sizeof(fname) - 1);
+            logmsg(LOGMSG_ERROR, "Invalid file name: too long (max %zu)\n",
+                   sizeof(fname) - 1);
             return -1;
         }
         tokcpy(tok, ltok, fname);
@@ -5184,7 +5187,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         case TUNABLE_ERR_INVALID_TUNABLE:
             logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
             break;
-        default: logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
+        default:
+            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
         }
         return rc;
     }

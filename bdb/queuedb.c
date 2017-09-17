@@ -175,8 +175,9 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 rc = -1;
                 goto done;
             } else if (rc) {
-                logmsg(LOGMSG_ERROR, "queuedb %s consumer %d genid %lx put rc %d\n",
-                        bdb_state->name, i, k.genid, rc);
+                logmsg(LOGMSG_ERROR,
+                       "queuedb %s consumer %d genid %lx put rc %d\n",
+                       bdb_state->name, i, k.genid, rc);
                 *bdberr = BDBERR_MISC;
                 rc = -1;
                 goto done;
@@ -440,8 +441,8 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
         goto done;
     }
     if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, "next key is consumer %d genid %016lx\n", fndk.consumer,
-               fndk.genid);
+        logmsg(LOGMSG_USER, "next key is consumer %d genid %016lx\n",
+               fndk.consumer, fndk.genid);
     if (fndk.consumer != consumer) {
         /* pretend we didn't find anything - the next record is meant for
          * a different consumer, our "queue" is empty */

@@ -2847,7 +2847,7 @@ int osql_comm_init(struct dbenv *dbenv)
     tmp = (osql_comm_t *)calloc(sizeof(osql_comm_t), 1);
     if (!tmp) {
         logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-                sizeof(osql_comm_t));
+               sizeof(osql_comm_t));
         return 0;
     }
 
@@ -5494,8 +5494,9 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
     } else {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "Missing SORESE sql session %llx %s on %s from %d\n",
-                poke.rqid, comdb2uuidstr(uuid, us), gbl_mynode, poke.from);
+        logmsg(LOGMSG_ERROR,
+               "Missing SORESE sql session %llx %s on %s from %d\n", poke.rqid,
+               comdb2uuidstr(uuid, us), gbl_mynode, poke.from);
     }
 }
 
@@ -5541,8 +5542,9 @@ static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
     /* update the status of the sorese session */
     rc = osql_checkboard_update_status(rqid, uuid, status, timestamp);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to update status for rqid %llu %s rc=%d\n",
-                __func__, rqid, comdb2uuidstr(uuid, us), rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to update status for rqid %llu %s rc=%d\n", __func__,
+               rqid, comdb2uuidstr(uuid, us), rc);
     }
 }
 
@@ -6938,8 +6940,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     else
                         blobs[dt.id].data = malloc(dt.bloblen);
                     if (!blobs[dt.id].data) {
-                        logmsg(LOGMSG_ERROR, "%s failed to allocated a new blob, size %zu\n",
-                                __func__, blobs[dt.id].length);
+                        logmsg(LOGMSG_ERROR,
+                               "%s failed to allocated a new blob, size %zu\n",
+                               __func__, blobs[dt.id].length);
                         return conv_rc_sql2blkop(iq, step, -1, ERR_INTERNAL,
                                                  err, NULL, 0);
                     }
@@ -7408,8 +7411,9 @@ static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
    printf("%s\n", __func__);
 #endif
     if (dtalen != sizeof(osql_echo_t)) {
-        logmsg(LOGMSG_ERROR, "Received malformed echo packet! size %d, should be %zu\n",
-                dtalen, sizeof(osql_echo_t));
+        logmsg(LOGMSG_ERROR,
+               "Received malformed echo packet! size %d, should be %zu\n",
+               dtalen, sizeof(osql_echo_t));
         return;
     }
 
@@ -8381,7 +8385,8 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %zu failed\n", od_len);
+            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %zu failed\n",
+                   od_len);
             exit(1);
         }
 

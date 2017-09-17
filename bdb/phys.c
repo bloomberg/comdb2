@@ -242,7 +242,7 @@ static inline void deadlock_trace(const char *func, tran_type *tran, int rc)
     extern int gbl_rowlocks_deadlock_trace;
     if (is_deadlock(rc) && gbl_rowlocks_deadlock_trace) {
         logmsg(LOGMSG_ERROR, "ltranid %llu %s returning deadlock %d\n",
-                tran->logical_tranid, func, rc);
+               tran->logical_tranid, func, rc);
     }
 }
 
