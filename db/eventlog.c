@@ -174,11 +174,11 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             /* set type */
             double dval;
             switch (dlen) {
-            case 4: 
-                strtype = "float"; 
+            case 4:
+                strtype = "float";
                 dval = *(float *)(buf + f->offset);
                 break;
-            case 8: 
+            case 8:
                 strtype = "doublefloat";
                 dval = *(double *)(buf + f->offset);
                 break;
