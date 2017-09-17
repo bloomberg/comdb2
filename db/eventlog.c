@@ -174,12 +174,14 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             /* set type */
             double dval;
             switch (dlen) {
-            case 4: strtype = "float"; 
-                    dval = *(float *)(buf + f->offset);
-                    break;
-            case 8: strtype = "doublefloat";
-                    dval = *(double *)(buf + f->offset);
-                    break;
+            case 4: 
+                strtype = "float"; 
+                dval = *(float *)(buf + f->offset);
+                break;
+            case 8: 
+                strtype = "doublefloat";
+                dval = *(double *)(buf + f->offset);
+                break;
             }
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
@@ -223,12 +225,11 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             } else {
                 if (params) {
                     rc = get_blob_field(blobno, clnt, &byteval, &datalen);
-                }
-                else {
+                } else {
                     byteval = buf;
                     datalen = f->datalen;
                 }
-                if(rc == 0)
+                if (rc == 0)
                     blobno++;
             }
             if (rc == 0)
