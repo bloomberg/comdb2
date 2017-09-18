@@ -23,6 +23,7 @@ static const char revid[] = "$Id: db_dup.c,v 11.36 2003/06/30 17:19:44 bostic Ex
 #include "dbinc/mp.h"
 #include "dbinc/db_am.h"
 #include "dbinc/db_swap.h"
+#include "dbinc/trigger_subscription.h"
 
 #include <stdlib.h>
 #include <alloca.h>
@@ -187,6 +188,13 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	u_int8_t *p;
 
 	dbp = dbc->dbp;
+
+	/* If there is an active Lua trigger/consumer, wake it up. */
+	struct __db_trigger_subscription *t = dbp->trigger_subscription;
+	if (t && t->active && (indx & 1)) {
+		pthread_cond_signal(&t->cond);
+	}
+
 	/*
 	 * Put a single item onto a page.  The logic figuring out where to
 	 * insert and whether it fits is handled in the caller.  All we do
