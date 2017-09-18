@@ -6344,6 +6344,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             if (iq->sc->db) iq->usedb = iq->sc->db;
             rc = finalize_schema_change(iq, ptran);
+            iq->usedb = NULL;
             if (rc != SC_OK) {
                 return rc; // Change to failed schema change error;
             }
@@ -7025,6 +7026,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             iq->sc_pending = iq->sc;
             bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
         }
+        iq->usedb = NULL;
 
         if (!rc || rc == SC_COMMIT_PENDING)
             return 0;
