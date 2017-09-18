@@ -97,6 +97,8 @@
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
 
+#include <bdb_queuedb.h>
+
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
@@ -1424,6 +1426,10 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     if (!bdb_state->isopen) {
         print(bdb_state, "%s not open, not closing\n", bdb_state->name);
         return 0;
+    }
+
+    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+        bdb_trigger_close(bdb_state);
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {

@@ -636,3 +636,28 @@ const struct bdb_queue_stats *bdb_queuedb_get_stats(bdb_state_type *bdb_state)
 
     return &qstate->stats;
 }
+
+int bdb_trigger_subscribe(bdb_state_type *bdb_state, pthread_cond_t **cond,
+                          pthread_mutex_t **lock, const uint8_t **open)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_subscribe(dbenv, bdb_state->name, cond, lock, open);
+}
+
+int bdb_trigger_unsubscribe(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_unsubscribe(dbenv, bdb_state->name);
+}
+
+int bdb_trigger_open(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_open(dbenv, bdb_state->name);
+}
+
+int bdb_trigger_close(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_close(dbenv, bdb_state->name);
+}
