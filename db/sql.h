@@ -70,10 +70,7 @@ enum transaction_level {
 #define MAX_HASH_SQL_LENGTH 8192
 
 /* Static rootpages numbers. */
-enum {
-   RTPAGE_SQLITE_MASTER   = 1,
-   RTPAGE_START           = 2
-};
+enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];

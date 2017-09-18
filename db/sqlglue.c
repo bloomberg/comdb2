@@ -7177,7 +7177,7 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
     db = get_sqlite_db(thd, iTable, &ixnum);
-    if(!db)
+    if (!db)
         return -1;
 
     rc = analyze_is_sampled(clnt, db->dbname, ixnum);
@@ -7257,7 +7257,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
         dups = 1;
         prev = iTable;
-        
+
         db = get_sqlite_db(thd, iTable, NULL);
 
         if (!db) {
@@ -7347,8 +7347,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             db->nsql++; /* per table nsql stats */
         }
 
-        reqlog_add_table(thrman_get_reqlogger(thrman_self()),
-                         db->dbname);
+        reqlog_add_table(thrman_get_reqlogger(thrman_self()), db->dbname);
     }
 
     if (!after_recovery)
