@@ -5498,6 +5498,8 @@ printf("Inserting into blkseq, outrc=%d, rc=%d, cnonce=%s\n", outrc, rc, iq->sna
                     if (irc == BDBERR_NOT_DURABLE) {
                         rc = ERR_NOT_DURABLE;
                     }
+                    logmsg(LOGMSG_DEBUG, "trans_commit_adaptive irc=%d, "
+                            "rc=%d\n", irc, rc);
                 }
 
                 if (hascommitlock) {
