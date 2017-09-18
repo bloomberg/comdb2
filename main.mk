@@ -70,11 +70,10 @@ ifeq ($(arch),AIX)
   CXXFLAGS=$(CFLAGS_64)
   # I give up.  Can't link these statically.
   LIBREADLINE=-blibpath:/opt/bb/lib64:/usr/lib:/lib -lreadline -lhistory
-  # Use GCC on IBM for C++11 code. Also requires different options for 64 bit.
-  # XXX The GCC runtime is not deployed on Bloomberg IBM machines
-  CXX11=/opt/swt/install/gcc-4.9.2/bin/g++
+  CXX11=/opt/bb/bin/g++-5
   CXX11FLAGS=-std=c++11 -pthread -maix64
-  CXX11LDFLAGS=-maix64
+  # The GCC runtime is not deployed on Bloomberg IBM machines: link statically for now
+  CXX11LDFLAGS=-static-libgcc -static-libstdc++ -maix64
   BBLDPREFIX=-Wl,
   # Flags for generating dependencies
   DEPFLAGS = -qmakedep=gcc -MF $(@:.o=.Td)
