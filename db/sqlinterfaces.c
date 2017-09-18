@@ -4048,12 +4048,12 @@ done:
 
     unlock_schema_lk();
 
-    if(gbl_stable_rootpages_test) {
+    if (gbl_stable_rootpages_test) {
         static int skip = 0;
-        if(!skip) {
+        if (!skip) {
             skip = 1;
             sleep(60);
-        } else 
+        } else
             skip = 0;
     }
 

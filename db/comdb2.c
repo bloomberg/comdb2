@@ -5000,9 +5000,10 @@ static void register_all_int_switches()
     register_int_switch("durable_replay_test",
                         "Enables periodic durable failures in blkseq replay",
                         &gbl_durable_replay_test);
-    register_int_switch("stable_rootpages_test",
-                        "Delay sql processing to allow a schema change to finish",
-                        &gbl_stable_rootpages_test);
+    register_int_switch(
+        "stable_rootpages_test",
+        "Delay sql processing to allow a schema change to finish",
+        &gbl_stable_rootpages_test);
     register_int_switch("durable_set_trace",
                         "Print trace set durable and commit lsn trace",
                         &gbl_durable_set_trace);
