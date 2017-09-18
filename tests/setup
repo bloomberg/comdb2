@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG"
+vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE COMDB2MD5SUM CDB2SQL_EXE "
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -66,18 +66,25 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="${SRCHOME}/:${PATH}"
-    echo "To run the ${TESTCASE} test, please run the following:"
-    echo
+    echo "To run ${TESTCASE} test, please run the following once db is ready:"
+    RUNTEST="${PWD}/runtest.sh "
+    echo "$RUNTEST"
+    echo "#!/bin/bash" > $RUNTEST
+    #echo "set +x"  >> $RUNTEST
     for env in $vars; do
-        echo "export $env=\"${!env}\""
+        echo "export $env=\"${!env}\"" >> $RUNTEST
     done
-    echo 'export PATH=${SRCHOME}/:${PATH}'
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"'
-    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/"
-    echo "./runit ${DBNAME} >${TESTDIR}/logs/${TESTCASE}.testcase 2>&1"
-    echo "${TESTSROOTDIR}/unsetup"
+    echo 'export PATH=${SRCHOME}/:${PATH}' >> $RUNTEST
+    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
+    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
+    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
+    #echo "./runit ${DBNAME} >${TESTDIR}/logs/${TESTCASE}.testcase 2>&1" >> $RUNTEST
+    echo "./runit ${DBNAME} " >> $RUNTEST
+    echo "echo; echo; echo;" >> $RUNTEST
+    echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo
     echo
+    chmod +x $RUNTEST
 fi
 
 # TESTDIR looks like this: tests/test_12758
@@ -109,6 +116,7 @@ name    $DBNAME
 dir     $DBDIR
 
 setattr MASTER_REJECT_REQUESTS 0
+do reql events detailed on
 EOPTIONS
 
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
