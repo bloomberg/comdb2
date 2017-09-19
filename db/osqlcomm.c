@@ -3421,6 +3421,7 @@ static int osql_net_type_to_net_uuid_type(int type)
 static inline
 int is_tablename_queue(const char * tablename, int len)
 {
+    /* See also, __db_open @ /berkdb/db/db_open.c for register_qdb */
     return (len > 3 && tablename[0] == '_' &&
             tablename[1] == '_' && tablename[2] == 'q');
 }

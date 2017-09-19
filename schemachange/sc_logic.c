@@ -1178,7 +1178,7 @@ int backout_schema_change(struct ireq *iq)
         delete_temp_table(iq, s->db);
         delete_db(s->table);
         create_sqlmaster_records(NULL);
-        create_master_tables();
+        create_sqlite_master();
     } else {
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);

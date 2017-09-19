@@ -69,6 +69,9 @@ enum transaction_level {
 
 #define MAX_HASH_SQL_LENGTH 8192
 
+/* Static rootpages numbers. */
+enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
@@ -732,7 +735,7 @@ struct sql_thread {
     struct sqlclntstate *sqlclntstate; /* pointer to originating sqlclnt */
     /* custom error message to send to client */
     char *error;
-    struct rootpage *rootpages;
+    struct master_entry *rootpages;
     int rootpage_nentries;
     unsigned char had_temptables;
     unsigned char had_tablescans;
@@ -822,5 +825,7 @@ uint16_t stmt_num_tbls(sqlite3_stmt *);
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl);
 void init_cursor(BtCursor *, Vdbe *, Btree *);
 void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
+int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
+                         struct dbtable *db, int ixnum, void *trans);
 
 #endif
