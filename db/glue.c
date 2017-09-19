@@ -3198,7 +3198,7 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
     rc = reload_schema(table, csc2, NULL);
 
     rc2 = create_sqlmaster_records(NULL);
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     net_ack_message(hndl, rc || rc2);
 

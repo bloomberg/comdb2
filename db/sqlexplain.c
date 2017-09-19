@@ -375,7 +375,8 @@ static void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
     bzero(cur, sizeof cur);
     if (op->p3 <= 1) {
         struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-        get_sqlite_tblnum_and_ixnum(sqlthd, op->p2, &cur->tbl, &cur->ix);
+        struct dbtable *db = get_sqlite_db(sqlthd, op->p2, &cur->ix);
+        cur->tbl = db->dbs_idx;
         cur->rootpage = op->p2;
         if (op->p3 == 1)
             cur->istemp = 1;

@@ -45,7 +45,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         return SC_INTERNAL_ERROR;
     }
     /* TODO: ask why this function has no return codes */
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
@@ -301,7 +301,7 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
     fix_lrl_ixlen_tran(tran);
 
     create_sqlmaster_records(tran);
-    create_master_tables();
+    create_sqlite_master();
 
     db->sc_to = NULL;
     update_dbstore(db);

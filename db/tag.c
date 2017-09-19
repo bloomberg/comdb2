@@ -6874,6 +6874,9 @@ void freeschema(struct schema *schema)
 void freedb_int(struct dbtable *db, struct dbtable *replace)
 {
     int i;
+    int dbs_idx;
+
+    dbs_idx = db->dbs_idx;
 
     free(db->lrlfname);
     free(db->dbname);
@@ -6909,9 +6912,10 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
         }
     }
 
-    if (replace)
+    if (replace) {
         memcpy(db, replace, sizeof(struct dbtable));
-    else
+        db->dbs_idx = dbs_idx;
+    } else
         free(db);
 }
 
@@ -7109,7 +7113,7 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
     create_sqlmaster_records(tran);
-    create_master_tables();
+    create_sqlite_master();
     return 0;
 }
 
@@ -7127,7 +7131,7 @@ int reload_db_tran(struct dbtable *db, tran_type *tran)
     db->tableversion = table_version_select(db, tran);
     update_dbstore(db);
     create_sqlmaster_records(tran);
-    create_master_tables();
+    create_sqlite_master();
     return 0;
 }
 
