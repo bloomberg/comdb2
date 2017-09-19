@@ -178,7 +178,7 @@ int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
         stats[i].table[0] = 0;
         if (c->rmt_db[0]) {
             snprintf0(stats[i].table, sizeof(stats[i].table), "%s.%s",
-                      c->rmt_db, c->lcl_tbl_name[0]?c->lcl_tbl_name:"NULL");
+                      c->rmt_db, c->lcl_tbl_name[0] ? c->lcl_tbl_name : "NULL");
         } else if (c->lcl_tbl_name[0]) {
             strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }

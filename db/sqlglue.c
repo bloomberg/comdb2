@@ -610,11 +610,12 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
 {
     const struct query_path_component *q1 = key1, *q2 = key2;
     if (q1->ix != q2->ix) {
-        return q1->ix-q2->ix;
+        return q1->ix - q2->ix;
     }
     if (!q1->rmt_db[0] && !q2->rmt_db[0]) {
         // both local
-        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name, sizeof(q1->lcl_tbl_name));
+        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
+                       sizeof(q1->lcl_tbl_name));
     } else if (!q1->rmt_db[0]) {
         // mismatch
         return -1;
@@ -623,9 +624,11 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
         return 1;
     } else {
         int rc = strncmp(q1->rmt_db, q2->rmt_db, sizeof(q1->rmt_db));
-        if (rc) return rc;
+        if (rc)
+            return rc;
 
-        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name, sizeof(q1->lcl_tbl_name));
+        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
+                       sizeof(q1->lcl_tbl_name));
     }
 }
 
@@ -5991,21 +5994,23 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             (pCur->db && is_sqlite_stat(pCur->db->dbname))) {
             goto skip;
         }
-        struct query_path_component fnd={0}, *qc = NULL;
+        struct query_path_component fnd = {0}, *qc = NULL;
         if (pCur->bt && pCur->bt->is_remote) {
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
             strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
         }
-        if(pCur->db)
-            strncpy0(fnd.lcl_tbl_name, pCur->db->dbname, sizeof(fnd.lcl_tbl_name));
+        if (pCur->db)
+            strncpy0(fnd.lcl_tbl_name, pCur->db->dbname,
+                     sizeof(fnd.lcl_tbl_name));
         fnd.ix = pCur->ixnum;
 
         if ((qc = hash_find(thd->query_hash, &fnd)) == NULL) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
-                strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
-            } 
+                strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur),
+                         sizeof(fnd.rmt_db));
+            }
             if (pCur->db) {
                 strncpy0(qc->lcl_tbl_name, pCur->db->dbname,
                          sizeof(qc->lcl_tbl_name));
