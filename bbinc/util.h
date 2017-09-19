@@ -67,4 +67,6 @@ char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
 
+char *util_tohex(char *output, char *key, int keylen);
+
 #endif

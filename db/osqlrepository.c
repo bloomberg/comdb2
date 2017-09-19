@@ -132,23 +132,6 @@ static char hex(unsigned char a)
     return 'a' + (a - 10);
 }
 
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
 
 /**
  * Adds an osql session to the repository
@@ -202,7 +185,7 @@ retry:
     if (sess_chk) {
         theosql_pthread_rwlock_unlock(&theosql->hshlck);
         char *p = (char *)alloca(64);
-        p = tohex(p, uuid, 16);
+        p = util_tohex(p, uuid, 16);
 
         logmsg(LOGMSG_ERROR, "%s: trying to add another session with the same "
                 "rqid, rqid=%llx uuid=%s retry=%d, waited %u msec\n",
@@ -279,7 +262,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
 
     if (rc) {
         char *p = alloca(64);
-        p = (char *)tohex(p, sess->uuid, 16);
+        p = (char *)util_tohex(p, sess->uuid, 16);
         logmsg(LOGMSG_ERROR, "%s: Unable to hash the new request\n", __func__); 
         for (int i=0; i<MAX_UUID_LIST;i++) {
 

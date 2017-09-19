@@ -42,7 +42,7 @@
 
 #include <plhash.h>
 #include "comdb2.h"
-#include "util.h"
+#include "util.h" /* the .h file for this .c */
 
 #include <limits.h>
 #include <float.h>
@@ -632,3 +632,36 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
     va_end(args);
     return ret;
 }
+
+
+static inline char hex(unsigned char a)
+{
+    if (a < 10)
+        return '0' + a;
+    return 'a' + (a - 10);
+}
+
+
+static void hexdumpbuf(char *key, int keylen, char **buf)
+{
+    char *mem;
+    char *output;
+
+    mem = malloc((2 * keylen) + 2);
+    output = util_tohex(mem, key, keylen);
+
+    *buf = output;
+}
+
+/* Return a hex string */
+char *util_tohex(char *output, char *key, int keylen)
+{
+    output[0] = '\0';
+    for (int i = 0; i < keylen; i++) {
+        output[2 * i]     = hex(((unsigned char)key[i]) / 16);
+        output[2 * i + 1] = hex(((unsigned char)key[i]) % 16);
+    }
+
+    return output;
+}
+
