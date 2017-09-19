@@ -92,21 +92,20 @@ static const char *help_text = {
     "        EPOCH                      time in seconds since 1970\n"
     "        PATH                       path to database directory\n"};
 
-
 static void swapargs(char **argv, int left, int mid, int right)
 {
     char *k;
     int ii;
     while (left < mid && mid < right) {
         if (mid - left < right - mid) {
-            for (ii = 0 ; ii < mid - left ; ii++) {
+            for (ii = 0; ii < mid - left; ii++) {
                 k = argv[left + ii];
                 argv[left + ii] = argv[right - (mid - left) + ii];
                 argv[right - (mid - left) + ii] = k;
             }
             right -= (mid - left);
         } else {
-            for (ii = 0 ; ii < right - mid ; ii++) {
+            for (ii = 0; ii < right - mid; ii++) {
                 k = argv[left + ii];
                 argv[left + ii] = argv[mid + ii];
                 argv[mid + ii] = k;
@@ -119,10 +118,10 @@ static void swapargs(char **argv, int left, int mid, int right)
 static void generate_normalized_options(struct option *options)
 {
     int ii;
-    for (ii = 0 ; options[ii].name ; ii++)
+    for (ii = 0; options[ii].name; ii++)
         ;
     normalized_options = (char **)malloc(sizeof(char *) * ii);
-    for (ii = 0 ; options[ii].name ; ii++) {
+    for (ii = 0; options[ii].name; ii++) {
         normalized_options[ii] = (char *)malloc(strlen(options[ii].name) + 3);
         sprintf(normalized_options[ii], "--%s", options[ii].name);
     }
@@ -132,13 +131,11 @@ static int opt_idx(char *opt, struct option *options, int *req)
 {
     int ii;
 
-    if (opt[0] != '-')
-        return -1;
+    if (opt[0] != '-') return -1;
 
-    if ((++opt)[0] == '-')
-        ++opt;
+    if ((++opt)[0] == '-') ++opt;
 
-    for (ii = 0 ; options[ii].name ; ii++) {
+    for (ii = 0; options[ii].name; ii++) {
         if (!strcmp(opt, options[ii].name)) {
             if (req) *req = options[ii].has_arg;
             return ii;
@@ -158,8 +155,8 @@ static void replace_args(int argc, char *argv[], struct option *options)
             argv[ii] = normalized_options[idx];
             if (req_arg == required_argument) {
                 ii++;
-            } else if (req_arg == optional_argument && 
-                    (ii + 1 < argc) && argv[ii + 1][0] != '-') {
+            } else if (req_arg == optional_argument && (ii + 1 < argc) &&
+                       argv[ii + 1][0] != '-') {
                 ii++;
             }
         } else {
@@ -172,8 +169,7 @@ static void replace_args(int argc, char *argv[], struct option *options)
         }
     }
 
-    if (left < mid && mid < argc)
-        swapargs(argv, left, mid, argc);
+    if (left < mid && mid < argc) swapargs(argv, left, mid, argc);
 }
 
 struct read_lrl_option_type {
