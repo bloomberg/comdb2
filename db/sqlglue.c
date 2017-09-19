@@ -99,6 +99,8 @@
 #include "logmsg.h"
 #include "locks.h"
 
+#include <bbinc/str0.h>
+
 unsigned long long get_id(bdb_state_type *);
 
 struct temp_cursor;
@@ -592,11 +594,9 @@ static unsigned int query_path_component_hash(const void *key, int len)
 {
     const struct query_path_component *q = key;
     const char *name;
-    if (q->fdb == NULL) {
-        name = q->lcl_tbl_name;
-    } else {
-        name = fdb_table_entry_tblname(q->fdb);
-    }
+
+    name = q->lcl_tbl_name;
+
     struct {
         int ix;
         char name[strlen(name) + 1];
@@ -610,22 +610,26 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
 {
     const struct query_path_component *q1 = key1, *q2 = key2;
     if (q1->ix != q2->ix) {
-        return 1;
+        return q1->ix - q2->ix;
     }
-    const char *n1, *n2;
-    if (q1->fdb == NULL && q2->fdb == NULL) {
+    if (!q1->rmt_db[0] && !q2->rmt_db[0]) {
         // both local
-        n1 = q1->lcl_tbl_name;
-        n2 = q2->lcl_tbl_name;
-    } else if (q1->fdb == NULL || q2->fdb == NULL) {
+        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
+                       sizeof(q1->lcl_tbl_name));
+    } else if (!q1->rmt_db[0]) {
+        // mismatch
+        return -1;
+    } else if (!q2->rmt_db[0]) {
         // mismatch
         return 1;
     } else {
-        // both remote
-        n1 = fdb_table_entry_tblname(q1->fdb);
-        n2 = fdb_table_entry_tblname(q2->fdb);
+        int rc = strncmp(q1->rmt_db, q2->rmt_db, sizeof(q1->rmt_db));
+        if (rc)
+            return rc;
+
+        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
+                       sizeof(q1->lcl_tbl_name));
     }
-    return strcmp(n1, n2);
 }
 
 struct sql_thread *start_sql_thread(void)
@@ -5905,10 +5909,7 @@ void addVdbeSorterCost(const VdbeSorter *pSorter)
     if (thd == NULL)
         return;
 
-    struct query_path_component fnd, *qc;
-    fnd.fdb = 0;
-    fnd.lcl_tbl_name[0] = 0;
-    fnd.ix = 0;
+    struct query_path_component fnd = {0}, *qc;
 
     if (NULL == (qc = hash_find(thd->query_hash, &fnd))) {
         qc = calloc(sizeof(struct query_path_component), 1);
@@ -5993,24 +5994,26 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             (pCur->db && is_sqlite_stat(pCur->db->dbname))) {
             goto skip;
         }
-        struct query_path_component fnd, *qc = NULL;
-        fnd.fdb = 0;
-        fnd.lcl_tbl_name[0] = 0;
+        struct query_path_component fnd = {0}, *qc = NULL;
         if (pCur->bt && pCur->bt->is_remote) {
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
-            fnd.fdb = pCur->fdbc->table_entry(pCur);
-        } else if (pCur->db) {
-            strcpy(fnd.lcl_tbl_name, pCur->db->dbname);
+            strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
         }
+        if (pCur->db)
+            strncpy0(fnd.lcl_tbl_name, pCur->db->dbname,
+                     sizeof(fnd.lcl_tbl_name));
         fnd.ix = pCur->ixnum;
 
         if ((qc = hash_find(thd->query_hash, &fnd)) == NULL) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
-                qc->fdb = fnd.fdb;
-            } else if (pCur->db) {
-                strcpy(qc->lcl_tbl_name, pCur->db->dbname);
+                strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur),
+                         sizeof(fnd.rmt_db));
+            }
+            if (pCur->db) {
+                strncpy0(qc->lcl_tbl_name, pCur->db->dbname,
+                         sizeof(qc->lcl_tbl_name));
             }
             qc->ix = pCur->ixnum;
             hash_add(thd->query_hash, qc);
