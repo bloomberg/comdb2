@@ -2,7 +2,7 @@
 
 #usage
 if [[ $# != 4 ]]; then
-    print "$0 usage: <source> <cfile> <hfile> <template>"
+    echo "$0 usage: <source> <cfile> <hfile> <template>"
     exit 1
 fi
 

@@ -138,9 +138,6 @@ protobuf/mem_protobuf.c
 protobuf/mem_protobuf.h
 sqlite/mem_sqlite.c
 sqlite/mem_sqlite.h
-util/mem_int.h
-util/mem_util.c
-util/mem_util.h
 schemachange/mem_schemachange.c
 schemachange/mem_schemachange.h
 lua/mem_lua.c
