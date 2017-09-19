@@ -176,10 +176,9 @@ int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
         stats[i].nwrite = c->nwrite;
         stats[i].ix = c->ix;
         stats[i].table[0] = 0;
-        if (c->fdb) {
+        if (c->rmt_db[0]) {
             snprintf0(stats[i].table, sizeof(stats[i].table), "%s.%s",
-                      fdb_table_entry_dbname(c->fdb),
-                      fdb_table_entry_tblname(c->fdb));
+                      c->rmt_db, c->lcl_tbl_name[0] ? c->lcl_tbl_name : "NULL");
         } else if (c->lcl_tbl_name[0]) {
             strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
         }

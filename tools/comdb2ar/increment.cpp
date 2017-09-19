@@ -267,7 +267,7 @@ ssize_t serialise_incr_file(
             ++it){
 tryagain:
         ifs.seekg(pagesize * *it, ifs.beg);
-        ifs.read(&pagebuf[0], pagesize);
+        ifs.read((char *)&pagebuf[0], pagesize);
         ssize_t bytes_read = ifs.gcount();
         if(bytes_read < pagesize) {
             std::ostringstream ss;
