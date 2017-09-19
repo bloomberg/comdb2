@@ -48,6 +48,7 @@ int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
 static void eventlog_roll(void);
+#define min(x, y) ((x) < (y) ? (x) : (y))
 
 struct sqltrack {
     char fingerprint[16];
@@ -241,7 +242,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                 expanded_buf[3 + datalen * 2] = '\0';
                 util_tohex(&expanded_buf[2], byteval, datalen);
                 cson_object_set(bobj, "value",
-                                cson_value_new_string(expanded_buf, exp_len;
+                                cson_value_new_string(expanded_buf, exp_len));
                 free(expanded_buf);
             }
             break;
