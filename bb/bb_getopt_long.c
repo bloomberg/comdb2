@@ -69,7 +69,6 @@ static char *__progname(nargv0) char *nargv0;
 #define BADARG (int)':'
 #define EMSG ""
 
-
 static void swapargs(char **argv, int left, int mid, int right)
 {
     char *k;
@@ -106,18 +105,19 @@ static void generate_normalized_options(struct option *options)
     }
 }
 
-static int opt_idx(char *opt, char *options, struct option *long_options, int *req)
+static int opt_idx(char *opt, char *options, struct option *long_options,
+                   int *req)
 {
     int ii;
     char *p;
 
     if (opt[0] != '-') return -1;
 
-    if ((++opt)[0] == '-') 
+    if ((++opt)[0] == '-')
         ++opt;
     else if (strlen(opt) == 1) {
-        if ((p = strchr(options, opt[0])) != NULL){
-            if (req) { 
+        if ((p = strchr(options, opt[0])) != NULL) {
+            if (req) {
                 *req = p[1] == ':' ? required_argument : no_argument;
             }
             return -2;
@@ -134,8 +134,8 @@ static int opt_idx(char *opt, char *options, struct option *long_options, int *r
     return -1;
 }
 
-static void replace_args(int argc, char *argv[], char *options, 
-        struct option *long_options)
+static void replace_args(int argc, char *argv[], char *options,
+                         struct option *long_options)
 {
     int ii, req_arg, idx, left, mid;
     generate_normalized_options(long_options);
@@ -147,9 +147,9 @@ static void replace_args(int argc, char *argv[], char *options,
                 left = mid = 0;
                 break;
             }
-        } else if ((idx = opt_idx(argv[ii], options, long_options, &req_arg)) != -1) {
-            if (idx >= 0)
-                argv[ii] = normalized_options[idx]; 
+        } else if ((idx = opt_idx(argv[ii], options, long_options, &req_arg)) !=
+                   -1) {
+            if (idx >= 0) argv[ii] = normalized_options[idx];
             if (req_arg == required_argument) {
                 ii++;
             } else if (req_arg == optional_argument && (ii + 1 < argc) &&
@@ -168,7 +168,6 @@ static void replace_args(int argc, char *argv[], char *options,
 
     if (left < mid && mid < argc) swapargs(argv, left, mid, argc);
 }
-
 
 /*
  * getopt --
