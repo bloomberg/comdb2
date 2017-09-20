@@ -633,14 +633,12 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
     return ret;
 }
 
-
 static inline char hex(unsigned char a)
 {
     if (a < 10)
         return '0' + a;
     return 'a' + (a - 10);
 }
-
 
 static void hexdumpbuf(char *key, int keylen, char **buf)
 {
@@ -658,10 +656,9 @@ char *util_tohex(char *output, char *key, int keylen)
 {
     output[0] = '\0';
     for (int i = 0; i < keylen; i++) {
-        output[2 * i]     = hex(((unsigned char)key[i]) / 16);
+        output[2 * i] = hex(((unsigned char)key[i]) / 16);
         output[2 * i + 1] = hex(((unsigned char)key[i]) % 16);
     }
 
     return output;
 }
-

@@ -110,7 +110,7 @@ static cson_output_opt opt = {.indentation = 0,
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
-    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed) 
+    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
         return;
 
     cson_value *bind_list = cson_value_new_array();
@@ -383,7 +383,8 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     if (!logger->path || logger->path->n_components == 0) return;
 
@@ -410,7 +411,8 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     static const char *hexchars = "0123456789abcdef";
     pthread_mutex_lock(&eventlog_lk);
@@ -508,7 +510,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     int sz = 0;
     char *fname;
