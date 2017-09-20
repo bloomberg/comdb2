@@ -42,6 +42,9 @@ extern int optind;   /* index into parent argv vector */
 extern int optopt;   /* character checked for validity */
 extern char *optarg; /* argument associated with option */
 
+static char **normalized_options = NULL;
+static int initialized = 0;
+
 #define __MYP(x) x
 #define _DIAGASSERT(x) assert(x)
 
@@ -65,6 +68,107 @@ static char *__progname(nargv0) char *nargv0;
 #define BADCH (int)'?'
 #define BADARG (int)':'
 #define EMSG ""
+
+
+static void swapargs(char **argv, int left, int mid, int right)
+{
+    char *k;
+    int ii;
+    while (left < mid && mid < right) {
+        if (mid - left < right - mid) {
+            for (ii = 0; ii < mid - left; ii++) {
+                k = argv[left + ii];
+                argv[left + ii] = argv[right - (mid - left) + ii];
+                argv[right - (mid - left) + ii] = k;
+            }
+            right -= (mid - left);
+        } else {
+            for (ii = 0; ii < right - mid; ii++) {
+                k = argv[left + ii];
+                argv[left + ii] = argv[mid + ii];
+                argv[mid + ii] = k;
+            }
+            left += (right - mid);
+        }
+    }
+}
+
+static void generate_normalized_options(struct option *options)
+{
+    int ii;
+    for (ii = 0; options[ii].name; ii++)
+        ;
+    if (normalized_options) free(normalized_options);
+    normalized_options = (char **)malloc(sizeof(char *) * ii);
+    for (ii = 0; options[ii].name; ii++) {
+        normalized_options[ii] = (char *)malloc(strlen(options[ii].name) + 3);
+        sprintf(normalized_options[ii], "--%s", options[ii].name);
+    }
+}
+
+static int opt_idx(char *opt, char *options, struct option *long_options, int *req)
+{
+    int ii;
+    char *p;
+
+    if (opt[0] != '-') return -1;
+
+    if ((++opt)[0] == '-') 
+        ++opt;
+    else if (strlen(opt) == 1) {
+        if ((p = strchr(options, opt[0])) != NULL){
+            if (req) { 
+                *req = p[1] == ':' ? required_argument : no_argument;
+            }
+            return -2;
+        }
+    }
+
+    for (ii = 0; long_options[ii].name; ii++) {
+        if (!strcmp(opt, long_options[ii].name)) {
+            if (req) *req = long_options[ii].has_arg;
+            return ii;
+        }
+    }
+
+    return -1;
+}
+
+static void replace_args(int argc, char *argv[], char *options, 
+        struct option *long_options)
+{
+    int ii, req_arg, idx, left, mid;
+    generate_normalized_options(long_options);
+
+    for (ii = 1, left = 1, mid = 1; ii < argc; ii++) {
+        if (strcmp(argv[ii], "--") == 0) {
+            if (left < mid && mid < ii + 1) {
+                swapargs(argv, left, mid, ii + 1);
+                left = mid = 0;
+                break;
+            }
+        } else if ((idx = opt_idx(argv[ii], options, long_options, &req_arg)) != -1) {
+            if (idx >= 0)
+                argv[ii] = normalized_options[idx]; 
+            if (req_arg == required_argument) {
+                ii++;
+            } else if (req_arg == optional_argument && (ii + 1 < argc) &&
+                       argv[ii + 1][0] != '-') {
+                ii++;
+            }
+        } else {
+            if (left < mid && mid < ii) {
+                swapargs(argv, left, mid, ii);
+                left = ii - (mid - left);
+            }
+            while ((mid = (ii + 1)) < argc && argv[mid][0] != '-')
+                ii++;
+        }
+    }
+
+    if (left < mid && mid < argc) swapargs(argv, left, mid, argc);
+}
+
 
 /*
  * getopt --
@@ -139,6 +243,11 @@ int *index;
     _DIAGASSERT(options != NULL);
     _DIAGASSERT(long_options != NULL);
     /* index may be NULL */
+
+    if (initialized == 0 || optind == 0) {
+        replace_args(nargc, nargv, options, long_options);
+        optind = initialized = 1;
+    }
 
     if ((retval = getopt_internal(nargc, nargv, options)) == -2) {
         char *current_argv = nargv[optind++] + 2, *has_equal;
