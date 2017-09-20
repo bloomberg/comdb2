@@ -113,12 +113,15 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
     if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
         return;
 
+    int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
+    if(nfields == 0)
+        return;
+
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
 
     cson_array *arr = cson_value_get_array(bind_list);
 
-    int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
     cson_array_reserve(arr, nfields);
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
 
@@ -130,13 +133,16 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         struct field c_fld;
         struct field *f;
         char *buf;
+        int isnull = false;
 
         if (params) {
             f = &params->member[i];
             buf = (char *)clnt->tagbuf;
+            isnull = (f == NULL);
         } else {
             f = convert_client_field(sqlquery->bindvars[i], &c_fld);
             buf = sqlquery->bindvars[i]->value.data;
+            isnull = sqlquery->bindvars[i]->isnull;
         }
 
         /* name of bound parameter */
@@ -145,6 +151,11 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
         /* bind binding to array of bindings */
         cson_array_append(arr, binding);
+
+        if(isnull) {
+            cson_object_set(bobj, "value", cson_value_null());
+            continue;
+        }
 
         /* mostly taken from sqltype() and bind_parameters() */
         int dlen = f->datalen;
