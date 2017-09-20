@@ -651,14 +651,18 @@ static void hexdumpbuf(char *key, int keylen, char **buf)
     *buf = output;
 }
 
-/* Return a hex string */
-char *util_tohex(char *output, char *key, int keylen)
+/* Return a hex string 
+ * output buffer should be appropriately sized */
+uint8_t *util_tohex(uint8_t *out, const uint8_t *in, size_t len)
 {
-    output[0] = '\0';
-    for (int i = 0; i < keylen; i++) {
-        output[2 * i] = hex(((unsigned char)key[i]) / 16);
-        output[2 * i + 1] = hex(((unsigned char)key[i]) % 16);
+    char hex[] = "0123456789abcdef";
+    const uint8_t *end = in + len;
+    while (in != end) {
+        uint8_t i = *(in++);
+        *(out++) = hex[(i & 0xf0) >> 4];
+        *(out++) = hex[i & 0x0f];
     }
+    *out = 0;
 
-    return output;
+    return out;
 }
