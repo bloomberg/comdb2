@@ -655,6 +655,7 @@ static void hexdumpbuf(char *key, int keylen, char **buf)
  * output buffer should be appropriately sized */
 uint8_t *util_tohex(uint8_t *out, const uint8_t *in, size_t len)
 {
+    uint8_t *beginning = out;
     char hex[] = "0123456789abcdef";
     const uint8_t *end = in + len;
     while (in != end) {
@@ -664,5 +665,5 @@ uint8_t *util_tohex(uint8_t *out, const uint8_t *in, size_t len)
     }
     *out = 0;
 
-    return out;
+    return beginning;
 }
