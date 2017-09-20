@@ -3583,7 +3583,7 @@ read_record:
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->sb = NULL;
         hndl->retry_all = 1;
-        for (int i = 0; i<hndl->num_hosts;i++) {
+        for (int i = 0; i < hndl->num_hosts; i++) {
             hndl->ports[i] = -1;
         }
         if (retries_done < MAX_RETRIES) {
