@@ -610,7 +610,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         char *s;
         tok = segtok(line, lline, toff, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected number of files to keep\n");
+            logmsg(LOGMSG_ERROR, "Expected number of bytes in a log file\n");
             return;
         }
         s = tokdup(tok, ltok);
