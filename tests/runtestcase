@@ -37,10 +37,7 @@ function call_setup {
 call_setup
 echo "!$TESTCASE: running"
 
-runresult=`timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1`
-
-echo "!$TESTCASE: done running test, checking result"
-echo $runresult | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
+timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
 rc=${PIPESTATUS[0]}
 if [[ $rc -eq 0 ]]; then
