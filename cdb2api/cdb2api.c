@@ -2048,7 +2048,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         n_features++;
     }
 
-
 #if WITH_SSL
     features[n_features] = CDB2_CLIENT_FEATURES__SSL;
     n_features++;
@@ -2065,7 +2064,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
             n_features++;
         }
-    } else if (retries_done){
+    } else if (retries_done) {
         features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         n_features++;
         features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
