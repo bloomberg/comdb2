@@ -409,7 +409,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
 {
     logmsg(LOGMSG_DEBUG,
            "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
-           __func__, reg->qname, ntohl(reg->elect_cookie), reg->trigger_cookie);
+           __func__, reg->spname, ntohl(reg->elect_cookie), reg->trigger_cookie);
     int rc;
     SP sp = getsp(L);
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
@@ -428,7 +428,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
         }
     }
     logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%lx\n",
-           __func__, rc, reg->qname, ntohl(reg->elect_cookie),
+           __func__, rc, reg->spname, ntohl(reg->elect_cookie),
            reg->trigger_cookie);
     return rc;
 }
@@ -443,7 +443,7 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
 
     logmsg(LOGMSG_DEBUG,
            "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
-           __func__, q->info.qname, ntohl(q->info.elect_cookie),
+           __func__, q->info.spname, ntohl(q->info.elect_cookie),
            q->info.trigger_cookie);
     int rc;
     int retry = 10;
@@ -461,7 +461,7 @@ static void luabb_trigger_unregister(dbconsumer_t *q)
         }
     } while (retry > 0);
     logmsg(LOGMSG_DEBUG, "%s rc:%d %s elect_cookie:%d trigger_cookie:0x%lx\n",
-           __func__, rc, q->info.qname, ntohl(q->info.elect_cookie),
+           __func__, rc, q->info.spname, ntohl(q->info.elect_cookie),
            q->info.trigger_cookie);
 }
 
