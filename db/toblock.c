@@ -821,7 +821,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
 {
-    printf("AZ: do_replay_case, from line %d\n", line);
     struct block_rsp errrsp;
     int rc, outrc, snapinfo_outrc, jj, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
@@ -841,7 +840,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
         rc = bdb_blkseq_find(thedb->bdb_env, NULL, fstseqnum, seqlen,
                              &replay_data, &replay_data_len);
-printf("AZ: find in blkseq from do_replay_case rc=%d\n", rc);
         if (rc == IX_FND) {
             memcpy(buf_fstblk, replay_data, replay_data_len - 4);
             datalen = replay_data_len - 4;
@@ -991,12 +989,10 @@ printf("AZ: find in blkseq from do_replay_case rc=%d\n", rc);
         }
 
         case FSTBLK_SNAP_INFO:
-printf("AZ: GOT FSTBLK_SNAP_INFO (server?)\n");
             snapinfo = 1; /* fallthrough */
 
         case FSTBLK_RSPKL: 
         {
-printf("GOT FSTBLK_RSPKL\n");
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
             struct fstblk_rspkl fstblk_rspkl;
             struct block_rspkl rspkl;
@@ -1015,7 +1011,6 @@ printf("GOT FSTBLK_RSPKL\n");
                     blkseq_line = __LINE__;
                     goto replay_error;
                 }
-printf("AZ: get outrc=%d\n",snapinfo_outrc);
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
                     abort();
@@ -2690,15 +2685,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
-/* TODO: change here to say && iq->verifretryon == 0 because we don't want to do 
- * replay if verifyretry is on replicant */
         if (got_osql && iq->have_snap_info) {
             void *replay_data = NULL;
             int replay_len = 0;
             int findout;
             findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
                                        iq->snap_info.keylen, &replay_data, &replay_len);
-printf("AZ: findout=%d in blkseq for snap info %s\n", findout, iq->snap_info.key);
             if (findout == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
@@ -2739,7 +2731,6 @@ printf("AZ: findout=%d in blkseq for snap info %s\n", findout, iq->snap_info.key
             }
         }
     } else {
-printf("AZ: else case iq>retries=%d, iq->have_blkseq=%d\n", iq->retries, iq->have_blkseq);
         have_blkseq = iq->have_blkseq;
     }
 
@@ -5406,7 +5397,6 @@ add_blkseq:
             struct fstblk_header fstblk_header;
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
 
-printf("AZ: SENDING FSTBLK_SNAP_INFO iq->s.repl_can_retry=%d, cnonce=%s\n", iq->snap_info.replicant_can_retry, iq->snap_info.key);
             fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
             fstblk_pre_rspkl.fluff = (short)0;
 
@@ -5423,7 +5413,6 @@ printf("AZ: SENDING FSTBLK_SNAP_INFO iq->s.repl_can_retry=%d, cnonce=%s\n", iq->
             }
 
             if (iq->have_snap_info) {
-printf("AZ: set outrc=%d\n",outrc);
                 if (!(p_buf_fstblk = buf_put(&(outrc), sizeof(outrc), p_buf_fstblk, 
                                 p_buf_fstblk_end))) {
                             return ERR_INTERNAL;
@@ -5467,12 +5456,10 @@ printf("AZ: set outrc=%d\n",outrc);
 
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
             if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY && iq->snap_info.replicant_can_retry) {
-printf("Not Inserting into blkseq because replicant will retry, outrc=%d, rc=%d, cnonce=%s\n", outrc, rc, iq->snap_info.key);
             }
             else {
                 int t = time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
-printf("Inserting into blkseq, outrc=%d, rc=%d, cnonce=%s\n", outrc, rc, iq->snap_info.key);
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
                         buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
                         &replay_data, &replay_len);
