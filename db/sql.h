@@ -812,8 +812,8 @@ void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
                       int rootpg);
-int sqlengine_prepare_engine_int(struct sqlthdstate *, struct sqlclntstate *,
-                                 int recreate);
+int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
+                             int recreate);
 int sqlserver2sqlclient_error(int rc);
 uint16_t stmt_num_tbls(sqlite3_stmt *);
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl);

@@ -3759,6 +3759,50 @@ static void clear_stmt_record(struct sql_state *rec)
     }
 }
 
+static int put_prepared_stmt_int(struct sqlthdstate *thd,
+                                 struct sqlclntstate *clnt,
+                                 struct sql_state *rec, int outrc)
+{
+    if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
+        return 1;
+    }
+    sqlite3_stmt *stmt = rec->stmt;
+    if (stmt == NULL) {
+        return 1;
+    }
+    if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
+        rec->parameters_to_bind == NULL) {
+        return 1;
+    }
+    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) &&
+        sqlite3_stmt_has_remotes(stmt)) {
+        return 1;
+    }
+    if (outrc) {
+        return 1;
+    }
+    if (rec->stmt_entry == NULL) {
+        touch_stmt_entry(thd, rec->stmt_entry);
+    }
+    if (rec->status & CACHE_HAS_HINT) {
+        if (add_stmt_table(thd, rec->cache_hint,
+                           (char *)(gbl_debug_temptables ? rec->sql : NULL),
+                           stmt, rec->parameters_to_bind) == 0) {
+            rec->parameters_to_bind = NULL;
+        }
+        if (!(rec->status & CACHE_FOUND_STR)) {
+            add_sql_hint_table(rec->cache_hint, clnt->sql, clnt->tag);
+        }
+    } else {
+        if (add_stmt_table(thd, clnt->sql,
+                           (char *)(gbl_debug_temptables ? rec->sql : NULL),
+                           stmt, rec->parameters_to_bind) == 0) {
+            rec->parameters_to_bind = NULL;
+        }
+    }
+    return 0;
+}
+
 /**
  * Cache a stmt if needed; struct sql_state is prepared by
  * get_prepared_stmt(), and it is cleaned here as well
@@ -3767,57 +3811,13 @@ static void clear_stmt_record(struct sql_state *rec)
 void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, int outrc)
 {
-    sqlite3_stmt *stmt = rec->stmt;
-    if (stmt) {
-        if (gbl_enable_sql_stmt_caching) {
-            if (!bdb_attr_get(thedb->bdb_attr,
-                              BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) ||
-                sqlite3_stmt_has_remotes(stmt) == 0) {
-                if (!rec->stmt_entry) {
-                    if (outrc == 0) {
-                        if (rec->status & CACHE_HAS_HINT) {
-                            if (add_stmt_table(
-                                    thd, rec->cache_hint,
-                                    (char *)(gbl_debug_temptables ? rec->sql
-                                                                  : NULL),
-                                    stmt, rec->parameters_to_bind) == 0) {
-                                rec->parameters_to_bind = NULL;
-                            }
-                            if (!(rec->status & CACHE_FOUND_STR)) {
-                                add_sql_hint_table(rec->cache_hint, clnt->sql,
-                                                   clnt->tag);
-                            }
-                        } else {
-                            if (add_stmt_table(
-                                    thd, clnt->sql,
-                                    (char *)(gbl_debug_temptables ? rec->sql
-                                                                  : NULL),
-                                    stmt, rec->parameters_to_bind) == 0) {
-                                rec->parameters_to_bind = NULL;
-                            }
-                        }
-                    } else if (stmt) {
-                        sqlite3_finalize(stmt);
-                    }
-                } else {
-                    if (outrc == 0)
-                        touch_stmt_entry(thd, rec->stmt_entry);
-
-                    if (rec->status & CACHE_HAS_HINT)
-                        rec->parameters_to_bind = NULL;
-                }
-            } else {
-                if (stmt)
-                    sqlite3_finalize(stmt);
-            }
-        } else {
-            if (stmt)
-                sqlite3_finalize(stmt);
+    if (put_prepared_stmt_int(thd, clnt, rec, outrc) != 0) {
+        if (rec->stmt) {
+            sqlite3_finalize(rec->stmt);
+            rec->stmt = NULL;
         }
     }
-
     clear_stmt_record(rec);
-
     if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
         char *k = rec->cache_hint;
         pthread_mutex_lock(&gbl_sql_lock);
@@ -3989,19 +3989,13 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
 }
 
 static int prepare_engine(struct sqlthdstate *, struct sqlclntstate *, int);
-int sqlengine_prepare_engine_int(struct sqlthdstate *thd,
-                                 struct sqlclntstate *clnt, int recreate)
+int sqlengine_prepare_engine(struct sqlthdstate *thd,
+                             struct sqlclntstate *clnt, int recreate)
 {
     clnt->no_transaction = 1;
     int rc = prepare_engine(thd, clnt, recreate);
     clnt->no_transaction = 0;
     return rc;
-}
-
-static int sqlengine_prepare_engine(struct sqlthdstate *thd,
-                                    struct sqlclntstate *clnt)
-{
-    return sqlengine_prepare_engine_int(thd, clnt, 1);
 }
 
 /**
@@ -4014,7 +4008,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int recreate)
 {
-    int rc = sqlengine_prepare_engine_int(thd, clnt, recreate);
+    int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
     } else if (rc != 0) {
@@ -5716,7 +5710,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->deque_timeus = time_epochus();
 
     rdlock_schema_lk();
-    sqlengine_prepare_engine(thd, clnt);
+    sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
 
     reqlog_set_origin(thd->logger, "%s", clnt->origin);
@@ -5742,7 +5736,7 @@ static int execute_verify_indexes_int(struct sqlthdstate *thd,
 {
     int rc;
     if (thd->sqldb == NULL) {
-        if ((rc = sqlengine_prepare_engine(thd, clnt)) != 0) {
+        if ((rc = sqlengine_prepare_engine(thd, clnt, 1)) != 0) {
             return rc;
         }
     }
@@ -8583,7 +8577,7 @@ static void sqlengine_work_blocksock(struct thdpool *pool, void *work,
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     rdlock_schema_lk();
-    sqlengine_prepare_engine(thd, clnt);
+    sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
 
     rc = get_curtran(thedb->bdb_env, clnt);

@@ -3273,7 +3273,7 @@ static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt)
         luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
         return;
     }
-    int rc = sqlengine_prepare_engine_int(sp->thd, sp->clnt, 0);
+    int rc = sqlengine_prepare_engine(sp->thd, sp->clnt, 0);
     if (rc == 0) {
         sqlite3LockStmtTables(dbstmt->stmt);
         unlock_schema_lk();
