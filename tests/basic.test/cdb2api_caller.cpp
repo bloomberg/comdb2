@@ -261,11 +261,11 @@ int main(int argc, char *argv[])
                         "@palltypes_u_short, @palltypes_float, "
                         "@palltypes_double, @palltypes_byte, @palltypes_blob)";
         //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong,
-        //alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring,
-        //alltypes_pstring, alltypes_blob, alltypes_datetime,
-        //alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym,
-        //alltypes_intervalds, alltypes_decimal32, alltypes_decimal64,
-        //alltypes_decimal128) values ( "
+        // alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring,
+        // alltypes_pstring, alltypes_blob, alltypes_datetime,
+        // alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym,
+        // alltypes_intervalds, alltypes_decimal32, alltypes_decimal64,
+        // alltypes_decimal128) values ( "
         /*
         << ((1-2*(j%2))) << j
         << ", " << j

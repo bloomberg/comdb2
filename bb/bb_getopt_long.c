@@ -164,7 +164,7 @@ static void replace_args(int argc, char *argv[], char *options,
  * getopt --
  *  Parse argc/argv argument vector.
  */
-static int getopt_internal(int nargc, char *const *nargv, const char *ostr) 
+static int getopt_internal(int nargc, char *const *nargv, const char *ostr)
 {
     static char *place = EMSG; /* option letter processing */
     char *oli;                 /* option letter list index */
@@ -219,7 +219,8 @@ static int getopt_internal(int nargc, char *const *nargv, const char *ostr)
  * getopt_long --
  *  Parse argc/argv argument vector.
  */
-int bb_getopt_long(int nargc, char **nargv, char *options, struct option *long_options, int *index)
+int bb_getopt_long(int nargc, char **nargv, char *options,
+                   struct option *long_options, int *index)
 {
     int retval;
 
