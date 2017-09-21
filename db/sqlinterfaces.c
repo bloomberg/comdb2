@@ -1906,8 +1906,11 @@ static void log_client_context(struct reqlogger *logger,
     if (clnt->sql_query->context) {
         /* Latch the context - client only re-sends context if
            it changes.  TODO: this seems needlessly expensive. */
+        for (int i = 0, len = clnt->ncontext; i != len; ++i)
+            free(clnt->context[i]);
+        free(clnt->context);
+
         clnt->ncontext = clnt->sql_query->n_context;
-        if (clnt->context) free(clnt->context);
         clnt->context = malloc(sizeof(char *) * clnt->sql_query->n_context);
         for (int i = 0; i < clnt->sql_query->n_context; i++)
             clnt->context[i] = strdup(clnt->sql_query->context[i]);
@@ -6017,6 +6020,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     int done;
     char msg[1024];
+    char *sqlcpy;
     char thdinfo[40];
     int rc;
     struct thr_handle *self = thrman_self();
@@ -6044,23 +6048,19 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = time_epochus();
 
-    char *sqlcpy;
+    sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, (clnt->req.flags & SQLF_QUEUE_ME) ? 1 : 0,
-                              sqlcpy = strdup(msg))) != 0) {
-        free(sqlcpy);
-        sqlcpy = NULL;
+                              sqlcpy)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
-                                 sqlengine_work_appsock_pp, clnt, 1,
-                                 sqlcpy = strdup(msg));
+                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy);
         }
 
         if (rc) {
-            if (sqlcpy)
-                free(sqlcpy);
+            free(sqlcpy);
             /* say something back, if the client expects it */
             if (clnt->req.flags & SQLF_FAILDISPATCH_ON) {
                 snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query\n",
@@ -7173,6 +7173,7 @@ static void send_dbinforesponse(SBUF2 *sb)
 
     int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
     void *buf = malloc(len);
+
     cdb2__dbinforesponse__pack(dbinfo_response, buf);
 
     hdr.type = ntohl(RESPONSE_HEADER__DBINFO_RESPONSE);
@@ -8047,9 +8048,12 @@ done:
 
     clnt.dbtran.mode = TRANLEVEL_INVALID;
     set_high_availability(&clnt, 0);
-    // clnt.high_availability = 0;
     if (clnt.query_stats)
         free(clnt.query_stats);
+
+    for (int i = 0, len = clnt.ncontext; i != len; ++i)
+        free(clnt.context[i]);
+    free(clnt.context);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
