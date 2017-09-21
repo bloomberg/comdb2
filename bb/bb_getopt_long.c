@@ -50,7 +50,7 @@ static int initialized = 0;
 static char *__progname __MYP((char *));
 static int getopt_internal __MYP((int, char *const *, const char *));
 
-static char *__progname(nargv0) char *nargv0;
+static char *__progname(char *nargv0)
 {
     char *tmp;
 
@@ -164,9 +164,7 @@ static void replace_args(int argc, char *argv[], char *options,
  * getopt --
  *  Parse argc/argv argument vector.
  */
-static int getopt_internal(nargc, nargv, ostr) int nargc;
-char *const *nargv;
-const char *ostr;
+static int getopt_internal(int nargc, char *const *nargv, const char *ostr) 
 {
     static char *place = EMSG; /* option letter processing */
     char *oli;                 /* option letter list index */
@@ -221,11 +219,7 @@ const char *ostr;
  * getopt_long --
  *  Parse argc/argv argument vector.
  */
-int bb_getopt_long(nargc, nargv, options, long_options, index) int nargc;
-char **nargv;
-char *options;
-struct option *long_options;
-int *index;
+int bb_getopt_long(int nargc, char **nargv, char *options, struct option *long_options, int *index)
 {
     int retval;
 
