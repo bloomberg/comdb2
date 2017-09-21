@@ -18,15 +18,15 @@
 (id=23, b1=x'58')
 (id=123, b1=x'59')
 (id=11115, b1=x'60')
-Table "sqlite_stat1" Rootp 10 Remrootp 6 Version=0
-Table "sqlite_stat4" Rootp 11 Remrootp 7 Version=0
-Index "$ID_52596C31" for table "t" Rootp 9 Remrootp 3 Version=0
-Table "t" Rootp 8 Remrootp 2 Version=0
+Table "sqlite_stat1" Rootp 1073741828 Remrootp 6 Version=0
+Table "sqlite_stat4" Rootp 1073741829 Remrootp 7 Version=0
+Index "$ID_52596C31" for table "t" Rootp 1073741827 Remrootp 3 Version=0
+Table "t" Rootp 1073741826 Remrootp 2 Version=0
 [select * from LOCAL_dorintdb.t_missing order by id] failed with rc -3 no such table "t_missing" for db "dorintdb"
-Table "sqlite_stat1" Rootp 10 Remrootp 6 Version=0
-Table "sqlite_stat4" Rootp 11 Remrootp 7 Version=0
-Index "$ID_52596C31" for table "t" Rootp 9 Remrootp 3 Version=0
-Table "t" Rootp 8 Remrootp 2 Version=0
+Table "sqlite_stat1" Rootp 1073741828 Remrootp 6 Version=0
+Table "sqlite_stat4" Rootp 1073741829 Remrootp 7 Version=0
+Index "$ID_52596C31" for table "t" Rootp 1073741827 Remrootp 3 Version=0
+Table "t" Rootp 1073741826 Remrootp 2 Version=0
 (id=-1, b1=x'61')
 (id=0, b1=x'62')
 (id=1, b1=x'11')
@@ -37,9 +37,9 @@ Table "t" Rootp 8 Remrootp 2 Version=0
 (id=23, b1=x'58')
 (id=123, b1=x'59')
 (id=11115, b1=x'60')
-Table "sqlite_stat1" Rootp 10 Remrootp 6 Version=0
-Table "sqlite_stat4" Rootp 11 Remrootp 7 Version=0
-Index "$ID_1C16AC86" for table "t2" Rootp 13 Remrootp 5 Version=0
-Index "$ID_52596C31" for table "t" Rootp 9 Remrootp 3 Version=0
-Table "t" Rootp 8 Remrootp 2 Version=0
-Table "t2" Rootp 12 Remrootp 4 Version=0
+Table "sqlite_stat1" Rootp 1073741828 Remrootp 6 Version=0
+Table "sqlite_stat4" Rootp 1073741829 Remrootp 7 Version=0
+Index "$ID_1C16AC86" for table "t2" Rootp 1073741831 Remrootp 5 Version=0
+Index "$ID_52596C31" for table "t" Rootp 1073741827 Remrootp 3 Version=0
+Table "t" Rootp 1073741826 Remrootp 2 Version=0
+Table "t2" Rootp 1073741830 Remrootp 4 Version=0

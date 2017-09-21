@@ -656,7 +656,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
                    table);
             exit(1);
         }
-        create_master_tables();
+        create_sqlite_master();
         ++gbl_dbopen_gen;
         goto done;
     } else if (type == bulkimport) {
@@ -683,7 +683,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
                    table);
             exit(1);
         }
-        create_master_tables(); /* create sql statements */
+        create_sqlite_master(); /* create sql statements */
 
         /* update the delayed deleted files */
         assert(db && !add_new_db);

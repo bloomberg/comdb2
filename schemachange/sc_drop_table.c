@@ -102,7 +102,7 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
         sc_errf(s, "create_sqlmaster_records failed\n");
         return rc;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     live_sc_off(db);
 

@@ -3827,7 +3827,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "create_sqlmaster_records rc %d\n", rc);
         return -1;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
 
