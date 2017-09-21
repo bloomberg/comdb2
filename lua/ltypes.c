@@ -37,6 +37,7 @@
 #include <flibc.h>
 #include <luaglue.h>
 #include <sp.h>
+#include "util.h"
 
 dbtypes_t dbtypes;
 
@@ -1823,7 +1824,7 @@ static int l_blob_tostring_int(Lua lua, int idx)
     else {
       int len = blob->val.length * 2;
       uint8_t *hexified = malloc(len + 1);
-      luabb_tohex(hexified, blob->val.data, blob->val.length);
+      util_tohex(hexified, blob->val.data, blob->val.length);
       lua_pushlstring(lua, hexified, len);
       free(hexified);
     }

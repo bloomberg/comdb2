@@ -56,7 +56,7 @@ test:: tool unit
 clean::
 	rm -f *.res
 
-setup:
+setup: tool
 	@mkdir -p ${TESTDIR}/logs/
 	@$(TESTSROOTDIR)/setup -debug
 	@echo Ready to run

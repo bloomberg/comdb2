@@ -521,8 +521,8 @@ struct sqlclntstate {
 
 /* Query stats. */
 struct query_path_component {
-    struct fdb_tbl_ent *fdb; /* null: local_tbl_name */
     char lcl_tbl_name[MAXTABLELEN];
+    char rmt_db[MAX_DBNAME_LENGTH];
     int ix;
     int nfind;
     int nnext;
