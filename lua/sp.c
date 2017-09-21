@@ -409,7 +409,8 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
 {
     logmsg(LOGMSG_DEBUG,
            "%s waiting for %s elect_cookie:%d trigger_cookie:0x%llx\n",
-           __func__, reg->spname, ntohl(reg->elect_cookie), reg->trigger_cookie);
+           __func__, reg->spname, ntohl(reg->elect_cookie),
+           reg->trigger_cookie);
     int rc;
     SP sp = getsp(L);
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
@@ -506,7 +507,8 @@ static const int dbq_delay = 1000; // ms
 static int dbq_poll_int(Lua L, dbconsumer_t *q)
 {
     struct qfound f = {0};
-    int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
+    int rc = dbq_get(&q->iq, 0, NULL, (void **)&f.item, &f.len, &f.dtaoff, NULL,
+                     NULL);
     pthread_mutex_unlock(q->lock);
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
@@ -532,7 +534,8 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             }
         }
         pthread_mutex_lock(q->lock);
-again:  if (*q->open) {
+    again:
+        if (*q->open) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
             pthread_mutex_unlock(q->lock);
@@ -542,7 +545,8 @@ again:  if (*q->open) {
             return rc;
         }
         if (rc < 0) {
-            luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
+            luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname,
+                        rc);
             return rc;
         }
         delay -= dbq_delay;
@@ -657,7 +661,7 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
 
 static int dbconsumer_consume_int(Lua L, dbconsumer_t *q)
 {
-    //check_register_condition(L, q);
+    // check_register_condition(L, q);
     if (q->genid == 0) {
         return -1;
     }
@@ -2602,9 +2606,9 @@ static void reset_stmts(SP sp)
 }
 
 // _int variants don't modify lua stack, just return success/error code
-static const char * db_begin_int(Lua, int *);
-static const char * db_commit_int(Lua, int *);
-static const char * db_rollback_int(Lua, int *);
+static const char *db_begin_int(Lua, int *);
+static const char *db_commit_int(Lua, int *);
+static const char *db_rollback_int(Lua, int *);
 
 static int db_begin(Lua L)
 {
@@ -6118,7 +6122,8 @@ static uint8_t *consume_field(Lua L, uint8_t *payload)
     return payload;
 }
 
-static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char **err)
+static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f,
+                                 char **err)
 {
     uint8_t *payload = ((uint8_t *)f->item) + f->dtaoff;
     size_t len = f->len - f->dtaoff;
@@ -6785,7 +6790,7 @@ void *exec_trigger(trigger_reg_t *reg)
         luabb_trigger_unregister(q);
         free(q);
     } else {
-        //setup fake dbconsumer_t to send unregister
+        // setup fake dbconsumer_t to send unregister
         uint8_t open = 0;
         int spname_len = htonl(reg->spname_len);
         pthread_mutex_t dummy = PTHREAD_MUTEX_INITIALIZER;

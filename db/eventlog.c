@@ -234,8 +234,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                     byteval = buf;
                     datalen = f->datalen;
                 }
-                if (rc == 0)
-                    blobno++;
+                if (rc == 0) blobno++;
             }
             if (rc == 0)
                 cson_object_set(bobj, "value",
@@ -287,8 +286,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
-        default:
-            assert(false && "Unknown type being bound");
+        default: assert(false && "Unknown type being bound");
         }
     }
 }

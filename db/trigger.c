@@ -290,8 +290,7 @@ static int trigger_registered_int(const char *name)
     unsigned int bkt;
     trigger_info_t *info = hash_first(trigger_hash, &ent, &bkt);
     while (info) {
-        if (strcmp(name, info->spname) == 0)
-            return 1;
+        if (strcmp(name, info->spname) == 0) return 1;
         info = hash_next(trigger_hash, &ent, &bkt);
     }
     return 0;
