@@ -63,7 +63,7 @@ comdb2ar_OBJS:=$(patsubst %.cpp,tools/comdb2ar/%.o,		\
 	$(patsubst %.c,tools/comdb2ar/%.o,			\
 	$(filter %.c,$(comdb2ar_SOURCES)))
 
-comdb2ar_LDLIBS+= $(BBLDPREFIX)$(BBSTATIC) -Lcrc32c $(CRC32C) -L$(SRCHOME)/bb -lbb -L$(SRCHOME)/dlmalloc $(DLMALLOC) \
+comdb2ar_LDLIBS+= $(OPTBBRPATH) $(BBLDPREFIX)$(BBSTATIC) -Lcrc32c $(CRC32C) -L$(SRCHOME)/bb -lbb -L$(SRCHOME)/dlmalloc $(DLMALLOC) \
 		$(BBLDPREFIX)$(BBDYN) -lpthread -lm -lssl -lcrypto -ldl \
 		  -lrt -lz $(ARCHLIBS)
 
