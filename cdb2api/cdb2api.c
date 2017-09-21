@@ -3586,6 +3586,12 @@ read_record:
             goto retry_queries;
         }
     } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB && !hndl->in_trans) {
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
+        hndl->sb = NULL;
+        hndl->retry_all = 1;
+        for (int i = 0; i < hndl->num_hosts; i++) {
+            hndl->ports[i] = -1;
+        }
         if (retries_done < MAX_RETRIES) {
             goto retry_queries;
         }
