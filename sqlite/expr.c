@@ -4187,9 +4187,9 @@ int sqlite3ExprCodeExprList(
       int inReg = sqlite3ExprCodeTarget(pParse, pExpr, target+i);
       /* If caller has requested genid sort optimization
          and the last opcode is COLUMN, change P5 now. */
-      if( flags&SQLITE_ECEL_GENID &&
-          sqlite3VdbeGetOp(v, -1)->opcode==OP_Column &&
-          pExpr->pTab!=NULL ){
+      if( /* Enable only if it is SQLITE_ECEL_GENID exclusive */
+          flags==SQLITE_ECEL_GENID &&
+          sqlite3VdbeGetOp(v, -1)->opcode==OP_Column && pExpr->pTab!=NULL ){
         int colaff = sqlite3TableColumnAffinity(pExpr->pTab, pExpr->iColumn);
         if( colaff==SQLITE_AFF_BLOB || colaff==SQLITE_AFF_TEXT ){
           int gsthresh = sqlite3_gbl_tunables.genidsort_sz_thresh;
