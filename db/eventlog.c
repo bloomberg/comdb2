@@ -249,9 +249,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                 char *expanded_buf = malloc(exp_len);
                 expanded_buf[0] = 'x';
                 expanded_buf[1] = '\'';
+                util_tohex(&expanded_buf[2], byteval, datalen);
                 expanded_buf[2 + datalen * 2] = '\'';
                 expanded_buf[3 + datalen * 2] = '\0';
-                util_tohex(&expanded_buf[2], byteval, datalen);
                 cson_object_set(bobj, "value",
                                 cson_value_new_string(expanded_buf, exp_len));
                 free(expanded_buf);
