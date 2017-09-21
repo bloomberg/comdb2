@@ -11,3 +11,6 @@ DEF_ATTR(STAT4_SAMPLES_MULTIPLIER, stat4_samples_multiplier, QUANTITY, 0)
 DEF_ATTR(STAT4_EXTRA_SAMPLES, stat4_extra_samples, QUANTITY, 0)
 /* build sqlite_stat1 table entries for empty tables */
 DEF_ATTR(ANALYZE_EMPTY_TABLES, analyze_empty_tables, BOOLEAN, 0)
+/* The threshold of blob/vutf8 length from which
+   SQLite will write genid-s into the sorter. */
+DEF_ATTR(GENIDSORT_SZ_THRESH, genidsort_sz_thresh, QUANTITY, 4096)

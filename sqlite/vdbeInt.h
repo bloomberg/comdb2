@@ -282,6 +282,7 @@ struct Mem {
   union {
     dttz_t     dt;    /* Datetime support */
     intv_t     tv;    /* Interval and Decimal (hack) support */
+    curgenid_t cg;    /* Cursor & Genid info. */
   } du;
   const char *tz;     /* timezone pointer */
   int dtprec;         /* Preferred datetime precision upon conversion.
@@ -356,6 +357,8 @@ struct Mem {
 #define MEM_Xor       0x040000  /* Mem.z needs XOR; <DESCEND> keys */
 #define MEM_OpFunc    0x080000  /* Mem.u is a custom function */
 #define MEM_Subtype   0x100000  /* Mem.eSubtype is valid */
+/* COMDB2 MODIFICATION */
+#define MEM_Genid     0x200000  /* Mem.i is a genid. */
 
 #ifdef SQLITE_OMIT_INCRBLOB
   #undef MEM_Zero
@@ -523,6 +526,12 @@ struct Vdbe {
   int explainTraceAlloced;
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */
+  u8 bSorterFlushed;      /* True if the sorter has flushed. */
+  char bLimitReached;     /*
+                          ** > 0 if reaching LIMIT.
+                          ** == 0 if not reaching LIMIT.
+                          ** < 0 if not applicant
+                          */
 };
 
 /*
@@ -641,7 +650,7 @@ void sqlite3VdbeSorterClose(sqlite3 *, VdbeCursor *);
 int sqlite3VdbeSorterRowkey(const VdbeCursor *, Mem *);
 int sqlite3VdbeSorterNext(sqlite3 *, const VdbeCursor *, int *);
 int sqlite3VdbeSorterRewind(const VdbeCursor *, int *);
-int sqlite3VdbeSorterWrite(const VdbeCursor *, Mem *);
+int sqlite3VdbeSorterWrite(const VdbeCursor *, Mem *, u8 *);
 int sqlite3VdbeSorterCompare(const VdbeCursor *, Mem *, int, int *);
 
 #if !defined(SQLITE_OMIT_SHARED_CACHE) 
@@ -697,6 +706,6 @@ int sqlite3LockStmtTables(sqlite3_stmt *);
 
 Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
-#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || (t)==SQLITE_MAX_U32 || (t)==(SQLITE_MAX_U32-1) )
+#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || (t)>SQLITE_MAX_U32-4 )
 
 #endif /* !defined(SQLITE_VDBEINT_H) */

@@ -4880,11 +4880,54 @@ whereBeginError:
   return 0;
 }
 
+void sqlite3WhereCloseCursors(WhereInfo *pWInfo){
+  Parse *pParse = pWInfo->pParse;
+  Vdbe *v = pParse->pVdbe;
+  int i;
+  WhereLevel *pLevel;
+  WhereLoop *pLoop;
+  Table *pTab;
+  SrcList *pTabList = pWInfo->pTabList;
+  struct SrcList_item *pTabItem;
+
+  for(i=0, pLevel=pWInfo->a; i<pWInfo->nLevel; i++, pLevel++){
+    pTabItem = &pTabList->a[pLevel->iFrom];
+    pTab = pTabItem->pTab;
+    pLoop = pLevel->pWLoop;
+    /* Close all of the cursors that were opened by sqlite3WhereBegin.
+    ** Except, do not close cursors that will be reused by the OR optimization
+    ** (WHERE_OR_SUBCLAUSE).  And do not close the OP_OpenWrite cursors
+    ** created for the ONEPASS optimization.
+    */
+    if( (pTab->tabFlags & TF_Ephemeral)==0
+     && pTab->pSelect==0
+     && (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)==0
+    ){
+      int ws = pLoop->wsFlags;
+      if( pWInfo->eOnePass==ONEPASS_OFF && (ws & WHERE_IDX_ONLY)==0 ){
+        sqlite3VdbeAddOp1(v, OP_Close, pTabItem->iCursor);
+      }
+      if( (ws & WHERE_INDEXED)!=0
+       && (ws & (WHERE_IPK|WHERE_AUTO_INDEX))==0 
+       && pLevel->iIdxCur!=pWInfo->aiCurOnePass[1]
+      ){
+        sqlite3VdbeAddOp1(v, OP_Close, pLevel->iIdxCur);
+      }
+    }
+  }
+
+  pParse->nQueryLoop = pWInfo->savedNQueryLoop;
+  whereInfoFree(pParse->db, pWInfo);
+}
+
+void sqlite3WhereEnd(WhereInfo *pWInfo){
+  sqlite3WhereEndExt(pWInfo, 1);
+}
 /*
 ** Generate the end of the WHERE loop.  See comments on 
 ** sqlite3WhereBegin() for additional information.
 */
-void sqlite3WhereEnd(WhereInfo *pWInfo){
+void sqlite3WhereEndExt(WhereInfo *pWInfo, int bClean){
   Parse *pParse = pWInfo->pParse;
   Vdbe *v = pParse->pVdbe;
   int i;
@@ -4996,6 +5039,7 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
     if( (pTab->tabFlags & TF_Ephemeral)==0
      && pTab->pSelect==0
      && (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)==0
+     && bClean
     ){
       int ws = pLoop->wsFlags;
       if( pWInfo->eOnePass==ONEPASS_OFF && (ws & WHERE_IDX_ONLY)==0 ){
@@ -5056,9 +5100,11 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
     }
   }
 
-  /* Final cleanup
-  */
-  pParse->nQueryLoop = pWInfo->savedNQueryLoop;
-  whereInfoFree(db, pWInfo);
+  if ( bClean ){
+    /* Final cleanup
+    */
+    pParse->nQueryLoop = pWInfo->savedNQueryLoop;
+    whereInfoFree(db, pWInfo);
+  }
   return;
 }

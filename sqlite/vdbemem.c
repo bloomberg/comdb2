@@ -3098,4 +3098,5 @@ done:
 }
 
 
+
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */

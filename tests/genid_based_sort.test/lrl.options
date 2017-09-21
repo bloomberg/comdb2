@@ -1,0 +1,5 @@
+sqlsortermem 100000
+cachekbmin 0
+cache 768 mb
+setsqlattr GENIDSORT_SZ_THRESH -1
+ssl_client_mode ALLOW

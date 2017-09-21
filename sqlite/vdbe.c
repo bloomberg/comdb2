@@ -36,6 +36,7 @@ void *get_lastkey(BtCursor *pCur);
 void print_cooked_access(BtCursor *pCur, int col);
 int is_raw(BtCursor *pCur);
 int get_data(BtCursor *pCur, void *invoid, int fnum, Mem *m);
+int get_data_limited(BtCursor *, void *, int, Mem *, size_t, u8 *);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
 int is_remote(BtCursor *pCur);
@@ -2838,6 +2839,15 @@ case OP_NotNull: {            /* same as TK_NOTNULL, jump, in1 */
 ** the result is guaranteed to only be used as the argument of a length()
 ** or typeof() function, respectively.  The loading of large blobs can be
 ** skipped for length() and all content loading can be skipped for typeof().
+**
+** COMDB2 MODIFICATION
+** If the OPFLAG_GENID bit is set on P5, when the type of the column is
+** blob or vutf8, and the size of the data exceeds a threshold, and
+** the VDBE sorter has flushed to disk, fetch the genid instead.
+**
+** If P1 is negative, P3 points to an MEM_Genid structure which
+** contains cursor and field information. If P3 is not an MEM_Genid
+** structure, raise an SQLITE_CORRUPT error.
 */
 case OP_Column: {
   i64 payloadSize64; /* Number of bytes in the record */
@@ -2859,9 +2869,23 @@ case OP_Column: {
   Mem *pReg;         /* PseudoTable input register */
   /* COMDB2 MODIFICATION */
   int datacopy;
+  int p1;
 
-  pC = p->apCsr[pOp->p1];
+  p1 = pOp->p1;
   p2 = pOp->p2;
+
+  if( p1<0 ){
+    assert( (pOp->p5 & OPFLAG_GENID)==0 );
+    pIn3 = &aMem[pOp->p3];
+    if ( (pIn3->flags & MEM_Genid)==0 ){
+      rc = SQLITE_CORRUPT_BKPT;
+      goto abort_due_to_error;
+    }
+    p1=pIn3->du.cg.cur;
+    p2=pIn3->du.cg.idx;
+  }
+
+  pC = p->apCsr[p1];
 
   /* If the cursor cache is stale, bring it up-to-date */
   rc = sqlite3VdbeCursorMoveto(&pC, &p2);
@@ -2870,7 +2894,7 @@ case OP_Column: {
   assert( pOp->p3>0 && pOp->p3<=(p->nMem+1 - p->nCursor) );
   pDest = &aMem[pOp->p3];
   memAboutToChange(p, pDest);
-  assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  assert( p1>=0 && p1<p->nCursor );
   assert( pC!=0 );
   assert( p2<pC->nField );
   aOffset = pC->aOffset;
@@ -2889,8 +2913,19 @@ case OP_Column: {
     }
     else if( pC->isTable ){
       zData = (u8 *)sqlite3BtreeDataFetch(pCrsr, &avail);
+      size_t blobthresh;
+      u8 bTooBig;
+      if( pOp->p5==OPFLAG_GENID && ( p->bSorterFlushed || p->bLimitReached ) ){
+        assert( pOp->p4type==P4_INT32 );
+        blobthresh = (size_t)pOp->p4.i;
+      }else{
+        blobthresh = ~0;
+      }
       assert(zData != NULL);
-      rc = get_data(pCrsr, (u8 *) zData, p2, pDest);
+      rc = get_data_limited(pCrsr, (u8 *)zData, p2, pDest, blobthresh, &bTooBig);
+      if( bTooBig==1 ){
+        sqlite3VdbeMemSetGenid(pDest, pCrsr, p1, p2);
+      }
     }else{
       datacopy = p2;
       if( is_datacopy(pCrsr, &datacopy) ){
@@ -3238,10 +3273,10 @@ case OP_MakeRecord: {
   pLast = &pData0[nField-1];
   file_format = p->minWriteFileFormat;
 
-   /* Identify the output register */
-   assert( pOp->p3<pOp->p1 || pOp->p3>=pOp->p1+pOp->p2 );
-   pOut = &aMem[pOp->p3];
-   memAboutToChange(p, pOut);
+  /* Identify the output register */
+  assert( pOp->p3<pOp->p1 || pOp->p3>=pOp->p1+pOp->p2 );
+  pOut = &aMem[pOp->p3];
+  memAboutToChange(p, pOut);
 
   /* Apply the requested affinity to all inputs
   */
@@ -4075,6 +4110,7 @@ case OP_OpenEphemeral: {
   }
   if( rc ) goto abort_due_to_error;
   pCx->isOrdered = (pOp->p5!=BTREE_UNORDERED);
+  p->bLimitReached = (pOp->p5!=BTREE_ORDERBY) ? -1 : 0;
   break;
 }
 
@@ -4100,6 +4136,7 @@ case OP_SorterOpen: {
   assert( pCx->pKeyInfo->enc==ENC(db) );
   rc = sqlite3VdbeSorterInit(db, pOp->p3, pCx);
   if( rc ) goto abort_due_to_error;
+  p->bSorterFlushed = 0;
   break;
 }
 
@@ -4675,6 +4712,10 @@ case OP_Found: {        /* jump, in3 */
 ** in either direction.  In other words, the Next and Prev opcodes will
 ** not work following this opcode.
 **
+** If P1 is negative, P3 points to an MEM_Genid structure which contains
+** cursor and genid information. If P3 is not an MEM_Genid structure,
+** jump to P2.
+**
 ** See also: Found, NotFound, NoConflict, SeekRowid
 */
 case OP_SeekRowid: {        /* jump, in3 */
@@ -4682,18 +4723,28 @@ case OP_SeekRowid: {        /* jump, in3 */
   BtCursor *pCrsr;
   int res;
   u64 iKey;
+  int p1;
 
+  p1 = pOp->p1;
   pIn3 = &aMem[pOp->p3];
-  if( (pIn3->flags & MEM_Int)==0 ){
+
+  if ( p1<0 ){
+    if ( (pIn3->flags & MEM_Genid)==0 )
+      goto jump_to_p2;
+    p1=pIn3->du.cg.cur;
+    iKey=pIn3->du.cg.genid;
+  }else if( (pIn3->flags & MEM_Int)==0 ){
     applyAffinity(pIn3, SQLITE_AFF_NUMERIC, encoding);
     if( (pIn3->flags & MEM_Int)==0 ) goto jump_to_p2;
   }
   /* Fall through into OP_NotExists */
 case OP_NotExists:          /* jump, in3 */
+  if ( pOp->p1>=0 )
+    p1 = pOp->p1;
   pIn3 = &aMem[pOp->p3];
   assert( pIn3->flags & MEM_Int );
-  assert( pOp->p1>=0 && pOp->p1<p->nCursor );
-  pC = p->apCsr[pOp->p1];
+  assert( p1>=0 && p1<p->nCursor );
+  pC = p->apCsr[p1];
   assert( pC!=0 );
 #ifdef SQLITE_DEBUG
   pC->seekOp = 0;
@@ -4703,7 +4754,8 @@ case OP_NotExists:          /* jump, in3 */
   pCrsr = pC->uc.pCursor;
   assert( pCrsr!=0 );
   res = 0;
-  iKey = pIn3->u.i;
+  if ( pOp->p1>=0 )
+    iKey = pIn3->u.i;
   /* COMDB2 MODIFICATION */
   /* res = -1 triggers early verify check */
   if (pOp->p5) res = -1;
@@ -4717,6 +4769,12 @@ case OP_NotExists:          /* jump, in3 */
   VdbeBranchTaken(res!=0,2);
   pC->seekResult = res;
   if( res!=0 ){
+    if(pOp->p1<0){
+      /* If the genid is not found, something must have gone wrong before
+         we reach here. Abort this. */
+      rc = SQLITE_CORRUPT_BKPT;
+      goto abort_due_to_error;
+    }
     if( pOp->p2==0 && rc==SQLITE_OK ) rc = SQLITE_CORRUPT_BKPT;
     goto jump_to_p2;
   }
@@ -5161,6 +5219,9 @@ case OP_Delete: {
     }
   }
 
+  if( p->bLimitReached==0 ){
+    p->bLimitReached = 1;
+  }
   break;
 }
 /* Opcode: ResetCount * * * * *
@@ -5491,6 +5552,7 @@ case OP_Rewind: {        /* jump */
 #endif
   if( isSorter(pC) ){
     rc = sqlite3VdbeSorterRewind(pC, &res);
+    p->bSorterFlushed = 0;
   }else{
     assert( pC->eCurType==CURTYPE_BTREE );
     pCrsr = pC->uc.pCursor;
@@ -5498,6 +5560,9 @@ case OP_Rewind: {        /* jump */
     rc = sqlite3BtreeFirst(pCrsr, &res);
     pC->deferredMoveto = 0;
     pC->cacheStatus = CACHE_STALE;
+    if( pOp->opcode==OP_Sort ){
+      p->bLimitReached = -1;
+    }
   }
   if( rc ) goto abort_due_to_error;
   pC->nullRow = (u8)res;
@@ -5675,7 +5740,7 @@ case OP_IdxInsert: {        /* in2 */
   rc = ExpandBlob(pIn2);
   if( rc ) goto abort_due_to_error;
   if( pOp->opcode==OP_SorterInsert ){
-    rc = sqlite3VdbeSorterWrite(pC, pIn2);
+    rc = sqlite3VdbeSorterWrite(pC, pIn2, &p->bSorterFlushed);
   }else{
     x.nKey = pIn2->n;
     x.pKey = pIn2->z;
@@ -6031,6 +6096,7 @@ case OP_ResetSorter: {
     rc = sqlite3BtreeClearTableOfCursor(pC->uc.pCursor);
     if( rc ) goto abort_due_to_error;
   }
+  p->bSorterFlushed = 0;
   break;
 }
 
