@@ -56,25 +56,21 @@ static struct option long_options[] = {
 char *argtype_str(int argtype)
 {
     switch (argtype) {
-        case required_argument:
-            return "required_argument";
-            break;
-        case no_argument:
-            return "no_argument";
-            break;
-        case optional_argument:
-            return "optional_argument";
-            break;
-        default:
-            return "(unsupported)";
-            break;
+    case required_argument: return "required_argument"; break;
+    case no_argument: return "no_argument"; break;
+    case optional_argument: return "optional_argument"; break;
+    default: return "(unsupported)"; break;
     }
 }
 
-static void print_long_opt(FILE *f, char c, int idx, char optopt, char *optarg, char *varname, int *var)
+static void print_long_opt(FILE *f, char c, int idx, char optopt, char *optarg,
+                           char *varname, int *var)
 {
-    fprintf(f, "long_opt returns %x, idx %d, name='%s', type='%s', optopt='%c', optarg='%s', varname='%s', var=%d\n",
-            c, idx, long_options[idx].name, argtype_str(long_options[idx].has_arg), optopt, optarg, varname?varname:"(null)", var?*var:-1);
+    fprintf(f, "long_opt returns %x, idx %d, name='%s', type='%s', "
+               "optopt='%c', optarg='%s', varname='%s', var=%d\n",
+            c, idx, long_options[idx].name,
+            argtype_str(long_options[idx].has_arg), optopt, optarg,
+            varname ? varname : "(null)", var ? *var : -1);
 }
 
 static void print_char_opt(FILE *f, char c, char optopt, char *optarg)
@@ -85,7 +81,9 @@ static void print_char_opt(FILE *f, char c, char optopt, char *optarg)
 static void dump_long_options(FILE *f)
 {
     for (int ii = 0; long_options[ii].name != NULL; ii++) {
-        fprintf(f, "%19s %17s %8p %d\n", long_options[ii].name, argtype_str(long_options[ii].has_arg), long_options[ii].flag, long_options[ii].val);
+        fprintf(f, "%19s %17s %8p %d\n", long_options[ii].name,
+                argtype_str(long_options[ii].has_arg), long_options[ii].flag,
+                long_options[ii].val);
     }
 }
 
@@ -98,21 +96,27 @@ static void print_usage(FILE *f, char *argv0)
 static void print_command_line(FILE *f, int argc, char *argv[])
 {
     for (int ii = 1; ii < argc; ii++) {
-        fprintf(f, "%s%c", argv[ii], ii == (argc - 1) ?  '\n' : ' ');
+        fprintf(f, "%s%c", argv[ii], ii == (argc - 1) ? '\n' : ' ');
     }
 }
 
-// We're normalizing options (i.e., from -lrl to --lrl), so don't allow the --long-option=<option> syntax.
+/* Our version of getopt will re-order the actual commandline options before
+ * parsing.  This means that the command-line optind value will be different
+ * after the first call to getopt_long.  A bigger difference is that we assume
+ * a single dash followed by multiple characters is a longopt, rather than
+ * several short-opts. */
 int main(int argc, char *argv[])
 {
-    int rc = 0, usage=0, pcommand=0;
+    int rc = 0, usage = 0, pcommand = 0;
     int options_idx;
     char c;
 
 #if defined NORMAL_GETOPT
-    while ((c = getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) != -1) {
+    while ((c = getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) !=
+           -1) {
 #else
-    while ((c = bb_getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, "ha:pu", long_options,
+                               &options_idx)) != -1) {
 #endif
         if (c == 'h') {
             print_char_opt(stdout, c, optopt, optarg);
@@ -139,52 +143,59 @@ int main(int argc, char *argv[])
         }
 
         switch (options_idx) {
-            case 0:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "reqarg0", &reqarg0);
-                break;
-            case 1:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "reqarg1", &reqarg1);
-                break;
-            case 2:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "reqarg2", &reqarg2);
-                break;
-            case 3:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "noarg3", &noarg3);
-                break;
-            case 4:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "noarg4", &noarg4);
-                break;
-            case 5:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "optarg5", &optarg5);
-                break;
-            case 6:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, "optarg6", &optarg6);
-                break;
-            case 7:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                break;
-            case 8:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                break;
-            case 9:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                break;
-            case 10:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                break;
-            case 11:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                break;
-            case 12:
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                break;
-            case 'u':
-                print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
-                usage = 1;
-                break;
-            default:
-                fprintf(stderr, "Unknown option %d, optopt=%d\n", c, optopt);
-                break;
+        case 0:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "reqarg0",
+                           &reqarg0);
+            break;
+        case 1:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "reqarg1",
+                           &reqarg1);
+            break;
+        case 2:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "reqarg2",
+                           &reqarg2);
+            break;
+        case 3:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "noarg3",
+                           &noarg3);
+            break;
+        case 4:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "noarg4",
+                           &noarg4);
+            break;
+        case 5:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "optarg5",
+                           &optarg5);
+            break;
+        case 6:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, "optarg6",
+                           &optarg6);
+            break;
+        case 7:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            break;
+        case 8:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            break;
+        case 9:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            break;
+        case 10:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            break;
+        case 11:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            break;
+        case 12:
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            break;
+        case 'u':
+            print_long_opt(stdout, c, options_idx, optopt, optarg, NULL, NULL);
+            usage = 1;
+            break;
+        default:
+            fprintf(stderr, "Unknown option %d, optopt=%d\n", c, optopt);
+            break;
         }
     }
 

@@ -95,7 +95,7 @@ static int opt_idx(char *opt, char *options, struct option *long_options,
                    int *req)
 {
     char *p;
-    int ii, len; 
+    int ii, len;
 
     if (opt[0] != '-') return -1;
 
@@ -113,8 +113,8 @@ static int opt_idx(char *opt, char *options, struct option *long_options,
     len = (p = strchr(opt, '=')) ? (int)(p - opt) : strlen(opt);
 
     for (ii = 0; long_options[ii].name; ii++) {
-        if (!strncmp(opt, long_options[ii].name, len) && 
-                strlen(long_options[ii].name) == len) {
+        if (!strncmp(opt, long_options[ii].name, len) &&
+            strlen(long_options[ii].name) == len) {
             if (req) *req = long_options[ii].has_arg;
             return ii;
         }
@@ -129,8 +129,7 @@ static void replace_args(int argc, char *argv[], char *options,
     int ii, req_arg, idx, left, mid;
 
     for (ii = 1, left = 1, mid = 1; ii < argc; ii++) {
-        if (left == mid)
-            left = mid = ii;
+        if (left == mid) left = mid = ii;
         if (strcmp(argv[ii], "--") == 0) {
             if (left < mid && mid < ii + 1) {
                 swapargs(argv, left, mid, ii + 1);
@@ -147,7 +146,7 @@ static void replace_args(int argc, char *argv[], char *options,
             }
             if (req_arg == required_argument && strchr(argv[ii], '=') == NULL) {
                 ii++;
-            } 
+            }
         } else {
             if (left < mid && mid < ii) {
                 swapargs(argv, left, mid, ii);
@@ -234,7 +233,7 @@ int *index;
     _DIAGASSERT(options != NULL);
     _DIAGASSERT(long_options != NULL);
     /* index may be NULL */
-    optopt='\0';
+    optopt = '\0';
 
     if (initialized == 0 || optind == 0) {
         replace_args(nargc, nargv, options, long_options);
@@ -273,8 +272,7 @@ int *index;
                     optarg = NULL;
                 else
                     optarg = nargv[optind++];
-            }
-            else {
+            } else {
                 optarg = NULL;
             }
 
