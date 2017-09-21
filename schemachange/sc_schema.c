@@ -1333,36 +1333,17 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
     }
 }
 
-static int reset_sc_from(const char *table)
-{
-    struct dbtable *db = get_dbtable_by_name(table);
-    if (db == NULL) {
-        return -1;
-    }
-
-    live_sc_off(db);
-
-    return 0;
-}
-
 void change_schemas_recover(char *table)
 {
     struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
-        if (unlikely(!timepart_is_timepart(table, 1))) {
-            /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "change_schemas_recover: invalid table %s\n",
-                   table);
-            return;
-        }
+        /* shouldn't happen */
+        logmsg(LOGMSG_ERROR, "change_schemas_recover: invalid table %s\n",
+               table);
+        return;
     }
     backout_schemas(table);
-    if (db) {
-        live_sc_off(db);
-    } else {
-        /*timepart*/
-        timepart_for_each_shard(table, reset_sc_from);
-    }
+    live_sc_off(db);
 
     if (thedb->stopped) {
         resume_threads(thedb);

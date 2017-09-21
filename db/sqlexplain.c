@@ -1429,7 +1429,7 @@ void handle_explain(SBUF2 *sb, int trace, int all)
         struct errstat xerr = {0};
 
         /* how about we are gonna add the views ? */
-        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr);
+        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr, 1);
 
         if (put_curtran(thedb->bdb_env, &client)) {
             logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",

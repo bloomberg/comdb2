@@ -5560,6 +5560,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
 {
     struct errstat xerr;
     int rc;
+    int got_views_lock = 0;
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
@@ -5570,6 +5571,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
         sqlthd->sqlclntstate = clnt;
     }
 
+check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             delete_prepared_stmts(thd);
@@ -5585,6 +5587,22 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
     }
 
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
+        /* need to refresh things; we need to grab views lock */
+        if (!got_views_lock) {
+            pthread_rwlock_unlock(&schema_lk);
+
+            views_lock();
+
+            pthread_rwlock_rdlock(&schema_lk);
+
+            got_views_lock = 1;
+            if (thd->sqldb) {
+                /* we kept engine, but the versions might have changed while
+                 * we released the schema lock */
+                goto check_version;
+            }
+        }
+
         if (!thd->sqldb) {
             clnt->no_transaction = 1;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
@@ -5612,7 +5630,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
             if (thedb->timepart_views) {
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
-                                         &xerr);
+                                         &xerr, 0);
                 if (rc != VIEW_NOERR) {
                     logmsg(LOGMSG_ERROR, 
                             "failed to create views rc=%d errstr=\"%s\"\n",
@@ -5630,6 +5648,8 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
         }
     }
     clnt->no_transaction = 0;
+    if (got_views_lock)
+        views_unlock();
 }
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
