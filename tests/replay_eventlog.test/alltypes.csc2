@@ -12,7 +12,7 @@ schema
     longlong    alltypes_longlong               null=yes     //$((1-2*(j%2)))000000000$j
     float       alltypes_float                  null=yes     //$((1-2*(j%2)))00.00$j
     double      alltypes_double                 null=yes     //$((1-2*(j%2)))0000$j.0000$j
-    byte        alltypes_byte[8]                null=yes     //x'$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))'
+    byte        alltypes_byte[16]                null=yes     //x'$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))'
     cstring     alltypes_cstring[16]            null=yes     //'my cstring $j'
     pstring     alltypes_pstring[16]            null=yes     //'my pstring $j'
     blob        alltypes_blob                   null=yes     //x'$((j%2))$((j%3))$((j%4))$((j%5))'
@@ -21,6 +21,7 @@ schema
     vutf8       alltypes_vutf8[16]              null=yes     //'my vutf8 $j'
     intervalym  alltypes_intervalym             null=yes     //$((1-2*(j%2)))$j
     intervalds  alltypes_intervalds             null=yes     //$((1-2*(j%2)))0000$j
+    intervaldsus alltypes_intervaldsus          null=yes
     decimal32   alltypes_decimal32              null=yes     //$((1-2*(j%2)))0000$j
     decimal64   alltypes_decimal64              null=yes     //$((1-2*(j%2)))00000000$j
     decimal128  alltypes_decimal128             null=yes     //$((1-2*(j%2)))000000000000000$j

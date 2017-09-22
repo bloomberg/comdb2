@@ -184,7 +184,7 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
     }
 }
 
-/* TODO: */
+/* TODO: add all types supported */
 bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
     cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
     if(bound_parameters == nullptr)
@@ -195,7 +195,15 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
+        const char *val = get_strprop(bp, "value");
         int ret;
+        if(strncmp(val, "null", 4) == 0) {
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, NULL, 0)) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+            std::cout << "binding "<< type << " column " << name << " to NULL " << std::endl;
+        }
 
         if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
             int64_t *iv = new int64_t;
