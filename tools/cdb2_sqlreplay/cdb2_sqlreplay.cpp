@@ -64,6 +64,16 @@ void add_fingerprint(std::string fingerprint, std::string sql) {
     std::cout << fingerprint << " -> " << sql << std::endl;
 }
 
+static bool get_ispropnull(cson_value *objval, const char *key) 
+{
+    cson_object *obj;
+    cson_value_fetch_object(objval, &obj);
+    cson_value *propval = cson_object_get(obj, key);
+    if (propval == nullptr)
+        return true;
+    return false;
+}
+
 static const char *get_strprop(cson_value *objval, const char *key) {
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
@@ -195,17 +205,15 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
-        const char *val = get_strprop(bp, "value");
         int ret;
-        if(strncmp(val, "null", 4) == 0) {
+        if(get_ispropnull(bp, "value")) {
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, NULL, 0)) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 return false;
             }
             std::cout << "binding "<< type << " column " << name << " to NULL " << std::endl;
         }
-
-        if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
+        else if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
             int64_t *iv = new int64_t;
             bool succ = get_intprop(bp, "value", iv);
             if (!succ) {

@@ -459,15 +459,18 @@ for required in $vars; do
     fi
 done
 
+set -e
 
 #setup remode db
 $TESTSROOTDIR/setup
 
+echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
 $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
 cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
 
 
 $TESTSROOTDIR/unsetup
+set +e
 
 if ! diff orig.txt replayed.txt ; then
         failexit "replayed.txt content is not the same as original.txt"
