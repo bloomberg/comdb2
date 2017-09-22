@@ -10548,17 +10548,11 @@ void sqlite3SetConversionError(void)
             CONVERT_FAILED_INCOMPATIBLE_VALUES;
 }
 
-int is_comdb2_index_disableskipscan(const char *dbname, char *idx)
+int is_comdb2_index_disableskipscan(const char *name)
 {
-    struct dbtable *db = get_dbtable_by_name(dbname);
+    struct dbtable *db = get_dbtable_by_name(name);
     if (db) {
-        int i;
-        for (i = 0; i < db->nix; ++i) {
-            struct schema *s = db->ixschema[i];
-            if (s->sqlitetag && strcmp(s->sqlitetag, idx) == 0) {
-                return (s->disableskipscan);
-            }
-        }
+        return db->disableskipscan;
     }
     return 0;
 }

@@ -834,6 +834,7 @@ struct dbtable {
 
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
+    int disableskipscan : 1;
 };
 
 struct log_delete_state {

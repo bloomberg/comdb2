@@ -4237,7 +4237,10 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         *outrc = 0;
         return 1;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
+        rdlock_schema_lk();
+        sqlengine_prepare_engine(thd, clnt, 1);
         *outrc = newsql_dump_query_plan(clnt, thd->sqldb);
+        unlock_schema_lk();
         return 1;
     }
 
