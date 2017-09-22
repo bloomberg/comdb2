@@ -244,6 +244,7 @@ done
 #run tests
 echo "Starting tests"
 echo ./test_writes.sh $dbname $cdb2config $srcdbname $dbdir $testdir
+exit 1
 ./test_writes.sh $dbname $cdb2config $srcdbname $dbdir $testdir
 result=$?
 

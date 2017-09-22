@@ -191,6 +191,7 @@ struct fdb_msg_insert {
     int seq;                     /* transaction sequencing */
     uuid_t ciduuid;
     char *data; /* sqlite generated row from MakeRecord, serialized */
+    char *tblname;               /* tblname matching rootpage */
 };
 typedef struct fdb_msg_insert fdb_msg_insert_t;
 
@@ -262,7 +263,8 @@ union fdb_msg {
     fdb_msg_hbeat_t hb;
 };
 
-static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg);
+static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg,
+                                enum recv_flags flags);
 static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush);
 static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
 static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
@@ -271,6 +273,7 @@ typedef struct {
     struct sqlclntstate *clnt;
     struct sql_thread *thd;
     int isuuid;
+    int flags;
 } svc_callback_arg_t;
 
 typedef int (*fdb_svc_callback_t)(SBUF2 *sb, fdb_msg_t *msg,
@@ -607,7 +610,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 
     bzero(&msg, sizeof(msg));
 
-    rc = fdb_msg_read_message(sb, &msg);
+    rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
                 __func__, rc);
@@ -664,7 +667,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 
         /*fprintf(stderr, "XYXY %llu calling recv message\n",
          * osql_log_time());*/
-        rc = fdb_msg_read_message(sb, &msg);
+        rc = fdb_msg_read_message(sb, &msg, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed to handle remote cursor request rc=%d\n",
@@ -753,7 +756,7 @@ int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
     arg.thd = start_sql_thread(); /* this does inserts on behalf of an sql
                                      transaction */
 
-    rc = fdb_msg_read_message(sb, &msg);
+    rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
                 __func__, rc);
@@ -814,7 +817,7 @@ int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
 
         /*fprintf(stderr, "XYXY %llu calling recv message\n",
          * osql_log_time());*/
-        rc = fdb_msg_read_message(sb, &msg);
+        rc = fdb_msg_read_message(sb, &msg, arg.flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed to handle remote cursor request rc=%d\n",
@@ -856,7 +859,7 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
 
     logmsg(LOGMSG_DEBUG, "Received remcu request\n");
 
-    rc = fdb_msg_read_message(sb, &msg);
+    rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
                 __func__, rc);
@@ -893,7 +896,7 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
             break;
         }
 
-        rc = fdb_msg_read_message(sb, &msg);
+        rc = fdb_msg_read_message(sb, &msg, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed to handle remote cursor request rc=%d\n",
@@ -908,19 +911,25 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
     return rc;
 }
 
-int fdb_recv_row(fdb_msg_t *msg, char *cid, int isuuid, SBUF2 *sb)
+int fdb_recv_row(fdb_msg_t *msg, char *cid, SBUF2 *sb)
 {
-    int rc = 0;
-    int flags;
+    int rc;
 
-    rc = fdb_msg_read_message(sb, msg);
+    rc = fdb_msg_read_message(sb, msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
                __func__, rc);
-        /* maybe this should return FDB_ERR_READ_IO instead */
-        return -1;
+        /* synthetic row containing the error */
+        msg->hd.type  =  FDB_MSG_DATA_ROW;        
+        msg->dr.rc = FDB_ERR_READ_IO;
+        msg->dr.data = strdup("failed to read row from socket");
+        msg->dr.datalen = strlen(msg->rc.errstr)+1;
+        msg->dr.datacopylen = 0;
+        msg->dr.datacopy = NULL;
+        msg->dr.genid = -1LL;
+
+        return FDB_ERR_READ_IO;
     }
-    flags = msg->hd.type & ~FD_MSG_TYPE;
 
     if (gbl_fdb_track) {
         fdb_msg_print_message(sb, msg, "received message");
@@ -928,42 +937,36 @@ int fdb_recv_row(fdb_msg_t *msg, char *cid, int isuuid, SBUF2 *sb)
 
     msg->hd.type &= FD_MSG_TYPE;
 
-    switch (msg->hd.type) {
-    case FDB_MSG_DATA_ROW:
-#if 0
-         /* check for my rows */
-         if(memcmp(msg->dr.cid, cid, sizeof(msg->dr.cid)) == 0)
-         {
-            /* TODO: grab more than one row from socket? */
-#endif
-        rc = msg->dr.rc;
-        goto ret_row;
-#if 0
-         }
-         else
-         {
-            /* TODO : clone and cache for other receivers */
-            abort ();
-         }
-#endif
-        break;
-
-    case FDB_MSG_TRAN_RC:
-
-        rc = msg->rc.rc;
-        goto ret_row;
-
-    default:
+    if (msg->hd.type != FDB_MSG_DATA_ROW)
         abort();
-    }
 
-ret_row:
-    return rc;
+    return msg->dr.rc;
 }
 
 int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
 {
-    trans->rc = fdb_recv_row(msg, trans->tid, trans->isuuid, trans->sb);
+    int rc;
+
+    rc = fdb_msg_read_message(trans->sb, msg, 0);
+    if (rc != FDB_NOERR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
+               __func__, rc);
+        trans->rc = FDB_ERR_READ_IO;
+        trans->errstr = strdup("failed to read rc from socket");
+        trans->errstrlen = strlen(trans->errstr)+1;
+        return trans->rc;
+    }
+
+    if (gbl_fdb_track) {
+        fdb_msg_print_message(trans->sb, msg, "received message");
+    }
+
+    msg->hd.type &= FD_MSG_TYPE;
+
+    if (msg->hd.type != FDB_MSG_TRAN_RC)
+        abort();
+
+    trans->rc = msg->rc.rc;
 
     if (trans->isuuid) {
         if ((trans->rc == 0) && (comdb2uuidcmp(msg->rc.tid, trans->tid) != 0)) {
@@ -975,6 +978,7 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
             abort();
         }
     }
+    
 
     if (trans->rc) {
         trans->errstr = msg->rc.errstr;
@@ -1081,6 +1085,10 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
             msg->in.data = NULL;
             msg->in.datalen = 0;
         }
+        if(msg->in.tblname) {
+            free(msg->in.tblname);
+            msg->in.tblname = NULL;
+        }
         break;
 
     case FDB_MSG_DELETE:
@@ -1185,7 +1193,8 @@ static void fdb_msg_prepare_message(fdb_msg_t *msg)
 }
 
 /* stuff comes in network endian fomat */
-static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg)
+static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg,
+                                enum recv_flags flags)
 {
     int rc;
     unsigned long long lltmp;
@@ -1620,6 +1629,19 @@ static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg)
             msg->in.data = NULL;
         }
 
+        if (flags & FDB_MSG_TRAN_TBLNAME) {
+            rc = sbuf2fread((char*)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return -1;
+            tmp = ntohl(tmp);
+            msg->in.tblname = malloc(tmp);
+            if (!msg->in.tblname)
+                return -1;
+            rc = sbuf2fread(msg->in.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return -1;
+        }
+
         break;
 
     case FDB_MSG_DELETE_PI:
@@ -1968,11 +1990,12 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
-
-        logmsg(LOGMSG_USER, "XXXX: %llu %s INSERT cid=%s rootp=%d version=%d "
-                        "genid=%llx datalen=%d\n",
-                t, prefix, comdb2uuidstr(msg->in.cid, cus), msg->in.rootpage,
-                msg->in.version, msg->in.genid, msg->in.datalen);
+        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%llx rootp=%d "
+               "version=%d genid=%llx datalen=%d seq=%d%s%s\n", t, prefix, sb,
+               comdb2uuidstr(msg->in.cid, cus), msg->in.rootpage,
+               msg->in.version, msg->in.genid, msg->in.datalen, msg->in.seq,
+               (msg->in.tblname)?" tblname=":"",
+               (msg->in.tblname)?msg->in.tblname:"");
         break;
 
     case FDB_MSG_DELETE_PI:
@@ -2142,10 +2165,12 @@ static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s INSERT cid=%llx rootp=%d version=%d "
-                        "genid=%llx datalen=%d\n",
-                t, prefix, *(unsigned long long *)msg->in.cid, msg->in.rootpage,
-                msg->in.version, msg->in.genid, msg->in.datalen);
+        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%llx rootp=%d "
+               "version=%d genid=%llx datalen=%d seq=%d%s%s\n", t, prefix, sb,
+               *(unsigned long long*)msg->in.cid, msg->in.rootpage,
+               msg->in.version, msg->in.genid, msg->in.datalen, msg->in.seq,
+               (msg->in.tblname)?" tblname=":"",
+               (msg->in.tblname)?msg->in.tblname:"");
         break;
 
     case FDB_MSG_DELETE_PI:
@@ -2557,6 +2582,18 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
                 return FDB_ERR_WRITE_IO;
         }
 
+        if (msg->in.tblname) {
+            tmp = strlen(msg->in.tblname)+1;
+            tmp = htonl(tmp);
+            rc = sbuf2fwrite((char*)&tmp, 1, sizeof(tmp),sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            tmp = ntohl(tmp);
+            rc = sbuf2fwrite(msg->in.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return FDB_ERR_WRITE_IO;
+        }
+
         break;
 
     case FDB_MSG_DELETE_PI:
@@ -2594,6 +2631,18 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
         if (rc != sizeof(tmp))
             return FDB_ERR_WRITE_IO;
+
+        if (msg->in.tblname) {
+            tmp = strlen(msg->in.tblname)+1;
+            tmp = htonl(tmp);
+            rc = sbuf2fwrite((char*)&tmp, 1, sizeof(tmp),sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            tmp = ntohl(tmp);
+            rc = sbuf2fwrite(msg->in.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return FDB_ERR_WRITE_IO;
+        }
 
         break;
 
@@ -3044,8 +3093,9 @@ int fdb_remcur_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 extern int gbl_partial_indexes;
 
 int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long genid, unsigned long long ins_keys,
-                    int datalen, char *data, int seq, int isuuid, SBUF2 *sb)
+                    char *tblname, unsigned long long genid,
+                    unsigned long long ins_keys, int datalen, char *data,
+                    int seq, int isuuid, SBUF2 *sb)
 {
     int rc = 0;
     int send_dk = 0;
@@ -3068,6 +3118,7 @@ int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
     msg->in.datalen = datalen;
     msg->in.data = data;
     msg->in.seq = seq;
+    msg->in.tblname = tblname;
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
@@ -3075,6 +3126,12 @@ int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
                 __func__, rc);
         goto done;
     }
+
+
+   if(gbl_fdb_track)
+   {
+      fdb_msg_print_message(sb, msg, "sending msg");
+   }
 
 done:
     msg->in.data = NULL;
@@ -3490,6 +3547,7 @@ int fdb_remcur_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
     if (!rc) {
         arg->clnt = clnt;
+        arg->flags = flags;
         if (gbl_expressions_indexes) {
             if (clnt->idxInsert || clnt->idxDelete) {
                 free_cached_idx(clnt->idxInsert);

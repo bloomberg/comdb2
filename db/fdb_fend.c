@@ -2017,6 +2017,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     int was_bad;
     SBUF2 **psb = NULL;
     int tried_refresh = 0; /* ultimate resort, comdb2db */
+    int tran_flags = 0;
 
     host = _fdb_get_affinity_node(clnt, fdb, &was_bad);
     if (host == NULL) {
@@ -2069,10 +2070,15 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 /* cache the node info */
                 fdbc->node = host;
             } else {
-                rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, 0 /*flags*/,
+
+                if(fdb->server_version == FDB_VER_WR_NAMES) 
+                    tran_flags = FDB_MSG_TRAN_TBLNAME;
+                else
+                    tran_flags = 0;
+
+                rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, tran_flags,
                                     clnt->osql.rqid == OSQL_RQID_USE_UUID,
                                     trans->sb);
-
                 if (rc == FDB_NOERR) {
                     trans->host = host;
                 }
@@ -2721,8 +2727,7 @@ static int fdb_cursor_find_common(BtCursor *pCur, Mem *key, int nfields,
                            pCur->keybuflen, fdbc->isuuid, fdbc->fcon.sock.sb);
         if (!rc) {
             /* read row */
-            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->isuuid,
-                              fdbc->fcon.sock.sb);
+            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
             if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
                 rc != IX_PASTEOF && rc != IX_EMPTY) {
                 logmsg(LOGMSG_ERROR, "%s: failed to retrieve row rc=%d\n", __func__,
@@ -2865,17 +2870,11 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 
         if (!rc) {
             /* otherwise.read row */
-            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->isuuid,
-                              fdbc->fcon.sock.sb);
+            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
 
             if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
                 rc != IX_PASTEOF && rc != IX_EMPTY) {
-                char *errstr = "";
-
-                if (rc == -1) /* -1 means no message, so fdbc->msg is garbage */
-                    errstr = "fdb_recv_row failed with rc -1";
-                else if (rc != FDB_ERR_READ_IO)
-                    errstr = fdbc->intf->data(pCur);
+                char *errstr = fdbc->intf->data(pCur);
 
                 /* sqlite will call reprepare; we need to mark which remote
                  * table cache is stale */
@@ -3067,17 +3066,11 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
 
         if (!rc) {
             /* otherwise.read row */
-            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->isuuid,
-                              fdbc->fcon.sock.sb);
+            rc = fdb_recv_row(fdbc->msg, fdbc->cid, fdbc->fcon.sock.sb);
 
             if (rc != IX_FND && rc != IX_FNDMORE && rc != IX_NOTFND &&
                 rc != IX_PASTEOF && rc != IX_EMPTY) {
-                char *errstr;
-
-                if (rc == -1)
-                    errstr = "generic error";
-                else
-                    errstr = fdbc->intf->data(pCur);
+                char *errstr = fdbc->intf->data(pCur);
 
                 /* sqlite will call reprepare; we need to mark which remote
                  * table cache is stale */
@@ -3348,6 +3341,10 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
     int rc;
     int ixnum;
+    char *tblname;
+
+    tblname = (fdbc->ent->tbl->fdb->server_version == FDB_VER_WR_NAMES)?
+        strdup(fdbc->ent->tbl->name):NULL;
 
     if (gbl_fdb_track) {
         if (fdbc->isuuid) {
@@ -3383,7 +3380,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
 
     rc = fdb_send_insert(
         fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
-        fdbc->ent->source_rootpage, genid,
+        fdbc->ent->source_rootpage, tblname, genid,
         (gbl_partial_indexes && pCur->fdbc->tbl_has_partidx(pCur))
             ? clnt->ins_keys
             : -1ULL,
@@ -4693,6 +4690,7 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt)
 static int _get_protocol_flags(int version, void *trans)
 {
     switch (version) {
+    case FDB_VER_WR_NAMES:
     case FDB_VER_SOURCE_ID:
         return FDB_MSG_CURSOR_OPEN_SQL_SID;
 

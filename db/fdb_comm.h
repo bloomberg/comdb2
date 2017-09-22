@@ -29,6 +29,11 @@ enum {
     FDB_MSG_CURSOR_OPEN_SQL_SID = 5   /* sql query with source id */
 };
 
+/* keep these flags a bitmask so we can OR them */
+enum recv_flags {
+   FDB_MSG_TRAN_TBLNAME          = 1   /* tblname part of write msg */
+};
+
 enum run_sql_flags {
     FDB_RUN_SQL_NORMAL = 0, /* regular request */
     FDB_RUN_SQL_SCHEMA =
@@ -57,7 +62,7 @@ int fdb_send_run_sql(fdb_msg_t *msg, char *cid, int sqllen, char *sql,
                      int version, int keylen, char *key,
                      enum run_sql_flags flags, int isuuid, SBUF2 *sb);
 
-int fdb_recv_row(fdb_msg_t *msg, char *cid, int isuuid, SBUF2 *sb);
+int fdb_recv_row(fdb_msg_t *msg, char *cid, SBUF2 *sb);
 
 int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans);
 
@@ -84,8 +89,9 @@ int fdb_send_rc(fdb_msg_t *msg, char *tid, int rc, int errstrlen, char *errstr,
                 int isuuid, SBUF2 *sb);
 
 int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long genid, unsigned long long ins_keys,
-                    int datalen, char *data, int seq, int isuuid, SBUF2 *sb);
+                    char *tblname, unsigned long long genid,
+                    unsigned long long ins_keys, int datalen, char *data,
+                    int seq, int isuuid, SBUF2 *sb);
 int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     unsigned long long genid, unsigned long long del_keys,
                     int seq, int isuuid, SBUF2 *sb);
