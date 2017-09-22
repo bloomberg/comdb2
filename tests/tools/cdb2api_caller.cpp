@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
         return rc;
     }
 
-    char *table;
+    const char *table;
     if (argc > 2) table = argv[2];
     else table = "t1";
 
