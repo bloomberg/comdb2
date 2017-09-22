@@ -18,6 +18,7 @@
 #define _OSQL_SHADTBL_H_
 
 #include <comdb2.h>
+#include "bpfunc.pb-c.h"
 
 struct BtCursor;
 struct sql_thread;
@@ -152,6 +153,12 @@ int is_genid_recorded(struct sql_thread *thd, int tblnum,
  */
 int osql_save_schemachange(struct sql_thread *thd,
                            struct schema_change_type *sc, int usedb);
+
+/**
+ * Record a schemachange for this transaction
+ *
+ */
+int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg);
 
 /**
  * Process shadow tables

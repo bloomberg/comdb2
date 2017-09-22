@@ -174,6 +174,11 @@ typedef struct osqlstate {
         *sc_tbl; /* storage for schemachange, common for all transaction */
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
+    struct temp_table
+        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
+    int bpfunc_seq;
+
     struct errstat xerr; /* extended error */
 
     /* performance */
