@@ -5547,9 +5547,9 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
                 durable_file, durable_offset, durable_gen);
         pthread_mutex_lock(&lk);
         last_rcode = rc;
-        *last_durable_file = *durable_file;
-        *last_durable_offset = *durable_offset;
-        *last_durable_gen = *durable_gen;
+        last_durable_file = *durable_file;
+        last_durable_offset = *durable_offset;
+        last_durable_gen = *durable_gen;
         outstanding_request = 0;
         pthread_cond_broadcast(&cond);
         pthread_mutex_unlock(&lk);
@@ -5559,9 +5559,9 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
         do {
             pthread_cond_wait(&cond, &lk);
         } while (outstanding_request && count == req_count);
-        *durable_file = *last_durable_file;
-        *durable_offset = *last_durable_offset;
-        *durable_gen = *last_durable_gen;
+        *durable_file = last_durable_file;
+        *durable_offset = last_durable_offset;
+        *durable_gen = last_durable_gen;
         rc = last_rcode;
         pthread_mutex_unlock(&lk);
         return rc;
