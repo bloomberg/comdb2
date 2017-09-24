@@ -142,7 +142,6 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                          UnpackedRecord *upr)
 {
     int rootpage;
-    int tblnum;
     int ixnum;
     Mem *pMem;
     struct dbtable *db;
@@ -170,9 +169,9 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     rootpage = pMem->u.i;
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    get_sqlite_tblnum_and_ixnum(thd, rootpage, &tblnum, &ixnum);
+    db = get_sqlite_db(thd, rootpage, &ixnum);
 
-    if (unlikely(tblnum < 0 || ixnum < -1)) {
+    if (unlikely(!db)) {
         logmsg(LOGMSG_ERROR, "%s: wrong rootpage %d\n", __func__, rootpage);
         return -1;
     }
@@ -181,9 +180,6 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     if (ixnum == -1) {
         return 0;
     }
-
-    /* for indexes, retrieve the table */
-    db = thedb->dbs[tblnum];
 
     /* if this is a datacopy index, do not do anything */
     if (db->ix_datacopy[ixnum]) {
@@ -624,9 +620,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
     pCur->genid = genid;
 
     /* retrieve the table involved */
-    get_sqlite_tblnum_and_ixnum(thd, rootpage, &pCur->tblnum, &pCur->ixnum);
-
-    pCur->db = thedb->dbs[pCur->tblnum];
+    pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
     pCur->numblobs = get_schema_blob_count(pCur->db->dbname, ".ONDISK");
 
     if (need_bdbcursor) {

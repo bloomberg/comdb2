@@ -26,8 +26,8 @@ berkdb/db/db_overflow.c berkdb/db/db_ovfl_vrfy.c berkdb/db/db_pr.c	\
 berkdb/db/db_rec.c berkdb/db/db_reclaim.c berkdb/db/db_remove.c		\
 berkdb/db/db_rename.c berkdb/db/db_ret.c berkdb/db/db_truncate.c	\
 berkdb/db/db_upg.c berkdb/db/db_upg_opd.c berkdb/db/db_vrfy.c		\
-berkdb/db/db_vrfyutil.c berkdb/db/db_pgdump.c   \
-berkdb/db/db_pgcompact.c
+berkdb/db/db_vrfyutil.c berkdb/db/db_pgdump.c berkdb/db/db_pgcompact.c	\
+berkdb/db/trigger_subscription.c
 DBREG_SOURCES:=berkdb/dbreg/dbreg.c berkdb/dbreg/dbreg_rec.c	\
 berkdb/dbreg/dbreg_util.c
 ENV_SOURCES:=berkdb/env/db_malloc.c berkdb/env/db_salloc.c	\

@@ -9566,7 +9566,7 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
         ;
 
     if (i >= sizeof(pdec64->coef) - 1) {
-        char highnibble = (*(char *)(&pdec64->exp)) & 0x0F0;
+        unsigned char highnibble = (*(char *)(&pdec64->exp)) & 0x0F0;
 
         /* check range for negative exponents; first nibble is 7 for new format!
          */

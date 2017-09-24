@@ -1906,8 +1906,11 @@ static void log_client_context(struct reqlogger *logger,
     if (clnt->sql_query->context) {
         /* Latch the context - client only re-sends context if
            it changes.  TODO: this seems needlessly expensive. */
+        for (int i = 0, len = clnt->ncontext; i != len; ++i)
+            free(clnt->context[i]);
+        free(clnt->context);
+
         clnt->ncontext = clnt->sql_query->n_context;
-        if (clnt->context) free(clnt->context);
         clnt->context = malloc(sizeof(char *) * clnt->sql_query->n_context);
         for (int i = 0; i < clnt->sql_query->n_context; i++)
             clnt->context[i] = strdup(clnt->sql_query->context[i]);
@@ -5557,6 +5560,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
 {
     struct errstat xerr;
     int rc;
+    int got_views_lock = 0;
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
@@ -5567,6 +5571,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
         sqlthd->sqlclntstate = clnt;
     }
 
+check_version:
     if (thd->sqldb && (rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             delete_prepared_stmts(thd);
@@ -5582,6 +5587,22 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
     }
 
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
+        /* need to refresh things; we need to grab views lock */
+        if (!got_views_lock) {
+            pthread_rwlock_unlock(&schema_lk);
+
+            views_lock();
+
+            pthread_rwlock_rdlock(&schema_lk);
+
+            got_views_lock = 1;
+            if (thd->sqldb) {
+                /* we kept engine, but the versions might have changed while
+                 * we released the schema lock */
+                goto check_version;
+            }
+        }
+
         if (!thd->sqldb) {
             clnt->no_transaction = 1;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
@@ -5609,7 +5630,7 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
             if (thedb->timepart_views) {
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
-                                         &xerr);
+                                         &xerr, 0);
                 if (rc != VIEW_NOERR) {
                     logmsg(LOGMSG_ERROR, 
                             "failed to create views rc=%d errstr=\"%s\"\n",
@@ -5627,6 +5648,8 @@ void sqlengine_prepare_engine(struct sqlthdstate *thd,
         }
     }
     clnt->no_transaction = 0;
+    if (got_views_lock)
+        views_unlock();
 }
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)
@@ -6017,6 +6040,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     int done;
     char msg[1024];
+    char *sqlcpy;
     char thdinfo[40];
     int rc;
     struct thr_handle *self = thrman_self();
@@ -6044,23 +6068,19 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = time_epochus();
 
-    char *sqlcpy;
+    sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, (clnt->req.flags & SQLF_QUEUE_ME) ? 1 : 0,
-                              sqlcpy = strdup(msg))) != 0) {
-        free(sqlcpy);
-        sqlcpy = NULL;
+                              sqlcpy)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
-                                 sqlengine_work_appsock_pp, clnt, 1,
-                                 sqlcpy = strdup(msg));
+                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy);
         }
 
         if (rc) {
-            if (sqlcpy)
-                free(sqlcpy);
+            free(sqlcpy);
             /* say something back, if the client expects it */
             if (clnt->req.flags & SQLF_FAILDISPATCH_ON) {
                 snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query\n",
@@ -7173,6 +7193,7 @@ static void send_dbinforesponse(SBUF2 *sb)
 
     int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
     void *buf = malloc(len);
+
     cdb2__dbinforesponse__pack(dbinfo_response, buf);
 
     hdr.type = ntohl(RESPONSE_HEADER__DBINFO_RESPONSE);
@@ -8047,9 +8068,12 @@ done:
 
     clnt.dbtran.mode = TRANLEVEL_INVALID;
     set_high_availability(&clnt, 0);
-    // clnt.high_availability = 0;
     if (clnt.query_stats)
         free(clnt.query_stats);
+
+    for (int i = 0, len = clnt.ncontext; i != len; ++i)
+        free(clnt.context[i]);
+    free(clnt.context);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);

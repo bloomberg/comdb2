@@ -13,10 +13,39 @@ export TESTID:=$(shell tools/get_random.sh)
 CURRDIR:=$(shell pwd)
 export TESTDIR:=$(CURRDIR)/test_$(TESTID)
 # get md5sum of executable use check when running every test in a series
-export COMDB2MD5SUM:=$(shell md5sum ${SRCHOME}/comdb2 | cut -d ' ' -f1)
+
+export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
+export COMDB2_EXE:=$(SRCHOME)/comdb2
+export CDB2SQL_EXE:=$(SRCHOME)/cdb2sql
+export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
+export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
+export PMUX_EXE:=$(SRCHOME)/pmux
 
 
-basicops_nokey: executables
+ifeq ($(wildcard $(COMDB2_EXE)),)
+  $(error $(COMDB2_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(COMDB2AR_EXE)),)
+  $(error $(COMDB2AR_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(CDB2SQL_EXE)),)
+  $(error $(CDB2SQL_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(CDB2_SQLREPLAY_EXE)),)
+  $(error $(CDB2_SQLREPLAY_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(COPYCOMDB2_EXE)),)
+  $(error $(COPYCOMDB2_EXE) missing, please ensure it exists)
+endif
+ifeq ($(wildcard $(PMUX_EXE)),)
+  $(error $(PMUX_EXE) missing, please run make in $(SRCHOME))
+endif
+
+
+export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
+
+
+basicops_nokey:
 	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
@@ -27,13 +56,6 @@ basicops_nokey: executables
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
-
-executables: execomdb2 exesqlreplay execdb2sql execomdb2ar exepmux
-execomdb2: ; @command -v ${SRCHOME}/comdb2 &> /dev/null
-exesqlreplay: ; @command -v ${SRCHOME}/cdb2_sqlreplay &> /dev/null
-execdb2sql: ; @command -v ${SRCHOME}/cdb2sql &> /dev/null
-execomdb2ar: ; @command -v ${SRCHOME}/comdb2ar &> /dev/null
-exepmux: ; @command -v ${SRCHOME}/pmux &> /dev/null
 
 
 basicops: basicops_nokey

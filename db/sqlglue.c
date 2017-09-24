@@ -99,6 +99,8 @@
 #include "logmsg.h"
 #include "locks.h"
 
+#include <bbinc/str0.h>
+
 unsigned long long get_id(bdb_state_type *);
 
 struct temp_cursor;
@@ -157,9 +159,6 @@ static int is_sql_update_mode(int mode);
 static int queryOverlapsCursors(struct sqlclntstate *clnt, BtCursor *pCur);
 
 enum { AUTHENTICATE_READ = 1, AUTHENTICATE_WRITE = 2 };
-
-/* Static rootpages numbers. */
-enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 CurRange *currange_new()
 {
@@ -595,11 +594,9 @@ static unsigned int query_path_component_hash(const void *key, int len)
 {
     const struct query_path_component *q = key;
     const char *name;
-    if (q->fdb == NULL) {
-        name = q->lcl_tbl_name;
-    } else {
-        name = fdb_table_entry_tblname(q->fdb);
-    }
+
+    name = q->lcl_tbl_name;
+
     struct {
         int ix;
         char name[strlen(name) + 1];
@@ -613,22 +610,26 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
 {
     const struct query_path_component *q1 = key1, *q2 = key2;
     if (q1->ix != q2->ix) {
-        return 1;
+        return q1->ix - q2->ix;
     }
-    const char *n1, *n2;
-    if (q1->fdb == NULL && q2->fdb == NULL) {
+    if (!q1->rmt_db[0] && !q2->rmt_db[0]) {
         // both local
-        n1 = q1->lcl_tbl_name;
-        n2 = q2->lcl_tbl_name;
-    } else if (q1->fdb == NULL || q2->fdb == NULL) {
+        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
+                       sizeof(q1->lcl_tbl_name));
+    } else if (!q1->rmt_db[0]) {
+        // mismatch
+        return -1;
+    } else if (!q2->rmt_db[0]) {
         // mismatch
         return 1;
     } else {
-        // both remote
-        n1 = fdb_table_entry_tblname(q1->fdb);
-        n2 = fdb_table_entry_tblname(q2->fdb);
+        int rc = strncmp(q1->rmt_db, q2->rmt_db, sizeof(q1->rmt_db));
+        if (rc)
+            return rc;
+
+        return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
+                       sizeof(q1->lcl_tbl_name));
     }
-    return strcmp(n1, n2);
 }
 
 struct sql_thread *start_sql_thread(void)
@@ -1377,8 +1378,8 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 **  1: Found stat with old style names.
 **  2: Found stat with new style names.
 */
-static int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
-                                struct dbtable *db, int ixnum, void *trans)
+int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
+                         struct dbtable *db, int ixnum, void *trans)
 {
     int rc;
     rc = using_old_style_name(namebuf, len, schema, db, ixnum, trans);
@@ -1953,382 +1954,6 @@ int schema_var_size(struct schema *sc)
     sz += 12; /* max bytes needed by rrn/genid (comdb2 8 byte rrns/genid +
                * header byte + sqlite type byte) */
     return sz;
-}
-
-static void *create_master_table(int eidx, const char *csc2_schema, int tblnum,
-                                 int ixnum, int *sz)
-{
-    struct field field[6] = {
-        /* type name tbl_name rootpage sql */
-        {SERVER_BCSTR, 0, 0, 0, "type", 0, -1, 0, 0, NULL, 0, 0, NULL, 0},
-        {SERVER_BCSTR, 0, 0, 0, "name", 0, -1, 0, 0, NULL, 0, 0, NULL, 0},
-        {SERVER_BCSTR, 0, 0, 0, "tbl_name", 0, -1, 0, 0, NULL, 0, 0, NULL, 0},
-        {SERVER_BINT, 0, 0, 0, "rootpage", 0, -1, 0, 0, NULL, 0, 0, NULL, 0},
-        {SERVER_BCSTR, 0, 0, 0, "sql", 0, -1, 0, 0, NULL, 0, 0, NULL, 0},
-        {SERVER_BCSTR, 0, 0, 0, "csc2", 0, -1, 0, 0, NULL, 0, 0, NULL, 0}};
-    char *sql;
-    char *etype;
-    char *e;
-    int offset = 0;
-    void *rec;
-    char name[128];
-    char *dbname;
-    int rootpage;
-    int rc, outdtsz = 0;
-    struct dbtable *db;
-    int reqsize;
-    int maxlen = 0;
-
-    struct schema sc = {0};
-    sc.tag = ".ONDISK";
-    sc.nmembers = 6;
-    sc.ixnum = -1;
-
-    assert(tblnum < thedb->num_dbs);
-
-    db = thedb->dbs[tblnum];
-    dbname = db->dbname;
-    rootpage = eidx + RTPAGE_START;
-
-    if (ixnum == -1) {
-        strcpy(name, dbname);
-        sql = db->sql;
-        etype = "table";
-    } else {
-        snprintf(name, sizeof(name), ".ONDISK_ix_%d", ixnum);
-        struct schema *schema = find_tag_schema(dbname, name);
-        if (schema->sqlitetag) {
-            strcpy(name, schema->sqlitetag);
-        } else {
-            sql_index_name_trans(name, sizeof name, schema, db, ixnum, NULL);
-        }
-
-        sql = db->ixsql[ixnum];
-        etype = "index";
-    }
-    ctrace("rootpage %d sql %s\n", rootpage, sql);
-
-    /* patch schema above with values specific to this record
-     * (can't think of any other way to cram variable-length
-     * records into current scheme) */
-    sc.member = field;
-    field[0].offset = offset;
-    field[0].len = 1 + strlen(etype); /* type = "table" */
-    offset += field[0].len;
-    field[1].offset = offset;
-    field[1].len = 1 + strlen(name);
-    offset += field[1].len;
-    field[2].offset = offset;
-    field[2].len = 1 + strlen(dbname);
-    offset += field[2].len;
-    field[3].offset = offset;
-    field[3].len = 5; /* ondisk-type integer */
-    offset += field[3].len;
-    field[4].offset = offset;
-    field[4].len = 1 + strlen(sql);
-    offset += field[4].len;
-    field[5].offset = offset;
-    if (csc2_schema) {
-        field[5].len = 1 + strlen(csc2_schema);
-        offset += field[5].len;
-    } else {
-        field[5].len = 0;
-        offset++; /* still need a null byte */
-    }
-
-    e = malloc(offset); /* temporary buffer for ondisk record */
-
-    /* The next step is very ugly: create the ondisk-format record for this
-     * table.  None of the ops below should fail */
-    offset = 0;
-    CLIENT_CSTR_to_SERVER_BCSTR(etype, strlen(etype) + 1, 0, NULL /*convopts */,
-                                NULL /*blob */, e + offset, 6, &outdtsz,
-                                NULL /*convopts */, NULL /*blob */);
-    offset += field[0].len;
-    CLIENT_CSTR_to_SERVER_BCSTR(name, strlen(name) + 1, 0, NULL /*convopts */,
-                                NULL /*blob */, e + offset, strlen(name) + 1,
-                                &outdtsz, NULL /*convopts */, NULL /*blob */);
-    offset += field[1].len;
-    CLIENT_CSTR_to_SERVER_BCSTR(dbname, strlen(dbname) + 1, 0,
-                                NULL /*convopts */, NULL /*blob */, e + offset,
-                                strlen(dbname) + 1, &outdtsz,
-                                NULL /*convopts */, NULL /*blob */);
-    offset += field[2].len;
-    rootpage = htonl(rootpage);
-    CLIENT_INT_to_SERVER_BINT(&rootpage, 4, 0, NULL /*convopts */,
-                              NULL /*blob */, e + offset, 5, &outdtsz,
-                              NULL /*convopts */, NULL /*blob */);
-    offset += field[3].len;
-    CLIENT_CSTR_to_SERVER_BCSTR(sql, strlen(sql) + 1, 0, NULL /*convopts */,
-                                NULL /*blob */, e + offset, strlen(sql) + 1,
-                                &outdtsz, NULL /*convopts */, NULL /*blob */);
-    offset += strlen(sql) + 1;
-
-    CLIENT_CSTR_to_SERVER_BCSTR(
-        csc2_schema, csc2_schema ? strlen(csc2_schema) + 1 : 1,
-        csc2_schema ? 0 : 1, NULL, NULL, e + offset,
-        csc2_schema ? strlen(csc2_schema) + 1 : 0, &outdtsz, NULL, NULL);
-
-    *sz = schema_var_size(&sc);
-    /* finally, convert to sqlite format */
-    rec = malloc(*sz); /* allocate using worst case size */
-    rc = ondisk_to_sqlite(db, &sc, e, 0, 0, rec, *sz, 0, NULL, NULL, NULL,
-                          &reqsize);
-    if (rc == -2) {
-        rec = realloc(rec, reqsize);
-        rc = ondisk_to_sqlite(db, &sc, e, 0, 0, rec, *sz, 0, NULL, NULL, NULL,
-                              &reqsize);
-    }
-    if (rc < 0) {
-        /* FATAL: can't continue */
-        logmsg(LOGMSG_FATAL, "%s: ondisk_to_sqlite failed!!! rc %d\n", __func__, rc);
-        exit(1);
-    }
-    *sz = reqsize;
-    free(e);
-    return rec;
-}
-
-/* table 1 entries */
-static int gbl_rootpage_nentries;
-static int *gbl_master_entry_sizes;
-static void **gbl_master_table_entries;
-static struct rootpage *gbl_rootpages;
-
-/* map iTable entries to tblnum/ixnum */
-struct rootpage {
-    int tblnum;
-    int ixnum;
-};
-
-// get rootpage from global structure -- not used
-static int get_rootpage_info(int rootpage, int *tbl, int *ixnum)
-{
-    if (rootpage <= RTPAGE_SQLITE_MASTER)
-        return -1;
-    *tbl = gbl_rootpages[rootpage - RTPAGE_START].tblnum;
-    *ixnum = gbl_rootpages[rootpage - RTPAGE_START].ixnum;
-    return 0;
-}
-
-/* get tblnum and ixnum from local cached rootpage structure
- */
-inline void get_sqlite_tblnum_and_ixnum(struct sql_thread *thd, int iTable,
-                                        int *tblnum, int *ixnum)
-{
-    if (!thd->rootpages) {
-        logmsg(LOGMSG_ERROR, "get_sqlite_tblnum_and_ixnum() local thd missing copy "
-                        "of rootpages\n");
-    }
-    if (iTable < RTPAGE_START ||
-        iTable >= (thd->rootpage_nentries + RTPAGE_START)) {
-        *tblnum = -1;
-        *ixnum = -3;
-        return;
-    }
-    struct rootpage *rp = &thd->rootpages[iTable - RTPAGE_START];
-    *tblnum = rp->tblnum;
-    *ixnum = rp->ixnum;
-}
-
-static int get_sqlitethd_tblnum(struct sql_thread *thd, int iTable)
-{
-    if (iTable < RTPAGE_START ||
-        iTable >= (thd->rootpage_nentries + RTPAGE_START))
-        return -1;
-    return thd->rootpages[iTable - RTPAGE_START].tblnum;
-}
-
-int get_sqlite_entry_size(int n) { return gbl_master_entry_sizes[n]; }
-
-void *get_sqlite_entry(int n) { return gbl_master_table_entries[n]; }
-
-int send_master_table_by_name(const char *tbl, SBUF2 *sb)
-{
-    void *rec = NULL;
-    int ix = 0;
-    int len = strlen(tbl);
-    int entry_ix = 0;
-
-    rdlock_schema_lk();
-    for (ix = 0; ix < thedb->num_dbs; ix++) {
-        if (len == strlen(thedb->dbs[ix]->dbname) &&
-            strncmp(thedb->dbs[ix]->dbname, tbl, len) == 0) {
-            /* found it, and it's records are
-             * gbl_master_table_entries[entry_ix..(entry_ix+thedb->dbs[ix]->nsqlix-1)]
-             */
-            break;
-        }
-        entry_ix += 1 + thedb->dbs[ix]->nsqlix;
-    }
-    wrlock_schema_lk();
-
-    return 0;
-}
-
-pthread_rwlock_t sqlite_rootpages = PTHREAD_RWLOCK_INITIALIZER;
-
-/* allocate a range of rootpage numbers
-   we need to keep WR sqite_rwlock until all
-   of them are consumed !
- */
-int get_rootpage_numbers(int nums)
-{
-    static int crt_rootpage_number = RTPAGE_START;
-    int tmp;
-
-    pthread_rwlock_wrlock(&sqlite_rootpages);
-
-    /* if this recreates everything, reset range */
-    if (gbl_rootpage_nentries == 0) {
-        crt_rootpage_number = RTPAGE_START;
-    }
-    tmp = crt_rootpage_number + nums;
-    if (tmp < crt_rootpage_number) {
-        /* slow codepath, to be done ; we coud force a search and get subranges
-         */
-        abort();
-    } else {
-        /* got a new number */
-        tmp =
-            crt_rootpage_number; /* cache start of area, just allocated
-                                    [crt_rootpage_number:crt_rootpage_number+nums-1],
-                                    inclusive */
-        crt_rootpage_number += nums;
-    }
-    pthread_rwlock_unlock(&sqlite_rootpages);
-
-    /*fprintf(stderr, "XXX allocated [%d:%d]\n", tmp, crt_rootpage_number-1);*/
-
-    return tmp;
-}
-
-/* copy rootpage info so a sql thread as a local copy
- */
-void get_copy_rootpages_nolock(struct sql_thread *thd)
-{
-    if (thd->rootpages)
-        free(thd->rootpages);
-    thd->rootpages = calloc(gbl_rootpage_nentries, sizeof(struct rootpage));
-    memcpy(thd->rootpages, gbl_rootpages,
-           gbl_rootpage_nentries * sizeof(struct rootpage));
-    thd->rootpage_nentries = gbl_rootpage_nentries;
-}
-
-/* copy rootpage info so a sql thread as a local copy
- */
-inline void get_copy_rootpages(struct sql_thread *thd)
-{
-    rdlock_schema_lk();
-    get_copy_rootpages_nolock(thd);
-    unlock_schema_lk();
-}
-
-inline void free_copy_rootpages(struct sql_thread *thd)
-{
-    if (thd->rootpages)
-        free(thd->rootpages);
-}
-
-/* bootstrap a master table entry - called by comdb2 at startup and when schema
- * changes */
-/* This code is very ugly.  Should clean up at first oportunity. */
-void create_master_tables(void)
-{
-    int offset = 0;
-    char *sql;
-    char *e;
-    int rootpageNum;
-    char *etype; /* entry type */
-    int rc;
-    int sz;
-    int eidx = 0;
-    int tblnum, ixnum;
-    int i;
-    int nix;
-    int local_nentries;
-    static struct rootpage *new_rootpages = NULL;
-    static struct rootpage *old_rootpages = NULL;
-
-    /* free old */
-    for (i = 0; i < gbl_rootpage_nentries; i++) {
-        if (gbl_master_table_entries[i]) {
-            free(gbl_master_table_entries[i]);
-            gbl_master_table_entries[i] = NULL;
-        }
-    }
-
-    gbl_rootpage_nentries = 0;
-    /* make room for fake tables */
-    local_nentries = 0;
-    for (tblnum = 0; tblnum < thedb->num_dbs; tblnum++)
-        local_nentries += 1 + thedb->dbs[tblnum]->nsqlix;
-
-    gbl_master_entry_sizes =
-        realloc(gbl_master_entry_sizes, local_nentries * sizeof(int));
-    memset(gbl_master_entry_sizes, 0, local_nentries * sizeof(int));
-
-    gbl_master_table_entries =
-        realloc(gbl_master_table_entries, local_nentries * sizeof(void **));
-    memset(gbl_master_table_entries, 0, local_nentries * sizeof(void **));
-    if (gbl_rootpages)
-        old_rootpages = gbl_rootpages;
-    new_rootpages = calloc(local_nentries, sizeof(struct rootpage));
-
-    rootpageNum = get_rootpage_numbers(local_nentries);
-    gbl_rootpage_nentries = local_nentries;
-
-    eidx =
-        rootpageNum - RTPAGE_START; /* Start of tables (after sqlite_master) */
-
-    for (tblnum = 0; tblnum < thedb->num_dbs; tblnum++) {
-        new_rootpages[eidx].tblnum = tblnum;
-        new_rootpages[eidx].ixnum = -1;
-        gbl_master_table_entries[eidx] =
-            create_master_table(eidx, thedb->dbs[tblnum]->csc2_schema, tblnum,
-                                -1, &gbl_master_entry_sizes[eidx]);
-        eidx++;
-#if 0
-      printf
-         ("create_master_entry: eidx %d rootpage %d tblname %s tblnum %d ixnum %d sz %d\n",
-          eidx, rootpage, thedb->dbs[tblnum]->dbname, tblnum, -1, gbl_master_entry_sizes[eidx]);
-#endif
-
-        nix = thedb->dbs[tblnum]->nix;
-
-        for (ixnum = 0; ixnum < nix; ixnum++) {
-            /* skip indexes that we aren't advertising to sqlite */
-            if (thedb->dbs[tblnum]->ixsql[ixnum] != NULL) {
-                new_rootpages[eidx].tblnum = tblnum;
-                new_rootpages[eidx].ixnum = ixnum; /* comdb2 index number */
-                if (gbl_master_table_entries[eidx]) {
-                    free(gbl_master_table_entries[eidx]);
-                    gbl_master_table_entries[eidx] = NULL;
-                }
-                gbl_master_table_entries[eidx] = create_master_table(
-                    eidx, NULL, tblnum, ixnum, &gbl_master_entry_sizes[eidx]);
-#if 0
-            printf
-               ("create_master_entry: eidx %d rootpage %d tblnum %d ixnum %d sz %d\n",
-                eidx, rootpage, tblnum, ixnum, gbl_master_entry_sizes[eidx]);
-            hexdump(1, gbl_master_table_entries[eidx], gbl_master_entry_sizes[eidx]);
-#endif
-                eidx++;
-            }
-        }
-    }
-
-    assert(eidx == gbl_rootpage_nentries);
-
-    gbl_rootpages = new_rootpages;
-    if (old_rootpages)
-        free(old_rootpages);
-#if 0
-   for (i = 0; i < gbl_rootpage_nentries; i++) {
-      printf("entry %d\n", i);
-      hexdump(gbl_master_table_entries[i], gbl_master_entry_sizes[i]);
-   }
-#endif
 }
 
 static int indexes_thread_memory = 1048576;
@@ -3651,7 +3276,6 @@ int sqlite3BtreeOpen(
     static int id = 0;
     int eidx = 0;
     Btree *bt;
-    int ixnum, tblnum;
     char *tmpname;
     int i;
     struct sql_thread *thd;
@@ -4481,8 +4105,8 @@ const void *sqlite3BtreeDataFetch(BtCursor *pCur, u32 *pAmt)
             *pAmt = pCur->nDataDdl;
             out = pCur->dataDdl;
         } else {
-            *pAmt = get_sqlite_entry_size(pCur->tblpos);
-            out = get_sqlite_entry(pCur->tblpos);
+            *pAmt = get_sqlite_entry_size(thd, pCur->tblpos);
+            out = get_sqlite_entry(thd, pCur->tblpos);
         }
     } else if (pCur->bt->is_remote) {
 
@@ -4579,7 +4203,7 @@ i64 sqlite3BtreeIntegerKey(BtCursor *pCur)
                 assert(pCur->keyDdl);
                 size = pCur->nDataDdl;
             }
-            size = get_sqlite_entry_size(pCur->tblpos);
+            size = get_sqlite_entry_size(thd, pCur->tblpos);
         }
     } else if (pCur->ixnum == -1) {
         if (pCur->bt->is_remote || pCur->db->dtastripe)
@@ -4629,7 +4253,7 @@ u32 sqlite3BtreePayloadSize(BtCursor *pCur)
                 assert(pCur->keyDdl);
                 size = pCur->nDataDdl;
             } else {
-                size = get_sqlite_entry_size(pCur->tblpos);
+                size = get_sqlite_entry_size(thd, pCur->tblpos);
             }
         }
     } else if (pCur->bt->is_remote) {
@@ -6285,10 +5909,7 @@ void addVdbeSorterCost(const VdbeSorter *pSorter)
     if (thd == NULL)
         return;
 
-    struct query_path_component fnd, *qc;
-    fnd.fdb = 0;
-    fnd.lcl_tbl_name[0] = 0;
-    fnd.ix = 0;
+    struct query_path_component fnd = {0}, *qc;
 
     if (NULL == (qc = hash_find(thd->query_hash, &fnd))) {
         qc = calloc(sizeof(struct query_path_component), 1);
@@ -6373,24 +5994,26 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             (pCur->db && is_sqlite_stat(pCur->db->dbname))) {
             goto skip;
         }
-        struct query_path_component fnd, *qc = NULL;
-        fnd.fdb = 0;
-        fnd.lcl_tbl_name[0] = 0;
+        struct query_path_component fnd = {0}, *qc = NULL;
         if (pCur->bt && pCur->bt->is_remote) {
             if (!pCur->fdbc)
                 goto skip; /* failed during cursor creation */
-            fnd.fdb = pCur->fdbc->table_entry(pCur);
-        } else if (pCur->db) {
-            strcpy(fnd.lcl_tbl_name, pCur->db->dbname);
+            strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur), sizeof(fnd.rmt_db));
         }
+        if (pCur->db)
+            strncpy0(fnd.lcl_tbl_name, pCur->db->dbname,
+                     sizeof(fnd.lcl_tbl_name));
         fnd.ix = pCur->ixnum;
 
         if ((qc = hash_find(thd->query_hash, &fnd)) == NULL) {
             qc = calloc(sizeof(struct query_path_component), 1);
             if (pCur->bt && pCur->bt->is_remote) {
-                qc->fdb = fnd.fdb;
-            } else if (pCur->db) {
-                strcpy(qc->lcl_tbl_name, pCur->db->dbname);
+                strncpy0(fnd.rmt_db, pCur->fdbc->dbname(pCur),
+                         sizeof(fnd.rmt_db));
+            }
+            if (pCur->db) {
+                strncpy0(qc->lcl_tbl_name, pCur->db->dbname,
+                         sizeof(qc->lcl_tbl_name));
             }
             qc->ix = pCur->ixnum;
             hash_add(thd->query_hash, qc);
@@ -6514,7 +6137,7 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
      * never called... */
     int rc = SQLITE_OK;
     int bdberr;
-    int tblnum, ixnum;
+    int ixnum;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
 
@@ -6532,12 +6155,14 @@ int sqlite3BtreeClearTable(Btree *pBt, int iTable, int *pnChange)
             goto done;
         }
     } else {
-        get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
+        struct dbtable *db;
+
+        db = get_sqlite_db(thd, iTable, &ixnum);
         if (ixnum != -1) {
             rc = SQLITE_OK;
             goto done;
         }
-        struct dbtable *db = thedb->dbs[tblnum];
+
         /* If we are in analyze, lie.  Otherwise we end up with an empty, and
          * then worse,
          * half-filled stat table during the analyze. */
@@ -7221,8 +6846,6 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
                            struct sql_thread *thd)
 {
     int bdberr = 0;
-    int tblnum;
-    int ixnum;
     int key_size;
     int sz;
     struct sqlclntstate *clnt = thd->sqlclntstate;
@@ -7231,13 +6854,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     assert(iTable >= RTPAGE_START);
     /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
-    get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
-
-    assert(tblnum < thedb->num_dbs);
-
-    cur->ixnum = ixnum;
-    if (tblnum < thedb->num_dbs)
-        db = thedb->dbs[tblnum];
+    db = get_sqlite_db(thd, iTable, &cur->ixnum);
 
     cur->cursor_class = CURSORCLASS_TEMPTABLE;
     cur->cursor_move = cursor_move_compressed;
@@ -7250,7 +6867,7 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     }
 
     cur->sampled_idx->tbl =
-        analyze_get_sampled_temptable(clnt, db->dbname, ixnum);
+        analyze_get_sampled_temptable(clnt, db->dbname, cur->ixnum);
     assert(cur->sampled_idx->tbl != NULL);
 
     cur->sampled_idx->cursor = bdb_temp_table_cursor(
@@ -7263,10 +6880,9 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     bdb_temp_table_set_cmp_func(cur->sampled_idx->tbl, (tmptbl_cmp)xCmp);
 
     cur->db = db;
-    cur->sc = cur->db->ixschema[ixnum];
+    cur->sc = cur->db->ixschema[cur->ixnum];
     cur->rootpage = iTable;
     cur->bt = pBt;
-    cur->ixnum = ixnum;
     cur->is_sampled_idx = 1;
     cur->nCookFields = -1;
 
@@ -7551,7 +7167,7 @@ static int sqlite3BtreeCursor_master(
 static inline int has_compressed_index(int iTable, BtCursor *cur,
                                        struct sql_thread *thd)
 {
-    int ixnum, tblnum;
+    int ixnum;
     int rc;
     struct sqlclntstate *clnt = thd->sqlclntstate;
     struct dbtable *db;
@@ -7563,12 +7179,9 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     assert(iTable >= RTPAGE_START);
     /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
-    get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
-
-    assert(tblnum < thedb->num_dbs);
-
-    if (tblnum < thedb->num_dbs)
-        db = thedb->dbs[tblnum];
+    db = get_sqlite_db(thd, iTable, &ixnum);
+    if (!db)
+        return -1;
 
     rc = analyze_is_sampled(clnt, db->dbname, ixnum);
     return rc;
@@ -7607,13 +7220,13 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     int nRemoteTables = 0;
     int remote_schema_changed = 0;
     int dups = 0;
+    struct dbtable *db;
 
     if (nTables == 0)
         return 0;
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
-    int tblnum;
 
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
@@ -7648,15 +7261,12 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         dups = 1;
         prev = iTable;
 
-        tblnum = get_sqlitethd_tblnum(thd, iTable);
+        db = get_sqlite_db(thd, iTable, NULL);
 
-        if (tblnum < 0) {
+        if (!db) {
             nRemoteTables++;
             continue;
         }
-
-        struct dbtable *db = NULL;
-        db = thedb->dbs[tblnum];
 
         /* here we are locking a table and make sure no schema change happens
            during the run
@@ -7740,10 +7350,7 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             db->nsql++; /* per table nsql stats */
         }
 
-        int dbtblnum = 0, ixnum;
-        get_sqlite_tblnum_and_ixnum(thd, iTable, &dbtblnum, &ixnum);
-        reqlog_add_table(thrman_get_reqlogger(thrman_self()),
-                         thedb->dbs[dbtblnum]->dbname);
+        reqlog_add_table(thrman_get_reqlogger(thrman_self()), db->dbname);
     }
 
     if (!after_recovery)
@@ -7774,9 +7381,9 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
             prev = iTable;
 
-            tblnum = get_sqlitethd_tblnum(thd, iTable);
+            db = get_sqlite_db(thd, iTable, NULL);
 
-            if (tblnum >= 0) {
+            if (db) {
                 /* local table */
                 continue;
             }
@@ -7832,8 +7439,8 @@ void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt)
     int nTables = p->numTables;
     int iTable;
     int nRemoteTables = 0;
-    int tblnum;
     int prev;
+    struct dbtable *pdb;
 
     nRemoteTables = 0;
     prev = -1;
@@ -7855,9 +7462,9 @@ void sql_remote_schema_changed(struct sqlclntstate *clnt, sqlite3_stmt *pStmt)
         }
         prev = iTable;
 
-        tblnum = get_sqlitethd_tblnum(thd, iTable);
+        pdb = get_sqlite_db(thd, iTable, NULL);
 
-        if (tblnum < 0) {
+        if (!pdb) {
             Db *db = &p->db->aDb[tab->iDb];
 
             /* if the descriptive entry is missing, it means the lock was not
@@ -8000,7 +7607,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
 {
     struct sqlclntstate *clnt = thd->sqlclntstate;
     size_t key_size;
-    int ixnum, tblnum;
     int rowlocks = use_rowlocks(clnt);
     int rc = SQLITE_OK;
     int bdberr = 0;
@@ -8014,17 +7620,14 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     assert(iTable >= RTPAGE_START);
     /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
-    get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
+    cur->db = get_sqlite_db(thd, iTable, &cur->ixnum);
 
-    assert((tblnum >= 0) && (tblnum < thedb->num_dbs));
-
-    cur->ixnum = ixnum;
-    cur->db = thedb->dbs[tblnum];
+    assert(cur->db);
 
     /* initialize the shadow, if any  */
     cur->shadtbl = osql_get_shadow_bydb(thd->sqlclntstate, cur->db);
 
-    if (ixnum == -1) {
+    if (cur->ixnum == -1) {
         if (is_stat2(cur->db->dbname) || is_stat4(cur->db->dbname)) {
             cur->cursor_class = CURSORCLASS_STAT24;
         } else
@@ -8034,7 +7637,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     } else {
         cur->cursor_class = CURSORCLASS_INDEX;
         cur->cursor_move = cursor_move_index;
-        cur->sc = cur->db->ixschema[ixnum];
+        cur->sc = cur->db->ixschema[cur->ixnum];
         cur->nCookFields = -1;
     }
 
@@ -8052,7 +7655,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     if (cur->blobs.numcblobs)
         free_blob_status_data(&cur->blobs);
 
-    cur->tblnum = tblnum;
+    cur->tblnum = cur->db->dbs_idx;
     if (cur->db == NULL) {
         /* this shouldn't happen */
        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: no cur->db\n");
@@ -8122,7 +7725,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     memset(&cur->blobs, 0, sizeof(blob_status_t));
 
     /* key */
-    if (ixnum == -1) {
+    if (cur->ixnum == -1) {
         Mem m;
         /* buffer just contains rrn */
         m.flags = MEM_Int;
@@ -8131,7 +7734,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         sz += len;                   /* need this much for the data */
         sz += sqlite3VarintLen(len); /* need this much for the header */
     } else {
-        sc = cur->db->ixschema[ixnum];
+        sc = cur->db->ixschema[cur->ixnum];
         sz = schema_var_size(sc);
     }
     cur->keybuf = malloc(sz);
@@ -10711,6 +10314,11 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
         pCur->is_btree_count = 0;
     }
     *pnEntry = count;
+
+    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
+                "Count(pCur %d)      = %s\n", pCur->cursorid,
+                sqlite3ErrStr(rc));
+
     return rc;
 }
 
@@ -11764,6 +11372,9 @@ unsigned long long comdb2_table_version(const char *tablename)
 {
     struct dbtable *db;
     unsigned long long ret;
+
+    if (is_tablename_queue(tablename, strlen(tablename)))
+        return 0;
 
     db = get_dbtable_by_name(tablename);
     if (!db) {

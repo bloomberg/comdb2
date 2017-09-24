@@ -21,8 +21,9 @@ enum {
 typedef struct trigger_reg {
     int elect_cookie;
     genid_t trigger_cookie;
-    int qlen;
-    char qname[0]; // payload will follow (qname + hostname)
+    int spname_len;
+    char spname[0]; // spname_len + 1
+    // hostname[]
 } trigger_reg_t;
 
 struct consumer;
@@ -37,25 +38,28 @@ int trigger_registered(const char *);
 void trigger_clear_hash(void);
 void trigger_stat(void);
 void trigger_reg_to_cpu(trigger_reg_t *);
+
 #define trigger_reg_to_net trigger_reg_to_cpu
 
-#define trigger_reg_sz(q_name)                                                 \
-    sizeof(trigger_reg_t) + strlen(q_name) + 1 + strlen(gbl_mynode) + 1
+#define trigger_hostname(t) ((t)->spname + (t)->spname_len + 1)
 
-#define trigger_reg_init(dest, q_name)                                         \
+#define trigger_reg_sz(sp_name)                                                \
+    sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_mynode) + 1
+
+#define trigger_reg_init(dest, sp_name)                                        \
     do {                                                                       \
-        dest = alloca(trigger_reg_sz(q_name));                                 \
+        dest = alloca(trigger_reg_sz(sp_name));                                \
         dest->elect_cookie = gbl_master_changes;                               \
         dest->trigger_cookie = get_id(thedb->bdb_env);                         \
-        dest->qlen = strlen(q_name);                                           \
-        strcpy(dest->qname, q_name);                                           \
-        strcpy(dest->qname + dest->qlen + 1, gbl_mynode);                      \
+        dest->spname_len = strlen(sp_name);                                    \
+        strcpy(dest->spname, sp_name);                                         \
+        strcpy(trigger_hostname(dest), gbl_mynode);                            \
         trigger_reg_to_net(dest);                                              \
     } while (0)
 
 #define trigger_reg_clone(dest, sz, src)                                       \
     do {                                                                       \
-        sz = trigger_reg_sz((src)->qname);                                     \
+        sz = trigger_reg_sz((src)->spname);                                    \
         dest = alloca(sz);                                                     \
         memcpy(dest, src, sz);                                                 \
     } while (0)

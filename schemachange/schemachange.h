@@ -60,16 +60,19 @@ struct dest {
 };
 
 struct schema_change_type {
-    int onstack; /* if 1 don't free */
-    int nothrevent;
+    /*  ==========    persistent members ========== */
+    unsigned long long rqid;
+    uuid_t uuid;
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
+    size_t table_len;
     char table[MAXTABLELEN]; /* name of table/queue */
+    size_t fname_len;
     char fname[256];         /* name of schema file for table schema change
                                 or client provided SP version */
+    size_t aname_len;
     char aname[256];         /* advised file name for .csc2 */
     int avgitemsz;           /* average item size for queue creation */
-    int pagesize;            /* pagesize override to use */
     int fastinit;            /* are we doing "fast init?" */
     int newdtastripe;        /* new dtastripe factor */
     int blobstripe;          /* 1 if we are converting to blobstripe */
@@ -77,26 +80,16 @@ struct schema_change_type {
     int addonly;
     int partialuprecs; /* 1 if we're doing partial-table upgrade */
     int fulluprecs;    /* 1 if we're doing full-table upgrade */
-    int addsp;
-    int delsp;
-    int defaultsp;
-    int showsp;
     int alteronly;
     int is_trigger;
-    int is_sfunc; /* lua scalar func */
-    int is_afunc; /* lua agg func */
-    char spname[MAX_SPNAME];
-    SBUF2 *sb; /* socket to sponsoring program */
-    int must_close_sb;
+    size_t newcsc2_len;
     char *newcsc2; /* malloced buffer containing the new schema */
     enum convert_scan_mode scanmode;
     int delay_commit;  /* no longer used, leaving for compatibility */
     int force_rebuild; /* force full rebuild of table */
     int force_dta_rebuild;
     int force_blob_rebuild;
-    int use_old_blobs_on_rebuild;
     int force; /* force schema change even if not ready */
-
     int headers; /* Add ondisk headers? -1 for no change*/
     int header_change;
     int compress;       /* new compression algorithm or -1 for no change */
@@ -111,29 +104,7 @@ struct schema_change_type {
     int convert_sleep;    /* Also for testing */
     int same_schema;      /* indicates that the schema hasn't changed, so
                              we can skip the schema reload steps */
-    int resume;           /* if we are trying to resume a schema change,
-                           * usually because there is a new master */
-    int retry_bad_genids; /* retrying a schema change (with full rebuild)
-                             because there are old genids in flight */
-    int dryrun;           /* comdb2sc.tsk -y */
-    int statistics;       /* comdb2sc.tsk <dbname> stat <table> */
-    int use_new_genids;   /* rebuilding old genids needs to
-                             get new genids to avoid name collission */
-    int drop_table;
     int dbnum;
-    int finalize;      /* Whether the schema change should be committed */
-    int finalize_only; /* only commit the schema change */
-
-    pthread_mutex_t mtx; /* mutex for thread sync */
-    int sc_rc;
-
-    struct ireq *iq;
-    void *tran; /* transactional schemachange */
-    unsigned long long rqid;
-    uuid_t uuid;
-
-    struct schema_change_type *sc_next;
-
 /* instead of failing to resume schemachange, generate sc plan
  * compatible with previous versions of comdb2 depending on which of
  * following flags are set */
@@ -149,7 +120,47 @@ struct schema_change_type {
     uint8_t index_to_rebuild; /* can use just a short for rebuildindex */
 
     char original_master_node[256];
+    int drop_table;
+
     LISTC_T(struct dest) dests;
+
+    size_t spname_len;
+    char spname[MAX_SPNAME];
+    int addsp;
+    int delsp;
+    int defaultsp;
+    int is_sfunc; /* lua scalar func */
+    int is_afunc; /* lua agg func */
+
+    /* ========== runtime members ========== */
+    int onstack; /* if 1 don't free */
+    int nothrevent;
+    int pagesize; /* pagesize override to use */
+    int showsp;
+    SBUF2 *sb; /* socket to sponsoring program */
+    int must_close_sb;
+    int use_old_blobs_on_rebuild;
+
+    int resume;           /* if we are trying to resume a schema change,
+                           * usually because there is a new master */
+    int retry_bad_genids; /* retrying a schema change (with full rebuild)
+                             because there are old genids in flight */
+    int dryrun;           /* comdb2sc.tsk -y */
+    int statistics;       /* comdb2sc.tsk <dbname> stat <table> */
+    int use_new_genids;   /* rebuilding old genids needs to
+                             get new genids to avoid name collission */
+    int finalize;      /* Whether the schema change should be committed */
+    int finalize_only; /* only commit the schema change */
+
+    pthread_mutex_t mtx; /* mutex for thread sync */
+    int sc_rc;
+
+    struct ireq *iq;
+    void *tran; /* transactional schemachange */
+
+    struct schema_change_type *sc_next;
+
+
 
     /*********************** temporary fields for in progress
      * schemachange************/
@@ -164,10 +175,6 @@ struct schema_change_type {
                            whole schema change (I will change this in the
                            future)*/
 
-    struct dbtable **timepart_dbs; /* support for timepart views */
-    struct dbtable **timepart_newdbs;
-    int timepart_nshards;
-
     /*********************** temporary fields for table upgrade
      * ************************/
     unsigned long long start_genid;
@@ -178,11 +185,6 @@ struct schema_change_type {
      * *****************************/
 
     size_t packed_len;
-    size_t table_len;
-    size_t fname_len;
-    size_t aname_len;
-    size_t spname_len;
-    size_t newcsc2_len;
 };
 
 struct ireq;

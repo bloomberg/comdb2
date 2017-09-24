@@ -5414,7 +5414,7 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset)
     return 0;
 }
 
-int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
+static int request_durable_lsn_from_master_int(bdb_state_type *bdb_state, 
         uint32_t *durable_file, uint32_t *durable_offset, 
         uint32_t *durable_gen) {
 
@@ -5522,5 +5522,51 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
 
     return 0;
 }
+
+// Piggy-back round trips to the master
+int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
+        uint32_t *durable_file, uint32_t *durable_offset, 
+        uint32_t *durable_gen) {
+
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+    static int count = 0;
+    static int outstanding_request = 0;
+    static int last_rcode;
+    static uint32_t last_durable_gen;
+    static uint32_t last_durable_file;
+    static uint32_t last_durable_offset;
+    int rc;
+
+    pthread_mutex_lock(&lk);
+    if (outstanding_request == 0) {
+        count++;
+        outstanding_request = 1;
+        pthread_mutex_unlock(&lk);
+        rc = request_durable_lsn_from_master_int(bdb_state,
+                durable_file, durable_offset, durable_gen);
+        pthread_mutex_lock(&lk);
+        last_rcode = rc;
+        *last_durable_file = *durable_file;
+        *last_durable_offset = *durable_offset;
+        *last_durable_gen = *durable_gen;
+        outstanding_request = 0;
+        pthread_cond_broadcast(&cond);
+        pthread_mutex_unlock(&lk);
+        return rc;
+    } else {
+        int req_count = count;
+        do {
+            pthread_cond_wait(&cond, &lk);
+        } while (outstanding_request && count == req_count);
+        *durable_file = *last_durable_file;
+        *durable_offset = *last_durable_offset;
+        *durable_gen = *last_durable_gen;
+        rc = last_rcode;
+        pthread_mutex_unlock(&lk);
+        return rc;
+    }
+}
+
 
 

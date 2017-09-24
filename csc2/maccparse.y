@@ -134,7 +134,7 @@ ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_cons
                 | T_CON_ON T_CON_UPDATE T_RESTRICT ctmodifiers        { set_constraint_mod(0,0,0); }
                 | T_CON_ON T_CON_DELETE T_CASCADE ctmodifiers         { set_constraint_mod(0,1,1); }
                 | T_CON_ON T_CON_DELETE T_RESTRICT ctmodifiers        { set_constraint_mod(0,1,0); }
-                |
+                | /* %empty */
                 ;
 
 cnstrtstart:      string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
@@ -142,7 +142,7 @@ cnstrtstart:      string '-' T_GT { end_constraint_list(); start_constraint_list
                 ;
 
 cnstrtdef:      cnstrtstart cnstrtbllist ctmodifiers cnstrtdef { /*end_constraint_list(); */}
-                | 
+                | /* %empty */ 
                 ;
 
                 ;
@@ -150,7 +150,7 @@ cnstrtbllist:     cnstrtbllist T_LT string ':' string T_GT  {  add_constraint($3
                 | cnstrtbllist string ':' string  {  add_constraint($2,$4); }
                 | cnstrtbllist varname ':' varname  {  add_constraint($2,$4); }
                 | cnstrtbllist cnstrtstart
-                |
+                | /* %empty */
                 ;
                
 
@@ -172,7 +172,7 @@ cnstdef: varname '=' number ',' comment cnstdef { add_constant($1, $3.number, 0)
          | T_PRIVATE  varname '=' number ',' comment cnstdef { add_constant($2, $4.number, 1);}
          | T_PUBLIC  varname '=' number           comment { add_constant($2, $4.number, 0);}
          | T_PRIVATE varname '=' number           comment { add_constant($2, $4.number, 1);}
-         |
+         | /* %empty */
          ;
 
 fieldopts: T_FLD_STRDEFAULT '=' number fieldopts          { add_fldopt(FLDOPT_DBSTORE,CLIENT_INT, $3.numstr); }
@@ -185,8 +185,7 @@ fieldopts: T_FLD_STRDEFAULT '=' number fieldopts          { add_fldopt(FLDOPT_DB
            | T_FLD_LDDEFAULT '=' sqlhexstr fieldopts         { add_fldopt(FLDOPT_DBLOAD,CLIENT_BYTEARRAY,$3); }
            | T_FLD_NULL '=' yesno fieldopts               { int f=$3; add_fldopt(FLDOPT_NULL,CLIENT_INT,&f); }
            | T_FLD_PADDING '=' number fieldopts           { int f=$3.number; add_fldopt(FLDOPT_PADDING,CLIENT_INT,&f); }
-
-           |
+           | /* %empty */
            ;
 	 
 /* recstruct: defines a record
@@ -217,7 +216,7 @@ recstruct:	recstart '{' recdef '}' { end_table();}
 
 recdef:
 	typedec recdef
-        |	/* nothing */
+        | /* %empty */
         ;
 
 validctype:     T_INTEGER2    { $$=T_INTEGER2;}
@@ -288,7 +287,7 @@ cstart:         '[' number ']' cstart         {  lastidx++; add_array($2.number,
 						  any_errors++;
 						}
                                               }
-                | /* nothing */
+                | /* %empty */
                 ;
 
 
@@ -336,7 +335,7 @@ comment:	T_COMMENT
 			$$=remem_com;
 			}
 
-	|		/*nothing*/     {$$=blankchar;}
+	| /* %empty */ {$$=blankchar;}
 		;
 
 
@@ -368,7 +367,6 @@ comment:	T_COMMENT
 */
 
 keystruct:	T_KEYS '{' multikeydef '}' 
-        |
 		;
 
 multikeydef:	keydef multikeydef
@@ -397,7 +395,7 @@ where:	T_WHERE
             }
             $$=yylval.where;
             }
-	|		/*nothing*/     {$$=blankchar;}
+	| /* %empty */ {$$=blankchar;}
 		;
 
 exprtype: '(' validctype ')'
@@ -411,7 +409,7 @@ exprtype: '(' validctype ')'
         ;
 
 multikeyflags:	keyflags multikeyflags
-		|		/* nothing */
+		| /* %empty */
 		;
 
 

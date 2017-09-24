@@ -1,3 +1,9 @@
+# This file is included for every individual test
+# Many of the variables here are set in Makefile in the comdb2/tests/ directory
+# if they are not set it means that we are running make from within 
+# the individual test directory thus we will need to define them
+
+
 ifeq ($(TESTSROOTDIR),)
   # TESTSROOTDIR is not set so we assume ths was called from within 
   # a specific test directory (will check assumption few lines later)
@@ -27,13 +33,18 @@ export TMPDIR=$(TESTDIR)/tmp
 export CDB2_CONFIG=$(abspath $(DBDIR)/comdb2db.cfg)
 export CDB2_OPTIONS=--cdb2cfg $(CDB2_CONFIG)
 export COMDB2_ROOT=$(TESTDIR)
-export comdb2ar=$(SRCHOME)/comdb2ar
-export comdb2task=$(SRCHOME)/comdb2
 export COMDB2_UNITTEST?=0
+
+export COMDB2_EXE?=$(SRCHOME)/comdb2
+export COMDB2AR_EXE?=$(SRCHOME)/comdb2ar
+export CDB2SQL_EXE?=$(SRCHOME)/cdb2sql
+export COPYCOMDB2_EXE?=$(SRCHOME)/db/copycomdb2
+export CDB2_SQLREPLAY_EXE?=$(SRCHOME)/cdb2_sqlreplay
+export PMUX_EXE?=$(SRCHOME)/pmux
 
 ifeq ($(COMDB2MD5SUM),)
   # record md5sum so we can verify from setup of each individual test
-  export COMDB2MD5SUM:=$(shell md5sum ${SRCHOME}/comdb2 | cut -d ' ' -f1)
+  export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
 endif
 
 
@@ -45,7 +56,7 @@ test:: tool unit
 clean::
 	rm -f *.res
 
-setup:
+setup: tool
 	@mkdir -p ${TESTDIR}/logs/
 	@$(TESTSROOTDIR)/setup -debug
 	@echo Ready to run

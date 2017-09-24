@@ -11,6 +11,9 @@ if [[ -z "$dbname" ]] ; then
   exit 1
 fi
 
+LOCTMPDIR=$TMPDIR/$dbname
+mkdir $LOCTMPDIR
+
 if [[ -n "$CLUSTER" ]]; then
     export machine=$(echo $CLUSTER | awk '{print $1}')
 else
@@ -54,12 +57,12 @@ function force_checkpoint {
 function make_base {
   [[ $debug == 1 ]] && set -x
   force_checkpoint
-  basename=${TMPDIR}/backups/t1-1_base.tar
+  basename=${LOCTMPDIR}/backups/t1-1_base.tar
   backuplist+=(t1-1_base.tar)
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
+      ssh $machine "${SRCHOME}/comdb2ar c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $basename < /dev/null
   else
-      comdb2ar c -I create -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
+      comdb2ar c -I create -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $basename
   fi
   echo "~~~~~~~~~~"
   echo $basename
@@ -73,14 +76,14 @@ function make_backup {
   fullbackupname=$1
   backupname=${fullbackupname%.*}.tar
   backuplist+=($backupname)
-  backuploc=${TMPDIR}/backups/${backupname}
+  backuploc=${LOCTMPDIR}/backups/${backupname}
   if [[ -n "${CLUSTER}" ]]; then
-      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
+      ssh $machine "${SRCHOME}/comdb2ar c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl" > $backuploc < /dev/null
   else
-      comdb2ar c -I inc -b ${TMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
+      comdb2ar c -I inc -b ${LOCTMPDIR}/increment ${DBDIR}/${dbname}.lrl > $backuploc
   fi
   echo "~~~~~~~~~~"
-  echo ${TMPDIR}/backups/${backupname}
+  echo ${LOCTMPDIR}/backups/${backupname}
   echo "  DONE WITH INCREMENT"
   echo " "
 }
@@ -90,15 +93,15 @@ function test_restoredb {
   testname=$1
   restorecmd="cat "
   for i in $(seq 0 $2); do
-    restorecmd="$restorecmd ${TMPDIR}/backups/${backuplist[i]} "
+    restorecmd="$restorecmd ${LOCTMPDIR}/backups/${backuplist[i]} "
   done
 
   echo $restorecmd
-  $restorecmd | comdb2ar x -x $comdb2task -I restore ${TMPDIR}/restore/ ${TMPDIR}/restore || failexit "Restore Failed"
-  egrep -v "cluster nodes" ${TMPDIR}/restore/${dbname}.lrl > ${TMPDIR}/restore/${dbname}.single.lrl
+  $restorecmd | comdb2ar x -x $COMDB2_EXE -I restore ${LOCTMPDIR}/restore/ ${LOCTMPDIR}/restore || failexit "Restore Failed"
+  egrep -v "cluster nodes" ${LOCTMPDIR}/restore/${dbname}.lrl > ${LOCTMPDIR}/restore/${dbname}.single.lrl
 
   echo "~~~~~~~~~~"
-  $comdb2task ${dbname}_restore --lrl ${TMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
+  $COMDB2_EXE ${dbname}_restore --lrl ${LOCTMPDIR}/restore/${dbname}.single.lrl -pidfile ${TMPDIR}/${dbname}_restore.pid &
   # wait for db to launch
   count=0
   cdb2sql ${dbname}_restore local "select 1" > ./sqloutput 2>&1
@@ -133,14 +136,14 @@ function test_restoredb {
   echo " "
 
   kill -9 $(cat ${TMPDIR}/${dbname}_restore.pid)
-  rm -rf ${TMPDIR}/restore/*
+  rm -rf ${LOCTMPDIR}/restore/*
 }
 
 function resetdb {
   [[ $debug == 1 ]] && set -x
   backuplist=()
-  rm -rf ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
-  mkdir -p ${TMPDIR}/backups ${TMPDIR}/restore ${TMPDIR}/increment
+  rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
+  mkdir -p ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
 
   cdb2sql ${CDB2_OPTIONS} $dbname default "DROP TABLE t1"
   force_checkpoint

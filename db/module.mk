@@ -22,7 +22,7 @@ db_SOURCES:=db/comdb2.c db/endian.c db/handle_buf.c db/sltdbt.c		\
     db/comdb2uuid.c db/printlog.c db/autoanalyze.c db/marshal.c		\
     db/sqllog.c db/llops.c db/rowlocks_bench.c db/plugin.c db/views.c	\
     db/views_cron.c db/views_persist.c db/trigger.c db/bpfunc.c		\
-    db/ssl_bend.c db/db_tunables.c db/config.c
+    db/sqlmaster.c db/ssl_bend.c db/db_tunables.c db/config.c
 db_OBJS:=$(db_SOURCES:.c=.o)
 
 # Defined in the top level makefile
@@ -41,7 +41,7 @@ db_CPPFLAGS:=-I$(SRCHOME)/db -DCOMDB2_DB_COMPILE -DMSPACES		\
 $(SQLITE_FLAGS) -I$(SRCHOME)/berkdb/build -I$(SRCHOME)/berkdb/dbinc	\
 -I$(SRCHOME)/berkdb/dbinc_auto -I$(SRCHOME)/schemachange		\
 -I$(SRCHOME)/berkdb -I$(SRCHOME)/bbinc -I$(SRCHOME)/cson		\
--I$(SRCHOME)/bb -I$(SRCHOME)/sockpool -I.
+-I$(SRCHOME)/bb -I$(SRCHOME)/sockpool -I. $(OPTBBINCLUDE)
 
 VERSION?=$(shell dpkg-parsechangelog | grep Version | cut -d' ' -f2 | sed 's/-.*//')
 

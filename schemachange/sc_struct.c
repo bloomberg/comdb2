@@ -977,3 +977,50 @@ int schema_change_headers(struct schema_change_type *s)
 {
     return s->header_change;
 }
+
+struct schema_change_type *
+clone_schemachange_type(struct schema_change_type *sc)
+{
+    struct schema_change_type *newsc;
+    size_t sc_len = schemachange_packed_size(sc);
+    uint8_t *p_buf, *p_buf_end, *buf;
+
+    p_buf = buf = calloc(1, sc_len);
+    if (!p_buf)
+        return NULL;
+
+    p_buf_end = p_buf + sc_len;
+
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+    if (!p_buf) {
+        free(buf);
+        return NULL;
+    }
+
+    newsc = new_schemachange_type();
+    if (!newsc) {
+        free(buf);
+        return NULL;
+    }
+
+    p_buf = buf;
+    p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
+
+    newsc->nothrevent = sc->nothrevent;
+    newsc->pagesize = sc->pagesize;
+    newsc->showsp = sc->showsp;
+    newsc->retry_bad_genids = sc->retry_bad_genids;
+    newsc->dryrun = sc->dryrun;
+    newsc->use_new_genids = newsc->use_new_genids;
+    newsc->finalize = sc->finalize;
+    newsc->finalize_only = sc->finalize_only;
+
+    if (!p_buf) {
+        free(newsc);
+        free(buf);
+        return NULL;
+    }
+
+    free(buf);
+    return newsc;
+}

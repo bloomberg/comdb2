@@ -346,6 +346,7 @@ int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
+    iq->use_handle = thedb->bdb_env;
     return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
 }
 
@@ -3197,7 +3198,7 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
     rc = reload_schema(table, csc2, NULL);
 
     rc2 = create_sqlmaster_records(NULL);
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     net_ack_message(hndl, rc || rc2);
 
@@ -3580,8 +3581,11 @@ int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
     struct start_sc *sc;
     int len;
     const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
+    if (from == NULL) {
+        from = "unknown";
+    }
 
-    len = offsetof(struct start_sc, host) + strlen(gbl_mynode) + 1;
+    len = offsetof(struct start_sc, host) + strlen(from) + 1;
 
     sc = alloca(len);
     sc->seed = flibc_htonll(seed);
@@ -5787,7 +5791,7 @@ void print_tableparams()
 
         char *tableparams = NULL;
         int tbplen = 0;
-        bdb_get_table_csonparameters(db->dbname, &tableparams, &tbplen);
+        bdb_get_table_csonparameters(NULL, db->dbname, &tableparams, &tbplen);
         if (tableparams) {
             logmsg(LOGMSG_USER, " tableparams: %10s", tableparams);
             free(tableparams);
@@ -6191,6 +6195,37 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     }
 
     return version;
+}
+
+/**
+ * Set schema for a specific table, used for pinning table to certain versions
+ * upon re-creation (for example)
+ *
+ */
+int table_version_set(tran_type *tran, const char *tablename,
+                      unsigned long long version)
+{
+    struct dbtable *db;
+    unsigned long long ret;
+    int rc;
+    int bdberr = 0;
+
+    if (is_tablename_queue(tablename, strlen(tablename)))
+        return 0;
+
+    db = get_dbtable_by_name(tablename);
+    if (!db) {
+        ctrace("table unknown \"%s\"\n", tablename);
+        return -1;
+    }
+
+    rc = bdb_table_version_update(db->handle, tran, version, &bdberr);
+    if (!rc && bdberr)
+        rc = -1;
+
+    db->tableversion = version;
+
+    return rc;
 }
 
 void *get_bdb_env(void) { return thedb->bdb_env; }

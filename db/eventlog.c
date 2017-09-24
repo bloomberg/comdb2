@@ -48,6 +48,7 @@ int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
 static void eventlog_roll(void);
+#define min(x, y) ((x) < (y) ? (x) : (y))
 
 struct sqltrack {
     char fingerprint[16];
@@ -109,9 +110,8 @@ static cson_output_opt opt = {.indentation = 0,
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
-    if (!eventlog_detailed) return;
+    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
+        return;
 
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
@@ -120,6 +120,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
     int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
     cson_array_reserve(arr, nfields);
+    CDB2SQLQUERY *sqlquery = clnt->sql_query;
 
     int blobno = 0;
     for (int i = 0; i < nfields; i++) {
@@ -134,8 +135,8 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             f = &params->member[i];
             buf = (char *)clnt->tagbuf;
         } else {
-            f = convert_client_field(clnt->sql_query->bindvars[i], &c_fld);
-            buf = clnt->sql_query->bindvars[i]->value.data;
+            f = convert_client_field(sqlquery->bindvars[i], &c_fld);
+            buf = sqlquery->bindvars[i]->value.data;
         }
 
         /* name of bound parameter */
@@ -171,14 +172,20 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             break;
         case CLIENT_REAL: {
             /* set type */
+            double dval;
             switch (dlen) {
-            case 4: strtype = "float"; break;
-            case 8: strtype = "doublefloat"; break;
+            case 4:
+                strtype = "float";
+                dval = *(float *)(buf + f->offset);
+                break;
+            case 8:
+                strtype = "doublefloat";
+                dval = *(double *)(buf + f->offset);
+                break;
             }
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
-            double dval = *(double *)(buf + f->offset);
             cson_object_set(bobj, "value", cson_value_new_double(dval));
             break;
         }
@@ -202,7 +209,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_BYTEARRAY:
         case CLIENT_BLOB:
         case CLIENT_VUTF8: {
-            void *byteval;
+            void *byteval = NULL;
             int datalen;
             int rc = 0;
 
@@ -218,12 +225,26 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             } else {
                 if (params) {
                     rc = get_blob_field(blobno, clnt, &byteval, &datalen);
-                    blobno++;
+                } else {
+                    byteval = buf;
+                    datalen = f->datalen;
                 }
+                if (rc == 0)
+                    blobno++;
             }
-            if (rc == 0)
+            if (rc == 0) {
+                datalen = min(datalen, 1024); /* cap the datalen logged */
+                const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
+                char *expanded_buf = malloc(exp_len);
+                expanded_buf[0] = 'x';
+                expanded_buf[1] = '\'';
+                expanded_buf[2 + datalen * 2] = '\'';
+                expanded_buf[3 + datalen * 2] = '\0';
+                util_tohex(&expanded_buf[2], byteval, datalen);
                 cson_object_set(bobj, "value",
-                                cson_value_new_string(byteval, datalen));
+                                cson_value_new_string(expanded_buf, exp_len));
+                free(expanded_buf);
+            }
             break;
         }
         case CLIENT_DATETIME: {
@@ -271,6 +292,8 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
+        default:
+            assert(false && "Unknown type being bound");
         }
     }
 }
@@ -360,8 +383,8 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     if (!logger->path || logger->path->n_components == 0) return;
 
@@ -388,8 +411,8 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     static const char *hexchars = "0123456789abcdef";
     pthread_mutex_lock(&eventlog_lk);
@@ -487,13 +510,13 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
+
     int sz = 0;
     char *fname;
     cson_value *val;
     cson_object *obj;
-
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
 
     pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
@@ -587,7 +610,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         char *s;
         tok = segtok(line, lline, toff, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected number of files to keep\n");
+            logmsg(LOGMSG_ERROR, "Expected number of bytes in a log file\n");
             return;
         }
         s = tokdup(tok, ltok);

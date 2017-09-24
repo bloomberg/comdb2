@@ -151,7 +151,6 @@ insert_records()
         fi
         # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
-        sleep 0.01
     done
     echo "done inserting round $nout"
 }
@@ -172,7 +171,6 @@ update_records()
             continue
         fi
         let j=j+1
-        sleep 0.01
     done
     echo "done updating round $nout"
 }
@@ -183,7 +181,7 @@ delete_records()
     nstop=$2
     let nout=nout+1
     delfl=delete${nout}.out
-    echo "Updating $((nstop-j+1)) records ($j to $nstop)."
+    echo "Deleting $((nstop-j+1)) records ($j to $nstop)."
     echo "" > $delfl
 
     while [[ $j -le $nstop ]]; do 
@@ -193,7 +191,6 @@ delete_records()
             continue
         fi
         let j=j+1
-        sleep 0.01
     done
     echo "done updating round $nout"
 }
@@ -270,6 +267,10 @@ delete_records $((INITNUMREC+1)) $NEWNUMREC
 assertcnt $INITNUMREC
 
 
+echo "Now call task that uses cdb2api to ins/upd/del"
+./cdb2api_caller $dbnm > cdb2api_caller.out
 
+res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
+assertres $res 1
 
 echo "Success"

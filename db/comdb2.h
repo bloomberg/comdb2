@@ -1925,11 +1925,6 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 struct dbtable *getdbbynum(int num);           /*look up managed db's by number*/
 struct dbtable *get_dbtable_by_name(const char *name); /*look up managed db's by name*/
 struct dbtable *
-getfdbbyname(const char *name); /*look up managed foreign db's by name*/
-struct dbtable *getfdbbynameenv(
-    struct dbenv *dbenv,
-    const char *name); /* look up foreign db by name with given env */
-struct dbtable *
 getqueuebyname(const char *name); /*look up managed queue db's by name*/
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
 
@@ -2497,10 +2492,10 @@ int create_sqlmaster_records(void *tran);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);
 
-void get_copy_rootpages_nolock(struct sql_thread *thd);
-void get_copy_rootpages(struct sql_thread *thd);
+int get_copy_rootpages_nolock(struct sql_thread *thd);
+int get_copy_rootpages(struct sql_thread *thd);
 void free_copy_rootpages(struct sql_thread *thd);
-void create_master_tables(void);
+int create_sqlite_master(void);
 int new_indexes_syntax_check(struct ireq *iq);
 void handle_isql(struct dbtable *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct dbtable *db);
@@ -2512,10 +2507,9 @@ void sql_dump_running_statements(void);
 char *stradd(char **s1, char *s2, int freeit);
 void dbgtrace(int, char *, ...);
 
-int get_sqlite_entry_size(int n);
-void *get_sqlite_entry(int n);
-void get_sqlite_tblnum_and_ixnum(struct sql_thread *thd, int iTable,
-                                 int *tblnum, int *ixnum);
+int get_sqlite_entry_size(struct sql_thread *thd, int n);
+void *get_sqlite_entry(struct sql_thread *thd, int n);
+struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
 
@@ -3571,6 +3565,12 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr);
 unsigned long long table_version_select(struct dbtable *db, tran_type *tran);
 
 /**
+ *  Set the version to a specific version, required by timepartition
+ *
+ */
+int table_version_set(tran_type *tran, const char *tablename,
+                      unsigned long long version);
+/**
  * Interface between partition roller and schema change */
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *err);
@@ -3645,5 +3645,10 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
+
+/**
+ * check if a tablename is a queue
+ */
+int is_tablename_queue(const char *tablename, int len);
 
 #endif /* !INCLUDED_COMDB2_H */
