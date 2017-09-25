@@ -620,8 +620,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     if (newdb->version == 1) {
         /* newdb's version has been reset */
         bdberr = bdb_reset_csc2_version(transac, db->dbname, db->version);
-        if (bdberr != BDBERR_NOERROR)
-            goto backout;
+        if (bdberr != BDBERR_NOERROR) goto backout;
     }
 
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
@@ -649,8 +648,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         rc = bdb_commit_temp_file_version_all(newdb->handle, transac, &bdberr);
     }
 
-    if (rc)
-        goto backout;
+    if (rc) goto backout;
 
     /* delete any new file versions this table has */
     if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||

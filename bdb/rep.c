@@ -2737,8 +2737,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s became incoherent, not waiting\n",
-                   host);
+            logmsg(LOGMSG_USER, " %s became incoherent, not waiting\n", host);
         }
         return -2;
     }
@@ -2822,7 +2821,8 @@ again:
             trigger_unregister_node(host);
             if (bdb_state->attr->wait_for_seqnum_trace) {
                 logmsg(LOGMSG_USER, "err waiting for seqnum: host %s no "
-                        "longer connected\n", host);
+                                    "longer connected\n",
+                       host);
             }
             return -1;
         }
@@ -3290,10 +3290,11 @@ done_wait:
              * seqnums can race against each other.  If we got a majority of 
              * these during the commit we are okay */
             if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
-                logmsg(LOGMSG_ERROR, "ERROR: calculate_durable_lsn trails seqnum, "
-                                "but this is durable (%d:%d vs %d:%d)?\n", 
-                                calc_lsn.file, calc_lsn.offset, seqnum->lsn.file, 
-                                seqnum->lsn.offset);
+                logmsg(LOGMSG_ERROR,
+                       "ERROR: calculate_durable_lsn trails seqnum, "
+                       "but this is durable (%d:%d vs %d:%d)?\n",
+                       calc_lsn.file, calc_lsn.offset, seqnum->lsn.file,
+                       seqnum->lsn.offset);
             }
             logmsg(LOGMSG_USER, 
                 "Last txn was %s, tot_connected=%d tot_acked=%d, "
@@ -5413,17 +5414,17 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset)
     return 0;
 }
 
-// Piggy-backing durable LSN requests doesn't work: each thread must make a 
+// Piggy-backing durable LSN requests doesn't work: each thread must make a
 // SEPARATE request for a durable LSN.  Here's the counter-example:
 //
-// 1. Thread A makes a request for a durable LSN from the master - it goes to 
+// 1. Thread A makes a request for a durable LSN from the master - it goes to
 //    the master and is stalled on it's way back to the replicant
-// 2. Thread B writes a record durably 
+// 2. Thread B writes a record durably
 // 3. Thread C make a request for a durable LSN- instead of going to the master
-//    directly, it gloms onto the already outstanding durable LSN request, and 
+//    directly, it gloms onto the already outstanding durable LSN request, and
 //    retrieves the previous durable LSN
-//    
-// .. Because Thread C started AFTER Thread B, it should see a durable LSN 
+//
+// .. Because Thread C started AFTER Thread B, it should see a durable LSN
 //    corresponding to B's writes
 //
 

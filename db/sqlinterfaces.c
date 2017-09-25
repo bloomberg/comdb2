@@ -5648,8 +5648,7 @@ check_version:
         }
     }
     clnt->no_transaction = 0;
-    if (got_views_lock)
-        views_unlock();
+    if (got_views_lock) views_unlock();
 }
 
 static void clean_queries_not_cached_in_srs(struct sqlclntstate *clnt)

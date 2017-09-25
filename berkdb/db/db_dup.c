@@ -189,13 +189,13 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 
 	dbp = dbc->dbp;
 
-	/* If there is an active Lua trigger/consumer, wake it up. */
-	struct __db_trigger_subscription *t = dbp->trigger_subscription;
-	if (t && t->active && (indx & 1)) {
-		pthread_cond_signal(&t->cond);
-	}
+        /* If there is an active Lua trigger/consumer, wake it up. */
+        struct __db_trigger_subscription *t = dbp->trigger_subscription;
+        if (t && t->active && (indx & 1)) {
+            pthread_cond_signal(&t->cond);
+        }
 
-	/*
+        /*
 	 * Put a single item onto a page.  The logic figuring out where to
 	 * insert and whether it fits is handled in the caller.  All we do
 	 * here is manage the page shuffling.  We cheat a little bit in that

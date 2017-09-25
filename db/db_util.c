@@ -635,8 +635,7 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
 
 static inline char hex(unsigned char a)
 {
-    if (a < 10)
-        return '0' + a;
+    if (a < 10) return '0' + a;
     return 'a' + (a - 10);
 }
 
@@ -651,7 +650,7 @@ static void hexdumpbuf(char *key, int keylen, char **buf)
     *buf = output;
 }
 
-/* Return a hex string 
+/* Return a hex string
  * output buffer should be appropriately sized */
 uint8_t *util_tohex(uint8_t *out, const uint8_t *in, size_t len)
 {

@@ -7,15 +7,16 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import com.jcraft.jsch.*;
 
-
-
 /**
  * Hello world!
  *
  */
-public class App 
+public class App
 {
-    public static void main( String[] args ) throws SQLException,ClassNotFoundException,InterruptedException,JSchException,IOException {
+    public static void main(String[] args)
+        throws SQLException, ClassNotFoundException, InterruptedException,
+               JSchException, IOException
+    {
 
         InsertTest insertTest = new InsertTest();
         insertTest.runInsertTest();

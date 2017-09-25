@@ -7,11 +7,11 @@
 for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
 
 email="mhannum72@gmail.com mhannum@bloomberg.net"
-#tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
-mailperiod=500
+tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
+mailperiod=100
 
 # I saw a failure on this i haven't been able to reproduce
-tests="jepsen_sets_nemesis"
+# tests="jepsen_sets_nemesis"
 
 i=0 
 
@@ -91,7 +91,6 @@ while :; do
 
             if [[ $err == 1 ]]; then
 
-
                 echo "ERROR IN ITERATION $i" 
                 err=1
                 for addr in $email ; do
@@ -102,6 +101,7 @@ while :; do
         fi
     done
 
+    # Mail every mod 1 so i know the email part of this is working after the first iteration
     if [[ $(( i % mailperiod )) == 1 ]]; then 
 
         print_status > body.txt

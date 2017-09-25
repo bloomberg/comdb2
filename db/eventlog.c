@@ -110,8 +110,7 @@ static cson_output_opt opt = {.indentation = 0,
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
-    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
-        return;
+    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed) return;
 
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
@@ -229,8 +228,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                     byteval = buf;
                     datalen = f->datalen;
                 }
-                if (rc == 0)
-                    blobno++;
+                if (rc == 0) blobno++;
             }
             if (rc == 0) {
                 datalen = min(datalen, 1024); /* cap the datalen logged */
@@ -292,8 +290,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
-        default:
-            assert(false && "Unknown type being bound");
+        default: assert(false && "Unknown type being bound");
         }
     }
 }
@@ -383,8 +380,7 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
-        return;
+    if (eventlog == NULL || !eventlog_enabled) return;
 
     if (!logger->path || logger->path->n_components == 0) return;
 
@@ -411,8 +407,7 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
-        return;
+    if (eventlog == NULL || !eventlog_enabled) return;
 
     static const char *hexchars = "0123456789abcdef";
     pthread_mutex_lock(&eventlog_lk);
@@ -510,8 +505,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled)
-        return;
+    if (eventlog == NULL || !eventlog_enabled) return;
 
     int sz = 0;
     char *fname;

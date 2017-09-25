@@ -952,8 +952,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         *num_hosts = 0;
     if (num_db_hosts)
         *num_db_hosts = 0;
-    if (master)
-        *master = -1;
+    if (master) *master = -1;
 
     if (CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,

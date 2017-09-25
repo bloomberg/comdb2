@@ -31,13 +31,11 @@ static int destroy_sqlite_master(master_entry_t *arr, int arr_len)
     master_entry_t *ent;
     int i;
 
-    if (!arr)
-        return 0;
+    if (!arr) return 0;
 
     for (i = 0; i < arr_len; i++) {
         ent = &arr[i];
-        if (ent->ixnum == -1)
-            free(ent->tblname);
+        if (ent->ixnum == -1) free(ent->tblname);
         free(ent->entry);
     }
 
@@ -141,8 +139,7 @@ inline static int serialize_mems(Mem *m, int nmems, char **out, int *outlen)
 
     *outlen = datasz + hdrsz;
     *out = malloc(*outlen);
-    if (!*out)
-        return -1;
+    if (!*out) return -1;
 
     hdrbuf = (char *)*out;
     dtabuf = (char *)*out + hdrsz;
@@ -210,8 +207,7 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
     fill_mem_str(&mems[5], csc2_schema);
 
     rc = serialize_mems(mems, 6, &rec, sz);
-    if (rc)
-        return NULL;
+    if (rc) return NULL;
 
     return rec;
 }
@@ -232,11 +228,9 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
     }
 
     db = get_dbtable_by_name(tblname);
-    if (!db)
-        return NULL;
+    if (!db) return NULL;
 
-    if (ixnum)
-        *ixnum = thd->rootpages[iTable - RTPAGE_START].ixnum;
+    if (ixnum) *ixnum = thd->rootpages[iTable - RTPAGE_START].ixnum;
 
     return db;
 }
@@ -259,17 +253,14 @@ int get_copy_rootpages_nolock(struct sql_thread *thd)
         destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
 
     thd->rootpages = calloc(sqlmaster_nentries, sizeof(master_entry_t));
-    if (!thd->rootpages)
-        return -1;
+    if (!thd->rootpages) return -1;
     memcpy(thd->rootpages, sqlmaster,
            sqlmaster_nentries * sizeof(master_entry_t));
     for (i = 0; i < sqlmaster_nentries; i++) {
         thd->rootpages[i].tblname = strdup(sqlmaster[i].tblname);
-        if (!thd->rootpages[i].tblname)
-            return -1;
+        if (!thd->rootpages[i].tblname) return -1;
         thd->rootpages[i].entry = malloc(thd->rootpages[i].entry_size);
-        if (!thd->rootpages[i].entry)
-            return -1;
+        if (!thd->rootpages[i].entry) return -1;
         memcpy(thd->rootpages[i].entry, sqlmaster[i].entry,
                thd->rootpages[i].entry_size);
     }

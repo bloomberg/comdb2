@@ -473,8 +473,8 @@ static int empty_register_table(void)
     if (rc) {
         if (debug_trace)
             tdprintf(stderr, db, __func__, __LINE__,
-                    "delete from register where 1 failed: %d %s\n", rc,
-                    cdb2_errstr(db));
+                     "delete from register where 1 failed: %d %s\n", rc,
+                     cdb2_errstr(db));
     }
 
     cdb2_close(db);
@@ -562,7 +562,7 @@ int main(int argc, char *argv[])
     cnt = 0;
     while ((rc = empty_register_table())) {
         cnt++;
-        fprintf(stderr, "Error emptying register table count %d retrying\n", 
+        fprintf(stderr, "Error emptying register table count %d retrying\n",
                 cnt);
         sleep(1);
     }
