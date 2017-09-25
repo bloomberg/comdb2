@@ -47,6 +47,9 @@ setattr STARTUP_SYNC_ATTEMPTS -1
 # Perfect checkpoints is also causing crashes.  Disable for now.
 perfect_ckp 0
 
+# Enable wait-for-seqnum trace
+setattr WAIT_FOR_SEQNUM_TRACE 1
+
 # Don't run the watchdog thread
 nowatch
 
