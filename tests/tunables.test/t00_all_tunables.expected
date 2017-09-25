@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=899)
+(TUNABLES_COUNT=900)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -804,6 +804,7 @@
 (name='sqlsortermem', description='Maximum amount of memory to be allocated to the sqlite sorter. (Default: 314572800)', type='INTEGER', value='314572800', read_only='Y')
 (name='sqlsortermult', description='', type='INTEGER', value='1', read_only='Y')
 (name='sqlwrtimeout', description='Set timeout for writing to an SQL connection. (Default: 10000ms)', type='INTEGER', value='10000', read_only='Y')
+(name='stable_rootpages_test', description='Delay sql processing to allow a schema change to finish', type='BOOLEAN', value='OFF', read_only='N')
 (name='stack_disable', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='stack_enable', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='stack_on_deadlock', description='stack_on_deadlock', type='BOOLEAN', value='OFF', read_only='N')

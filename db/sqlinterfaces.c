@@ -118,6 +118,7 @@ extern int gbl_use_appsock_as_sqlthread;
 extern int g_osql_max_trans;
 extern int gbl_fdb_track;
 extern int gbl_return_long_column_names;
+extern int gbl_stable_rootpages_test;
 
 /* Once and for all:
 
@@ -4056,6 +4057,16 @@ done:
     }
 
     unlock_schema_lk();
+
+    if (gbl_stable_rootpages_test) {
+        static int skip = 0;
+        if (!skip) {
+            skip = 1;
+            sleep(60);
+        } else
+            skip = 0;
+    }
+
     clnt->no_transaction = 0;
 
     if(!rc && !rec->stmt) rc = FSQL_PREPARE;
