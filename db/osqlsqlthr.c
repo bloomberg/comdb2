@@ -1302,8 +1302,10 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
     }
 
     int send_cnonce = get_high_availability(clnt);
-    if(bdb->attr->always_send_cnonce)
+    extern int gbl_always_send_cnonce;
+    if(gbl_always_send_cnonce)
         send_cnonce = true;
+
     if (osql->rqid == OSQL_RQID_USE_UUID &&
         clnt->sql_query && clnt->sql_query->has_cnonce && send_cnonce &&
         (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN) && 

@@ -3924,9 +3924,8 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		sh_locker->tid = pthread_self();
 
 		if (gbl_print_deadlock_cycles) {
-			extern pthread_key_t osql_snap_info;
-			snap_uid_t *si = pthread_getspecific(osql_snap_info);
-			if(si) sh_locker->snap_info = si;
+			extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
+			if(osql_snap_info) sh_locker->snap_info = osql_snap_info;
 		}
 	}
 

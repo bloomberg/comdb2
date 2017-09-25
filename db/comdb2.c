@@ -206,7 +206,6 @@ int handle_buf_bbipc(struct dbenv *, uint8_t *p_buf, const uint8_t *p_buf_end,
 
 pthread_key_t comdb2_open_key;
 pthread_key_t blockproc_retry_key;
-pthread_key_t osql_snap_info; /* contains cnonce */
 
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = "R7.0pre";
@@ -308,6 +307,7 @@ int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
 int gbl_prefault_udp = 0;
 __thread int send_prefault_udp = 0;
+__thread snap_uid_t *osql_snap_info; /* contains cnonce */
 
 int gbl_starttime = 0;
 int gbl_use_sqlthrmark = 1000;
@@ -732,6 +732,7 @@ int gbl_replicant_gather_rowlocks = 1;
 int gbl_force_old_cursors = 0;
 int gbl_track_curtran_locks = 0;
 int gbl_print_deadlock_cycles = 0;
+int gbl_always_send_cnonce = 1;
 int gbl_dump_page_on_byteswap_error = 0;
 int gbl_dump_after_byteswap = 0;
 int gbl_micro_retry_on_deadlock = 1;
@@ -3558,12 +3559,6 @@ static int init(int argc, char **argv)
        bdb_genid_set_format(thedb->bdb_env, format);
     }
 
-    rc = pthread_key_create(&osql_snap_info, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "pthread_key_create query_info_key rc %d\n", rc);
-        return -1;
-    }
-
     set_datetime_dir();
 
     /* get/set the table names from llmeta */
@@ -4894,6 +4889,8 @@ static void register_all_int_switches()
                         &gbl_track_curtran_locks);
     register_int_switch("print_deadlock_cycles", "Print all deadlock cycles",
                         &gbl_print_deadlock_cycles);
+    register_int_switch("always_send_cnonce", "Always send cnonce to master",
+                        &gbl_always_send_cnonce);
     register_int_switch("replicate_rowlocks", "Replicate rowlocks",
                         &gbl_replicate_rowlocks);
     register_int_switch("gather_rowlocks_on_replicant",

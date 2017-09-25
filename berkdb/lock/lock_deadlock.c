@@ -850,10 +850,9 @@ dokill:
 			__dd_print_tracked(idmap, *deadp, nlockers, killid);
 		}
 
-		if (gbl_print_deadlock_cycles)
+		if (gbl_print_deadlock_cycles) {
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
-		if (gbl_print_deadlock_cycles) {
 			void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
 		}
