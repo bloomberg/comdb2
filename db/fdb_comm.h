@@ -93,12 +93,14 @@ int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
                     unsigned long long ins_keys, int datalen, char *data,
                     int seq, int isuuid, SBUF2 *sb);
 int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long genid, unsigned long long del_keys,
-                    int seq, int isuuid, SBUF2 *sb);
+                    char *tblname, unsigned long long genid,
+                    unsigned long long del_keys, int seq, int isuuid,
+                    SBUF2 *sb);
 int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long oldgenid, unsigned long long genid,
-                    unsigned long long ins_keys, unsigned long long del_keys,
-                    int datalen, char *data, int seq, int isuuid, SBUF2 *sb);
+                    char *tblname, unsigned long long oldgenid,
+                    unsigned long long genid, unsigned long long ins_keys,
+                    unsigned long long del_keys, int datalen, char *data,
+                    int seq, int isuuid, SBUF2 *sb);
 int fdb_send_index(fdb_msg_t *msg, char *cid, int version, int rootpage,
                    unsigned long long genid, int is_delete, int ixnum,
                    int ixlen, char *ix, int seq, int isuuid, SBUF2 *sb);
