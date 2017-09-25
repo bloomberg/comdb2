@@ -189,30 +189,30 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 
 	dbp = dbc->dbp;
 
-        /* If there is an active Lua trigger/consumer, wake it up. */
-        struct __db_trigger_subscription *t = dbp->trigger_subscription;
-        if (t && t->active && (indx & 1)) {
-            pthread_cond_signal(&t->cond);
-        }
+	/* If there is an active Lua trigger/consumer, wake it up. */
+	struct __db_trigger_subscription *t = dbp->trigger_subscription;
+	if (t && t->active && (indx & 1)) {
+		pthread_cond_signal(&t->cond);
+	}
 
-        /*
-         * Put a single item onto a page.  The logic figuring out where to
-         * insert and whether it fits is handled in the caller.  All we do
-         * here is manage the page shuffling.  We cheat a little bit in that
-         * we don't want to copy the dbt on a normal put twice.  If hdr is
-         * NULL, we create a BKEYDATA structure on the page, otherwise, just
-         * copy the caller's information onto the page.
-         *
-         * This routine is also used to put entries onto the page where the
-         * entry is pre-built, e.g., during recovery.  In this case, the hdr
-         * will point to the entry, and the data argument will be NULL.
-         *
-         * !!!
-         * There's a tremendous potential for off-by-one errors here, since
-         * the passed in header sizes must be adjusted for the structure's
-         * placeholder for the trailing variable-length data field.
-         */
-        if (DBC_LOGGING(dbc)) {
+	/*
+	 * Put a single item onto a page.  The logic figuring out where to
+	 * insert and whether it fits is handled in the caller.  All we do
+	 * here is manage the page shuffling.  We cheat a little bit in that
+	 * we don't want to copy the dbt on a normal put twice.  If hdr is
+	 * NULL, we create a BKEYDATA structure on the page, otherwise, just
+	 * copy the caller's information onto the page.
+	 *
+	 * This routine is also used to put entries onto the page where the
+	 * entry is pre-built, e.g., during recovery.  In this case, the hdr
+	 * will point to the entry, and the data argument will be NULL.
+	 *
+	 * !!!
+	 * There's a tremendous potential for off-by-one errors here, since
+	 * the passed in header sizes must be adjusted for the structure's
+	 * placeholder for the trailing variable-length data field.
+	 */
+	if (DBC_LOGGING(dbc)) {
 		int binternal_swap = 0;
 		int overflow_swap = 0;
 

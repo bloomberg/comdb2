@@ -256,24 +256,24 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 			    &dbp->handle_lock, DB_LOCK_READ, 0);
 	}
 
-        if (type == DB_BTREE && fname) {
-            size_t s = strlen(fname);
-            if (s > 7 && strncmp(fname, "XXX.__q", 7) == 0) {
-                /*
-                ** Convert "XXX.__qfoobar.queuedb" -> "__qfoobar"
-                ** See also, is_tablename_queue @ osqlcomm.c
-                */
-                char name[s], *n = name;
-                const char *f = fname + 4;
-                while (*f != '.')
-                    *n++ = *f++;
-                *n = 0;
-                dbp->trigger_subscription = __db_get_trigger_subscription(name);
-                dbenv->trigger_open(dbenv, name);
-            }
-        }
+	if (type == DB_BTREE && fname) {
+		size_t s = strlen(fname);
+		if (s > 7 && strncmp(fname, "XXX.__q", 7) == 0) {
+			/*
+			** Convert "XXX.__qfoobar.queuedb" -> "__qfoobar"
+			** See also, is_tablename_queue @ osqlcomm.c
+			*/
+			char name[s], *n = name;
+			const char *f = fname + 4;
+			while (*f != '.') *n++ = *f++;
+			*n = 0;
+			dbp->trigger_subscription =
+			    __db_get_trigger_subscription(name);
+			dbenv->trigger_open(dbenv, name);
+		}
+	}
 
-        DB_TEST_RECOVERY_LABEL
+DB_TEST_RECOVERY_LABEL
 err:
 	return (ret);
 }
