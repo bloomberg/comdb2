@@ -2341,7 +2341,8 @@ cleanup:
      * reference so functions like berkdb_send_rtn don't try to use it */
     if (tran->master) {
         rc = pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-        if (rc != 0) logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "pthread_setspecific failed\n");
     }
 
     if (tran->trak)
