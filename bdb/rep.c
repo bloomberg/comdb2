@@ -5414,7 +5414,21 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset)
     return 0;
 }
 
-static int request_durable_lsn_from_master_int(bdb_state_type *bdb_state, 
+// Piggy-backing durable LSN requests doesn't work: each thread must make a 
+// SEPARATE request for a durable LSN.  Here's the counter-example:
+//
+// 1. Thread A makes a request for a durable LSN from the master - it goes to 
+//    the master and is stalled on it's way back to the replicant
+// 2. Thread B writes a record durably 
+// 3. Thread C make a request for a durable LSN- instead of going to the master
+//    directly, it gloms onto the already outstanding durable LSN request, and 
+//    retrieves the previous durable LSN
+//    
+// .. Because Thread C started AFTER Thread B, it should see a durable LSN 
+//    corresponding to B's writes
+//
+
+int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
         uint32_t *durable_file, uint32_t *durable_offset, 
         uint32_t *durable_gen) {
 
@@ -5522,51 +5536,5 @@ static int request_durable_lsn_from_master_int(bdb_state_type *bdb_state,
 
     return 0;
 }
-
-// Piggy-back round trips to the master
-int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
-        uint32_t *durable_file, uint32_t *durable_offset, 
-        uint32_t *durable_gen) {
-
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-    static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
-    static int count = 0;
-    static int outstanding_request = 0;
-    static int last_rcode;
-    static uint32_t last_durable_gen;
-    static uint32_t last_durable_file;
-    static uint32_t last_durable_offset;
-    int rc;
-
-    pthread_mutex_lock(&lk);
-    if (outstanding_request == 0) {
-        count++;
-        outstanding_request = 1;
-        pthread_mutex_unlock(&lk);
-        rc = request_durable_lsn_from_master_int(bdb_state,
-                durable_file, durable_offset, durable_gen);
-        pthread_mutex_lock(&lk);
-        last_rcode = rc;
-        last_durable_file = *durable_file;
-        last_durable_offset = *durable_offset;
-        last_durable_gen = *durable_gen;
-        outstanding_request = 0;
-        pthread_cond_broadcast(&cond);
-        pthread_mutex_unlock(&lk);
-        return rc;
-    } else {
-        int req_count = count;
-        do {
-            pthread_cond_wait(&cond, &lk);
-        } while (outstanding_request && count == req_count);
-        *durable_file = last_durable_file;
-        *durable_offset = last_durable_offset;
-        *durable_gen = last_durable_gen;
-        rc = last_rcode;
-        pthread_mutex_unlock(&lk);
-        return rc;
-    }
-}
-
 
 
