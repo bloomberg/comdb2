@@ -98,9 +98,9 @@ int main(int argc, char *argv[])
         return rc;
     }
 
-    const char *table;
-    if (argc > 2) table = argv[2];
-    else table = "t1";
+    const char *table = "t1";
+    if (argc > 2) 
+        table = argv[2];
 
     // insert records
     for (int j = 1000; j < 2000; j++) {
