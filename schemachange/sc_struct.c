@@ -738,7 +738,7 @@ void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable 
 void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
                               struct scinfo *scinfo)
 {
-    return set_schemachange_options_tran(s, db, scinfo, NULL);
+    set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
 int print_status(struct schema_change_type *s)

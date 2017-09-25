@@ -36,6 +36,15 @@
 
 #include <logmsg.h>
 
+/* Backtrace is only available in glibc */
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols_fd(A, B, C)
+#endif
+
 static void cheapstub(FILE *f)
 {
     if (f == NULL)

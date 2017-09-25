@@ -14,13 +14,14 @@
    limitations under the License.
  */
 
-#include <getopt.h>
+#include <bb_getopt_long.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <sys/socket.h>
 
 #include "comdb2.h"
 #include "intern_strings.h"
@@ -89,36 +90,6 @@ static const char *help_text = {
     "        EPOCH                      time in seconds since 1970\n"
     "        PATH                       path to database directory\n"};
 
-static void replace_args(int argc, char *argv[])
-{
-    int ii;
-    for (ii = 1; ii < argc; ii++) {
-        if (strcasecmp(argv[ii], "-lrl") == 0) {
-            argv[ii] = "--lrl";
-        } else if (strcasecmp(argv[ii], "-repopnewlrl") == 0) {
-            argv[ii] = "--repopnewlrl";
-        } else if (strcasecmp(argv[ii], "-recovertotime") == 0) {
-            argv[ii] = "--recovertotime";
-        } else if (strcasecmp(argv[ii], "-recovertolsn") == 0) {
-            argv[ii] = "--recovertolsn";
-        } else if (strcasecmp(argv[ii], "-recovery_lsn") == 0) {
-            argv[ii] = "--recoverylsn";
-        } else if (strcasecmp(argv[ii], "-recoverylsn") == 0) {
-            argv[ii] = "--recoverylsn";
-        } else if (strcasecmp(argv[ii], "-pidfile") == 0) {
-            argv[ii] = "--pidfile";
-        } else if (strcasecmp(argv[ii], "-help") == 0) {
-            argv[ii] = "--help";
-            /* This option is mutually exclusive */
-            return;
-        } else if (strcasecmp(argv[ii], "-create") == 0) {
-            argv[ii] = "--create";
-        } else if (strcasecmp(argv[ii], "-fullrecovery") == 0) {
-            argv[ii] = "--fullrecovery";
-        }
-    }
-}
-
 struct read_lrl_option_type {
     int lineno;
     const char *lrlname;
@@ -150,9 +121,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     char c;
     int options_idx;
 
-    replace_args(argc, argv);
-
-    while ((c = getopt_long(argc, argv, "h", long_options, &options_idx)) !=
+    while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
            -1) {
         if (c == 'h') print_usage_and_exit();
         if (c == '?') return 1;

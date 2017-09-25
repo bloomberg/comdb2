@@ -23,6 +23,11 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#if defined(_IBM_SOURCE)
+#include <openssl/objects.h>
+#include <openssl/ec.h>
+#endif
+
 #include <zlib.h>
 
 #include "reqlog_int.h"
@@ -229,8 +234,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                     byteval = buf;
                     datalen = f->datalen;
                 }
-                if (rc == 0)
-                    blobno++;
+                if (rc == 0) blobno++;
             }
             if (rc == 0) {
                 datalen = min(datalen, 1024); /* cap the datalen logged */
@@ -292,8 +296,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
             break;
-        default:
-            assert(false && "Unknown type being bound");
+        default: assert(false && "Unknown type being bound");
         }
     }
 }

@@ -597,13 +597,15 @@ static unsigned int query_path_component_hash(const void *key, int len)
 
     name = q->lcl_tbl_name;
 
-    struct {
+    struct myx {
         int ix;
-        char name[strlen(name) + 1];
-    } x;
-    x.ix = q->ix;
-    strcpy(x.name, name);
-    return hash_default_fixedwidth((void*)&x, sizeof(x));
+        char name[1];
+    } * x;
+    int sz = offsetof(struct myx, name) + strlen(name) + 1;
+    x = alloca(sz);
+    x->ix = q->ix;
+    strcpy(x->name, name);
+    return hash_default_fixedwidth((void *)x, sz);
 }
 
 static int query_path_component_cmp(const void *key1, const void *key2, int len)
@@ -624,8 +626,7 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
         return 1;
     } else {
         int rc = strncmp(q1->rmt_db, q2->rmt_db, sizeof(q1->rmt_db));
-        if (rc)
-            return rc;
+        if (rc) return rc;
 
         return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
                        sizeof(q1->lcl_tbl_name));
@@ -7180,8 +7181,7 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
     db = get_sqlite_db(thd, iTable, &ixnum);
-    if (!db)
-        return -1;
+    if (!db) return -1;
 
     rc = analyze_is_sampled(clnt, db->dbname, ixnum);
     return rc;
@@ -10315,9 +10315,8 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
     }
     *pnEntry = count;
 
-    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
-                "Count(pCur %d)      = %s\n", pCur->cursorid,
-                sqlite3ErrStr(rc));
+    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Count(pCur %d)      = %s\n",
+                pCur->cursorid, sqlite3ErrStr(rc));
 
     return rc;
 }
