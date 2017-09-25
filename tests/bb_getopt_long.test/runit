@@ -180,6 +180,7 @@ function glib_compatible_tests
     test_and_compare various-9 loosearg1 loosearg2 loosearg3 --rarg0 arg0 --rarg2=arg2 --noarg3 --noarg4 --optarg5 --optarg6 --rarg8=arg8 --optarg9=arg9 --optarg10 -p
 }
 
+# Tranform single-dash to double-dash longopt
 function transform_args
 {
     run_glgetopt transform-1 loosearg1 loosearg2 --rarg0 arg0 --rarg1 arg1 --rarg2 arg2 --noarg3 --noarg4 --optarg6 --rarg7 arg7 --rarg8 arg8 --optarg9 --optarg10 --noarg11 --noarg12 -p
@@ -195,8 +196,42 @@ function transform_args
 
 }
 
+# Fail if we are missing a required argument
+function missing_required_argument
+{
+
+    out=$(./glgetopt --rarg0 2>&1)
+    echo $out | egrep "single-char-opt '?'" >/dev/null 2>&1
+    if [[ $? != 0 ]] ; then
+        echo "glgetopt bad handling of missing argument (no '?')"
+        error=1
+    fi
+
+    echo $out | egrep "requires an argument" >/dev/null 2>&1
+    if [[ $? != 0 ]] ; then 
+        echo "glgetopt bad handling of missing argument (didn't detect)"
+        error=1
+    fi
+
+    out=$(./bbgetopt --rarg0 2>&1)
+    echo $out | egrep "single-char-opt '?'" >/dev/null 2>&1
+    if [[ $? != 0 ]] ; then
+        echo "bbgetopt bad handling of missing argument (no '?')"
+        error=1
+    fi
+
+
+    echo $out | egrep "requires an argument" >/dev/null 2>&1
+    if [[ $? != 0 ]] ; then 
+        echo "bbgetopt bad handling of missing argument (didn't detect)"
+        error=1
+    fi
+}
+
+
 glib_compatible_tests
 transform_args
+missing_required_argument
 
 # Comdb2 specific: we transform '-option' into '--option'
 exit $error

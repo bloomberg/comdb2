@@ -72,7 +72,6 @@ ifeq ($(arch),AIX)
   LIBREADLINE=-blibpath:/opt/bb/lib64:/usr/lib:/lib -lreadline -lhistory
   CXX11=/opt/bb/bin/g++-5
   CXX11FLAGS=-std=c++11 -pthread -maix64
-  # The GCC runtime is not deployed on Bloomberg IBM machines: link statically for now
   CXX11LDFLAGS=-static-libgcc -static-libstdc++ -maix64
   BBLDPREFIX=-Wl,
   # Flags for generating dependencies

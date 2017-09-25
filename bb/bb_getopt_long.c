@@ -281,7 +281,7 @@ int bb_getopt_long(int nargc, char **nargv, char *options,
                     (void)fprintf(stderr,
                                   "%s: option requires an argument -- %s\n",
                                   __progname(nargv[0]), current_argv);
-                return (BADARG);
+                return (BADCH);
             }
         } else { /* No matching argument */
             if ((opterr) && (*options != ':'))
