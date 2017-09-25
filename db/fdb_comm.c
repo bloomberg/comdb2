@@ -3336,8 +3336,8 @@ int fdb_remcur_insert(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     clnt->ins_keys = ins_keys;
     clnt->del_keys = 0ULL;
 
-    rc = fdb_svc_cursor_insert(clnt, rootpage, version, genid, data, datalen,
-                               seq);
+    rc = fdb_svc_cursor_insert(clnt, msg->in.tblname, rootpage, version, genid,
+                               data, datalen, seq);
 
     if (gbl_expressions_indexes) {
         free_cached_idx(clnt->idxInsert);
@@ -3360,7 +3360,8 @@ int fdb_remcur_delete(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     clnt->ins_keys = 0ULL;
     clnt->del_keys = del_keys;
 
-    rc = fdb_svc_cursor_delete(clnt, rootpage, version, genid, seq);
+    rc = fdb_svc_cursor_delete(clnt, msg->de.tblname, rootpage, version, genid,
+                               seq);
 
     if (gbl_expressions_indexes) {
         free_cached_idx(clnt->idxInsert);
@@ -3387,8 +3388,8 @@ int fdb_remcur_update(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     clnt->ins_keys = ins_keys;
     clnt->del_keys = del_keys;
 
-    rc = fdb_svc_cursor_update(clnt, rootpage, version, oldgenid, genid, data,
-                               datalen, seq);
+    rc = fdb_svc_cursor_update(clnt, msg->up.tblname, rootpage, version,
+                               oldgenid, genid, data, datalen, seq);
 
     if (gbl_expressions_indexes) {
         free_cached_idx(clnt->idxInsert);
