@@ -1523,7 +1523,8 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
 
     rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename,
-                         osql_nettype, osql->logsb);
+                         osql_nettype, osql->logsb,
+                         comdb2_table_version(tablename));
 
     return rc;
 }

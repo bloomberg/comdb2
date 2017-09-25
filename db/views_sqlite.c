@@ -30,14 +30,15 @@ static void dbg_verbose_sqlite(const char *fmt, ...);
  *
  */
 int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
-                        struct errstat *err)
+                        struct errstat *err, int lock)
 {
     timepart_view_t *view;
     Table *tab;
     int rc;
     int i;
 
-    pthread_mutex_lock(&views_mtx);
+    if (lock)
+        pthread_mutex_lock(&views_mtx);
 
     /* look at the in-memory views and check sqlite views */
     for (i = 0; i < views->nviews; i++) {
@@ -85,7 +86,8 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
     rc = VIEW_NOERR;
 
 done:
-    pthread_mutex_unlock(&views_mtx);
+    if (lock)
+        pthread_mutex_unlock(&views_mtx);
 
     return rc;
 }
@@ -224,7 +226,7 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
                                   (i > 0) ? " UNION ALL " : "", cols_str,
                                   view->shards[i].tblname);
         sqlite3DbFree(db, select_str);
-        if (!select_str) {
+        if (!tmp_str) {
             sqlite3DbFree(db, cols_str);
             goto malloc;
         }

@@ -101,7 +101,8 @@ int osql_comm_send_poke(char *tonode, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb);
+                    char *tablename, int type, SBUF2 *logsb,
+                    unsigned long long version);
 
 /**
  * Send INDEX op
@@ -415,4 +416,5 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        unsigned long long seq);
 
 int osql_close_connection(char *host);
+
 #endif

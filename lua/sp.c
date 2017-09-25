@@ -61,6 +61,7 @@
 #include <luaglue.h>
 #include <luautil.h>
 #include <logmsg.h>
+#include <util.h>
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
@@ -4855,7 +4856,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
                     size_t slen = strlen(s) + 1; // include terminating null
                     size_t hexlen = slen * 2 + 1;
                     hexstr = malloc(hexlen);
-                    luabb_tohex(hexstr, s, slen);
+                    util_tohex(hexstr, s, slen);
                     type = "hexstring";
                     s = hexstr;
                     utf8_len = hexlen;
