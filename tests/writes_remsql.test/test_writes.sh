@@ -57,6 +57,8 @@ run_test()
    exp_output=$2
    output=$3
 
+   rm $output
+
    work_input=${input}.actual
 
    # fix the target
