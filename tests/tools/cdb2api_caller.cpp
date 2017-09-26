@@ -98,9 +98,9 @@ int main(int argc, char *argv[])
         return rc;
     }
 
-
-
-
+    const char *table = "t1";
+    if (argc > 2) 
+        table = argv[2];
 
     // insert records
     for (int j = 1000; j < 2000; j++) {
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
 
         strftime (buffer,80,"'%FT%T'",timeinfo);
 
-        ss << "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
+        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
            << ((1-2*(j%2))) << j << ", " 
            << j << ", " 
            << ((1-2*(j%2))) << "0000" << j << ", " 
@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
 
         strftime (buffer,80,"'%FT%T'",timeinfo);
 
-        ss << "update t1 set "
+        ss << "update " << table << " set "
            << "alltypes_short = " << ((1-2*(j%2))) << j << ", " 
            << "alltypes_u_short = " << j << ", " 
            << "alltypes_int = " << ((1-2*(j%2))) << "0000" << j << ", " 
@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
 
         strftime (buffer,80,"'%FT%T'",timeinfo);
 
-        ss << "delete from t1 where alltypes_u_short = " << j; 
+        ss << "delete from "<< table << " where alltypes_u_short = " << j; 
         std::string s = ss.str();
         runsql(db, s);
     }
@@ -208,6 +208,7 @@ int main(int argc, char *argv[])
         strftime (buffer,80,"'%FT%T'",timeinfo);
 
         short palltypes_short = (1-2*(j%2))*j;
+        int palltypes_int = (1-2*(j%2))*j;
         unsigned short palltypes_u_short = j;
         float palltypes_float = (1-2*(j%2)) * (100.0 + ((float) j)/1000.0);
         double palltypes_double = (1-2*(j%2)) * (100000.0 + ((double) j)/1000000.0);
@@ -223,17 +224,23 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Error binding palltypes_short.\n");
         if(cdb2_bind_param(db, "palltypes_u_short", CDB2_INTEGER, &palltypes_u_short, sizeof(palltypes_u_short)) )
             fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &palltypes_int, sizeof(palltypes_int)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
         if(cdb2_bind_param(db, "palltypes_float", CDB2_REAL, &palltypes_float, sizeof(palltypes_float)) )
             fprintf(stderr, "Error binding palltypes_float.\n");
         if(cdb2_bind_param(db, "palltypes_double", CDB2_REAL, &palltypes_double, sizeof(palltypes_double)) )
             fprintf(stderr, "Error binding palltypes_double.\n");
         if(cdb2_bind_param(db, "palltypes_byte", CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
             fprintf(stderr, "Error binding palltypes_byte.\n");
-        if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob)))
+        if(j == 2000) {
+          if(cdb2_bind_param(db, "palltypes_blob", CDB2_INTEGER, NULL, 0))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        }
+        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob)))
             fprintf(stderr, "Error binding palltypes_blob.\n");
         types.push_back(CDB2_INTEGER);
 
-        std::string s = "insert into t1(alltypes_short, alltypes_u_short, alltypes_float, alltypes_double, alltypes_byte, alltypes_blob) values (@palltypes_short, @palltypes_u_short, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_blob)" ;
+        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_float, alltypes_double, alltypes_byte, alltypes_blob) values (@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_blob)" ;
         //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
            /*
            << ((1-2*(j%2))) << j 
@@ -259,6 +266,7 @@ int main(int argc, char *argv[])
         //this works too?? runsql(db, s);
         printf("float param: %f\n", palltypes_float);
         printf("double param: %lf\n", palltypes_double);
+        std::string s = ss.str();
         runtag(db, s, types);
         cdb2_clearbindings(db);
     }

@@ -640,7 +640,7 @@ static inline char hex(unsigned char a)
     return 'a' + (a - 10);
 }
 
-static void hexdumpbuf(char *key, int keylen, char **buf)
+void hexdumpbuf(char *key, int keylen, char **buf)
 {
     char *mem;
     char *output;
