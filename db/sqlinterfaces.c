@@ -5839,16 +5839,16 @@ static void sqlengine_work_appsock(void *thddata, void *work)
 
     if (clnt->fdb_state.remote_sql_sb) {
         clnt->query_rc = execute_sql_query_offload(thd, clnt);
+        /* execute sql query might have generated an overriding fdb error;
+           reset it here before returning */
+        bzero(&clnt->fdb_state.xerr, sizeof(clnt->fdb_state.xerr));
+        clnt->fdb_state.preserve_err = 0;
     } else if (clnt->verify_indexes) {
         clnt->query_rc = execute_verify_indexes(thd, clnt);
     } else {
         clnt->query_rc = execute_sql_query(thd, clnt);
     }
 
-    /* execute sql query might have generated an overriding fdb error;
-       reset it here before returning */
-    bzero(&clnt->fdb_state.xerr, sizeof(clnt->fdb_state.xerr));
-    clnt->fdb_state.preserve_err = 0;
     osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
     sql_reset_sqlthread(thd->sqldb, sqlthd);
@@ -8501,8 +8501,7 @@ static int execute_sql_query_offload_inner_loop(struct sqlclntstate *clnt,
 static int execute_sql_query_offload(struct sqlthdstate *poolthd,
                                      struct sqlclntstate *clnt)
 {
-    int rc = 0, ret = 0;
-    char *errstr = NULL;
+    int ret = 0;
     struct sql_thread *thd = poolthd->sqlthd;
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s: no sql_thread\n", __func__);
@@ -8514,18 +8513,16 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
-    rc = get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr);
-    if (rc) {
-        return rc;
+    if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr)) {
+        goto done;
     }
-    sqlite3 *sqldb = poolthd->sqldb;
-    sqlite3_stmt *stmt = rec.stmt;
     thrman_wheref(poolthd->thr_self, "%s", rec.sql);
     user_request_begin(REQUEST_TYPE_QTRAP, FLAG_REQUEST_TRACK_EVERYTHING);
     if (gbl_dump_sql_dispatched)
         logmsg(LOGMSG_USER, "BLOCKSQL mode=%d [%s]\n", clnt->dbtran.mode,
                 clnt->sql);
-    ret = execute_sql_query_offload_inner_loop(clnt, poolthd, stmt);
+    ret = execute_sql_query_offload_inner_loop(clnt, poolthd, rec.stmt);
+done:
     if ((gbl_who > 0) || debug_this_request(gbl_debug_until)) {
         struct per_request_stats *st;
         st = user_request_get_stats();
@@ -8542,13 +8539,13 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     /* if we turned on case sensitive like, turn it off since the sql handle we
        just used may be used by another connection with this disabled */
     if (clnt->using_case_insensitive_like)
-        toggle_case_sensitive_like(sqldb, 0);
-
+        toggle_case_sensitive_like(poolthd->sqldb, 0);
     /* check for conversion errors;
        in the case of an error, osql.xerr.errval will be set probably to
        SQLITE_INTERNAL
      */
-    rc = sql_check_errors(clnt, poolthd->sqldb, stmt, (const char **)&errstr);
+    char *errstr = NULL;
+    int rc = sql_check_errors(clnt, poolthd->sqldb, rec.stmt, (const char **)&errstr);
     if (rc) {
         /* check for prepare errors */
         if (ret == ERR_SQL_PREP)
