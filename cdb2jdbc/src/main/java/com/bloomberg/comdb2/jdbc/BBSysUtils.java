@@ -36,6 +36,7 @@ public class BBSysUtils {
     /**
      * Comdb2db configuration files.
      */
+    static final String CDB2DBCONFIG_PROP = "comdb2db.cfg";
     static final String CDB2DBCONFIG_LOCAL = "/bb/bin/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV_PATH = "/opt/bb/etc/cdb2/config.d/";
@@ -141,7 +142,14 @@ public class BBSysUtils {
      * @return
      */
     private static boolean getComdb2dbHosts(Comdb2Handle hndl, boolean just_defaults) {
-        boolean rc = readComdb2dbCfg(CDB2DBCONFIG_NOBBENV, hndl);
+        /*
+         * Load conf from path specified in system property
+         * CDB2DBCONFIG_PROP (comdb2db.cfg), defaulting to
+         * CDB2DBCONFIG_NOBBENV (/opt/bb/etc/cdb2/config/comdb2db.cfg) if the
+         * property is not specified.
+         */
+        String configPath = System.getProperty(CDB2DBCONFIG_PROP, CDB2DBCONFIG_NOBBENV);
+        boolean rc = readComdb2dbCfg(configPath, hndl);
         if (!rc) /* fall back to /bb/bin if noenv conf not found */
             rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
         readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
