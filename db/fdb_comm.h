@@ -31,7 +31,7 @@ enum {
 
 /* keep these flags a bitmask so we can OR them */
 enum recv_flags {
-   FDB_MSG_TRAN_TBLNAME          = 1   /* tblname part of write msg */
+    FDB_MSG_TRAN_TBLNAME = 1 /* tblname part of write msg */
 };
 
 enum run_sql_flags {

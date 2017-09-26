@@ -2071,7 +2071,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 fdbc->node = host;
             } else {
 
-                if(fdb->server_version == FDB_VER_WR_NAMES) 
+                if (fdb->server_version == FDB_VER_WR_NAMES)
                     tran_flags = FDB_MSG_TRAN_TBLNAME;
                 else
                     tran_flags = 0;
@@ -3334,10 +3334,11 @@ static fdb_tran_t *fdb_get_subtran(fdb_distributed_tran_t *dtran, fdb_t *fdb)
     return NULL;
 }
 
-static inline char* _get_tblname(fdb_cursor_t *fdbc)
+static inline char *_get_tblname(fdb_cursor_t *fdbc)
 {
-    return (fdbc->ent->tbl->fdb->server_version == FDB_VER_WR_NAMES)?
-        strdup(fdbc->ent->tbl->name):NULL;
+    return (fdbc->ent->tbl->fdb->server_version == FDB_VER_WR_NAMES)
+               ? strdup(fdbc->ent->tbl->name)
+               : NULL;
 }
 
 static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
@@ -3353,17 +3354,19 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
         if (fdbc->isuuid) {
             uuidstr_t ciduuid;
             uuidstr_t tiduuid;
-            logmsg(LOGMSG_USER, 
-                    "Cursor %s: INSERT for transaction %s genid=%llx "
-                    "seq=%d %s%s\n", comdb2uuidstr(fdbc->cid, ciduuid),
-                    comdb2uuidstr(trans->tid, tiduuid), genid, trans->seq,
-                    (tblname)?"tblname=":"", (tblname)?tblname:"");
+            logmsg(LOGMSG_USER,
+                   "Cursor %s: INSERT for transaction %s genid=%llx "
+                   "seq=%d %s%s\n",
+                   comdb2uuidstr(fdbc->cid, ciduuid),
+                   comdb2uuidstr(trans->tid, tiduuid), genid, trans->seq,
+                   (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
         } else {
-            logmsg(LOGMSG_USER, 
-                    "Cursor %llx: INSERT for transaction %llx genid=%llx "
-                    "seq=%d %s%s\n", *(unsigned long long *)fdbc->cid,
-                    *(unsigned long long *)trans->tid, genid, trans->seq,
-                    (tblname)?"tblname=":"", (tblname)?tblname:"");
+            logmsg(LOGMSG_USER,
+                   "Cursor %llx: INSERT for transaction %llx genid=%llx "
+                   "seq=%d %s%s\n",
+                   *(unsigned long long *)fdbc->cid,
+                   *(unsigned long long *)trans->tid, genid, trans->seq,
+                   (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
         }
     }
 
@@ -3408,19 +3411,19 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
         if (fdbc->isuuid) {
             uuidstr_t ciduuid;
             uuidstr_t tiduuid;
-            logmsg(LOGMSG_USER, 
-                    "Cursor %s: DELETE for transaction %s genid=%llx "
-                    "seq=%d %s%s\n",
-                    comdb2uuidstr(fdbc->cid, ciduuid),
-                    comdb2uuidstr(trans->tid, tiduuid), genid, trans->seq,
-                    (tblname)?"tblname=":"", (tblname)?tblname:"");
+            logmsg(LOGMSG_USER,
+                   "Cursor %s: DELETE for transaction %s genid=%llx "
+                   "seq=%d %s%s\n",
+                   comdb2uuidstr(fdbc->cid, ciduuid),
+                   comdb2uuidstr(trans->tid, tiduuid), genid, trans->seq,
+                   (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
         } else {
-            logmsg(LOGMSG_USER, 
-                    "Cursor %llx: DELETE for transaction %llx genid=%llx"
-                    "seq=%d %s%s\n",
-                    *(unsigned long long *)fdbc->cid,
-                    *(unsigned long long *)trans->tid, genid, trans->seq,
-                    (tblname)?"tblname=":"", (tblname)?tblname:"");
+            logmsg(LOGMSG_USER,
+                   "Cursor %llx: DELETE for transaction %llx genid=%llx"
+                   "seq=%d %s%s\n",
+                   *(unsigned long long *)fdbc->cid,
+                   *(unsigned long long *)trans->tid, genid, trans->seq,
+                   (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
         }
     }
 
@@ -3467,16 +3470,18 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
             uuidstr_t ciduuid;
             uuidstr_t tiduuid;
             logmsg(LOGMSG_USER, "Cursor %s: UPDATE for transaction %s "
-                   "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
+                                "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
                    comdb2uuidstr(fdbc->cid, ciduuid),
                    comdb2uuidstr(trans->tid, tiduuid), genid, oldgenid,
-                   trans->seq, (tblname)?"tblname=":"", (tblname)?tblname:"");
+                   trans->seq, (tblname) ? "tblname=" : "",
+                   (tblname) ? tblname : "");
         } else {
             logmsg(LOGMSG_USER, "Cursor %llx: UPDATE for transaction %llx "
-                   "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
+                                "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
                    *(unsigned long long *)fdbc->cid,
                    *(unsigned long long *)trans->tid, oldgenid, genid,
-                   trans->seq, (tblname)?"tblname=":"", (tblname)?tblname:"");
+                   trans->seq, (tblname) ? "tblname=" : "",
+                   (tblname) ? tblname : "");
         }
     }
 

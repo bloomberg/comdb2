@@ -93,8 +93,7 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
  */
 int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
                           int rootpage, int version,
-                          unsigned long long oldgenid,
-                          unsigned long long genid,
+                          unsigned long long oldgenid, unsigned long long genid,
                           char *data, int datalen, int seq);
 
 /**

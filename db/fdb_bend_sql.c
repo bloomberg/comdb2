@@ -888,8 +888,7 @@ done:
  */
 int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
                           int rootpage, int version,
-                          unsigned long long oldgenid,
-                          unsigned long long genid,
+                          unsigned long long oldgenid, unsigned long long genid,
                           char *data, int datalen, int seq)
 {
     BtCursor bCur;
@@ -902,9 +901,8 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
     int rc2 = 0;
     int standalone = 0;
 
-    thd =
-        _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, oldgenid, 1,
-                              &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, oldgenid, 1,
+                                &standalone);
     if (!thd) {
         return -1;
     }
