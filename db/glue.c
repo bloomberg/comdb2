@@ -4052,20 +4052,6 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
     return 0;
 }
 
-// set to val the in-memory parameter for all the indices of this table
-void set_skipscan_for_table_indices(struct dbtable *tbl, int val)
-{
-    for (int ii = 0; ii < tbl->nix; ii++) {
-        struct schema *s = tbl->ixschema[ii];
-        s->disableskipscan = val;
-#ifdef DEBUGSKIPSCAN
-        printf("%s: setting disableskipscan for %s.%s %d\n", __func__,
-               tbl->dbname, s->sqlitetag, val);
-#endif
-    }
-}
-
-
 static void get_disable_skipscan(struct dbtable *tbl)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
@@ -4075,15 +4061,12 @@ static void get_disable_skipscan(struct dbtable *tbl)
     char *str = NULL;
     int rc = bdb_get_table_parameter(tbl->dbname, "disableskipscan", &str);
     if (rc != 0) {
-        set_skipscan_for_table_indices(tbl, 0);
+        tbl->disableskipscan = 0;
         return;
     }
 
-    int disable = (strncmp(str, "true", 4) == 0);
+    tbl->disableskipscan = (strncmp(str, "true", 4) == 0);
     free(str);
-
-    // set the in-memory parameter for the indices
-    set_skipscan_for_table_indices(tbl, disable);
 }
 
 

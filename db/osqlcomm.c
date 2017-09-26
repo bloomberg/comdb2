@@ -6454,13 +6454,13 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         char *tablename;
 
         tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
 
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
                         comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
             sbuf2flush(logsb);
         }
-
         if (unlikely(timepart_is_timepart(tablename, 1))) {
             char *newest_shard;
             unsigned long long ver;
@@ -6480,17 +6480,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         } else {
             if (is_tablename_queue(tablename, strlen(tablename))) {
                 iq->usedb = getqueuebyname(tablename);
-
             } else {
                 iq->usedb = get_dbtable_by_name(tablename);
                 iq->usedbtablevers = dt.tableversion;
             }
             if (iq->usedb == NULL) {
                 iq->usedb = iq->origdb;
-                logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s"
-                                     "\n",
+                logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
                        __func__, dt.tablenamelen, tablename);
-
                 return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
                                          tablename, 0);
             }

@@ -240,7 +240,7 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
                                 newixs->csctag + offset, newdb->dbname);
             form_new_style_name(namebuf2, sizeof(namebuf2), oldixs,
                                 oldixs->csctag, olddb->dbname);
-            logmsg(LOGMSG_USER,
+            logmsg(LOGMSG_INFO,
                    "ix %d changing name so INSERTING into sqlite_stat* "
                    "idx='%s' where tbl='%s' and idx='%s' \n",
                    ixnum, newixs->csctag + offset, newdb->dbname,
@@ -341,8 +341,6 @@ static int check_table_version(struct ireq *iq)
         errstat_set_strf(&iq->errstat,
                          "failed to get version for table:%s rc:%d",
                          iq->sc->table, rc);
-        sc_errf(iq->sc, "failed to get version for table:%s rc:%d\n",
-                iq->sc->table, rc);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
@@ -350,8 +348,6 @@ static int check_table_version(struct ireq *iq)
         errstat_set_strf(&iq->errstat,
                          "stale version for table:%s master:%d replicant:%d",
                          iq->sc->table, version, iq->usedbtablevers);
-        sc_errf(iq->sc, "stale version for table:%s master:%d replicant:%d\n",
-                iq->sc->table, version, iq->usedbtablevers);
         iq->errstat.errval = ERR_SC;
         return SC_INTERNAL_ERROR;
     }
@@ -677,16 +673,7 @@ int resume_schema_change(void)
                     scabort = 1;
             }
 
-            /*
-            **   _
-            **  | |_ ___ _ __ ___  _ __
-            **  | __/ _ \ '_ ` _ \| '_ \
-            **  | ||  __/ | | | | | |_) |
-            **   \__\___|_| |_| |_| .__/
-            **                    |_|
-            */
             if (scabort) {
-                system("figlet force scabort");
                 logmsg(LOGMSG_WARN, "Cancelling schema change\n");
                 rc = unlink(abort_filename);
                 if (rc)
