@@ -40,7 +40,9 @@ sqlite/ext/comdb2/tunables.o        \
 sqlite/ext/comdb2/threadpools.o     \
 sqlite/ext/misc/completion.o        \
 sqlite/ext/misc/series.o            \
-sqlite/ext/misc/json1.o
+sqlite/ext/misc/json1.o             \
+sqlite/ext/expert/sqlite3expert.o
+
 
 sqlite/md5.o: CFLAGS+=-O2
 
@@ -50,7 +52,7 @@ SQLITE_GENH:=sqlite/parse.h sqlite/opcodes.h sqlite/keywordhash.h
 
 sqlite_CPPFLAGS:=$(SQLITE_FLAGS)
 sqlite_CPPFLAGS+=-Isqlite -Isqlite/inline -Isqlite/ext/comdb2	\
--Isqlite/ext/misc -Idatetime -Idfp/decNumber -Idfp/dfpal -Icsc2   	\
+-Isqlite/ext/misc -Isqlite/ext/expert -Idatetime -Idfp/decNumber -Idfp/dfpal -Icsc2   	\
 -Icdb2api -Ischemachange -Ibdb -Inet -Iprotobuf -Idlmalloc -Ilua -Idb	\
 $(OPTBBINCLUDE)
 
