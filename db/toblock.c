@@ -788,7 +788,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int replay_data_len, unsigned int line)
 {
     struct block_rsp errrsp;
-    int rc, outrc, snapinfo_outrc, jj, snapinfo = 0;
+    int rc = 0;
+    int outrc, snapinfo_outrc, jj, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -809,20 +810,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         if (rc == IX_FND) {
             memcpy(buf_fstblk, replay_data, replay_data_len - 4);
             datalen = replay_data_len - 4;
-            rc = 0;
-        }
-        if (rc == IX_NOTFND) {
-            int *seq = (int *)fstseqnum;
-            if (!check_long_trn)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: %08x:%08x:%08x fstblk replay deleted under us\n",
-                        __func__, seq[0], seq[1], seq[2]);
-            blkseq_line = __LINE__;
-            goto replay_error;
         }
     }
-    else
-        rc = 0;
 
     if (rc == IX_NOTFND)
     /*
