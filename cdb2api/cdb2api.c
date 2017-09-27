@@ -108,6 +108,7 @@ static void do_init_once(void)
 
 static int is_sql_read(const char *sqlstr)
 {
+    const char get[] = "GET";
     const char sp_exec[] = "EXEC";
     const char with[] = "WITH";
     const char sel[] = "SELECT";
@@ -119,6 +120,10 @@ static int is_sql_read(const char *sqlstr)
         sqlstr++;
     int slen = strlen(sqlstr);
     if (slen) {
+        if (slen < sizeof(get) - 1)
+            return 0;
+        if (!strncasecmp(sqlstr, get, sizeof(get) - 1))
+            return 1;
         if (slen < sizeof(sp_exec) - 1)
             return 0;
         if (!strncasecmp(sqlstr, sp_exec, sizeof(sp_exec) - 1))
