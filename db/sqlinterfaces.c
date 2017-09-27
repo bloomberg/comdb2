@@ -5734,12 +5734,15 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
 int gbl_debug_sqlthd_failures;
 
-static int execute_verify_indexes_int(struct sqlthdstate *thd,
+static int execute_verify_indexes(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
 {
     int rc;
     if (thd->sqldb == NULL) {
-        if ((rc = sqlengine_prepare_engine(thd, clnt, 1)) != 0) {
+        rdlock_schema_lk();
+        rc = sqlengine_prepare_engine(thd, clnt, 1);
+        unlock_schema_lk();
+        if (rc) {
             return rc;
         }
     }
@@ -5759,15 +5762,6 @@ static int execute_verify_indexes_int(struct sqlthdstate *thd,
     if (rc == SQLITE_DONE) {
         return 0;
     }
-    return rc;
-}
-
-static int execute_verify_indexes(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt)
-{
-    rdlock_schema_lk();
-    int rc = execute_verify_indexes_int(thd, clnt);
-    unlock_schema_lk();
     return rc;
 }
 
