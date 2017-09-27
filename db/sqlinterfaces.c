@@ -3550,11 +3550,18 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
     char info_nvreplays[40];
     info_nvreplays[0] = '\0';
 
+    char cnonce[256];
+    cnonce[0] = '\0';
+
     if (clnt->verify_retries)
         snprintf(info_nvreplays, sizeof(info_nvreplays), "vreplays=%d ",
                  clnt->verify_retries);
 
-    thrman_wheref(thd->thr_self, "%ssql: %s", info_nvreplays, clnt->sql);
+    if (clnt->sql_query)
+        snprintf(cnonce, 256, " %s ", clnt->sql_query->cnonce.data);
+
+
+    thrman_wheref(thd->thr_self, "%s%ssql: %s", info_nvreplays, cnonce, clnt->sql);
 
     reqlog_new_sql_request(thd->logger, NULL);
     log_client_context(thd->logger, clnt);
