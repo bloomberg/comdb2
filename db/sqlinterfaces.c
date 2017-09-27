@@ -3560,8 +3560,8 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
     if (clnt->sql_query)
         snprintf(cnonce, 256, " %s ", clnt->sql_query->cnonce.data);
 
-
-    thrman_wheref(thd->thr_self, "%s%ssql: %s", info_nvreplays, cnonce, clnt->sql);
+    thrman_wheref(thd->thr_self, "%s%ssql: %s", info_nvreplays, cnonce,
+                  clnt->sql);
 
     reqlog_new_sql_request(thd->logger, NULL);
     log_client_context(thd->logger, clnt);
