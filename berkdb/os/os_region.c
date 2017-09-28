@@ -116,7 +116,10 @@ __os_r_attach(dbenv, infop, rp)
 	dbenv->set_use_sys_malloc(dbenv, 1);
 
 	if (!gbl_largepages || rp->size < MB_2) {
-		ret = __os_calloc(dbenv, 1, rp->size, &infop->addr);
+        if (rp->size != 0)
+            ret = __os_calloc(dbenv, 1, rp->size, &infop->addr);
+        else
+            ret = 0;
 	} else {
 		char name[MAXPATHLEN];
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
@@ -176,7 +179,8 @@ __os_r_detach(dbenv, infop, destroy)
 
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
 		    gbl_dbname, infop->id);
-		munmap(infop->addr, rp->size);
+        if (rp->size)
+            munmap(infop->addr, rp->size);
 		close(infop->fd);
 		unlink(name);
 		fprintf(stderr, "os_r_detach: munmap for region: %d\n",

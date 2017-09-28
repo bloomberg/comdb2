@@ -1,0 +1,25 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -e
+
+dbname=$1
+testdir=${TESTDIR}
+
+set -e
+
+for t in $(seq 1 100); do
+    cdb2sql $dbname "create table ttttttttttttttttttt${t}(a int)"
+    cdb2sql $dbname "insert into ttttttttttttttttttt${t} values(1)"
+    a=$(cdb2sql -tabs $dbname "select a from ttttttttttttttttttt${t}")
+    if [[ "$a" != "1" ]]; then
+        echo "expected value in ttttttttttttttttttt${t}"
+        exit 1
+    fi
+done
+
+for t in $(seq 1 100); do
+    cdb2sql $dbname "drop table ttttttttttttttttttt${t}"
+done
+
+exit 0
