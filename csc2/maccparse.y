@@ -145,8 +145,11 @@ cnstrtdef:      cnstrtstart cnstrtbllist ctmodifiers cnstrtdef { /*end_constrain
                 | /* %empty */ 
                 ;
 
-                ;
-cnstrtbllist:     T_LT string ':' string T_GT  {  add_constraint($2,$4); }
+cnstrtbllist:   cnstrtbllist cnstrtblterm
+		| 
+		;
+
+cnstrtblterm:     T_LT string ':' string T_GT  {  add_constraint($2,$4); }
                 | string ':' string  {  add_constraint($1,$3); }
                 | varname ':' varname  {  add_constraint($1,$3); }
                 ;
