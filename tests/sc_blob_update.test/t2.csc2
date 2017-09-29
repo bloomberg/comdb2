@@ -22,6 +22,10 @@ dup "f" = f
 
 constraints 
 {
-    "d" -> <"t1":"a">
-    "f" -> <"t1":"a">
+    "d" -> <"t1":"a"> <"t1":"a"> on update cascade on delete cascade
+    "b" -> <"t1":"a"> <"t1":"a"> 
+    "f" -> <"t1":"a"> 
+    "f" -> <"t1":"a"> 
+    a -> t1:a 
+    "a" -> "t1":"a" 
 }

@@ -23,6 +23,7 @@ constraints
 {
     "UUID1" -> <"t1":"UUID"> on delete cascade
     "UUID1" -> "t2":"UUID1"
+    UUID1 -> t2:UUID1
     "UUID2" -> "t1":"UUID" on update cascade on delete restrict
     "UUID2" -> <"t2":"UUID1">
     "UUID3" -> <"t1":"UUID"> <"t2":"UUID1">

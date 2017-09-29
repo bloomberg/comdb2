@@ -137,7 +137,8 @@ ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_cons
                 ;
 
 
-cnstrtstart:    string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
+cnstrtstart:      string '-' T_GT { end_constraint_list(); start_constraint_list($1); }
+		| varname '-' T_GT { end_constraint_list(); start_constraint_list($1); }
 		;
 
 cnstrtdef:        cnstrtdef cnstrtstart cnstrtbllist ctmodifiers { /*end_constraint_list(); */}
