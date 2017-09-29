@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=900)
+(TUNABLES_COUNT=899)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -402,7 +402,6 @@
 (name='logmsg.notimestamp', description='Disables 'syslog.timestamp'.', type='BOOLEAN', value='OFF', read_only='N')
 (name='logmsg.syslog', description='Log messages to syslog.', type='BOOLEAN', value='OFF', read_only='N')
 (name='logmsg.timestamp', description='Stamp all messages with timestamp.', type='BOOLEAN', value='ON', read_only='N')
-(name='logregionsz', description='Size of the log region (in KB). This is used by BerkeleyDB to store information about open files and other things.', type='INTEGER', value='1048576', read_only='N')
 (name='logs_on_panic', description='logs_on_panic', type='BOOLEAN', value='ON', read_only='N')
 (name='logsegments', description='Changing this can create multiple logfile segments. Multiple segments can allow the log to be written while other segments are being flushed.', type='INTEGER', value='1', read_only='N')
 (name='longblockcache', description='', type='INTEGER', value='1', read_only='N')
