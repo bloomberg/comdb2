@@ -255,7 +255,7 @@ bool read_incr_FileInfo(const std::string& line, FileInfo& file,
 }
 
 
-bool recognise_data_file(const std::string& filename, bool llmeta_mode,
+bool recognize_data_file(const std::string& filename,
         bool& is_data_file, bool& is_queue_file, bool& is_queuedb_file,
         std::string& out_table_name)
 // Determine if the given filename looks like a table or queue file.  If it does
@@ -290,33 +290,23 @@ bool recognise_data_file(const std::string& filename, bool llmeta_mode,
             ext == "freerecq" ||
             ext == "meta.dta" ||
             ext == "meta.ix0" ||
-            ext == "meta.freerec") {
+            ext == "meta.freerec" || 
+            ext == "dta") {
         out_table_name = filename.substr(0, dot_pos);
         is_data_file = true;
         return true;
     }
 
-    if(llmeta_mode) {
-        // In llmeta mode look for *.data*, *.index and *.blob*
-        // Also strip out the 16 digit hex suffix that comes after the table
-        // name.
-        if(dot_pos > 17 && filename[dot_pos-17] == '_' &&
-                (ext == "index" ||
-                ext.compare(0, 4, "data") == 0 ||
-                ext.compare(0, 4, "blob") == 0)) {
-            out_table_name = filename.substr(0, dot_pos - 17);
-            is_data_file = true;
-            return true;
-        }
-
-    } else {
-        /* Look for ordinary non-llmeta mode index and data files */
-        if (ext.compare(0, 2, "ix") == 0 || ext.compare(0, 3, "dta") == 0) {
-            out_table_name = filename.substr(0, dot_pos);
-            is_data_file = true;
-            return true;
-        }
+    // Look for *.data*, *.index and *.blob*
+    // Also strip out the 16 digit hex suffix that comes after the table
+    // name.
+    if(dot_pos > 17 && filename[dot_pos-17] == '_' &&
+            (ext == "index" ||
+             ext.compare(0, 4, "data") == 0 ||
+             ext.compare(0, 4, "blob") == 0)) {
+        out_table_name = filename.substr(0, dot_pos - 17);
+        is_data_file = true;
+        return true;
     }
-
     return false;
 }

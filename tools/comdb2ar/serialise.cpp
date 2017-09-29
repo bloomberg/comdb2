@@ -37,6 +37,7 @@ extern "C" {
 #include <time.h>
 #include <openssl/sha.h>
 #include <iomanip>
+#include <sys/stat.h>
 
 #include <stdlib.h>
 
@@ -455,8 +456,6 @@ static void strip_cluster(const std::string& lrlpath,
 static void parse_lrl_file(const std::string& lrlpath,
         std::string* p_dbname,
         std::string* p_dbdir,
-        bool* p_llmeta,
-        bool* p_tagged,
         std::list<std::string>* p_support_files,
         std::set<std::string>* p_table_names,
         std::set<std::string>* p_queue_names,
@@ -495,14 +494,6 @@ static void parse_lrl_file(const std::string& lrlpath,
                     throw LRLError(lrlpath, lineno, "missing database directory");
                 }
                 *p_dbdir = tok;
-
-            } else if(tok == "use_llmeta") {
-                *p_llmeta = true;
-
-            } else if(tok == "data" || tok == "index") {
-                // Old style database that doesn't know its own schema
-                *p_tagged = false;
-
             } else if(tok == "table") {
                 std::string name;
                 std::string schema_path;
@@ -566,8 +557,6 @@ void serialise_database(
     std::string dbname;
     std::string dbdir;
     std::string dbtxndir;
-    bool llmeta = true;
-    bool tagged = true;
     bool nonames = false;
     bool has_cluster_info = false;
     std::string origlrlname("");
@@ -596,7 +585,7 @@ void serialise_database(
     // Current logfile, log errors
     int curlog=0, logerr=0;
 
-    parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged, &support_files,
+    parse_lrl_file(lrlpath, &dbname, &dbdir, &support_files,
             &table_names, &queue_names, &nonames, &has_cluster_info);
 
     // Ignore lrl names setting if we know better
@@ -663,10 +652,8 @@ void serialise_database(
     // to skip this if block, but people are supposed to install from a db
     // that's up and running (and has been tested etc) so we'll leave this out
     // for now -cpick
-    if(llmeta && support_files_only) {
+    if(support_files_only) {
         // Reset
-        llmeta = false;
-        tagged = true;
         support_files.clear();
         table_names.clear();
         queue_names.clear();
@@ -694,7 +681,7 @@ void serialise_database(
         origlrlname = dbname + ".lrl"; /* save the current path */
         lrlpath = newlrlpath;
 
-        parse_lrl_file(lrlpath, &dbname, &dbdir, &llmeta, &tagged,
+        parse_lrl_file(lrlpath, &dbname, &dbdir,
                 &support_files, &table_names, &queue_names, &nonames, &has_cluster_info);
     }
 
@@ -741,7 +728,7 @@ void serialise_database(
 
     // If it's an llmeta db then look for the file version map too.
     // Read it in to get a list of tables.
-    if(llmeta && !support_files_only) {
+    if(!support_files_only) {
         if (nonames) {
             optional_files.push_back("file_vers_map");
         } else {
@@ -769,12 +756,6 @@ void serialise_database(
                 }
             }
         }
-    }
-
-
-    // Untagged databases have an explicit table named after the database itself
-    if(!tagged) {
-        table_names.insert(dbname);
     }
 
     // If the database is running, connect to it and instruct it to pause
@@ -900,7 +881,7 @@ void serialise_database(
             std::string table_name;
 
             // First see if this file relates to any of our tables or queues
-            if(recognise_data_file(filename, llmeta,
+            if(recognize_data_file(filename,
                         is_data_file, is_queue_file, is_queuedb_file, table_name)) {
                 if(is_data_file &&
                         table_names.find(table_name) == table_names.end()) {
@@ -1296,4 +1277,74 @@ void serialise_database(
     writepadding(2 * 512);
 
     // Success, all done!
+}
+
+void create_partials(
+    const std::string &lrlpath, bool do_direct_io
+) 
+// create a tarball of incremental data files for all data files, and nothing else
+{
+    std::string dbname, dbdir;
+    std::list<std::string> support_files;
+    std::set<std::string> table_names;
+    std::set<std::string> queue_names;
+    bool nonames;
+    bool has_cluster_info;
+    std::list<std::string> dbdir_files;
+    str::string abspath;
+
+    parse_lrl_file(lrlpath, &dbname, &dbdir, 
+                   &support_files, &table_names, 
+                   &queue_names, &nonames, &has_cluster_info);
+
+    // We just care about dbdir.  Ignore everything else.
+    listdir(dbdir_files, dbdir);
+
+
+    for (std::list<std::string>::const_iterator it  = dbdir_files.begin();  it != dbdir_files.end(); ++it) {
+        bool is_data_file, is_queue_file, is_queuedb_file;
+        std::string table;
+
+        std::ostringstream ss;
+        ss << dbdir << "/" << *it;
+        abspath = ss.str();
+        struct stat st;
+        int rc = stat(abspath.c_str(), &st);
+        if (rc) {
+            std::ostringstream ss;
+            ss << "Can't stat " << ss.str() << " " << strerror(errno) << std::endl;
+            throw Error(ss.str());
+
+        }
+        else if (!(st.st_mode & S_IFREG)) {
+            std::cerr << "notafile " << *it << std::endl;
+            continue;
+        }
+
+        TarHeader head;
+        if (recognize_data_file(*it, is_data_file, is_queue_file, is_queuedb_file, table)) {
+            head.clear();
+            st.st_size = 0;
+
+            std::ostringstream ss;
+            ss << *it << ".incr";
+
+            head.set_filename(*it);
+            head.set_attrs(st);
+            head.set_checksum();
+
+            std::cerr << "p " << *it << std::endl;
+
+            tar_block_header hdr = head.get();
+
+            if (writeall(1, &hdr, sizeof(tar_block_header)) != sizeof(tar_block_header)) {
+                std::ostringstream ss;
+                ss << "error writing tar block header: " << std::strerror(errno);
+                throw Error(ss.str());
+            }
+        }
+        else {
+            std::cerr << "notadatafile " << *it << std::endl;
+        }
+    }
 }
