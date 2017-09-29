@@ -145,5 +145,7 @@ struct iomap {
     int memptrickle_time;
 };
 
+void create_partials(const std::string &lrlpath, bool do_direct_io);
+
 
 #endif

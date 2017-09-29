@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
     extern char *optarg;
     extern int optind, optopt;
 
-    enum modes_enum {CREATE_MODE, EXTRACT_MODE, NO_MODE};
+    enum modes_enum {CREATE_MODE, EXTRACT_MODE, PARTIAL_MODE, NO_MODE};
     modes_enum mode = NO_MODE;
 
     int c;
@@ -236,6 +236,10 @@ int main(int argc, char *argv[])
                 mode = CREATE_MODE;
                 break;
 
+            case 'p':
+                mode = PARTIAL_MODE;
+                break;
+
             case 'x':
                 mode = EXTRACT_MODE;
                 break;
@@ -324,6 +328,18 @@ int main(int argc, char *argv[])
             } else {
               errexit();
             }
+        }
+    } else if (mode == PARTIAL_MODE) {
+        // A lot like create, we create a tarball, but we don't do
+        // lots of other things that create does, so it's a great
+        // deal easier to skip that code
+        try {
+            const std::string lrlpath(argv[1]);
+            create_partials(lrlpath, do_direct_io);
+        }
+        catch(std::exception& e) {
+            std::cerr << e.what() << std::endl;
+            errexit();
         }
     }
 

@@ -452,9 +452,7 @@ void incr_deserialise_database(
             if(filename.find_first_of('/') == std::string::npos) {
                 std::string table_name;
 
-                if(recognise_data_file(filename, false, is_data_file,
-                            is_queue_file, is_queuedb_file, table_name) ||
-                   recognise_data_file(filename, true, is_data_file,
+                if(recognize_data_file(filename, is_data_file,
                             is_queue_file, is_queuedb_file, table_name)) {
                     if(table_set.insert(table_name).second) {
                         std::clog << "Discovered table " << table_name
