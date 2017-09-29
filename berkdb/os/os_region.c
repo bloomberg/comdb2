@@ -118,8 +118,10 @@ __os_r_attach(dbenv, infop, rp)
 	if (!gbl_largepages || rp->size < MB_2) {
         if (rp->size != 0)
             ret = __os_calloc(dbenv, 1, rp->size, &infop->addr);
-        else
+        else {
+            infop->addr = NULL;
             ret = 0;
+        }
 	} else {
 		char name[MAXPATHLEN];
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
@@ -172,7 +174,7 @@ __os_r_detach(dbenv, infop, destroy)
 
 	rp = infop->rp;
 
-	if (infop->fd < 0) {
+	if (infop->fd < 0 && infop->addr) {
 		__os_free(dbenv, infop->addr);
 	} else {
 		char name[MAXPATHLEN];
