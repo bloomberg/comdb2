@@ -180,29 +180,29 @@ static void register_thdpool_tunables(char *name, struct thdpool *pool)
                      NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, mint, "Minimum number of threads in the pool.", TUNABLE_INTEGER,
-        &pool->minnthd, NOZERO, NULL, NULL, NULL, NULL);
+        &pool->minnthd, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, maxt, "Maximum number of threads in the pool.", TUNABLE_INTEGER,
-        &pool->maxnthd, NOZERO, NULL, NULL, NULL, NULL);
+        &pool->maxnthd, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, maxq, "Maximum size of queue.",
-                             TUNABLE_INTEGER, &pool->maxqueue, NOZERO, NULL,
+                             TUNABLE_INTEGER, &pool->maxqueue, SIGNED, NULL,
                              NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, longwait, "Long wait alarm threshold (in milliseconds).",
-        TUNABLE_INTEGER, &pool->longwaitms, NOZERO, NULL, NULL, NULL, NULL);
+        TUNABLE_INTEGER, &pool->longwaitms, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, linger, "Thread linger time (in seconds).",
-                             TUNABLE_INTEGER, &pool->lingersecs, NOZERO, NULL,
+                             TUNABLE_INTEGER, &pool->lingersecs, SIGNED, NULL,
                              NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, stacksz, "Thread stack size.",
-                             TUNABLE_INTEGER, &pool->stack_sz, NOZERO, NULL,
+                             TUNABLE_INTEGER, &pool->stack_sz, SIGNED, NULL,
                              NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, maxqover,
                              "Maximum client forced queued items above maxq.",
-                             TUNABLE_INTEGER, &pool->maxqueueoverride, NOZERO,
+                             TUNABLE_INTEGER, &pool->maxqueueoverride, SIGNED,
                              NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, maxagems, "Maximum age for in-queue time (in milliseconds).",
-        TUNABLE_INTEGER, &pool->maxqueueagems, NOZERO, NULL, NULL, NULL, NULL);
+        TUNABLE_INTEGER, &pool->maxqueueagems, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, exit_on_error, "Exit on pthread error.",
                              TUNABLE_BOOLEAN, &pool->exit_on_create_fail, NOARG,
                              NULL, NULL, NULL, NULL);
