@@ -682,10 +682,7 @@ void done_sql_thread(void)
             hash_free(thd->query_hash);
             thd->query_hash = 0;
         }
-        if (thd->rootpages) {
-            free(thd->rootpages);
-            thd->rootpages = NULL;
-        }
+        destroy_sqlite_master(thd->rootpages, thd->rootpage_nentries);
         free(thd);
     }
 }
