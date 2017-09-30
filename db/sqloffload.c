@@ -357,7 +357,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (sentops && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning %d\n", 
+            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning rc=%d\n", 
                     pthread_self(), __func__, __LINE__, rc);
         }
     }
@@ -365,7 +365,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (clnt->selectv_arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning %d\n", 
+            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning rc=%d\n", 
                     pthread_self(), __func__, __LINE__, rc);
         }
     }
@@ -390,8 +390,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             rc = 0;
 
         clnt->osql.xerr.errval = rc;
-
-
     } else {
 
         /* close the block processor session and retrieve the result */

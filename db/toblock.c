@@ -955,7 +955,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         }
 
         case FSTBLK_SNAP_INFO:
-            snapinfo = 1;
+            snapinfo = 1; /* fallthrough */
 
         case FSTBLK_RSPKL: 
         {
@@ -1084,6 +1084,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s!\n", __func__, line, 
             outrc, printkey);
+    free(printkey);
     
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
@@ -1101,8 +1102,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         }
         outrc = ERR_NOT_DURABLE;
     }
-
-    free(printkey);
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
         char *bskey = alloca(iq->snap_info.keylen + 1);
@@ -2439,12 +2438,8 @@ void handle_postabort_bpfunc(struct ireq *iq)
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
-    struct timespec start_time;
     int did_replay = 0;
     int rowlocks = gbl_rowlocks;
-#if 0
-    clock_gettime(CLOCK_REALTIME, &start_time);
-#endif
     int fromline = -1;
     int opnum, jj, num_reqs;
     int rc, ixkeylen, rrn;
@@ -2470,10 +2465,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
     int is_block2sqlmode = 0; /* set this for all osql modes */
-    int is_block2sqlmode_blocksql =
-        0; /* enable this only for blocksql to handle verify errors*/
+    /* enable this only for blocksql to handle verify errors */
+    int is_block2sqlmode_blocksql = 0; 
     int osql_needtransaction = OSQL_BPLOG_NONE;
-    int i = 0;
     int blkpos = -1, ixout = -1, errout = 0;
     int backed_out = 0;
     struct thr_handle *thr_self = thrman_self();
@@ -4656,7 +4650,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     /* do all previously not done ADD key ops here--they were delayed due
      * to necessity of constraint checks */
     thrman_wheref(thr_self, "%s [constraints]", req2a(iq->opcode));
-    i = 0;
     blkpos = -1;
     ixout = -1;
     errout = 0;
@@ -5448,6 +5441,8 @@ add_blkseq:
                     if (irc == BDBERR_NOT_DURABLE) {
                         rc = ERR_NOT_DURABLE;
                     }
+                    logmsg(LOGMSG_DEBUG, "trans_commit_adaptive irc=%d, "
+                            "rc=%d\n", irc, rc);
                 }
 
                 if (hascommitlock) {
@@ -5752,7 +5747,6 @@ add_blkseq:
                   trans, iq->txnsize, iq->timeoutms, iq->reptimems, rate);
     }
 
-    struct timespec end_time;
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
     pthread_mutex_lock(&commit_stat_lk);
