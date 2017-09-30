@@ -696,6 +696,16 @@ int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
     return rc;
 }
 
+int bdb_lock_tablename_read(bdb_state_type *bdb_state, const char *name,
+                            tran_type *tran)
+{
+    if (tran->parent)
+        tran = tran->parent;
+
+    return bdb_lock_table_int(bdb_state->dbenv, name, resolve_locker_id(tran),
+                              BDB_LOCK_READ);
+}
+
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;

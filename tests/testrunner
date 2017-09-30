@@ -122,7 +122,7 @@ def render():
     print(term.clear())
     now = int(time.time())
     with term.location(0, 0):
-        print(term.white + term.on_black + "to stop test, run ./stopall " + testid)
+        print(term.white + term.on_black + "to stop test, run ./stopall " + str(testid))
     with term.location(0, 1):
         print(term.white + 'passed: ' + term.on_black + term.green + str(passed) + term.white + '   failed: ' + term.red + str(failed))
     print(term.white + term.on_black)

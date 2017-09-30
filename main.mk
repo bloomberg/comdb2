@@ -39,7 +39,7 @@ ifeq ($(arch),SunOS)
   CXX=/bb/util/common/SS12_3-20131030/SUNWspro/bin/CC
   OPT_CFLAGS=-xO3 -xprefetch=auto,explicit
   CFLAGS_MISC=-xtarget=generic -fma=fused -xinline=%auto -xmemalign=8s
-  CFLAGS=-mt -xtarget=generic -xc99=all -errfmt=error
+  CFLAGS=-mt -xtarget=generic -xc99=all -errfmt=error -K PIC
   CFLAGS_DEFS=-D_POSIX_PTHREAD_SEMANTICS -D_POSIX_PTHREAD_SEMANTICS -D__FUNCTION__=__FILE__ -D_SYS_SYSMACROS_H
   CFLAGS_DEBUGGING=-g -xdebugformat=stabs
   ARCHLIBS+=-lnsl -lsocket
@@ -70,10 +70,9 @@ ifeq ($(arch),AIX)
   CXXFLAGS=$(CFLAGS_64)
   # I give up.  Can't link these statically.
   LIBREADLINE=-blibpath:/opt/bb/lib64:/usr/lib:/lib -lreadline -lhistory
-  # Use GCC on IBM for C++11 code. Also requires different options for 64 bit.
-  CXX11=/opt/swt/install/gcc-4.9.2/bin/g++
-  CXX11FLAGS=-std=c++11 -maix64
-  CXX11LDFLAGS=-maix64
+  CXX11=/opt/bb/bin/g++-5
+  CXX11FLAGS=-std=c++11 -pthread -maix64
+  CXX11LDFLAGS=-static-libgcc -static-libstdc++ -maix64
   BBLDPREFIX=-Wl,
   # Flags for generating dependencies
   DEPFLAGS = -qmakedep=gcc -MF $(@:.o=.Td)
@@ -82,6 +81,10 @@ ifeq ($(arch),AIX)
   SHARED=-G
 endif
 endif
+endif
+
+ifeq ($(TCLSH),)
+TCLSH := tclsh
 endif
 
 CFLAGS_DEFS+=-DBB_THREADED -D_REENTRANT -D_THREAD_SAFE

@@ -19,7 +19,7 @@
 
 /* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255
 
-/* WARNING - don't incude this in other header files that will be widely used
+ * WARNING - don't incude this in other header files that will be widely used
  * (e.g. comdb2_api.h) - the symbol sbuf2 conflicts with many fortran common
  * area names */
 

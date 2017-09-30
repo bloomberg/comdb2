@@ -260,12 +260,6 @@ DEF_ATTR(BULK_SQL_ROWLOCKS, bulk_sql_rowlocks, BOOLEAN, 1, NULL)
 DEF_ATTR(ROWLOCKS_PAGELOCK_OPTIMIZATION, rowlocks_pagelock_optimization,
          BOOLEAN, 1,
          "Upgrade rowlocks to pagelocks if possible on cursor traversals.")
-/* TODO(Nirbhay) : Add log_region_size */
-DEF_ATTR_2(
-    LOGREGIONSZ, log_region_sz, QUANTITY, 1024 * 1024,
-    "Size of the log region (in KB). This is used by BerkeleyDB to store "
-    "information about open files and other things.",
-    0, NULL, log_region_sz_update)
 DEF_ATTR(ENABLECURSORSER, enable_cursor_ser, BOOLEAN, 0, NULL)
 DEF_ATTR(ENABLECURSORPAUSE, enable_cursor_pause, BOOLEAN, 0, NULL)
 DEF_ATTR(NONAMES, nonames, BOOLEAN, 1, "Use database name for some environment "

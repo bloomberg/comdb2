@@ -328,6 +328,7 @@ reopen:
             throw Error("Error opening '" + filename + "' for writing");
         }
     }
+#endif
 
     return std::unique_ptr<fdostream>(new fdostream(fd));
 }
@@ -353,4 +354,3 @@ void remove_all_old_files(std::string &datadir) {
     }
 }
 
-#endif

@@ -834,6 +834,7 @@ struct dbtable {
 
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
+    int disableskipscan : 1;
 };
 
 struct log_delete_state {
@@ -915,7 +916,7 @@ struct dbenv {
     int typcnt[MAXTYPCNT + 1];
 
     /* bdb_environment */
-    void *bdb_env;
+    bdb_state_type *bdb_env;
 
     /* tables and queues */
     int num_dbs;
@@ -2873,7 +2874,7 @@ void reqlog_setflag(struct reqlogger *logger, unsigned flag);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
-void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt);
+void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt);
 uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
@@ -3555,6 +3556,12 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr);
 unsigned long long table_version_select(struct dbtable *db, tran_type *tran);
 
 /**
+ *  Set the version to a specific version, required by timepartition
+ *
+ */
+int table_version_set(tran_type *tran, const char *tablename,
+                      unsigned long long version);
+/**
  * Interface between partition roller and schema change */
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *err);
@@ -3629,5 +3636,10 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
+
+/**
+ * check if a tablename is a queue
+ */
+int is_tablename_queue(const char *tablename, int len);
 
 #endif /* !INCLUDED_COMDB2_H */

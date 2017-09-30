@@ -50,6 +50,7 @@
 #include <net_types.h>
 #include <trigger.h>
 #include <logmsg.h>
+#include "views.h"
 
 /* don't retry commits, fail transactions during master swings !
    we need blockseq */
@@ -1001,7 +1002,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     }
 
     rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename, nettype,
-                         osql->logsb);
+                         osql->logsb, comdb2_table_version(tablename));
     RESTART_SOCKSQL;
 
     if (rc == SQLITE_OK) {
@@ -1668,8 +1669,20 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                __FILE__, __LINE__, __func__, rc);
     }
     if (usedb) {
-        rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
-                             NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+        unsigned long long version = 0;
+        if (getdbidxbyname(sc->table) < 0) { // view
+            char *viewname = timepart_newest_shard(sc->table, &version);
+            if (viewname) {
+                free(viewname);
+            } else
+                usedb = 0;
+        } else {
+            version = comdb2_table_version(tblname);
+        }
+
+        if (usedb)
+            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
+                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb, version);
     }
     if (rc == SQLITE_OK) {
         rc = osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,

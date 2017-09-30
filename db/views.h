@@ -50,6 +50,15 @@ enum views_trigger_op {
     VIEWS_TRIGGER_UPDATE = 3
 };
 
+typedef struct timepart_sc_arg {
+    struct schema_change_type *s;
+    const char *view_name;
+    int indx;
+    int nshards;
+    int rc;
+    void *tran; /*remove?*/
+} timepart_sc_arg_t;
+
 /**
  * Initialize the views
  *
@@ -179,7 +188,7 @@ int views_sqlite_del_view(timepart_view_t *view, sqlite3 *db,
  *
  */
 int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
-                        struct errstat *err);
+                        struct errstat *err, int lock);
 
 /**
  * Create a new shard;
@@ -261,12 +270,27 @@ int timepart_is_shard(const char *name, int lock);
 int timepart_is_timepart(const char *name, int lock);
 
 /**
- * Alter a timepart 
+ * Time partition schema change resume
  *
  */
-int timepart_alter_timepart(struct ireq *iq, void *tran,
-                            int alter(struct ireq *iq, int indx, int maxindx,
-                                      void *tran));
+int timepart_resume_schemachange(int check_llmeta(const char *));
+
+/**
+ * During resume, we need to check at if the interrupted alter made any
+ * progress, and continue with that shard
+ *
+ */
+int timepart_schemachange_get_shard_in_progress(const char *view_name,
+                                                int check_llmeta(const char *));
+
+/**
+ * Run "func" for each shard, starting with "first_shard".
+ * Callback receives the name of the shard and argument struct
+ *
+ */
+int timepart_foreach_shard(const char *view_name,
+                           int func(const char *, timepart_sc_arg_t *),
+                           timepart_sc_arg_t *arg, int first_shard);
 
 /**
  * Under views lock, call a function for each shard
@@ -289,6 +313,19 @@ int views_cron_restart(timepart_views_t *views);
  *
  */
 int timepart_update_retention(void *tran, const char *name, int value, struct errstat *err);
+
+/**
+ * Locking the views subsystem, needed for ordering locks with schema
+ *
+ */
+void views_lock(void);
+void views_unlock(void);
+
+/**
+ * Get the name of the newest shard, and optionally its version
+ *
+ */
+char *timepart_newest_shard(const char *view_name, unsigned long long *version);
 
 #endif
 

@@ -130,8 +130,8 @@ int add_table_to_environment(char *table, const char *csc2,
         if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
         sc_errf(s, "%s\n", err);
         sc_errf(s, "error adding new table locally\n");
-        logmsg(LOGMSG_WARN, "Failed to load schema for table %s\n", table);
-        logmsg(LOGMSG_WARN, "Dumping schema for reference: '%s'\n", csc2);
+        logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
+        logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
         return SC_CSC2_ERROR;
     }
     newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);

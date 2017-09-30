@@ -597,13 +597,15 @@ static unsigned int query_path_component_hash(const void *key, int len)
 
     name = q->lcl_tbl_name;
 
-    struct {
+    struct myx {
         int ix;
-        char name[strlen(name) + 1];
-    } x;
-    x.ix = q->ix;
-    strcpy(x.name, name);
-    return hash_default_fixedwidth((void*)&x, sizeof(x));
+        char name[1];
+    } * x;
+    int sz = offsetof(struct myx, name) + strlen(name) + 1;
+    x = alloca(sz);
+    x->ix = q->ix;
+    strcpy(x->name, name);
+    return hash_default_fixedwidth((void *)x, sz);
 }
 
 static int query_path_component_cmp(const void *key1, const void *key2, int len)
@@ -624,8 +626,7 @@ static int query_path_component_cmp(const void *key1, const void *key2, int len)
         return 1;
     } else {
         int rc = strncmp(q1->rmt_db, q2->rmt_db, sizeof(q1->rmt_db));
-        if (rc)
-            return rc;
+        if (rc) return rc;
 
         return strncmp(q1->lcl_tbl_name, q2->lcl_tbl_name,
                        sizeof(q1->lcl_tbl_name));
@@ -4915,29 +4916,18 @@ static char *get_temp_dbname(Btree *pBt)
 }
 
 /*
-** Don't create new btrees, use this one.
 ** Lua threads share temp tables.
-** Temp tables were not designed to be shareable.
+** Don't create new btree, use this one.
 */
-static __thread struct temptable *tmptbl_kludge = NULL;
+static __thread struct temptable *tmptbl_clone = NULL;
 
 /*
+** Temp tables were not designed to be shareable.
 ** Use this lock for synchoronizing access to shared
-** temp table.
+** temp table between Lua threads.
 */
 static __thread pthread_mutex_t *tmptbl_lk = NULL;
 void comdb2_set_tmptbl_lk(pthread_mutex_t *lk) { tmptbl_lk = lk; }
-
-/*
-** Don't lock around access to sqlite_temp_master.
-** Those are temp tables, but each thread makes its
-** own copy and don't need to synchronize access to it.
-*/
-static __thread int tmptbl_use_lk = 0;
-void comdb2_use_tmptbl_lk(int use)
-{
-    tmptbl_use_lk = use; // don't use lk for sqlite_temp_master
-}
 
 /*
  ** Create a new BTree table.  Write into *piTable the page
@@ -4991,17 +4981,17 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         pBt->temp_tables[num_temp_tables].owner = pBt;
         pBt->temp_tables[num_temp_tables].name = get_temp_dbname(pBt);
         pBt->temp_tables[num_temp_tables].lk = NULL;
-    } else if (tmptbl_use_lk && tmptbl_kludge) { // clone
-        pBt->temp_tables[num_temp_tables].tbl = tmptbl_kludge->tbl;
+    } else if (tmptbl_clone) {
+        pBt->temp_tables[num_temp_tables].tbl = tmptbl_clone->tbl;
         pBt->temp_tables[num_temp_tables].owner = NULL;
-        pBt->temp_tables[num_temp_tables].name = tmptbl_kludge->name;
-        pBt->temp_tables[num_temp_tables].lk = tmptbl_lk;
+        pBt->temp_tables[num_temp_tables].name = tmptbl_clone->name;
+        pBt->temp_tables[num_temp_tables].lk = tmptbl_clone->lk;
     } else {
         pBt->temp_tables[num_temp_tables].tbl =
             bdb_temp_table_create(thedb->bdb_env, &bdberr);
         pBt->temp_tables[num_temp_tables].owner = pBt;
         pBt->temp_tables[num_temp_tables].name = get_temp_dbname(pBt);
-        pBt->temp_tables[num_temp_tables].lk = tmptbl_use_lk ? tmptbl_lk : NULL;
+        pBt->temp_tables[num_temp_tables].lk = tmptbl_lk;
     }
     if (pBt->temp_tables[num_temp_tables].tbl == NULL) {
         rc = SQLITE_INTERNAL;
@@ -7180,8 +7170,7 @@ static inline int has_compressed_index(int iTable, BtCursor *cur,
     /* INVALID: assert(iTable < (thd->rootpage_nentries + RTPAGE_START)); */
 
     db = get_sqlite_db(thd, iTable, &ixnum);
-    if (!db)
-        return -1;
+    if (!db) return -1;
 
     rc = analyze_is_sampled(clnt, db->dbname, ixnum);
     return rc;
@@ -10315,9 +10304,8 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
     }
     *pnEntry = count;
 
-    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE,
-                "Count(pCur %d)      = %s\n", pCur->cursorid,
-                sqlite3ErrStr(rc));
+    reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Count(pCur %d)      = %s\n",
+                pCur->cursorid, sqlite3ErrStr(rc));
 
     return rc;
 }
@@ -10560,17 +10548,11 @@ void sqlite3SetConversionError(void)
             CONVERT_FAILED_INCOMPATIBLE_VALUES;
 }
 
-int is_comdb2_index_disableskipscan(const char *dbname, char *idx)
+int is_comdb2_index_disableskipscan(const char *name)
 {
-    struct dbtable *db = get_dbtable_by_name(dbname);
+    struct dbtable *db = get_dbtable_by_name(name);
     if (db) {
-        int i;
-        for (i = 0; i < db->nix; ++i) {
-            struct schema *s = db->ixschema[i];
-            if (s->sqlitetag && strcmp(s->sqlitetag, idx) == 0) {
-                return (s->disableskipscan);
-            }
-        }
+        return db->disableskipscan;
     }
     return 0;
 }
@@ -11196,16 +11178,18 @@ void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
     // aDb[0]: sqlite_master
     // aDb[1]: sqlite_temp_master
     Btree *s = &src->aDb[1].pBt[0];
-    comdb2_use_tmptbl_lk(1);
-    tmptbl_kludge = &s->temp_tables[rootpg];
-    dest->force_sqlite_impl = 1;
-    if ((rc = sqlite3_exec(dest, sql, NULL, NULL, &err)) != 0) {
+
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(dest, sql, -1, &stmt, NULL);
+    tmptbl_clone = &s->temp_tables[rootpg];
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+        ;
+    tmptbl_clone = NULL;
+    if (rc != SQLITE_DONE) {
         logmsg(LOGMSG_ERROR, "%s rc:%d err:%s sql:%s\n", __func__, rc, err, sql);
         abort();
     }
-    dest->force_sqlite_impl = 0;
-    comdb2_use_tmptbl_lk(0);
-    tmptbl_kludge = NULL;
+    sqlite3_finalize(stmt);
 }
 
 int bt_hash_table(char *table, int szkb)
@@ -11372,6 +11356,9 @@ unsigned long long comdb2_table_version(const char *tablename)
 {
     struct dbtable *db;
     unsigned long long ret;
+
+    if (is_tablename_queue(tablename, strlen(tablename)))
+        return 0;
 
     db = get_dbtable_by_name(tablename);
     if (!db) {

@@ -88,7 +88,7 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
         }
     }
     return setError(pParse, SQLITE_MISUSE,
-                    "DDL commands operate only on local schema only.");
+                    "DDL commands operate on local schema only.");
 }
 
 extern int gbl_allow_user_schema;
@@ -407,9 +407,6 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
     thd->sqlclntstate->osql.long_request = 1;
-    if (usedb && getdbidxbyname(s->table) < 0) { // view
-        usedb = 0;
-    }
     f->rc = osql_schemachange_logic(s, thd, usedb);
     if (f->rc == SQLITE_DDL_MISUSE)
         f->errorMsg = "Transactional DDL Error: Overlapping Tables";
@@ -2780,14 +2777,7 @@ cleanup:
     return 1;
 }
 
-static inline int use_sqlite_impl(Parse *pParse)
-{
-    if (pParse->db->init.busy || IN_DECLARE_VTAB ||
-        pParse->db->force_sqlite_impl) {
-        return 1;
-    }
-    return 0;
-}
+#define use_sqlite_impl(parse) (parse->comdb2_ddl_ctx == NULL)
 
 void comdb2AlterTableStart(
     Parse *pParse, /* Parser context */
@@ -2838,12 +2828,9 @@ cleanup:
 */
 void comdb2AlterTableEnd(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx;
     Vdbe *v;
     int max_size;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -2910,13 +2897,8 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    struct comdb2_ddl_context *ctx;
-
-    assert(pParse->comdb2_ddl_ctx == 0);
-
-    if (isTemp) pParse->db->force_sqlite_impl = 1;
-
-    if (use_sqlite_impl(pParse)) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy || IN_DECLARE_VTAB) {
+        pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
         return;
@@ -2926,7 +2908,7 @@ void comdb2CreateTableStart(
         return;
     }
 
-    ctx = create_ddl_context(pParse);
+    struct comdb2_ddl_context *ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
     ctx->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
@@ -2957,13 +2939,10 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema_change_type *sc = 0;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
     int max_size;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3EndTable(pParse, pCons, pEnd, tabOpts, 0);
@@ -3027,12 +3006,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pType   /* Type of the column */
                      )
 {
-    struct comdb2_ddl_context *ctx;
-    char type[pType->n + 1];
     struct field *field;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    char type[pType->n + 1];
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         // TODO: BAD ASSERT: if ((pParse->pNewTable) == 0) assert(0);
@@ -3100,12 +3076,9 @@ cleanup:
 
 void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 {
-    struct comdb2_ddl_context *ctx;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *def;
     int def_len;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddDefaultValue(pParse, pSpan);
@@ -3139,10 +3112,7 @@ cleanup:
 */
 void comdb2AddNull(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
@@ -3170,10 +3140,7 @@ void comdb2AddNull(Parse *pParse)
 */
 void comdb2AddNotNull(Parse *pParse, int onError)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddNotNull(pParse, onError);
@@ -3198,10 +3165,7 @@ void comdb2AddNotNull(Parse *pParse, int onError)
 
 void comdb2AddDbpad(Parse *pParse, int dbpad)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
@@ -3229,12 +3193,9 @@ void comdb2AddPrimaryKey(
     int sortOrder    /* SQLITE_SO_ASC or SQLITE_SO_DESC */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddPrimaryKey(pParse, pList, onError, autoInc, sortOrder);
@@ -3319,12 +3280,9 @@ void comdb2AddIndex(
     u8 idxType       /* The index type */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
@@ -3421,9 +3379,7 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
-    assert(pParse->comdb2_ddl_ctx == 0);
-
-    if (use_sqlite_impl(pParse)) {
+    if (pParse->db->init.busy || IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);
@@ -3627,11 +3583,8 @@ void comdb2CreateForeignKey(
     int flags           /* Conflict resolution algorithms. */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct constraint *constraint;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateForeignKey(pParse, pFromCol, pTo, pToCol, flags);
@@ -3748,10 +3701,7 @@ cleanup:
 
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
@@ -3842,12 +3792,9 @@ void comdb2DropColumn(Parse *pParse, /* Parser context */
                       Token *pName   /* Name of the column */
                       )
 {
-    struct comdb2_ddl_context *ctx;
     char *name;
     int column_exists = 0;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -3997,12 +3944,14 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
     struct dbtable *parent_table;
     int index_count = 0;
 
+    /*
+    ** When will we ever need SQLite's impl for this?
     assert(pParse->comdb2_ddl_ctx == 0);
-
     if (use_sqlite_impl(pParse)) {
         sqlite3DropIndex(pParse, pName, ifExists);
         return;
     }
+    */
 
     assert(pName->nSrc == 1);
 
