@@ -1082,8 +1082,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         util_tohex(printkey, fstseqnum, seqlen);
     }
 
-    logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s, cnonce %s!\n", __func__, line, 
-            outrc, printkey, iq->snap_info.key);
+    logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s, cnonce %*s!\n", __func__, line, 
+            outrc, printkey, iq->snap_info.keylen, iq->snap_info.key);
     free(printkey);
     
     /* If the latest commit is durable, then the blkseq commit must be durable.  
