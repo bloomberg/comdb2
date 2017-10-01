@@ -251,6 +251,9 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 "
 
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2(i int primary key)"
+
 INITNUMREC=100
 
 assert_vers t1 0

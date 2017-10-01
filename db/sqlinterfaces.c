@@ -1249,6 +1249,7 @@ void sqlite_init_end(void) { in_init = 0; }
 
 #endif // DEBUG_SQLITE_MEMORY
 
+extern __thread snap_uid_t *osql_snap_info;
 static __thread comdb2ma sql_mspace = NULL;
 int sql_mem_init(void *arg)
 {
@@ -5628,6 +5629,8 @@ check_version:
                     __func__, rc);
         } else {
             if (thedb->timepart_views) {
+                snap_uid_t *save_osql_snap_info = osql_snap_info;
+                osql_snap_info = NULL;
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
                                          &xerr, 0);
@@ -5636,6 +5639,7 @@ check_version:
                             "failed to create views rc=%d errstr=\"%s\"\n",
                             xerr.errval, xerr.errstr);
                 }
+                osql_snap_info = save_osql_snap_info;
             }
 
             /* save the views generation number */
