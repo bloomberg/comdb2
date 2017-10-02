@@ -192,6 +192,10 @@ char *osql_breq2a(int op)
         return "INVALID";
     case OSQL_DONE:
         return "OSQL_DONE";
+    case OSQL_DONE_STATS:
+        return "OSQL_DONE_STATS";
+    case OSQL_DONE_SNAP:
+        return "OSQL_DONE_SNAP";
     case OSQL_USEDB:
         return "OSQL_USEDB";
     case OSQL_DELREC:
@@ -208,8 +212,6 @@ char *osql_breq2a(int op)
         return "OSQL_XERR";
     case OSQL_UPDCOLS:
         return "OSQL_UPDCOLS";
-    case OSQL_DONE_STATS:
-        return "OSQL_DONE_STATS";
     case OSQL_SERIAL:
         return "OSQL_SERIAL";
     case OSQL_SELECTV:
@@ -220,6 +222,8 @@ char *osql_breq2a(int op)
         return "OSQL_RECGENID";
     case OSQL_UPDSTAT:
         return "OSQL_UPDSTAT";
+    case OSQL_EXISTS:
+        return "OSQL_EXISTS";
     case OSQL_DBQ_CONSUME:
         return "OSQL_DBQ_CONSUME";
     case OSQL_INSERT:
@@ -228,6 +232,16 @@ char *osql_breq2a(int op)
         return "OSQL_DELETE";
     case OSQL_UPDATE:
         return "OSQL_UPDATE";
+    case OSQL_SCHEMACHANGE:
+        return "OSQL_SCHEMACHANGE";
+    case OSQL_BPFUNC:
+        return "OSQL_BPFUNC";
+    case OSQL_DELIDX:
+        return "OSQL_DELIDX";
+    case OSQL_INSIDX:
+        return "OSQL_INSIDX";
+    case OSQL_DBQ_CONSUME_UUID:
+        return "OSQL_DBQ_CONSUME_UUID";
     default:
         return "UNKNOWN";
     }

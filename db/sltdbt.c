@@ -206,7 +206,8 @@ void req_stats(struct dbtable *db)
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-16s %u\n", breq2a(jj), db->blocktypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj),
+                   db->blocktypcnt[jj]);
         }
     }
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
@@ -215,7 +216,8 @@ void req_stats(struct dbtable *db)
                 logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-16s %u\n", osql_breq2a(jj), db->blockosqltypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %u\n", osql_breq2a(jj),
+                   db->blockosqltypcnt[jj]);
         }
     }
 }
