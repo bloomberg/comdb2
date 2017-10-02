@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# debug=1
+#debug=1
 [[ "$debug" == "1" ]] && set -x
 
 # Heal everything
@@ -8,7 +8,11 @@ for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
 
 email="mhannum72@gmail.com mhannum@bloomberg.net"
 tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
-mailperiod=100
+#tests="jepsen_sets_nemesis"
+
+# mailperiod=86400
+mailperiod=7200
+lasttime=0
 
 # I saw a failure on this i haven't been able to reproduce
 # tests="jepsen_sets_nemesis"
@@ -21,6 +25,7 @@ export nomemory=0
 export noconn=0
 export sshfail=0
 export goodtests=0
+export test_linger=$(( 60 * 12 ))
 
 function print_status
 {
@@ -35,8 +40,9 @@ function print_status
 
 while :; do 
     let i=i+1 
+    print_status
     echo "$(date) ITERATION $i" 
-    rm -Rf $(find . -type d -mmin +60 | egrep test_)
+    rm -Rf $(find . -type d -mmin +$test_linger | egrep test_)
     for x in $tests 
     do echo "$(date) - starting $x" 
         make $x > out ; r=$? 
@@ -101,14 +107,21 @@ while :; do
         fi
     done
 
-    # Mail every mod 1 so i know the email part of this is working after the first iteration
-    if [[ $(( i % mailperiod )) == 1 ]]; then 
+
+    export now=$(date +%s)
+    echo "now is $now lasttime is $lasttime"
+
+    if [ $(( now - lasttime )) -gt $mailperiod ]; then
+
+        lasttime=now
+        echo "Mailing results"
 
         print_status > body.txt
 
         for addr in $email ; do
             mail -s "Successfully tested $i iterations" $addr < body.txt
         done
+        lasttime=$now
     fi
 
 done
