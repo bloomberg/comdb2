@@ -2086,6 +2086,13 @@ static char *sqlenginestate_tostr(int state)
     }
 }
 
+inline int replicant_can_retry(struct sqlclntstate *clnt)
+{
+    return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
+           clnt->dbtran.mode != TRANLEVEL_SERIAL &&
+           clnt->verifyretry_off == 0;
+}
+
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse)
 {
@@ -2487,11 +2494,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         /* if this is a verify error and we are not running in
            snapshot/serializable mode, repeat this request ad nauseam
            (Alex and Sam made me do it) */
-        if (rc == CDB2ERR_VERIFY_ERROR &&
-            clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-            clnt->dbtran.mode != TRANLEVEL_SERIAL &&
-            clnt->osql.replay != OSQL_RETRY_LAST && !clnt->has_recording &&
-            (clnt->verifyretry_off == 0)) {
+        if (rc == CDB2ERR_VERIFY_ERROR && replicant_can_retry(clnt) &&
+            !clnt->has_recording && clnt->osql.replay != OSQL_RETRY_LAST) {
             if (srs_tran_add_query(clnt))
                 logmsg(LOGMSG_USER, 
                         "Fail to add commit to transaction replay session\n");
@@ -5049,11 +5053,8 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
             irc = (clnt->osql.error_is_remote)
                       ? irc
                       : blockproc2sql_error(irc, __func__, __LINE__);
-            if (irc == DB_ERR_TRN_VERIFY &&
-                clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
-                clnt->dbtran.mode != TRANLEVEL_SERIAL && !clnt->has_recording &&
-                clnt->osql.replay == OSQL_RETRY_NONE &&
-                (clnt->verifyretry_off == 0)) {
+            if (irc == DB_ERR_TRN_VERIFY && replicant_can_retry(clnt) &&
+                !clnt->has_recording && clnt->osql.replay == OSQL_RETRY_NONE) {
                 osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_DO);
             }
         }
@@ -5734,12 +5735,15 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
 int gbl_debug_sqlthd_failures;
 
-static int execute_verify_indexes_int(struct sqlthdstate *thd,
+static int execute_verify_indexes(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
 {
     int rc;
     if (thd->sqldb == NULL) {
-        if ((rc = sqlengine_prepare_engine(thd, clnt, 1)) != 0) {
+        rdlock_schema_lk();
+        rc = sqlengine_prepare_engine(thd, clnt, 1);
+        unlock_schema_lk();
+        if (rc) {
             return rc;
         }
     }
@@ -5759,15 +5763,6 @@ static int execute_verify_indexes_int(struct sqlthdstate *thd,
     if (rc == SQLITE_DONE) {
         return 0;
     }
-    return rc;
-}
-
-static int execute_verify_indexes(struct sqlthdstate *thd,
-                                  struct sqlclntstate *clnt)
-{
-    rdlock_schema_lk();
-    int rc = execute_verify_indexes_int(thd, clnt);
-    unlock_schema_lk();
     return rc;
 }
 
@@ -7393,6 +7388,8 @@ retry_read:
     return query;
 }
 
+/* process sql query if it is a set command
+ */
 static int process_set_commands(struct sqlclntstate *clnt)
 {
     CDB2SQLQUERY *sql_query = NULL;
@@ -8726,7 +8723,7 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return DB_ERR_TRN_FAIL;
     case 222:
         return DB_ERR_TRN_DUP;
-    case 224:
+    case ERR_BLOCK_FAILED + ERR_VERIFY: //224
         return DB_ERR_TRN_VERIFY;
     case 225:
         return DB_ERR_TRN_DB_FAIL;

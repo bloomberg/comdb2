@@ -1,4 +1,4 @@
-tag ondisk
+schema
 {
    int      a
 }
