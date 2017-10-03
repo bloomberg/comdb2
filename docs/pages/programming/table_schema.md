@@ -370,13 +370,13 @@ select * from comdb2_users
 
 set user user1
 set password user1
-create table test { tag ondisk {int t} keys { "T1" = t}}$$
+create table test { schema {int t} keys { "T1" = t}}$$
 insert into test values(1)
 (rows inserted=1)
 
 set user user2
 set password user2
-create table test { tag ondisk {int t} keys { "T1" = t}}$$
+create table test { schema {int t} keys { "T1" = t}}$$
 insert into test values(2)
 (rows inserted=1)
 
