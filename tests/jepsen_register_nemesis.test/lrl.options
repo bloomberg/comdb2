@@ -4,12 +4,6 @@ enable_serial_isolation
 # Enable durable lsn logic
 setattr DURABLE_LSNS 1
 
-# Master tells us what we are allowed to see
-setattr REQUEST_DURABLE_LSN_FROM_MASTER 1
-
-# Retrieve durable LSN at BEGIN
-setattr RETRIEVE_DURABLE_LSN_AT_BEGIN 1
-
 # Maximum time we'll wait to retrieve a durable LSN from the master
 setattr DURABLE_LSN_REQUEST_WAITMS 2000
 
@@ -18,9 +12,6 @@ disable_new_snapshot
 
 # new snapshot_asof isn't prod-ready (and will be rewritten soon)
 # enable_new_snapshot_asof
-
-# Increase netpoll
-netpoll 2000
 
 # Commit should force log to be synced to disk
 setattr SYNCTRANSACTIONS 1
@@ -48,7 +39,7 @@ setattr STARTUP_SYNC_ATTEMPTS -1
 perfect_ckp 0
 
 # Enable wait-for-seqnum trace
-setattr WAIT_FOR_SEQNUM_TRACE 1
+# setattr WAIT_FOR_SEQNUM_TRACE 1
 
 # Don't run the watchdog thread
 nowatch
@@ -57,10 +48,10 @@ nowatch
 setattr UDP_DROP_WARN_PERCENT 100
 
 # Enable debug trace
-on durable_set_trace
-on dump_fsql_response
-on extended_sql_debug_trace
-on verbose_toblock_backouts
+# on durable_set_trace
+# on dump_fsql_response
+# on extended_sql_debug_trace
+# on verbose_toblock_backouts
 
 # Fail randomly to test curtran generation changes
 # on test_curtran_change
@@ -70,7 +61,7 @@ init_with_compr none
 init_with_compr_blobs none
 
 # Dump blkseq additions
-on dump_blkseq
+# on dump_blkseq
 
 # Force work_appsock_failures
 # on debug_sqlthd_failures
