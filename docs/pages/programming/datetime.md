@@ -304,8 +304,8 @@ millisecond-precision type, with larger fractional second precision.
 ### Example
 
 ```shell
-cdb2sql> create csc2 table t { tag ondisk { datetimeus v } }
-[create csc2 table t { tag ondisk { datetimeus v } }] rc 0
+cdb2sql> create csc2 table t { schema { datetimeus v } }
+[create csc2 table t { schema { datetimeus v } }] rc 0
 cdb2sql> insert into t values(now('us'))
 (rows inserted=1)
 [insert into t values(now())] rc 0

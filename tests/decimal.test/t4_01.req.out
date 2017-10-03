@@ -1,6 +1,6 @@
 [drop table if exists t4] rc 0
 [create table t4 {
-    tag ondisk {
+    schema {
         int id
         decimal32 dec
         double num

@@ -32,7 +32,7 @@ keys {
 '
 
 cdb2sql ${CDB2_OPTIONS} $dbname default 'create table comdb2_oplog {
-tag ondisk {
+schema {
     longlong seqno
     int      blkpos
     int      optype
@@ -126,7 +126,7 @@ keys {
 '
 
 cdb2sql ${CDB2_OPTIONS} $destdb local 'create table comdb2_oplog {
-tag ondisk {
+schema {
     longlong seqno
     int      blkpos
     int      optype
