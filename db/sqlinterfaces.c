@@ -3558,12 +3558,12 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
                  clnt->verify_retries);
 
     if (clnt->sql_query && clnt->sql_query->client_info) {
-        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d sql: %s", info_nvreplays, clnt->sql_query->client_info->pid,
-                                      clnt->sql_query->client_info->host_id ,clnt->sql);
+        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d sql: %s",
+                      info_nvreplays, clnt->sql_query->client_info->pid,
+                      clnt->sql_query->client_info->host_id, clnt->sql);
     } else {
         thrman_wheref(thd->thr_self, "%s sql: %s", info_nvreplays, clnt->sql);
     }
-
 
     reqlog_new_sql_request(thd->logger, NULL);
     log_client_context(thd->logger, clnt);
