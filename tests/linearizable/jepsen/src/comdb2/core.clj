@@ -29,6 +29,14 @@
   (setup! [name test node])
   (teardown! [name test node])))
 
+(defn cluster-nodes
+  "A vector of nodes in the cluster; taken from the CLUSTER env variable."
+  []
+  (-> (System/getEnv "CLUSTER")
+      (or "m1 m2 m3 m4 m5")
+      (string/split #"\s+")
+      vec))
+
 (def conn-spec
  {:classname "com.bloomberg.comdb2.jdbc.Driver"
  :subprotocol "comdb2"
@@ -199,7 +207,7 @@
           :db (db (System/getenv "COMDB2_DBNAME"))
 ;          :db (db "marktdb")
           :nemesis (nemesis/partition-random-halves)
-          :nodes ["m1" "m2" "m3" "m4" "m5"]
+          :nodes (cluster-nodes)
           :ssh {
             :username "root"
             :password "shadow"
@@ -558,7 +566,7 @@
   [opts]
   (merge tests/noop-test
          {:name "dirty-reads"
-          :nodes ["m1" "m2" "m3" "m4" "m5"]
+          :nodes (cluster-nodes)
           :ssh {
             :username "root"
             :password "shadow"
