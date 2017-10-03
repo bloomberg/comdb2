@@ -6391,7 +6391,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
-            assert(iq->have_snap_info == 1); //was assigned in fast pass
+            assert(iq->have_snap_info == 1); // was assigned in fast pass
             snap_uid_t snap_info;
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);

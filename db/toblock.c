@@ -5395,19 +5395,18 @@ add_blkseq:
         if (iq->have_snap_info) {
             bskey = iq->snap_info.key;
             bskeylen = iq->snap_info.keylen;
-        }
-        else {
+        } else {
             bskey = iq->seq;
             bskeylen = iq->seqlen;
         }
 
- 
         if (!rowlocks) {
             int t = time_epoch();
             memcpy(p_buf_fstblk, &t, sizeof(int));
-            rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
-                    buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
-                        &replay_data, &replay_len);
+            rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
+                                   bskeylen, buf_fstblk,
+                                   p_buf_fstblk - buf_fstblk + sizeof(int),
+                                   &replay_data, &replay_len);
 
             if (iq->seqlen == sizeof(uuid_t)) {
                 uuidstr_t us;
@@ -5468,8 +5467,8 @@ add_blkseq:
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(),
                            __FILE__, __LINE__);
-                    outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
-                            replay_len, __LINE__);
+                    outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
+                                           replay_data, replay_len, __LINE__);
                     did_replay = 1;
                     logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                            __FILE__, __LINE__, outrc);
@@ -5572,8 +5571,8 @@ add_blkseq:
             if (rc == IX_DUP) {
                 logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(), __FILE__,
                        __LINE__);
-                outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
-                                       replay_len, __LINE__);
+                outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
+                                       replay_data, replay_len, __LINE__);
                 did_replay = 1;
                 logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                        __FILE__, __LINE__, outrc);

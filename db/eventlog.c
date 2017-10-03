@@ -75,7 +75,8 @@ void eventlog_init(const char *dbname)
 
 static inline void free_gbl_eventlog_fname()
 {
-    if (gbl_eventlog_fname == NULL) return;
+    if (gbl_eventlog_fname == NULL)
+        return;
     free(gbl_eventlog_fname);
     gbl_eventlog_fname = NULL;
 }
