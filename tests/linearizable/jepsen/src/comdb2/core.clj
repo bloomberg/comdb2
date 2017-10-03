@@ -32,9 +32,9 @@
 (defn cluster-nodes
   "A vector of nodes in the cluster; taken from the CLUSTER env variable."
   []
-  (-> (System/getEnv "CLUSTER")
+  (-> (System/getenv "CLUSTER")
       (or "m1 m2 m3 m4 m5")
-      (string/split #"\s+")
+      (str/split #"\s+")
       vec))
 
 (def conn-spec
