@@ -759,11 +759,11 @@ send:			if (__rep_send_message(dbenv,
 	case REP_LOG_MORE:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
-        if (!IN_ELECTION_TALLY(rep)) {
-		    if ((ret =
-		    	__rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen)) != 0)
-			    goto errlock;
-        }
+		if (!IN_ELECTION_TALLY(rep)) {
+			if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
+								   commit_gen)) != 0)
+				goto errlock;
+		}
 		if (rp->rectype == REP_LOG_MORE) {
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			master = rep->master_id;
