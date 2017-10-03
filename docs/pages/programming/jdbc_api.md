@@ -15,7 +15,6 @@ Cdb2jdbc is a JDBC Type 4 driver, which means that the driver is a platform-inde
 
 ### Installing from Source
 
-
 To check out the source, please follow [the instructions](install.html#installing-from-source).
 
 #### Maven
@@ -35,7 +34,6 @@ mvn clean install
 
 cdb2jdbc should be successfully installed in your local Maven repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
-
 
 **A word of caution**: the build can fail if the version of protocol buffers installed on the system mismatches the version specified in
 `cdb2jdbc/pom.xml`.  If you encounter problems, update the protobuf-java version in the .pom file to match what's on the system.
@@ -59,8 +57,6 @@ cd cdb2jdbc
 
 cdb2jdbc should be successfully installed in your local Maven repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
-
-
 
 ## Setting up Cdb2jdbc
 
