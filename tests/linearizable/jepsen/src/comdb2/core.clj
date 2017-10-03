@@ -23,6 +23,8 @@
 
 (java.sql.DriverManager/registerDriver (com.bloomberg.comdb2.jdbc.Driver.))
 
+; TODO: break out tests into separate namespaces
+
 (defn db
  [name]
  (reify db/DB
@@ -38,15 +40,19 @@
       vec))
 
 (def conn-spec
- {:classname "com.bloomberg.comdb2.jdbc.Driver"
- :subprotocol "comdb2"
- :subname (.concat (.concat (System/getenv "COMDB2_DBNAME") ":") (System/getenv "COMDB2_DBSTAGE"))})
+  "JDBC connection spec"
+  {:classname "com.bloomberg.comdb2.jdbc.Driver"
+   :subprotocol "comdb2"
+   :subname (str (System/getenv "COMDB2_DBNAME") ":"
+                 (System/getenv "COMDB2_DBSTAGE"))})
 
-(defn retriable-transaction-error [e]
- (or (re-find #"not serializable" e) 
-     (re-find #"unable to update record rc = 4" e)
-     (re-find #"selectv constraints" e)
-     (re-find #"Maximum number of retries done." e)))
+(defn retriable-transaction-error
+  "Given an error string, identifies whether the error is safely retriable."
+  [e]
+  (or (re-find #"not serializable" e)
+      (re-find #"unable to update record rc = 4" e)
+      (re-find #"selectv constraints" e)
+      (re-find #"Maximum number of retries done." e)))
 
 (defmacro capture-txn-abort
   "Converts aborted transactions to an ::abort keyword"
@@ -86,7 +92,7 @@
       (dotimes [i n]
         (try
          (j/insert! c :accounts {:id i, :balance starting-balance})
-         (catch java.sql.SQLException e 
+         (catch java.sql.SQLException e
           (if (.contains (.getMessage e) "add key constraint duplicate key")
             nil
             (throw e))))))
@@ -218,15 +224,20 @@
 ;(defn connect-to [conn-spec node]
 ; (merge conn-spec {:subname (str "marktdb:" node)}))
 
-(defn connect-to [conn-spec node]
- conn-spec)
+(defn connect-to
+  "Open a connection to the cluster. Later, to the specified node. Right now,
+  to any node. TODO: actually talk to the given node!"
+  [conn-spec node]
+  conn-spec)
 
-(def nkey (agent 0))
+(def nkey
+  "A globally unique integer counter"
+  (atom 0))
 
-(defn next-key []
- (let [n @nkey]
-  (send nkey inc)
-  n))
+(defn next-key
+  "Obtain a new, globally unique integer counter"
+  []
+  (swap! nkey inc))
 
 (defn set-client
   [node]
@@ -236,68 +247,69 @@
 
     (invoke! [this test op]
      (println op)
+     ; TODO: Open our own connection instead of using the global conn-spec?
       (j/with-db-transaction [connection conn-spec :isolation :serializable]
 
         (j/query connection ["set hasql on"])
         (j/query connection ["set transaction serializable"])
-        (when (System/getenv "COMDB2_DEBUG") (j/query connection ["set debug on"]))
+        (when (System/getenv "COMDB2_DEBUG")
+          (j/query connection ["set debug on"]))
 ;        (j/query connection ["set debug on"])
         (j/query connection ["set max_retries 100000"])
         (with-txn op conn-spec node
+          (try
+            (case (:f op)
+              :add  (do (j/execute! connection [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
+                        (assoc op :type :ok))
 
-        (try
-          (case (:f op)
-            :add  (do (j/execute! connection [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
-                      (assoc op :type :ok))
-
-            :read (->> (j/query connection ["select * from jepsen"])
-                       (mapv :value)
-                       (into (sorted-set))
-                       (assoc op :type :ok, :value)))))))
+              :read (->> (j/query connection ["select * from jepsen"])
+                         (mapv :value)
+                         (into (sorted-set))
+                         (assoc op :type :ok, :value)))))))
 
     (teardown! [_ test])))
 
 (defn sets-test-nemesis
  []
  (basic-test
-  {:name "set"
-  :client (set-client nil)
-  :generator (gen/phases
-          (->> (range)
-           (map (partial array-map
-                 :type :invoke
-                 :f :add
-                 :value))
-           gen/seq
-           (gen/delay 1/10)
-           with-nemesis)
-          (->> {:type :invoke, :f :read, :value nil}
-           gen/once
-           gen/clients))
-  :checker (checker/compose
-          {:perf (checker/perf)
-          :set checker/set})}))
+   {:name "set"
+    :client (set-client nil)
+    :generator (gen/phases
+                 (->> (range)
+                      (map (partial array-map
+                                    :type :invoke
+                                    :f :add
+                                    :value))
+                      gen/seq
+                      (gen/delay 1/10)
+                      with-nemesis)
+                 (->> {:type :invoke, :f :read, :value nil}
+                      gen/once
+                      gen/clients))
+    :checker (checker/compose
+               {:perf (checker/perf)
+                :set checker/set})}))
 
 (defn sets-test
- []
- (basic-test
-  {:name "set"
-  :client (set-client nil)
-  :generator (gen/phases
-          (->> (range)
-           (map (partial array-map
-                 :type :invoke
-                 :f :add
-                 :value))
-           gen/seq
-           (gen/delay 1/10)
-           )
-          (->> {:type :invoke, :f :read, :value nil}
-           gen/once
-           gen/clients))
-  :checker (checker/compose
-          {:perf (checker/perf)
-          :set checker/set})}))
+  []
+  (basic-test
+    {:name "set"
+     :client (set-client nil)
+     :generator (gen/phases
+                  (->> (range)
+                       (map (partial array-map
+                                     :type :invoke
+                                     :f :add
+                                     :value))
+                       gen/seq
+                       (gen/delay 1/10)
+                       )
+                  (->> {:type :invoke, :f :read, :value nil}
+                       gen/once
+                       gen/clients))
+     :checker (checker/compose
+                {:perf (checker/perf)
+                 :set checker/set})}))
 
 
 
@@ -321,7 +333,7 @@
      :nemesis (nemesis/partition-random-halves)
      :checker (checker/compose
                 {:perf (checker/perf)
-                :linearizable (independent/checker checker/linearizable)
+                 :linearizable (independent/checker checker/linearizable)
                  :bank (bank-checker)})}))
 
 
@@ -343,10 +355,12 @@
      :nemesis nemesis/noop
      :checker (checker/compose
                 {:perf (checker/perf)
-                :linearizable (independent/checker checker/linearizable)
+                 :linearizable (independent/checker checker/linearizable)
                  :bank (bank-checker)})}))
 
 ; This is the dirty reads test for Galera
+; TODO: Kyle, review the dirty reads test for galera and figure out what this
+; was supposed to do
 
 (defrecord DirtyReadsClient [node n]
   client/Client
@@ -355,7 +369,7 @@
    (j/with-db-connection [c (connect-to conn-spec node)]
     ; Create table
     (dotimes [i n]
-     (try
+     (try ; TODO: no catch?
       (with-txn-retries
        (Thread/sleep (rand-int 10))
        (j/insert! c :dirty {:id i, :x -1})))))
@@ -365,157 +379,138 @@
   (invoke! [this test op]
    (try
     (j/with-db-transaction [c (connect-to conn-spec node) :isolation :serializable]
-     (try
+     (try ; TODO: no catch?
       (case (:f op)
-       ; skip initial records - not all threads are done initial writing, and the initial writes
-       ; aren't a single transaction so we won't see consistent reads
+       ; skip initial records - not all threads are done initial writing, and
+       ; the initial writes aren't a single transaction so we won't see
+       ; consistent reads
        :read (->> (j/query c ["select * from dirty where x != -1"])
-           (mapv :x)
-           (assoc op :type :ok, :value))
+                  (mapv :x)
+                  (assoc op :type :ok, :value))
 
        :write (let [x (:value op)
-           order (shuffle (range n))]
-           (doseq [i order]
-            (j/query c ["select * from dirty where id = ?" i]))
-           (doseq [i order]
-            (j/update! c :dirty {:x x} ["id = ?" i]))
-           (assoc op :type :ok)))))
+                    order (shuffle (range n))]
+                (doseq [i order]
+                  (j/query c ["select * from dirty where id = ?" i]))
+                (doseq [i order]
+                  (j/update! c :dirty {:x x} ["id = ?" i]))
+                (assoc op :type :ok)))))
     (catch java.sql.SQLException e
+     ; TODO: why do we know this is a definite failure?
      (assoc op :type :fail :reason (.getMessage e)))))
 
   (teardown! [_ test]))
-
 
 (defn comdb2-cas-register-client
   "Comdb2 register client"
   [node]
   (reify client/Client
-    (setup! [this test node] 
+    (setup! [this test node]
+      ; TODO: per-client conns
       (j/with-db-connection [c conn-spec]
         (do
           (j/delete! c :register ["1 = 1"])
           (comdb2-cas-register-client node))))
 
     (invoke! [this test op]
-
+      ; TODO: figure out when we can use the isolation levels passed to with-txn
+      ; vs when we do our own set hasql on, set txn serializable, etc
+      ; TODO: also, are these set operations... supposed to happen before every
+      ; op? or once on conn open?
       (j/with-db-connection [c conn-spec]
+        ; TODO: this whole thing seems like it should be a reusable macro?
         (do
           (j/query c ["set hasql on"])
           (j/query c ["set transaction serializable"])
-          (when (System/getenv "COMDB2_DEBUG") (j/query c ["set debug on"]))
+          ; TODO: make this a function
+          (when (System/getenv "COMDB2_DEBUG")
+            (j/query c ["set debug on"]))
           (j/query c ["set max_retries 100000"])
+
           (case (:f op)
-            :read 
-                    (let [id   (first (:value op))
-                          val' (second (:value op))
-                          [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true)) ]
-                      (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
-                      (assoc op :type :ok, :value (independent/tuple 1 val))
-                    )
+            :read (let [[id val'] (:value op)
+                        [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))]
+                    (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
+                    (assoc op :type :ok, :value (independent/tuple 1 val)))
 
+            ; TODO: clean this up and break it into understandable bits
             :write
-                 (try
-                   (let [updated (first (j/with-db-transaction [c c]
-                     (let [id   (first (:value op))
-                           val' (second (:value op))
-                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
-                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+            (try
+              (let [updated (first (j/with-db-transaction [c c]
+                                     (let [id   (first (:value op))
+                                           val' (second (:value op))
+                                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
 
-                         (do
-                                  (if (nil? val)
-                                    (do
-                                    (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
-                                    (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
-                                    )
-                                    (do
-                                    (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
-                                    (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
-                                    )
-                                  )
-                           )
-                       )
-                      )
-                    ) ; first
-                   ]
-                     (if (zero? updated)
-                      (do
-                        (info "Worker " (:process op) " WRITE FAILED")
-                        (assoc op :type :fail)
-                      )
-                      (do
-                        (info "Worker " (:process op) " WRITE SUCCESS - RETURNING " (second (:value op)))
-                        (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
-                      )
-                     )
-                   )
-                   (catch java.sql.SQLException e
-                     (let [error (.getErrorCode e)]
-                       (cond 
-                         (= error 2) (do 
-                                      (info "Worker " (:process op) " FAILED: "(.getMessage e))
-                                      (assoc op :type :fail)
-                                      )
-                         :else (throw e))
-                     )
-                   )
-                 ) ; try / :write case
+                                       (do
+                                         (if (nil? val)
+                                           (do
+                                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
+                                             (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
+                                             )
+                                           (do
+                                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
+                                             (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
+                                             )
+                                           )
+                                         )
+                                       )
+                                     )
+                                   ) ; first
+                    ]
+                (if (zero? updated)
+                  (do (info "Worker " (:process op) " WRITE FAILED")
+                      (assoc op :type :fail))
+                  (do (info "Worker " (:process op) " WRITE SUCCESS - RETURNING " (second (:value op)))
+                      (assoc op :type :ok, :value (independent/tuple 1 (second (:value op)))))))
+
+              (catch java.sql.SQLException e
+                (let [error (.getErrorCode e)]
+                  (cond
+                    (= error 2) (do (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                                    (assoc op :type :fail))
+                    :else (throw e))))) ; try / :write case
 
             :cas
-                 (try
-                   (let [updated (first (j/with-db-transaction [c c]
-                     (let [id   (first (:value op))
-                           val' (second (:value op))
-                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
-                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
+            (try
+              (let [updated (first (j/with-db-transaction [c c]
+                                     (let [id   (first (:value op))
+                                           val' (second (:value op))
+                                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
 
-                         (do
-                            (let [[expected-val new-val] val' ]
-                                 (do
-                                 (info "Worker " (:process op) " CAS FROM " expected-val "-" uid " to " new-val "-" uid')
-                                 (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))))
-                          )
-                       )
-                    )
-                  ]
-                      (do
-                      (info "Worker " (:process op) " TXN RCODE IS " updated)
-                      (if (zero? updated)
-                                 (do
-                                 (info "Worker " (:process op) " CAS FAILED")
-                                 (assoc op :type :fail)
-                                 )
-                                 (do
-                                 (info "Worker " (:process op) " CAS SUCCESS")
-                                 (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))
-                                 )
-                                )
-                      )
-                      )
-                 
-                   (catch java.sql.SQLException e
-                     (let [error (.getErrorCode e)]
-                       (cond 
-                         (= error 2) (do 
-                                      (info "Worker " (:process op) " FAILED: "(.getMessage e))
-                                      (assoc op :type :fail)
-                                      )
-                         :else (throw e))
-                     )
-                   )
-                )
-            )
-          )
-        )
-      )
+                                       (do
+                                         (let [[expected-val new-val] val' ]
+                                           (do
+                                             (info "Worker " (:process op) " CAS FROM " expected-val "-" uid " to " new-val "-" uid')
+                                             (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)])))))))]
+                (do
+                  (info "Worker " (:process op) " TXN RCODE IS " updated)
+                  (if (zero? updated)
+                    (do (info "Worker " (:process op) " CAS FAILED")
+                        (assoc op :type :fail))
+                    (do (info "Worker " (:process op) " CAS SUCCESS")
+                        (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))))))
+
+              (catch java.sql.SQLException e
+                (let [error (.getErrorCode e)]
+                  (cond
+                    (= error 2) (do (info "Worker " (:process op) " FAILED: "(.getMessage e))
+                                    (assoc op :type :fail))
+                    :else (throw e)))))))))
+
+    ; TODO: disconnect
     (teardown! [_ test])))
 
 
 
 ; Test on only one register for now
+; TODO: get rid of the 1s, move UIDs to a separate op field
 (defn r   [_ _] {:type :invoke, :f :read, :value [1 nil]})
 (defn w   [_ _] {:type :invoke, :f :write, :value [1 (rand-int 5)]})
 (defn cas [_ _] {:type :invoke, :f :cas, :value [1 [(rand-int 5) (rand-int 5)]]})
 
+; TODO: better name for this, move it near the dirty-reads client
 (defn client
   [n]
   (DirtyReadsClient. nil n))
@@ -526,9 +521,7 @@
   []
   (reify checker/Checker
     (check [this test model history opts]
-      (let [
-
-            failed-writes  
+      (let [failed-writes
             ; Add a dummy failed write so we have something to compare to in the
             ; unlikely case that there's no other write failures
                                (merge  {:type :fail, :f :write, :value -12, :process 0, :time 0}
@@ -549,9 +542,9 @@
             filthy-reads (->> reads
                               (r/filter (partial some failed-writes))
                               (into []))]
-        {:valid? (empty? filthy-reads)
-         :inconsistent-reads inconsistent-reads
-         :dirty-reads filthy-reads}))))
+        {:valid?              (empty? filthy-reads)
+         :inconsistent-reads  inconsistent-reads
+         :dirty-reads         filthy-reads}))))
 
 (def dirty-reads-reads {:type :invoke, :f :read, :value nil})
 
@@ -576,6 +569,7 @@
           :nemesis (nemesis/partition-random-halves)}
          (dissoc opts :name :version)))
 
+; TODO: unused, delete?
 (defn minutes [seconds] (* 60 seconds))
 
 (defn dirty-reads-tester
@@ -594,7 +588,8 @@
                  :dirty-reads (dirty-reads-checker)
                  :linearizable (independent/checker checker/linearizable)})}))
 
-
+; TODO: just change the nemesis, no need for two copies with only slightly
+; different schedules, right?
 (defn register-tester
   [opts]
   (basic-test
@@ -642,4 +637,3 @@
                       {:perf  (checker/perf)
                        :linearizable checker/linearizable}) }
       opts)))
-
