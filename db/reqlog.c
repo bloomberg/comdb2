@@ -985,6 +985,7 @@ void reqlog_stat(void)
     {
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
+    eventlog_status();
     pthread_mutex_unlock(&rules_mutex);
 }
 

@@ -38,6 +38,7 @@
 
 #include "cson_amalgamation_core.h"
 
+static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 1024 * 1024 * 1024;
@@ -72,11 +73,18 @@ void eventlog_init(const char *dbname)
     if (eventlog_enabled) eventlog = eventlog_open();
 }
 
+static inline void free_gbl_eventlog_fname()
+{
+    if (gbl_eventlog_fname == NULL) return;
+    free(gbl_eventlog_fname);
+    gbl_eventlog_fname = NULL;
+}
+
 static gzFile eventlog_open()
 {
     char *fname = eventlog_fname(thedb->envname);
+    gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
-    free(fname);
     if (f == NULL) {
         eventlog_enabled = 0;
         return NULL;
@@ -97,6 +105,7 @@ static void eventlog_close(void)
         free(t);
         t = listc_rtl(&sql_statements);
     }
+    free_gbl_eventlog_fname();
 }
 
 static char *eventlog_fname(const char *dbname)
@@ -581,6 +590,14 @@ void eventlog_add(const struct reqlogger *logger)
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
 
     cson_value_free(val);
+}
+
+void eventlog_status(void)
+{
+    if (eventlog_enabled == 1)
+        logmsg(LOGMSG_USER, "Eventlog enabled, file:%s\n", gbl_eventlog_fname);
+    else
+        logmsg(LOGMSG_USER, "Eventlog disabled\n");
 }
 
 static void eventlog_roll(void)
