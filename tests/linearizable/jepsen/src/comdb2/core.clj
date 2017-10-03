@@ -25,12 +25,6 @@
 
 ; TODO: break out tests into separate namespaces
 
-(defn db
- [name]
- (reify db/DB
-  (setup! [name test node])
-  (teardown! [name test node])))
-
 (defn cluster-nodes
   "A vector of nodes in the cluster; taken from the CLUSTER env variable."
   []
@@ -39,12 +33,33 @@
       (str/split #"\s+")
       vec))
 
-(def conn-spec
-  "JDBC connection spec"
-  {:classname "com.bloomberg.comdb2.jdbc.Driver"
+;; Connection handling
+
+(defn conn-spec
+  "JDBC connection spec for a given node."
+  [node]
+  (info "connecting to" node)
+  {:classname   "com.bloomberg.comdb2.jdbc.Driver"
    :subprotocol "comdb2"
-   :subname (str (System/getenv "COMDB2_DBNAME") ":"
-                 (System/getenv "COMDB2_DBSTAGE"))})
+   ; One valid subname has a DB name and DB stage: "NAME:STAGE"
+   ; Another format is "//NODE/NAME"
+   ; I don't know how to do node, name, and stage together.
+   ;   :subname (str (System/getenv "COMDB2_DBNAME") ":"
+   ;                 (System/getenv "COMDB2_DBSTAGE"))})
+   :subname     (str "//" (name node)
+                     "/"  (System/getenv "COMDB2_DBNAME"))})
+
+(defn close-conn!
+  "Given a JDBC connection, closes it and returns the underlying spec."
+  [conn]
+  (when-let [c (j/db-find-connection conn)]
+    (.close c))
+  (dissoc conn :connection))
+
+
+
+
+;; Error handling
 
 (defn retriable-transaction-error
   "Given an error string, identifies whether the error is safely retriable."
@@ -87,7 +102,7 @@
 
   (setup! [this test node]
     ; (println "n " (:n this) "test " test "node " node)
-    (j/with-db-connection [c conn-spec]
+    (j/with-db-connection [c (conn-spec node)]
       ; Create initial accts
       (dotimes [i n]
         (try
@@ -100,8 +115,8 @@
     (assoc this :node node))
 
   (invoke! [this test op]
-    (with-txn op conn-spec nil
-     (j/with-db-transaction [connection conn-spec :isolation :serializable]
+    (with-txn op (conn-spec node) nil
+     (j/with-db-transaction [connection (conn-spec node) :isolation :serializable]
       (j/query connection ["set hasql on"])
       (j/query connection ["set max_retries 100000"])
 
@@ -210,25 +225,12 @@
   [opts]
   (merge tests/noop-test
          {:name "comdb2-bank"
-          :db (db (System/getenv "COMDB2_DBNAME"))
-;          :db (db "marktdb")
           :nemesis (nemesis/partition-random-halves)
           :nodes (cluster-nodes)
-          :ssh {
-            :username "root"
-            :password "shadow"
-            :strict-host-key-checking false
-          }}
+          :ssh {:username "root"
+                :password "shadow"
+                :strict-host-key-checking false}}
           (dissoc opts :name :version)))
-
-;(defn connect-to [conn-spec node]
-; (merge conn-spec {:subname (str "marktdb:" node)}))
-
-(defn connect-to
-  "Open a connection to the cluster. Later, to the specified node. Right now,
-  to any node. TODO: actually talk to the given node!"
-  [conn-spec node]
-  conn-spec)
 
 (def nkey
   "A globally unique integer counter"
@@ -248,7 +250,7 @@
     (invoke! [this test op]
      (println op)
      ; TODO: Open our own connection instead of using the global conn-spec?
-      (j/with-db-transaction [connection conn-spec :isolation :serializable]
+      (j/with-db-transaction [connection (conn-spec node) :isolation :serializable]
 
         (j/query connection ["set hasql on"])
         (j/query connection ["set transaction serializable"])
@@ -256,7 +258,7 @@
           (j/query connection ["set debug on"]))
 ;        (j/query connection ["set debug on"])
         (j/query connection ["set max_retries 100000"])
-        (with-txn op conn-spec node
+        (with-txn op (conn-spec node) node
           (try
             (case (:f op)
               :add  (do (j/execute! connection [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
@@ -366,7 +368,7 @@
   client/Client
   (setup! [this test node]
    (warn "setup")
-   (j/with-db-connection [c (connect-to conn-spec node)]
+   (j/with-db-connection [c (conn-spec node)]
     ; Create table
     (dotimes [i n]
      (try ; TODO: no catch?
@@ -378,7 +380,7 @@
 
   (invoke! [this test op]
    (try
-    (j/with-db-transaction [c (connect-to conn-spec node) :isolation :serializable]
+    (j/with-db-transaction [c (conn-spec node) :isolation :serializable]
      (try ; TODO: no catch?
       (case (:f op)
        ; skip initial records - not all threads are done initial writing, and
@@ -407,7 +409,7 @@
   (reify client/Client
     (setup! [this test node]
       ; TODO: per-client conns
-      (j/with-db-connection [c conn-spec]
+      (j/with-db-connection [c (conn-spec node)]
         (do
           (j/delete! c :register ["1 = 1"])
           (comdb2-cas-register-client node))))
@@ -417,7 +419,7 @@
       ; vs when we do our own set hasql on, set txn serializable, etc
       ; TODO: also, are these set operations... supposed to happen before every
       ; op? or once on conn open?
-      (j/with-db-connection [c conn-spec]
+      (j/with-db-connection [c (conn-spec node)]
         ; TODO: this whole thing seems like it should be a reusable macro?
         (do
           (j/query c ["set hasql on"])
@@ -565,7 +567,6 @@
             :password "shadow"
             :strict-host-key-checking false
           }
-          :db   (db (:version opts))
           :nemesis (nemesis/partition-random-halves)}
          (dissoc opts :name :version)))
 
