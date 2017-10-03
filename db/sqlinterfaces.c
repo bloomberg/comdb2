@@ -3551,7 +3551,7 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
     info_nvreplays[0] = '\0';
 
     if (clnt->verify_retries)
-        snprintf(info_nvreplays, sizeof(info_nvreplays), "vreplays=%d ",
+        snprintf(info_nvreplays, sizeof(info_nvreplays), "vreplays=%d",
                  clnt->verify_retries);
 
     if (clnt->sql_query && clnt->sql_query->client_info) {
