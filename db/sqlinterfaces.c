@@ -3550,9 +3550,6 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
     char info_nvreplays[40];
     info_nvreplays[0] = '\0';
 
-    char cnonce[256];
-    cnonce[0] = '\0';
-
     if (clnt->verify_retries)
         snprintf(info_nvreplays, sizeof(info_nvreplays), "vreplays=%d ",
                  clnt->verify_retries);
