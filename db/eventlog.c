@@ -66,7 +66,7 @@ LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
 
-void eventlog_init(const char *dbname)
+void eventlog_init()
 {
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
@@ -84,12 +84,13 @@ static inline void free_gbl_eventlog_fname()
 static gzFile eventlog_open()
 {
     char *fname = eventlog_fname(thedb->envname);
-    gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
     if (f == NULL) {
         eventlog_enabled = 0;
+        free(fname);
         return NULL;
     }
+    gbl_eventlog_fname = fname;
     return f;
 }
 
