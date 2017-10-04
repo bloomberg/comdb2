@@ -57,7 +57,7 @@ cd cdb2jdbc
 
 > You can also use an existing install of gradle instead of the wrapper. At least version 2.12 is required.
 
-This build  will install installed cdb2jdbc into your *local Maven* repository.
+This build will install cdb2jdbc into your *local Maven* repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
 
 ## Setting up Cdb2jdbc
