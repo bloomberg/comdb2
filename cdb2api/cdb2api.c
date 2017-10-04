@@ -2496,7 +2496,7 @@ static void make_random_str(char *str, int *len)
     gettimeofday(&tv, NULL);
     if (PID == 0) {
         PID = getpid();
-        srandom(tv.tv_sec);
+        srandom(tv.tv_sec + pthread_self());
     }
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
     *len = strlen(str);
