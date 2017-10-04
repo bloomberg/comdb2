@@ -55,14 +55,18 @@ cd cdb2jdbc
 ./gradlew install
 ```
 
-cdb2jdbc should be successfully installed in your local Maven repository.
+> You can also use an existing install of gradle instead of the wrapper. At least version 2.12 is required.
+
+This build  will install installed cdb2jdbc into your *local Maven* repository.
 The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
 
 ## Setting up Cdb2jdbc
 
-There are 2 approaches to set up cdb2jdbc: with or without Maven.
+There are 2 approaches to set up cdb2jdbc: using build tools or setting the classpath.
 
-### With Maven
+### Build tools
+
+#### As a Maven dependency
 
 To introduce cdb2jdbc in your applications as a Maven dependency, add the following to `pom.xml`, with the version available from your Maven repository.
 
@@ -74,18 +78,9 @@ To introduce cdb2jdbc in your applications as a Maven dependency, add the follow
 </dependency>
 ```
 
-### Without Maven
+#### As a Gradle dependency
 
-By default, an uber JAR is built along with cdb2jdbc and is named `cdb2jdbc-<version>-shaded.jar`.
-An uber JAR is a JAR file which contains all its dependencies. To use the JAR without Maven, you would include it in `CLASSPATH`.
-
-```shell
-export CLASSPATH=<path_to_the_uber_jar>:$CLASSPATH
-```
-
-### With Gradle
-
-To introduce cdb2jdbc in your applications as a Maven dependency, add the following to `build.gradle`, with the version available from your Maven repository.
+If you followed the steps above to install cdb2jdbc form source, it should be in your local Maven repository. Add the following to your `build.gradle` with the version replaced to the cdb2jdbc version. 
 
 ```groovy
 repositories {
@@ -95,6 +90,15 @@ repositories {
 dependencies {
     compile 'com.bloomberg.comdb2:cdb2jdbc:major.minor.patch'
 }
+```
+
+### Setting the Classpath
+
+By default, an uber JAR is built along with cdb2jdbc and is named `cdb2jdbc-<version>-shaded.jar`.
+An uber JAR is a JAR file which contains all its dependencies. To use the JAR without Maven, you would include it in `CLASSPATH`.
+
+```shell
+export CLASSPATH=<path_to_the_uber_jar>:$CLASSPATH
 ```
 
 ## Using Cdb2jdbc
