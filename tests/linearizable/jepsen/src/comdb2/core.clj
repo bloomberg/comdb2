@@ -1,13 +1,13 @@
 (ns comdb2.core
  "Tests for Comdb2"
-(:require 
-  [clojure.tools.logging :refer :all]
-  [clojure.core.reducers :as r]
-  [clojure.java.io :as io]
-  [clojure.string :as str]
-  [clojure.pprint :refer [pprint]]
-  [jepsen.checker.timeline  :as timeline]
-  [jepsen [client :as client]
+ (:require
+   [clojure.tools.logging :refer :all]
+   [clojure.core.reducers :as r]
+   [clojure.java.io :as io]
+   [clojure.string :as str]
+   [clojure.pprint :refer [pprint]]
+   [jepsen.checker.timeline  :as timeline]
+   [jepsen [client :as client]
     [core :as jepsen]
     [db :as db]
     [tests :as tests]
@@ -17,9 +17,10 @@
     [independent :as independent]
     [util :refer [timeout meh]]
     [generator :as gen]]
-  [knossos.op :as op]
-  [knossos.model :as model]
-  [clojure.java.jdbc :as j]))
+   [knossos.op :as op]
+   [knossos.model :as model]
+   [clojure.java.jdbc :as j])
+ (:import [knossos.model Model]))
 
 (java.sql.DriverManager/registerDriver (com.bloomberg.comdb2.jdbc.Driver.))
 
@@ -589,6 +590,34 @@
                  :dirty-reads (dirty-reads-checker)
                  :linearizable (independent/checker checker/linearizable)})}))
 
+(defrecord CASRegisterComdb2 [value]
+  Model
+  (step [r op]
+    (do
+      (condp = (:f op)
+        :write (do (info "STEP " value " -> " op " SUCCESSFUL WRITE " (:value op))
+                   (CASRegisterComdb2. (second (:value op))))
+        :cas   (let [[cur new] (second (:value op))]
+                 (if (= cur value)
+                   (do (info "STEP " value " -> " op " SUCCESSFUL CAS FROM " cur " TO " new)
+                       (CASRegisterComdb2. new))
+                   (do (info "STEP " value " -> " op " FAILING CAS BECAUSE CUR IS " cur " AND VALUE IS " value)
+                       (model/inconsistent (str ">> can't CAS " value " from " cur " to " new)))))
+        :read  (if (or (nil? (second (:value op)))
+                       (= value (second (:value op))))
+                 (do (info "STEP " value " -> " op " SUCCESSFUL READ, VALUE=" value " :VALUE OP=" (:value op))
+                     r)
+                 (do (info "STEP " value " -> " op " FAILING READ BECAUSE VALUE IS " value " AND :VALUE OP IS " (:value op))
+                     (model/inconsistent (str ">> can't read " (:value op) " from register with value " value)))))))
+
+  Object
+  (toString [this] (pr-str value)))
+
+(defn cas-register-comdb2
+  "A compare-and-set register" 
+  ([]      (CASRegisterComdb2. nil))
+  ([value] (CASRegisterComdb2. (second value))))
+
 ; TODO: just change the nemesis, no need for two copies with only slightly
 ; different schedules, right?
 (defn register-tester
@@ -606,14 +635,13 @@
                            (gen/time-limit 10))
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (model/cas-register-comdb2 [1 1])
+       :model       (cas-register-comdb2 [1 1])
        :time-limit   100
        :recovery-time  30
        :checker     (checker/compose
                       {:perf  (checker/perf)
                        :linearizable checker/linearizable}) }
       opts)))
-
 
 (defn register-tester-nemesis
   [opts]
@@ -631,7 +659,7 @@
                            with-nemesis)
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (model/cas-register-comdb2 [1 1])
+       :model       (cas-register-comdb2 [1 1])
        :time-limit   180
        :recovery-time  30
        :checker     (checker/compose
