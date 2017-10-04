@@ -15,8 +15,9 @@
     [checker :as checker]
     [nemesis :as nemesis]
     [independent :as independent]
-    [util :refer [timeout meh]]
-    [generator :as gen]]
+    [util :as util :refer [timeout meh]]
+    [generator :as gen]
+    [reconnect :as rc]]
    [knossos.op :as op]
    [knossos.model :as model]
    [clojure.java.jdbc :as j])
@@ -57,8 +58,53 @@
     (.close c))
   (dissoc conn :connection))
 
+(defn wait-for-conn
+  "I have a hunch connection state is asynchronous in the comdb2 driver, so we
+  may need to block a bit for a connection to become ready."
+  [conn]
+  (util/with-retry [tries 30]
+    (info "Waiting for conn")
+    (j/query conn ["set hasql on"])
+    ; I know it says "nontransient" but maaaybe it is???
+    (catch java.sql.SQLNonTransientConnectionException e
+      (when (neg? tries)
+        (throw e))
 
+      (info "Conn not yet available; waiting\n" (with-out-str (pprint conn)))
+      (Thread/sleep 1000)
+      (retry (dec tries))))
+  conn)
 
+(defn connect
+  "Constructs and opens a reconnectable JDBC client for a given node."
+  [node]
+  (rc/open!
+    (rc/wrapper
+      {:name [:comdb2 node]
+       :open (fn open []
+               (timeout 5000
+                        (throw (RuntimeException.
+                                 (str "Timed out connecting to " node)))
+                        (let [spec  (conn-spec node)
+                              conn  (j/get-connection spec)
+                              spec' (j/add-connection spec conn)]
+                          (assert spec')
+                          spec')))
+                          ;(wait-for-conn spec'))))
+       :close close-conn!
+       :log? true})))
+
+(defmacro with-conn
+  "Like jepsen.reconnect/with-conn, but also asserts that the connection has
+  not been closed. If it has, throws an ex-info with :type :conn-not-ready.
+  Delays by 1 second to allow time for the DB to recover."
+  [[c client] & body]
+  `(rc/with-conn [~c ~client]
+     (when (.isClosed (j/db-find-connection ~c))
+       (Thread/sleep 1000)
+       (throw (ex-info "Connection not yet ready."
+                       {:type :conn-not-ready})))
+     ~@body))
 
 ;; Error handling
 
@@ -404,32 +450,56 @@
 
   (teardown! [_ test]))
 
+(defmacro prepare-serializable!
+  "Takes a connection, an op, and a body.
+
+  1. Turns on hasql
+  2. Sets transaction to serializable
+  3. May turn on debug mode
+  4. Sets maximum retries
+
+  If this fails because of a connection error, sleeps briefly (to avoid
+  hammering a down node with reconnects), and returns the op with :type fail.
+  If it succeeds, moves on to execute body.
+
+  TODO: what... should this actually be called? I don't exactly understand how
+  these four commands work together, and what their purpose is"
+  [c op & body]
+  `(try (j/query ~c ["set hasql on"])
+        (j/query ~c ["set transaction serializable"])
+        (when (System/getenv "COMDB2_DEBUG")
+          (j/query ~c ["set debug on"]))
+        (j/query ~c ["set max_retries 100000"])
+
+        ~@body
+
+        (catch java.sql.SQLNonTransientConnectionException e#
+          (when-not (re-find #"Can't connect to db\." (.getMessage e#))
+            (throw e#))
+
+          (Thread/sleep 5000) ; Give node a chance to wake up again
+          (assoc ~op :type :fail, :error :can't-connect))))
+
+
 (defn comdb2-cas-register-client
   "Comdb2 register client"
-  [node]
+  [conn]
   (reify client/Client
     (setup! [this test node]
-      ; TODO: per-client conns
-      (j/with-db-connection [c (conn-spec node)]
-        (do
-          (j/delete! c :register ["1 = 1"])
-          (comdb2-cas-register-client node))))
+      (let [conn (connect node)]
+        (with-conn [c conn]
+          ; MEOW MEOW
+          ; TODO: why don't we create a table here?
+          (j/delete! c :register ["1 = 1"]))
+        (comdb2-cas-register-client conn)))
 
     (invoke! [this test op]
       ; TODO: figure out when we can use the isolation levels passed to with-txn
       ; vs when we do our own set hasql on, set txn serializable, etc
       ; TODO: also, are these set operations... supposed to happen before every
       ; op? or once on conn open?
-      (j/with-db-connection [c (conn-spec node)]
-        ; TODO: this whole thing seems like it should be a reusable macro?
-        (do
-          (j/query c ["set hasql on"])
-          (j/query c ["set transaction serializable"])
-          ; TODO: make this a function
-          (when (System/getenv "COMDB2_DEBUG")
-            (j/query c ["set debug on"]))
-          (j/query c ["set max_retries 100000"])
-
+      (with-conn [c conn]
+        (prepare-serializable! c op
           (case (:f op)
             :read (let [[id val'] (:value op)
                         [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))]
@@ -503,7 +573,8 @@
                     :else (throw e)))))))))
 
     ; TODO: disconnect
-    (teardown! [_ test])))
+    (teardown! [_ test]
+      (rc/close! conn))))
 
 
 
