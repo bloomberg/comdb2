@@ -640,7 +640,7 @@
        :recovery-time  30
        :checker     (checker/compose
                       {:perf  (checker/perf)
-                       :linearizable checker/linearizable}) }
+                       :linearizable (checker/linearizable)}) }
       opts)))
 
 (defn register-tester-nemesis
@@ -664,5 +664,5 @@
        :recovery-time  30
        :checker     (checker/compose
                       {:perf  (checker/perf)
-                       :linearizable checker/linearizable}) }
+                       :linearizable (checker/linearizable)}) }
       opts)))
