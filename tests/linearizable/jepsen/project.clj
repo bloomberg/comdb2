@@ -5,7 +5,7 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [jepsen "0.1.6"]
-                 [org.clojure/java.jdbc "0.4.1"]
+                 [org.clojure/java.jdbc "0.6.1"]
                  [com.bloomberg.comdb2/cdb2jdbc "2.0.0"]]
   :test-selectors {
                    :register :register-test

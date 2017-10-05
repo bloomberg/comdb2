@@ -35,6 +35,49 @@
       (str/split #"\s+")
       vec))
 
+;; JDBC wrappers
+
+(def timeout-delay "Default timeout for operations in ms" 5000)
+
+(defmacro with-prepared-statement-with-timeout
+  "Takes a DB conn and a [symbol sql-statement] pair. Constructs a prepared
+  statement with a default timeout out of sql-statement, and binds it to
+  `symbol`, then evaluates body. Finally, closes the prepared statement."
+  [conn [symbol sql] & body]
+  `(let [~symbol (j/prepare-statement (j/db-find-connection ~conn)
+                                 ~sql
+                                 {:timeout (/ timeout-delay 1000)})]
+     (try
+       ~@body
+       (finally
+         (.close ~symbol)))))
+
+(defn execute!
+  "Like jdbc execute, but includes a default timeout in ms."
+  ([conn sql-params]
+   (execute! conn sql-params {}))
+  ([conn [sql & params] opts]
+   (with-prepared-statement-with-timeout conn [s sql]
+     (j/execute! conn (into [s] params) opts))))
+
+(defn query
+  "Like jdbc query, but includes a default timeout in ms."
+  ([conn expr]
+   (query conn expr {}))
+  ([conn [sql & params] opts]
+   (with-prepared-statement-with-timeout conn [s sql]
+     (j/query conn (into [s] params) opts))))
+
+(defn insert!
+  "Like jdbc insert!, but includes a default timeout."
+  [conn table values]
+  (j/insert! conn table values {:timeout timeout-delay}))
+
+(defn update!
+  "Like jdbc update!, but includes a default timeout."
+  [conn table values where]
+  (j/update! conn table values where {:timeout timeout-delay}))
+
 ;; Connection handling
 
 (defn conn-spec
@@ -64,7 +107,7 @@
   [conn]
   (util/with-retry [tries 30]
     (info "Waiting for conn")
-    (j/query conn ["set hasql on"])
+    (query conn ["set hasql on"])
     ; I know it says "nontransient" but maaaybe it is???
     (catch java.sql.SQLNonTransientConnectionException e
       (when (neg? tries)
@@ -106,32 +149,6 @@
                        {:type :conn-not-ready})))
      ~@body))
 
-;; JDBC wrappers
-
-(def timeout-delay "Default timeout for operations in ms" 5000)
-
-(defn query
-  "Like jdbc query, but includes a default timeout in ms."
-  ([conn expr]
-   (query conn expr {}))
-  ([conn [sql & params] opts]
-   (let [s (j/prepare-statement (j/db-find-connection conn)
-                                sql
-                                {:timeout (/ timeout-delay 1000)})]
-     (try
-       (j/query conn (into [s] params) opts)
-       (finally
-         (.close s))))))
-
-(defn insert!
-  "Like jdbc insert!, but includes a default timeout."
-  [conn table values]
-  (j/insert! conn table values {:timeout timeout-delay}))
-
-(defn update!
-  "Like jdbc update!, but includes a default timeout."
-  [conn table values where]
-  (j/update! conn table values where {:timeout timeout-delay}))
 
 
 ;; Error handling
@@ -192,7 +209,7 @@
       ; Create initial accts
       (dotimes [i n]
         (try
-         (j/insert! c :accounts {:id i, :balance starting-balance})
+         (insert! c :accounts {:id i, :balance starting-balance})
          (catch java.sql.SQLException e
           (if (.contains (.getMessage e) "add key constraint duplicate key")
             nil
@@ -203,24 +220,24 @@
   (invoke! [this test op]
     (with-txn op (conn-spec node) nil
      (j/with-db-transaction [connection (conn-spec node) :isolation :serializable]
-      (j/query connection ["set hasql on"])
-      (j/query connection ["set max_retries 100000"])
+      (query connection ["set hasql on"])
+      (query connection ["set max_retries 100000"])
 
       (try
         (case (:f op)
-          :read (->> (j/query connection ["select * from accounts"])
+          :read (->> (query connection ["select * from accounts"])
                      (mapv :balance)
                      (assoc op :type :ok, :value))
 
           :transfer
           (let [{:keys [from to amount]} (:value op)
                 b1 (-> connection
-                       (j/query ["select * from accounts where id = ?" from]
+                       (query ["select * from accounts where id = ?" from]
                          :row-fn :balance)
                        first
                        (- amount))
                 b2 (-> connection
-                       (j/query ["select * from accounts where id = ?" to]
+                       (query ["select * from accounts where id = ?" to]
                          :row-fn :balance)
                        first
                        (+ amount))]
@@ -231,8 +248,8 @@
                   (assoc op :type :fail, :value [:negative to b2])
 
                   true
-                    (do (j/execute! connection ["update accounts set balance = balance - ? where id = ?" amount from])
-                        (j/execute! connection ["update accounts set balance = balance + ? where id = ?" amount to])
+                    (do (execute! connection ["update accounts set balance = balance - ? where id = ?" amount from])
+                        (execute! connection ["update accounts set balance = balance + ? where id = ?" amount to])
                         (assoc op :type :ok)))))))))
 
   (teardown! [_ test]))
@@ -338,19 +355,19 @@
      ; TODO: Open our own connection instead of using the global conn-spec?
       (j/with-db-transaction [connection (conn-spec node) :isolation :serializable]
 
-        (j/query connection ["set hasql on"])
-        (j/query connection ["set transaction serializable"])
+        (query connection ["set hasql on"])
+        (query connection ["set transaction serializable"])
         (when (System/getenv "COMDB2_DEBUG")
-          (j/query connection ["set debug on"]))
-;        (j/query connection ["set debug on"])
-        (j/query connection ["set max_retries 100000"])
+          (query connection ["set debug on"]))
+;        (query connection ["set debug on"])
+        (query connection ["set max_retries 100000"])
         (with-txn op (conn-spec node) node
           (try
             (case (:f op)
-              :add  (do (j/execute! connection [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
+              :add  (do (execute! connection [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
                         (assoc op :type :ok))
 
-              :read (->> (j/query connection ["select * from jepsen"])
+              :read (->> (query connection ["select * from jepsen"])
                          (mapv :value)
                          (into (sorted-set))
                          (assoc op :type :ok, :value)))))))
@@ -460,7 +477,7 @@
      (try ; TODO: no catch?
       (with-txn-retries
        (Thread/sleep (rand-int 10))
-       (j/insert! c :dirty {:id i, :x -1})))))
+       (insert! c :dirty {:id i, :x -1})))))
 
     (assoc this :node node))
 
@@ -472,16 +489,17 @@
        ; skip initial records - not all threads are done initial writing, and
        ; the initial writes aren't a single transaction so we won't see
        ; consistent reads
-       :read (->> (j/query c ["select * from dirty where x != -1"])
+       :read (->> (query c ["select * from dirty where x != -1"])
                   (mapv :x)
                   (assoc op :type :ok, :value))
 
        :write (let [x (:value op)
                     order (shuffle (range n))]
+                ; TODO: why is there a discarded read here?
                 (doseq [i order]
-                  (j/query c ["select * from dirty where id = ?" i]))
+                  (query c ["select * from dirty where id = ?" i]))
                 (doseq [i order]
-                  (j/update! c :dirty {:x x} ["id = ?" i]))
+                  (update! c :dirty {:x x} ["id = ?" i]))
                 (assoc op :type :ok)))))
     (catch java.sql.SQLException e
      ; TODO: why do we know this is a definite failure?
@@ -504,11 +522,11 @@
   TODO: what... should this actually be called? I don't exactly understand how
   these four commands work together, and what their purpose is"
   [c op & body]
-  `(try (j/query ~c ["set hasql on"])
-        (j/query ~c ["set transaction serializable"])
+  `(try (query ~c ["set hasql on"])
+        (query ~c ["set transaction serializable"])
         (when (System/getenv "COMDB2_DEBUG")
-          (j/query ~c ["set debug on"]))
-        (j/query ~c ["set max_retries 100000"])
+          (query ~c ["set debug on"]))
+        (query ~c ["set max_retries 100000"])
 
         ~@body
 
@@ -548,7 +566,7 @@
             (case (:f op)
               :read
               (let [[id val'] (:value op)
-                    [val uid] (second (query c ["select val,uid from register where id = 1"] :as-arrays? true))]
+                    [val uid] (second (query c ["select val,uid from register where id = 1"] {:as-arrays? true}))]
                 (assoc op
                        :type  :ok
                        :uid   uid
@@ -559,16 +577,16 @@
               (j/with-db-transaction [c c]
                 (let [[id val'] (:value op)
                       [val uid] (second
-                                  (j/query c ["select val,uid from register where id = 1"]
-                                           :as-arrays? true))
+                                  (query c ["select val,uid from register where id = 1"]
+                                           {:as-arrays? true}))
                       uid' (+ (* 1000 (rand-int 100000)) (:process op))
                       updated (first
                                 (if val
                                   ; We have an existing row
                                   ; TODO: why "where 1"?
-                                  (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
+                                  (execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
                                   ; No existing row; insert
-                                  (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
+                                  (execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
                   (assert (<= 0 updated 1))
                   (if (zero? updated)
                     (assoc op :type :fail)
@@ -580,10 +598,10 @@
               (j/with-db-transaction [c c]
                 (let [[id [expected-val val']] (:value op)
                       [val uid] (second
-                                  (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                                  (query c ["select val,uid from register where id = 1"] {:as-arrays? true}))
                       uid' (+ (* 1000 (rand-int 100000)) (:process op))
                       updated (first
-                                (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
+                                (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
                   (assert (<= 0 updated 1))
                   (if (zero? updated)
                     (assoc op :type :fail)
