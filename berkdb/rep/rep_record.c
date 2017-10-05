@@ -469,8 +469,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	 * to get in sync.
 	 */
 	if (rp->gen < gen && rp->rectype != REP_ALIVE_REQ &&
-	    rp->rectype != REP_NEWCLIENT && rp->rectype != REP_MASTER_REQ &&
-	    rp->rectype != REP_DUPMASTER) {
+	    rp->rectype != REP_NEWCLIENT && rp->rectype != REP_MASTER_REQ) {
 		/*
 		 * We don't hold the rep mutex, and could miscount if we race.
 		 */

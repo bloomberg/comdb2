@@ -4721,13 +4721,10 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         *downgraded = 0;
 
     retries = 0;
-    while (!bdb_state->repinfo->upgrade_allowed) {
-        if (++retries > 100) {
-            logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
-                            "completed yet)\n");
-            return 0;
-        }
-        poll(NULL, 0, 100);
+    if (!bdb_state->repinfo->upgrade_allowed) {
+        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
+                "completed yet)\n");
+        return 0;
     }
 
     /* if we were passed a child, find his parent */
