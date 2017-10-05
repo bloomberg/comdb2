@@ -78,3 +78,6 @@ init_with_compr_blobs none
 # Log location
 #location logs /db/logs
 init_with_genid48
+
+# Don't use direct IO (breaks in LXC)
+setattr directio 0
