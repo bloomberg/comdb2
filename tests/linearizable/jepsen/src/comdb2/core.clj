@@ -566,25 +566,25 @@
             (case (:f op)
               :read
               (let [[id val'] (:value op)
-                    [val uid] (second (query c ["select val,uid from register where id = 1"] {:as-arrays? true}))]
+                    [val uid] (second (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))]
                 (assoc op
                        :type  :ok
                        :uid   uid
-                       :value (independent/tuple 1 val)))
+                       :value (independent/tuple id val)))
 
               ; TODO: clean this up and break it into understandable bits
               :write
               (j/with-db-transaction [c c]
                 (let [[id val'] (:value op)
                       [val uid] (second
-                                  (query c ["select val,uid from register where id = 1"]
+                                  (query c ["select val,uid from register where id = ?" id]
                                            {:as-arrays? true}))
                       uid' (+ (* 1000 (rand-int 100000)) (:process op))
                       updated (first
                                 (if val
                                   ; We have an existing row
                                   ; TODO: why "where 1"?
-                                  (execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
+                                  (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id)])
                                   ; No existing row; insert
                                   (execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
                   (assert (<= 0 updated 1))
@@ -598,7 +598,7 @@
               (j/with-db-transaction [c c]
                 (let [[id [expected-val val']] (:value op)
                       [val uid] (second
-                                  (query c ["select val,uid from register where id = 1"] {:as-arrays? true}))
+                                  (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))
                       uid' (+ (* 1000 (rand-int 100000)) (:process op))
                       updated (first
                                 (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
@@ -614,10 +614,9 @@
       (rc/close! conn))))
 
 ; Test on only one register for now
-; TODO: get rid of the 1s, move UIDs to a separate op field
-(defn r   [_ _] {:type :invoke, :f :read, :value [1 nil]})
-(defn w   [_ _] {:type :invoke, :f :write, :value [1 (rand-int 5)]})
-(defn cas [_ _] {:type :invoke, :f :cas, :value [1 [(rand-int 5) (rand-int 5)]]})
+(defn r   [_ _] {:type :invoke, :f :read, :value nil})
+(defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
+(defn cas [_ _] {:type :invoke, :f :cas, :value [(rand-int 5) (rand-int 5)]})
 
 ; TODO: better name for this, move it near the dirty-reads client
 (defn client
@@ -696,34 +695,6 @@
                  :dirty-reads (dirty-reads-checker)
                  :linearizable (independent/checker checker/linearizable)})}))
 
-(defrecord CASRegisterComdb2 [value]
-  Model
-  (step [r op]
-    (do
-      (condp = (:f op)
-        :write (do (info "STEP " value " -> " op " SUCCESSFUL WRITE " (:value op))
-                   (CASRegisterComdb2. (second (:value op))))
-        :cas   (let [[cur new] (second (:value op))]
-                 (if (= cur value)
-                   (do (info "STEP " value " -> " op " SUCCESSFUL CAS FROM " cur " TO " new)
-                       (CASRegisterComdb2. new))
-                   (do (info "STEP " value " -> " op " FAILING CAS BECAUSE CUR IS " cur " AND VALUE IS " value)
-                       (model/inconsistent (str ">> can't CAS " value " from " cur " to " new)))))
-        :read  (if (or (nil? (second (:value op)))
-                       (= value (second (:value op))))
-                 (do (info "STEP " value " -> " op " SUCCESSFUL READ, VALUE=" value " :VALUE OP=" (:value op))
-                     r)
-                 (do (info "STEP " value " -> " op " FAILING READ BECAUSE VALUE IS " value " AND :VALUE OP IS " (:value op))
-                     (model/inconsistent (str ">> can't read " (:value op) " from register with value " value)))))))
-
-  Object
-  (toString [this] (pr-str value)))
-
-(defn cas-register-comdb2
-  "A compare-and-set register" 
-  ([]      (CASRegisterComdb2. nil))
-  ([value] (CASRegisterComdb2. (second value))))
-
 ; TODO: just change the nemesis, no need for two copies with only slightly
 ; different schedules, right?
 (defn register-tester
@@ -741,12 +712,13 @@
                            (gen/time-limit 10))
                       (gen/log "waiting for quiescence")
                       (gen/sleep 10))
-       :model       (cas-register-comdb2 [1 1])
+       :model       (model/cas-register)
        :time-limit   100
        :recovery-time  30
        :checker     (checker/compose
                       {:perf  (checker/perf)
-                       :linearizable (checker/linearizable)}) }
+                       :linearizable (independent/checker
+                                       (checker/linearizable))}) }
       opts)))
 
 (defn register-tester-nemesis
@@ -757,18 +729,19 @@
        :client      (comdb2-cas-register-client nil)
        :concurrency 10
 
-       :generator   (gen/phases
-                      (->> (gen/mix [w cas cas r])
-                           (gen/clients)
-                           (gen/stagger 1/10)
-                           (gen/time-limit 10)
+       :generator   (->> (independent/concurrent-generator
+                           10
+                           (range)
+                           (fn [k]
+                             (->> (gen/reserve 5 (gen/mix [w cas cas]) r)
+                                  (gen/stagger 1/10)
+                                  (gen/limit 128))))
                            with-nemesis)
-                      (gen/log "waiting for quiescence")
-                      (gen/sleep 10))
-       :model       (cas-register-comdb2 [1 1])
+       :model       (model/cas-register)
        :time-limit   180
        :recovery-time  30
        :checker     (checker/compose
                       {:perf  (checker/perf)
-                       :linearizable (checker/linearizable)}) }
+                       :linearizable (independent/checker
+                                       (checker/linearizable))}) }
       opts)))
