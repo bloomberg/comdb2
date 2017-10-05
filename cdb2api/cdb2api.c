@@ -2491,14 +2491,19 @@ done:
  */
 static void make_random_str(char *str, int *len)
 {
-    static int PID = 0;
+    static __thread int PID = 0;
+    static __thread unsigned short xsubi[3];
+
     struct timeval tv;
     gettimeofday(&tv, NULL);
     if (PID == 0) {
         PID = getpid();
-        srandom(tv.tv_sec);
+        xsubi[0] = tv.tv_sec;
+        xsubi[1] = tv.tv_usec;
+        xsubi[2] = pthread_self();
     }
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
+    int randval = nrand48(xsubi);
+    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }
