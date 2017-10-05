@@ -22,6 +22,7 @@ cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm 'select max(rootpage) from sqlite_mas
 
 
 numberbefore=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("memstat uncategorized")' | grep total | tail -1 | awk '{print $4}'`
+echo numberbefore $numberbefore
 
 # 10 Clients
 for i in `seq 1 10`; do
@@ -32,9 +33,10 @@ wait
 sleep 10
 
 numberafter=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("memstat uncategorized")' | grep total | tail -1 | awk '{print $4}'`
-let numberdelta=$numberafter-$numberbefore
+echo numberafter $numberafter
+numberdelta=$((numberafter-numberbefore))
 
-echo $numberdelta
+echo numberdelta $numberdelta
 # Give a little breathing room - 256KiB
 if [ $numberdelta -ge 262144 ]; then
   echo "This may be a leak."
