@@ -3196,42 +3196,6 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     signal_buflock(p_slock);
 }
 
-/* this is wrong in durable_lsn mode: we can't tell if this is DURABLE */
-int check_snap_uid_req(char *host, snap_uid_t *snap_info)
-{
-    if (host == NULL) {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-        if (!thd) {
-            return -1;
-        }
-        struct sqlclntstate *clnt = thd->sqlclntstate;
-        snap_uid_t *snap_out = NULL;
-        int rc = bdb_blkseq_find(thedb->bdb_env, NULL, snap_info->key,
-                                 snap_info->keylen, (void **)&snap_out, NULL);
-        if (rc == IX_FND) {
-            clnt->is_retry = 1;
-            clnt->effects = snap_out->effects;
-            free(snap_out);
-        } else if (rc == IX_NOTFND) {
-            clnt->is_retry = 0;
-        } else {
-            clnt->is_retry = -1;
-        }
-        return 0;
-    } else {
-        struct errstat xerr;
-        snap_uid_t snap_send;
-
-        snap_uid_put(snap_info, (uint8_t *)&snap_send,
-                     (const uint8_t *)&snap_send + sizeof(snap_uid_t));
-        offload_net_send(host, NET_OSQL_SNAP_UID_REQ, &snap_send,
-                         sizeof(snap_uid_t), 1);
-        int rc = osql_chkboard_wait_commitrc(OSQL_RQID_USE_UUID, snap_send.uuid,
-                                             &xerr);
-        return rc;
-    }
-}
-
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
@@ -3266,6 +3230,12 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
 
     offload_net_send(fromhost, NET_OSQL_SNAP_UID_RPL, p_buf_start,
                      sizeof(snap_uid_t), 1);
+}
+
+void log_snap_info_key(snap_uid_t *snap_info)
+{
+    if (snap_info)
+        logmsg(LOGMSG_USER, "%*s", snap_info->keylen, snap_info->key);
 }
 
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
@@ -6421,12 +6391,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
+            assert(iq->have_snap_info == 1); // was assigned in fast pass
             snap_uid_t snap_info;
-            assert(iq->have_snap_info == 1);
-
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
-            iq->have_snap_info = 1;
 
             assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }

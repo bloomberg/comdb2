@@ -622,7 +622,7 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
-    eventlog_init(dbname);
+    eventlog_init();
 
     scanrules_ll();
     return 0;
@@ -985,6 +985,7 @@ void reqlog_stat(void)
     {
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
+    eventlog_status();
     pthread_mutex_unlock(&rules_mutex);
 }
 

@@ -2482,6 +2482,13 @@ done:
     return 0;
 }
 
+/* make_random_str() will return a randomly generated string
+ * this is used to get a cnonce, composed of four components:
+ * the first part is the id of this host machine
+ * the second part is the PID of this client process
+ * the third part is the current time usec portion
+ * the fourth part is a [pseudo]random number
+ */
 static void make_random_str(char *str, int *len)
 {
     static int PID = 0;
