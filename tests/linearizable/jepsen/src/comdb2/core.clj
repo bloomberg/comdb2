@@ -78,6 +78,15 @@
   [conn table values where]
   (j/update! conn table values where {:timeout timeout-delay}))
 
+(defn upsert!
+  "Inserts or updates a value in the database, by attempting an update, and if
+  that fails, inserting instead."
+  [conn table values where]
+  (let [r (update! conn table values where)]
+    (if (zero? (first r))
+      (insert! conn table values)
+      r)))
+
 ;; Connection handling
 
 (defn conn-spec
@@ -548,18 +557,19 @@
          2  (assoc ~op :type :fail, :error (.getMessage e#))
             (throw e#)))))
 
+
 (defn comdb2-cas-register-client
   "Comdb2 register client"
   ([]
-   (comdb2-cas-register-client nil nil))
-  ([conn uids]
+   (comdb2-cas-register-client "register" nil nil))
+  ([table conn uids]
    (reify client/Client
      (setup! [this test node]
        (let [conn (connect node)]
          (with-conn [c conn]
            ; TODO: why don't we create a table here?
            (j/delete! c :register ["1 = 1"]))
-         (comdb2-cas-register-client conn (atom -1))))
+         (comdb2-cas-register-client table conn (atom -1))))
 
      (invoke! [this test op]
        (with-conn [c conn]
@@ -568,47 +578,31 @@
              (case (:f op)
                :read
                (let [[id val'] (:value op)
-                     [val uid] (second (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))]
+                     [val uid] (second (query c [(str "select val,uid from "
+                                                      table " where id = ?") id]
+                                              {:as-arrays? true}))]
                  (assoc op
                         :type  :ok
                         :uid   uid
                         :value (independent/tuple id val)))
 
                :write
-               (j/with-db-transaction [c c]
-                 (let [[id val'] (:value op)
-                       [val uid] (second
-                                   (query c ["select val,uid from register where id = ?" id]
-                                          {:as-arrays? true}))
-                       uid' (swap! uids inc)
-                       updated (first
-                                 (if val
-                                   ; We have an existing row
-                                   ; TODO: why "where 1"?
-                                   (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id)])
-                                   ; No existing row; insert
-                                   (execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
-                   (assert (<= 0 updated 1))
-                   (if (zero? updated)
-                     (assoc op :type :fail)
-                     (assoc op
-                            :type  :ok,
-                            :uid   uid'))))
+               (let [[id val] (:value op)
+                     uid      (swap! uids inc)
+                     updated  (first (upsert! c table
+                                              {:id id, :val val, :uid uid}
+                                              ["id = ?" id]))]
+                 (assert (<= 0 updated 1))
+                 (assoc op :type (if (zero? updated) :fail :ok), :uid uid))
 
                :cas
-               (j/with-db-transaction [c c]
-                 (let [[id [expected-val val']] (:value op)
-                       [val uid] (second
-                                   (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))
-                       uid' (swap! uids inc)
-                       updated (first
-                                 (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
-                   (assert (<= 0 updated 1))
-                   (if (zero? updated)
-                     (assoc op :type :fail)
-                     (assoc op
-                            :type  :ok
-                            :uid   uid')))))))))
+               (let [[id [v v']] (:value op)
+                     uid (swap! uids inc)
+                     updated (first (update! c table
+                                             {:val v', :uid uid}
+                                             ["id = ? and val = ?" id v]))]
+                 (assert (<= 0 updated 1))
+                 (assoc op :type (if (zero? updated) :fail :ok), :uid uid)))))))
 
      ; TODO: disconnect
      (teardown! [_ test]
