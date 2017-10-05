@@ -788,7 +788,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int replay_data_len, unsigned int line)
 {
     struct block_rsp errrsp;
-    int rc, outrc, snapinfo_outrc, jj, snapinfo = 0;
+    int rc = 0;
+    int outrc, snapinfo_outrc, jj, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -809,20 +810,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         if (rc == IX_FND) {
             memcpy(buf_fstblk, replay_data, replay_data_len - 4);
             datalen = replay_data_len - 4;
-            rc = 0;
-        }
-        if (rc == IX_NOTFND) {
-            int *seq = (int *)fstseqnum;
-            if (!check_long_trn)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: %08x:%08x:%08x fstblk replay deleted under us\n",
-                        __func__, seq[0], seq[1], seq[2]);
-            blkseq_line = __LINE__;
-            goto replay_error;
         }
     }
-    else
-        rc = 0;
 
     if (rc == IX_NOTFND)
     /*
@@ -5406,20 +5395,12 @@ add_blkseq:
         if (iq->have_snap_info) {
             bskey = iq->snap_info.key;
             bskeylen = iq->snap_info.keylen;
-        }
-        else {
+        } else {
             bskey = iq->seq;
             bskeylen = iq->seqlen;
         }
 
-        
         if (!rowlocks) {
-            /* force a parent-deadlock for cdb2tcm */
-            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_USER, "tcm forcing parent retry\n");
-                rc = RC_INTERNAL_RETRY;
-            }
-
             extern int gbl_always_send_cnonce;
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
             if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY && 
@@ -5429,7 +5410,8 @@ add_blkseq:
             else {
                 int t = time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
-                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey, bskeylen,
+                rc = bdb_blkseq_insert(
+                        thedb->bdb_env, parent_trans, bskey, bskeylen,
                         buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
                         &replay_data, &replay_len);
             }
@@ -5492,9 +5474,9 @@ add_blkseq:
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(),
-                            __FILE__, __LINE__);
-                    outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
-                            replay_len, __LINE__);
+                           __FILE__, __LINE__);
+                    outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
+                                           replay_data, replay_len, __LINE__);
                     did_replay = 1;
                     logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                             __FILE__, __LINE__, outrc);
@@ -5597,8 +5579,8 @@ add_blkseq:
             if (rc == IX_DUP) {
                 logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(), __FILE__,
                        __LINE__);
-                outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0, replay_data, 
-                                       replay_len, __LINE__);
+                outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
+                                       replay_data, replay_len, __LINE__);
                 did_replay = 1;
                 logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
                        __FILE__, __LINE__, outrc);

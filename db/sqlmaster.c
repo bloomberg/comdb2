@@ -12,6 +12,7 @@
  */
 typedef struct master_entry {
     char *tblname;
+    int isstrdup; /* True if tblname is obtained from strdup(). */
     int ixnum;
     int entry_size;
     void *entry;
@@ -26,7 +27,7 @@ static int sqlmaster_nentries;
 static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
                                       int tblnum, int ixnum, int *sz);
 
-static int destroy_sqlite_master(master_entry_t *arr, int arr_len)
+int destroy_sqlite_master(master_entry_t *arr, int arr_len)
 {
     master_entry_t *ent;
     int i;
@@ -35,8 +36,8 @@ static int destroy_sqlite_master(master_entry_t *arr, int arr_len)
         return 0;
 
     for (i = 0; i < arr_len; i++) {
-        ent = &arr[i];
-        if (ent->ixnum == -1)
+        ent = arr + i;
+        if (ent->isstrdup)
             free(ent->tblname);
         free(ent->entry);
     }
@@ -76,6 +77,7 @@ int create_sqlite_master(void)
         ent = &new_arr[i];
         db = thedb->dbs[tblnum];
         ent->tblname = strdup(db->dbname);
+        ent->isstrdup = 1;
         ent->ixnum = -1;
         ent->entry = create_sqlite_master_row(i + RTPAGE_START, db->csc2_schema,
                                               tblnum, -1, &ent->entry_size);
@@ -86,6 +88,8 @@ int create_sqlite_master(void)
             ent = &new_arr[i];
             /* skip indexes that we aren't advertising to sqlite */
             if (db->ixsql[ixnum] != NULL) {
+                ent->isstrdup = 0;
+                free(ent->tblname);
                 ent->tblname = new_arr[tbl_idx].tblname;
                 ent->ixnum = ixnum; /* comdb2 index number */
                 ent->entry = create_sqlite_master_row(
@@ -267,6 +271,7 @@ int get_copy_rootpages_nolock(struct sql_thread *thd)
         thd->rootpages[i].tblname = strdup(sqlmaster[i].tblname);
         if (!thd->rootpages[i].tblname)
             return -1;
+        thd->rootpages[i].isstrdup = 1;
         thd->rootpages[i].entry = malloc(thd->rootpages[i].entry_size);
         if (!thd->rootpages[i].entry)
             return -1;

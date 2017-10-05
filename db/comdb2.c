@@ -4422,7 +4422,7 @@ void *statthd(void *p)
                                             tbl->dbnum, tbl->dbname);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         breq2a(jj), diff);
                         }
                         tbl->prev_blocktypcnt[jj] = tbl->blocktypcnt[jj];
@@ -4436,7 +4436,7 @@ void *statthd(void *p)
                                             tbl->dbnum, tbl->dbname);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         osql_breq2a(jj), diff);
                         }
                         tbl->prev_blockosqltypcnt[jj] = tbl->blockosqltypcnt[jj];
@@ -4449,7 +4449,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns committed", diff);
                     }
                     dbenv->prev_txns_committed = dbenv->txns_committed;
@@ -4461,7 +4461,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns aborted", diff);
                     }
                     dbenv->prev_txns_aborted = dbenv->txns_aborted;
@@ -4473,7 +4473,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "nsql", diff);
                     }
                     tbl->prev_nsql = tbl->nsql;

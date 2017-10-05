@@ -615,12 +615,10 @@ done:
         if (crc == DB_LOCK_DEADLOCK) {
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
-            goto done;
         } else if (crc) {
             logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_MISC;
             rc = -1;
-            goto done;
         }
     }
     if (dbt_key.data && dbt_key.data != key)

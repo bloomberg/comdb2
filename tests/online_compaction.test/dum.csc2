@@ -1,1 +1,1 @@
-create table dum { tag ondisk { cstring txt[128] } }
+create table dum { schema { cstring txt[128] } }

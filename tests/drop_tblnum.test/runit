@@ -8,7 +8,7 @@ SQL="cdb2sql ${CDB2_OPTIONS} $DBNAME default"
 
 # $SQL "select comdb2_version(), comdb2_hosts()" > 
 cat << EOF > t.csc2
-tag ondisk 
+schema 
 {
     int a
 }

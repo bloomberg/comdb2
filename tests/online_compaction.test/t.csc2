@@ -1,1 +1,1 @@
-create table t { tag ondisk { int i } }
+create table t { schema { int i } }
