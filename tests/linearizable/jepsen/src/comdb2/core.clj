@@ -550,68 +550,69 @@
 
 (defn comdb2-cas-register-client
   "Comdb2 register client"
-  [conn]
-  (reify client/Client
-    (setup! [this test node]
-      (let [conn (connect node)]
-        (with-conn [c conn]
-          ; TODO: why don't we create a table here?
-          (j/delete! c :register ["1 = 1"]))
-        (comdb2-cas-register-client conn)))
+  ([]
+   (comdb2-cas-register-client nil nil))
+  ([conn uids]
+   (reify client/Client
+     (setup! [this test node]
+       (let [conn (connect node)]
+         (with-conn [c conn]
+           ; TODO: why don't we create a table here?
+           (j/delete! c :register ["1 = 1"]))
+         (comdb2-cas-register-client conn (atom -1))))
 
-    (invoke! [this test op]
-      (with-conn [c conn]
-        (with-txn-prep! c op
-          (with-sql-exceptions-as-errors op
-            (case (:f op)
-              :read
-              (let [[id val'] (:value op)
-                    [val uid] (second (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))]
-                (assoc op
-                       :type  :ok
-                       :uid   uid
-                       :value (independent/tuple id val)))
+     (invoke! [this test op]
+       (with-conn [c conn]
+         (with-txn-prep! c op
+           (with-sql-exceptions-as-errors op
+             (case (:f op)
+               :read
+               (let [[id val'] (:value op)
+                     [val uid] (second (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))]
+                 (assoc op
+                        :type  :ok
+                        :uid   uid
+                        :value (independent/tuple id val)))
 
-              ; TODO: clean this up and break it into understandable bits
-              :write
-              (j/with-db-transaction [c c]
-                (let [[id val'] (:value op)
-                      [val uid] (second
-                                  (query c ["select val,uid from register where id = ?" id]
-                                           {:as-arrays? true}))
-                      uid' (+ (* 1000 (rand-int 100000)) (:process op))
-                      updated (first
-                                (if val
-                                  ; We have an existing row
-                                  ; TODO: why "where 1"?
-                                  (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id)])
-                                  ; No existing row; insert
-                                  (execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
-                  (assert (<= 0 updated 1))
-                  (if (zero? updated)
-                    (assoc op :type :fail)
-                    (assoc op
-                           :type  :ok,
-                           :uid   uid'))))
+               :write
+               (j/with-db-transaction [c c]
+                 (let [[id val'] (:value op)
+                       [val uid] (second
+                                   (query c ["select val,uid from register where id = ?" id]
+                                          {:as-arrays? true}))
+                       uid' (swap! uids inc)
+                       updated (first
+                                 (if val
+                                   ; We have an existing row
+                                   ; TODO: why "where 1"?
+                                   (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id)])
+                                   ; No existing row; insert
+                                   (execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
+                   (assert (<= 0 updated 1))
+                   (if (zero? updated)
+                     (assoc op :type :fail)
+                     (assoc op
+                            :type  :ok,
+                            :uid   uid'))))
 
-              :cas
-              (j/with-db-transaction [c c]
-                (let [[id [expected-val val']] (:value op)
-                      [val uid] (second
-                                  (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))
-                      uid' (+ (* 1000 (rand-int 100000)) (:process op))
-                      updated (first
-                                (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
-                  (assert (<= 0 updated 1))
-                  (if (zero? updated)
-                    (assoc op :type :fail)
-                    (assoc op
-                           :type  :ok
-                           :uid   uid')))))))))
+               :cas
+               (j/with-db-transaction [c c]
+                 (let [[id [expected-val val']] (:value op)
+                       [val uid] (second
+                                   (query c ["select val,uid from register where id = ?" id] {:as-arrays? true}))
+                       uid' (swap! uids inc)
+                       updated (first
+                                 (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
+                   (assert (<= 0 updated 1))
+                   (if (zero? updated)
+                     (assoc op :type :fail)
+                     (assoc op
+                            :type  :ok
+                            :uid   uid')))))))))
 
-    ; TODO: disconnect
-    (teardown! [_ test]
-      (rc/close! conn))))
+     ; TODO: disconnect
+     (teardown! [_ test]
+       (rc/close! conn)))))
 
 ; Test on only one register for now
 (defn r   [_ _] {:type :invoke, :f :read, :value nil})
@@ -702,7 +703,7 @@
   (basic-test
     (merge
       {:name        "register"
-       :client      (comdb2-cas-register-client nil)
+       :client      (comdb2-cas-register-client)
        :concurrency 10
 
        :generator   (gen/phases
@@ -726,7 +727,7 @@
   (basic-test
     (merge
       {:name        "register"
-       :client      (comdb2-cas-register-client nil)
+       :client      (comdb2-cas-register-client)
        :concurrency 10
 
        :generator   (->> (independent/concurrent-generator
@@ -735,7 +736,7 @@
                            (fn [k]
                              (->> (gen/reserve 5 (gen/mix [w cas cas]) r)
                                   (gen/stagger 1/10)
-                                  (gen/limit 128))))
+                                  (gen/limit 200))))
                            with-nemesis)
        :model       (model/cas-register)
        :time-limit   180
