@@ -1,7 +1,7 @@
 (ns comdb2.core-test
   (:require [clojure.test :refer :all]
             [comdb2.core :refer :all]
-            [clojure.java.jdbc :refer :all]
+            [clojure.java.jdbc :as j]
             [jepsen.core :as jepsen]))
 
 ; Basic test - does SQL work?

@@ -11,7 +11,7 @@
     [core :as jepsen]
     [db :as db]
     [tests :as tests]
-    [control :as c :refer [|]]
+    [control :as c]
     [checker :as checker]
     [nemesis :as nemesis]
     [independent :as independent]
@@ -106,8 +106,47 @@
                        {:type :conn-not-ready})))
      ~@body))
 
+;; JDBC wrappers
+
+(def timeout-delay "Default timeout for operations in ms" 5000)
+
+(defn query
+  "Like jdbc query, but includes a default timeout in ms."
+  ([conn expr]
+   (query conn expr {}))
+  ([conn [sql & params] opts]
+   (let [s (j/prepare-statement (j/db-find-connection conn)
+                                sql
+                                {:timeout (/ timeout-delay 1000)})]
+     (try
+       (j/query conn (into [s] params) opts)
+       (finally
+         (.close s))))))
+
+(defn insert!
+  "Like jdbc insert!, but includes a default timeout."
+  [conn table values]
+  (j/insert! conn table values {:timeout timeout-delay}))
+
+(defn update!
+  "Like jdbc update!, but includes a default timeout."
+  [conn table values where]
+  (j/update! conn table values where {:timeout timeout-delay}))
+
+
 ;; Error handling
 
+(defmacro with-timeout
+  "Like util/timeout, but throws (RuntimeException. \"timeout\") for timeouts.
+  Throwing means that when we time out inside a with-conn, the connection state
+  gets reset, so we don't accidentally hand off the connection to a later
+  invocation with some incomplete transaction."
+  [& body]
+  `(util/timeout timeout-delay
+                 (throw (RuntimeException. "timeout"))
+                 ~@body))
+
+; TODO: can we unify this with errorCodes?
 (defn retriable-transaction-error
   "Given an error string, identifies whether the error is safely retriable."
   [e]
@@ -450,7 +489,7 @@
 
   (teardown! [_ test]))
 
-(defmacro prepare-serializable!
+(defmacro with-txn-prep!
   "Takes a connection, an op, and a body.
 
   1. Turns on hasql
@@ -480,6 +519,16 @@
           (Thread/sleep 5000) ; Give node a chance to wake up again
           (assoc ~op :type :fail, :error :can't-connect))))
 
+(defmacro with-sql-exceptions-as-errors
+  "Takes an op and a body. Executes body, catching SQLExceptions and converting
+  common error codes to failing or info ops."
+  [op & body]
+  `(try
+     ~@body
+     (catch java.sql.SQLException e#
+       (condp = (.getErrorCode e#)
+         2  (assoc ~op :type :fail, :error (.getMessage e#))
+            (throw e#)))))
 
 (defn comdb2-cas-register-client
   "Comdb2 register client"
@@ -488,95 +537,63 @@
     (setup! [this test node]
       (let [conn (connect node)]
         (with-conn [c conn]
-          ; MEOW MEOW
           ; TODO: why don't we create a table here?
           (j/delete! c :register ["1 = 1"]))
         (comdb2-cas-register-client conn)))
 
     (invoke! [this test op]
-      ; TODO: figure out when we can use the isolation levels passed to with-txn
-      ; vs when we do our own set hasql on, set txn serializable, etc
-      ; TODO: also, are these set operations... supposed to happen before every
-      ; op? or once on conn open?
       (with-conn [c conn]
-        (prepare-serializable! c op
-          (case (:f op)
-            :read (let [[id val'] (:value op)
-                        [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))]
-                    (info "Worker " (:process op) " READS val " val " uid " uid " PRE-COMMIT")
-                    (assoc op :type :ok, :value (independent/tuple 1 val)))
+        (with-txn-prep! c op
+          (with-sql-exceptions-as-errors op
+            (case (:f op)
+              :read
+              (let [[id val'] (:value op)
+                    [val uid] (second (query c ["select val,uid from register where id = 1"] :as-arrays? true))]
+                (assoc op
+                       :type  :ok
+                       :uid   uid
+                       :value (independent/tuple 1 val)))
 
-            ; TODO: clean this up and break it into understandable bits
-            :write
-            (try
-              (let [updated (first (j/with-db-transaction [c c]
-                                     (let [id   (first (:value op))
-                                           val' (second (:value op))
-                                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
-                                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
-
-                                       (do
-                                         (if (nil? val)
-                                           (do
-                                             (info "Worker " (:process op) " INSERTS val " val' " uid " uid' " PRE-COMMIT")
-                                             (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])
-                                             )
-                                           (do
-                                             (info "Worker " (:process op) " WRITES val from " val "-" uid " to " val' "-" uid' " PRE-COMMIT")
-                                             (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
-                                             )
-                                           )
-                                         )
-                                       )
-                                     )
-                                   ) ; first
-                    ]
-                (if (zero? updated)
-                  (do (info "Worker " (:process op) " WRITE FAILED")
-                      (assoc op :type :fail))
-                  (do (info "Worker " (:process op) " WRITE SUCCESS - RETURNING " (second (:value op)))
-                      (assoc op :type :ok, :value (independent/tuple 1 (second (:value op)))))))
-
-              (catch java.sql.SQLException e
-                (let [error (.getErrorCode e)]
-                  (cond
-                    (= error 2) (do (info "Worker " (:process op) " FAILED: "(.getMessage e))
-                                    (assoc op :type :fail))
-                    :else (throw e))))) ; try / :write case
-
-            :cas
-            (try
-              (let [updated (first (j/with-db-transaction [c c]
-                                     (let [id   (first (:value op))
-                                           val' (second (:value op))
-                                           [val uid] (second (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
-                                           uid' (+ (* 1000 (rand-int 100000)) (:process op))]
-
-                                       (do
-                                         (let [[expected-val new-val] val' ]
-                                           (do
-                                             (info "Worker " (:process op) " CAS FROM " expected-val "-" uid " to " new-val "-" uid')
-                                             (j/execute! c [(str "update register set val=" new-val ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)])))))))]
-                (do
-                  (info "Worker " (:process op) " TXN RCODE IS " updated)
+              ; TODO: clean this up and break it into understandable bits
+              :write
+              (j/with-db-transaction [c c]
+                (let [[id val'] (:value op)
+                      [val uid] (second
+                                  (j/query c ["select val,uid from register where id = 1"]
+                                           :as-arrays? true))
+                      uid' (+ (* 1000 (rand-int 100000)) (:process op))
+                      updated (first
+                                (if val
+                                  ; We have an existing row
+                                  ; TODO: why "where 1"?
+                                  (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
+                                  ; No existing row; insert
+                                  (j/execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
+                  (assert (<= 0 updated 1))
                   (if (zero? updated)
-                    (do (info "Worker " (:process op) " CAS FAILED")
-                        (assoc op :type :fail))
-                    (do (info "Worker " (:process op) " CAS SUCCESS")
-                        (assoc op :type :ok, :value (independent/tuple 1 (second (:value op))))))))
+                    (assoc op :type :fail)
+                    (assoc op
+                           :type  :ok,
+                           :uid   uid'))))
 
-              (catch java.sql.SQLException e
-                (let [error (.getErrorCode e)]
-                  (cond
-                    (= error 2) (do (info "Worker " (:process op) " FAILED: "(.getMessage e))
-                                    (assoc op :type :fail))
-                    :else (throw e)))))))))
+              :cas
+              (j/with-db-transaction [c c]
+                (let [[id [expected-val val']] (:value op)
+                      [val uid] (second
+                                  (j/query c ["select val,uid from register where id = 1"] :as-arrays? true))
+                      uid' (+ (* 1000 (rand-int 100000)) (:process op))
+                      updated (first
+                                (j/execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
+                  (assert (<= 0 updated 1))
+                  (if (zero? updated)
+                    (assoc op :type :fail)
+                    (assoc op
+                           :type  :ok
+                           :uid   uid')))))))))
 
     ; TODO: disconnect
     (teardown! [_ test]
       (rc/close! conn))))
-
-
 
 ; Test on only one register for now
 ; TODO: get rid of the 1s, move UIDs to a separate op field
