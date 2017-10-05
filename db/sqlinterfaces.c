@@ -626,6 +626,61 @@ char *tranlevel_tostr(int lvl)
     };
 }
 
+static inline int verify_sqlresponse_error_code(int error_code, const char *func, int line)
+{
+    switch(error_code) {
+        case CDB2__ERROR_CODE__OK:
+        case CDB2__ERROR_CODE__DUP_OLD:
+        case CDB2__ERROR_CODE__CONNECT_ERROR:
+        case CDB2__ERROR_CODE__NOTCONNECTED:
+        case CDB2__ERROR_CODE__PREPARE_ERROR:
+        case CDB2__ERROR_CODE__PREPARE_ERROR_OLD:
+        case CDB2__ERROR_CODE__IO_ERROR:
+        case CDB2__ERROR_CODE__INTERNAL:
+        case CDB2__ERROR_CODE__NOSTATEMENT:
+        case CDB2__ERROR_CODE__BADCOLUMN:
+        case CDB2__ERROR_CODE__BADSTATE:
+        case CDB2__ERROR_CODE__ASYNCERR:
+        case CDB2__ERROR_CODE__OK_ASYNC:
+        case CDB2__ERROR_CODE__INVALID_ID:
+        case CDB2__ERROR_CODE__RECORD_OUT_OF_RANGE:
+        case CDB2__ERROR_CODE__REJECTED:
+        case CDB2__ERROR_CODE__STOPPED:
+        case CDB2__ERROR_CODE__BADREQ:
+        case CDB2__ERROR_CODE__DBCREATE_FAILED:
+        case CDB2__ERROR_CODE__THREADPOOL_INTERNAL:
+        case CDB2__ERROR_CODE__READONLY:
+        case CDB2__ERROR_CODE__NOMASTER:
+        case CDB2__ERROR_CODE__UNTAGGED_DATABASE:
+        case CDB2__ERROR_CODE__CONSTRAINTS:
+        case CDB2__ERROR_CODE__DEADLOCK:
+        case CDB2__ERROR_CODE__TRAN_IO_ERROR:
+        case CDB2__ERROR_CODE__ACCESS:
+        case CDB2__ERROR_CODE__TRAN_MODE_UNSUPPORTED:
+        case CDB2__ERROR_CODE__MASTER_TIMEOUT:
+        case CDB2__ERROR_CODE__WRONG_DB:
+        case CDB2__ERROR_CODE__VERIFY_ERROR:
+        case CDB2__ERROR_CODE__FKEY_VIOLATION:
+        case CDB2__ERROR_CODE__NULL_CONSTRAINT:
+        case CDB2__ERROR_CODE__CONV_FAIL:
+        case CDB2__ERROR_CODE__NONKLESS:
+        case CDB2__ERROR_CODE__MALLOC:
+        case CDB2__ERROR_CODE__NOTSUPPORTED:
+        case CDB2__ERROR_CODE__DUPLICATE:
+        case CDB2__ERROR_CODE__TZNAME_FAIL:
+        case CDB2__ERROR_CODE__CHANGENODE:
+        case CDB2__ERROR_CODE__UNKNOWN:
+            break;
+
+        default:
+            logmsg(LOGMSG_ERROR, "%s line %d returning non-standard "
+                    "sqlresponse.error_code %d\n", func, line, 
+                    error_code);
+            break;
+    }
+    return error_code;
+}
+
 extern int gbl_catch_response_on_retry;
 int fsql_write_response(struct sqlclntstate *clnt, struct fsqlresp *resp,
                         void *dta, int len, int flush, const char *func,
@@ -677,7 +732,7 @@ int fsql_write_response(struct sqlclntstate *clnt, struct fsqlresp *resp,
 
             sql_response.n_value = 0;
             sql_response.value = NULL;
-            sql_response.error_code = resp->rcode;
+            sql_response.error_code = verify_sqlresponse_error_code(resp->rcode, __func__, __LINE__);
             if (resp->rcode) {
                 sql_response.error_string = (char *)dta;
             } else {
@@ -1083,7 +1138,8 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     if (get_high_availability(clnt)) {                                             \
         int file = 0, offset = 0, rc;                                          \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
-            sql_response.error_code = CDB2ERR_CHANGENODE;                      \
+            sql_response.error_code =                                          \
+            verify_sqlresponse_error_code(CDB2ERR_CHANGENODE, __func__, __LINE__); \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \
@@ -4387,7 +4443,7 @@ static int send_err_but_msg_new(struct sqlclntstate *clnt, const char *errstr,
             sql_response.response_type = RESPONSE_TYPE__COLUMN_NAMES;
         }
         sql_response.n_value = 0;
-        sql_response.error_code = irc;
+        sql_response.error_code = verify_sqlresponse_error_code(irc, __func__, __LINE__);
         sql_response.error_string = (char*)errstr;
 
         rc = newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE,
@@ -7389,9 +7445,9 @@ retry_read:
                 effects.num_deleted = clnt->effects.num_deleted;
                 effects.num_inserted = clnt->effects.num_inserted;
                 sql_response.effects = &effects;
-                sql_response.error_code = 0;
+                sql_response.error_code = verify_sqlresponse_error_code(0, __func__, __LINE__);
             } else {
-                sql_response.error_code = -1;
+                sql_response.error_code = verify_sqlresponse_error_code(-1, __func__, __LINE__);
                 sql_response.error_string = "Get effects not supported in "
                                             "transaction with verifyretry on";
             }
