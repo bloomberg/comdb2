@@ -1,2 +1,2 @@
 #!/bin/bash
-echo $RANDOM
+echo $(((RANDOM+10*RANDOM)%99999))
