@@ -6260,19 +6260,18 @@ int net_init(netinfo_type *netinfo_ptr)
     return 0;
 }
 
-static void net_portmux_hello(void *p) 
+static void net_portmux_hello(void *p)
 {
-    netinfo_type *netinfo_ptr = (netinfo_type*) p;
+    netinfo_type *netinfo_ptr = (netinfo_type *)p;
     if (netinfo_ptr->hellofd != -1) {
         close(netinfo_ptr->hellofd);
         netinfo_ptr->hellofd = -1;
     }
     char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];
-    snprintf(register_name, sizeof(register_name), "%s/%s/%s", 
-            netinfo_ptr->app, netinfo_ptr->service, netinfo_ptr->instance);
+    snprintf(register_name, sizeof(register_name), "%s/%s/%s", netinfo_ptr->app,
+             netinfo_ptr->service, netinfo_ptr->instance);
     portmux_hello("localhost", register_name, &netinfo_ptr->hellofd);
 }
-
 
 /* TODO - this looks scary - should lock when traversing list at least?
    NO, BECAUSE WE LEAK EM! HURRAY!

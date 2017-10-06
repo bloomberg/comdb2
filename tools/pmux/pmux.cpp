@@ -81,7 +81,11 @@ struct connection {
     bool is_hello;
     std::string service;
     struct in_addr addr;
-    connection(void) : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out(), is_hello(false) {}
+    connection(void)
+        : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out(),
+          is_hello(false)
+    {
+    }
 };
 
 static std::set<std::string> active_services;
@@ -156,7 +160,7 @@ static int connect_instance(int servicefd, char *name)
     }
     int rc = alloc_fd(name, servicefd);
 #ifdef VERBOSE
-    std::cout << "connect " << name << " "  << servicefd << std::endl;
+    std::cout << "connect " << name << " " << servicefd << std::endl;
 #endif
     return rc;
 }
@@ -196,12 +200,11 @@ static void unwatchfd(struct pollfd &fd)
             fd_map.erase(svc);
             int rc = close(ufd->second);
             if (rc) {
-                std::cerr << svc << " close fd " << 
-                    ufd->second << " rc " << rc << std::endl;
-            }
-            else {
-                std::cerr << svc << " close fd " << 
-                    ufd->second << " rc " << rc << std::endl;
+                std::cerr << svc << " close fd " << ufd->second << " rc " << rc
+                          << std::endl;
+            } else {
+                std::cerr << svc << " close fd " << ufd->second << " rc " << rc
+                          << std::endl;
             }
         }
         fdmap_mutex.unlock();
