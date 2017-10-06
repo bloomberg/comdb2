@@ -2502,9 +2502,9 @@ static void make_random_str(char *str, int *len)
          * To get most entropy and have zero chance of collision
          * mod by a large integer (so higher order bits will count too)
          * 65521 is the largest prime that fits in a short. */
-        rand_state[0] = (unsigned short) (tv.tv_sec % 65521);
-        rand_state[1] = (unsigned short) (tv.tv_usec % 65521);
-        rand_state[2] = (unsigned short) (pthread_self() % 65521);
+        rand_state[0] = (unsigned short)(tv.tv_sec % 65521);
+        rand_state[1] = (unsigned short)(tv.tv_usec % 65521);
+        rand_state[2] = (unsigned short)(pthread_self() % 65521);
     }
     int randval = nrand48(rand_state);
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
