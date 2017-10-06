@@ -80,6 +80,9 @@ static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
 static const char *gbl_portmux_unix_socket_default = "/tmp/portmux.socket";
 char *gbl_portmux_unix_socket;
 
+static void (*reconnect_callback)(void*) = NULL;
+static void* reconnect_callback_arg;
+
 /*make these private for now*/
 static int get_portmux_port(void);
 static int portmux_register_route(const char *app, const char *service,
@@ -1224,11 +1227,13 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
 
     if (fds->listenfd >= 0) {
         /*recovered unix socket connection*/
-        logmsg(LOGMSG_ERROR,
+        logmsg(LOGMSG_WARN,
                "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n", __func__,
                __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
+        if (reconnect_callback)
+            reconnect_callback(reconnect_callback_arg);
     } else {
         /* If we have tcp connectivity then we can stop trying to
          * connect the unix socket.
@@ -1783,12 +1788,15 @@ int set_portmux_bind_path(const char *path)
     return -1;
 }
 
-int portmux_hello(char *host, char *name)
+int portmux_hello(char *host, char *name, int *fdout)
 {
     struct in_addr addr;
     int port;
     int fd;
     int rc;
+
+    if (fdout)
+        *fdout = -1;
 
     rc = tcpresolve(host, &addr, &port);
     if (rc) return rc;
@@ -1802,7 +1810,14 @@ int portmux_hello(char *host, char *name)
     rc = sbuf2flush(sb);
     if (rc < 0) return 2;
     sbuf2close(sb);
+    if (fdout)
+        *fdout = fd;
     return 0;
+}
+
+void portmux_register_reconnect_callback(void (*callback)(void*), void *arg) {
+    reconnect_callback = callback;
+    reconnect_callback_arg = arg;
 }
 
 #ifdef PORTMUXUSR_TESTSUITE
@@ -2246,5 +2261,6 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
+
 
 #endif

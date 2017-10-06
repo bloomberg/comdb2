@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ struct connection {
     bool is_hello;
     std::string service;
     struct in_addr addr;
-    connection(void) : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out() {}
+    connection(void) : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out(), is_hello(false) {}
 };
 
 static std::set<std::string> active_services;
@@ -154,7 +154,11 @@ static int connect_instance(int servicefd, char *name)
     if (oldfd > 0) {
         dealloc_fd(name);
     }
-    return alloc_fd(name, servicefd);
+    int rc = alloc_fd(name, servicefd);
+#ifdef VERBOSE
+    std::cout << "connect " << name << " "  << servicefd << std::endl;
+#endif
+    return rc;
 }
 
 int client_func(int fd)
@@ -180,6 +184,27 @@ static void unwatchfd(struct pollfd &fd)
     connections[fd.fd].inoff = 0;
     if (connections[fd.fd].is_hello) {
         active_services.erase(connections[fd.fd].service);
+        std::string svc(connections[fd.fd].service);
+
+#ifdef VERBOSE
+        std::cout << "bye from " << svc << std::endl;
+#endif
+
+        fdmap_mutex.lock();
+        auto ufd = fd_map.find(svc);
+        if (ufd != fd_map.end()) {
+            fd_map.erase(svc);
+            int rc = close(ufd->second);
+            if (rc) {
+                std::cerr << svc << " close fd " << 
+                    ufd->second << " rc " << rc << std::endl;
+            }
+            else {
+                std::cerr << svc << " close fd " << 
+                    ufd->second << " rc " << rc << std::endl;
+            }
+        }
+        fdmap_mutex.unlock();
     }
 
     // Throw away any buffers we may have
@@ -606,6 +631,9 @@ again:
                 active_services.insert(std::string(svc));
                 c.service = std::string(svc);
                 conn_printf(c, "ok\n");
+#ifdef VERBOSE
+                std::cout << "hello from " << svc << std::endl;
+#endif
             }
         } else {
             disallowed_write(c, cmd);
