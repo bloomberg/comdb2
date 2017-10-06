@@ -1284,5 +1284,8 @@ REGISTER_TUNABLE("abort_on_bad_upgrade",
 REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.",
                  TUNABLE_BOOLEAN, &gbl_poll_in_pg_free_recover,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("portmux_port", "Specifies portmux port", TUNABLE_INTEGER, NULL, NOZERO,
+                 tunable_get_portmux_port, tunable_verify_portmux_port, tunable_update_portmux_port, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

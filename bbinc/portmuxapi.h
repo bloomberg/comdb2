@@ -381,6 +381,9 @@ void portmux_set_max_wait_timeout(unsigned timeoutms);
 
 void portmux_register_reconnect_callback(void (*callback)(void*), void *);
 
+int get_portmux_port(void);
+void set_portmux_port(int);
+
 #if defined __cplusplus
 }
 #endif

@@ -84,7 +84,6 @@ static void (*reconnect_callback)(void*) = NULL;
 static void* reconnect_callback_arg;
 
 /*make these private for now*/
-static int get_portmux_port(void);
 static int portmux_register_route(const char *app, const char *service,
                                   const char *instance, int *port,
                                   uint32_t options);
@@ -1764,7 +1763,7 @@ const char *portmux_fds_get_instance(portmux_fd_t *fds)
     return fds->instance;
 }
 
-static int get_portmux_port(void)
+int get_portmux_port(void)
 {
     return portmux_port;
 }

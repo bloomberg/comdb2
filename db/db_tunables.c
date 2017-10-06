@@ -27,6 +27,7 @@
 #include "util.h"
 #include "analyze.h"
 #include "intern_strings.h"
+#include "portmuxapi.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -650,6 +651,32 @@ static void *sql_tranlevel_default_value()
     }
 }
 
+/* HERE */
+
+static int tunable_update_portmux_port(void *context, void *portp) {
+    int *port = (int*) portp;
+    set_portmux_port(*port);
+    return 0;
+}
+
+static int tunable_verify_portmux_port(void *unused, void *portp) {
+    int *port = (int*) portp;
+    if (*port <= 0 || *port >= 65536)
+        return 1;
+    return 0;
+}
+
+static void *tunable_get_portmux_port(void *context) {
+    static int port;
+    port = get_portmux_port();
+    return (void*) &port;
+}
+
+
+/* Routines for the tunable system itself - tunable-specific 
+ * routines belong above */
+
+
 static void tunable_tolower(char *str)
 {
     char *tmp = str;
@@ -673,6 +700,7 @@ static int get_nice_value()
     }
     return ret;
 }
+
 
 /* Set the default values of the tunables. */
 static int set_defaults()
