@@ -725,8 +725,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        int rc = pthread_create(&thread_id, &thd_attr, 
-                                handle_exit_thd, (void *)dbenv);
+        int rc = pthread_create(&thread_id, &thd_attr, handle_exit_thd,
+                                (void *)dbenv);
         if (rc != 0) {
             logmsgperror("create exit thread: pthread_create");
             exit(1);
