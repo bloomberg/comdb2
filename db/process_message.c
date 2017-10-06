@@ -637,8 +637,8 @@ void *handle_exit_thd(void *arg)
     static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&exiting_lock);
     if( gbl_exit ) {
-       pthread_mutex_unlock(&exiting_lock);
-       return NULL;
+        pthread_mutex_unlock(&exiting_lock);
+        return NULL;
     }
     gbl_exit = 1;
     pthread_mutex_unlock(&exiting_lock);
@@ -648,9 +648,10 @@ void *handle_exit_thd(void *arg)
 
     /* this defaults to 5 minutes */
     alarm(alarmtime);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
 
     if (bdb_is_an_unconnected_master(dbenv->dbs[0]->handle)) {
-       logmsg(LOGMSG_INFO, "This was standalone\n");
+        logmsg(LOGMSG_INFO, "This was standalone\n");
         wait_for_sc_to_stop(); /* single node, need to stop SC */
     }
     else {
@@ -683,7 +684,6 @@ void *handle_exit_thd(void *arg)
             dbqueue_stat(thedb->qdbs[ii], 0, 0, 1 /*(blocking call)*/);
     }
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     flush_db();
     clean_exit();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -725,8 +725,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        int rc = pthread_create(&thread_id, &thd_attr,
-                handle_exit_thd, (void *)dbenv);
+        int rc = pthread_create(&thread_id, &thd_attr, handle_exit_thd,
+                                (void *)dbenv);
         if (rc != 0) {
             logmsgperror("create exit thread: pthread_create");
             exit(1);
