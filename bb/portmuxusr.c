@@ -1773,6 +1773,10 @@ void set_portmux_port(int port)
     portmux_port = port;
 }
 
+char* get_portmux_bind_path(void) {
+    return gbl_portmux_unix_socket;
+}
+
 int set_portmux_bind_path(const char *path)
 {
     path = (path) ? path : gbl_portmux_unix_socket_default;

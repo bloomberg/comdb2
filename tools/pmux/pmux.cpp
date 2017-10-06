@@ -922,7 +922,6 @@ int main(int argc, char **argv)
                 exit(2);
             }
             strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
-            store_mode = MODE_COMDB2DB;
             break;
         case 'p':
             if (default_ports) {
