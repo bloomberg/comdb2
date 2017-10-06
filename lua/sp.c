@@ -61,6 +61,7 @@
 #include <luaglue.h>
 #include <luautil.h>
 #include <logmsg.h>
+#include <util.h>
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
@@ -97,13 +98,12 @@ typedef struct {
 
 struct dbstmt_t {
     DBTYPES_COMMON;
+    sqlite3_stmt *stmt;
     int rows_changed;
-    uint8_t has_cmpl_stmt;
-    uint8_t has_cached_stmt;
     uint16_t num_tbls;
     uint8_t fetched;
-    sqlite3_stmt *stmt;
-    stmt_hash_entry_type *stmt_entry;
+    uint8_t initial; // 1: stmt tables are locked
+    struct sql_state *rec; // only db:prepare will set
     LIST_ENTRY(dbstmt_t) entries;
 };
 
@@ -144,6 +144,7 @@ static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
 
+#define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
     (sizeof(dbconsumer_t) - sizeof(trigger_reg_t) + trigger_reg_sz(spname))
 
@@ -1037,59 +1038,23 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
     return 0;
 }
 
-#define getdb(x) (x)->thd->sqldb
-
-#define no_active_stmt(...)
-#define no_active_stmt_but_me(...)
-
 static void donate_stmt(SP sp, dbstmt_t *dbstmt)
 {
     sqlite3_stmt *stmt = dbstmt->stmt;
     if (stmt == NULL) return;
 
-    if (!gbl_enable_sql_stmt_caching || !dbstmt->has_cmpl_stmt) {
-        goto finalize;
+    if (!gbl_enable_sql_stmt_caching || !dbstmt->rec) {
+        sqlite3_finalize(stmt);
+    } else {
+        put_prepared_stmt(sp->thd, sp->clnt, dbstmt->rec, sp->rc);
     }
-
-    struct sqlthdstate *thd = sp->thd;
-    const char *sql = sqlite3_sql(stmt);
-    stmt_hash_entry_type *entry = NULL;
-    find_stmt_table(thd->stmt_table, sql, &entry);
-    if (entry && entry->stmt) {
-        if (entry->stmt == stmt) { // this stmt obj already there
-            sqlite3_reset(stmt);
-            goto out;
-        } else if (dbstmt->has_cached_stmt) {
-            logmsg(LOGMSG_WARN, "Running more queries per SP than "
-                                "max_sqlcache_per_thread (value:%d).\n",
-                   gbl_max_sqlcache);
-            goto out;
-        } else {
-            // same query diff stmt obj already there
-            goto finalize;
-        }
-    } else if (dbstmt->has_cached_stmt) {
-        logmsg(LOGMSG_WARN, "Running more queries per SP than "
-                            "max_sqlcache_per_thread (value:%d).\n",
-               gbl_max_sqlcache);
-        goto out;
-    }
-    // new stmt obj; add to cache
-    sqlite3_reset(stmt);
-    add_stmt_table(thd, sql, NULL, stmt, NULL);
-    goto out;
-
-finalize:
-    sqlite3_finalize(stmt);
-
-out:
     if (dbstmt->num_tbls) {
         LIST_REMOVE(dbstmt, entries);
     }
+    free(dbstmt->rec);
+    dbstmt->rec = NULL;
     dbstmt->stmt = NULL;
     dbstmt->num_tbls = 0;
-    dbstmt->has_cmpl_stmt = 0;
-    dbstmt->has_cached_stmt = 0;
 }
 
 static int enable_global_variables(lua_State *lua)
@@ -1100,44 +1065,36 @@ static int enable_global_variables(lua_State *lua)
     return 0;
 }
 
+static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
+
 /*
 ** Lua stack:
 ** 1: Lua str (tmptbl name)
 ** 2: Lua tbl (tmptbl schema)
 */
-static const char *create_temp_table(Lua lua, pthread_mutex_t *lk)
+static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
 {
-    int rc;
+    int rc = -1;
     strbuf *sql = NULL;
     SP sp = getsp(lua);
-    no_active_stmt(lua);
-
     char n1[MAXTABLELEN], n2[MAXTABLELEN];
-
-    const char *retname = lua_tostring(lua, 1);
-    if (two_part_tbl_name(retname, n1, n2) != 0) {
-        luabb_error(lua, sp, "bad table name:%s", retname);
-        rc = -1;
+    *name = lua_tostring(lua, 1);
+    if (two_part_tbl_name(*name, n1, n2) != 0) {
+        luabb_error(lua, sp, "bad table name:%s", *name);
         goto out;
     }
-
     if (strcasecmp(n1, "") != 0 && strcasecmp(n1, "temp") != 0) {
-        luabb_error(lua, sp, "bad table name:%s", retname);
-        rc = -1;
+        luabb_error(lua, sp, "bad table name:%s", *name);
         goto out;
     }
-
     sql = strbuf_new();
-    strbuf_appendf(sql, "CREATE TABLE temp.\"%s\" (", n2);
-
+    strbuf_appendf(sql, "CREATE TEMP TABLE \"%s\" (", n2);
     size_t num = lua_objlen(lua, 2);
-    size_t i;
     const char *comma = "";
-    for (i = 1; i <= num; ++i) {
+    for (size_t i = 1; i <= num; ++i) {
         lua_rawgeti(lua, 2, i);
         if (lua_objlen(lua, -1) != 2) { // need {"name", "type"}
             luabb_error(lua, sp, "bad argument (columns) to 'table'");
-            rc = -1;
             goto out;
         }
         lua_rawgeti(lua, -1, 1);
@@ -1151,22 +1108,41 @@ static const char *create_temp_table(Lua lua, pthread_mutex_t *lk)
     }
     strbuf_append(sql, ")");
 
-    char *err = NULL;
-    comdb2_set_tmptbl_lk(lk);
-    sqlite3 *db = getdb(sp);
-    db->force_sqlite_impl = 1;
-    rc = sqlite3_exec(db, strbuf_buf(sql), NULL, NULL, &err);
-    db->force_sqlite_impl = 0;
-    comdb2_set_tmptbl_lk(NULL);
-    if (rc == SQLITE_OK)
-        rc = 0;
-    else
-        luabb_error(lua, sp, err);
-out:
-    if (sql) {
-        strbuf_free(sql);
+    // Following can throw exception which may leak strbuf.
+    // Copy DDL string onto stack instead.
+    int len = strbuf_len(sql) + 1;
+    char *ddl = alloca(len);
+    memcpy(ddl, strbuf_buf(sql), len);
+    strbuf_free(sql);
+    sql = NULL;
+    sqlite3_stmt *stmt;
+    if ((rc = lua_prepare_sql(lua, sp, ddl, &stmt)) != 0) {
+        goto out;
     }
-    return rc == 0 ? retname : NULL;
+
+    // Run ddl stmt 'create temp table...' under schema lk
+    if (tryrdlock_schema_lk() != 0) {
+        sqlite3_finalize(stmt);
+        return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
+    }
+    // now, actually create the temp table
+    *lk = malloc(sizeof(pthread_mutex_t));
+    pthread_mutex_init(*lk, NULL);
+    comdb2_set_tmptbl_lk(*lk);
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+        ;
+    comdb2_set_tmptbl_lk(NULL);
+    unlock_schema_lk();
+    sqlite3_finalize(stmt);
+
+    if (rc == SQLITE_DONE) {
+        return 0;
+    } else {
+        luabb_error(lua, sp, sqlite3ErrStr(rc));
+    }
+out:
+    if (sql) strbuf_free(sql);
+    return -1;
 }
 
 static int comdb2_table(Lua lua)
@@ -1216,9 +1192,8 @@ static int new_temp_table(Lua lua)
 
     int rc;
     const char *name;
-    pthread_mutex_t *lk = malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(lk, NULL);
-    if ((name = create_temp_table(lua, lk)) != NULL) {
+    pthread_mutex_t *lk;
+    if (create_temp_table(lua, &lk, &name) == 0) {
         // success - create dbtable
         rc = 0;
         SP sp = getsp(lua);
@@ -1235,10 +1210,14 @@ static int new_temp_table(Lua lua)
         strcpy(tmp->name, name);
         LIST_INSERT_HEAD(&sp->tmptbls, tmp, entries);
     } else {
+        // make this fatal for sp
+        // temptable name may shadow real tbl name and bad things
+        // will happen if sloppy sp keeps using tbl name
+        luaL_error(lua, "failed to create tmptable:%s", name);
+#       if 0
         rc = 1;
-        pthread_mutex_destroy(lk);
-        free(lk);
         lua_pushnil(lua);
+#       endif
     }
     lua_pushinteger(lua, rc);
     return 2;
@@ -2164,40 +2143,27 @@ static int dbstmt_bind_int(Lua lua, dbstmt_t *dbstmt)
 }
 
 static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
-                               sqlite3_stmt **stmt)
+                               sqlite3_stmt **stmt, struct sql_state *rec)
 {
-    int col, ncols;
-    const char *errstr = NULL;
-    const char *rest_of_sql = NULL;
-    char *sql_str = NULL;
-
-    sqlite3 *sqldb = getdb(sp);
-    errstat_clr(&sp->clnt->osql.xerr);
-
-    sp->rc = sqlite3_prepare_v2(sqldb, sql, -1, stmt, &rest_of_sql);
-
-    if (sp->rc) {
-        errstr = sqlite3_errmsg(sqldb);
-        sqlite3_finalize(*stmt);
-        return luabb_error(L, sp, "%s in stmt: %s", errstr, sql);
+    struct errstat err = {0};
+    struct sql_state rec_lcl = {0};
+    struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
+    rec_ptr->sql = sql;
+    sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, sp->initial);
+    sp->initial = 0;
+    if (sp->rc == 0) {
+        *stmt = rec_ptr->stmt;
+    } else if (sp->rc == SQLITE_SCHEMA) {
+        return luaL_error(L, sqlite3ErrStr(sp->rc));
+    } else {
+        luabb_error(L, sp, "%s in stmt: %s", err.errstr, sql);
     }
-
-    return 0;
+    return sp->rc;
 }
 
 static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    no_active_stmt(L);
-    rdlock_schema_lk();
-    sp->clnt->no_transaction = 1;
-    if (sp->thd->sqldb == NULL ||
-        check_thd_gen(sp->thd, sp->clnt) != SQLITE_OK) {
-        sqlengine_prepare_engine(sp->thd, sp->clnt);
-    }
-    sp->clnt->no_transaction = 0;
-    int rc = lua_prepare_sql_int(L, sp, sql, stmt);
-    unlock_schema_lk();
-    return rc;
+    return lua_prepare_sql_int(L, sp, sql, stmt, NULL);
 }
 
 static void push_sql_cols(Lua lua, sqlite3_stmt *stmt)
@@ -2254,7 +2220,6 @@ static int luatable_emit(Lua L)
 static int dbtable_insert(Lua lua)
 {
     SP sp = getsp(lua);
-    no_active_stmt(lua);
 
     int rc, nargs, len;
     strbuf *columns, *params, *sql;
@@ -2335,7 +2300,6 @@ out:
 static int dbtable_copyfrom(Lua lua)
 {
     SP sp = getsp(lua);
-    no_active_stmt(lua);
 
     dbtable_t *tbl1, *tbl2;
     const char *where_clause = NULL;
@@ -2448,7 +2412,6 @@ dbstmt_t *new_dbstmt(Lua lua, SP sp, sqlite3_stmt *stmt)
 static int dbtable_where(lua_State *lua)
 {
     SP sp = getsp(lua);
-    no_active_stmt(lua);
 
     int nargs = lua_gettop(lua);
     if (nargs != 2) {
@@ -2587,17 +2550,23 @@ static inline const char *no_transaction()
     return "No transaction to COMMIT/ROLLBACK";
 }
 
+static void reset_stmt(SP sp, dbstmt_t *dbstmt)
+{
+    if (dbstmt->rec) { // prepared stmt
+        dbstmt->fetched = 0;
+        dbstmt->initial = 0;
+        sqlite3_reset(dbstmt->stmt);
+    } else {
+        donate_stmt(sp, dbstmt);
+    }
+}
+
 static void reset_stmts(SP sp)
 {
     dbstmt_t *dbstmt, *tmp;
     LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
     {
-        if (dbstmt->has_cmpl_stmt) {
-            dbstmt->fetched = 0;
-            sqlite3_reset(dbstmt->stmt);
-        } else {
-            donate_stmt(sp, dbstmt);
-        }
+        reset_stmt(sp, dbstmt);
     }
 }
 
@@ -2644,7 +2613,6 @@ static int db_rollback(Lua L)
 static const char *db_begin_int(Lua L, int *rc)
 {
     SP sp = getsp(L);
-    if (sp->clnt->dbtran.mode < TRANLEVEL_SOSQL) return bad_handle();
     if (sp->in_parent_trans && sp->make_parent_trans) {
         const char *err;
         if ((err = db_commit_int(L, rc)) != NULL) return err;
@@ -2667,7 +2635,6 @@ static const char *db_begin_int(Lua L, int *rc)
 static const char *db_commit_int(Lua L, int *rc)
 {
     SP sp = getsp(L);
-    if (sp->clnt->dbtran.mode < TRANLEVEL_SOSQL) return bad_handle();
     if (sp->clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
         sp->clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
@@ -2695,7 +2662,6 @@ static const char *db_commit_int(Lua L, int *rc)
 static const char *db_rollback_int(Lua L, int *rc)
 {
     SP sp = getsp(L);
-    if (sp->clnt->dbtran.mode < TRANLEVEL_SOSQL) return bad_handle();
     if (sp->clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
         sp->clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
@@ -3284,10 +3250,38 @@ static int dbstmt_bind(Lua L)
 
 static inline void setup_first_sqlite_step(SP sp, dbstmt_t *dbstmt)
 {
-    if (!dbstmt->fetched) {
-        run_stmt_setup(sp->clnt, dbstmt->stmt);
+    if (dbstmt->fetched) {
+        // tbls already locked by previous step()
+        return;
     }
+    run_stmt_setup(sp->clnt, dbstmt->stmt);
     dbstmt->fetched = 1;
+    if (dbstmt->rec == NULL) {
+        // Not a prepared-stmt.
+        // tbls locked by get_prepared_stmt_try_lock()
+        return;
+    }
+    if (dbstmt->initial) {
+        // Initial run of prepared-stmt.
+        // tbls locked by get_prepared_stmt_try_lock()
+        dbstmt->initial = 0;
+        return;
+    }
+    // Need to lock tbls. We may be holding some other tbl locks and locking
+    // schema can cause deadlock; trylock instead.
+    if (tryrdlock_schema_lk() != 0) {
+        luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
+        return;
+    }
+    int rc = sqlengine_prepare_engine(sp->thd, sp->clnt, 0);
+    if (rc == 0) {
+        sqlite3LockStmtTables(dbstmt->stmt);
+        unlock_schema_lk();
+    } else {
+        unlock_schema_lk();
+        luaL_error(sp->lua, sqlite3ErrStr(rc));
+        return;
+    }
 }
 
 static int dbstmt_exec(Lua lua)
@@ -3330,12 +3324,12 @@ static int dbstmt_fetch(Lua lua)
 
 static int dbstmt_emit(Lua L)
 {
+    SP sp = getsp(L);
     luaL_checkudata(L, 1, dbtypes.dbstmt);
     dbstmt_t *dbstmt = lua_touserdata(L, 1);
     no_stmt_chk(L, dbstmt);
-    setup_first_sqlite_step(getsp(L), dbstmt);
+    setup_first_sqlite_step(sp, dbstmt);
     sqlite3_stmt *stmt = dbstmt->stmt;
-    no_active_stmt_but_me(L, stmt);
     int cols = sqlite3_column_count(stmt);
     int rc;
     while ((rc = lua_sql_step(L, stmt)) == SQLITE_ROW) {
@@ -3343,6 +3337,7 @@ static int dbstmt_emit(Lua L)
         lua_pop(L, 1);
         l_send_back_row(L, stmt, cols);
     }
+    reset_stmt(sp, dbstmt);
     if (rc == SQLITE_DONE) rc = 0;
     return push_and_return(L, rc);
 }
@@ -3370,7 +3365,6 @@ static int db_exec(Lua lua)
     lua_remove(lua, 1);
 
     SP sp = getsp(lua);
-    no_active_stmt(lua);
 
     int rc;
     const char *sql = lua_tostring(lua, -1);
@@ -3388,9 +3382,7 @@ static int db_exec(Lua lua)
         lua_pushinteger(lua, rc);
         return 2;
     }
-
     dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
-
     if (sqlite3_stmt_readonly(stmt)) {
         // dbstmt:fetch() will run it
         lua_pushinteger(lua, 0);
@@ -3420,51 +3412,27 @@ static int db_exec(Lua lua)
     return 2;
 }
 
-static int db_prepare(Lua lua)
+static int db_prepare(Lua L)
 {
-    luaL_checkudata(lua, 1, dbtypes.db);
-    lua_remove(lua, 1);
-
-    SP sp = getsp(lua);
-    no_active_stmt(lua);
-
-    const char *sql = luabb_tostring(lua, -1);
+    SP sp = getsp(L);
+    luaL_checkudata(L, 1, dbtypes.db);
+    const char *sql = luabb_tostring(L, 2);
+    lua_settop(L, 0);
     if (sql == NULL) {
-        luabb_error(lua, sp, "bad argument to 'prepare'");
+        luabb_error(L, sp, "bad argument to 'prepare'");
         return 2;
     }
-
-    struct sqlthdstate *thd = sp->thd;
-    struct sqlclntstate *clnt = sp->clnt;
-
-    stmt_hash_entry_type *stmt_entry = NULL;
     sqlite3_stmt *stmt = NULL;
-    int has_cached_stmt = 0;
-
-    if (gbl_enable_sql_stmt_caching && thd->stmt_table) {
-        find_stmt_table(thd->stmt_table, sql, &stmt_entry);
-        if (stmt_entry && stmt_entry->stmt) {
-            stmt = stmt_entry->stmt;
-            sqlite3_reset(stmt);
-            touch_stmt_entry(thd, stmt_entry);
-            has_cached_stmt = 1;
-        }
+    struct sql_state *rec = calloc(1, sizeof(*rec));
+    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec) != 0) {
+        free(rec);
+        return 2;
     }
-
-    errstat_clr(&clnt->osql.xerr);
-    db_reset(lua);
-    if (stmt == NULL) {
-        if (lua_prepare_sql(lua, sp, sql, &stmt) != 0) {
-            return 2;
-        }
-    }
-
-    dbstmt_t *dbstmt = new_dbstmt(lua, sp, stmt);
-    dbstmt->has_cached_stmt = has_cached_stmt;
-    dbstmt->has_cmpl_stmt = 1;
-
+    dbstmt_t *dbstmt = new_dbstmt(L, sp, stmt);
+    dbstmt->initial = 1;
+    dbstmt->rec = rec;
     sp->prev_dbstmt = dbstmt;
-    lua_pushinteger(lua, 0);
+    lua_pushinteger(L, 0);
     return 2;
 }
 
@@ -4307,7 +4275,7 @@ static const luaL_Reg db_funcs[] = {
     {"sp", db_sp},
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"error", db_error},
-    /************* TRIGGER **************/
+    /************ CONSUMER **************/
     {"consumer", db_consumer},
     /************** DEBUG ***************/
     {"debug", db_debug},
@@ -4316,7 +4284,8 @@ static const luaL_Reg db_funcs[] = {
     /************ INTERNAL **************/
     {"sleep", db_sleep},
     {"bootstrap", db_bootstrap},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static void init_db_funcs(Lua L)
 {
@@ -4353,9 +4322,13 @@ static void init_db_funcs(Lua L)
 }
 
 static const struct luaL_Reg dbtable_funcs[] = {
-    {"insert", dbtable_insert}, {"copyfrom", dbtable_copyfrom},
-    {"name", dbtable_name},     {"emit", dbtable_emit},
-    {"where", dbtable_where},   {NULL, NULL}};
+    {"insert", dbtable_insert},
+    {"copyfrom", dbtable_copyfrom},
+    {"name", dbtable_name},
+    {"emit", dbtable_emit},
+    {"where", dbtable_where},
+    {NULL, NULL}
+};
 
 static void init_dbtable_funcs(Lua L)
 {
@@ -4374,7 +4347,8 @@ static const struct luaL_Reg dbstmt_funcs[] = {
     {"emit", dbstmt_emit},
     {"close", dbstmt_close},
     {"rows_changed", dbstmt_rows_changed},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static void init_dbstmt_funcs(Lua L)
 {
@@ -4390,7 +4364,8 @@ static const struct luaL_Reg dbthread_funcs[] = {
     {"join", dbthread_join},
     {"sqlerror", dbthread_error}, // every error isn't from SQL -- deprecate
     {"error", dbthread_error},
-    {NULL, NULL}};
+    {NULL, NULL}
+};
 
 static void init_dbthread_funcs(Lua L)
 {
@@ -4402,9 +4377,13 @@ static void init_dbthread_funcs(Lua L)
 }
 
 static const struct luaL_Reg dbconsumer_funcs[] = {
-    {"__gc", dbconsumer_free}, {"get", dbconsumer_get},
-    {"poll", dbconsumer_poll}, {"consume", dbconsumer_consume},
-    {"emit", dbconsumer_emit}, {NULL, NULL}};
+    {"__gc", dbconsumer_free},
+    {"get", dbconsumer_get},
+    {"poll", dbconsumer_poll},
+    {"consume", dbconsumer_consume},
+    {"emit", dbconsumer_emit},
+    {NULL, NULL}
+};
 
 static void init_dbconsumer_funcs(Lua L)
 {
@@ -4851,7 +4830,7 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
                     size_t slen = strlen(s) + 1; // include terminating null
                     size_t hexlen = slen * 2 + 1;
                     hexstr = malloc(hexlen);
-                    luabb_tohex(hexstr, s, slen);
+                    util_tohex(hexstr, s, slen);
                     type = "hexstring";
                     s = hexstr;
                     utf8_len = hexlen;
@@ -5840,6 +5819,7 @@ static int setup_sp(char *spname, struct sqlthdstate *thd,
     sp->debug_clnt = clnt;
     sp->thd = thd;
     sp->parent = sp;
+    sp->initial = 1;
 
     *new_vm = 0;
     if (sp->src == NULL) {
@@ -6200,11 +6180,9 @@ static void clone_temp_tables(SP sp)
         strbuf *sql = strbuf_new();
         const char *create = tbl->sql;
         create += sizeof("CREATE TABLE");
-        strbuf_appendf(sql, "CREATE TABLE temp.%s", create);
-        comdb2_set_tmptbl_lk(tbl->lk);
+        strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
         clone_temp_table(dest, src, strbuf_buf(sql), tbl->rootpg);
         strbuf_free(sql);
-        comdb2_set_tmptbl_lk(NULL);
     }
 }
 
@@ -6506,7 +6484,11 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     Lua L = sp->lua;
     clnt->exec_lua_thread = 0;
 
+    if (tryrdlock_schema_lk() != 0) {
+        return -1;
+    }
     clone_temp_tables(sp);
+    unlock_schema_lk();
     int args = lua_gettop(L) - 1;
     int rc;
     char *err = NULL;
@@ -6618,6 +6600,24 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 /// PUBLIC INTERFACE ///
 ////////////////////////
 
+int db_verify_table_callback(void *v, const char *buf)
+{
+    if (!buf || !v) return 0;
+
+    Lua L = v;
+    SP sp = getsp(L);
+
+    if (peer_dropped_connection(sp->clnt)) {
+        luabb_error(L, sp, "client disconnect");
+        return -2;
+    }
+
+    if (buf[0] == '!' || buf[0] == '?') buf++;
+    int len = strlen(buf);
+    newsql_send_strbuf_response(sp->clnt, buf, len + 1);
+    return 0;
+}
+
 void close_sp(struct sqlclntstate *clnt)
 {
     close_sp_int(clnt->sp, 1);
@@ -6716,17 +6716,10 @@ void *exec_trigger(trigger_reg_t *reg)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
 
-    struct sql_thread *sqlthd = start_sql_thread();
-    sqlthd->sqlclntstate = &clnt;
-
-    struct sqlthdstate thd = {0};
-    thd.sqlthd = sqlthd;
-    thd.thr_self = thrman_register(THRTYPE_TRIGGER);
+    struct sqlthdstate thd;
+    sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-
-    thread_memcreate(128 * 1024);
-    sql_mem_init(NULL);
+    thd.sqlthd->sqlclntstate = &clnt;
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
@@ -6799,9 +6792,8 @@ void *exec_trigger(trigger_reg_t *reg)
         pthread_mutex_destroy(q->lock);
     }
     close_sp(&clnt);
-    sql_mem_shutdown(NULL);
-    done_sql_thread();
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    reset_clnt(&clnt, NULL, 0);
+    sqlengine_thd_end(NULL, &thd);
     return NULL;
 }
 
@@ -6823,24 +6815,4 @@ int exec_procedure(const char *s, char **err, struct sqlthdstate *thd,
         reset_sp(clnt->sp);
     }
     return rc;
-}
-
-/* write row of output for verify_table
- */
-int db_verify_table_callback(void *v, const char *buf)
-{
-    if (!buf || !v) return 0;
-
-    Lua L = v;
-    SP sp = getsp(L);
-
-    if (peer_dropped_connection(sp->clnt)) {
-        luabb_error(L, sp, "client disconnect");
-        return -2;
-    }
-
-    if (buf[0] == '!' || buf[0] == '?') buf++;
-    int len = strlen(buf);
-    newsql_send_strbuf_response(sp->clnt, buf, len + 1);
-    return 0;
 }

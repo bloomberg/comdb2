@@ -622,7 +622,7 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
-    eventlog_init(dbname);
+    eventlog_init();
 
     scanrules_ll();
     return 0;
@@ -635,7 +635,18 @@ static const char *help_text[] = {
     "reql longreqfile <filename>  - set file to log long requests in",
     "reql diffstat #              - set diff stat threshold in sec",
     "reql truncate #              - set request truncation",
-    "reql stat               - status, print rules",
+    "reql stat                    - status, print rules",
+    "reql events                  - event logging",
+    "   Subcommands for events: ",
+    "       on               - turn on event logging",
+    "       off              - turn off event logging",
+    "       roll             - roll over log file",
+    "       keep N           - keep N log files",
+    "       detailed on/off  - turn on/off detailed mode (ex. sql bound param)",
+    "       rollat N         - roll when log file size larger than N bytes",
+    "       every N          - log only every Nth event, 0 logs all",
+    "       verbose on/off   - turn on/off verbose mode",
+    "       flush            - flush log file to disk",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",
     "   General commands:", "       delete           - delete named rule",
@@ -974,6 +985,7 @@ void reqlog_stat(void)
     {
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
+    eventlog_status();
     pthread_mutex_unlock(&rules_mutex);
 }
 
@@ -1419,7 +1431,7 @@ void reqlog_new_request(struct ireq *iq)
     reqlog_start_request(logger);
 }
 
-void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt)
+void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
 {
     if (sqlstmt) {
         if (logger->stmt) free(logger->stmt);

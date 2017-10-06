@@ -202,13 +202,14 @@ function kill_restart_node
 
     popd
 
-    out=
+    out=0
     # wait until we can query it
     echo "$DBNAME: waiting until ready"
     while [[ "$out" != "1" ]]; do
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
         sleep 2
     done
+    echo "$DBNAME: db is up out=$out"
 }
 
 
@@ -286,6 +287,9 @@ assertsel rows1.txt
 do_verify
 
 kill_restart_node $master
+cdb2sql ${CDB2_OPTIONS} --tabs --host $node $dbnm  'select 1'
+cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default 'select 1'
+
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
 assertcnt 200

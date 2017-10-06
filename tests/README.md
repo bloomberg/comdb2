@@ -18,7 +18,7 @@ is stored in `cdb2api.test`.
 Tests run on the current machine.  Databases are brought up locally by default.
 To test against a clustered database, export a CLUSTER variable to contain a
 list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will build a
-cluster on m1/m2/m3/m4/m5 and run the test there. Make can take argumests so
+cluster on m1/m2/m3 and run the test there. Make can take argumests so
 the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
 are torn down after the test is over.
 
@@ -28,7 +28,7 @@ are torn down after the test is over.
 1. Create `testname.test` directory in the tests directory.  All your test files
    (`Makefile`, `runit`, any testcases, etc.) go there.
 2. Create a `Makefile`.  The following minimal makefile is sufficient for most
-   tests: `include ../testcase.mk`
+   tests: `include $(TESTSROOTDIR)/testcase.mk`
 3. Create a script called `runit`.  This should `exit 0` if the test succeeded,
    `exit 1` if it failed. The test script will get one argument passed to it:
    the name of the database it should use.  Output from each test run will go

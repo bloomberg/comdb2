@@ -768,6 +768,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_stable_rootpages_test = 0;
 
 char *gbl_dbdir = NULL;
 
@@ -4418,7 +4419,7 @@ void *statthd(void *p)
                                             tbl->dbnum, tbl->dbname);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         breq2a(jj), diff);
                         }
                         tbl->prev_blocktypcnt[jj] = tbl->blocktypcnt[jj];
@@ -4432,7 +4433,7 @@ void *statthd(void *p)
                                             tbl->dbnum, tbl->dbname);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         osql_breq2a(jj), diff);
                         }
                         tbl->prev_blockosqltypcnt[jj] = tbl->blockosqltypcnt[jj];
@@ -4445,7 +4446,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns committed", diff);
                     }
                     dbenv->prev_txns_committed = dbenv->txns_committed;
@@ -4457,7 +4458,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns aborted", diff);
                     }
                     dbenv->prev_txns_aborted = dbenv->txns_aborted;
@@ -4469,7 +4470,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "nsql", diff);
                     }
                     tbl->prev_nsql = tbl->nsql;
@@ -4998,6 +4999,10 @@ static void register_all_int_switches()
     register_int_switch("durable_replay_test",
                         "Enables periodic durable failures in blkseq replay",
                         &gbl_durable_replay_test);
+    register_int_switch(
+        "stable_rootpages_test",
+        "Delay sql processing to allow a schema change to finish",
+        &gbl_stable_rootpages_test);
     register_int_switch("durable_set_trace",
                         "Print trace set durable and commit lsn trace",
                         &gbl_durable_set_trace);

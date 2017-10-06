@@ -64,6 +64,7 @@
 #include "bdb_osqllog.h"
 #include <thread_malloc.h>
 #include "locks.h"
+#include "util.h"
 
 /* For pthread self debug trace */
 #include <pthread.h>
@@ -127,31 +128,6 @@ static inline int close_pagelock_cursor(bdb_berkdb_t *berkdb)
     return rc;
 }
 
-/* Character to hex */
-static inline char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-
-/* Return a hex string */
-static inline char *tohex(char *output, char *key, int keylen)
-{
-    char byte[3];
-    int i = 0;
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
 
 /* Nullify cursor after a failed unpause */
 static inline int stale_pagelock_cursor(bdb_berkdb_t *berkdb)
@@ -295,7 +271,7 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
         char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = tohex(srcmemp, (char *)r->lastkey, r->keylen);
+        srckeyp = util_tohex(srcmemp, (char *)r->lastkey, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s return_key='%s'\n", berkdb,
                 __func__, bdb_state->name, curtypetostr(cur->type), srckeyp);
@@ -2082,7 +2058,7 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = tohex(srcmemp, (char *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, (char *)srckey, keylen);
             }
 
             /* Print */
@@ -2229,13 +2205,13 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = tohex(srcmemp, (char *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, (char *)srckey, keylen);
             }
 
             /* Found key to hex */
             if (fndkey) {
                 fndmemp = alloca((2 * keylen) + 2);
-                fndkeyp = tohex(fndmemp, (char *)fndkey, keylen);
+                fndkeyp = util_tohex(fndmemp, (char *)fndkey, keylen);
             }
 
             /* Print */
@@ -2613,7 +2589,7 @@ int bdb_berkdb_rowlocks_dta(bdb_berkdb_t *berkdb, char **dta, int *bdberr)
         char *srcdtap;
 
         srcmemp = alloca((2 * r->dtalen) + 2);
-        srcdtap = tohex(srcmemp, r->dta, r->dtalen);
+        srcdtap = util_tohex(srcmemp, r->dta, r->dtalen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s dta='%s'\n", berkdb, __func__,
                 bdb_state->name, curtypetostr(cur->type), srcdtap);
@@ -2636,7 +2612,7 @@ int bdb_berkdb_rowlocks_key(bdb_berkdb_t *berkdb, char **key, int *bdberr)
         char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = tohex(srcmemp, (char *)r->key, r->keylen);
+        srckeyp = util_tohex(srcmemp, (char *)r->key, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s key='%s'\n", berkdb, __func__,
                 bdb_state->name, curtypetostr(cur->type), srckeyp);

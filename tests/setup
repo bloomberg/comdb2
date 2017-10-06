@@ -66,9 +66,8 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="${SRCHOME}/:${PATH}"
-    echo "To run ${TESTCASE} test, please run the following once db is ready:"
     RUNTEST="${PWD}/runtest.sh "
-    echo "$RUNTEST"
+    echo "Once db is ready, please run: $RUNTEST"
     echo "#!/bin/bash" > $RUNTEST
     #echo "set +x"  >> $RUNTEST
     for env in $vars; do
@@ -78,7 +77,6 @@ if [[ $debug -eq 1 ]]; then
     [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
     [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
     echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
-    #echo "./runit ${DBNAME} >${TESTDIR}/logs/${TESTCASE}.testcase 2>&1" >> $RUNTEST
     echo "./runit ${DBNAME} " >> $RUNTEST
     echo "echo; echo; echo;" >> $RUNTEST
     echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
@@ -120,7 +118,7 @@ EOPTIONS
 
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
 
-# Do we have a cluster?
+# If CLUSTER is defined, populate config and lrl with that info
 if [[ -n "$CLUSTER" ]]; then
     echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
     echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
@@ -137,6 +135,8 @@ set +e
 
 pmux_port=5105
 pmux_cmd="$PMUX_EXE -l"
+
+# If PMUXPORT is defined we will overwrite the default pmux port with that
 if [ -n "$PMUXPORT" ] ; then
     pmux_port=$PMUXPORT
     pmux_socket=/tmp/pmux.socket.$PMUXPORT
@@ -168,9 +168,9 @@ copy_files_to_cluster()
         if [ -n "$PMUXPORT" ] ; then
             ssh -o StrictHostKeyChecking=no $node "$stop_pmux"
         fi
+        set +e
         scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
         echo start pmux on $node if not running 
-        set +e
         ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd"
         set -e
     done
@@ -188,12 +188,12 @@ if [ $? -eq 0 ] ; then
     COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd
 fi
 
-set -e  # from here, a bad rc will mean failure and exit
 
 # if CLUSTER is length is nonzero, and file does not exist, copy to cluster
 if [ -n "$CLUSTER" ] ; then 
     { > $COPIEDTOCLUSTER ; } &> /dev/null 
     if [ $? -eq 0 ] ; then
+        set -e  # from here, a bad rc will mean failure and exit
         copy_files_to_cluster
     fi
 fi
@@ -214,15 +214,17 @@ PARAMS="$DBNAME --no-global-lrl"
 set +e
 $COMDB2_EXE --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS  >$TESTDIR/logs/${DBNAME}.init 2>&1
 rc=$?
-set -e
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
     echo "Error rc=$rc while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
     exit 1
 fi
+echo "${DBNAME} created successfully"
 
-# test largecsc2 throws error about col width, can't enable this by default
-#if grep "ERROR" $TESTDIR/logs/${DBNAME}.init ; then
+set -e
+
+# test largecsc2 throws error about col width
+#if grep "ERROR" $TESTDIR/logs/${DBNAME}.init | grep -v largecsc2 ; then
 #    echo "Error while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
 #    exit 1
 #fi

@@ -1329,8 +1329,8 @@ __log_flush_int(dblp, lsnp, release)
 			SH_TAILQ_FIRST(&lp->free_commits,
 			    __db_commit)) == NULL) {
 			if ((ret =
-				__db_shalloc(dblp->reginfo.addr,
-				    sizeof(struct __db_commit), MUTEX_ALIGN,
+				__os_malloc(dbenv,
+				    sizeof(struct __db_commit),
 				    &commit)) != 0) {
 				goto flush;
 			}
@@ -1338,7 +1338,7 @@ __log_flush_int(dblp, lsnp, release)
 			if ((ret = __db_mutex_setup(dbenv, &dblp->reginfo,
 				    &commit->mutex,
 				    MUTEX_SELF_BLOCK |MUTEX_NO_RLOCK)) != 0) {
-				__db_shalloc_free(dblp->reginfo.addr, commit);
+				__os_free(dbenv, commit);
 				return (ret);
 			}
 			MUTEX_LOCK(dbenv, &commit->mutex);

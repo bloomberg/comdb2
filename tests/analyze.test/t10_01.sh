@@ -14,7 +14,7 @@ apid=-1
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - <<EOF > /dev/null 2>&1
 drop table if exists t10
 create table t10 {
-tag ondisk
+schema
 {
     int  id
     blob b1 null=yes

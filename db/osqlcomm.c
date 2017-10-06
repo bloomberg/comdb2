@@ -46,6 +46,9 @@
 #include <bpfunc.h>
 #include <strbuf.h>
 #include <logmsg.h>
+#include "views.h"
+#include "str0.h"
+#include "sc_struct.h"
 
 #define BLKOUT_DEFAULT_DELTA 5
 #define MAX_CLUSTER 16
@@ -3193,42 +3196,6 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     signal_buflock(p_slock);
 }
 
-/* this is wrong in durable_lsn mode: we can't tell if this is DURABLE */
-int check_snap_uid_req(char *host, snap_uid_t *snap_info)
-{
-    if (host == NULL) {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-        if (!thd) {
-            return -1;
-        }
-        struct sqlclntstate *clnt = thd->sqlclntstate;
-        snap_uid_t *snap_out = NULL;
-        int rc = bdb_blkseq_find(thedb->bdb_env, NULL, snap_info->key,
-                                 snap_info->keylen, (void **)&snap_out, NULL);
-        if (rc == IX_FND) {
-            clnt->is_retry = 1;
-            clnt->effects = snap_out->effects;
-            free(snap_out);
-        } else if (rc == IX_NOTFND) {
-            clnt->is_retry = 0;
-        } else {
-            clnt->is_retry = -1;
-        }
-        return 0;
-    } else {
-        struct errstat xerr;
-        snap_uid_t snap_send;
-
-        snap_uid_put(snap_info, (uint8_t *)&snap_send,
-                     (const uint8_t *)&snap_send + sizeof(snap_uid_t));
-        offload_net_send(host, NET_OSQL_SNAP_UID_REQ, &snap_send,
-                         sizeof(snap_uid_t), 1);
-        int rc = osql_chkboard_wait_commitrc(OSQL_RQID_USE_UUID, snap_send.uuid,
-                                             &xerr);
-        return rc;
-    }
-}
-
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp)
@@ -3263,6 +3230,12 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
 
     offload_net_send(fromhost, NET_OSQL_SNAP_UID_RPL, p_buf_start,
                      sizeof(snap_uid_t), 1);
+}
+
+void log_snap_info_key(snap_uid_t *snap_info)
+{
+    if (snap_info)
+        logmsg(LOGMSG_USER, "%*s", snap_info->keylen, snap_info->key);
 }
 
 static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
@@ -3444,7 +3417,9 @@ static int osql_net_type_to_net_uuid_type(int type)
     }
 }
 
-static inline
+/**
+ * check if a tablename is a queue
+ */
 int is_tablename_queue(const char * tablename, int len)
 {
     /* See also, __db_open @ /berkdb/db/db_open.c for register_qdb */
@@ -3459,7 +3434,8 @@ int is_tablename_queue(const char * tablename, int len)
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb)
+                    char *tablename, int type, SBUF2 *logsb,
+                    unsigned long long tableversion)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)comm->handle_sibling;
     unsigned short tablenamelen = strlen(tablename) + 1; /*including trailing 0*/
@@ -3473,10 +3449,6 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
 
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
-
-    unsigned short tableversion = 0;
-    if ( !is_tablename_queue(tablename, tablenamelen - 1) )
-        tableversion = comdb2_table_version(tablename);
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_usedb_rpl_uuid_t usedb_uuid_rpl = {0};
@@ -6288,6 +6260,41 @@ static inline int is_write_request(int type)
 }
 
 void free_cached_idx(uint8_t **cached_idx);
+
+int start_schema_change_tran_wrapper(const char *tblname,
+                                     timepart_sc_arg_t *arg)
+{
+    struct schema_change_type *sc = arg->s;
+    struct ireq *iq = sc->iq;
+    int rc;
+
+    strncpy0(sc->table, tblname, sizeof(sc->table));
+
+    rc = start_schema_change_tran(iq, sc->tran);
+    if (rc != SC_COMMIT_PENDING) {
+        iq->sc = NULL;
+    } else {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        if (arg->nshards == arg->indx + 1) {
+            /* last shard was done */
+            bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+        } else {
+            struct schema_change_type *new_sc = clone_schemachange_type(sc);
+
+            /* fields not cloned */
+            new_sc->iq = sc->iq;
+            new_sc->tran = sc->tran;
+
+            /* update the new sc */
+            arg->s = new_sc;
+            iq->sc = new_sc;
+        }
+    }
+
+    return (rc == SC_COMMIT_PENDING) ? 0 : rc;
+}
+
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
@@ -6386,12 +6393,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
+            assert(iq->have_snap_info == 1); // was assigned in fast pass
             snap_uid_t snap_info;
-            assert(iq->have_snap_info == 1);
-
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
-            iq->have_snap_info = 1;
 
             assert(!memcmp(&snap_info, &iq->snap_info, sizeof(snap_uid_t)));
         }
@@ -6419,26 +6424,43 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         char *tablename;
 
         tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
 
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
                         comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
             sbuf2flush(logsb);
         }
+        if (unlikely(timepart_is_timepart(tablename, 1))) {
+            char *newest_shard;
+            unsigned long long ver;
 
-        if ( is_tablename_queue(tablename, strlen(tablename)) ) {
-            iq->usedb = getqueuebyname(tablename);
+            newest_shard = timepart_newest_shard(tablename, &ver);
+            if (newest_shard) {
+                iq->usedbtablevers = ver;
+                free(newest_shard);
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: broken time partition %s"
+                                     "\n",
+                       __func__, tablename);
+
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
+            }
         } else {
-            iq->usedb = get_dbtable_by_name(tablename);
-            iq->usedbtablevers = dt.tableversion;
-        }
-        if (iq->usedb == NULL) {
-            iq->usedb = iq->origdb;
-            logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s\n",
-                    __func__, dt.tablenamelen, tablename);
-
-            return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                     tablename, 0);
+            if (is_tablename_queue(tablename, strlen(tablename))) {
+                iq->usedb = getqueuebyname(tablename);
+            } else {
+                iq->usedb = get_dbtable_by_name(tablename);
+                iq->usedbtablevers = dt.tableversion;
+            }
+            if (iq->usedb == NULL) {
+                iq->usedb = iq->origdb;
+                logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
+                       __func__, dt.tablenamelen, tablename);
+                return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                         tablename, 0);
+            }
         }
     } break;
     case OSQL_DBQ_CONSUME: {
@@ -7050,13 +7072,22 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
         sc->tran = ptran;
         if (sc->db) iq->usedb = sc->db;
-        rc = start_schema_change_tran(iq, ptran);
-        if (rc != SC_COMMIT_PENDING) {
-            iq->sc = NULL;
+
+        if (!timepart_is_timepart(sc->table, 1)) {
+            rc = start_schema_change_tran(iq, ptran);
+            if (rc != SC_COMMIT_PENDING) {
+                iq->sc = NULL;
+            } else {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+                bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+            }
         } else {
-            iq->sc->sc_next = iq->sc_pending;
-            iq->sc_pending = iq->sc;
-            bset(&iq->osql_flags, OSQL_FLAGS_SCDONE);
+            timepart_sc_arg_t arg = {0};
+            arg.s = sc;
+            arg.s->iq = iq;
+            rc = timepart_foreach_shard(
+                sc->table, start_schema_change_tran_wrapper, &arg, 0);
         }
         iq->usedb = NULL;
 

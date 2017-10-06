@@ -232,14 +232,14 @@ for node in $cluster ; do
     echo "connect with wrong db name"
     set +e
     cdb2sql --tabs ${CDB2_OPTIONS} badname @$node:port=$port "select comdb2_dbname()" &> out.txt
-    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch" > out.exp
+    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch query:badname actual:$dbnm" > out.exp
     rc=$?
     set -e
 #    TODO: this returns rc=0 even though error and can't run query!!
 #    if [ $rc -eq 0 ]; then
 #        failexit "Expected bad rc when connecting with the wrong db name"
 #    fi
-    if [ diff out.txt out.exp ]; then
+    if ! diff out.txt out.exp ; then
         failexit "Expected failure when connecting with the wrong db name"
     fi
 done
@@ -268,7 +268,9 @@ assertcnt $INITNUMREC
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"
-./cdb2api_caller $dbnm > cdb2api_caller.out
+${TESTSROOTDIR}/tools/cdb2api_caller $dbnm > cdb2api_caller.out
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1

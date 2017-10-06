@@ -98,6 +98,11 @@ int srs_tran_create(struct sqlclntstate *clnt)
     return 0;
 }
 
+/* set replay status
+ * at the end of it all, we may replay the entire list
+ * of statements in a transaction from srs_tran_replay,
+ * depending on the replay status
+ */
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
                      int replay)
 {

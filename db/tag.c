@@ -4684,7 +4684,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 
         if (change == SC_TAG_CHANGE) {
             if (out) {
-                logmsg(LOGMSG_USER,
+                logmsg(LOGMSG_INFO,
                        "tag %s field %d (named %s) has changed (%s)\n",
                        old->tag, oidx, fold->name, buf);
             }
@@ -4693,7 +4693,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 
         if (change == SC_COLUMN_ADDED || change == SC_DBSTORE_CHANGE) {
             if (out) {
-                logmsg(LOGMSG_USER,
+                logmsg(LOGMSG_INFO,
                        "tag %s field %d (named %s) has changed (%s)\n",
                        old->tag, oidx, fold->name, buf);
             }
@@ -4724,19 +4724,19 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                 fnew->in_default_len >= (fnew->len - 5)) {
                 rc = SC_TAG_CHANGE;
                 if (out) {
-                    logmsg(LOGMSG_USER, "tag %s has new field %d (named %s -- dbstore "
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s -- dbstore "
                                  "too large forcing rebuild)\n",
                             old->tag, nidx, fnew->name);
                 }
             } else if (fnew->in_default || allow_null) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
-                    logmsg(LOGMSG_USER, "tag %s has new field %d (named %s)\n",
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)\n",
                             old->tag, nidx, fnew->name);
                 }
             } else {
                 if (out) {
-                    logmsg(LOGMSG_USER, "tag %s has new field %d (named %s) without "
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s) without "
                             "dbstore or null\n",
                             old->tag, nidx, fnew->name);
                 }
@@ -4750,7 +4750,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     if (rc == SC_COLUMN_ADDED) {
         if (new->recsize < old->recsize + 2) {
             if (out) {
-                logmsg(LOGMSG_USER, "tag %s recsize %d, was %d\n", old->tag,
+                logmsg(LOGMSG_INFO, "tag %s recsize %d, was %d\n", old->tag,
                         new->recsize, old->recsize);
             }
             rc = SC_TAG_CHANGE;
@@ -4778,22 +4778,22 @@ int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
     table = db->dbname;
 
     if (table == NULL) {
-        logmsg(LOGMSG_ERROR, "Invalid table\n");
+        logmsg(LOGMSG_INFO, "Invalid table\n");
         return -1;
     }
     rc = getidxnumbyname(table, keynm, &ix);
     if (rc != 0) {
-        logmsg(LOGMSG_USER, "No index %s in old schema\n", keynm);
+        logmsg(LOGMSG_INFO, "No index %s in old schema\n", keynm);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s", keynm);
     rc = getidxnumbyname(table, ixbuf, &fidx);
     if (rc != 0) {
-        logmsg(LOGMSG_USER, "No index %s in new schema\n", keynm);
+        logmsg(LOGMSG_INFO, "No index %s in new schema\n", keynm);
         return 1;
     }
     if (fidx != ix) {
-        logmsg(LOGMSG_USER, "key %s maps from ix%d->ix%d\n", keynm, ix, fidx);
+        logmsg(LOGMSG_INFO, "key %s maps from ix%d->ix%d\n", keynm, ix, fidx);
         return 1;
     }
 
@@ -4944,24 +4944,24 @@ int compare_indexes(const char *table, FILE *out)
 
     db = get_dbtable_by_name(table);
     if (db == NULL) {
-        logmsg(LOGMSG_ERROR, "Invalid table %s\n", table);
+        logmsg(LOGMSG_INFO, "Invalid table %s\n", table);
         return 0;
     }
     old = find_tag_schema(table, oldtag);
     if (old == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s\n", table);
+        logmsg(LOGMSG_INFO, "Can't find schema for old table %s\n", table);
         return 0;
     }
     new = find_tag_schema(table, newtag);
     if (new == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s\n", table);
+        logmsg(LOGMSG_INFO, "Can't find schema for new table %s\n", table);
         return 0;
     }
 
     /* if number of indices changed, then ondisk operations are required */
     if (old->nix != new->nix) {
         if (out) {
-            logmsg(LOGMSG_USER, "indexes have been added or removed\n");
+            logmsg(LOGMSG_INFO, "indexes have been added or removed\n");
         }
         return 1;
     }
@@ -4972,19 +4972,19 @@ int compare_indexes(const char *table, FILE *out)
         snprintf(ixbuf, sizeof(ixbuf), "%s_ix_%d", tag, ix);
         old = find_tag_schema(table, ixbuf);
         if (old == NULL) {
-            logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n", table, ix);
+            logmsg(LOGMSG_INFO, "Can't find schema for old table %s index %d\n", table, ix);
             return 0;
         }
         snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s_ix_%d", tag, ix);
         new = find_tag_schema(table, ixbuf);
         if (new == NULL) {
-            logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n", table, ix);
+            logmsg(LOGMSG_INFO, "Can't find schema for new table %s index %d\n", table, ix);
             return 0;
         }
 
         if (cmp_index_int(old, new, descr, sizeof(descr)) != 0) {
             if (out)
-                logmsg(LOGMSG_USER, "index %d (%s) changed: %s\n", ix + 1, old->csctag,
+                logmsg(LOGMSG_INFO, "index %d (%s) changed: %s\n", ix + 1, old->csctag,
                         descr);
             return 1;
         }

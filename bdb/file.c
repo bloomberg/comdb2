@@ -2384,7 +2384,7 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
         exit(1);
     }
 
-    rc = dbenv->set_lg_regionmax(dbenv, bdb_state->attr->log_region_sz);
+    rc = dbenv->set_lg_regionmax(dbenv, 0);
     if (rc != 0) {
         logmsg(LOGMSG_FATAL, "set regionmax failed\n");
         exit(1);

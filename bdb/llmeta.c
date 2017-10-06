@@ -6967,14 +6967,9 @@ void llmeta_list_tablename_alias(void)
 
 bdb_state_type *bdb_llmeta_bdb_state(void) { return llmeta_bdb_state; }
 
-/**
- *  Increment the TABLE VERSION ENTRY for table "bdb_state->name".
- *  If an entry doesn't exist, an entry with value 1 is created (default 0 means
- * non-existing)
- *
- */
-int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
-                             int *bdberr)
+static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
+                                        tran_type *tran,
+                                        unsigned long long *val, int *bdberr)
 {
     struct llmeta_sane_table_version schema_version;
     char *tblname = bdb_state->name;
@@ -7046,7 +7041,11 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* add new entry */
-    version++;
+    if (val) {
+        version = *val;
+    } else {
+        version++;
+    }
 
     version = flibc_htonll(version);
     rc = bdb_lite_add(llmeta_bdb_state, tran, &version, sizeof(version), key,
@@ -7057,6 +7056,29 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+/**
+ *  Increment the TABLE VERSION ENTRY for table "bdb_state->name".
+ *  If an entry doesn't exist, an entry with value 1 is created (default 0 means
+ * non-existing)
+ *
+ */
+int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
+                             int *bdberr)
+{
+    return bdb_table_version_upsert_int(bdb_state, tran, NULL, bdberr);
+}
+
+/**
+ * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"
+ * (It creates or, if existing, updates an entry)
+ *
+ */
+int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long val, int *bdberr)
+{
+    return bdb_table_version_upsert_int(bdb_state, tran, &val, bdberr);
 }
 
 /**
@@ -7246,8 +7268,8 @@ retry:
  *  1: not found
  * -1: error
  */
-static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
-                           int *len)
+static int llmeta_get_blob(llmetakey_t key, tran_type *tran, const char *table,
+                           char **value, int *len)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
@@ -7255,7 +7277,6 @@ static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
     if (llmeta_bdb_state == NULL)
         return -1;
     int rc, bdberr;
-    void *tran;
     char *tmpstr = NULL;
     char llkey[LLMETA_IXLEN] = {0};
     int retry = 0;
@@ -7267,7 +7288,7 @@ static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
                strnlen(table, LLMETA_IXLEN - sizeof(key)));
 
 rep:
-    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, NULL, llkey,
+    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, llkey,
                                             (void **)&tmpstr, len, &bdberr)) ==
         0) {
         assert(tmpstr != NULL);
@@ -7405,9 +7426,10 @@ static inline int llmeta_set_blob(void *parent_tran, llmetakey_t key,
 /* return parameters for tbl into value
  * NB: caller needs to free that memory area
  */
-int bdb_get_table_csonparameters(const char *table, char **value, int *len)
+int bdb_get_table_csonparameters(tran_type *tran, const char *table,
+                                 char **value, int *len)
 {
-    return llmeta_get_blob(LLMETA_TABLE_PARAMETERS, table, value, len);
+    return llmeta_get_blob(LLMETA_TABLE_PARAMETERS, tran, table, value, len);
 }
 
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
@@ -7438,7 +7460,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 
     char *blob = NULL;
     int len;
-    int rc = bdb_get_table_csonparameters(table, &blob, &len);
+    int rc = bdb_get_table_csonparameters(NULL, table, &blob, &len);
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     if (blob == NULL)
@@ -7518,7 +7540,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
 #endif
     char *blob = NULL;
     int len;
-    int rc = bdb_get_table_csonparameters(table, &blob, &len);
+    int rc = bdb_get_table_csonparameters(parent_tran, table, &blob, &len);
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     cson_value *rootV = NULL;

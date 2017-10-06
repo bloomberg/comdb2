@@ -456,7 +456,7 @@ constraints
 	}
 ')
 [DROP TABLE t6] failed with rc -3 no such table: t6
-[CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate only on local schema only.
+[CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate on local schema only.
 [CREATE TABLE t2(b blob[1])] failed with rc -3 Invalid type specified.
 [CREATE TABLE t6(b blob(-100))] failed with rc -3 Invalid type specified.
 (tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')

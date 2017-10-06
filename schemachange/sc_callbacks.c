@@ -461,7 +461,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 
 void sc_del_unused_files(struct dbtable *db)
 {
-    return sc_del_unused_files_tran(db, NULL);
+    sc_del_unused_files_tran(db, NULL);
 }
 
 /* Checks to see if a schema change has been trying to delete files for longer

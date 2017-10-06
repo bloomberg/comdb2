@@ -50,6 +50,7 @@
 #include <net_types.h>
 #include <trigger.h>
 #include <logmsg.h>
+#include "views.h"
 
 /* don't retry commits, fail transactions during master swings !
    we need blockseq */
@@ -712,7 +713,6 @@ retry:
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
                     __func__, __LINE__, rcout, rc);
         }
-
         else {
 
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
@@ -745,8 +745,7 @@ retry:
                         if (rc != SQLITE_TOOBIG) goto retry;
                     }
                 }
-                /* transaction failed on the master,
-                   abort here as well */
+                /* transaction failed on the master, abort here as well */
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
 
@@ -1010,7 +1009,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     }
 
     rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename, nettype,
-                         osql->logsb);
+                         osql->logsb, comdb2_table_version(tablename));
     RESTART_SOCKSQL;
 
     if (rc == SQLITE_OK) {
@@ -1669,8 +1668,20 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                __FILE__, __LINE__, __func__, rc);
     }
     if (usedb) {
-        rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
-                             NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+        unsigned long long version = 0;
+        if (getdbidxbyname(sc->table) < 0) { // view
+            char *viewname = timepart_newest_shard(sc->table, &version);
+            if (viewname) {
+                free(viewname);
+            } else
+                usedb = 0;
+        } else {
+            version = comdb2_table_version(tblname);
+        }
+
+        if (usedb)
+            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
+                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb, version);
     }
     if (rc == SQLITE_OK) {
         rc = osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,

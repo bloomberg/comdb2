@@ -192,6 +192,10 @@ char *osql_breq2a(int op)
         return "INVALID";
     case OSQL_DONE:
         return "OSQL_DONE";
+    case OSQL_DONE_STATS:
+        return "OSQL_DONE_STATS";
+    case OSQL_DONE_SNAP:
+        return "OSQL_DONE_SNAP";
     case OSQL_USEDB:
         return "OSQL_USEDB";
     case OSQL_DELREC:
@@ -208,8 +212,6 @@ char *osql_breq2a(int op)
         return "OSQL_XERR";
     case OSQL_UPDCOLS:
         return "OSQL_UPDCOLS";
-    case OSQL_DONE_STATS:
-        return "OSQL_DONE_STATS";
     case OSQL_SERIAL:
         return "OSQL_SERIAL";
     case OSQL_SELECTV:
@@ -220,6 +222,8 @@ char *osql_breq2a(int op)
         return "OSQL_RECGENID";
     case OSQL_UPDSTAT:
         return "OSQL_UPDSTAT";
+    case OSQL_EXISTS:
+        return "OSQL_EXISTS";
     case OSQL_DBQ_CONSUME:
         return "OSQL_DBQ_CONSUME";
     case OSQL_INSERT:
@@ -228,6 +232,16 @@ char *osql_breq2a(int op)
         return "OSQL_DELETE";
     case OSQL_UPDATE:
         return "OSQL_UPDATE";
+    case OSQL_SCHEMACHANGE:
+        return "OSQL_SCHEMACHANGE";
+    case OSQL_BPFUNC:
+        return "OSQL_BPFUNC";
+    case OSQL_DELIDX:
+        return "OSQL_DELIDX";
+    case OSQL_INSIDX:
+        return "OSQL_INSIDX";
+    case OSQL_DBQ_CONSUME_UUID:
+        return "OSQL_DBQ_CONSUME_UUID";
     default:
         return "UNKNOWN";
     }
@@ -357,7 +371,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (sentops && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
+            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
                    pthread_self(), __func__, __LINE__, rc);
         }
     }
@@ -365,7 +379,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     if (clnt->selectv_arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
+            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
                    pthread_self(), __func__, __LINE__, rc);
         }
     }
@@ -390,8 +404,6 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             rc = 0;
 
         clnt->osql.xerr.errval = rc;
-
-
     } else {
 
         /* close the block processor session and retrieve the result */

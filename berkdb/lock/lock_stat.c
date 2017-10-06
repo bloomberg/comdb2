@@ -307,8 +307,7 @@ __lock_dump_region_int(dbenv, area, fp, just_active_locks)
 	FILE *fp;
 	int just_active_locks;
 {
-	return __lock_dump_region_int_int(dbenv, area, fp, just_active_locks,
-	    0);
+	return __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, 0);
 }
 
 int

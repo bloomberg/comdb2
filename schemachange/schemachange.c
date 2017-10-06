@@ -1760,6 +1760,9 @@ void sb_errf(SBUF2 *sb, const char *fmt, ...)
 
 void sc_printf(struct schema_change_type *s, const char *fmt, ...)
 {
+    if (s && s->iq && s->iq->tranddl) {
+        return;
+    }
     va_list args;
     va_start(args, fmt);
 
@@ -1780,6 +1783,9 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...)
 
 void sc_errf(struct schema_change_type *s, const char *fmt, ...)
 {
+    if (s && s->iq && s->iq->tranddl) {
+        return;
+    }
     va_list args;
     va_start(args, fmt);
 

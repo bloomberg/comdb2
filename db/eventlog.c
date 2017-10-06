@@ -23,6 +23,11 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#if defined(_IBM_SOURCE)
+#include <openssl/objects.h>
+#include <openssl/ec.h>
+#endif
+
 #include <zlib.h>
 
 #include "reqlog_int.h"
@@ -33,6 +38,7 @@
 
 #include "cson_amalgamation_core.h"
 
+static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 static int eventlog_nkeep = 10;
 static int eventlog_rollat = 1024 * 1024 * 1024;
@@ -48,6 +54,7 @@ int eventlog_every_n = 1;
 int64_t eventlog_count = 0;
 
 static void eventlog_roll(void);
+#define min(x, y) ((x) < (y) ? (x) : (y))
 
 struct sqltrack {
     char fingerprint[16];
@@ -59,22 +66,31 @@ LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
 
-void eventlog_init(const char *dbname)
+void eventlog_init()
 {
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
     if (eventlog_enabled) eventlog = eventlog_open();
 }
 
+static inline void free_gbl_eventlog_fname()
+{
+    if (gbl_eventlog_fname == NULL)
+        return;
+    free(gbl_eventlog_fname);
+    gbl_eventlog_fname = NULL;
+}
+
 static gzFile eventlog_open()
 {
     char *fname = eventlog_fname(thedb->envname);
     gzFile f = gzopen(fname, "2w");
-    free(fname);
     if (f == NULL) {
         eventlog_enabled = 0;
+        free(fname);
         return NULL;
     }
+    gbl_eventlog_fname = fname;
     return f;
 }
 
@@ -91,6 +107,7 @@ static void eventlog_close(void)
         free(t);
         t = listc_rtl(&sql_statements);
     }
+    free_gbl_eventlog_fname();
 }
 
 static char *eventlog_fname(const char *dbname)
@@ -109,16 +126,18 @@ static cson_output_opt opt = {.indentation = 0,
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
-    if (!eventlog_detailed) return;
+    if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
+        return;
+
+    int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
+    if (nfields == 0)
+        return;
 
     cson_value *bind_list = cson_value_new_array();
     logger->bound_param_cson = bind_list;
 
     cson_array *arr = cson_value_get_array(bind_list);
 
-    int nfields = params ? params->nmembers : clnt->sql_query->n_bindvars;
     cson_array_reserve(arr, nfields);
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
 
@@ -130,13 +149,16 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         struct field c_fld;
         struct field *f;
         char *buf;
+        int isnull = false;
 
         if (params) {
             f = &params->member[i];
             buf = (char *)clnt->tagbuf;
+            isnull = (f == NULL);
         } else {
             f = convert_client_field(sqlquery->bindvars[i], &c_fld);
             buf = sqlquery->bindvars[i]->value.data;
+            isnull = sqlquery->bindvars[i]->isnull;
         }
 
         /* name of bound parameter */
@@ -160,6 +182,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             }
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
+
+            if (isnull)
+                break;
 
             /* set value */
             if (f->type == CLIENT_UINT) {
@@ -186,6 +211,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
+            if (isnull)
+                break;
+
             cson_object_set(bobj, "value", cson_value_new_double(dval));
             break;
         }
@@ -199,6 +227,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             strtype = "char";
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
+
+            if (isnull)
+                break;
 
             /* set value */
             if (get_str_field(f, buf, &str, &datalen) == 0)
@@ -219,6 +250,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
+            if (isnull)
+                break;
+
             /* set value */
             if (f->type == CLIENT_BYTEARRAY) {
                 rc = get_byte_field(f, buf, &byteval, &datalen);
@@ -229,12 +263,21 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                     byteval = buf;
                     datalen = f->datalen;
                 }
-                if (rc == 0)
-                    blobno++;
+                if (rc == 0) blobno++;
             }
-            if (rc == 0)
+            if (rc == 0) {
+                datalen = min(datalen, 1024); /* cap the datalen logged */
+                const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
+                char *expanded_buf = malloc(exp_len);
+                expanded_buf[0] = 'x';
+                expanded_buf[1] = '\'';
+                util_tohex(&expanded_buf[2], byteval, datalen);
+                expanded_buf[2 + datalen * 2] = '\'';
+                expanded_buf[3 + datalen * 2] = '\0';
                 cson_object_set(bobj, "value",
-                                cson_value_new_string(byteval, datalen));
+                                cson_value_new_string(expanded_buf, exp_len));
+                free(expanded_buf);
+            }
             break;
         }
         case CLIENT_DATETIME: {
@@ -244,6 +287,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             strtype = "datetime";
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
+
+            if (isnull)
+                break;
 
             /* set value */
             if (structdatetime2string_ISO((void *)buf, strtime,
@@ -260,6 +306,9 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
 
+            if (isnull)
+                break;
+
             /* set value */
             if (structdatetime2string_ISO((void *)buf, strtime,
                                           sizeof(strtime)) == 0)
@@ -271,20 +320,33 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             strtype = "interval month";
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
+            if (isnull)
+                break;
+            /* TODO: value */
             break;
         case CLIENT_INTVDS:
             strtype = "interval sec";
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
+            if (isnull)
+                break;
+            /* TODO: value */
+
             break;
         case CLIENT_INTVDSUS:
             strtype = "interval usec";
             cson_object_set(bobj, "type",
                             cson_value_new_string(strtype, strlen(strtype)));
+            if (isnull)
+                break;
+            /* TODO: value */
+
             break;
-        default:
-            assert(false && "Unknown type being bound");
+        default: assert(false && "Unknown type being bound");
         }
+
+        if (isnull)
+            cson_object_set(bobj, "value", cson_value_null());
     }
 }
 
@@ -373,8 +435,8 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     if (!logger->path || logger->path->n_components == 0) return;
 
@@ -401,8 +463,8 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     static const char *hexchars = "0123456789abcdef";
     pthread_mutex_lock(&eventlog_lk);
@@ -500,13 +562,13 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
+
     int sz = 0;
     char *fname;
     cson_value *val;
     cson_object *obj;
-
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
 
     pthread_mutex_lock(&eventlog_lk);
     eventlog_count++;
@@ -530,6 +592,14 @@ void eventlog_add(const struct reqlogger *logger)
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
 
     cson_value_free(val);
+}
+
+void eventlog_status(void)
+{
+    if (eventlog_enabled == 1)
+        logmsg(LOGMSG_USER, "Eventlog enabled, file:%s\n", gbl_eventlog_fname);
+    else
+        logmsg(LOGMSG_USER, "Eventlog disabled\n");
 }
 
 static void eventlog_roll(void)
@@ -600,7 +670,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         char *s;
         tok = segtok(line, lline, toff, &ltok);
         if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "Expected number of files to keep\n");
+            logmsg(LOGMSG_ERROR, "Expected number of bytes in a log file\n");
             return;
         }
         s = tokdup(tok, ltok);
