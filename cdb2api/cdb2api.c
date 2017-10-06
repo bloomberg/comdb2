@@ -2492,17 +2492,21 @@ done:
 static void make_random_str(char *str, int *len)
 {
     static __thread int PID = 0;
-    static __thread unsigned short xsubi[3];
+    static __thread unsigned short rand_state[3];
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
     if (PID == 0) {
         PID = getpid();
-        xsubi[0] = tv.tv_sec;
-        xsubi[1] = tv.tv_usec;
-        xsubi[2] = pthread_self();
+        /* Get the initial random state by using time and thread id.
+         * To get most entropy and have zero chance of collision
+         * mod by a large integer (so higher order bits will count too)
+         * 65521 is the largest prime that fits in a short. */
+        rand_state[0] = (unsigned short) (tv.tv_sec % 65521);
+        rand_state[1] = (unsigned short) (tv.tv_usec % 65521);
+        rand_state[2] = (unsigned short) (pthread_self() % 65521);
     }
-    int randval = nrand48(xsubi);
+    int randval = nrand48(rand_state);
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
