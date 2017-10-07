@@ -23,16 +23,16 @@
   (is (:valid? (:results (jepsen/run! test-spec))))))
 
 (deftest ^:sets-test' sets-test'
- (is (:valid? (:results (jepsen/run! (sets-test-nemesis))))))
+ (is (:valid? (:results (jepsen/run! (sets-test))))))
 
 (deftest ^:sets-test-nemesis' sets-test-nemesis'
- (is (:valid? (:results (jepsen/run! (sets-test-nemesis))))))
+ (is (:valid? (:results (jepsen/run! (sets-test-nemesis {}))))))
 
 (deftest ^:dirty-reads-test dirty-reads-test
-  (is (:valid? (:results (jepsen/run! (dirty-reads-tester "6.1" 4))))))
+  (is (:valid? (:results (jepsen/run! (dirty-reads-test-nemesis 4))))))
 
 (deftest ^:register-test-nemesis register-test-nemesis
-  (is (:valid? (:results (jepsen/run! (register-tester-nemesis { } ))))))
+  (is (:valid? (:results (jepsen/run! (register-tester-nemesis { }))))))
 
 (deftest ^:register-test register-test
   (is (:valid? (:results (jepsen/run! (register-tester { } ))))))
