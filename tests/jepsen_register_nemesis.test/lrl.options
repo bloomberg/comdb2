@@ -48,10 +48,10 @@ nowatch
 setattr UDP_DROP_WARN_PERCENT 100
 
 # Enable debug trace
-# on durable_set_trace
-# on dump_fsql_response
-# on extended_sql_debug_trace
-# on verbose_toblock_backouts
+on durable_set_trace
+on dump_fsql_response
+on extended_sql_debug_trace
+on verbose_toblock_backouts
 
 # Fail randomly to test curtran generation changes
 # on test_curtran_change
