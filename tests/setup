@@ -248,7 +248,7 @@ if [[ -z "$CLUSTER" ]]; then
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
         echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
     else
-        ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.db &
+        ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid >$TESTDIR/logs/${DBNAME}.db 2>&1 &
     fi
 
     set +e
@@ -279,24 +279,24 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="source ${TESTDIR}/replicant_vars ; $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl"
+    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl 2>&1 | tee $TESTDIR/${DBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
                 echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
-                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
+                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
             fi
             continue
         fi
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-            echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} ${CMD}${NOCOLOR}"
+            echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
         else
             scp -o StrictHostKeyChecking=no ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
             # redirect output from CMD to a subshell which runs awk to prepend time
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' > $TESTDIR/logs/${DBNAME}.${node}.db)  &
+            ssh -o StrictHostKeyChecking=no -tt $node ${CMD} 2>&1 </dev/null >$TESTDIR/logs/${DBNAME}.${node}.db &
             # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
