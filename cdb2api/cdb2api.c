@@ -2497,14 +2497,23 @@ static void make_random_str(char *str, int *len)
     struct timeval tv;
     gettimeofday(&tv, NULL);
     if (PID == 0) {
-        PID = getpid();
-        /* Get the initial random state by using time and thread id.
-         * To get most entropy and have zero chance of collision
-         * mod by a large integer (so higher order bits will count too)
-         * 65521 is the largest prime that fits in a short. */
-        rand_state[0] = (unsigned short)(tv.tv_sec % 65521);
-        rand_state[1] = (unsigned short)(tv.tv_usec % 65521);
-        rand_state[2] = (unsigned short)(pthread_self() % 65521);
+        /* Initialize PID and rand_state once per thread
+         * PID will ensure that cnonce will be different accross processes 
+         */
+        PID = getpid(); 
+
+        /* Get the initial random state by using thread id and time info.
+         * To get most entropy and have near zero chance of collision
+         * of seeds amongst threads of the same process we use the usec
+         * portion of timeval. We mod the thread id by largest 32 bit prime
+         * to get more entropy from the higher order bits in 64bit systems.
+         * If two threads have the same [truncated] usec value, their thread 
+         * id will be different and therefore their seeds will be different.
+         */
+        unsigned int addr = pthread_self() % 0xFFFFFFFBULL;
+        rand_state[0] = addr;
+        rand_state[1] = addr >> 16;
+        rand_state[2] = tv.tv_usec; /* will be truncated to ushort */
     }
     int randval = nrand48(rand_state);
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
