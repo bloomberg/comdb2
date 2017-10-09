@@ -1210,8 +1210,7 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
     /* See if we can connect to pmux. */
     if (reconnect_callback) {
         rc = reconnect_callback(reconnect_callback_arg);
-        if (rc)
-            return rc;
+        if (rc) return rc;
     }
 
     fds->nretries += 1;

@@ -182,7 +182,8 @@ int client_func(int fd)
     if (strncasecmp(service, "reg", 3) == 0) {
         active_services_mutex.lock();
         if (active_services.find(cmd) == active_services.end()) {
-            fprintf(stderr, "reg request from %s, but not an active service?\n", cmd);
+            fprintf(stderr, "reg request from %s, but not an active service?\n",
+                    cmd);
             close(fd);
             return -1;
         }
@@ -210,9 +211,6 @@ static void unwatchfd(struct pollfd &fd)
             fd_map.erase(svc);
             int rc = close(ufd->second);
             if (rc) {
-                std::cerr << svc << " close fd " << ufd->second << " rc " << rc
-                          << std::endl;
-            } else {
                 std::cerr << svc << " close fd " << ufd->second << " rc " << rc
                           << std::endl;
             }
