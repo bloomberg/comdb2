@@ -2482,6 +2482,13 @@ done:
     return 0;
 }
 
+
+/* combine hashes similar to hash_combine from boost library */
+size_t val_combine( size_t lhs, size_t rhs ) {
+    lhs^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+}
+
 /* make_random_str() will return a randomly generated string
  * this is used to get a cnonce, composed of four components:
  * the first part is the id of this host machine
@@ -2502,21 +2509,14 @@ static void make_random_str(char *str, int *len)
          */
         PID = getpid(); 
 
-        /* Get the initial random state by using thread id and time info.
-         * To get most entropy and have near zero chance of collision
-         * of seeds amongst threads of the same process we use the usec
-         * portion of timeval. We mod the thread id by largest 32 bit prime
-         * to get more entropy from the higher order bits in 64bit systems.
-         * If two threads have the same [truncated] usec value, their thread 
-         * id will be different and therefore their seeds will be different.
-         */
-        #define INSZ sizeof(struct timeval) + sizeof(pthread_t)
-        unsigned char src[INSZ];
-        unsigned char hash[16];
-        unsigned char *MD5(const unsigned char *d, unsigned long n,
-                                 unsigned char *md);
-        MD5(src, INSZ, hash);
-        memcpy(rand_state, hash, 3 * sizeof(short));
+        /* Get the initial random state by using thread id and time info. */
+        uint32_t tmp[2];
+        tmp[0] = tv.tv_sec;
+        tmp[1] = tv.tv_usec;
+        size_t hash = val_combine(*(size_t*) tmp, (size_t) pthread_self());
+        rand_state[0] = hash;
+        rand_state[1] = hash >> 16;
+        rand_state[2] = hash >> 32;
     }
     int randval = nrand48(rand_state);
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
