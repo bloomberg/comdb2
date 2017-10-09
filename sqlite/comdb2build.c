@@ -510,7 +510,10 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, uint8_t opt);
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if(gbl_schema_change_in_progress) return -1;
+    if (gbl_schema_change_in_progress) {
+        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
+        return -1;
+    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
