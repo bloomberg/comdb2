@@ -3410,7 +3410,8 @@ void comdb2CreateIndex(
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     int ifNotExist,     /* Omit error if index already exists */
     u8 idxType,         /* The index type */
-    int withOpts        /* WITH options (DATACOPY) */
+    int withOpts,        /* WITH options (DATACOPY) */
+    int temp
     )
 {
     Vdbe *v;
@@ -3425,7 +3426,7 @@ void comdb2CreateIndex(
 
     assert(pParse->comdb2_ddl_ctx == 0);
 
-    if (use_sqlite_impl(pParse)) {
+    if (temp || use_sqlite_impl(pParse)) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);

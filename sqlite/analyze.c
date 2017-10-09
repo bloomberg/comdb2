@@ -241,6 +241,7 @@ static int openStatTable(
   assert( sqlite3VdbeDb(v)==db );
   pDb = &db->aDb[iDb];
 
+#if 0
   /* Create new statistic tables if they do not exist, or clear them
   ** if they do already exist.
   */
@@ -248,9 +249,8 @@ static int openStatTable(
   for(i=0; i<ArraySize(aTable); i++){
     const char *zTab = aTable[i].zName;
     Table *pStat;
-    if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
+    if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
       if( zTab[11] == '1' ){
-        return -1;
       }else if( zTab[11] == '2' ){
         skip2 = 1;
       }else if( zTab[11] == '4' ){
@@ -261,7 +261,7 @@ static int openStatTable(
         sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
     }
   }
-#if 0
+#endif
   for(i=0; i<ArraySize(aTable); i++){
     const char *zTab = aTable[i].zName;
     Table *pStat;
@@ -302,7 +302,6 @@ static int openStatTable(
     sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
     sqlite3VdbeChangeP5(v, aCreateTbl[i]);
   }
-#endif
   return 0;
 }
 
@@ -1458,6 +1457,7 @@ static void loadAnalysis(Parse *pParse, int iDb){
 ** Generate code that will do an analysis of an entire database
 */
 static void analyzeDatabase(Parse *pParse, int iDb){
+#if 0
   /* COMDB2 MODIFICATION */
   if( !pParse->explain ){
       logmsg(LOGMSG_ERROR, "this should never be called, as we never allow from sql "
@@ -1465,6 +1465,7 @@ static void analyzeDatabase(Parse *pParse, int iDb){
         "individualy for each table.\n");
       return;
   }
+#endif
 
   sqlite3 *db = pParse->db;
   Schema *pSchema = db->aDb[iDb].pSchema;    /* Schema of database iDb */

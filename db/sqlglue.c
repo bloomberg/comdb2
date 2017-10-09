@@ -7445,6 +7445,9 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
                 __func__);
         return SQLITE_INTERNAL;
     }
+ 
+    int num_tables = 0;
+    sqlite3BtreeCreateTable(pBt, &num_tables, BTREE_INTKEY);
 
     struct temptable *src = &pBt->temp_tables[iTable];
     cur->tmptable->tbl = src->tbl;
@@ -8476,7 +8479,7 @@ int sqlite3BtreeInsert(
     }
 
     /* send opcode to reload stats at commit */
-    if (clnt->is_analyze && is_stat1(pCur->db->dbname))
+    if (clnt->is_analyze && pCur->db && is_stat1(pCur->db->dbname))
         rc = osql_updstat(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), 0);
 
     if (pCur->bt->is_temporary) {
