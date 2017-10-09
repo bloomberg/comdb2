@@ -3169,6 +3169,16 @@ done2:
         }
     }
 
+    int tmpnode;
+    int attempts = bdb_state->attr->startup_sync_attempts;
+    uint8_t *p_buf = (uint8_t *)&tmpnode;
+    uint8_t *p_buf_end = ((uint8_t *)&tmpnode + sizeof(int));
+
+again:
+
+    buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf,
+            p_buf_end);
+
     /*
       PHASE 4:
       finally now that we believe we are caught up and are no longer lying
@@ -3177,13 +3187,7 @@ done2:
       phase, we are truly cache coherent.
       */
     if (bdb_state->repinfo->master_host != myhost) {
-        int tmpnode, attempts = bdb_state->attr->startup_sync_attempts;
-        uint8_t *p_buf = (uint8_t *)&tmpnode;
-        uint8_t *p_buf_end = ((uint8_t *)&tmpnode + sizeof(int));
 
-    again:
-        buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf,
-                p_buf_end);
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
         rc = net_send_message(
@@ -4721,13 +4725,10 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         *downgraded = 0;
 
     retries = 0;
-    while (!bdb_state->repinfo->upgrade_allowed) {
-        if (++retries > 100) {
-            logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
-                            "completed yet)\n");
-            return 0;
-        }
-        poll(NULL, 0, 100);
+    if (!bdb_state->repinfo->upgrade_allowed) {
+        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
+                "completed yet)\n");
+        return 0;
     }
 
     /* if we were passed a child, find his parent */
