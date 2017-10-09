@@ -98,20 +98,21 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
 static int blb_tbl_cmp(void *, int, const void *, int, const void *);
 static int idx_tbl_cmp(void *, int, const void *, int, const void *);
 
-static int osql_create_verify(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr);
-static int osql_destroy_verify(bdb_state_type *bdb_state,
-                               struct sqlclntstate *clnt);
+static int osql_create_verify_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr);
+static int osql_destroy_verify_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt);
 
-static int osql_create_schemachange(bdb_state_type *bdb_state,
-                                    struct sqlclntstate *clnt, int *bdberr);
-static int osql_destroy_schemachange(bdb_state_type *bdb_state,
-                                     struct sqlclntstate *clnt);
+static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
+                                            struct sqlclntstate *clnt,
+                                            int *bdberr);
+static int osql_destroy_schemachange_temptbl(bdb_state_type *bdb_state,
+                                             struct sqlclntstate *clnt);
 
-static int osql_create_bpfunc(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr);
-static int osql_destroy_bpfunc(bdb_state_type *bdb_state,
-                               struct sqlclntstate *clnt);
+static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr);
+static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt);
 
 static int free_it(void *obj, void *arg)
 {
@@ -323,8 +324,8 @@ int osql_shadtbl_reset_for_selectv(struct sqlclntstate *clnt)
             return -1;
         }
     }
-    osql_destroy_schemachange(thedb->bdb_env, clnt);
-    osql_destroy_bpfunc(thedb->bdb_env, clnt);
+    osql_destroy_schemachange_temptbl(thedb->bdb_env, clnt);
+    osql_destroy_bpfunc_temptbl(thedb->bdb_env, clnt);
 
     LISTC_FOR_EACH_SAFE(&osql->shadtbls, tbl, tmp, linkv)
     {
@@ -2203,10 +2204,10 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     shad_tbl_t *tbl = NULL, *tmp = NULL;
 
-    osql_destroy_verify(thedb->bdb_env, clnt);
+    osql_destroy_verify_temptbl(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);
-    osql_destroy_schemachange(thedb->bdb_env, clnt);
-    osql_destroy_bpfunc(thedb->bdb_env, clnt);
+    osql_destroy_schemachange_temptbl(thedb->bdb_env, clnt);
+    osql_destroy_bpfunc_temptbl(thedb->bdb_env, clnt);
 
     LISTC_FOR_EACH_SAFE(&osql->shadtbls, tbl, tmp, linkv)
     {
@@ -2502,7 +2503,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 
     /*create a common verify */
     if (!osql->verify_tbl) {
-        rc = osql_create_verify(thedb->bdb_env, thd->sqlclntstate, &bdberr);
+        rc = osql_create_verify_temptbl(thedb->bdb_env, thd->sqlclntstate,
+                                        &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create verify rc=%d bdberr=%d\n",
                     __func__, rc, bdberr);
@@ -2655,8 +2657,8 @@ int osql_save_schemachange(struct sql_thread *thd,
         return 0;
 
     if (!osql->sc_tbl) {
-        rc = osql_create_schemachange(thedb->bdb_env, thd->sqlclntstate,
-                                      &bdberr);
+        rc = osql_create_schemachange_temptbl(thedb->bdb_env, thd->sqlclntstate,
+                                              &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create sc rc=%d bdberr=%d\n",
                    __func__, rc, bdberr);
@@ -2794,7 +2796,8 @@ int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
     size_t bpfunc_data_len = bpfunc_arg__get_packed_size(arg);
 
     if (!osql->bpfunc_tbl) {
-        rc = osql_create_bpfunc(thedb->bdb_env, thd->sqlclntstate, &bdberr);
+        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, thd->sqlclntstate,
+                                        &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to create bpfunc table rc=%d bdberr=%d\n",
@@ -2868,14 +2871,14 @@ static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr)
 
         rc = osql_send_bpfunc(osql->host, osql->rqid, osql->uuid, func->arg,
                               NET_OSQL_SOCK_RPL, osql->logsb);
+        free_bpfunc(func);
+
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: error writting record to master in offload mode!\n",
                    __func__);
             return SQLITE_INTERNAL;
         }
-
-        free_bpfunc(func);
 
         rc = bdb_temp_table_next(bdb_state, cur, bdberr);
     }
@@ -2971,38 +2974,39 @@ static int osql_destroy_temptbl(bdb_state_type *bdb_state,
     return 0; /* not sure what value is returning rc at this point */
 }
 
-static int osql_create_verify(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr)
+static int osql_create_verify_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_create_temptbl(bdb_state, &osql->verify_tbl, &osql->verify_cur,
                                bdberr);
 }
 
-static int osql_destroy_verify(bdb_state_type *bdb_state,
-                               struct sqlclntstate *clnt)
+static int osql_destroy_verify_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_destroy_temptbl(bdb_state, &osql->verify_tbl,
                                 &osql->verify_cur);
 }
 
-static int osql_create_schemachange(bdb_state_type *bdb_state,
-                                    struct sqlclntstate *clnt, int *bdberr)
+static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
+                                            struct sqlclntstate *clnt,
+                                            int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_create_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur, bdberr);
 }
 
-int osql_destroy_schemachange(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt)
+static int osql_destroy_schemachange_temptbl(bdb_state_type *bdb_state,
+                                             struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_destroy_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur);
 }
 
-static int osql_create_bpfunc(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr)
+static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
     osql->bpfunc_seq = 0;
@@ -3010,7 +3014,8 @@ static int osql_create_bpfunc(bdb_state_type *bdb_state,
                                bdberr);
 }
 
-int osql_destroy_bpfunc(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
+static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     osql->bpfunc_seq = 0;
