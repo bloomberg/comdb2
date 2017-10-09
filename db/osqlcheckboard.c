@@ -448,90 +448,56 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     return rc2;
 }
 
+static inline void signal_master_change(osql_sqlthr_t *rq, int node, const char * line)
+{
+   if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_INFO, "%s signaling rq new master %llx %s\n", line,
+                rq->rqid, comdb2uuidstr(rq->uuid, us));
+   pthread_mutex_lock(&rq->mtx);
+   rq->master_changed = 1;
+   pthread_cond_signal(&rq->cond);
+   pthread_mutex_unlock(&rq->mtx);
+}
+
+int osql_checkboard_master_changed(void *obj, void *arg) {
+    if (((osql_sqlthr_t*)obj)->master != *(int*)arg) {
+       signal_master_change(obj, *(int*)arg, __func__);
+    }
+    return 0;
+}
+
+void osql_checkboard_for_each(int node, int (*func)(void*, void*))
+{
+    int rc;
+
+    if (!checkboard)
+        return;
+
+    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
+        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
+        return;
+    }
+
+    hash_for(checkboard->rqs, func, host);
+    hash_for(checkboard->rqsuuid, func, host);
+
+    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
+        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
+        return;
+    }
+}
+
 int osql_checkboard_check_request_down_node(void *obj, void *arg)
 {
-    char *host;
-    osql_sqlthr_t *rq;
-    uuidstr_t us;
-    rq = (osql_sqlthr_t *)obj;
-    host = (char *)arg;
-    if (rq->master == host) {
-        logmsg(LOGMSG_INFO, "signaling rq %llx %s\n", rq->rqid, comdb2uuidstr(rq->uuid, us));
-        pthread_mutex_lock(&rq->mtx);
-        rq->master_changed = 1;
-        pthread_cond_signal(&rq->cond);
-        pthread_mutex_unlock(&rq->mtx);
+    if (((osql_sqlthr_t*)obj)->master == *(int*)arg) {
+       signal_master_change(obj, *(int*)arg, __func__);
     }
     return 0;
 }
 
-void osql_checkboard_check_down_nodes(char *host)
+void osql_checkboard_check_down_nodes(int node)
 {
-    int rc;
-
-    if (!checkboard)
-        return;
-
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return;
-    }
-
-    hash_for(checkboard->rqs, osql_checkboard_check_request_down_node, host);
-    hash_for(checkboard->rqsuuid, osql_checkboard_check_request_down_node,
-             host);
-
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return;
-    }
-}
-
-int osql_checkboard_check_request_master_changed(void *obj, void *arg)
-{
-    char *host = (char *)arg;
-    uuidstr_t us;
-    osql_sqlthr_t *rq;
-    rq = (osql_sqlthr_t *)obj;
-    if (rq->master != host) {
-        if (gbl_master_swing_osql_verbose)
-           logmsg(LOGMSG_ERROR, "signaling rq new master %llx %s\n", rq->rqid,
-                   comdb2uuidstr(rq->uuid, us));
-        pthread_mutex_lock(&rq->mtx);
-        rq->master_changed = 1;
-        pthread_cond_signal(&rq->cond);
-        pthread_mutex_unlock(&rq->mtx);
-    }
-    return 0;
-}
-
-void osql_checkboard_check_master_changed(char *host)
-{
-    int rc;
-
-    if (!checkboard)
-        return;
-
-    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
-        return;
-    }
-
-    hash_for(checkboard->rqs, osql_checkboard_check_request_master_changed,
-             host);
-    hash_for(checkboard->rqsuuid, osql_checkboard_check_request_master_changed,
-             host);
-
-    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock))) {
-        logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
-        return;
-    }
-}
-
-int osql_chkboard_longwait_commitrc(unsigned long long rqid, uuid_t uuid,
-                                    struct errstat *xerr)
-{
-    return osql_chkboard_timedwait_commitrc(rqid, uuid, -1, xerr);
+   osql_checkboard_for_each(node, osql_checkboard_check_request_down_node);
 }
 
 int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
