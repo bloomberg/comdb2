@@ -2510,10 +2510,13 @@ static void make_random_str(char *str, int *len)
          * If two threads have the same [truncated] usec value, their thread 
          * id will be different and therefore their seeds will be different.
          */
-        unsigned int addr = pthread_self() % 0xFFFFFFFBULL;
-        rand_state[0] = addr;
-        rand_state[1] = addr >> 16;
-        rand_state[2] = tv.tv_usec; /* will be truncated to ushort */
+        #define INSZ sizeof(struct timeval) + sizeof(pthread_t)
+        unsigned char src[INSZ];
+        unsigned char hash[16];
+        unsigned char *MD5(const unsigned char *d, unsigned long n,
+                                 unsigned char *md);
+        MD5(src, INSZ, hash);
+        memcpy(rand_state, hash, 3 * sizeof(short));
     }
     int randval = nrand48(rand_state);
     sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
