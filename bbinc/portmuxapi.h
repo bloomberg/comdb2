@@ -380,7 +380,7 @@ int portmux_hello(char *host, char *name, int *fdout);
 void portmux_set_default_timeout(unsigned timeoutms);
 void portmux_set_max_wait_timeout(unsigned timeoutms);
 
-void portmux_register_reconnect_callback(void (*callback)(void *), void *);
+void portmux_register_reconnect_callback(int (*callback)(void *), void *);
 
 int get_portmux_port(void);
 void set_portmux_port(int);

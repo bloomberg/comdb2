@@ -66,6 +66,7 @@
 static std::map<std::string, int> port_map;
 static std::map<std::string, int> fd_map;
 static std::mutex fdmap_mutex;
+static std::mutex active_services_mutex;
 static std::set<int> free_ports;
 static long open_max;
 static bool foreground_mode = false;
@@ -179,6 +180,13 @@ int client_func(int fd)
     char *sav;
     char *cmd = strtok_r(service + 4, " \n", &sav);
     if (strncasecmp(service, "reg", 3) == 0) {
+        active_services_mutex.lock();
+        if (active_services.find(cmd) == active_services.end()) {
+            fprintf(stderr, "reg request from %s, but not an active service?\n", cmd);
+            close(fd);
+            return -1;
+        }
+        active_services_mutex.unlock();
         connect_instance(listenfd, cmd);
     }
 }
@@ -187,7 +195,9 @@ static void unwatchfd(struct pollfd &fd)
 {
     connections[fd.fd].inoff = 0;
     if (connections[fd.fd].is_hello) {
+        active_services_mutex.lock();
         active_services.erase(connections[fd.fd].service);
+        active_services_mutex.unlock();
         std::string svc(connections[fd.fd].service);
 
 #ifdef VERBOSE
@@ -533,7 +543,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in)
 
 #ifdef VERBOSE
     syslog(LOG_INFO, "%d: cmd: %s\n", fd.fd, in);
-    fsnapf(stdout, in, strlen(in));
+//  fsnapf(stdout, in, strlen(in));
 #endif
 
     cmd = strtok_r(in, " ", &sav);
@@ -631,7 +641,9 @@ again:
         if (c.writable && svc != nullptr) {
             if (svc != nullptr) {
                 c.is_hello = true;
+                active_services_mutex.lock();
                 active_services.insert(std::string(svc));
+                active_services_mutex.unlock();
                 c.service = std::string(svc);
                 conn_printf(c, "ok\n");
 #ifdef VERBOSE
@@ -642,10 +654,12 @@ again:
             disallowed_write(c, cmd);
         }
     } else if (strcmp(cmd, "active") == 0) {
+        active_services_mutex.lock();
         conn_printf(c, "%d\n", active_services.size());
         for (auto it : active_services) {
             conn_printf(c, "%s\n", it.c_str());
         }
+        active_services_mutex.unlock();
     } else if (strcmp(cmd, "exit") == 0) {
         if (c.writable) {
             return 1;
@@ -688,7 +702,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
     }
 #ifdef VERBOSE
     syslog(LOG_INFO, "read %d:\n", n);
-    fsnapf(stdout, c.inbuf + c.inoff, n);
+//  fsnapf(stdout, c.inbuf + c.inoff, n);
 #endif
 
     c.inoff += n;

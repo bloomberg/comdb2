@@ -224,7 +224,7 @@ static watchlist_node_type *get_watchlist_node(SBUF2 *, const char *funcname);
 
 int sbuf2ungetc(char c, SBUF2 *sb);
 
-static void net_portmux_hello(void *);
+static int net_portmux_hello(void *);
 
 /* We can't change the on-wire protocol easily.  So it
  * retains node numbers, but they're unused for now */
@@ -6224,6 +6224,7 @@ int net_init(netinfo_type *netinfo_ptr)
     }
 
     if (netinfo_ptr->accept_on_child || !netinfo_ptr->ischild) {
+        portmux_register_reconnect_callback(net_portmux_hello, netinfo_ptr);
         net_portmux_hello(netinfo_ptr);
 
         /* create accept thread */
@@ -6241,8 +6242,6 @@ int net_init(netinfo_type *netinfo_ptr)
         while (!netinfo_ptr->accept_thread_created) {
             usleep(10000);
         }
-
-        portmux_register_reconnect_callback(net_portmux_hello, netinfo_ptr);
     }
     /*fprintf(stderr, "netinfo_ptr->accept_thread_created = %d\n",
        netinfo_ptr->accept_thread_created);*/
@@ -6260,7 +6259,7 @@ int net_init(netinfo_type *netinfo_ptr)
     return 0;
 }
 
-static void net_portmux_hello(void *p)
+static int net_portmux_hello(void *p)
 {
     netinfo_type *netinfo_ptr = (netinfo_type *)p;
     if (netinfo_ptr->hellofd != -1) {
@@ -6270,7 +6269,7 @@ static void net_portmux_hello(void *p)
     char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];
     snprintf(register_name, sizeof(register_name), "%s/%s/%s", netinfo_ptr->app,
              netinfo_ptr->service, netinfo_ptr->instance);
-    portmux_hello("localhost", register_name, &netinfo_ptr->hellofd);
+    return portmux_hello("localhost", register_name, &netinfo_ptr->hellofd);
 }
 
 /* TODO - this looks scary - should lock when traversing list at least?

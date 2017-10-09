@@ -80,7 +80,7 @@ static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
 static const char *gbl_portmux_unix_socket_default = "/tmp/portmux.socket";
 char *gbl_portmux_unix_socket;
 
-static void (*reconnect_callback)(void *) = NULL;
+static int (*reconnect_callback)(void *) = NULL;
 static void *reconnect_callback_arg;
 
 /*make these private for now*/
@@ -1207,6 +1207,13 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
         return 1;
     }
 
+    /* See if we can connect to pmux. */
+    if (reconnect_callback) {
+        rc = reconnect_callback(reconnect_callback_arg);
+        if (rc)
+            return rc;
+    }
+
     fds->nretries += 1;
     fds->last_recover_time = now;
 
@@ -1231,7 +1238,6 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
                __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
-        if (reconnect_callback) reconnect_callback(reconnect_callback_arg);
     } else {
         /* If we have tcp connectivity then we can stop trying to
          * connect the unix socket.
@@ -1811,12 +1817,16 @@ int portmux_hello(char *host, char *name, int *fdout)
     sbuf2printf(sb, "hello %s\n", name);
     rc = sbuf2flush(sb);
     if (rc < 0) return 2;
+    char line[10];
+    /* The reponse is always ok. We read it to make sure
+     * pmux had a chance to register us. */
+    sbuf2gets(line, sizeof(line), sb);
     sbuf2close(sb);
     if (fdout) *fdout = fd;
     return 0;
 }
 
-void portmux_register_reconnect_callback(void (*callback)(void *), void *arg)
+void portmux_register_reconnect_callback(int (*callback)(void *), void *arg)
 {
     reconnect_callback = callback;
     reconnect_callback_arg = arg;
