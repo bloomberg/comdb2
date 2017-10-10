@@ -41,7 +41,7 @@ done
 typeset -A dbpids
 for i in $(seq 1 10); do 
     echo "portmux_port ${COMDB2_PMUX_PORT=}" >> $(pwd)/testdb${i}/testdb${i}.lrl
-    echo "portmux_sock /tmp/pmux.${COMDB2_PMUX_PORT} " >> $(pwd)/testdb${i}/testdb${i}.lrl
+    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $(pwd)/testdb${i}/testdb${i}.lrl
 	${TESTSROOTDIR}/../comdb2 testdb${i} --lrl $(pwd)/testdb${i}/testdb${i}.lrl & 
     dbpids[$i]=$!
 done
@@ -72,7 +72,7 @@ kill -9 ${pid}
 
 if [[ $atend -eq $atstart ]]; then
 	echo "At start had $atstart fds, at end have $atend."
-	exit 1
+	exit 0
 fi
 
 echo "At start had $atstart fds, during run had $atrun fds, gone at end"

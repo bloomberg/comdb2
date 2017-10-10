@@ -651,38 +651,6 @@ static void *sql_tranlevel_default_value()
     }
 }
 
-static int tunable_update_portmux_port(void *context, void *portp)
-{
-    int *port = (int *)portp;
-    set_portmux_port(*port);
-    return 0;
-}
-
-static int tunable_verify_portmux_port(void *unused, void *portp)
-{
-    int *port = (int *)portp;
-    if (*port <= 0 || *port >= 65536) return 1;
-    return 0;
-}
-
-static void *tunable_get_portmux_port(void *context)
-{
-    static int port;
-    port = get_portmux_port();
-    return (void *)&port;
-}
-
-static void *tunable_get_portmux_path(void *context)
-{
-    return (void *)get_portmux_bind_path();
-}
-
-static int tunable_update_portmux_path(void *context, void *pathp)
-{
-    char *path = (char *)pathp;
-    return set_portmux_bind_path(path);
-}
-
 /* Routines for the tunable system itself - tunable-specific
  * routines belong above */
 
