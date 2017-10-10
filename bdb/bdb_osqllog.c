@@ -2097,7 +2097,7 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
 
         case DB_llog_undo_upd_ix_lk:
 
-            rc == llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
+            rc = llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
                                            &upd_ix_lk);
             if (rc) goto done;
 

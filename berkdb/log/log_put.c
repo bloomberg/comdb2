@@ -1616,7 +1616,8 @@ __log_write_td(arg)
 {
 	DB_LOG *dblp;
 	LOG *lp;
-	int ret, bytes_written;
+	int ret;
+    u_int32_t bytes_written;
 
 	dblp = (DB_LOG *)arg;
 	lp = dblp->reginfo.primary;

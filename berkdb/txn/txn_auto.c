@@ -459,8 +459,10 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\tlocks: \n");
     DB_LSN ignored;
-    int pglogs, keycnt;
-    __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
+    int pglogs;
+    u_int32_t keycnt;
+    __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, 
+            &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	(void)printf("\n");
     if(argp->locks.size >= 8)
     {
@@ -2509,7 +2511,8 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\tlocks: \n");
     DB_LSN ignored;
-    int pglogs, keycnt;
+    int pglogs;
+    u_int32_t keycnt;
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	fflush(stdout);
 	(void)printf("\trowlocks: \n");
@@ -2930,7 +2933,8 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tlocks: \n");
 
     DB_LSN ignored;
-    int pglogs, keycnt;
+    int pglogs;
+    u_int32_t keycnt;
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 
 	//fsnapf(stdout, argp->locks.data, argp->locks.size);

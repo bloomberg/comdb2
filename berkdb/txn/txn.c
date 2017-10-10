@@ -580,7 +580,7 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	txn->id = __txn_id;
 	txn->prepare = __txn_prepare;
 	txn->set_timeout = __txn_set_timeout;
-	txn->snapshot == __txn_snapshot;
+	/* txn->snapshot = __txn_snapshot; */
 
 	/*
 	 * If this is a transaction family, we must link the child to the

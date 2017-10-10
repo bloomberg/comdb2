@@ -361,6 +361,8 @@ __dump_lid_latches(dbenv, lid, fp)
 				mode = "WRITE";
 
 				break;
+            default:
+                break;
 			}
 
 			/* I don't want the print-status code to grab any locks,

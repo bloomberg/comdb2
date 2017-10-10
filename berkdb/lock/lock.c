@@ -5769,7 +5769,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	} else {
 		ret =
 		    __lock_list_parse_pglogs_int(dbenv, locker, flags,
-		    lock_mode, list, maxlsn, pglogs, keycnt, 1, &dp);
+		    lock_mode, list, maxlsn, pglogs, keycnt, 1, &dp, NULL);
 		if (ret)
 			return ret;
 	}
@@ -5828,7 +5828,7 @@ lock_list_parse_pglogs(dbenv, list, maxlsn, pglogs, keycnt)
 	u_int32_t *keycnt;
 {
 	return __lock_list_parse_pglogs_int(dbenv, 0, LOCK_GET_LIST_PAGELOGS, 0,
-	    list, maxlsn, pglogs, keycnt, 0, NULL);
+	    list, maxlsn, pglogs, keycnt, 0, NULL, NULL);
 }
 
 

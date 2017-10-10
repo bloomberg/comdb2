@@ -1611,7 +1611,7 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
     uint8_t *p_buf;
     const uint8_t *p_buf_end;
 
-    p_buf = (char *)buf;
+    p_buf = (uint8_t *)buf;
     p_buf_end = p_buf + buflen;
 
     /* Skip net wire-header up to the 'type'.  16 + 4 + 4 + 16 + 4 + 4 */
@@ -1898,7 +1898,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
         }
 
         /* hostdown can defer commits */
-        bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms(NULL);
+        bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms();
 #ifdef INCOHERENT_CTRACE
         ctrace("%s %d setting host %s to INCOHERENT_WAIT\n", __FILE__, __LINE__,
                host);
@@ -4066,7 +4066,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
 
     assert(usertype == USER_TYPE_COHERENCY_LEASE);
     p_buf = (uint8_t *)dta;
-    p_buf_end = (int8_t *)(dta + dtalen);
+    p_buf_end = (uint8_t *)(dta + dtalen);
 
     if (!(colease_type_get(&colease, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: corrupt colease packet from %s, len=%d\n",
