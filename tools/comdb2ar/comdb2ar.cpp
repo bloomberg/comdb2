@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
     extern char *optarg;
     extern int optind, optopt;
 
-    enum modes_enum {CREATE_MODE, EXTRACT_MODE, PARTIAL_MODE, NO_MODE};
+    enum modes_enum {CREATE_MODE, EXTRACT_MODE, PARTIAL_CREATE_MODE, PARTIAL_RESTORE_MODE, NO_MODE};
     modes_enum mode = NO_MODE;
 
     int c;
@@ -107,6 +107,7 @@ int main(int argc, char *argv[])
     bool incr_ex = false;
     std::string incr_path;
     bool incr_path_specified = false;
+    bool dryrun = false;
 
     // TODO: should really consider using comdb2file.c
     char *s = getenv("COMDB2_ROOT");
@@ -209,6 +210,10 @@ int main(int argc, char *argv[])
                 }
                 break;
 
+            case 'y':
+                dryrun = true;
+                break;
+
             case '?':
                 std::cerr << "Unrecognised option: -" << (char)c << std::endl;
                 usage();
@@ -237,7 +242,11 @@ int main(int argc, char *argv[])
                 break;
 
             case 'p':
-                mode = PARTIAL_MODE;
+                mode = PARTIAL_CREATE_MODE;
+                break;
+
+            case 'P':
+                mode = PARTIAL_RESTORE_MODE;
                 break;
 
             case 'x':
@@ -329,13 +338,29 @@ int main(int argc, char *argv[])
               errexit();
             }
         }
-    } else if (mode == PARTIAL_MODE) {
+    } else if (mode == PARTIAL_CREATE_MODE) {
         // A lot like create, we create a tarball, but we don't do
         // lots of other things that create does, so it's a great
         // deal easier to skip that code
         try {
             const std::string lrlpath(argv[1]);
             create_partials(lrlpath, do_direct_io);
+        }
+        catch(std::exception& e) {
+            std::cerr << e.what() << std::endl;
+            errexit();
+        }
+    } else if (mode == PARTIAL_RESTORE_MODE) {
+        // Also a lot like restore, with enough differences
+        // that it's incredibly ... unclean ... to make the
+        // restore code do what we need
+        if (argc != 2) {
+            std::cerr << "Expected lrl path." << std::endl;
+            std::exit(2);
+        }
+        std::string lrlpath = argv[1];
+        try {
+            restore_partials(lrlpath, do_direct_io, dryrun);
         }
         catch(std::exception& e) {
             std::cerr << e.what() << std::endl;

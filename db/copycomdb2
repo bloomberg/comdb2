@@ -124,6 +124,8 @@ force=no
 backupmode=no
 restoremode=no
 max_du_percent=95
+partial=no
+outmode=x
 [ -z "$comdb2ar" ] && comdb2ar="${PREFIX}/bin/comdb2ar"
 [ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"
 
@@ -146,7 +148,7 @@ if [[ ! -x $lz4 ]]; then
    fi
 fi
 
-set -- `getopt "LC:ht:l:rdsSx:fmaZu:b" "$@"` || die
+set - `getopt "LC:ht:l:rdsSx:fmaZu:bp" "$@"` || die
 for arg in "$@" ; do
     case "$arg" in
         -h)
@@ -213,6 +215,10 @@ for arg in "$@" ; do
             ;;
 
         -b) backupmode=yes
+            shift
+            ;;
+
+        -p) partial=yes
             shift
             ;;
 
@@ -372,6 +378,20 @@ exopts="-C $cluster_info -u $max_du_percent "
 [ $copy_data = no ]             && aropts="$aropts -s"
 [ $disable_log_delete = no ]    && aropts="$aropts -L"
 
+# if we want an incremental copy, create the partial files on the
+# destination, and get them to the source
+partials=$TMPDIR/$dbname.$$.inc.tar
+partialsdir=$TMPDIR/$dbname.$$.inc
+if [[ $partial = yes ]]; then
+    echo "destmach $srcmach"
+    $rsh $destmach $comdb2ar p $destlrldir > $partials
+    rcp -q $destmach:$partials $srcmach:$partials
+    $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc"
+    $rsh $srcmach "tar xvf $partials -C $partialsdir"
+    partialopts="-I inc -b $partialsdir"
+    outmode=P
+fi
+
 if [ $restoremode = yes ]; then
     $IONICE $lz4 -d stdin stdout | $comdb2ar $COMDB2AR_AROPTS $exopts x $destlrldir $destdbdir 2>$arstatus 
 elif [ $backupmode = yes ]; then
@@ -419,22 +439,22 @@ else
     if [ $copy_mode = PULL ] ; then
         # Pull mode.  Serialise the db at the destination and pipe this in to
         # a local deserialise.
-        $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout " | \
-            $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts x $destlrldir $destdbdir >$exstatus 2>&1
+        $rsh $srcmach "$IONICE_RMT $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout " | \
+            $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
 
         rc=$?
     elif [ $copy_mode = PUSH ] ; then
         # Push mode.  Serialise db locally, pipe through o rshd deserialise
         # process on remote machine.
         $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
-            $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts x $destlrldir $destdbdir " >$exstatus 2>&1
+            $rsh $destmach "$lz4 -d stdin stdout | $IONICE_RMT $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $partialopts $destlrldir $destdbdir " >$exstatus 2>&1
 
         rc=$?
     elif [ $copy_mode = LOCAL ] ; then
 
         # Local mode, easy
         $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | \
-            $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts x $destlrldir $destdbdir >$exstatus 2>&1
+            $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $partialopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
         rc=$?
     fi
     exit $rc

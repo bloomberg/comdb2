@@ -100,7 +100,7 @@ bool assert_cksum_lsn(uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
 // populate data_size with the total amount of data that needs to be serialised
 // Returns true if any part of the file needs to be serialised
 bool compare_checksum(
-    FileInfo file,
+    FileInfo &file,
     const std::string& incr_path,
     std::vector<uint32_t>& pages,
     ssize_t *data_size,
@@ -108,6 +108,8 @@ bool compare_checksum(
 ) {
     std::string filename = file.get_filename();
     std::string incr_file_name = incr_path + "/" + filename + ".incr";
+
+    std::cerr << filename << " <- " << incr_file_name << std::endl;
 
     // Keep a set of all .incr diff files to determine if there are any remaining at the end
     // Any remaining .incr files indiciate deleted files
@@ -132,6 +134,10 @@ bool compare_checksum(
         ss << "cannot stat file: " << std::strerror(errno);
         throw SerialiseError(filename, ss.str());
     }
+
+    // wrong, but a good estimage, and good enough if we truncate BEFORE
+    // writing pages on restore
+    file.set_filesize(new_st.st_size); 
 
     // For a new file, make pages empty (upon returning, an empty pages list
     // denotes a new file) and mark the size as the full size
@@ -159,9 +165,12 @@ bool compare_checksum(
 
         size_t original_size = new_st.st_size;
         off_t bytesleft = new_st.st_size;
+        int64_t filesize = 0;
 
         while(bytesleft >= pagesize) {
             ssize_t new_bytesread = read(new_fd, &new_pagebuf[0], pagesize);
+
+            filesize += new_bytesread;
 
             if(new_bytesread <= 0) {
                 std::ostringstream ss;
@@ -492,7 +501,7 @@ void incr_deserialise_database(
         // All incremental changes are stored in a single .data file, so unpack that
         // using the file order to keep track of which file is currently being read
         } else if(is_incr_data) {
-            unpack_incr_data(file_order, updated_files, datadestdir);
+            unpack_incr_data(file_order, updated_files, datadestdir, true);
         // Unpack a full file
         } else if (is_data_file || is_queue_file || is_queuedb_file) {
             std::map<std::string, FileInfo>::iterator file_it = new_files.find(filename);

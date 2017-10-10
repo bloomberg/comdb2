@@ -82,8 +82,10 @@ void update_tree(const std::string& filename,
         }
 
         // Seek out the offset corresponding to the page number and overwrite
-        tree_file.seekp(pagesize * *it, tree_file.beg);
-        tree_file.write((char *) pagebuf, pagesize);
+        if (!dryrun) {
+            tree_file.seekp(pagesize * *it, tree_file.beg);
+            tree_file.write((char *) pagebuf, pagesize);
+        }
     }
 
     std::clog << "x " << file_info.get_filename() << " PARTIAL" << " Pages ";
@@ -127,7 +129,10 @@ void unpack_incr_data(
             throw Error(ss);
         }
 
-        update_tree(abs_filepath, fd_it->second);
+        update_tree(abs_filepath, fd_it->second, dryrun);
+        // zap the file size to what we expect
+        // TBD
+        // truncate(abs_filepath.c_str(), (*fd_it).first./*TODO*/);
     }
 }
 

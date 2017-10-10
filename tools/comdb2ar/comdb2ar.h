@@ -25,6 +25,7 @@
 #include <list>
 #include <string>
 #include <memory>
+#include <set>
 
 #include "fdostream.h"
 
@@ -146,6 +147,15 @@ struct iomap {
 };
 
 void create_partials(const std::string &lrlpath, bool do_direct_io);
+void restore_partials(const std::string &lrlpath, bool do_direct_io, bool dryrun);
 
+void parse_lrl_file(const std::string& lrlpath,
+        std::string* p_dbname,
+        std::string* p_dbdir,
+        std::list<std::string>* p_support_files,
+        std::set<std::string>* p_table_names,
+        std::set<std::string>* p_queue_names,
+        bool* p_nonames,
+        bool* has_cluster_info);
 
 #endif
