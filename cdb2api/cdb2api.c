@@ -2484,8 +2484,9 @@ done:
 
 
 /* combine hashes similar to hash_combine from boost library */
-size_t val_combine( size_t lhs, size_t rhs ) {
-    lhs^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+{
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
     return lhs;
 }
 
@@ -2503,17 +2504,15 @@ static void make_random_str(char *str, int *len)
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (PID == 0) {
-        /* Initialize PID and rand_state once per thread
-         * PID will ensure that cnonce will be different accross processes 
-         */
+    if (PID == 0) { /* Initialize PID and rand_state once per thread */
+         /* PID will ensure that cnonce will be different accross processes */
         PID = getpid(); 
 
         /* Get the initial random state by using thread id and time info. */
         uint32_t tmp[2];
         tmp[0] = tv.tv_sec;
         tmp[1] = tv.tv_usec;
-        size_t hash = val_combine(*(size_t*) tmp, (size_t) pthread_self());
+        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
         rand_state[0] = hash;
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
