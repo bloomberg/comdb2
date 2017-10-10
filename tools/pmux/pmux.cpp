@@ -211,8 +211,7 @@ static void unwatchfd(struct pollfd &fd)
             fd_map.erase(svc);
             int rc = close(ufd->second);
             if (rc) {
-                std::cerr << svc << " close fd " << ufd->second << " rc " << rc
-                          << std::endl;
+                syslog(LOG_WARN, "%s close fd %d rc %d\n", svc.c_str(), ufd->second, rc);
             }
         }
         fdmap_mutex.unlock();
@@ -975,7 +974,7 @@ int main(int argc, char **argv)
         else
             pmux_store.reset(new comdb2_store(host, dbname, cluster));
     } catch (std::exception &e) {
-        std::cerr << e.what() << std::endl;
+        syslog(LOG_ERR, "%s\n", e.what().c_str());
         return EXIT_FAILURE;
     }
 
