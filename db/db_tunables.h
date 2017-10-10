@@ -1131,6 +1131,10 @@ REGISTER_TUNABLE("temptable_limit",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("test_blob_race", NULL, TUNABLE_INTEGER, &gbl_test_blob_race,
                  READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_scindex_deadlock",
+                 "Test index on expressions schema change deadlock",
+                 TUNABLE_BOOLEAN, &gbl_test_scindex_deadlock, READONLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("throttlesqloverlog",
                  "On a full queue of SQL requests, dump the current thread "
                  "pool this often (in secs). (Default: 5sec)",
