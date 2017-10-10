@@ -78,6 +78,7 @@ static int show_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
 static int maxretries = 0;
+static int minretries = 0;
 static FILE *redirect = NULL;
 static int hold_stdout = -1;
 static char *history_file = NULL;
@@ -642,6 +643,14 @@ static int run_statement(const char *sql, int ntypes, int *types,
     *run_time = 0;
 
     if (cdb2h == NULL) {
+
+        if (maxretries) {
+            cdb2_set_max_retries(maxretries);
+        }
+        if (minretries) {
+            cdb2_set_min_retries(minretries);
+        }
+
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
         } else {
@@ -661,10 +670,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
         if (show_ports) {
             cdb2_dump_ports(cdb2h, stderr);
         }
-        if (maxretries) {
-            cdb2_set_max_retries(maxretries);
-        }
-
         if (docost) {
             rc = cdb2_run_statement(cdb2h, "set getcost on");
             if (rc) {
@@ -1158,10 +1163,11 @@ int main(int argc, char *argv[])
         {"gensql",     required_argument, NULL,               'g'},
         {"type",       required_argument, NULL,               't'},
         {"host",       required_argument, NULL,               'n'},
+        {"minretries", required_argument, NULL,               'R'},
         {0, 0, 0, 0}
     };
 
-    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:", long_options,
+    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:R:", long_options,
                                &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1174,6 +1180,9 @@ int main(int argc, char *argv[])
             break;
         case 'r':
             maxretries = atoi(optarg);
+            break;
+        case 'R':
+            minretries = atoi(optarg);
             break;
         case 'p':
             precision = atoi(optarg);
