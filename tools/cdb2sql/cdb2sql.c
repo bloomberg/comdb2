@@ -1167,7 +1167,8 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:R:", 
+    // !!! This should be bb_getopt_long when this merges with master
+    while ((c = getopt_long(argc, argv, "hsr:p:c:f:g:t:n:R:", 
                             long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
