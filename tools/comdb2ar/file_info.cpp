@@ -12,7 +12,8 @@ FileInfo::FileInfo() :
     m_pagesize(0),
     m_sparse(false),
     m_do_direct_io(true),
-    m_swapped(false) {}
+    m_swapped(false),
+    m_filesize(0) {}
 
 FileInfo::FileInfo(const FileInfo& copy) :
     m_type(copy.m_type),
@@ -22,7 +23,8 @@ FileInfo::FileInfo(const FileInfo& copy) :
     m_checksums(copy.m_checksums),
     m_sparse(copy.m_sparse),
     m_do_direct_io(copy.m_do_direct_io),
-    m_swapped(copy.m_swapped) {}
+    m_swapped(copy.m_swapped),
+    m_filesize(copy.m_filesize) {}
 
 FileInfo::FileInfo(
         FileTypeEnum type,
@@ -41,7 +43,8 @@ FileInfo::FileInfo(
     m_crypto(crypto),
     m_sparse(sparse),
     m_do_direct_io(do_direct_io),
-    m_swapped(swapped)
+    m_swapped(swapped),
+    m_filesize(0)
 {
     // If file name is within the dbdir then just strip dbdir
     if(type != SUPPORT_FILE
@@ -216,6 +219,11 @@ bool read_incr_FileInfo(const std::string& line, FileInfo& file,
                 if(!(ss >> pagesize)) return false;
                 f.set_pagesize(pagesize);
 
+            } else if (tok == "FileSize") {
+                int64_t filesize;
+                if(!(ss >> filesize)) return false;
+                f.set_filesize(filesize);
+
             } else if(tok == "Checksums") {
                 f.set_checksums();
 
@@ -290,8 +298,8 @@ bool recognize_data_file(const std::string& filename,
             ext == "freerecq" ||
             ext == "meta.dta" ||
             ext == "meta.ix0" ||
-            ext == "meta.freerec" || 
-            ext == "dta") {
+            ext == "meta.freerec")
+ {
         out_table_name = filename.substr(0, dot_pos);
         is_data_file = true;
         return true;

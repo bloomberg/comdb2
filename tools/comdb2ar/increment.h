@@ -20,7 +20,7 @@ std::string read_serialised_sha_file();
 // read from STDIN to get the fingerprint from a serialised .SHA file
 
 bool compare_checksum(
-    FileInfo file,
+    FileInfo &file,
     const std::string& incr_path,
     std::vector<uint32_t>& pages,
     ssize_t *data_size,
