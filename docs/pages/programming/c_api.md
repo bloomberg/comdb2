@@ -37,8 +37,6 @@ failure before freeing the handle object with [cdb2_close](#cdb2close).
 
 Parameters:
 
-Parameters:
-
 |Name|Type|Description|Notes|
 |-|-|-|-|
 |*hndl*| input/output | pointer to a cdb2 handle | A handle is allocated and a pointer to it is written into *hndl*
@@ -52,7 +50,7 @@ Parameters:
 |```CDB2_ROOM``` |  Queries are sent to one of the nodes in the same data center (see section on [comdb2db](clients.html#comdb2db) to see how this is configured) |
 |```CDB2_RANDOMROOM``` |  Queries are sent to one of the randomly selected node of the same data center |
 |```CDB2_RANDOM``` |  Queries are sent to one of the randomly selected node of the same or different data center |
-|```CDB2_DIRECTCPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
+|```CDB2_DIRECT_CPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
 
 
 ### cdb2_close

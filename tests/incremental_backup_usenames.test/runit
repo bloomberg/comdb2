@@ -170,5 +170,10 @@ cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
 test_restoredb t2.req 2
 
+# cleanup since this was a successful run
+if [ $CLEANUPDBDIR != 0 ] ; then
+    rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
+fi
+
 echo "Test Successful"
 exit 0
