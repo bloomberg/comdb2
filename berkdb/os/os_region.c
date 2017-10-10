@@ -185,8 +185,6 @@ __os_r_detach(dbenv, infop, destroy)
             munmap(infop->addr, rp->size);
 		close(infop->fd);
 		unlink(name);
-		logmsg(LOGMSG_INFO, "os_r_detach: munmap for region: %d\n",
-		    infop->id);
 	}
 	return (0);
 

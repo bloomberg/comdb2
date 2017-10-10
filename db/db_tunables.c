@@ -27,6 +27,7 @@
 #include "util.h"
 #include "analyze.h"
 #include "intern_strings.h"
+#include "portmuxapi.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -649,6 +650,9 @@ static void *sql_tranlevel_default_value()
     default: return "invalid";
     }
 }
+
+/* Routines for the tunable system itself - tunable-specific
+ * routines belong above */
 
 static void tunable_tolower(char *str)
 {

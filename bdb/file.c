@@ -3239,11 +3239,6 @@ done2:
 
     print(bdb_state, "returning from dbenv_open\n");
 
-    /* TODO: one-shotting this isn't enough - we nee to
-       periodically check this connection and re-establish it
-       in case pmux bounces */
-    portmux_hello("localhost", bdb_state->name);
-
     return dbenv;
 }
 
