@@ -182,8 +182,8 @@ int client_func(int fd)
     if (strncasecmp(service, "reg", 3) == 0) {
         active_services_mutex.lock();
         if (active_services.find(cmd) == active_services.end()) {
-            fprintf(stderr, "reg request from %s, but not an active service?\n",
-                    cmd);
+            syslog(LOG_WARN, "reg request from %s, but not an active service?\n",
+                   cmd);
             close(fd);
             return -1;
         }
@@ -226,9 +226,6 @@ static void unwatchfd(struct pollfd &fd)
     syslog(LOG_INFO, "close conn %d\n", fd.fd);
 #endif
     int rc = close(fd.fd);
-    if (rc) {
-        fprintf(stderr, "hi: close rc %d\n", rc);
-    }
     fd = {.fd = -1, .events = 0, .revents = 0};
 }
 
@@ -250,7 +247,7 @@ static void accept_thd(int listenfd)
         if (fd == -1) {
             if (errno == EINTR)
                 continue;
-            fprintf(stderr, "%s:accept %d %s\n", __func__, errno,
+            syslog(LOG_ERR, "%s:accept %d %s\n", __func__, errno,
                     strerror(errno));
             exit(1);
         }
@@ -271,12 +268,12 @@ static void init_router_mode()
 
     listenfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (listenfd == -1) {
-        fprintf(stderr, "Error socket: %d %s\n", errno, strerror(errno));
+        syslog(LOG_ERR, "Error socket: %d %s\n", errno, strerror(errno));
         exit(1);
     }
 
     if (unlink(unix_bind_path) == -1 && errno != ENOENT) {
-        fprintf(stderr, "Error unlinking '%s': %d %s\n", unix_bind_path, errno,
+        syslog(LOG_ERR, "Error unlinking '%s': %d %s\n", unix_bind_path, errno,
                 strerror(errno));
     }
 
@@ -286,19 +283,19 @@ static void init_router_mode()
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
              sizeof(serv_addr)) == -1) {
-        fprintf(stderr, "Error bind: %d %s\n", errno, strerror(errno));
+        syslog(LOG_ERR, "Error bind: %d %s\n", errno, strerror(errno));
         exit(1);
     }
 
     if (listen(listenfd, 128) == -1) {
-        fprintf(stderr, "Error listen: %d %s\n", errno, strerror(errno));
+        syslog(LOG_ERR, "Error listen: %d %s\n", errno, strerror(errno));
         exit(1);
     }
 
     static struct stat save_st;
 
     if (-1 == stat(unix_bind_path, &save_st)) {
-        fprintf(stderr, "Unable to stat '%s': %d %s\n", unix_bind_path, errno,
+        syslog(LOG_ERR, "Unable to stat '%s': %d %s\n", unix_bind_path, errno,
                 strerror(errno));
         exit(1);
     }
@@ -397,7 +394,7 @@ static int use_port(const char *svc, int port)
         if (usedport == port)
             return 0;
 
-        fprintf(stderr, "%s -- not using port, not on free list:%d\n", svc,
+        syslog(LOG_ERR, "%s -- not using port, not on free list:%d\n", svc,
                 port);
         return -1;
     } else {
