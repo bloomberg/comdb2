@@ -81,3 +81,12 @@ init_with_genid48
 
 # Don't use direct IO (breaks in LXC)
 setattr directio 0
+
+# The cluster LOCKED UP for hours because of an election bug I don't understand
+setattr RECEIVE_COHERENCY_LEASE_TRACE 1
+
+# Enable trace on messages with bad generation numbers
+rep_badgen_trace on
+
+# Trace when zero coherency ts is set or returned
+dump_zero_coherency_ts on

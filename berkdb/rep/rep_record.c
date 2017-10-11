@@ -68,6 +68,7 @@ extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_rep_collect_txn_time;
 extern int gbl_rep_process_txn_time;
+int gbl_rep_badgen_trace;
 
 
 
@@ -474,6 +475,15 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		 * We don't hold the rep mutex, and could miscount if we race.
 		 */
 		rep->stat.st_msgs_badgen++;
+
+        static u_int32_t lastpr = 0;
+        u_int32_t now;
+        if (gbl_rep_badgen_trace && ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_ERROR, "Ignoring rp->gen %u from %s mygen is %u, rectype=%u cnt %u\n",
+                    rp->gen, *eidp, gen, rp->rectype, rep->stat.st_msgs_badgen);
+            lastpr = now;
+        }
+
 		goto errlock;
 	}
 
@@ -482,6 +492,14 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		 * If I am a master and am out of date with a lower generation
 		 * number, I am in bad shape and should downgrade.
 		 */
+        static u_int32_t lastpr = 0;
+        u_int32_t now;
+        if (gbl_rep_badgen_trace && ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_ERROR, "rp->gen %u from %s is larger than mygen %u, rectype=%u\n",
+                    rp->gen, *eidp, gen, rp->rectype);
+            lastpr = now;
+        }
+
 		if (F_ISSET(rep, REP_F_MASTER)) {
 			rep->stat.st_dupmasters++;
 			ret = DB_REP_DUPMASTER;

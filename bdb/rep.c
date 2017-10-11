@@ -1719,6 +1719,8 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
 
 /* Timestamp of when our coherency lease expires on replicant */
 uint64_t coherency_timestamp = 0;
+int gbl_dump_zero_coherency_timestamp;
+
 char coherency_master[128] = {0};
 
 /* Don't let anything commit on the master until after this */
@@ -3740,6 +3742,10 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         } else
             bdb_setmaster(bdb_state, host);
 
+        if (gbl_dump_zero_coherency_timestamp) {
+            logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n", 
+                    __func__, __LINE__);
+        }
         coherency_timestamp = 0;
         break;
 
@@ -3938,7 +3944,22 @@ uint8_t *colease_type_put(const colease_t *p_colease_type, uint8_t *p_buf,
     return p_buf;
 }
 
-uint64_t get_coherency_timestamp(void) { return coherency_timestamp; }
+uint64_t get_coherency_timestamp(void) { 
+    uint64_t x = coherency_timestamp;
+    if (x == 0) {
+        static uint32_t lastpr;
+        static uint32_t zero_ts_count = 0;
+        uint32_t now;
+
+        zero_ts_count++;
+        if (gbl_dump_zero_coherency_timestamp && ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_ERROR, "%s returning 0 coherency_timestamp, count=%u\n", 
+                    __func__, zero_ts_count);
+            lastpr = now;
+        }
+    }
+    return x; 
+}
 
 typedef struct start_lsn_response {
     uint32_t gen;

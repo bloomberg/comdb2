@@ -1284,5 +1284,12 @@ REGISTER_TUNABLE("abort_on_bad_upgrade",
 REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.",
                  TUNABLE_BOOLEAN, &gbl_poll_in_pg_free_recover,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_badgen_trace", "Trace on rep mismatched generations.",
+                 TUNABLE_BOOLEAN, &gbl_rep_badgen_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dump_zero_coherency_ts", "Enable zero-coherency-ts trace .",
+                 TUNABLE_BOOLEAN, &gbl_dump_zero_coherency_timestamp,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
