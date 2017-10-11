@@ -382,6 +382,8 @@ static void *fstdump_hndlr(void *arg_)
     return NULL;
 }
 
+int gbl_allow_incoherent_sql = 0;
+
 static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
                              struct thr_handle *thr_self)
 {
@@ -501,7 +503,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
                 break;
             }
 
-            if (!bdb_am_i_coherent(thedb->bdb_env))
+            if (!bdb_am_i_coherent(thedb->bdb_env) && !gbl_allow_incoherent_sql)
                 break;
 
             /* there are points when we can't accept any more connections. */

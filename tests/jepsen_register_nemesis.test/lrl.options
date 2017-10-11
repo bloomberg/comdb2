@@ -90,3 +90,6 @@ rep_badgen_trace on
 
 # Trace when zero coherency ts is set or returned
 dump_zero_coherency_ts on
+
+# Global switch allowing incoherent sql: each session still needs to enable
+allow_incoherent_sql on

@@ -7907,6 +7907,15 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         goto done;
     }
 
+    extern int gbl_allow_incoherent_sql;
+    if (!gbl_allow_incoherent_sql && 
+            !bdb_am_i_coherent(thedb->bdb_env)) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d td %u new query on incoherent node, dropping socket\n",
+               __func__, __LINE__, (uint32_t)pthread_self());
+        goto done;
+    }
+
     CDB2QUERY *query = read_newsql_query(&clnt, sb);
     if (query == NULL)
         goto done;
