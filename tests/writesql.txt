@@ -1,0 +1,3 @@
+set hasql on
+set transaction serializable
+update t1 set a = 1 where 1

@@ -2678,8 +2678,8 @@ retry:
                                           &bdberr);
 
     if (rc == 0) {
-        tran = NULL;
-        rc = bdb_wait_for_seqnum_from_all(llmeta_bdb_state, &ss);
+        int timeoutms;
+        rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(llmeta_bdb_state, &ss, 0, &timeoutms);
     }
     // rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr);
     if (rc && bdberr != BDBERR_NOERROR) {
