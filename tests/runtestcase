@@ -24,22 +24,25 @@ function warn_long_setup {
     while [[ $r == 0 ]]; do
         sleep 1
         now=$(date +%s)
-        kill -0 $pid >/dev/null 2>&1
-        r=$?
-
         if [[ $(( now - start )) -gt 120 ]]; then
             echo "SLOW SETUP : $(( now - start )) SECONDS .. LOOK AT THIS"
-            # Don't let this break outta the loop
-            r=1
         fi
+        kill -0 $pid >/dev/null 2>&1
+        r=$?
     done
     return 0
 }
 
 function call_setup {
     [[ $COMDB2_UNITTEST == 1 ]] && return
-    timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
-    rc=$?
+
+    if [[ $SETUP_WARN ]]; then
+         warn_long_setup
+         rc=$?
+    else
+        timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
+        rc=$?
+    fi
     glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`
     if [ "x$glist" != "x" ] ; then
         kill -9 $glist
