@@ -93,6 +93,7 @@ int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                     char *tzname);
 int snapisol_abort(struct sqlclntstate *clnt);
 void osql_checkboard_check_master_changed(char *host);
+int osql_repository_cancelall(void);
 
 int selectv_range_commit(struct sqlclntstate *clnt);
 

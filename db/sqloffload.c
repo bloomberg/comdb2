@@ -366,7 +366,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
     /* process shadow tables */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr);
+    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
     if (sentops && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);

@@ -2880,6 +2880,8 @@ static int new_master_callback(void *bdb_handle, char *host)
             load_auto_analyze_counters();
             trigger_clear_hash();
             trigger_timepart = 1;
+
+            osql_repository_cancelall();
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
