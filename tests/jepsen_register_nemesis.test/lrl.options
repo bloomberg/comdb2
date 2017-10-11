@@ -39,7 +39,7 @@ setattr STARTUP_SYNC_ATTEMPTS -1
 perfect_ckp 0
 
 # Enable wait-for-seqnum trace
-# setattr WAIT_FOR_SEQNUM_TRACE 1
+setattr WAIT_FOR_SEQNUM_TRACE 1
 
 # Don't run the watchdog thread
 nowatch
@@ -93,3 +93,9 @@ dump_zero_coherency_ts on
 
 # Global switch allowing incoherent sql: each session still needs to enable
 allow_incoherent_sql on
+
+# Torque down rep_timeout
+setattr REP_TIMEOUT_MINMS 1000
+
+# Torque down rep_timeout_maxms
+setattr REP_TIMEOUT_MAXMS 2000
