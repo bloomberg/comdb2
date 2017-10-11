@@ -5740,11 +5740,16 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
 {
     int rc;
     if (thd->sqldb == NULL) {
-        rdlock_schema_lk();
-        rc = sqlengine_prepare_engine(thd, clnt, 1);
-        unlock_schema_lk();
-        if (rc) {
-            return rc;
+        /* open sqlite db without copying rootpages */
+        rc = sqlite3_open_serial("db", &thd->sqldb, thd);
+        if (unlikely(rc != 0)) {
+            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d\n", __func__,
+                   rc);
+            thd->sqldb = NULL;
+        } else {
+            /* setting gen to -1 so real SQLs will reopen vm */
+            thd->dbopen_gen = -1;
+            thd->analyze_gen = -1;
         }
     }
     sqlite3_stmt *stmt;

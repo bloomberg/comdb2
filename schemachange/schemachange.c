@@ -616,6 +616,13 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
                      int *rrn)
 {
     int rc = 0;
+
+    if (gbl_test_scindex_deadlock) {
+        logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
+    }
+
     pthread_rwlock_rdlock(&sc_live_rwlock);
 
     rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,
