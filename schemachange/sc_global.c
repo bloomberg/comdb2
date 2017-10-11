@@ -200,7 +200,7 @@ void sc_status(struct dbenv *dbenv)
         localtime_r(&timet, &tm);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
-        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%llx\n",
+        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%lx\n",
                sc_seed);
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",

@@ -227,7 +227,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
 
     if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != sc_seed) {
-        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n",
+        logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%lx\n",
                sc_seed);
         int bdberr;
         int rc = bdb_set_disable_plan_genid(thedb->bdb_env, NULL, sc_seed,
@@ -616,6 +616,13 @@ int live_sc_post_add(struct ireq *iq, void *trans, unsigned long long genid,
                      int *rrn)
 {
     int rc = 0;
+
+    if (gbl_test_scindex_deadlock) {
+        logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
+    }
+
     pthread_rwlock_rdlock(&sc_live_rwlock);
 
     rc = live_sc_post_add_int(iq, trans, genid, od_dta, ins_keys, blobs,

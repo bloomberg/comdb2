@@ -1728,7 +1728,7 @@ static int ma_stats_head(size_t maxnamesz, size_t maxscopesz, int columns,
 
     ma_stats_dashes(ofs, toctrc);
     if (dolog)
-        logmsg(LOGMSG_USER, "%.*s\n", ofs, head);
+        logmsg(LOGMSG_USER, "%.*s\n", (int)ofs, head);
     else
         trc("%.*s\n", ofs, head);
     ma_stats_dashes(ofs, toctrc);

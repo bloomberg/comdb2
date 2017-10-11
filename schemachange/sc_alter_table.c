@@ -297,6 +297,8 @@ static inline void wait_to_resume(struct schema_change_type *s)
     }
 }
 
+int gbl_test_scindex_deadlock = 0;
+
 int do_alter_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
@@ -536,6 +538,12 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc)
         rc = SC_CONVERSION_FAILED;
+
+    if (gbl_test_scindex_deadlock) {
+        logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
+    }
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);

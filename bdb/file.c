@@ -1962,10 +1962,10 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
     }
 
     logmsg(LOGMSG_WARN, "catching up (%d):: us: %s "
-                    " master : %s behind %llu\n",
-            phase, lsn_to_str(our_lsn_str, our_lsn),
-            lsn_to_str(master_lsn_str, master_lsn),
-            subtract_lsn(bdb_state, master_lsn, our_lsn));
+                        " master : %s behind %lu\n",
+           phase, lsn_to_str(our_lsn_str, our_lsn),
+           lsn_to_str(master_lsn_str, master_lsn),
+           subtract_lsn(bdb_state, master_lsn, our_lsn));
 
     lsn_cmp.lsn.file = our_lsn->file;
     lsn_cmp.lsn.offset = our_lsn->offset;
@@ -3202,8 +3202,9 @@ done2:
 
 
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "net_send to %d failed rc %d- failed to sync, exiting\n",
-                    bdb_state->repinfo->master_host, rc);
+            logmsg(LOGMSG_FATAL,
+                   "net_send to %s failed rc %d- failed to sync, exiting\n",
+                   bdb_state->repinfo->master_host, rc);
             exit(1);
         }
     }
@@ -3581,9 +3582,10 @@ low_headroom:
             if (log_age < bdb_state->attr->min_keep_logs_age) {
                 if (delete_hwm_logs == 0) {
                     if (bdb_state->attr->debug_log_deletion)
-                        logmsg(LOGMSG_ERROR, "Can't delete log, age %d not older "
-                                        "than log delete age %d.\n",
-                                log_age, bdb_state->attr->min_keep_logs_age);
+                        logmsg(LOGMSG_ERROR,
+                               "Can't delete log, age %ld not older "
+                               "than log delete age %d.\n",
+                               log_age, bdb_state->attr->min_keep_logs_age);
                     if (ctrace_info)
                         ctrace("Can't delete log, age %lld not older than log "
                                "delete age %lld.\n",
@@ -3594,16 +3596,17 @@ low_headroom:
                 /* Fall through to delete */
                 else {
                     if (bdb_state->attr->debug_log_deletion)
-                        logmsg(LOGMSG_USER, "Log age %d is younger than min_age "
-                                        "but fall-through: numlogs"
-                                        " is %d and high water mark is %d\n",
-                                log_age, numlogs,
-                                bdb_state->attr->min_keep_logs_age_hwm);
+                        logmsg(LOGMSG_USER,
+                               "Log age %ld is younger than min_age "
+                               "but fall-through: numlogs"
+                               " is %d and high water mark is %d\n",
+                               log_age, numlogs,
+                               bdb_state->attr->min_keep_logs_age_hwm);
                     if (ctrace_info)
-                        ctrace("Log age %d is younger than min_age but "
+                        ctrace("Log age %ld is younger than min_age but "
                                "fall-through: numlogs"
                                " is %d and high water mark is %d\n",
-                               (int)log_age, numlogs,
+                               log_age, numlogs,
                                bdb_state->attr->min_keep_logs_age_hwm);
                     delete_hwm_logs--;
                 }
@@ -7721,8 +7724,8 @@ int bdb_osql_cache_table_versions(bdb_state_type *bdb_state, tran_type *tran,
         tran->table_version_cache_sz, sizeof(unsigned long long));
 
     if (!tran->table_version_cache) {
-        logmsg(LOGMSG_ERROR, "%s: failed to allocated %d bytes\n", __func__,
-                sizeof(unsigned long long) * tran->table_version_cache_sz);
+        logmsg(LOGMSG_ERROR, "%s: failed to allocated %zu bytes\n", __func__,
+               sizeof(unsigned long long) * tran->table_version_cache_sz);
         *bdberr = BDBERR_MALLOC;
         rc = -1;
         goto done;
@@ -7934,8 +7937,8 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
     /* Can I write? */
     rc = pwrite(fd, buf, bufsz, 0);
     if (rc != bufsz) {
-        logmsg(LOGMSG_ERROR, "write %s rc %d errno %d %d\n", path, rc, errno,
-                strerror(errno));
+        logmsg(LOGMSG_ERROR, "write %s rc %d errno %d %s\n", path, rc, errno,
+               strerror(errno));
         ERRDONE;
     }
     /* If not directio, flush - we are trying to test IO, but filesystem
@@ -7943,8 +7946,8 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
     if (!use_directio) {
         rc = fsync(fd);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "sync %s rc errno %d %d\n", path, errno,
-                    strerror(errno));
+            logmsg(LOGMSG_ERROR, "sync %s rc errno %d %s\n", path, errno,
+                   strerror(errno));
             ERRDONE;
         }
     }
@@ -7952,8 +7955,8 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
     /* Can I read? */
     rc = pread(fd, buf, bufsz, 0);
     if (rc != bufsz) {
-        logmsg(LOGMSG_ERROR, "read %s rc %d errno %d %d\n", path, rc, errno,
-                strerror(errno));
+        logmsg(LOGMSG_ERROR, "read %s rc %d errno %d %s\n", path, rc, errno,
+               strerror(errno));
         ERRDONE;
     }
 

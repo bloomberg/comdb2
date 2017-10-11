@@ -75,7 +75,7 @@ inspect_bk(BKEYDATA *bk)
 		    B_DISSET(bk) ? "X" : " ");
 		break;
 	default:
-		logmsg(LOGMSG_USER, 
+		logmsg(LOGMSG_USER,
                 "huh weird type here -> type:%d B_TYPE:%d B_TYPE_NOCOMP:%d\n",
 		    bk->type, B_TYPE(bk), B_TYPE_NOCOMP(bk));
 		break;
@@ -87,7 +87,7 @@ inspect_page_hdr(DB *dbp, PAGE *h)
 {
 	logmsg(LOGMSG_USER, "file:%s leaf:%s\n"
 	    "lsn:%d-%d\t" "pgno:%d\t" "prev:%d\t" "next:%d\n"
-	    "hoffset:%d\t" "type:(%u) %u\t" "freespace:%d\t" "entries:%d\n"
+	    "hoffset:%d\t" "type:(%u) %u\t" "freespace:%lu\t" "entries:%d\n"
 	    "chksum:%s\t" "crypto:%s\t" "\n",
 	    dbp->fname, YESNO(ISLEAF(h)),
 	    LSN(h).file, LSN(h).offset, PGNO(h), PREV_PGNO(h), NEXT_PGNO(h),
@@ -110,7 +110,7 @@ inspect_page_hdr(DB *dbp, PAGE *h)
 			logmsg(LOGMSG_USER, " sfx:0x");
 			print_hex(pfx->sfx, pfx->nsfx, 0);
 		}
-		logmsg(LOGMSG_USER, "");
+		logmsg(LOGMSG_USER, " ");
 	} else {
 		logmsg(LOGMSG_USER, "key-compression:no\n");
 	}
@@ -131,7 +131,7 @@ inspect_page_dta(DB *dbp, PAGE *h)
 			a = (uint8_t *) bk;
 			b = (uint8_t *) h;
 			if (a < b || (a > b + dbp->pgsize) || len > KEYBUF) {
-				logmsg(LOGMSG_USER, 
+				logmsg(LOGMSG_USER,
                     "\nthis page don't smell right anymore @i=%u\n",
 				    i);
 				raise(SIGINT);
@@ -734,7 +734,7 @@ int pfx_compress_pages(DB *dbp, PAGE *newpage, PAGE *head, pfx_t *pfx, int np, .
 		}
 	}
 	rc = 0;
-out:	
+out:
 	va_end(pl);
 	return rc;
 }
@@ -916,7 +916,7 @@ pfx_bulk_page(DBC *dbc, uint8_t * np, int32_t *offp, uint32_t space)
 			ASSIGN_ALIGN(db_pgno_t, pgno, bo->pgno);
 			if ((ret = __bam_bulk_overflow(dbc,
 				    len, pgno, cur)) != 0) {
-				logmsg(LOGMSG_ERROR, 
+				logmsg(LOGMSG_ERROR,
                         "__bam_bulk_overflow rc:%d pg:%u indx:%u\n",
 				    ret, PGNO(pg), i);
 				return (ret);

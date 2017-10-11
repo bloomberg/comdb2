@@ -764,8 +764,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         static time_t lastpr = 0;
         time_t now;
         if ((now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_INFO, "%s: lease base time is %llu\n", __func__,
-                    colease.issue_time);
+            logmsg(LOGMSG_INFO, "%s: lease base time is %lu\n", __func__,
+                   colease.issue_time);
             lastpr = now;
         }
     }
@@ -803,14 +803,14 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                 strcat(machs, " ");
             }
             logmsg(LOGMSG_INFO,
-                    "%s: only %d of %d nodes are connected: %s epoch=%u\n",
-                    __func__, count, comcount, machs, time(NULL));
+                   "%s: only %d of %d nodes are connected: %s epoch=%ld\n",
+                   __func__, count, comcount, machs, time(NULL));
             free(machs);
             lastpr = now;
         }
     } else if (last_count != comcount) {
-        logmsg(LOGMSG_INFO, "%s: sending leases to all nodes, epoch=%u\n", __func__,
-                time(NULL));
+        logmsg(LOGMSG_INFO, "%s: sending leases to all nodes, epoch=%ld\n",
+               __func__, time(NULL));
     }
 
     last_count = count;

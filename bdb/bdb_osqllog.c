@@ -458,9 +458,9 @@ bdb_osql_upddta_rec(llog_undo_upd_dta_args *upd_dta, DB_LSN *lsn, int *bdberr)
     unsigned long long genid = upd_dta->oldgenid;
 
     if (flibc_ntohll(upd_dta->oldgenid) >= flibc_ntohll(upd_dta->newgenid)) {
-        logmsg(LOGMSG_FATAL, "%s:%d %s incorrect genid received %llx %llx\n",
-                __FILE__, __LINE__, __func__, flibc_ntohll(upd_dta->oldgenid),
-                flibc_ntohll(upd_dta->newgenid));
+        logmsg(LOGMSG_FATAL, "%s:%d %s incorrect genid received %lx %lx\n",
+               __FILE__, __LINE__, __func__, flibc_ntohll(upd_dta->oldgenid),
+               flibc_ntohll(upd_dta->newgenid));
         abort();
     }
 
@@ -549,10 +549,11 @@ int bdb_osql_log_updix(bdb_osql_log_t *log, DB_LSN *lsn,
     listc_atl(&log->impl->recs, rec);
 
     if (log->impl->trak)
-        logmsg(LOGMSG_USER, "TRK_LOG: log %p rec %p upd_ix file=%d stripe=%d %s "
-                "genid=%llx->%llx oldest=%llx\n",
-                log, rec, rec->dtafile, rec->dtastripe, rec->table, rec->genid,
-                upd_ix->newgenid, log->impl->oldest_genid);
+        logmsg(LOGMSG_USER,
+               "TRK_LOG: log %p rec %p upd_ix file=%d stripe=%d %s "
+               "genid=%llx->%lx oldest=%llx\n",
+               log, rec, rec->dtafile, rec->dtastripe, rec->table, rec->genid,
+               upd_ix->newgenid, log->impl->oldest_genid);
 
     return 0;
 }
@@ -1389,8 +1390,9 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
             }
 
             if (trak & SQL_DBG_SHADOW) {
-                logmsg(LOGMSG_USER, "INSERTED DT[%d:%d]:\n\tkeylen=%d\n\tkey=\"", rec->dbnum,
-                       tableid, sizeof(genid));
+                logmsg(LOGMSG_USER,
+                       "INSERTED DT[%d:%d]:\n\tkeylen=%zu\n\tkey=\"",
+                       rec->dbnum, tableid, sizeof(genid));
                 hexdump((char *)&genid, sizeof(genid));
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtalen);
                 hexdump(dta, dtalen);

@@ -410,8 +410,8 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
 
     fragment = malloc(bdb_state->queue_item_sz);
     if (!fragment) {
-        logmsg(LOGMSG_ERROR, "bdb_queue_add_int: cannot malloc %u bytes\n",
-                bdb_state->queue_item_sz);
+        logmsg(LOGMSG_ERROR, "bdb_queue_add_int: cannot malloc %zu bytes\n",
+               bdb_state->queue_item_sz);
         *bdberr = BDBERR_MALLOC;
         return -1;
     }
@@ -1455,8 +1455,8 @@ lookagain:
                sizeof(db_recno_t) * hdr.num_fragments;
     p_item_buf_start = p_item_buf = malloc(item_len);
     if (!p_item_buf) {
-        logmsg(LOGMSG_ERROR, "bdb_queue_get_int: malloc %u bytes failed\n",
-                item_len);
+        logmsg(LOGMSG_ERROR, "bdb_queue_get_int: malloc %zu bytes failed\n",
+               item_len);
         dbcp->c_close(dbcp);
         if (tid && tmptid)
             tid->abort(tid);
@@ -1576,7 +1576,8 @@ lookagain:
                          * item must have been deleted by another thread
                          * since we started the scan).  Aternatively, and
                          * much worse, the queue may be corrupt.. */
-                        logmsg(LOGMSG_ERROR, "%s: item 0x%llx found only %u/%u fragments "
+                        logmsg(LOGMSG_ERROR,
+                               "%s: item 0x%llx found only %zu/%u fragments "
                                "(recnos",
                                __func__, item.genid, next_frag + 1,
                                item.num_fragments);
