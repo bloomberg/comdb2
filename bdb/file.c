@@ -3174,11 +3174,6 @@ done2:
     uint8_t *p_buf = (uint8_t *)&tmpnode;
     uint8_t *p_buf_end = ((uint8_t *)&tmpnode + sizeof(int));
 
-again:
-
-    buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf,
-            p_buf_end);
-
     /*
       PHASE 4:
       finally now that we believe we are caught up and are no longer lying
@@ -3186,9 +3181,6 @@ again:
       forward and wait for us to reach the same LSN.  when we pass this
       phase, we are truly cache coherent.
       */
-    int tmpnode, attempts = bdb_state->attr->startup_sync_attempts;
-    uint8_t *p_buf = (uint8_t *)&tmpnode;
-    uint8_t *p_buf_end = ((uint8_t *)&tmpnode + sizeof(int));
 
 again:
     buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf,

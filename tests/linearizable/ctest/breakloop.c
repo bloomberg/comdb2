@@ -63,6 +63,8 @@ int main(int argc, char *argv[])
     uint32_t flags = 0, start_time;
     struct nemesis *n = NULL;
 
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
     argv0 = argv[0];
 
     while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:W")) != EOF) {
