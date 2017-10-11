@@ -17,6 +17,8 @@ Cdb2jdbc is a JDBC Type 4 driver, which means that the driver is a platform-inde
 
 To check out the source, please follow [the instructions](install.html#installing-from-source).
 
+#### Maven
+
 To install cdb2jdbc from source, the following additional software packages are required:
 
 *   JDK 1.6 or above
@@ -38,7 +40,25 @@ The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cd
 Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jdbc` (JAR files will be written
 to `cdb2jdbc/maven.m2/repository/com/bloomberg/comdb2/cdb2jdbc/2.0.0/`)
 
+#### Gradle
 
+Another way to install cdb2jdbc from source is the gradle wrapper. The following software packages are required:
+
+*   JDK 1.7 or above
+
+> Note that existing installations of gradle and protocol buffers **are not** required for the gradle build
+
+Once you check out the source and have all the required software installed on the system, change directory to cdb2jdbc under comdb2 source and type `./gradlew install` or `./gradlew.bat install` for Windows.
+
+```shell
+cd cdb2jdbc
+./gradlew install
+```
+
+> Note that if you want to use an existing install of gradle instead, at least version 3.0 is required.
+
+cdb2jdbc should be successfully installed in your local Maven repository.
+The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
 
 ## Setting up Cdb2jdbc
 
@@ -63,6 +83,20 @@ An uber JAR is a JAR file which contains all its dependencies. To use the JAR wi
 
 ```shell
 export CLASSPATH=<path_to_the_uber_jar>:$CLASSPATH
+```
+
+### With Gradle
+
+To introduce cdb2jdbc in your applications as a Maven dependency, add the following to `build.gradle`, with the version available from your Maven repository.
+
+```groovy
+repositories {
+    mavenLocal()
+}
+
+dependencies {
+    compile 'com.bloomberg.comdb2:cdb2jdbc:major.minor.patch'
+}
 ```
 
 ## Using Cdb2jdbc
@@ -382,3 +416,4 @@ The following table shows how SQLSTATEs are mapped to SQLExceptions in cdb2jdbc.
 | 0A000 | SQLFeatureNotSupportedException | not supported |
 | 23000 | SQLIntegrityConstraintViolationException | constraint violations |
 | COMDB | SQLException | db errors |
+
