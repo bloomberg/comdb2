@@ -485,10 +485,11 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
                 cur->state->name);
     }
 
-    logmsg(LOGMSG_USER, "Table scan for table '%s' skipcount = %llu nextcount = %llu "
-            "ratio = %llu (threshold = %d)\n",
-            cur->state->name, skipcount, nextcount, ratio,
-            cur->state->attr->disable_pgorder_threshold);
+    logmsg(LOGMSG_USER,
+           "Table scan for table '%s' skipcount = %lu nextcount = %lu "
+           "ratio = %lu (threshold = %d)\n",
+           cur->state->name, skipcount, nextcount, ratio,
+           cur->state->attr->disable_pgorder_threshold);
 
     return 0;
 }
@@ -536,10 +537,11 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
 
     /* Ratio of skips to nexts */
     if (ratio > cur->state->attr->disable_pgorder_threshold) {
-        logmsg(LOGMSG_WARN, "Disable page-order tablescan for table %s skipcount = "
-                "%llu nextcount = %llu ratio = %llu%% threshold = %d%%\n",
-                cur->state->name, skipcount, nextcount, ratio,
-                cur->state->attr->disable_pgorder_threshold);
+        logmsg(LOGMSG_WARN,
+               "Disable page-order tablescan for table %s skipcount = "
+               "%lu nextcount = %lu ratio = %lu%% threshold = %d%%\n",
+               cur->state->name, skipcount, nextcount, ratio,
+               cur->state->attr->disable_pgorder_threshold);
 
         /* Disable pageorder tablescan */
         cur->state->disable_page_order_tablescan = 1;
@@ -600,7 +602,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     pcur_ifn = calloc(1, sizeof(bdb_cursor_ifn_t) + sizeof(bdb_cursor_impl_t));
     if (!pcur_ifn) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, sizeof(bdb_cursor_impl_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(bdb_cursor_impl_t));
         *bdberr = BDBERR_MALLOC;
         return NULL;
     }
@@ -639,8 +642,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
             cur->datacopy =
                 malloc(bdb_state->lrl + 2 * sizeof(unsigned long long));
             if (!cur->datacopy) {
-                logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__,
-                        bdb_state->lrl + 2 * sizeof(unsigned long long));
+                logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+                       bdb_state->lrl + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
                 return NULL;
             }

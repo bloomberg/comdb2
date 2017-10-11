@@ -99,8 +99,8 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
     }
 
     dbenv->prefaultiopool.guard = 0xabababab;
-    logmsg(LOGMSG_DEBUG, "&(dbenv->prefaultiopool.guard) = 0x%x\n",
-            &(dbenv->prefaultiopool.guard));
+    logmsg(LOGMSG_DEBUG, "&(dbenv->prefaultiopool.guard) = %p\n",
+           &(dbenv->prefaultiopool.guard));
 
     logmsg(LOGMSG_DEBUG, "prefault cond initialized\n");
     rc = pthread_cond_init(&dbenv->prefaultiopool.cond, NULL);
@@ -488,7 +488,7 @@ static void *prefault_io_thread(void *arg)
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
-    logmsg(LOGMSG_INFO, "io thread started as %d\n", pthread_self());
+    logmsg(LOGMSG_INFO, "io thread started as %lu\n", pthread_self());
 
     rc = pthread_setspecific(lockmgr_key, &lock_variable);
     if (rc != 0) {
@@ -500,8 +500,8 @@ static void *prefault_io_thread(void *arg)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %d\n",
-                pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
+               pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;

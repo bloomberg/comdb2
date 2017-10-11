@@ -502,7 +502,7 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
         return SC_INTERNAL_ERROR;
     } else {
         /* found some seed */
-        logmsg(LOGMSG_INFO, "stored seed %016llx, sc seed %016llx, stored host "
+        logmsg(LOGMSG_INFO, "stored seed %016llx, sc seed %016lx, stored host "
                             "%u, sc host %u\n",
                *stored_sc_genid, sc_seed, *stored_sc_host, sc_host);
         logmsg(

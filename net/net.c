@@ -777,7 +777,7 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
     }
 
     if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
-        logmsg(LOGMSG_USER, "Queing %d bytes %llu\n", insert->len, gettmms());
+        logmsg(LOGMSG_USER, "Queing %zu bytes %llu\n", insert->len, gettmms());
     host_node_ptr->enque_count++;
     if (host_node_ptr->enque_count > host_node_ptr->peak_enque_count) {
         host_node_ptr->peak_enque_count = host_node_ptr->enque_count;
@@ -1655,11 +1655,11 @@ static void net_throttle_wait_loop(netinfo_type *netinfo_ptr,
         add_millisecs_to_timespec(&waittime, 1000);
 
         if (loops > 0) {
-            logmsg(LOGMSG_ERROR, "%s thread %d waiting for net count to drop"
-                            " to %u enqueued buffers or %llu bytes (%d "
-                            "loops)\n",
-                    __func__, pthread_self(), queue_threshold, byte_threshold,
-                    loops);
+            logmsg(LOGMSG_ERROR, "%s thread %lu waiting for net count to drop"
+                                 " to %u enqueued buffers or %lu bytes (%d "
+                                 "loops)\n",
+                   __func__, pthread_self(), queue_threshold, byte_threshold,
+                   loops);
         }
 
         host_ptr->stats.throttle_waits++;
@@ -2409,11 +2409,11 @@ void print_all_udp_stat(netinfo_type *netinfo_ptr)
         char buf1[256];
 #ifdef UDP_DEBUG
         uint64_t recv = ptr->udp_info.recv;
-        printf("node:%s port:%5d recv:%7llu sent:%7llu %s\n", ptr->host, port,
+        printf("node:%s port:%5d recv:%7llu sent:%7lu %s\n", ptr->host, port,
                recv, sent, print_addr(&sin, buf1));
 #else
-        logmsg(LOGMSG_USER, "node:%s port:%5d sent:%7llu %s\n", ptr->host, port, sent,
-               print_addr(&sin, buf1));
+        logmsg(LOGMSG_USER, "node:%s port:%5d sent:%7lu %s\n", ptr->host, port,
+               sent, print_addr(&sin, buf1));
 #endif
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
@@ -2442,8 +2442,8 @@ void print_node_udp_stat(char *prefix, netinfo_type *netinfo_ptr,
     struct in_addr addr = host_node_ptr->addr;
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
-    logmsg(LOGMSG_USER, "%snode:%s port:%5d recv:%7llu sent:%7llu [%s]\n", prefix, host,
-           port, recv, sent, inet_ntoa(addr));
+    logmsg(LOGMSG_USER, "%snode:%s port:%5d recv:%7lu sent:%7lu [%s]\n", prefix,
+           host, port, recv, sent, inet_ntoa(addr));
 }
 
 ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
@@ -3954,8 +3954,9 @@ int net_send_decom_all(netinfo_type *netinfo_ptr, const char *decom_host)
         rc = net_send_decom(netinfo_ptr, decom_host, nodes[i]);
         if (rc != 0) {
             outrc++;
-            logmsg(LOGMSG_ERROR, "error rc=%d sending decom message to node %d\n",
-                    rc, nodes[i]);
+            logmsg(LOGMSG_ERROR,
+                   "error rc=%d sending decom message to node %s\n", rc,
+                   nodes[i]);
         }
     }
 
@@ -5406,9 +5407,9 @@ static void *connect_and_accept(void *arg)
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
         if (netnum < 0 || netnum >= netinfo_ptr->num_child_nets ||
             netinfo_ptr->child_nets[netnum] == NULL) {
-            logmsg(LOGMSG_ERROR, 
-                    "connect message for netnum %d, not not registered\n",
-                    netnum, netinfo_ptr->num_child_nets);
+            logmsg(LOGMSG_ERROR, "connect message for netnum %d, "
+                                 "num_child_nets %d, not not registered\n",
+                   netnum, netinfo_ptr->num_child_nets);
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return NULL;
         }

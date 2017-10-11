@@ -7072,7 +7072,8 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         thedb->bdb_env, tran, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
-        logmsg(LOGMSG_ERROR, "reload_schema handle %08x bdberr %d\n", newdb->handle, bdberr);
+        logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",
+               newdb->handle, bdberr);
         cheap_stack_trace();
         goto err;
     }

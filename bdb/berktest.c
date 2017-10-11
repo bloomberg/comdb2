@@ -228,8 +228,9 @@ static void run_test(berktable_t *tables, int tablecount, int txnsize,
     end = gettimeofday_ms();
 
     persecond = (1000 * totalrecs) / (end - start);
-    logmsg(LOGMSG_USER, "%llu records per second for txnsize %d, commit-delay %d "
-           "iterations: %d total time %llu\n",
+    logmsg(LOGMSG_USER,
+           "%lu records per second for txnsize %d, commit-delay %d "
+           "iterations: %d total time %lu\n",
            persecond, txnsize, commit_delay_ms, iterations, end - start);
     fflush(stdout);
 }
