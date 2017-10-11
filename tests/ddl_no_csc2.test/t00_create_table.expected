@@ -620,3 +620,17 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" (i, j);', csc2=NULL)
+(rows inserted=1)
+(i=1, j=1)
+(rows inserted=1)
+(i=1, j=1)
+[CREATE TABLE t1(i INT, c CHAR(100) DEFAULT 0)] failed with rc 304 Error at line   4: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: c
+(rows inserted=1)
+(i=1, c='foo')
+(rows inserted=1)
+(rows inserted=1)
+(COUNT(*) = 2=1)
+[CREATE TABLE t1(i INT, d INTERVALDS DEFAULT '1 11:11:11.111')] failed with rc 304 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
+[CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 304 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
+(rows inserted=1)
+(i=1, f1=1.100000, f2=1.100000, f3=1.100000)
