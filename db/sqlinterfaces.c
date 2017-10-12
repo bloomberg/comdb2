@@ -8744,6 +8744,8 @@ int blockproc2sql_error(int rc, const char *func, int line)
         return DB_ERR_TRN_DB_FAIL;
     case 230:
         return DB_ERR_TRN_NOT_SERIAL;
+    case 240:
+        return DB_ERR_TRN_SC;
     case 301:
         return DB_ERR_CONV_FAIL;
     case 998:

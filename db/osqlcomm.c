@@ -6424,7 +6424,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         char *tablename;
 
         tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-        bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
+        bdb_lock_tablename_read(thedb->bdb_env, tablename,
+                                iq->tranddl ? bdb_get_physical_tran(trans)
+                                            : trans);
 
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_USEDB %*.s\n", rqid,

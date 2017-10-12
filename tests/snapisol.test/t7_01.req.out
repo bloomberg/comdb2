@@ -1,0 +1,40 @@
+done
+done
+done
+done
+(rows inserted=1)
+done
+done
+done
+done
+done
+done
+(a=2)
+done
+(a=1)
+done
+done
+[commit] failed with rc 240 cannot add new field without dbstore or null
+done
+done
+(a=1)
+done
+(a=1)
+done
+done
+done
+done
+(a=10)
+done
+done
+(a=20)
+done
+done
+done
+done
+[commit] failed with rc 240 stale table version for schema change
+done
+(a=10)
+done
+(csc2='schema {int a int b null=yes}')
+done

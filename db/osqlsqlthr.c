@@ -598,6 +598,10 @@ again:
         logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__, sentops);
         return rc;
     }
+    if (rc == ERR_SC) {
+        logmsg(LOGMSG_ERROR, "%s: schema change error\n", __func__);
+        return rc;
+    }
 
     /* selectv skip optimization, not an error */
     if (unlikely(rc == -2 || rc == -3))
@@ -742,7 +746,8 @@ retry:
                         rc = osql_sock_restart(
                             clnt, 1,
                             1 /*no new rqid*/); /* retry at higher level */
-                        if (rc != SQLITE_TOOBIG) goto retry;
+                        if (rc != SQLITE_TOOBIG && rc != ERR_SC)
+                            goto retry;
                     }
                 }
                 /* transaction failed on the master, abort here as well */
@@ -964,14 +969,16 @@ static int should_restart(struct sqlclntstate *clnt, int rc)
         rc = osql_sock_restart(clnt, gbl_survive_n_master_swings,              \
                                0 /*new rqid*/);                                \
         if (rc) {                                                              \
-            logmsg(LOGMSG_ERROR, "%s: failed to restart socksql session rc=%d\n",   \
-                    __func__, rc);                                             \
+            logmsg(LOGMSG_ERROR,                                               \
+                   "%s: failed to restart socksql session rc=%d\n", __func__,  \
+                   rc);                                                        \
         }                                                                      \
     }                                                                          \
     if (rc) {                                                                  \
-        logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode rc=%d!\n",    \
-            __func__, rc);                                                     \
-        if (rc != SQLITE_TOOBIG)                                               \
+        logmsg(LOGMSG_ERROR,                                                   \
+               "%s: error writting record to master in offload mode rc=%d!\n", \
+               __func__, rc);                                                  \
+        if (rc != SQLITE_TOOBIG && rc != ERR_SC)                               \
             rc = SQLITE_INTERNAL;                                              \
     } else {                                                                   \
         rc = SQLITE_OK;                                                        \
@@ -1661,31 +1668,39 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     } else {
         free(tblname);
     }
-    int rc = osql_save_schemachange(thd, sc);
+    int rc = osql_save_schemachange(thd, sc, usedb);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
                __FILE__, __LINE__, __func__, rc);
+        return rc;
     }
-    if (usedb) {
-        unsigned long long version = 0;
-        if (getdbidxbyname(sc->table) < 0) { // view
-            char *viewname = timepart_newest_shard(sc->table, &version);
-            if (viewname) {
-                free(viewname);
-            } else
-                usedb = 0;
-        } else {
-            version = comdb2_table_version(tblname);
-        }
+    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+        if (usedb) {
+            unsigned long long version = 0;
+            if (getdbidxbyname(sc->table) < 0) { // view
+                char *viewname = timepart_newest_shard(sc->table, &version);
+                if (viewname) {
+                    free(viewname);
+                } else
+                    usedb = 0;
+            } else {
+                version = comdb2_table_version(tblname);
+            }
 
-        if (usedb)
-            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
-                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb, version);
-    }
-    if (rc == SQLITE_OK) {
-        rc = osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,
-                                    sc, NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+            if (usedb) {
+                rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
+                                     tblname, NET_OSQL_BLOCK_RPL_UUID,
+                                     osql->logsb, version);
+                RESTART_SOCKSQL;
+            }
+        }
+        if (rc == SQLITE_OK) {
+            rc = osql_send_schemachange(host, rqid,
+                                        thd->sqlclntstate->osql.uuid, sc,
+                                        NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+            RESTART_SOCKSQL;
+        }
     }
     return rc;
 }

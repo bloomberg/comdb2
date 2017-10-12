@@ -1,4 +1,4 @@
-[ALTER TABLE t1 ADD COLUMN k INT NOT NULL] failed with rc 304 
+[ALTER TABLE t1 ADD COLUMN k INT NOT NULL] failed with rc 240 cannot add new field without dbstore or null
 [ALTER TABLE t2 DROP COLUMN doesnotexist] failed with rc -3 Column 'doesnotexist' not found.
 [ALTER TABLE t2 DROP COLUMN `j`] failed with rc -3 Table must have at least one column.
 (tablename='t1')
