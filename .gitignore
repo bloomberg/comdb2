@@ -193,6 +193,7 @@ tests/tools/bound
 tests/tools/localrep
 tests/tools/utf8
 tests/tools/crle
+tests/tools/cdb2api_caller
 
 # jepsen c test
 jepsen/ctest/test*

@@ -10,13 +10,20 @@ export SRCHOME
 
 export TESTID:=$(shell tools/get_random.sh)
 export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
-# List of all available tests
-export ALL_TESTS:=$(shell tools/get_tests_inorder.sh)
 # List of disabled tests
 export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+# List of all tests that need to run. This is essentially a list of all
+# non-disabled tests.
+export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
+    $(shell tools/get_tests_inorder.sh)))
 
-# Run all non-disabled tests
-all_tests: $(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), $(ALL_TESTS)))
+TOTAL=$(words $(MAKECMDGOALS))
+ifeq ($(TOTAL),0)
+TOTAL=$(words $(ALL_TESTS))
+endif
+
+# Run all non-disabled tests.
+all_tests: $(ALL_TESTS)
 
 # get md5sum of executable use check when running every test in a series
 export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
@@ -45,9 +52,7 @@ ifeq ($(wildcard $(PMUX_EXE)),)
   $(error $(PMUX_EXE) missing, please run make in $(SRCHOME))
 endif
 
-
 export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
-
 
 basicops_nokey:
 	$(shell mkdir -p ${TESTDIR})
@@ -65,12 +70,6 @@ basicops_nokey:
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
 	@echo "Disabled test: $(sort ${DISABLED_TESTS})"
-
-TOTAL=$(words $(MAKECMDGOALS))
-ifeq ($(TOTAL),0)
-TOTAL=$(shell ls -1d *.test | wc -l)
-endif
-
 
 .PHONY: tools
 
@@ -117,7 +116,6 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 	rm -fr dbs
 	rm -f $(TMPDIR)/cdb2test*
 	$(MAKE) -C tools clean
-
 
 clean: testclean
 
