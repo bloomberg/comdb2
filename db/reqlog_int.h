@@ -61,6 +61,9 @@ struct tablelist {
     char name[1];
 };
 
+
+#define FINGERPRINTSZ 16
+
 struct reqlogger {
     char origin[128];
 
@@ -110,7 +113,7 @@ struct reqlogger {
     uint64_t durationus;
     int vreplays;
     uint64_t queuetimeus;
-    char fingerprint[16];
+    char fingerprint[FINGERPRINTSZ];
     int have_fingerprint;
     char id[41];
     int have_id;

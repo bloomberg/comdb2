@@ -4031,6 +4031,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
+
+    if(rec->sql)
+        reqlog_set_sql(thd->logger, rec->sql);
     const char *tail = NULL;
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
@@ -4048,7 +4051,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->stmt) {
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
-        reqlog_set_sql(thd->logger, rec->sql);
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = FSQL_PREPARE;
