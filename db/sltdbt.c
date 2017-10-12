@@ -417,6 +417,8 @@ int handle_ireq(struct ireq *iq)
                         }
                     }
 
+                    iq->usedb = iq->origdb;
+
                     n_retries++;
                     poll(0, 0, (rand() % 25 + 1));
                     goto retry;
