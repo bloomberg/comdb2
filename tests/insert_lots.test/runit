@@ -208,11 +208,12 @@ assertres ()
 }
 
 echo $CDB2_CONFIG
-THRDS=500
-CNT=1000000
+THRDS=20
+CNT=100
+ITERATIONS=500
 
-./insert_lots_mt $dbnm $THRDS $CNT > ins.out
+./insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS> ins.out
 
-assertcnt $((THRDS * CNT))
+assertcnt $((THRDS * CNT * ITERATIONS))
 
 echo "Success"

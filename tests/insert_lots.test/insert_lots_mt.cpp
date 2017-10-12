@@ -82,10 +82,13 @@ void add_param(std::string &sp, std::string &sql, std::vector<int> &types, std::
     types.push_back(CDB2_CSTRING);
 }
 char * dbname;
-unsigned int numthreads;
-unsigned int cntperthread;
 const char *table = "t1";
 
+typedef struct {
+    unsigned int thrid;
+    unsigned int start;
+    unsigned int count;
+} thr_info_t;
 
 void *thr(void *arg)
 {
@@ -102,14 +105,16 @@ void *thr(void *arg)
         fprintf(stderr, "cdb2_open failed: %d\n", rc);
     }
 
-    int i = (unsigned long long int) arg;
+    thr_info_t *tinfo = (thr_info_t *)arg;
+    int i = tinfo->thrid;
     
     std::ostringstream ss;
     ss << "insert into " << table << "(i, j) values (@i, @j)" ;
     std::string s = ss.str();
 
     // insert records with bind params
-    for (unsigned int j = 0; j < cntperthread; j++) {
+    int count = 0;
+    for (unsigned int j = tinfo->start; j < tinfo->start + tinfo->count; j++) {
         std::vector<int> types;
         if(cdb2_bind_param(db, "i", CDB2_INTEGER, &i, sizeof(i)) )
             fprintf(stderr, "Error binding i.\n");
@@ -123,7 +128,7 @@ void *thr(void *arg)
 
         //runtag(db, s, types);
         cdb2_clearbindings(db);
-        if((j & 0x0f) == 0) std::cout << "Thr " << i << " Items " << j << std::endl;
+        if((++count & 0xff) == 0) std::cout << "Thr " << i << " Items " << count << std::endl;
     }
 
     cdb2_close(db);
@@ -133,24 +138,33 @@ void *thr(void *arg)
 
 int main(int argc, char *argv[])
 {
-    if(argc < 4) {
-        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD\n", argv[0]);
+    if(argc < 5) {
+        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD ITERATIONS\n", argv[0]);
         return 1;
     }
 
     dbname = argv[1];
-    numthreads = atoi(argv[2]);
-    cntperthread = atoi(argv[3]);
+    unsigned int numthreads = atoi(argv[2]);
+    unsigned int cntperthread = atoi(argv[3]);
+    unsigned int iterations = atoi(argv[4]);
 
-    fprintf(stderr, "starting %d threads\n", numthreads);
     pthread_t *t = (pthread_t *) alloca(sizeof(pthread_t) * numthreads);
-    /* create threads */
-    for (unsigned long long i = 0; i < numthreads; ++i)
-        pthread_create(&t[i], NULL, thr, (void *)i);
+    thr_info_t *tinfo = (thr_info_t *) alloca(sizeof(thr_info_t) * numthreads);
+    for(unsigned int it = 0; it < iterations; it++) {
+        fprintf(stderr, "starting %d threads\n", numthreads);
 
-    void *r;
-    for (unsigned int i = 0; i < numthreads; ++i)
-        pthread_join(t[i], &r);
+        /* create threads */
+        for (unsigned long long i = 0; i < numthreads; ++i) {
+            tinfo[i].thrid = i;
+            tinfo[i].start = it * cntperthread + 1;
+            tinfo[i].count = cntperthread;
+            pthread_create(&t[i], NULL, thr, (void *)&tinfo[i]);
+        }
+
+        void *r;
+        for (unsigned int i = 0; i < numthreads; ++i)
+            pthread_join(t[i], &r);
+    }
     std::cout << "Done Main" << std::endl;
     return 0;
 }
