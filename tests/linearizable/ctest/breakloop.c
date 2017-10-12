@@ -25,6 +25,9 @@ enum eventtypes {
     CLOCK_EVENT = 0x00000004
 };
 
+#define ANSI_COLOR_RED     "\x1b[31;1m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 int runtime = 0;
 int max_clock_skew = 60;
 
@@ -39,6 +42,12 @@ int max_retries = 1000000;
 int debug_trace = 0;
 int nemesis_length = 10;
 int sleep_time = 30;
+int colored_output = 0;
+static int maxmon = 0;
+static int curmon = 0;
+static char **monfile = NULL;
+static FILE **monfps = NULL;
+static char **montext = NULL;
 
 void usage(FILE *f)
 {
@@ -52,9 +61,49 @@ void usage(FILE *f)
     fprintf(f, "        -M                  - partition the master\n");
     fprintf(f, "        -W                  - partition by port\n");
     fprintf(f, "        -D                  - enable debug trace\n");
+    fprintf(f, "        -C                  - use colored output\n");
+    fprintf(f, "        -m <file>           - add <file> to monitored files\n");
     fprintf(f, "        -r <runtime>        - set runtime in seconds\n");
     fprintf(f, "        -n <nemesis-length> - length of nemesis event\n");
     fprintf(f, "        -s <sleep-time>     - sleep between nemesis\n");
+}
+
+
+static void block_on_monitored_files(void)
+{
+    for (int i = 0 ; i < curmon; i++) {
+        if (monfps[i] == NULL) {
+            monfps[i] = fopen(monfile[i], "r");
+        }
+        if (monfps[i]) {
+            char chk[1024] = {0};
+            int waited = 0;
+            rewind(monfps[i]);
+            fread(chk, sizeof(chk), 1, monfps[i]);
+            while (montext[i] && !strcmp(montext[i], chk)) {
+                if (colored_output) {
+                    fprintf(stderr, ANSI_COLOR_RED "Waiting for monfile '%s' to change" 
+                            ANSI_COLOR_RESET "\n", monfile[i]);
+                }
+                else {
+                    fprintf(stderr, "Waiting for monfile '%s' to change\n", monfile[i]);
+                }
+                waited = 1;
+                sleep (1);
+                rewind(monfps[i]);
+                fread(chk, sizeof(chk), 1, monfps[i]);
+            }
+            if (waited) {
+                fprintf(stderr, "Monfile '%s' updated\n", monfile[i]);
+            }
+            if (montext[i]) 
+                free(montext[i]);
+            montext[i] = strdup(chk);
+        }
+        else {
+            fprintf(stderr, "Skipping unopened file '%s'\n", monfile[i]);
+        }
+    }
 }
 
 int main(int argc, char *argv[])
@@ -67,10 +116,11 @@ int main(int argc, char *argv[])
     setvbuf(stderr, NULL, _IOLBF, 0);
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:W")) != EOF) {
+    while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:Wm:C")) != EOF) {
         switch (c) {
         case 'd': dbname = optarg; break;
         case 'c': cdb2_set_comdb2db_config(optarg); break;
+        case 'C': colored_output = 1; break;
         case 'G':
             if (0 == strcasecmp(optarg, "partition")) {
                 which_events |= PARTITION_EVENT;
@@ -82,6 +132,15 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "Unknown test: %s\n", optarg);
                 errors++;
             }
+            break;
+        case 'm':
+            if (curmon == maxmon) {
+                maxmon = (maxmon ? maxmon << 1 : 10);
+                monfile = realloc(monfile, sizeof(char *) * maxmon);
+                montext = realloc(montext, sizeof(char *) * maxmon);
+                monfps = realloc(monfps, sizeof(FILE *) * maxmon);
+            }
+            monfile[curmon++] = strdup(optarg);
             break;
         case 't': cltype = optarg; break;
         case 'M': partition_master = 1; break;
@@ -156,7 +215,16 @@ int main(int argc, char *argv[])
         if (which_events & CLOCK_EVENT) {
             fixclocks(n);
         }
+
+        if (curmon) {
+            block_on_monitored_files();
+        }
+
         if (sleep_time > 0) sleep(sleep_time);
+
+        if (curmon) {
+            block_on_monitored_files();
+        }
     }
 
     printf("done\n");

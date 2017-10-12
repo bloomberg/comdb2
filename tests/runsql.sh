@@ -4,6 +4,8 @@ db=$1
 n=$2
 sleeptime=${3:-1}
 ccreq=${4:-1}
+cntfile=$db.$n
+totcnt=0
 
 /home/mhannum/comdb2/cdb2sql $db @$n "create table t1 { schema { int a } }" >/dev/null 2>&1
 
@@ -23,7 +25,9 @@ while :; do
     while [[ $cnt -lt $ccreq ]]; do
         ( dbreq ) &
         let cnt=cnt+1
+        let totcnt=totcnt+1
     done
     wait
+    echo $totcnt > $cntfile
     sleep $sleeptime
 done | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }'

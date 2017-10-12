@@ -1,4 +1,5 @@
 /*- * See the file LICENSE for redistribution information.
+    
  *
  * Copyright (c) 2001-2003
  *	Sleepycat Software.  All rights reserved.
@@ -334,6 +335,19 @@ matchable_log_type(int rectype)
  * PUBLIC:     DB_LSN *, uint32_t *));
  */
 
+#define PRINT_RETURN(retrc, fromline)  \
+do {                            \
+    static uint32_t lastpr = 0; \
+    static uint32_t count = 0;  \
+    uint32_t now = time(NULL);  \
+    count++;                    \
+    if (now - lastpr) {         \
+        logmsg(LOGMSG_ERROR, "td %u %s line %d from line %d returning %d, count=%u\n", \
+                (uint32_t)pthread_self(), __func__, __LINE__, retrc, count);  \
+    }                           \
+    return retrc;               \
+} while(0);
+
 int
 __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	DB_ENV *dbenv;
@@ -342,6 +356,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 {
+    int fromln;
 	DB_LOG *dblp;
 	DB_LOGC *logc;
 	DB_LSN endlsn, lsn, oldfilelsn, tmplsn;
@@ -421,9 +436,9 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 			if (ret_lsnp != NULL) {
 				*ret_lsnp = rp->lsn;
 			}
-			return (DB_REP_NOTPERM);
+			PRINT_RETURN (DB_REP_NOTPERM);
 		} else
-			return (0);
+			PRINT_RETURN (0);
 	}
 	if (rep->in_recovery != 0) {
 		/*
@@ -432,7 +447,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		 */
 		rep->stat.st_msgs_recover++;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		return (0);
+		PRINT_RETURN (0);
 	}
 	rep->msg_th++;
 	gen = rep->gen;
@@ -1588,7 +1603,7 @@ errlock:
 errunlock:
 	rep->msg_th--;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	return (ret);
+	PRINT_RETURN (ret);
 }
 
 /* Disabled by default, can enable in lrl */
