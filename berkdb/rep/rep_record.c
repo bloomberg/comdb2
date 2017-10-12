@@ -834,7 +834,13 @@ send:			if (__rep_send_message(dbenv,
 			if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
 								   commit_gen)) != 0)
 				goto errlock;
-		}
+		} else {
+            (void)__rep_send_message(dbenv,
+                    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);
+                fromline = __LINE__;
+                goto errlock;
+        }
+
 		if (rp->rectype == REP_LOG_MORE) {
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 			master = rep->master_id;
