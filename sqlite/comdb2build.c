@@ -466,35 +466,20 @@ void free_rstMsg(struct rstMsg* rec)
 */
 int comdb2SendBpfunc(OpFunc *f)
 {
-   struct sql_thread    *thd = pthread_getspecific(query_info_key);
-   struct sqlclntstate  *clnt = thd->sqlclntstate;
-   osqlstate_t          *osql = &clnt->osql;
-   char                 *node = osql->host;
+   struct sql_thread *thd = pthread_getspecific(query_info_key);
    int rc = 0;
-   
    BpfuncArg *arg = (BpfuncArg*)f->arg;
 
-   //osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
-
-   rc = osql_send_bpfunc(node, osql->rqid, osql->uuid, arg, NET_OSQL_SOCK_RPL,osql->logsb);
-   
-   //rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
-
-   rc = osql->xerr.errval;
-   osql->xerr.errval = 0;
-   osql->xerr.errstr[0] = '\0';
+   rc = osql_bpfunc_logic(thd, arg);
     
-    
-    if (rc)
-    {
-        f->rc = rc;
-        f->errorMsg = "FAIL"; // TODO This must be translated to a description
-    } else
-    {
-        f->rc = SQLITE_OK;
-        f->errorMsg = "";
-    } 
-   return rc;
+   if (rc) {
+       f->rc = rc;
+       f->errorMsg = "FAIL"; // TODO This must be translated to a description
+   } else {
+       f->rc = SQLITE_OK;
+       f->errorMsg = "";
+   }
+   return f->rc;
 }
 
 

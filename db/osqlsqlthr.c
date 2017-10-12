@@ -45,6 +45,7 @@
 #include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "nodemap.h"
+#include <bpfunc.h>
 
 #include "debug_switches.h"
 #include <net_types.h>
@@ -1701,6 +1702,35 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                                         NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
             RESTART_SOCKSQL;
         }
+    }
+    return rc;
+}
+
+/**
+ *
+ * Process a bpfunc request
+ * Returns SQLITE_OK if successful.
+ *
+ */
+int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
+{
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &clnt->osql;
+    char *host = thd->sqlclntstate->osql.host;
+    unsigned long long rqid = thd->sqlclntstate->osql.rqid;
+    int rc;
+
+    rc = osql_save_bpfunc(thd, arg);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d %s - failed to cache socksql bpfunc rc=%d\n", __FILE__,
+               __LINE__, __func__, rc);
+        return rc;
+    }
+    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_send_bpfunc(host, rqid, thd->sqlclntstate->osql.uuid, arg,
+                              NET_OSQL_SOCK_RPL, osql->logsb);
+        RESTART_SOCKSQL;
     }
     return rc;
 }

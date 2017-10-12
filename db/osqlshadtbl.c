@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <list.h>
 #include <plhash.h>
+#include <bpfunc.h>
 
 #include <genid.h>
 #include <net_types.h>
@@ -84,6 +85,7 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
 static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
                                            int *bdberr);
 static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr);
+static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr);
 static int process_local_shadtbl_dbq(struct sqlclntstate *, int *bdberr,
                                      int *crt_nops);
 
@@ -96,15 +98,21 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
 static int blb_tbl_cmp(void *, int, const void *, int, const void *);
 static int idx_tbl_cmp(void *, int, const void *, int, const void *);
 
-static int osql_create_verify(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr);
-static int osql_destroy_verify(bdb_state_type *bdb_state,
-                               struct sqlclntstate *clnt);
+static int osql_create_verify_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr);
+static int osql_destroy_verify_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt);
 
-static int osql_create_schemachange(bdb_state_type *bdb_state,
-                                    struct sqlclntstate *clnt, int *bdberr);
-static int osql_destroy_schemachange(bdb_state_type *bdb_state,
-                                     struct sqlclntstate *clnt);
+static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
+                                            struct sqlclntstate *clnt,
+                                            int *bdberr);
+static int osql_destroy_schemachange_temptbl(bdb_state_type *bdb_state,
+                                             struct sqlclntstate *clnt);
+
+static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr);
+static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt);
 
 static int free_it(void *obj, void *arg)
 {
@@ -316,27 +324,8 @@ int osql_shadtbl_reset_for_selectv(struct sqlclntstate *clnt)
             return -1;
         }
     }
-    /* close sc cursor but keep table */
-    if (osql->sc_cur) {
-        rc = bdb_temp_table_close_cursor(thedb->bdb_env, osql->sc_cur, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: bdb_temp_table_close failed, rc=%d bdberr=%d\n",
-                   __func__, rc, bdberr);
-            return -1;
-        }
-
-        /* new code doesn't open the cursor unless I am saving in it */
-        osql->sc_cur =
-            bdb_temp_table_cursor(thedb->bdb_env, osql->sc_tbl, NULL, &bdberr);
-        if (!osql->sc_cur) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: bdb_temp_table_cursor failed, bdberr=%d\n", __func__,
-                   bdberr);
-            bdb_temp_table_close(thedb->bdb_env, osql->sc_tbl, &bdberr);
-            return -1;
-        }
-    }
+    osql_destroy_schemachange_temptbl(thedb->bdb_env, clnt);
+    osql_destroy_bpfunc_temptbl(thedb->bdb_env, clnt);
 
     LISTC_FOR_EACH_SAFE(&osql->shadtbls, tbl, tmp, linkv)
     {
@@ -1396,7 +1385,7 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
      */
     if (!osql->dirty &&
         !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP) &&
-        !osql->sc_tbl) {
+        !osql->sc_tbl && !osql->bpfunc_tbl) {
         return -3;
     }
 
@@ -1407,9 +1396,14 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
     rc = process_local_shadtbl_recgenids(clnt, bdberr);
     if (rc)
         return -1;
+
     rc = process_local_shadtbl_sc(clnt, bdberr);
     if (rc == ERR_SC)
         return ERR_SC;
+    if (rc)
+        return -1;
+
+    rc = process_local_shadtbl_bpfunc(clnt, bdberr);
     if (rc)
         return -1;
 
@@ -1480,6 +1474,12 @@ int osql_shadtbl_cleartbls(struct sqlclntstate *clnt)
     if (osql->sc_tbl) {
         truncate_tablecursor(thedb->bdb_env, &osql->sc_cur, osql->sc_tbl,
                              &bdberr);
+    }
+    /* reset the bpfunc */
+    if (osql->bpfunc_tbl) {
+        truncate_tablecursor(thedb->bdb_env, &osql->bpfunc_cur,
+                             osql->bpfunc_tbl, &bdberr);
+        osql->bpfunc_seq = 0;
     }
 
     /* close the temporary bdb structures first */
@@ -2204,9 +2204,10 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     shad_tbl_t *tbl = NULL, *tmp = NULL;
 
-    osql_destroy_verify(thedb->bdb_env, clnt);
+    osql_destroy_verify_temptbl(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);
-    osql_destroy_schemachange(thedb->bdb_env, clnt);
+    osql_destroy_schemachange_temptbl(thedb->bdb_env, clnt);
+    osql_destroy_bpfunc_temptbl(thedb->bdb_env, clnt);
 
     LISTC_FOR_EACH_SAFE(&osql->shadtbls, tbl, tmp, linkv)
     {
@@ -2255,6 +2256,9 @@ int osql_shadtbl_begin_query(bdb_state_type *bdb_env, struct sqlclntstate *clnt)
                                &osql->verify_cur))
         return -1;
     if (reopen_shadtbl_cursors(bdb_env, osql, osql->sc_tbl, &osql->sc_cur))
+        return -1;
+    if (reopen_shadtbl_cursors(bdb_env, osql, osql->bpfunc_tbl,
+                               &osql->bpfunc_cur))
         return -1;
 
     /* close the temporary bdb structures first */
@@ -2319,6 +2323,7 @@ int osql_shadtbl_done_query(bdb_state_type *bdb_env, struct sqlclntstate *clnt)
     /*printf( "Cleaning %d locals\n", osql->shadtbls.count); */
     close_shadtbl_cursors(bdb_env, osql, osql->verify_tbl, &osql->verify_cur);
     close_shadtbl_cursors(bdb_env, osql, osql->sc_tbl, &osql->sc_cur);
+    close_shadtbl_cursors(bdb_env, osql, osql->bpfunc_tbl, &osql->bpfunc_cur);
 
     /* close the temporary bdb structures first */
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
@@ -2498,7 +2503,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 
     /*create a common verify */
     if (!osql->verify_tbl) {
-        rc = osql_create_verify(thedb->bdb_env, thd->sqlclntstate, &bdberr);
+        rc = osql_create_verify_temptbl(thedb->bdb_env, thd->sqlclntstate,
+                                        &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create verify rc=%d bdberr=%d\n",
                     __func__, rc, bdberr);
@@ -2651,8 +2657,8 @@ int osql_save_schemachange(struct sql_thread *thd,
         return 0;
 
     if (!osql->sc_tbl) {
-        rc = osql_create_schemachange(thedb->bdb_env, thd->sqlclntstate,
-                                      &bdberr);
+        rc = osql_create_schemachange_temptbl(thedb->bdb_env, thd->sqlclntstate,
+                                              &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to create sc rc=%d bdberr=%d\n",
                    __func__, rc, bdberr);
@@ -2780,6 +2786,114 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
     return rc;
 }
 
+int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg)
+{
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    int rc = 0;
+    int bdberr = 0;
+    void *bpfunc_data = NULL;
+    size_t bpfunc_data_len = bpfunc_arg__get_packed_size(arg);
+
+    if (!osql->bpfunc_tbl) {
+        rc = osql_create_bpfunc_temptbl(thedb->bdb_env, thd->sqlclntstate,
+                                        &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to create bpfunc table rc=%d bdberr=%d\n",
+                   __func__, rc, bdberr);
+            return -1;
+        }
+    }
+
+    if (!osql->bpfunc_tbl || !osql->bpfunc_cur) {
+        logmsg(LOGMSG_ERROR, "%s: error getting bpfunc shadow table\n",
+               __func__);
+        return -1;
+    }
+
+    bpfunc_data = malloc(bpfunc_data_len);
+    if (!bpfunc_data) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %ld\n", __func__,
+               bpfunc_data_len);
+        return -1;
+    }
+    bpfunc_arg__pack(arg, bpfunc_data);
+
+    rc = bdb_temp_table_put(thedb->bdb_env, osql->bpfunc_tbl, &osql->bpfunc_seq,
+                            sizeof(int), bpfunc_data, bpfunc_data_len, NULL,
+                            &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: error saving to bpfunc shadow table\n",
+               __func__);
+    }
+    osql->bpfunc_seq++;
+
+    free(bpfunc_data);
+    return 0;
+}
+
+static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr)
+{
+    osqlstate_t *osql = &clnt->osql;
+    int rc = 0;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    struct temp_cursor *cur = osql->bpfunc_cur;
+    void *bpfunc_data = NULL;
+    size_t bpfunc_data_len;
+
+    if (!cur) {
+        return 0;
+    }
+
+    rc = bdb_temp_table_first(bdb_state, cur, bdberr);
+    if (rc == IX_EMPTY)
+        return 0;
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n", __func__,
+               rc, *bdberr);
+        return SQLITE_INTERNAL;
+    }
+
+    while (rc == 0) {
+        bpfunc_t *func = NULL;
+        bpfunc_info info;
+        bpfunc_data = bdb_temp_table_data(cur);
+        bpfunc_data_len = bdb_temp_table_datasize(cur);
+
+        rc = bpfunc_prepare(&func, bpfunc_data_len, bpfunc_data, &info);
+        if (rc) {
+            free_bpfunc(func);
+            logmsg(LOGMSG_ERROR, "%s: failed to prepare bpfunc\n", __func__);
+            return -1;
+        }
+
+        rc = osql_send_bpfunc(osql->host, osql->rqid, osql->uuid, func->arg,
+                              NET_OSQL_SOCK_RPL, osql->logsb);
+        free_bpfunc(func);
+
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: error writting record to master in offload mode!\n",
+                   __func__);
+            return SQLITE_INTERNAL;
+        }
+
+        rc = bdb_temp_table_next(bdb_state, cur, bdberr);
+    }
+
+    if (rc == IX_PASTEOF || rc == IX_EMPTY) {
+        rc = 0;
+    } else {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n", __func__,
+               __LINE__, rc, *bdberr);
+        /* fall-through */
+    }
+
+    return rc;
+}
 /**
  *  Check of a shadow table transaction has cached selectv records
  *
@@ -2860,40 +2974,59 @@ static int osql_destroy_temptbl(bdb_state_type *bdb_state,
     return 0; /* not sure what value is returning rc at this point */
 }
 
-static int osql_create_verify(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt, int *bdberr)
+static int osql_create_verify_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_create_temptbl(bdb_state, &osql->verify_tbl, &osql->verify_cur,
                                bdberr);
 }
 
-static int osql_destroy_verify(bdb_state_type *bdb_state,
-                               struct sqlclntstate *clnt)
+static int osql_destroy_verify_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_destroy_temptbl(bdb_state, &osql->verify_tbl,
                                 &osql->verify_cur);
 }
 
-static int osql_create_schemachange(bdb_state_type *bdb_state,
-                                    struct sqlclntstate *clnt, int *bdberr)
+static int osql_create_schemachange_temptbl(bdb_state_type *bdb_state,
+                                            struct sqlclntstate *clnt,
+                                            int *bdberr)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_create_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur, bdberr);
 }
 
-int osql_destroy_schemachange(bdb_state_type *bdb_state,
-                              struct sqlclntstate *clnt)
+static int osql_destroy_schemachange_temptbl(bdb_state_type *bdb_state,
+                                             struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
     return osql_destroy_temptbl(bdb_state, &osql->sc_tbl, &osql->sc_cur);
 }
 
+static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                      struct sqlclntstate *clnt, int *bdberr)
+{
+    osqlstate_t *osql = &clnt->osql;
+    osql->bpfunc_seq = 0;
+    return osql_create_temptbl(bdb_state, &osql->bpfunc_tbl, &osql->bpfunc_cur,
+                               bdberr);
+}
+
+static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
+                                       struct sqlclntstate *clnt)
+{
+    osqlstate_t *osql = &clnt->osql;
+    osql->bpfunc_seq = 0;
+    return osql_destroy_temptbl(bdb_state, &osql->bpfunc_tbl,
+                                &osql->bpfunc_cur);
+}
+
 int osql_shadtbl_empty(struct sqlclntstate *clnt)
 {
     return LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
-           !clnt->osql.sc_tbl;
+           !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl;
 }
 
 int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
@@ -2907,7 +3040,7 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
     char *data = NULL;
     int datalen = 0;
     if (LIST_EMPTY(&clnt->osql.shadtbls) && !clnt->osql.verify_tbl &&
-        !clnt->osql.sc_tbl)
+        !clnt->osql.sc_tbl && !clnt->osql.bpfunc_tbl)
         return 1;
     LISTC_FOR_EACH(&osql->shadtbls, tbl, linkv)
     {

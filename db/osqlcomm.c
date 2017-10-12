@@ -7115,7 +7115,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             bpfunc_info info;
 
             info.iq = iq;
-            int rst = bpfunc_prepare(&func, trans, rpl->data_len, rpl->data, &info);
+            int rst = bpfunc_prepare(&func, rpl->data_len, rpl->data, &info);
             if (!rst)
                 rc = func->exec(trans, func, err);
 
@@ -7126,8 +7126,12 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 assert(lnode);
                 lnode->func = func;
                 listc_abl(&iq->bpfunc_lst, lnode);
+                if (logsb) {
+                    sbuf2printf(logsb, "[%llu %s] OSQL_BPFUNC type %d\n", rqid,
+                                comdb2uuidstr(uuid, us), func->arg->type);
+                    sbuf2flush(logsb);
+                }
             }
-
         } else {
             logmsg(LOGMSG_ERROR, "Cannot read bpfunc message");
             rc = -1;
@@ -9115,6 +9119,7 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
     uint8_t *p_buf;
     uint8_t *p_buf_end;
     int rc = 0;
+    uuidstr_t us;
 
     osql_bpfunc_size = OSQLCOMM_BPFUNC_TYPE_LEN + data_len;
     dt = malloc(osql_bpfunc_size);
@@ -9172,7 +9177,8 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
     }
 
     if (logsb) {
-        sbuf2printf(logsb, "[%llu] send OSQL_BPLOG_FUNC \n");
+        sbuf2printf(logsb, "[%llu %s] send OSQL_BPFUNC type %d\n", rqid,
+                    comdb2uuidstr(uuid, us), arg->type);
         sbuf2flush(logsb);
     }
 
