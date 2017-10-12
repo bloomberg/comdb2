@@ -120,7 +120,7 @@ do {                            \
     count++;                    \
     if (gbl_rep_process_msg_print_rc && ((now = time(NULL)) - lastpr)) {         \
         logmsg(LOGMSG_ERROR, "td %u %s line %d from line %d returning %d, count=%u\n", \
-                (uint32_t)pthread_self(), __func__, __LINE__, retrc, count);  \
+                (uint32_t)pthread_self(), __func__, __LINE__, fromline, retrc, count);  \
     }                           \
     return retrc;               \
 } while(0);
