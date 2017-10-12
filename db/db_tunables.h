@@ -1293,5 +1293,12 @@ REGISTER_TUNABLE("dump_zero_coherency_ts", "Enable zero-coherency-ts trace.",
 REGISTER_TUNABLE("allow_incoherent_sql", "Enable sql against incoherent nodes.",
                  TUNABLE_BOOLEAN, &gbl_allow_incoherent_sql,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_process_msg_print_rc", "Print rc from rep_process_msg.",
+                 TUNABLE_BOOLEAN, &gbl_rep_process_msg_print_rc,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_master_req", "Print trace showing master-req protocol.",
+                 TUNABLE_BOOLEAN, &gbl_verbose_master_req,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
