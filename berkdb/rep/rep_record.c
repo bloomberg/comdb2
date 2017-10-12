@@ -427,11 +427,11 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
     if (gbl_verbose_master_req) {
         switch (rp->rectype) {
             case REP_MASTER_REQ:
-                logmsg(LOGMSG_USER, "%s processing REP_MASTER_REQ\n", 
+                logmsg(LOGMSG_ERROR, "%s processing REP_MASTER_REQ\n", 
                         __func__);
                 break;
             case REP_NEWMASTER:
-                logmsg(LOGMSG_USER, "%s processing REP_NEWMASTER\n", 
+                logmsg(LOGMSG_ERROR, "%s processing REP_NEWMASTER\n", 
                         __func__);
                 break;
             default:
