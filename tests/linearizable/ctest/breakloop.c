@@ -26,6 +26,7 @@ enum eventtypes {
 };
 
 #define ANSI_COLOR_RED     "\x1b[31;1m"
+#define ANSI_COLOR_YELLOW  "\x1b[33;1m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 int runtime = 0;
@@ -36,14 +37,15 @@ char *cltype = "dev";
 char *argv0 = NULL;
 
 uint32_t which_events = 0;
-int partition_master = 1;
+int partition_master = 0;
 int partition_whole_network = 1;
 int max_retries = 1000000;
 int debug_trace = 0;
 int nemesis_length = 10;
-int sleep_time = 30;
+int sleep_time = 5;
 int colored_output = 0;
 int exit_on_block = 0;
+int unblock_report_threshold = 0;
 static int maxmon = 0;
 static int curmon = 0;
 static char **monfile = NULL;
@@ -64,6 +66,7 @@ void usage(FILE *f)
     fprintf(f, "        -D                  - enable debug trace\n");
     fprintf(f, "        -C                  - use colored output\n");
     fprintf(f, "        -e                  - exit after block\n");
+    fprintf(f, "        -u <threshold>      - set unblock-report threshold\n");
     fprintf(f, "        -m <file>           - add <file> to monitored files\n");
     fprintf(f, "        -r <runtime>        - set runtime in seconds\n");
     fprintf(f, "        -n <nemesis-length> - length of nemesis event\n");
@@ -74,6 +77,9 @@ void usage(FILE *f)
 static int block_on_monitored_files(void)
 {
     int blocked = 0;
+    time_t start, end;
+
+    start = time(NULL);
     for (int i = 0 ; i < curmon; i++) {
         if (monfps[i] == NULL) {
             monfps[i] = fopen(monfile[i], "r");
@@ -84,13 +90,13 @@ static int block_on_monitored_files(void)
             rewind(monfps[i]);
             fread(chk, sizeof(chk), 1, monfps[i]);
             while (montext[i] && !strcmp(montext[i], chk)) {
-                if (colored_output) {
-                    fprintf(stderr, ANSI_COLOR_RED "Waiting for monfile '%s' to change" 
-                            ANSI_COLOR_RESET "\n", monfile[i]);
-                }
-                else {
-                    fprintf(stderr, "Waiting for monfile '%s' to change\n", monfile[i]);
-                }
+                if (colored_output) 
+                    fprintf(stderr, ANSI_COLOR_RED);
+                fprintf(stderr, "Waiting for monfile '%s' to change",
+                        monfile[i]);
+                if (colored_output) 
+                    fprintf(stderr, ANSI_COLOR_RESET);
+                fprintf(stderr, "\n");
                 blocked = waited = 1;
                 sleep (1);
                 rewind(monfps[i]);
@@ -107,6 +113,16 @@ static int block_on_monitored_files(void)
             fprintf(stderr, "Skipping unopened file '%s'\n", monfile[i]);
         }
     }
+    end = time(NULL);
+    if ((end - start) > unblock_report_threshold) {
+        if (colored_output)
+            fprintf(stderr, ANSI_COLOR_YELLOW);
+        fprintf(stderr, "Unblocked after %ld seconds", end - start);
+        if (colored_output)
+            fprintf(stderr, ANSI_COLOR_RESET);
+        fprintf(stderr, "\n");
+    }
+
     return blocked;
 }
 
@@ -120,12 +136,13 @@ int main(int argc, char *argv[])
     setvbuf(stderr, NULL, _IOLBF, 0);
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:Wm:Ce")) != EOF) {
+    while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:Wm:Ceu:")) != EOF) {
         switch (c) {
         case 'd': dbname = optarg; break;
         case 'c': cdb2_set_comdb2db_config(optarg); break;
         case 'C': colored_output = 1; break;
         case 'e': exit_on_block = 1; break;
+        case 'u': unblock_report_threshold = atoi(optarg); break;
         case 'G':
             if (0 == strcasecmp(optarg, "partition")) {
                 which_events |= PARTITION_EVENT;
@@ -226,16 +243,14 @@ int main(int argc, char *argv[])
             blocked |= block_on_monitored_files();
         }
 
-        if (sleep_time > 0) sleep(sleep_time);
-
         if (curmon) {
             blocked |= block_on_monitored_files();
         }
+        if (sleep_time > 0) 
+            sleep(sleep_time);
+
         if (blocked && exit_on_block) {
             exit(1);
-        }
-        if (blocked) {
-            sleep(5);
         }
     }
 

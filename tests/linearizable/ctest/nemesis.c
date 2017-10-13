@@ -42,7 +42,7 @@ static int setcluster(struct nemesis *n, char *dbname, char *cltype,
     cdb2_cluster_info(db, n->cluster, n->ports, MAXCL, &n->numnodes);
     cdb2_close(db);
 
-    n->master = master(dbname, cltype);
+    n->master = master(n->dbname, n->cltype);
 
     return 0;
 }
@@ -92,6 +92,7 @@ void breaknet(struct nemesis *n)
     int *node = alloca(n->numnodes * sizeof(int));
     int n1 = -1, n2, i;
 
+    n->master = master(n->dbname, n->cltype);
     bzero(node, n->numnodes * sizeof(int));
 
     if (n->master && (n->flags & NEMESIS_PARTITION_MASTER)) {
@@ -115,7 +116,8 @@ void breaknet(struct nemesis *n)
     } while (n2 == n1);
     node[n2] = 1;
 
-    printf("Cut off %s %s from cluster\n", n->cluster[n1], n->cluster[n2]);
+    printf("Cut off %s %s from cluster, master is %s\n", 
+            n->cluster[n1], n->cluster[n2], n->master);
 
     for (int broken = 0; broken < n->numnodes; broken++) {
         if (node[broken]) {

@@ -119,6 +119,12 @@ make_slow_replicants_incoherent off
 # Enable trace from the coherency lease thread
 verbose_send_cohlease on
 
+# Assume the network is perfect for Jepsen tests
+downgrade_penalty 0
+
+# Don't reset the master 
+gbl_reset_on_unelectable_cluster off
+
 # Don't use udp for acks
 noudp on
 

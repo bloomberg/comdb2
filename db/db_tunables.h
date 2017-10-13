@@ -1302,6 +1302,9 @@ REGISTER_TUNABLE("verbose_master_req", "Print trace showing master-req protocol.
 REGISTER_TUNABLE("verbose_send_cohlease", "Print trace from lease-issue thread.",
                  TUNABLE_BOOLEAN, &gbl_verbose_send_coherency_lease,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
+                 TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 
 #endif /* _DB_TUNABLES_H */

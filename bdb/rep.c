@@ -1768,6 +1768,8 @@ typedef struct {
     char *host;
 } hostdown_type;
 
+int gbl_reset_on_unelectable_cluster = 1;
+
 void *hostdown_thread(void *arg)
 {
     bdb_state_type *bdb_state;
@@ -1808,6 +1810,7 @@ void *hostdown_thread(void *arg)
     print(bdb_state, "master is %s we are %s\n", master_host,
           bdb_state->repinfo->myhost);
 
+    if (gbl_reset_on_unelectable_cluster)
     {
         int num_up, num_connected, electable;
 
