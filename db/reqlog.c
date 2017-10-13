@@ -2277,7 +2277,8 @@ void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
     if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[FINGERPRINTSZ])
+void reqlog_set_fingerprint(struct reqlogger *logger,
+                            char fingerprint[FINGERPRINTSZ])
 {
     if (logger) {
         memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));

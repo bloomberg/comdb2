@@ -4032,7 +4032,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
 
-    if(rec->sql)
+    if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);
     const char *tail = NULL;
     while (rec->stmt == NULL) {

@@ -68,7 +68,8 @@ static hash_t *seen_sql;
 
 void eventlog_init()
 {
-    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
+    seen_sql =
+        hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
     if (eventlog_enabled) eventlog = eventlog_open();
 }
@@ -493,9 +494,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(
-            newobj, "fingerprint",
-            cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+        cson_object_set(newobj, "fingerprint",
+                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
 
         /* yes, this can spill the file to beyond the configured size - we need
            this
