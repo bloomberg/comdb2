@@ -3068,6 +3068,12 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                                                    nodelist[i], 1000, __LINE__);
 
+            if (bdb_lock_desired(bdb_state)) {
+                logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n",
+                        __func__, __LINE__);
+                return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+            }
+
             if (rc == 0) {
                 base_node = nodelist[i];
                 num_successfully_acked++;
@@ -3135,6 +3141,13 @@ got_ack:
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
                                                waitms, __LINE__);
+
+        if (bdb_lock_desired(bdb_state)) {
+            logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n",
+                    __func__, __LINE__);
+
+            return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+        }
 
         if (rc == -999) {
             logmsg(LOGMSG_WARN, "replication timeout to node %s (%d ms), base node "

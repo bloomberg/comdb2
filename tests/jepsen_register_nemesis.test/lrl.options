@@ -100,11 +100,15 @@ rep_process_msg_print_rc on
 # Print master-req protocol
 verbose_master_req on
 
-
+receive_coherency_lease_trace on
 
 # Torque down rep_timeout
 setattr REP_TIMEOUT_MINMS 1000
 
 # Torque down rep_timeout_maxms
 setattr REP_TIMEOUT_MAXMS 2000
+
+# Maybe alot of UDP traffic is being dropped?
+setattr COHERENCY_LEASE_UDP 0
+
 

@@ -43,6 +43,7 @@ int debug_trace = 0;
 int nemesis_length = 10;
 int sleep_time = 30;
 int colored_output = 0;
+int exit_on_block = 0;
 static int maxmon = 0;
 static int curmon = 0;
 static char **monfile = NULL;
@@ -62,6 +63,7 @@ void usage(FILE *f)
     fprintf(f, "        -W                  - partition by port\n");
     fprintf(f, "        -D                  - enable debug trace\n");
     fprintf(f, "        -C                  - use colored output\n");
+    fprintf(f, "        -e                  - exit after block\n");
     fprintf(f, "        -m <file>           - add <file> to monitored files\n");
     fprintf(f, "        -r <runtime>        - set runtime in seconds\n");
     fprintf(f, "        -n <nemesis-length> - length of nemesis event\n");
@@ -69,8 +71,9 @@ void usage(FILE *f)
 }
 
 
-static void block_on_monitored_files(void)
+static int block_on_monitored_files(void)
 {
+    int blocked = 0;
     for (int i = 0 ; i < curmon; i++) {
         if (monfps[i] == NULL) {
             monfps[i] = fopen(monfile[i], "r");
@@ -88,7 +91,7 @@ static void block_on_monitored_files(void)
                 else {
                     fprintf(stderr, "Waiting for monfile '%s' to change\n", monfile[i]);
                 }
-                waited = 1;
+                blocked = waited = 1;
                 sleep (1);
                 rewind(monfps[i]);
                 fread(chk, sizeof(chk), 1, monfps[i]);
@@ -104,6 +107,7 @@ static void block_on_monitored_files(void)
             fprintf(stderr, "Skipping unopened file '%s'\n", monfile[i]);
         }
     }
+    return blocked;
 }
 
 int main(int argc, char *argv[])
@@ -116,11 +120,12 @@ int main(int argc, char *argv[])
     setvbuf(stderr, NULL, _IOLBF, 0);
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:Wm:C")) != EOF) {
+    while ((c = getopt(argc, argv, "d:c:G:t:MDr:n:s:Wm:Ce")) != EOF) {
         switch (c) {
         case 'd': dbname = optarg; break;
         case 'c': cdb2_set_comdb2db_config(optarg); break;
         case 'C': colored_output = 1; break;
+        case 'e': exit_on_block = 1; break;
         case 'G':
             if (0 == strcasecmp(optarg, "partition")) {
                 which_events |= PARTITION_EVENT;
@@ -216,14 +221,21 @@ int main(int argc, char *argv[])
             fixclocks(n);
         }
 
+        int blocked = 0;
         if (curmon) {
-            block_on_monitored_files();
+            blocked |= block_on_monitored_files();
         }
 
         if (sleep_time > 0) sleep(sleep_time);
 
         if (curmon) {
-            block_on_monitored_files();
+            blocked |= block_on_monitored_files();
+        }
+        if (blocked && exit_on_block) {
+            exit(1);
+        }
+        if (blocked) {
+            sleep(5);
         }
     }
 
