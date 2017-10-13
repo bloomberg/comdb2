@@ -503,22 +503,22 @@ set all_graphs {
   }
 
   table-event {
-      line
-          ( TABLE /table-name FOR 
-            {loop
-               {or {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
-                   {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
-                   {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
-                   }
-            }
-          ) 
-
-          {opt {loop {line
-              ,
-              more-table-events
+      stack
+      {line ( TABLE /table-name FOR }
+      {loop
+          {or
+              {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
+              {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
+              {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
           }
+      }
+      {line )
+          {opt
+              {loop
+                  {line , more-table-events }
+              }
           }
-          }
+      }
   }
 
   create-table-ddl {
