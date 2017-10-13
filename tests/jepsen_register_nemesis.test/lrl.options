@@ -111,4 +111,6 @@ setattr REP_TIMEOUT_MAXMS 2000
 # Maybe alot of UDP traffic is being dropped?
 setattr COHERENCY_LEASE_UDP 0
 
+# Enable trace from the coherency lease thread
+verbose_send_cohlease on
 
