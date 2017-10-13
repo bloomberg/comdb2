@@ -257,6 +257,11 @@ echo "[select * from t2] failed with rc -3 no such table: t2" > badsel.exp
 if ! diff badsel.txt badsel.exp ; then
     failexit "Expected failure when selecting nonexistent table"
 fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
+echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
+if ! diff badproc.txt badproc.exp ; then
+    failexit "Expected failure when executing bad procedure"
+fi
 set -e
 
 INITNUMREC=100

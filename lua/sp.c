@@ -2671,6 +2671,7 @@ static const char *db_rollback_int(Lua L, int *rc)
     reset_stmts(sp);
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_RBK_STATE);
+    reqlog_set_event(sp->thd->logger, "sp");
     *rc = handle_sql_commitrollback(sp->thd, sp->clnt, 0);
     sp->clnt->ready_for_heartbeats = 1;
     if ((sp->in_parent_trans == 0) && sp->make_parent_trans) {

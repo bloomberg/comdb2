@@ -1918,6 +1918,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->tables = NULL;
     free(logger->error);
     logger->error = NULL;
+    logger->error_code = 0;
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2306,9 +2307,10 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
     logger->sqltables[logger->ntables++] = strdup(table);
 }
 
-void reqlog_set_error(struct reqlogger *logger, const char *error)
+void reqlog_set_error(struct reqlogger *logger, const char *error, int error_code)
 {
     logger->error = strdup(error);
+    logger->error_code = error_code;
 }
 
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path)

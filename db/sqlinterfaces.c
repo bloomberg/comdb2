@@ -5227,7 +5227,6 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     int postponed_write = 0;
     int rc;
 
-    reqlog_set_event(thd->logger, "sql");
     run_stmt_setup(clnt, rec->stmt);
 
     new_row_data_type = is_new_row_data(clnt);
@@ -5473,6 +5472,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     struct errstat err = {0};
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
+    reqlog_set_event(thd->logger, "sql"); /* set before setting error */
+
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
@@ -5483,7 +5484,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
-                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb));
+                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
             }
             goto errors;
         }

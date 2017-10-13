@@ -124,6 +124,7 @@ struct reqlogger {
     int alloctables;
     char **sqltables;
     char *error;
+    char error_code;
 
     struct client_query_stats *path;
     int ncontext;
