@@ -1214,12 +1214,14 @@ static const uint8_t *snap_uid_put(const snap_uid_t *snap_info, uint8_t *p_buf,
                     sizeof(snap_info->effects.num_deleted), p_buf, p_buf_end);
     p_buf = buf_put(&(snap_info->effects.num_inserted),
                     sizeof(snap_info->effects.num_inserted), p_buf, p_buf_end);
+    p_buf = buf_put(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&(snap_info->replicant_can_retry), sizeof(snap_info->replicant_can_retry), p_buf,
+                    p_buf_end);
     p_buf = buf_put(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_put(&(snap_info->key), sizeof(snap_info->key), p_buf,
                            p_buf_end);
-    p_buf = buf_put(&(snap_info->replicant_can_retry), sizeof(snap_info->replicant_can_retry), p_buf,
-                    p_buf_end);
 
     return p_buf;
 }
@@ -1244,12 +1246,14 @@ static const uint8_t *snap_uid_get(snap_uid_t *snap_info, const uint8_t *p_buf,
                     sizeof(snap_info->effects.num_deleted), p_buf, p_buf_end);
     p_buf = buf_get(&(snap_info->effects.num_inserted),
                     sizeof(snap_info->effects.num_inserted), p_buf, p_buf_end);
+    p_buf = buf_get(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
+                    p_buf_end);
+    p_buf = buf_get(&(snap_info->replicant_can_retry), sizeof(snap_info->replicant_can_retry), p_buf,
+                    p_buf_end);
     p_buf = buf_get(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_get(&(snap_info->key), sizeof(snap_info->key), p_buf,
                            p_buf_end);
-    p_buf = buf_get(&(snap_info->replicant_can_retry), sizeof(snap_info->replicant_can_retry), p_buf,
-                    p_buf_end);
 
     return p_buf;
 }
