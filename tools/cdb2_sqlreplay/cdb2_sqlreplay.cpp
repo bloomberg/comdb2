@@ -128,6 +128,9 @@ bool is_transactional(cson_value *val) {
 bool is_replayable(cson_value *val) {
     int64_t nbound;
 
+    if(have_json_key(val, "error"))
+        return false;
+
     // Have an array of bound parameters?  Should be replayable.
     bool have_bindings = have_json_key(val, "bound_parameters");
     if (have_bindings)
