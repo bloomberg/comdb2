@@ -111,6 +111,11 @@ setattr REP_TIMEOUT_MAXMS 2000
 # Maybe alot of UDP traffic is being dropped?
 setattr COHERENCY_LEASE_UDP 0
 
+# Making slow replicants incoherent is ideal for normal workloads where a client
+# would be redirected to a different node.  It is BAD for Jepsen testing where a 
+# client is married to a single nodes.
+make_slow_replicants_incoherent off
+
 # Enable trace from the coherency lease thread
 verbose_send_cohlease on
 
