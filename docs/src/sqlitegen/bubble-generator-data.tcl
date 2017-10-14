@@ -504,7 +504,7 @@ set all_graphs {
           }
           {opt 
             {loop 
-               {line on {or update delete} {or {line cascade} {line restrict} }}
+               {line on {or update delete} {or cascade restrict }}
             }
           }
       }

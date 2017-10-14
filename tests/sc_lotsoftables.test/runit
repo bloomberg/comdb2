@@ -124,6 +124,83 @@ function insert_records
     done | cdb2sql ${CDB2_OPTIONS} $dbnm default - &>> $insfl
 }
 
+
+kill_by_pidfile() 
+{
+    pidfile=$1
+    if [[ -f $pidfile ]]; then
+        local pid=$(cat $pidfile)
+        ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
+        if [[ $? -eq 0 ]]; then
+            echo "kill -9 $pid"
+            kill -9 $pid
+        fi
+        rm -f $pidfile
+    else
+        failexit "kill_by_pidfile: pidfile $pidfile does not exist"
+    fi
+}
+
+kill_restart_cluster()
+{
+    delay=$1
+    for node in $cluster ; do
+        echo "killrestart nodes $node"
+        kill_restart_node $node $delay &
+    done
+    sleep $delay
+    # select 1 all nodes
+    for node in $cluster ; do
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+        # wait until we can query it
+        echo "$DBNAME: waiting until ready"
+        while [[ "$out" != "1" ]]; do
+            sleep 2
+            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+        done
+    done
+}
+
+kill_restart_node()
+{
+    node=$1
+    delay=$2
+    pushd $DBDIR
+    cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
+
+    if [ -n "$CLUSTER" ] ; then
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+        mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
+        sleep $delay
+        if [ $node != `hostname` ] ; then
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+        else
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+        fi
+    else
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
+        mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
+        sleep $delay
+        echo "$DBNAME: starting single node"
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+    fi
+
+    popd
+
+    out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+    # wait until we can query it
+    echo "$DBNAME: waiting until ready"
+    while [[ "$out" != "1" ]]; do
+        sleep 2
+        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+    done
+}
+
+
+
+
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
 function flushall 
@@ -159,29 +236,9 @@ for i in `seq 1 $tblcnt`; do
     #flushall
 done
 
-node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm "select comdb2_host()"`
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('sqlenginepool linger 5')"
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('sqlenginepool mint 1')"
-
-echo get memory utilization
-ps -p $(cat ${TMPDIR}/${DBNAME}.pid) -o vsz=
-#in a loop of M times
-for j in `seq 1 10` ; do
-
-  #run N parallel queries
-  for i in `seq 1 10` ; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "select 1, sleep(1)" &
-  done
-  cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('sqlenginepool stat')" | grep Current
-  sleep 7 #wait for sql threads to go away
-  cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('sqlenginepool stat')" | grep Current
-done
-#get memory utilization
-ps -p $(cat ${TMPDIR}/${DBNAME}.pid) -o vsz=
-
-
-
-
+RESTART_DELAY=35
+echo "killrestart all nodes"
+kill_restart_cluster $RESTART_DELAY
 
 #    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS 1')"
 #    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('bdb setattr MIN_KEEP_LOGS_AGE 10')"
