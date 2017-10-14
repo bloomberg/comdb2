@@ -491,13 +491,21 @@ set all_graphs {
       }
   }
 
+
+
   constraint-section {
       loop
       {stack
-          {line /keyname -> < /ref-table-name : /ref-keyname > }
-          {line
-              {opt on update cascade}
-              {opt on delete cascade}
+          {line /keyname -> 
+               {or 
+                    {line /ref-table-name : /ref-keyname }
+                    {line {loop {line < /ref-table-name : /ref-keyname > } } }
+               }
+          }
+          {opt 
+            {loop 
+               {line on {or update delete} {or cascade restrict }}
+            }
           }
       }
   }
