@@ -152,7 +152,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     data->cmembers->nlockwaits = nlockwaits;
     logmsg(
         LOGMSG_INFO,
-        "%s: diff_deadlocks=%lld, diff_lockwaits=%lld, maxthr=%d, currthr=%d\n",
+        "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
         __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
         data->cmembers->thrcount);
     increase_max_threads(

@@ -454,8 +454,8 @@ enum dbt_api_return_codes {
     DB_ERR_DYNTAG_LOAD_FAIL = 118,
     /* GENERAL BLOCK TRN RCODES */
     DB_RC_TRN_OK = 0,
-    DB_ERR_TRN_DUP = 1,             /* dup add 2 , returned with 220 before */
-    DB_ERR_TRN_VERIFY = 2,          /* verify 4, returned with 220 before */
+    DB_ERR_TRN_DUP = 1,    /* dup add 2 , returned with 220 before */
+    DB_ERR_TRN_VERIFY = 2, /* verify 4, returned with 220 before */
     DB_ERR_TRN_FKEY = 3,
     DB_ERR_TRN_NULL_CONSTRAINT = 4, /* 318 */
     DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
@@ -466,6 +466,7 @@ enum dbt_api_return_codes {
     DB_ERR_TRN_DB_CONN = 205,
     DB_ERR_TRN_DB_IO = 206,
     DB_ERR_TRN_NOT_SERIAL = 230,
+    DB_ERR_TRN_SC = 240,
 
     /* INTERNAL DB ERRORS */
     DB_ERR_INTR_NO_MASTER = 300,
@@ -2495,8 +2496,9 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
-void free_copy_rootpages(struct sql_thread *thd);
 int create_sqlite_master(void);
+typedef struct master_entry master_entry_t;
+int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq);
 void handle_isql(struct dbtable *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct dbtable *db);
@@ -2981,17 +2983,6 @@ struct genid_list {
 };
 
 typedef LISTC_T(struct genid_list) genid_list_type;
-
-struct ptrans {
-    tranid_t tid;
-    int dbnum;
-    int start_time;
-    void *parent_trans;
-    genid_list_type modified_genids;
-    int done;
-    int waiting_for_commit;
-    struct ireq *iq; /* request/thread handling this transaction */
-};
 
 extern FILE *twophaselog;
 

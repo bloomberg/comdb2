@@ -240,8 +240,8 @@ __lock_init(dbenv, lt)
 	    : gbl_lk_hash;
 	region->locker_p_size = locker_p_size > gbl_lkr_hash ? locker_p_size
 	    : gbl_lkr_hash;
-	logmsg(LOGMSG_DEBUG, "Lock & Lock-object partitions:%u\n"
-	    "Locker partitions:%u\n"
+	logmsg(LOGMSG_DEBUG, "Lock & Lock-object partitions:%zu\n"
+	    "Locker partitions:%zu\n"
 	    "Initial Lockers:%u  Initial Locks:%u  Initial Lock-objects:%u\n"
 	    "Lockers/partition:%u  Locks/partition:%u  Lock-objects/partition:%u\n"
 	    "Locker hash buckets/partition:%u  Lock-object hash buckets/partition:%u\n",

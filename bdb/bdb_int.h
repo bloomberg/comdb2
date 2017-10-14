@@ -1009,6 +1009,8 @@ struct bdb_state_tag {
 
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
+
+    int hellofd;
 };
 
 /* define our net user types */

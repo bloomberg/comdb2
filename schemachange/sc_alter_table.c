@@ -83,8 +83,14 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
         /* these checks should be present in dryrun_int as well */
         if (changed == SC_BAD_NEW_FIELD) {
             sc_errf(s, "cannot add new field without dbstore or null\n");
+            if (s->iq)
+                reqerrstr(s->iq, ERR_SC,
+                          "cannot add new field without dbstore or null");
         } else if (changed == SC_BAD_INDEX_CHANGE) {
             sc_errf(s, "cannot change index referenced by other tables\n");
+            if (s->iq)
+                reqerrstr(s->iq, ERR_SC,
+                          "cannot change index referenced by other tables");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;
@@ -296,6 +302,8 @@ static inline void wait_to_resume(struct schema_change_type *s)
         logmsg(LOGMSG_WARN, "%s: Schema change resuming.\n", __func__);
     }
 }
+
+int gbl_test_scindex_deadlock = 0;
 
 int do_alter_table(struct ireq *iq, tran_type *tran)
 {
@@ -536,6 +544,12 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc)
         rc = SC_CONVERSION_FAILED;
+
+    if (gbl_test_scindex_deadlock) {
+        logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
+    }
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);

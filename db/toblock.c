@@ -459,8 +459,8 @@ static int forward_longblock_to_master(struct ireq *iq,
 
     if (mstr == bdb_master_dupe || mstr == db_eid_invalid) {
         if (iq->debug)
-            logmsg(LOGMSG_ERROR, "%s:no master! (%d) req from %s\n", __func__, mstr,
-                   getorigin(iq));
+            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
+                   mstr, getorigin(iq));
         return ERR_NOMASTER;
     }
 
@@ -514,8 +514,8 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
 
     if (mstr == bdb_master_dupe || mstr == db_eid_invalid) {
         if (iq->debug)
-            logmsg(LOGMSG_ERROR, "%s:no master! (%d) req from %s\n", __func__, mstr,
-                   getorigin(iq));
+            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
+                   mstr, getorigin(iq));
         return ERR_NOMASTER;
     }
 
@@ -788,7 +788,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int replay_data_len, unsigned int line)
 {
     struct block_rsp errrsp;
-    int rc, outrc, snapinfo_outrc, jj, snapinfo = 0;
+    int rc = 0;
+    int outrc, snapinfo_outrc, jj, snapinfo = 0;
     uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
                        BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
@@ -809,20 +810,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         if (rc == IX_FND) {
             memcpy(buf_fstblk, replay_data, replay_data_len - 4);
             datalen = replay_data_len - 4;
-            rc = 0;
-        }
-        if (rc == IX_NOTFND) {
-            int *seq = (int *)fstseqnum;
-            if (!check_long_trn)
-                logmsg(LOGMSG_ERROR, 
-                        "%s: %08x:%08x:%08x fstblk replay deleted under us\n",
-                        __func__, seq[0], seq[1], seq[2]);
-            blkseq_line = __LINE__;
-            goto replay_error;
         }
     }
-    else
-        rc = 0;
 
     if (rc == IX_NOTFND)
     /*
@@ -850,9 +839,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         goto replay_error;
     } else if (datalen < sizeof(struct fstblk_header)) {
         int *seq = (int *)fstseqnum;
-        logmsg(LOGMSG_ERROR, "%s: %08x:%08x:%08x fstblk replay too small %d < %d\n",
-                __func__, seq[0], seq[1], seq[2], datalen,
-                sizeof(struct fstblk_header));
+        logmsg(LOGMSG_ERROR,
+               "%s: %08x:%08x:%08x fstblk replay too small %d < %zu\n",
+               __func__, seq[0], seq[1], seq[2], datalen,
+               sizeof(struct fstblk_header));
         blkseq_line = __LINE__;
         goto replay_error;
     } else {
@@ -955,7 +945,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         }
 
         case FSTBLK_SNAP_INFO:
-            snapinfo = 1;
+            snapinfo = 1; /* fallthrough */
 
         case FSTBLK_RSPKL: 
         {
@@ -1084,6 +1074,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s!\n", __func__, line, 
             outrc, printkey);
+    free(printkey);
     
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
@@ -1101,8 +1092,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         }
         outrc = ERR_NOT_DURABLE;
     }
-
-    free(printkey);
 
     if (gbl_dump_blkseq && iq->have_snap_info) {
         char *bskey = alloca(iq->snap_info.keylen + 1);
@@ -2439,12 +2428,8 @@ void handle_postabort_bpfunc(struct ireq *iq)
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
-    struct timespec start_time;
     int did_replay = 0;
     int rowlocks = gbl_rowlocks;
-#if 0
-    clock_gettime(CLOCK_REALTIME, &start_time);
-#endif
     int fromline = -1;
     int opnum, jj, num_reqs;
     int rc, ixkeylen, rrn;
@@ -2470,10 +2455,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
     int is_block2sqlmode = 0; /* set this for all osql modes */
-    int is_block2sqlmode_blocksql =
-        0; /* enable this only for blocksql to handle verify errors*/
+    /* enable this only for blocksql to handle verify errors */
+    int is_block2sqlmode_blocksql = 0; 
     int osql_needtransaction = OSQL_BPLOG_NONE;
-    int i = 0;
     int blkpos = -1, ixout = -1, errout = 0;
     int backed_out = 0;
     struct thr_handle *thr_self = thrman_self();
@@ -2735,8 +2719,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                logmsg(LOGMSG_USER, "%d %s:%d Using iq %p priority %d\n",
-                        pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                logmsg(LOGMSG_USER, "%lu %s:%d Using iq %p priority %d\n",
+                       pthread_self(), __FILE__, __LINE__, iq, iq->priority);
 
             irc =
                 trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
@@ -4092,8 +4076,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
                         if (!blob->data) {
                             logmsg(LOGMSG_ERROR, "BLOCK2_QBLOB: malloc "
-                                            "failed %u\n",
-                                    blob->length);
+                                                 "failed %zu\n",
+                                   blob->length);
                             reqerrstr(iq, COMDB2_BLOB_RC_ALLOC,
                                       "malloc failed");
                             rc = ERR_INTERNAL;
@@ -4656,7 +4640,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     /* do all previously not done ADD key ops here--they were delayed due
      * to necessity of constraint checks */
     thrman_wheref(thr_self, "%s [constraints]", req2a(iq->opcode));
-    i = 0;
     blkpos = -1;
     ixout = -1;
     errout = 0;
@@ -5235,8 +5218,9 @@ backout:
        gonna execute fine */
     if (rc == ERR_NOMASTER && have_blkseq) {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%d %s:%d Skipping add blkseq due to early bplog termination\n",
-                pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_USER, "%lu %s:%d Skipping add blkseq due to early "
+                                "bplog termination\n",
+                   pthread_self(), __FILE__, __LINE__);
 
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
@@ -5407,26 +5391,24 @@ add_blkseq:
         void *replay_data = NULL;
         int replay_len = 0;
 
+        void *bskey;
+        int bskeylen;
+        /* Snap_info is our blkseq key */
+        if (iq->have_snap_info) {
+            bskey = iq->snap_info.key;
+            bskeylen = iq->snap_info.keylen;
+        } else {
+            bskey = iq->seq;
+            bskeylen = iq->seqlen;
+        }
+
         if (!rowlocks) {
             int t = time_epoch();
-            char *buf; 
             memcpy(p_buf_fstblk, &t, sizeof(int));
-
-            /* Snap_info is our blkseq key */
-            if (iq->have_snap_info)
-            {
-                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, iq->snap_info.key,
-                        iq->snap_info.keylen, buf_fstblk,
-                        p_buf_fstblk - buf_fstblk + sizeof(int),
-                        &replay_data, &replay_len);
-            }
-            else
-            {
-                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, iq->seq,
-                        iq->seqlen, buf_fstblk,
-                        p_buf_fstblk - buf_fstblk + sizeof(int),
-                        &replay_data, &replay_len);
-            }
+            rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
+                                   bskeylen, buf_fstblk,
+                                   p_buf_fstblk - buf_fstblk + sizeof(int),
+                                   &replay_data, &replay_len);
 
             if (iq->seqlen == sizeof(uuid_t)) {
                 uuidstr_t us;
@@ -5448,6 +5430,8 @@ add_blkseq:
                     if (irc == BDBERR_NOT_DURABLE) {
                         rc = ERR_NOT_DURABLE;
                     }
+                    logmsg(LOGMSG_DEBUG, "trans_commit_adaptive irc=%d, "
+                            "rc=%d\n", irc, rc);
                 }
 
                 if (hascommitlock) {
@@ -5483,19 +5467,13 @@ add_blkseq:
                 trans_abort(iq, parent_trans);
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
-                    logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(),
-                           __FILE__, __LINE__);
-                    if (iq->have_snap_info) {
-                        outrc = do_replay_case(iq, iq->snap_info.key, iq->snap_info.keylen, 
-                                num_reqs, 0, replay_data, replay_len, __LINE__);
-                    }
-                    else {
-                        outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
-                                replay_data, replay_len, __LINE__);
-                    }
+                    logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n",
+                           pthread_self(), __FILE__, __LINE__);             
+                    outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
+                                           replay_data, replay_len, __LINE__);
                     did_replay = 1;
-                    logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
-                           __FILE__, __LINE__, outrc);
+                    logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n",
+                           pthread_self(), __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
 
                     goto cleanup;
@@ -5593,19 +5571,13 @@ add_blkseq:
             /* if it's a logical transaction and the commit fails we abort
              * inside the commit call */
             if (rc == IX_DUP) {
-                logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(), __FILE__,
-                       __LINE__);
-                if (iq->have_snap_info) {
-                    outrc = do_replay_case(iq, iq->snap_info.key, iq->snap_info.keylen, 
-                            num_reqs, 0, replay_data, replay_len, __LINE__);
-                }
-                else {
-                    outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
-                            replay_data, replay_len, __LINE__);
-                }
+                logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n",
+                       pthread_self(), __FILE__, __LINE__);
+                outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
+                                       replay_data, replay_len, __LINE__);
                 did_replay = 1;
-                logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
-                       __FILE__, __LINE__, outrc);
+                logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n",
+                       pthread_self(), __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
 
                 goto cleanup;
@@ -5752,7 +5724,6 @@ add_blkseq:
                   trans, iq->txnsize, iq->timeoutms, iq->reptimems, rate);
     }
 
-    struct timespec end_time;
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
     pthread_mutex_lock(&commit_stat_lk);
@@ -5860,8 +5831,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%llu total time spent in the block processor\n",
-                block_processor_ms);
+        logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
+               block_processor_ms);
     }
 
     return rc;

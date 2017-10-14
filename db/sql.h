@@ -174,6 +174,11 @@ typedef struct osqlstate {
         *sc_tbl; /* storage for schemachange, common for all transaction */
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
+    struct temp_table
+        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
+    int bpfunc_seq;
+
     struct errstat xerr; /* extended error */
 
     /* performance */
@@ -762,6 +767,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse);
 
+int replicant_can_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
 void sql_dlmalloc_init(void);

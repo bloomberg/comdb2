@@ -221,7 +221,7 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (out == default_out) {
             for (int i = 0; i < niov; i++)
-                logmsg(LOGMSG_USER, iov[i].iov_base);
+                logmsg(LOGMSG_USER, "%s", (char *)iov[i].iov_base);
         } else {
             int dum = writev(out->fd, iov, niov);
         }
@@ -622,7 +622,7 @@ int reqlog_init(const char *dbname)
     stat_request_out = get_output_ll(filename);
     free(filename);
 
-    eventlog_init(dbname);
+    eventlog_init();
 
     scanrules_ll();
     return 0;
@@ -985,6 +985,7 @@ void reqlog_stat(void)
     {
         logmsg(LOGMSG_USER, "Output file open: %s\n", out->filename);
     }
+    eventlog_status();
     pthread_mutex_unlock(&rules_mutex);
 }
 
@@ -2088,7 +2089,7 @@ void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
     }
     UNLOCK(&nodestats_calc_lk);
 
-    logmsgf(LOGMSG_USER, fh, "%sRAW STATISTICS FOR NODE %d\n", prefix, host);
+    logmsgf(LOGMSG_USER, fh, "%sRAW STATISTICS FOR NODE %s\n", prefix, host);
     logmsgf(LOGMSG_USER, fh,
             "%s--- opcode counts for regular fstsnd requests\n", prefix);
     for (opcode = 0; opcode < MAXTYPCNT; opcode++) {

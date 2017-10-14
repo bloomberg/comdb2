@@ -104,7 +104,7 @@ __db_addrem_verify_fileid(dbenv, dbp, lsnp, prevlsn, fileid)
 	if (strcmp(dbp->fname, debug->key.data)) {
 		logmsg(LOGMSG_ERROR, 
             "mismatch @%u:%u: fileid %d log record %s, dbp %s\n",
-		    lsnp->file, lsnp->offset, fileid, debug->key.data,
+		    lsnp->file, lsnp->offset, fileid, (char *)debug->key.data,
 		    dbp->fname);
 		ret = EINVAL;
 

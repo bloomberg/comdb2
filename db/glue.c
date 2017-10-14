@@ -995,8 +995,9 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     default:
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_delkey return unhandled rc %d\n", bdberr);
         while (1) {
-            logmsg(LOGMSG_ERROR, "Thread %d got delete key error - send lockstat.\n",
-                    pthread_self());
+            logmsg(LOGMSG_ERROR,
+                   "Thread %lu got delete key error - send lockstat.\n",
+                   pthread_self());
             sleep(5);
         }
         return ERR_INTERNAL;
@@ -3232,7 +3233,7 @@ void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
     logmsg(LOGMSG_DEBUG, "table %s free_handle %d\n", table, free_handle);
 
     db = get_dbtable_by_name(table);
-    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%08x\n", db);
+    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%p\n", db);
     if (db == NULL) {
         net_ack_message(hndl, 1);
         return;
@@ -4401,10 +4402,10 @@ void backend_stat(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "!!! I AM NOT COHERENT !!!\n");
     f = dbenv->cacheszkb / 1024.0;
     logmsg(LOGMSG_USER, "cachesize %.3f mb\n", f);
-    logmsg(LOGMSG_USER, "hits        %llu\n", hits);
-    logmsg(LOGMSG_USER, "misses      %llu\n", misses);
-    logmsg(LOGMSG_USER, "page reads  %llu\n", reads);
-    logmsg(LOGMSG_USER, "page writes %llu\n", writes);
+    logmsg(LOGMSG_USER, "hits        %lu\n", hits);
+    logmsg(LOGMSG_USER, "misses      %lu\n", misses);
+    logmsg(LOGMSG_USER, "page reads  %lu\n", reads);
+    logmsg(LOGMSG_USER, "page writes %lu\n", writes);
     if ((hits + misses) == 0)
         f = 100.0;
     else

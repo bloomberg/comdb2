@@ -170,7 +170,8 @@ int fdb_svc_init(void)
 {
     center = (svc_center_t *)calloc(1, sizeof(svc_center_t));
     if (!center) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, sizeof(svc_center_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(svc_center_t));
         return -1;
     }
 
@@ -437,7 +438,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%d: CLosing rem cursor cid=%llx autocommit=%d\n",
+        logmsg(LOGMSG_USER, "%lu: CLosing rem cursor cid=%llx autocommit=%d\n",
                pthread_self(), *(unsigned long long *)cur->cid,
                cur->autocommit);
 
@@ -563,7 +564,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
                 rc = cur->bdbc->last(cur->bdbc, &bdberr);
                 break;
             default:
-                logmsg(LOGMSG_FATAL, "%s: unknown move\n", __func__, type);
+                logmsg(LOGMSG_FATAL, "%s: unknown move %d\n", __func__, type);
                 abort();
             }
         } while (0); /* here loop until no deadlock */
@@ -641,8 +642,8 @@ again:
 
             if (recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %d failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return SQLITE_DEADLOCK;
             }
 

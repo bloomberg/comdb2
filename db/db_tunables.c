@@ -27,6 +27,7 @@
 #include "util.h"
 #include "analyze.h"
 #include "intern_strings.h"
+#include "portmuxapi.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -107,6 +108,7 @@ extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
 extern int gbl_survive_n_master_swings;
 extern int gbl_test_blob_race;
+extern int gbl_test_scindex_deadlock;
 extern int gbl_berkdb_track_locks;
 extern int gbl_udp;
 extern int gbl_update_delete_limit;
@@ -649,6 +651,9 @@ static void *sql_tranlevel_default_value()
     default: return "invalid";
     }
 }
+
+/* Routines for the tunable system itself - tunable-specific
+ * routines belong above */
 
 static void tunable_tolower(char *str)
 {

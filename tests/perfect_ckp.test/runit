@@ -32,7 +32,7 @@ fi
 
 echo Creating table
 cdb2sql ${CDB2_OPTIONS} $dbnm $tier "drop table t" >/dev/null
-cdb2sql ${CDB2_OPTIONS} $dbnm $tier "create table t { tag ondisk {int i} }" >/dev/null
+cdb2sql ${CDB2_OPTIONS} $dbnm $tier "create table t { schema {int i} }" >/dev/null
 
 ###### Step 2: Start background writers ######
 echo Inserting 10k records

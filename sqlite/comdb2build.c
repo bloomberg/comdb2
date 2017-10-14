@@ -466,35 +466,20 @@ void free_rstMsg(struct rstMsg* rec)
 */
 int comdb2SendBpfunc(OpFunc *f)
 {
-   struct sql_thread    *thd = pthread_getspecific(query_info_key);
-   struct sqlclntstate  *clnt = thd->sqlclntstate;
-   osqlstate_t          *osql = &clnt->osql;
-   char                 *node = osql->host;
+   struct sql_thread *thd = pthread_getspecific(query_info_key);
    int rc = 0;
-   
    BpfuncArg *arg = (BpfuncArg*)f->arg;
 
-   //osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
-
-   rc = osql_send_bpfunc(node, osql->rqid, osql->uuid, arg, NET_OSQL_SOCK_RPL,osql->logsb);
-   
-   //rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
-
-   rc = osql->xerr.errval;
-   osql->xerr.errval = 0;
-   osql->xerr.errstr[0] = '\0';
+   rc = osql_bpfunc_logic(thd, arg);
     
-    
-    if (rc)
-    {
-        f->rc = rc;
-        f->errorMsg = "FAIL"; // TODO This must be translated to a description
-    } else
-    {
-        f->rc = SQLITE_OK;
-        f->errorMsg = "";
-    } 
-   return rc;
+   if (rc) {
+       f->rc = rc;
+       f->errorMsg = "FAIL"; // TODO This must be translated to a description
+   } else {
+       f->rc = SQLITE_OK;
+       f->errorMsg = "";
+   }
+   return f->rc;
 }
 
 
@@ -510,7 +495,10 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, uint8_t opt);
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if(gbl_schema_change_in_progress) return -1;
+    if (gbl_schema_change_in_progress) {
+        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
+        return -1;
+    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
@@ -1019,7 +1007,8 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to", nm->n + lnm->n, nm->z, nm2->n +lnm2->n, nm2->z);
+    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
+           nm->z, nm2->n +lnm2->n, nm2->z);
 }
 
 /********************* ANALYZE ***************************************************/
@@ -1778,7 +1767,10 @@ struct comdb2_ddl_context {
 };
 
 /* Type properties */
-enum { COMDB2_TYPE_FLAG_ALLOW_ARRAY = 1 };
+enum {
+    COMDB2_TYPE_FLAG_ALLOW_ARRAY = 1 << 0,
+    COMDB2_TYPE_FLAG_QUOTE_DEFAULT = 1 << 1,
+};
 
 #define COMDB2_TYPE(A, B, C)                                                   \
     {                                                                          \
@@ -1805,15 +1797,19 @@ struct comdb2_type_mapping {
     COMDB2_TYPE("u_int", "u_int", 0),
     COMDB2_TYPE("int", "int", 0),
     COMDB2_TYPE("longlong", "longlong", 0),
-    COMDB2_TYPE("cstring", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("vutf8", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("blob", "blob", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("byte", "byte", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("datetime", "datetime", 0),
-    COMDB2_TYPE("datetimeus", "datetimeus", 0),
-    COMDB2_TYPE("intervalds", "intervalds", 0),
-    COMDB2_TYPE("intervaldsus", "intervaldsus", 0),
-    COMDB2_TYPE("intervalym", "intervalym", 0),
+    COMDB2_TYPE("cstring", "cstring",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("vutf8", "vutf8",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("blob", "blob",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("byte", "byte",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("datetime", "datetime", COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("datetimeus", "datetimeus", COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervalds", "intervalds", COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervaldsus", "intervaldsus", COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervalym", "intervalym", COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
     COMDB2_TYPE("decimal32", "decimal32", 0),
     COMDB2_TYPE("decimal64", "decimal64", 0),
     COMDB2_TYPE("decimal128", "decimal128", 0),
@@ -1821,14 +1817,18 @@ struct comdb2_type_mapping {
     COMDB2_TYPE("double", "double", 0),
 
     /* Additional types mapped to a Comdb2 type. */
-    COMDB2_TYPE("varchar", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("char", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
+    COMDB2_TYPE("varchar", "cstring",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("char", "cstring",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("text", "vutf8",
+                COMDB2_TYPE_FLAG_ALLOW_ARRAY | COMDB2_TYPE_FLAG_QUOTE_DEFAULT),
     COMDB2_TYPE("integer", "int", 0),
     COMDB2_TYPE("smallint", "short", 0),
     COMDB2_TYPE("bigint", "longlong", 0),
     COMDB2_TYPE("real", "float", 0),
-};
+    /* End marker */
+    {NULL, 0, NULL, 0}};
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
@@ -1899,8 +1899,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
     type_len = strlen(type);
 
-    for (int i = 0;
-         i < sizeof(type_mapping) / sizeof(struct comdb2_type_mapping); ++i) {
+    for (int i = 0; type_mapping[i].sql_type != NULL; ++i) {
 
         /* Check if current type could accept size. */
         accepts_size = (type_mapping[i].flag & COMDB2_TYPE_FLAG_ALLOW_ARRAY);
@@ -3077,8 +3076,10 @@ cleanup:
 void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 {
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct field *field;
     char *def;
     int def_len;
+
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddDefaultValue(pParse, pSpan);
@@ -3094,8 +3095,34 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
     def = comdb2_strndup(ctx->mem, pSpan->zStart, def_len);
     if (def == 0) goto oom;
 
-    ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field->in_default =
-        def;
+    field = ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field;
+
+    /*
+      Fix the quotes around the supplied default value as CSC2 only accepts
+      double-quotes around string types.
+    */
+    assert(field->type <
+           ((sizeof(type_mapping) / sizeof(struct comdb2_type_mapping)) - 1));
+
+    if ((type_mapping[field->type].flag & COMDB2_TYPE_FLAG_QUOTE_DEFAULT) !=
+        0) {
+        /*
+          In case the supplied default value was unquoted, it would
+          have been a syntax error, and thus, have been caught earlier.
+          We check for single-quoted values and change them to double
+          quotes.
+        */
+        if (def[0] == '\'') {
+            assert(def[def_len - 1] == '\'');
+            def[0] = '"';
+            def[def_len - 1] = '"';
+        }
+    } else {
+        /* Remove the quotes around the default value (if any). */
+        sqlite3Dequote(def);
+    }
+
+    field->in_default = def;
 
     return;
 

@@ -5,9 +5,9 @@ insert into t1 values(4, x'012345678901234567890123456789')
 insert into t1 values(5, x'012345678901234567890123456789')
 insert into t1 values(6, x'012345678901234567890123456789')
 select * from t1 order by i
-alter table t1 { tag ondisk { int i blob blb[10]}}$$
+alter table t1 { schema { int i blob blb[10]}}$$
 select * from t1 order by i
-alter table t1 { tag ondisk { int i blob blb[100]}}$$
+alter table t1 { schema { int i blob blb[100]}}$$
 select * from t1 order by i
-alter table t1 { tag ondisk { int i blob blb}}$$
+alter table t1 { schema { int i blob blb}}$$
 select * from t1 order by i

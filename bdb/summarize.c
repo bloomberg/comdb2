@@ -79,7 +79,9 @@ static double analyze_headroom = 6;
 void analyze_set_headroom(uint64_t headroom)
 {
     if (headroom < 1 || 100 < headroom) {
-        logmsg(LOGMSG_ERROR, "Invalid headroom %llu. Needs to be between 0 and 100%%\n", headroom);
+        logmsg(LOGMSG_ERROR,
+               "Invalid headroom %lu. Needs to be between 0 and 100%%\n",
+               headroom);
         return;
     }
     analyze_headroom = headroom;

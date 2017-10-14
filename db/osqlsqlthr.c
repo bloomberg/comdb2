@@ -45,6 +45,7 @@
 #include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "nodemap.h"
+#include <bpfunc.h>
 
 #include "debug_switches.h"
 #include <net_types.h>
@@ -569,16 +570,16 @@ again:
 
     if (!keep_session) {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%u Starting %llx\n", pthread_self(),
-                    clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%lu Starting %llx\n", pthread_self(),
+                   clnt->osql.rqid);
         /* unregister this osql thread from checkboard */
         rc = osql_unregister_sqlthr(clnt);
         if (rc)
             return SQLITE_INTERNAL;
     } else {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%u Restarting %llx\n", pthread_self(),
-                    clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%lu Restarting %llx\n", pthread_self(),
+                   clnt->osql.rqid);
         /* we should reset this ! */
         rc = osql_reuse_sqlthr(clnt);
         if (rc)
@@ -596,6 +597,10 @@ again:
     rc = osql_shadtbl_process(clnt, &sentops, &bdberr);
     if (rc == SQLITE_TOOBIG) {
         logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__, sentops);
+        return rc;
+    }
+    if (rc == ERR_SC) {
+        logmsg(LOGMSG_ERROR, "%s: schema change error\n", __func__);
         return rc;
     }
 
@@ -679,8 +684,9 @@ retry:
         if (rc) {
             rcout = rc;
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "td=%u %s line %d got %d and setting rcout to %d\n", 
-                        pthread_self(), __func__, __LINE__, rc, rcout);
+                logmsg(LOGMSG_USER,
+                       "td=%lu %s line %d got %d and setting rcout to %d\n",
+                       pthread_self(), __func__, __LINE__, rc, rcout);
             }
             goto err;
         }
@@ -699,8 +705,8 @@ retry:
 
         /* trap */
         if (!osql->rqid) {
-            logmsg(LOGMSG_ERROR, "%s: !rqid %p %d???\n", __func__, clnt,
-                    pthread_self());
+            logmsg(LOGMSG_ERROR, "%s: !rqid %p %lu???\n", __func__, clnt,
+                   pthread_self());
             /*cheap_stack_trace();*/
             abort();
         }
@@ -712,7 +718,6 @@ retry:
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
                     __func__, __LINE__, rcout, rc);
         }
-
         else {
 
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
@@ -742,18 +747,21 @@ retry:
                         rc = osql_sock_restart(
                             clnt, 1,
                             1 /*no new rqid*/); /* retry at higher level */
-                        if (rc != SQLITE_TOOBIG) goto retry;
+                        if (rc != SQLITE_TOOBIG && rc != ERR_SC)
+                            goto retry;
                     }
                 }
-                /* transaction failed on the master,
-                   abort here as well */
+                /* transaction failed on the master, abort here as well */
                 if (rc != SQLITE_TOOBIG) {
                     if (osql->xerr.errval == -109 /* SQLHERR_MASTER_TIMEOUT */) {
 
                         if (gbl_extended_sql_debug_trace) {
-                            logmsg(LOGMSG_USER, "td=%u %s line %d got %d and setting rcout to MASTER_TIMEOUT, " 
-                                    " errval is %d\n", pthread_self(), __func__, __LINE__, rc, 
-                                    osql->xerr.errval);
+                            logmsg(LOGMSG_USER, "td=%lu %s line %d got %d and "
+                                                "setting rcout to "
+                                                "MASTER_TIMEOUT, "
+                                                " errval is %d\n",
+                                   pthread_self(), __func__, __LINE__, rc,
+                                   osql->xerr.errval);
                         }
 
                         rcout = -109;
@@ -762,7 +770,7 @@ retry:
                         if (gbl_extended_sql_debug_trace) {
                             logmsg(
                                 LOGMSG_USER,
-                                "td=%u %s line %d got %d and setting rcout to "
+                                "td=%lu %s line %d got %d and setting rcout to "
                                 "SQLITE_CLIENT_CHANGENODE,  errval is %d\n",
                                 pthread_self(), __func__, __LINE__, rc,
                                 osql->xerr.errval);
@@ -770,9 +778,12 @@ retry:
                         rcout = SQLITE_CLIENT_CHANGENODE;
                     } else {
                         if (gbl_extended_sql_debug_trace) {
-                            logmsg(LOGMSG_USER, "td=%u %s line %d got %d and setting rcout to SQLITE_ABORT, " 
-                                    " errval is %d\n", pthread_self(), __func__, __LINE__, rc, 
-                                    osql->xerr.errval);
+                            logmsg(LOGMSG_USER, "td=%lu %s line %d got %d and "
+                                                "setting rcout to "
+                                                "SQLITE_ABORT, "
+                                                " errval is %d\n",
+                                   pthread_self(), __func__, __LINE__, rc,
+                                   osql->xerr.errval);
                         }
                         // SQLITE_ABORT comes out as a "4" in the client,
                         // which is translated to 4 'null key constraint'.
@@ -781,7 +792,7 @@ retry:
                 } else {
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER,
-                               "td=%u %s line %d got %d and setting "
+                               "td=%lu %s line %d got %d and setting "
                                "rcout to SQLITE_TOOBIG, "
                                " errval is %d\n",
                                pthread_self(), __func__, __LINE__, rc,
@@ -791,7 +802,7 @@ retry:
                 }
             } else {
                 if (gbl_extended_sql_debug_trace) {
-                    logmsg(LOGMSG_USER, "td=%u %s line %d got %d from %s\n",
+                    logmsg(LOGMSG_USER, "td=%lu %s line %d got %d from %s\n",
                            pthread_self(), __func__, __LINE__, rc, osql->host);
                 }
             }
@@ -959,14 +970,16 @@ static int should_restart(struct sqlclntstate *clnt, int rc)
         rc = osql_sock_restart(clnt, gbl_survive_n_master_swings,              \
                                0 /*new rqid*/);                                \
         if (rc) {                                                              \
-            logmsg(LOGMSG_ERROR, "%s: failed to restart socksql session rc=%d\n",   \
-                    __func__, rc);                                             \
+            logmsg(LOGMSG_ERROR,                                               \
+                   "%s: failed to restart socksql session rc=%d\n", __func__,  \
+                   rc);                                                        \
         }                                                                      \
     }                                                                          \
     if (rc) {                                                                  \
-        logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode rc=%d!\n",    \
-            __func__, rc);                                                     \
-        if (rc != SQLITE_TOOBIG)                                               \
+        logmsg(LOGMSG_ERROR,                                                   \
+               "%s: error writting record to master in offload mode rc=%d!\n", \
+               __func__, rc);                                                  \
+        if (rc != SQLITE_TOOBIG && rc != ERR_SC)                               \
             rc = SQLITE_INTERNAL;                                              \
     } else {                                                                   \
         rc = SQLITE_OK;                                                        \
@@ -1656,31 +1669,68 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     } else {
         free(tblname);
     }
-    int rc = osql_save_schemachange(thd, sc);
+    int rc = osql_save_schemachange(thd, sc, usedb);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s:%d %s - failed to cache socksql schemachange rc=%d\n",
                __FILE__, __LINE__, __func__, rc);
+        return rc;
     }
-    if (usedb) {
-        unsigned long long version = 0;
-        if (getdbidxbyname(sc->table) < 0) { // view
-            char *viewname = timepart_newest_shard(sc->table, &version);
-            if (viewname) {
-                free(viewname);
-            } else
-                usedb = 0;
-        } else {
-            version = comdb2_table_version(tblname);
-        }
+    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+        if (usedb) {
+            unsigned long long version = 0;
+            if (getdbidxbyname(sc->table) < 0) { // view
+                char *viewname = timepart_newest_shard(sc->table, &version);
+                if (viewname) {
+                    free(viewname);
+                } else
+                    usedb = 0;
+            } else {
+                version = comdb2_table_version(tblname);
+            }
 
-        if (usedb)
-            rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tblname,
-                                 NET_OSQL_BLOCK_RPL_UUID, osql->logsb, version);
+            if (usedb) {
+                rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
+                                     tblname, NET_OSQL_BLOCK_RPL_UUID,
+                                     osql->logsb, version);
+                RESTART_SOCKSQL;
+            }
+        }
+        if (rc == SQLITE_OK) {
+            rc = osql_send_schemachange(host, rqid,
+                                        thd->sqlclntstate->osql.uuid, sc,
+                                        NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+            RESTART_SOCKSQL;
+        }
     }
-    if (rc == SQLITE_OK) {
-        rc = osql_send_schemachange(host, rqid, thd->sqlclntstate->osql.uuid,
-                                    sc, NET_OSQL_BLOCK_RPL_UUID, osql->logsb);
+    return rc;
+}
+
+/**
+ *
+ * Process a bpfunc request
+ * Returns SQLITE_OK if successful.
+ *
+ */
+int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
+{
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &clnt->osql;
+    char *host = thd->sqlclntstate->osql.host;
+    unsigned long long rqid = thd->sqlclntstate->osql.rqid;
+    int rc;
+
+    rc = osql_save_bpfunc(thd, arg);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d %s - failed to cache socksql bpfunc rc=%d\n", __FILE__,
+               __LINE__, __func__, rc);
+        return rc;
+    }
+    if (thd->sqlclntstate->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_send_bpfunc(host, rqid, thd->sqlclntstate->osql.uuid, arg,
+                              NET_OSQL_SOCK_RPL, osql->logsb);
+        RESTART_SOCKSQL;
     }
     return rc;
 }

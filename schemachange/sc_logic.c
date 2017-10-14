@@ -535,6 +535,12 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         wrlock_schema_lk();
         iq->sc_locked = 1;
     }
+
+    if (gbl_test_scindex_deadlock) {
+        logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
+    }
     if (s->is_trigger)
         rc = finalize_trigger(s);
     else if (s->is_sfunc)
@@ -740,7 +746,8 @@ int resume_schema_change(void)
         pthread_t tid;
         rc = pthread_create(&tid, NULL, sc_resuming_watchdog, NULL);
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n");
+            logmsg(LOGMSG_ERROR, "%s: failed to start sc_resuming_watchdog\n",
+                   __FILE__);
     }
     pthread_mutex_unlock(&sc_resuming_mtx);
     return 0;
