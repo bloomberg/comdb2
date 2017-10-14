@@ -2307,7 +2307,8 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
     logger->sqltables[logger->ntables++] = strdup(table);
 }
 
-void reqlog_set_error(struct reqlogger *logger, const char *error, int error_code)
+void reqlog_set_error(struct reqlogger *logger, const char *error,
+                      int error_code)
 {
     logger->error = strdup(error);
     logger->error_code = error_code;

@@ -2893,7 +2893,8 @@ void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
-void reqlog_set_error(struct reqlogger *logger, const char *error, int error_code);
+void reqlog_set_error(struct reqlogger *logger, const char *error,
+                      int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 
