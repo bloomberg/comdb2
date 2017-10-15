@@ -73,6 +73,25 @@ void usage(FILE *f)
     fprintf(f, "        -s <sleep-time>     - sleep between nemesis\n");
 }
 
+static void read_blocked_files(void)
+{
+    for (int i = 0 ; i < curmon; i++) {
+        if (monfps[i] == NULL) {
+            monfps[i] = fopen(monfile[i], "r");
+        }
+        else {
+            rewind(monfps[i]);
+        }
+        if (monfps[i]) {
+            char chk[1024] = {0};
+            rewind(monfps[i]);
+            fread(chk, sizeof(chk), 1, monfps[i]);
+            if (montext[i]) 
+                free(montext[i]);
+            montext[i] = strdup(chk);
+        }
+    }
+}
 
 static int block_on_monitored_files(void)
 {
@@ -81,6 +100,8 @@ static int block_on_monitored_files(void)
     static time_t longest_start;
     static time_t longest_end;
     static time_t longest = 0;
+    static unsigned long long tot_wait_time = 0;
+    static unsigned long long tot_wait_count = 0;
 
     start = time(NULL);
     for (int i = 0 ; i < curmon; i++) {
@@ -117,6 +138,8 @@ static int block_on_monitored_files(void)
         }
     }
     end = time(NULL);
+    tot_wait_time += (end - start);
+    tot_wait_count++;
     if (end - start > longest) {
         longest = end - start;
         longest_start = start;
@@ -134,10 +157,11 @@ static int block_on_monitored_files(void)
         fprintf(stderr, "\n");
         if (colored_output)
             fprintf(stderr, ANSI_COLOR_YELLOW);
-        fprintf(stderr, "(Longest was %ld seconds on %d/%d starting at "
-                "%.2d:%.2d:%.2d and ending at %.2d:%.2d:%.2d)", longest, 
+        fprintf(stderr, "Average wait time is %llu, longest was %ld seconds on "
+                "%d/%d starting at %.2d:%.2d:%.2d and ending at %.2d:%.2d:%.2d",
+                (unsigned long long)(tot_wait_time / tot_wait_count), longest, 
                 start_tm.tm_mon+1, start_tm.tm_mday, start_tm.tm_hour, 
-                start_tm.tm_min, start_tm.tm_sec, end_tm.tm_hour, end_tm.tm_min,
+                start_tm.tm_min, start_tm.tm_sec, end_tm.tm_hour, end_tm.tm_min, 
                 end_tm.tm_sec);
         if (colored_output)
             fprintf(stderr, ANSI_COLOR_RESET);
@@ -250,6 +274,9 @@ int main(int argc, char *argv[])
 
         if (nemesis_length > 0) sleep(nemesis_length);
 
+        if (curmon)
+            read_blocked_files();
+
         if (which_events & PARTITION_EVENT) {
             fixnet(n);
         }
@@ -261,9 +288,8 @@ int main(int argc, char *argv[])
         }
 
         int blocked = 0;
-        if (curmon) {
-            blocked |= block_on_monitored_files();
-        }
+
+        sleep(1);
 
         if (curmon) {
             blocked |= block_on_monitored_files();
