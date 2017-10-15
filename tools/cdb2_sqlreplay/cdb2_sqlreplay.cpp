@@ -128,6 +128,8 @@ bool is_transactional(cson_value *val) {
 bool is_replayable(cson_value *val) {
     int64_t nbound;
 
+    bool h = (have_json_key(val, "error"));
+    std::cerr << "have_json_key " << h << std::endl;
     if(have_json_key(val, "error"))
         return false;
 
