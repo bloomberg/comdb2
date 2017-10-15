@@ -157,9 +157,9 @@ static int block_on_monitored_files(void)
         fprintf(stderr, "\n");
         if (colored_output)
             fprintf(stderr, ANSI_COLOR_YELLOW);
-        fprintf(stderr, "Average wait time is %llu, longest was %ld seconds on "
+        fprintf(stderr, "Called %llu times, average wait time is %llu, longest was %ld seconds on "
                 "%d/%d starting at %.2d:%.2d:%.2d and ending at %.2d:%.2d:%.2d",
-                (unsigned long long)(tot_wait_time / tot_wait_count), longest, 
+                tot_wait_count, (unsigned long long)(tot_wait_time / tot_wait_count), longest, 
                 start_tm.tm_mon+1, start_tm.tm_mday, start_tm.tm_hour, 
                 start_tm.tm_min, start_tm.tm_sec, end_tm.tm_hour, end_tm.tm_min, 
                 end_tm.tm_sec);
