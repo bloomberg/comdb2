@@ -6,16 +6,18 @@ sleeptime=${3:-1}
 ccreq=${4:-1}
 cntfile=$db.$n
 totcnt=0
+whoami=$(whoami)
 
-/home/mhannum/comdb2/cdb2sql $db @$n "create table t1 { schema { int a } }" >/dev/null 2>&1
+
+/home/$whoami/comdb2/cdb2sql $db @$n "create table t1 { schema { int a } }" >/dev/null 2>&1
 
 function dbreq
 {
     x=$(( RANDOM % 2 ))
     if [[ "$x" == "1" ]]; then
-        /home/mhannum/comdb2/cdb2sql -r 1000000 -R 1000000 $db @$n - < readsql.txt 2>&1
+        /home/$whoami/comdb2/cdb2sql -r 1000000 -R 1000000 $db @$n - < readsql.txt 2>&1
     else
-        /home/mhannum/comdb2/cdb2sql -r 1000000 -R 1000000 $db @$n - < writesql.txt 2>&1
+        /home/$whoami/comdb2/cdb2sql -r 1000000 -R 1000000 $db @$n - < writesql.txt 2>&1
     fi
 }
 

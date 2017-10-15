@@ -78,6 +78,9 @@ static int block_on_monitored_files(void)
 {
     int blocked = 0;
     time_t start, end;
+    static time_t longest_start;
+    static time_t longest_end;
+    static time_t longest = 0;
 
     start = time(NULL);
     for (int i = 0 ; i < curmon; i++) {
@@ -114,10 +117,28 @@ static int block_on_monitored_files(void)
         }
     }
     end = time(NULL);
+    if (end - start > longest) {
+        longest = end - start;
+        longest_start = start;
+        longest_end = end;
+    }
     if ((end - start) > unblock_report_threshold) {
+        struct tm start_tm, end_tm;
+        localtime_r(&longest_start, &start_tm);
+        localtime_r(&longest_end, &end_tm);
         if (colored_output)
             fprintf(stderr, ANSI_COLOR_YELLOW);
         fprintf(stderr, "Unblocked after %ld seconds", end - start);
+        if (colored_output)
+            fprintf(stderr, ANSI_COLOR_RESET);
+        fprintf(stderr, "\n");
+        if (colored_output)
+            fprintf(stderr, ANSI_COLOR_YELLOW);
+        fprintf(stderr, "(Longest was %ld seconds on %d/%d starting at "
+                "%.2d:%.2d:%.2d and ending at %.2d:%.2d:%.2d)", longest, 
+                start_tm.tm_mon+1, start_tm.tm_mday, start_tm.tm_hour, 
+                start_tm.tm_min, start_tm.tm_sec, end_tm.tm_hour, end_tm.tm_min,
+                end_tm.tm_sec);
         if (colored_output)
             fprintf(stderr, ANSI_COLOR_RESET);
         fprintf(stderr, "\n");
