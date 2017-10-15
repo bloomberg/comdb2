@@ -17,6 +17,7 @@ struct nemesis {
 #define NEMESIS_PARTITION_MASTER 0x0001
 #define NEMESIS_VERBOSE 0x0002
 #define NEMESIS_PARTITION_WHOLE_NETWORK 0x0004
+#define NEMESIS_COLOR_PRINT 0x0008
 
 struct nemesis *nemesis_open(char *dbname, char *cltype, uint32_t flags);
 void nemesis_close(struct nemesis *n);

@@ -12,6 +12,9 @@
 
 #define MAXCL 64
 
+#define ANSI_COLOR_WHITE   "\x1b[37;1m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 static int setcluster(struct nemesis *n, char *dbname, char *cltype,
                       uint32_t flags)
 {
@@ -116,9 +119,16 @@ void breaknet(struct nemesis *n)
     } while (n2 == n1);
     node[n2] = 1;
 
-    printf("Cut off %s %s from cluster, master is %s\n", 
+    if (n->flags & NEMESIS_COLOR_PRINT) {
+        printf(ANSI_COLOR_WHITE);
+    }
+    printf("Cut off %s %s from cluster, master is %s", 
             n->cluster[n1], n->cluster[n2], n->master);
 
+    if (n->flags & NEMESIS_COLOR_PRINT) {
+        printf(ANSI_COLOR_RESET);
+    }
+    printf("\n");
     for (int broken = 0; broken < n->numnodes; broken++) {
         if (node[broken]) {
             cmd[0] = 0;

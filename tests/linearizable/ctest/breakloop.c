@@ -220,6 +220,7 @@ int main(int argc, char *argv[])
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (partition_whole_network) flags |= NEMESIS_PARTITION_WHOLE_NETWORK;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
+    if (colored_output) flags |= NEMESIS_COLOR_PRINT;
     for (cnt = 0; cnt < 1000 && n == NULL; cnt++) {
         n = nemesis_open(dbname, cltype, flags);
         if (!n) sleep(1);
