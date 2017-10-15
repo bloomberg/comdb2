@@ -2655,7 +2655,7 @@ int bdb_add_dummy_llmeta(void)
 retry:
     if (bdb_lock_desired(llmeta_bdb_state->parent)) {
         logmsg(LOGMSG_ERROR, "%s short-circuiting because bdb_lock_desired\n",
-                rc);
+                __func__);
         return -1;
     }
     tran = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
