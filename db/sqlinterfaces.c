@@ -5484,7 +5484,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
-                reqlog_set_event(thd->logger, "sql"); /* set before setting error */
+                reqlog_set_event(thd->logger, "sql"); /* set before error */
                 reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
             }
             goto errors;
