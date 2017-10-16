@@ -70,4 +70,4 @@ constraints
     "UUID2" -> <"t2":"UUID1">
     "UUID3" -> "t1":"UUID" "t2":"UUID1" //no angle brackets -- should fail
 }
-}] failed with rc 304 ERROR at line  28: syntax error: :
+}] failed with rc 240 ERROR at line  28: syntax error: :
