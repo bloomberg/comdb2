@@ -36,6 +36,7 @@ __db_no_hash_am(dbenv)
 {
 	__db_err(dbenv,
 	    "library build did not include support for the Hash access method");
+	abort();
 	return (DB_OPNOTSUP);
 }
 
