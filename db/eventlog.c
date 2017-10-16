@@ -171,7 +171,7 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
         /* mostly taken from sqltype() and bind_parameters() */
         int dlen = f->datalen;
-        const char *strtype = "";
+        const char *strtype = "__NO_TYPE_ASSIGNED__";
         switch (f->type) {
         case CLIENT_UINT:
         case CLIENT_INT:
@@ -181,8 +181,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             case 4: strtype = "int"; break;
             case 8: strtype = "largeint"; break;
             }
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
 
             if (isnull)
                 break;
@@ -209,8 +207,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                 dval = *(double *)(buf + f->offset);
                 break;
             }
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
 
             if (isnull)
                 break;
@@ -226,8 +222,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "char";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
 
             if (isnull)
                 break;
@@ -247,9 +241,8 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "blob";
-            if (f->type == CLIENT_VUTF8) strtype = "varchar";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
+            if (f->type == CLIENT_VUTF8) 
+                strtype = "varchar";
 
             if (isnull)
                 break;
@@ -286,8 +279,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "datetime";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
 
             if (isnull)
                 break;
@@ -304,8 +295,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
 
             /* set type */
             strtype = "datetimeus";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
 
             if (isnull)
                 break;
@@ -319,16 +308,12 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         }
         case CLIENT_INTVYM:
             strtype = "interval month";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
             if (isnull)
                 break;
             /* TODO: value */
             break;
         case CLIENT_INTVDS:
             strtype = "interval sec";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
             if (isnull)
                 break;
             /* TODO: value */
@@ -336,8 +321,6 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
             break;
         case CLIENT_INTVDSUS:
             strtype = "interval usec";
-            cson_object_set(bobj, "type",
-                            cson_value_new_string(strtype, strlen(strtype)));
             if (isnull)
                 break;
             /* TODO: value */
@@ -346,8 +329,12 @@ void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
         default: assert(false && "Unknown type being bound");
         }
 
-        if (isnull)
+        if (isnull) {
+            strtype = "int"; /* log null values as int for simplicity */
             cson_object_set(bobj, "value", cson_value_null());
+        }
+        cson_object_set(bobj, "type",
+                        cson_value_new_string(strtype, strlen(strtype)));
     }
 }
 

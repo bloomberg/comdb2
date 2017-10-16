@@ -1515,6 +1515,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
     reqlog_set_vreplays(logger, clnt->verify_retries);
 
+    if (clnt->saved_rc)
+        reqlog_set_error(logger, clnt->saved_errstr, clnt->saved_rc);
+
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
@@ -5484,8 +5487,6 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
-                reqlog_set_event(thd->logger, "sql"); /* set before error */
-                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
             }
             goto errors;
         }
@@ -5523,6 +5524,8 @@ done:
     return rc;
 
 errors:
+    reqlog_set_event(thd->logger, "sql"); /* set before error */
+    reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
     handle_sqlite_error(thd, clnt, &rec);
     goto done;
 }

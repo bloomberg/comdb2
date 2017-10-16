@@ -69,7 +69,7 @@ static bool get_ispropnull(cson_value *objval, const char *key)
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
     cson_value *propval = cson_object_get(obj, key);
-    if (propval == nullptr)
+    if (propval == nullptr || cson_value_is_null(propval))
         return true;
     return false;
 }
@@ -210,6 +210,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
         const char *type = get_strprop(bp, "type");
         int ret;
         if(get_ispropnull(bp, "value")) {
+            /* bind null value as type INT for simplicity */
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, NULL, 0)) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 return false;
@@ -254,8 +255,21 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             }
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
+        else if( strcmp(type, "byte") == 0 || strcmp(type, "blob") == 0) {
+            const char *strp = get_strprop(bp, "value");
+            if (strp == nullptr) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                return false;
+            }
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, strp, strlen(strp) )) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+            std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
+        }
+
         else
-            std::cout << "binding unknown "<< type << " column " << name << std::endl;
+            std::cout << "error binding unknown "<< type << " column " << name << std::endl;
     }
 
     return true;

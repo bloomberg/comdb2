@@ -28,10 +28,13 @@ int runsql(cdb2_hndl_tp *h, std::string &sql)
         int i;
         const char *c = "";
         for (i = 0; i < n; ++i) {
-            printf("%s%s", c, (char *)cdb2_column_value(h, i));
-            c = ", ";
+            if(cdb2_column_type(h, i) == CDB2_CSTRING) {
+                char * v = (char *)cdb2_column_value(h, i);
+                printf("%s%s", c, v);
+                c = ", ";
+            }
         }
-        puts("");
+        if(*c) printf("\n");
         rc = cdb2_next_record(h);
     }
 
@@ -101,6 +104,84 @@ int main(int argc, char *argv[])
     const char *table = "t1";
     if (argc > 2) 
         table = argv[2];
+
+
+// insert records with bind params
+    for (int j = 2000; j < 2002; j++) {
+        std::ostringstream ss;
+        time_t rawtime;
+        struct tm * timeinfo;
+        char buffer [80];
+
+        time (&rawtime);
+        timeinfo = localtime (&rawtime);
+        std::vector<int> types;
+
+        strftime (buffer,80,"'%FT%T'",timeinfo);
+
+        short palltypes_short = (1-2*(j%2))*j;
+        int palltypes_int = (1-2*(j%2))*j;
+        unsigned short palltypes_u_short = j;
+        float palltypes_float = (1-2*(j%2)) * (100.0 + ((float) j)/1000.0);
+        double palltypes_double = (1-2*(j%2)) * (100000.0 + ((double) j)/1000000.0);
+        unsigned char palltypes_byte[17] = "1234567890123456";
+        unsigned char palltypes_blob[1024];
+        {
+            for(unsigned int i = 0 ; i < sizeof(palltypes_blob); i++)
+                palltypes_blob[i] = 'a' + (i % 26);
+        }
+
+
+        if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_u_short", CDB2_INTEGER, &palltypes_u_short, sizeof(palltypes_u_short)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &palltypes_int, sizeof(palltypes_int)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_float", CDB2_REAL, &palltypes_float, sizeof(palltypes_float)) )
+            fprintf(stderr, "Error binding palltypes_float.\n");
+        if(cdb2_bind_param(db, "palltypes_double", CDB2_REAL, &palltypes_double, sizeof(palltypes_double)) )
+            fprintf(stderr, "Error binding palltypes_double.\n");
+        if(cdb2_bind_param(db, "palltypes_byte", CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
+            fprintf(stderr, "Error binding palltypes_byte.\n");
+        if(j == 2000) {
+          if(cdb2_bind_param(db, "palltypes_blob", CDB2_INTEGER, NULL, 0))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        }
+        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob)))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        types.push_back(CDB2_INTEGER);
+
+        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_float, alltypes_double, alltypes_byte, alltypes_blob) values (@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_blob)" ;
+        //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
+           /*
+           << ((1-2*(j%2))) << j 
+           << ", " << j 
+           << ", " << ((1-2*(j%2))) << "0000" << j 
+           << ", " << "10000" << j 
+           << ", " << ((1-2*(j%2))) << "000000000" << j 
+           << ", " << ((1-2*(j%2))) << "00.00" << j 
+           << ", " << ((1-2*(j%2))) << "0000" << j << ".0000" << j 
+           << ", " << "x'" << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << "0000000000000000'" << ", " 
+           << "'mycstring" << j << "', " 
+           << "'mypstring" << j << "', " 
+           << "x'" << (j%2) << (j%3) << (j%4) << (j%5) << "', " 
+           << buffer << ", " 
+           << buffer << ", " 
+           << "'myvutf8" << j << "', " 
+           << (1-2*(j%2)) << j << ", " 
+           << (1-2*(j%2)) << "0000" << j << ", " 
+           << (1-2*(j%2)) << "0000" << j << ", " 
+           << (1-2*(j%2)) << "00000000" << j << ", " 
+           << (1-2*(j%2)) << "00000000000000" << j  << ")"; 
+           */
+        //this works too?? runsql(db, s);
+        printf("float param: %f\n", palltypes_float);
+        printf("double param: %lf\n", palltypes_double);
+        std::string s = ss.str();
+        runtag(db, s, types);
+        cdb2_clearbindings(db);
+    }
 
     // insert records
     for (int j = 1000; j < 2000; j++) {
@@ -194,82 +275,7 @@ int main(int argc, char *argv[])
     }
 
 
-    // insert records with bind params
-    for (int j = 2000; j < 3000; j++) {
-        std::ostringstream ss;
-        time_t rawtime;
-        struct tm * timeinfo;
-        char buffer [80];
-
-        time (&rawtime);
-        timeinfo = localtime (&rawtime);
-        std::vector<int> types;
-
-        strftime (buffer,80,"'%FT%T'",timeinfo);
-
-        short palltypes_short = (1-2*(j%2))*j;
-        int palltypes_int = (1-2*(j%2))*j;
-        unsigned short palltypes_u_short = j;
-        float palltypes_float = (1-2*(j%2)) * (100.0 + ((float) j)/1000.0);
-        double palltypes_double = (1-2*(j%2)) * (100000.0 + ((double) j)/1000000.0);
-        unsigned char palltypes_byte[17] = "1234567890123456";
-        unsigned char palltypes_blob[1024];
-        {
-            for(unsigned int i = 0 ; i < sizeof(palltypes_blob); i++)
-                palltypes_blob[i] = 'a' + (i % 26);
-        }
-
-
-        if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
-            fprintf(stderr, "Error binding palltypes_short.\n");
-        if(cdb2_bind_param(db, "palltypes_u_short", CDB2_INTEGER, &palltypes_u_short, sizeof(palltypes_u_short)) )
-            fprintf(stderr, "Error binding palltypes_short.\n");
-        if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &palltypes_int, sizeof(palltypes_int)) )
-            fprintf(stderr, "Error binding palltypes_short.\n");
-        if(cdb2_bind_param(db, "palltypes_float", CDB2_REAL, &palltypes_float, sizeof(palltypes_float)) )
-            fprintf(stderr, "Error binding palltypes_float.\n");
-        if(cdb2_bind_param(db, "palltypes_double", CDB2_REAL, &palltypes_double, sizeof(palltypes_double)) )
-            fprintf(stderr, "Error binding palltypes_double.\n");
-        if(cdb2_bind_param(db, "palltypes_byte", CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
-            fprintf(stderr, "Error binding palltypes_byte.\n");
-        if(j == 2000) {
-          if(cdb2_bind_param(db, "palltypes_blob", CDB2_INTEGER, NULL, 0))
-            fprintf(stderr, "Error binding palltypes_blob.\n");
-        }
-        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob)))
-            fprintf(stderr, "Error binding palltypes_blob.\n");
-        types.push_back(CDB2_INTEGER);
-
-        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_float, alltypes_double, alltypes_byte, alltypes_blob) values (@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_blob)" ;
-        //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
-           /*
-           << ((1-2*(j%2))) << j 
-           << ", " << j 
-           << ", " << ((1-2*(j%2))) << "0000" << j 
-           << ", " << "10000" << j 
-           << ", " << ((1-2*(j%2))) << "000000000" << j 
-           << ", " << ((1-2*(j%2))) << "00.00" << j 
-           << ", " << ((1-2*(j%2))) << "0000" << j << ".0000" << j 
-           << ", " << "x'" << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << "0000000000000000'" << ", " 
-           << "'mycstring" << j << "', " 
-           << "'mypstring" << j << "', " 
-           << "x'" << (j%2) << (j%3) << (j%4) << (j%5) << "', " 
-           << buffer << ", " 
-           << buffer << ", " 
-           << "'myvutf8" << j << "', " 
-           << (1-2*(j%2)) << j << ", " 
-           << (1-2*(j%2)) << "0000" << j << ", " 
-           << (1-2*(j%2)) << "0000" << j << ", " 
-           << (1-2*(j%2)) << "00000000" << j << ", " 
-           << (1-2*(j%2)) << "00000000000000" << j  << ")"; 
-           */
-        //this works too?? runsql(db, s);
-        printf("float param: %f\n", palltypes_float);
-        printf("double param: %lf\n", palltypes_double);
-        std::string s = ss.str();
-        runtag(db, s, types);
-        cdb2_clearbindings(db);
-    }
+    
 
     /*
     std::vector<int> types;
