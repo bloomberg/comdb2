@@ -169,7 +169,7 @@
   gets reset, so we don't accidentally hand off the connection to a later
   invocation with some incomplete transaction."
   [& body]
-  `(util/timeout timeout-delay
+  `(util/timeout (+ 1000 timeout-delay)
                  (throw (RuntimeException. "timeout"))
                  ~@body))
 
@@ -221,10 +221,10 @@
   [opts]
   (assert (pos? (:time-limit opts)))
   ; Wrap client generator in nemesis, combine final-gen if applicable
-  (let [nemesis   (or (:nemesis opts) nemesis/noop)
+  (let [nemesis   (or (:nemesis opts) nemesis/partition-random-halves)
         generator (if (identical? nemesis/noop nemesis)
                     (gen/clients (:generator opts))
-                    (gen/nemesis (gen/start-stop 30 10)))
+                    (gen/nemesis (gen/start-stop 30 10) (:generator opts)))
         generator (gen/phases (->> generator
                                    (gen/time-limit (:time-limit opts)))
                               (gen/log "Healing network")
@@ -591,38 +591,39 @@
        (with-io-failures op
          (with-conn [c conn]
            (with-logical-failures op
-             (with-txn-prep! c
-               (case (:f op)
-                 :read
-                 (let [[id val'] (:value op)
-                       [val uid] (second
-                                   (query c [(str "select val,uid from "
-                                                  table " where id = ?") id]
-                                          {:as-arrays? true}))]
-                   (assoc op
-                          :type  :ok
-                          :uid   uid
-                          :value (independent/tuple id val)))
+             (with-timeout
+               (with-txn-prep! c
+                 (case (:f op)
+                   :read
+                   (let [[id val'] (:value op)
+                         [val uid] (second
+                                     (query c [(str "select val,uid from "
+                                                    table " where id = ?") id]
+                                            {:as-arrays? true}))]
+                     (assoc op
+                            :type  :ok
+                            :uid   uid
+                            :value (independent/tuple id val)))
 
-                 :write
-                 (let [[id val] (:value op)
-                       uid      (swap! uids inc)
-                       updated  (first (upsert! c table
-                                                {:id id, :val val, :uid uid}
-                                                ["id = ?" id]))]
-                   (assert (<= 0 updated 1))
-                   (assoc op :type (if (zero? updated) :fail :ok), :uid uid))
+                   :write
+                   (let [[id val] (:value op)
+                         uid      (swap! uids inc)
+                         updated  (first (upsert! c table
+                                                  {:id id, :val val, :uid uid}
+                                                  ["id = ?" id]))]
+                     (assert (<= 0 updated 1))
+                     (assoc op :type (if (zero? updated) :fail :ok), :uid uid))
 
-                 :cas
-                 (let [[id [v v']] (:value op)
-                       uid (swap! uids inc)
-                       updated (first (update! c table
-                                               {:val v', :uid uid}
-                                               ["id = ? and val = ?" id v]))]
-                   (assert (<= 0 updated 1))
-                   (assoc op
-                          :type (if (zero? updated) :fail :ok)
-                          :uid uid))))))))
+                   :cas
+                   (let [[id [v v']] (:value op)
+                         uid (swap! uids inc)
+                         updated (first (update! c table
+                                                 {:val v', :uid uid}
+                                                 ["id = ? and val = ?" id v]))]
+                     (assert (<= 0 updated 1))
+                     (assoc op
+                            :type (if (zero? updated) :fail :ok)
+                            :uid uid)))))))))
 
        (teardown! [_ test]
                   (rc/close! conn)))))
