@@ -24,10 +24,6 @@
 #include <unistd.h>
 #include <stdio.h>
 
-extern "C" {
-#include "mem.h"
-}
-
 const char *help_text[] = {
 "To serialise a db: comdb2ar [opts] c /bb/bin/mydb.lrl >output",
 "To serialise a db incrementally:",
@@ -88,8 +84,6 @@ void errexit(int code)
 
 int main(int argc, char *argv[])
 {
-    comdb2ma_init(0, 0);
-
     extern char *optarg;
     extern int optind, optopt;
 

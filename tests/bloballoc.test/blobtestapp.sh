@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # arguments 
 args=$1
@@ -7,7 +7,6 @@ wrkd=$3
 inp=$4
 rmt=$5
 log=$6
-
 
 # local variables
 blbt=./blob

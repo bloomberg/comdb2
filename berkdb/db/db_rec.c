@@ -1272,7 +1272,7 @@ __db_pg_prealloc_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__db_pg_prealloc_print);
 	REC_INTRO(__db_pg_prealloc_read, 1);
 
-	if ((ret = mpf->get(mpf, &argp->pgno, 0, &pagep)) != 0)
+	if ((ret = mpf->get(mpf, &argp->pgno, 0, &pagep)) != 0) {
 		if (DB_REDO(op)) {
 			if ((ret = mpf->get(mpf,
 			    &argp->pgno, DB_MPOOL_CREATE, &pagep)) != 0)
@@ -1282,6 +1282,7 @@ __db_pg_prealloc_recover(dbenv, dbtp, lsnp, op, info)
 			ret = 0;
 			goto out;
 		}
+	}
 
 	modified = 0;
 	cmp_n = log_compare(lsnp, &LSN(pagep));
@@ -1300,7 +1301,7 @@ __db_pg_prealloc_recover(dbenv, dbtp, lsnp, op, info)
 		/* Need to undo update described. */
 		modified = 1;
 	}
-	if (ret = mpf->put(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0))
+	if ((ret = mpf->put(mpf, pagep, modified ? DB_MPOOL_DIRTY : 0)) != 0)
 		goto out;
 
 	*lsnp = argp->prev_lsn;

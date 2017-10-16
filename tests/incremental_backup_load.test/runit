@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Test functionality for incremental backups with concurrent writeload
 export debug=1
 export sleeptime=30

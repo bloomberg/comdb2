@@ -161,7 +161,7 @@ REGISTER_TUNABLE("delayed_ondisk_tempdbs", NULL, TUNABLE_INTEGER,
                  NULL, NULL);
 REGISTER_TUNABLE("dir",
                  "Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)",
-                 TUNABLE_STRING, &db->basedir, READONLY, NULL, dir_verify, NULL,
+                 TUNABLE_STRING, &db->basedir, READONLY, NULL, NULL, NULL,
                  NULL);
 REGISTER_TUNABLE("disable_bbipc", NULL, TUNABLE_BOOLEAN, &gbl_use_bbipc,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);

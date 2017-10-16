@@ -161,9 +161,9 @@ lsn_collection_add(DB_ENV *dbenv, LSN_COLLECTION * lc, DB_LSN lsn, DBT *dbt)
 
 	if (lc->nlsns >= lc->nalloc) {
 		nalloc = lc->nalloc == 0 ? 20 : lc->nalloc * 2;
-		if (ret =
+		if ((ret =
 		    __os_realloc(dbenv, nalloc * sizeof(struct logrecord),
-			&lc->array) != 0)
+			&lc->array)) != 0)
 			goto err;
 		lc->nalloc = nalloc;
 		for (int i = lc->nlsns; i < lc->nalloc; i++)

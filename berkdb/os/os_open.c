@@ -200,8 +200,13 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	 * compile flags to #define DIRECTIO_ON.  Require both in order to call
 	 * directio.
 	 */
-	if (LF_ISSET(DB_OSO_DIRECT))
+	if (LF_ISSET(DB_OSO_DIRECT)) {
+#	    if defined(__APPLE__)
+		fcntl(fhp->fd, F_SETFL, F_NOCACHE);
+#	    else
 		(void)directio(fhp->fd, DIRECTIO_ON);
+#	    endif
+	}
 #endif
 
 	/*

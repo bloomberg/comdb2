@@ -45,7 +45,7 @@
 #include <str0.h>
 #include <pthread.h>
 #include <netinet/in.h>
-#include <db.h>
+#include <build/db.h>
 #include <portmuxapi.h>
 #include <bb_oscompat.h>
 
@@ -81,7 +81,7 @@
 #include <flibc.h>
 #include <cdb2_constants.h>
 #include <autoanalyze.h>
-#include "comdb2util.h"
+#include "util.h"
 #include <schemachange/sc_global.h>
 
 #include "rtcpu.h"
@@ -6058,11 +6058,6 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
 unsigned long long get_commit_context(const void *plsn, uint32_t generation)
 {
     return bdb_gen_commit_genid(thedb->bdb_env, plsn, generation);
-}
-
-void set_commit_lsn_gen(const DB_LSN *lsn, uint32_t generation)
-{
-    bdb_set_commit_lsn_gen(thedb->bdb_env, lsn, generation);
 }
 
 int set_commit_context(unsigned long long context, uint32_t *generation,

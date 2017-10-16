@@ -41,7 +41,7 @@
 #include <tcputil.h>
 
 #include <epochlib.h>
-#include <db.h>
+#include <build/db.h>
 #include "debug_switches.h"
 
 #include <ctrace.h>

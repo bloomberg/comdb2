@@ -63,7 +63,6 @@ extern int __berkdb_read_alarm_ms;
 #include "analyze.h"
 #include "dbdest.h"
 #include "intern_strings.h"
-#include "comdb2util.h"
 #include <stdbool.h>
 #include "utilmisc.h"
 #include "sqllog.h"

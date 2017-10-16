@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Run a series of command-line arguments.
 # Verify that bbgetopt returns the same output as glgetopt.

@@ -60,7 +60,7 @@
 
 #include <str0.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 #include <plink.h>
 
@@ -89,10 +89,10 @@
 #include <logmsg.h>
 #include <portmuxapi.h>
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "dbinc/db_swap.h"
 
-#include "db_am.h"
+#include <dbinc/db_am.h>
 
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
@@ -6875,7 +6875,7 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
         free(child->fld_hints);
         // free bthash
         bdb_handle_dbp_drop_hash(child);
-        memset(child, 0xff, sizeof(bdb_state));
+        memset(child, 0xff, sizeof(bdb_state_type));
 
         if (replace)
             memcpy(child, replace, sizeof(bdb_state_type));
@@ -7919,7 +7919,7 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
     memset(buf, 0, bufsz);
 
     flags = O_CREAT | O_TRUNC | O_RDWR;
-#ifndef _SUN_SOURCE
+#if !defined(_SUN_SOURCE) && !defined(__APPLE__)
     if (use_directio)
         flags |= O_DIRECT;
 #endif
@@ -7932,6 +7932,9 @@ static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir)
 #ifdef _SUN_SOURCE
     if (use_directio)
         directio(fd, DIRECTIO_ON);
+#elif defined(__APPLE__)
+    if (use_directio)
+        fcntl(fd, F_SETFL, F_NOCACHE);
 #endif
 
     /* Can I write? */

@@ -68,7 +68,7 @@ std::string read_incr_manifest(unsigned long long filesize);
 bool process_incr_manifest(
     const std::string text,
     const std::string datadestdir,
-    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>&
+    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >&
         updated_files,
     std::map<std::string, FileInfo>& new_files,
     std::set<std::string>& deleted_files,
@@ -82,7 +82,7 @@ bool process_incr_manifest(
 
 void unpack_incr_data(
     const std::vector<std::string>& file_order,
-    const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>& updated_files,
+    const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >& updated_files,
     const std::string& datadestdir
 );
 // Unpack the changed files from the .data file read in from STDIN

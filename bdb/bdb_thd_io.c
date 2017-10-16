@@ -20,7 +20,7 @@
 #include <unistd.h>
 
 #include <epochlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <logmsg.h>
 
 static void (*io_start)() = 0;

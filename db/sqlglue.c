@@ -48,7 +48,7 @@
 
 #include <plbitlib.h>
 #include <tcputil.h>
-#include <socket_pool.h>
+#include <sockpool.h>
 
 #include <cdb2api.h>
 
@@ -79,7 +79,7 @@
 #include <os.h>
 #include <sqlite3.h>
 
-#include "debug.h"
+#include "dbinc/debug.h"
 #include "sqlconstraints.h"
 #include "sqlinterfaces.h"
 

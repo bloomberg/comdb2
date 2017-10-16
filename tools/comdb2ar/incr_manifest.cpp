@@ -145,7 +145,7 @@ std::string read_incr_manifest(unsigned long long filesize){
 bool process_incr_manifest(
     std::string text,
     std::string datadestdir,
-    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>&
+    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >&
         updated_files,
     std::map<std::string, FileInfo>& new_files,
     std::set<std::string>& deleted_files,

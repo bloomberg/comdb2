@@ -33,7 +33,6 @@
 #include "net.h"
 #include "sqlstat1.h"
 #include <ctrace.h>
-#include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "socket_interfaces.h"
 #include "debug_switches.h"

@@ -1,7 +1,0 @@
-#!/bin/sh 
-
-
-set -e 
-
-# remove linked binaries
-rm -f /opt/bb/bin/cdb2_dump /opt/bb/bin/cdb2_printlog /opt/bb/bin/cdb2_stat /opt/bb/bin/cdb2_verify

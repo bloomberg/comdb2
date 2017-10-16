@@ -118,7 +118,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "dbdest.h"
 #include "intern_strings.h"
 #include "bb_oscompat.h"
-#include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "debug_switches.h"
 #include "machine.h"
@@ -375,7 +374,6 @@ volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 int gbl_sqlhistsz = 25;
-int gbl_force_bad_directory = 1;
 int gbl_lclpooled_buffers = 32;
 
 int gbl_maxblockops = 25000;
@@ -2943,7 +2941,7 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int llmeta_set_qdbs()
+static int llmeta_set_qdbs(void)
 {
     if (qdbs == NULL)
         return 0;
@@ -3856,7 +3854,7 @@ static int init(int argc, char **argv)
             read_spfile(gbl_spfile_name);
         }
 
-        if (llmeta_set_qdbs(qdbs) != 0) {
+        if (llmeta_set_qdbs() != 0) {
             logmsg(LOGMSG_FATAL, "failed to add queuedbs to llmeta\n");
             return -1;
         }
@@ -4073,13 +4071,10 @@ void create_old_blkseq_thread(struct dbenv *dbenv)
     }
 }
 
-#ifdef __hpux
-static void adjust_ulimits(void) {}
-#else
-
 /* bump up ulimit for no. fds up to hard limit */
 static void adjust_ulimits(void)
 {
+#   if !defined(__hpux) && !defined(__APPLE__)
     struct rlimit64 rlim;
 
     if (-1 == getrlimit64(RLIMIT_DATA, &rlim)) {
@@ -4098,7 +4093,6 @@ static void adjust_ulimits(void)
             logmsg(LOGMSG_INFO, "%s: set ulimit for data to %d\n", __func__,
                     (int)rlim.rlim_cur);
         }
-
     } else {
         logmsg(LOGMSG_INFO, "ulimit for data already set\n");
     }
@@ -4124,9 +4118,8 @@ static void adjust_ulimits(void)
     } else {
         logmsg(LOGMSG_INFO, "ulimit for no. fds already set\n");
     }
+#   endif //__hpux
 }
-
-#endif
 
 extern void set_throttle(int);
 extern int get_throttle(void);
@@ -5161,7 +5154,7 @@ int main(int argc, char **argv)
     comdb2ma_init(0, 0);
 
     /* more reliable */
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
     char fname[PATH_MAX];
     rc = readlink("/proc/self/exe", fname, sizeof(fname));
     if (rc > 0 && rc < sizeof(fname)) {
