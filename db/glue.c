@@ -1054,8 +1054,10 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
         return ERR_VERIFY;
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_updvrfy return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1086,8 +1088,10 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
         return ERR_VERIFY;
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_updvrfy return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1118,8 +1122,10 @@ int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
     switch (bdberr) {
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_upd_genid return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1170,7 +1176,7 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_allocdta return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1202,7 +1208,7 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_adddta_n_genid return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1235,7 +1241,7 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_adddta_n_genid return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1348,7 +1354,7 @@ int dat_upgrade(struct ireq *iq, void *trans, void *newdta, int newlen,
         // txns may sneak in and change the genid. consider it done.
         return 0;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_upgrade return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }

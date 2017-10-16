@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=900)
+(TUNABLES_COUNT=901)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -418,6 +418,7 @@
 (name='master_retry_poll_ms', description='Have a node wait this long after a master swing before retrying a transaction. (Default: 100ms)', type='INTEGER', value='100', read_only='Y')
 (name='master_swing_osql_verbose', description='Produce verbose trace for SQL handlers detecting a master change. (Default: off)', type='BOOLEAN', value='ON', read_only='Y')
 (name='master_swing_osql_verbose_off', description='Disables 'master_swing_osql_verbose'', type='BOOLEAN', value='OFF', read_only='N')
+(name='master_swing_sock_restart_sleep', description='For testing: sleep in osql_sock_restart when master swings', type='INTEGER', value='0', read_only='Y')
 (name='max_backout_logs', description='Refuse to roll back replicant past this many log files', type='INTEGER', value='3', read_only='N')
 (name='max_backout_seconds', description='Refuse to roll back replicant past this many seconds', type='INTEGER', value='0', read_only='N')
 (name='max_incoherent_nodes', description='', type='INTEGER', value='1', read_only='Y')
