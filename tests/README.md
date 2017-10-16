@@ -37,7 +37,7 @@ are torn down after the test is over.
 
    Example `runit` file:
    ```sh
-   #!/bin/bash
+   #!/usr/bin/env bash
    # Here's some information about what we're testing for.
 
    dbname=$1

@@ -38,7 +38,7 @@
 #include <alloca.h>
 #include "osqlcomm.h"
 
-#include <socket_pool.h>
+#include <sockpool.h>
 
 #include "flibc.h"
 #include <cdb2_constants.h>

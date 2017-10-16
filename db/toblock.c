@@ -69,7 +69,6 @@
 #include "osqlblkseq.h"
 #include "localrep.h"
 #include "util.h"
-#include "comdb2util.h"
 #include "osqlcomm.h"
 #include "nodemap.h"
 #include <bdb_schemachange.h>

@@ -27,7 +27,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include <db.h>
+#include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
 #include <endian_core.h>
@@ -1961,7 +1961,7 @@ int dump_llmeta(bdb_state_type *bdb_state, int *bdberr)
     return 0;
 }
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "dbinc/log.h"
 
 static void dump_dbreg(DB *dbp)

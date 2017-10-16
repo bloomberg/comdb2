@@ -31,7 +31,6 @@ extern int gbl_myroom;
 void perror_errnum(const char *s, int errnum);
 int strcmpfunc(char **a, char **b, int len);
 unsigned int strhashfunc(unsigned char **keyp, int len);
-int gooddir(char *d);
 
 void xorbufcpy(char *dest, const char *src, size_t len);
 #define xorbuf(p, len) xorbufcpy((void *)(p), (const void *)(p), (len))
@@ -56,6 +55,8 @@ char *fmt_size(char *buf, size_t bufsz, uint64_t bytes);
 void timeval_diff(struct timeval *before, struct timeval *after,
                   struct timeval *diff);
 int getroom_callback(void *dummy, const char *host);
+
+uint64_t comdb2fastseed(void);
 
 char *inet_ntoa_r(in_addr_t addr, char out[16]);
 

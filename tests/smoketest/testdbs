@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 container=$1
 
@@ -12,14 +12,14 @@ while [[ $try -lt 30 ]] ; do
             export CDB2_CONFIG_FILE=db.conf
             for db in $(seq 1 5); do
                 echo "Trying db${db}"
-                dbn=$(cdb2sql -tabs db${db} default 'select comdb2_dbname()')
+                dbn=$(/opt/bb/bin/cdb2sql -tabs db${db} default 'select comdb2_dbname()')
                 while [[ "$dbn" != "db$db" ]]; do
                     if [[ $try -eq 30 ]]; then
                         echo "Timed out!"
                         exit 1
                     fi
                     sleep 1
-                    dbn=$(cdb2sql -tabs db${db} default 'select comdb2_dbname()')
+                    dbn=$(/opt/bb/bin/cdb2sql -tabs db${db} default 'select comdb2_dbname()')
                     try=$(($try+1))
                 done
                 echo "Ok."

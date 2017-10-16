@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <list.h>
 #include <cdb2api.h>
 #include "stepper_client.h"
@@ -50,7 +51,7 @@ client_t* clnt_open(const char *db, const char *stage, int id)
 
 static void hexdump(void *datap, int len, FILE *out) 
 {
-   u_char *data = (u_char*) datap;
+   uint8_t *data = (uint8_t*) datap;
    int i;
    for (i = 0; i < len; i++)
       fprintf(out, "%02x", (unsigned int)data[i]);

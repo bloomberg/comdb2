@@ -20,9 +20,9 @@
 #include <plhash.h>
 #include <fsnap.h>
 
-#include "net.h"
-#include "bdb_int.h"
-#include "locks.h"
+#include <net.h>
+#include <bdb_int.h>
+#include <locks.h>
 #include <ctrace.h>
 #include <string.h>
 #include <strings.h>
@@ -30,37 +30,30 @@
 #include <errno.h>
 #include <alloca.h>
 
-/* Berkeley wants this defined, or it'll try to include varargs. */
-#undef STDC_HEADERS
-#define STDC_HEADERS
-#include <db_int.h>
-#include <db_page.h>
-#include <db_shash.h>
+#include <build/db.h>
+#include <build/db_int.h>
+#include <dbinc/btree.h>
+#include <dbinc/db_am.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_shash.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/lock.h>
+#include <dbinc/mp.h>
+#include <dbinc/txn.h>
 #include <dbinc_auto/db_auto.h>
 #include <dbinc_auto/txn_auto.h>
-#include <txn.h>
 #include <dbinc_auto/txn_ext.h>
-#include <btree.h>
-#include <lock.h>
-#include <mp.h>
-#include <db.h>
-#undef STDC_HEADERS
 
-#ifndef BERKDB_46
-#include "db_int.h"
-#include "dbinc/db_swap.h"
-#include "llog_auto.h"
-#include "llog_int.h"
-#include "llog_handlers.h"
-#include "db_am.h"
-#endif
+#include <llog_auto.h>
+#include <llog_ext.h>
+#include <llog_handlers.h>
 
-#include "bdb_api.h"
-#include "bdb_osqllog.h"
+#include <bdb_api.h>
+#include <bdb_osqllog.h>
 
-#include "endian_core.h"
-#include "printformats.h"
-#include "logmsg.h"
+#include <endian_core.h>
+#include <printformats.h>
+#include <logmsg.h>
 
 extern int gbl_dispatch_rowlocks_bench;
 

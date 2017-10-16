@@ -5850,7 +5850,7 @@ __truncate_repdb(dbenv)
 			goto err;
 		}
 
-		sprintf(repdbname, "%s.%d.%d", REPDBBASE, time(NULL),
+		sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
 		    db_rep->repdbcnt++);
 
 		if ((ret = __db_open(dbp, NULL,
