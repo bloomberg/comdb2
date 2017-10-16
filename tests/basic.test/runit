@@ -251,6 +251,19 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 "
 
+set +e
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.txt
+echo "[select * from t2] failed with rc -3 no such table: t2" > badsel.exp
+if ! diff badsel.txt badsel.exp ; then
+    failexit "Expected failure when selecting nonexistent table"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
+echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
+if ! diff badproc.txt badproc.exp ; then
+    failexit "Expected failure when executing bad procedure"
+fi
+set -e
+
 INITNUMREC=100
 
 assert_vers t1 0

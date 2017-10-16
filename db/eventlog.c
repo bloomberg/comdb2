@@ -57,7 +57,7 @@ static void eventlog_roll(void);
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
 struct sqltrack {
-    char fingerprint[16];
+    char fingerprint[FINGERPRINTSZ];
     char *sql;
     LINKC_T(struct sqltrack) lnk;
 };
@@ -68,7 +68,8 @@ static hash_t *seen_sql;
 
 void eventlog_init()
 {
-    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), 16);
+    seen_sql =
+        hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
     if (eventlog_enabled) eventlog = eventlog_open();
 }
@@ -466,10 +467,12 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     if (eventlog == NULL || !eventlog_enabled)
         return;
 
-    static const char *hexchars = "0123456789abcdef";
+    bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
+    bool isSqlErr = logger->error && logger->stmt;
+
     pthread_mutex_lock(&eventlog_lk);
-    if (logger->event_type && strcmp(logger->event_type, "sql") == 0 &&
-        !hash_find(seen_sql, logger->fingerprint)) {
+    if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
+        /* add never seen before "newsql" query, also print it to log */
         struct sqltrack *st;
         st = malloc(sizeof(struct sqltrack));
         memcpy(st->fingerprint, logger->fingerprint,
@@ -489,15 +492,10 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(newobj, "sql", cson_value_new_string(
                                            logger->stmt, strlen(logger->stmt)));
 
-        char fingerprint[32];
-        for (int i = 0; i < 16; i++) {
-            fingerprint[i * 2] =
-                hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
-            fingerprint[i * 2 + 1] = hexchars[logger->fingerprint[i] & 0x0f];
-        }
-        cson_object_set(
-            newobj, "fingerprint",
-            cson_value_new_string(fingerprint, sizeof(fingerprint)));
+        char expanded_fp[2 * FINGERPRINTSZ + 1];
+        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
+        cson_object_set(newobj, "fingerprint",
+                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
 
         /* yes, this can spill the file to beyond the configured size - we need
            this
@@ -514,9 +512,11 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
                         cson_value_new_string(logger->event_type,
                                               strlen(logger->event_type)));
 
-    if (logger->stmt && eventlog_detailed)
+    if (logger->stmt && eventlog_detailed) {
         cson_object_set(obj, "sql", cson_value_new_string(
                                         logger->stmt, strlen(logger->stmt)));
+        cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
+    }
 
     if (logger->have_id)
         cson_object_set(obj, "id",
@@ -528,33 +528,27 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     if (logger->vreplays)
         cson_object_set(obj, "replays", cson_new_int(logger->vreplays));
 
-    if (logger->error)
+    if (logger->error) {
+        cson_object_set(obj, "error_code", cson_new_int(logger->error_code));
         cson_object_set(
             obj, "error",
             cson_value_new_string(logger->error, strlen(logger->error)));
+    }
 
     cson_object_set(obj, "host",
                     cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
 
     if (logger->have_fingerprint) {
-        char fingerprint[32];
-        for (int i = 0; i < 16; i++) {
-            fingerprint[i * 2] =
-                hexchars[((logger->fingerprint[i] & 0xf0) >> 4)];
-            fingerprint[i * 2 + 1] = hexchars[logger->fingerprint[i] & 0x0f];
-        }
+        char expanded_fp[2 * FINGERPRINTSZ + 1];
+        util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
         cson_object_set(obj, "fingerprint",
-                        cson_value_new_string(fingerprint, 32));
-        // printf("%s -> %.*s\n", logger->stmt, sizeof(fingerprint),
-        // fingerprint);
+                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
     }
 
     if (logger->queuetimeus)
         cson_object_set(obj, "qtime", cson_new_int(logger->queuetimeus));
 
     eventlog_context(obj, logger);
-    if (eventlog_detailed)
-        cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);
     eventlog_path(obj, logger);

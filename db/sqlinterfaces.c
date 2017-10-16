@@ -4031,6 +4031,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
+
+    if (rec->sql)
+        reqlog_set_sql(thd->logger, rec->sql);
     const char *tail = NULL;
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
@@ -4048,7 +4051,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->stmt) {
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
-        reqlog_set_sql(thd->logger, rec->sql);
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = FSQL_PREPARE;
@@ -5471,6 +5473,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     struct errstat err = {0};
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
+
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
@@ -5481,7 +5484,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
-                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb));
+                reqlog_set_event(thd->logger, "sql"); /* set before error */
+                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
             }
             goto errors;
         }

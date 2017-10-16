@@ -1275,12 +1275,9 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
     if (logger && (logger->mask & event_flag)) {
         struct print_event *event;
         char *hexstr;
-        char *hexpos;
         const unsigned char *dptr = d;
-        size_t ii;
-        static const char *hexchars = "0123456789abcdef";
 
-        hexstr = malloc(len * 2);
+        hexstr = malloc(len * 2 + 1);
         if (!hexstr) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
             return -1;
@@ -1299,15 +1296,7 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
             reqlog_append_event(logger, EVENT_PRINT, event);
         }
 
-        hexpos = hexstr;
-        for (ii = 0; ii < len; ii++) {
-            *hexpos = hexchars[((*dptr) >> 4) & 0xf];
-            hexpos++;
-            *hexpos = hexchars[(*dptr) & 0xf];
-            hexpos++;
-            dptr++;
-        }
-
+        util_tohex(hexstr, dptr, len);
         if (logger->dump_mask & event_flag) {
             dump(logger, NULL, hexstr, len * 2);
         }
@@ -1929,6 +1918,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->tables = NULL;
     free(logger->error);
     logger->error = NULL;
+    logger->error_code = 0;
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
@@ -2288,7 +2278,8 @@ void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
     if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16])
+void reqlog_set_fingerprint(struct reqlogger *logger,
+                            char fingerprint[FINGERPRINTSZ])
 {
     if (logger) {
         memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));
@@ -2316,9 +2307,11 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
     logger->sqltables[logger->ntables++] = strdup(table);
 }
 
-void reqlog_set_error(struct reqlogger *logger, const char *error)
+void reqlog_set_error(struct reqlogger *logger, const char *error,
+                      int error_code)
 {
     logger->error = strdup(error);
+    logger->error_code = error_code;
 }
 
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path)

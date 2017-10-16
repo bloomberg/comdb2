@@ -380,6 +380,8 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events 
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat alltypes.csc2 ` }"
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2"
+
 assert_vers t1 0
 assert_schema t1 alltypes.csc2
 
