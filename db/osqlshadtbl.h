@@ -164,7 +164,8 @@ int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg);
  * Process shadow tables
  *
  */
-int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr);
+int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
+                         int restarting);
 
 /**
  *  Check of a shadow table transaction has cached selectv records

@@ -743,6 +743,8 @@ struct sql_thread {
 
 /* makes master swing verbose */
 extern int gbl_master_swing_osql_verbose;
+/* for testing: sleep in osql_sock_restart when master swings */
+extern int gbl_master_swing_sock_restart_sleep;
 
 /* takes care of both stat1 and stat2 */
 #define is_sqlite_stat(x)                                                      \

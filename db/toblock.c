@@ -1009,10 +1009,19 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     outrc = snapinfo_outrc;
                 } else {
                     switch (err.errcode) {
+                    case ERR_NO_RECORDS_FOUND:
+                    case ERR_CONVERT_DTA:
                     case ERR_NULL_CONSTRAINT:
+                    case ERR_SQL_PREP:
+                    case ERR_CONSTR:
                     case ERR_UNCOMMITABLE_TXN:
-                    case ERR_NOMASTER: outrc = err.errcode; break;
-                    default: outrc = ERR_BLOCK_FAILED; break;
+                    case ERR_NOMASTER:
+                    case ERR_NOTSERIAL:
+                        outrc = err.errcode;
+                        break;
+                    default:
+                        outrc = ERR_BLOCK_FAILED;
+                        break;
                     }
                 }
 

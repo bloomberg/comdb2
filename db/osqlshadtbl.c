@@ -1370,7 +1370,8 @@ void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
  * Scan the shadow tables for the current transaction
  * and send to the master the ops
  */
-int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
+int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
+                         int restarting)
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
@@ -1383,7 +1384,7 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr)
        we have the option to skip master transaction! This is fixing
        consumer-producer pullers that run selectv!
      */
-    if (!osql->dirty &&
+    if (!restarting && !osql->dirty &&
         !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP) &&
         !osql->sc_tbl && !osql->bpfunc_tbl) {
         return -3;
@@ -1974,15 +1975,14 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         }
 
         rc = bdb_temp_table_next(tbl->env->bdb_env, tbl->upd_cur, bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n",
-                   __func__, __LINE__, rc, *bdberr);
-            break;
-        }
     }
     if (rc == IX_PASTEOF || rc == IX_EMPTY) {
         rc = 0;
+    } else {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_next failed rc=%d bdberr=%d\n", __func__,
+               __LINE__, rc, *bdberr);
+        /* fall-through */
     }
 
     return rc;
