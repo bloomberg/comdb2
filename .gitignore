@@ -60,13 +60,13 @@ sqlite/mkkeywordhash
 sqlite/lemon
 
 # binaries
-comdb2
-pmux
-cdb2sql
-cdb2sockpool
-comdb2ar
-cdb2_sqlreplay
-cdb2_perf
+/comdb2
+/pmux
+/cdb2sql
+/cdb2sockpool
+/comdb2ar
+/cdb2_sqlreplay
+/cdb2_perf
 
 # fluff produced by various tools that tends to accumulate
 *.sw[op]
@@ -81,6 +81,10 @@ debian/comdb2.install-stamp
 tags
 dbsize
 callgrind.*
+*.output
+.nfs*
+.gdb_history
+cscope.*
 
 # Bloomberg-specific
 *.tsk
@@ -154,13 +158,6 @@ berkdb/dist/template/rec_dbreg
 berkdb/dist/template/rec_fileops
 berkdb/dist/template/rec_hash
 berkdb/dist/template/rec_qam
-*.output
-.nfs*
-.gdb_history
-cscope.files
-cscope.in.out
-cscope.out
-cscope.po.out
 sundev1
 linux
 ibm
