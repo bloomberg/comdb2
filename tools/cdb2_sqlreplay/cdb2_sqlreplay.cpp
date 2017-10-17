@@ -213,7 +213,9 @@ void fromhex(uint8_t *out, const uint8_t *in, size_t len)
 
 
 /* TODO: add all types supported */
-bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, std::vector<uint8_t *> &blobs_vect) {
+bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, 
+                 std::vector<uint8_t *> &blobs_vect)
+{
     cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
     if(bound_parameters == nullptr)
         return true;
@@ -285,8 +287,6 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, std::vector<uint8_t *>
 
             fromhex(unexpanded, (const uint8_t *) strp + 2, slen); /* no x' */
             unexpanded[unexlen] = '\0';
-
-            std::cout << "have strp "<< strp << " unexpanded " << unexpanded << std::endl;
 
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, unexpanded, unexlen)) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
