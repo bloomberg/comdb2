@@ -241,66 +241,67 @@ static int openStatTable(
   assert( sqlite3VdbeDb(v)==db );
   pDb = &db->aDb[iDb];
 
-#if 0
-  /* Create new statistic tables if they do not exist, or clear them
-  ** if they do already exist.
-  */
-  skip2 = skip4 = 0;
-  for(i=0; i<ArraySize(aTable); i++){
-    const char *zTab = aTable[i].zName;
-    Table *pStat;
-    if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
-      if( zTab[11] == '1' ){
-      }else if( zTab[11] == '2' ){
-        skip2 = 1;
-      }else if( zTab[11] == '4' ){
-        skip4 = 1;
+  if (zWhere != NULL) {
+      /* Create new statistic tables if they do not exist, or clear them
+      ** if they do already exist.
+      */
+      skip2 = skip4 = 0;
+      for(i=0; i<ArraySize(aTable); i++){
+        const char *zTab = aTable[i].zName;
+        Table *pStat;
+        if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
+          if( zTab[11] == '1' ){
+          }else if( zTab[11] == '2' ){
+            skip2 = 1;
+          }else if( zTab[11] == '4' ){
+            skip4 = 1;
+          }
+        }else{
+          aRoot[i] = pStat->tnum;
+            sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+        }
       }
-    }else{
-      aRoot[i] = pStat->tnum;
-        sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-    }
-  }
-#endif
-  for(i=0; i<ArraySize(aTable); i++){
-    const char *zTab = aTable[i].zName;
-    Table *pStat;
-    if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
-      if( aTable[i].zCols ){
-        /* The sqlite_statN table does not exist. Create it. Note that a 
-        ** side-effect of the CREATE TABLE statement is to leave the rootpage 
-        ** of the new table in register pParse->regRoot. This is important 
-        ** because the OpenWrite opcode below will be needing it. */
-        sqlite3NestedParse(pParse,
-            "CREATE TABLE %Q.%s(%s)", pDb->zDbSName, zTab, aTable[i].zCols
-        );
-        aRoot[i] = pParse->regRoot;
-        aCreateTbl[i] = OPFLAG_P2ISREG;
+  } else {
+      for(i=0; i<ArraySize(aTable); i++){
+        const char *zTab = aTable[i].zName;
+        Table *pStat;
+        if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
+          if( aTable[i].zCols ){
+            /* The sqlite_statN table does not exist. Create it. Note that a 
+            ** side-effect of the CREATE TABLE statement is to leave the rootpage 
+            ** of the new table in register pParse->regRoot. This is important 
+            ** because the OpenWrite opcode below will be needing it. */
+            sqlite3NestedParse(pParse,
+                "CREATE TABLE %Q.%s(%s)", pDb->zDbSName, zTab, aTable[i].zCols
+            );
+            aRoot[i] = pParse->regRoot;
+            aCreateTbl[i] = OPFLAG_P2ISREG;
+          }
+        }else{
+          /* The table already exists. If zWhere is not NULL, delete all entries 
+          ** associated with the table zWhere. If zWhere is NULL, delete the
+          ** entire contents of the table. */
+          aRoot[i] = pStat->tnum;
+          aCreateTbl[i] = 0;
+          sqlite3TableLock(pParse, iDb, aRoot[i], 1, zTab);
+          if( zWhere ){
+            sqlite3NestedParse(pParse,
+               "DELETE FROM %Q.%s WHERE %s=%Q",
+               pDb->zDbSName, zTab, zWhereType, zWhere
+            );
+          }else{
+            /* The sqlite_stat[134] table already exists.  Delete all rows. */
+            sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
+          }
+        }
       }
-    }else{
-      /* The table already exists. If zWhere is not NULL, delete all entries 
-      ** associated with the table zWhere. If zWhere is NULL, delete the
-      ** entire contents of the table. */
-      aRoot[i] = pStat->tnum;
-      aCreateTbl[i] = 0;
-      sqlite3TableLock(pParse, iDb, aRoot[i], 1, zTab);
-      if( zWhere ){
-        sqlite3NestedParse(pParse,
-           "DELETE FROM %Q.%s WHERE %s=%Q",
-           pDb->zDbSName, zTab, zWhereType, zWhere
-        );
-      }else{
-        /* The sqlite_stat[134] table already exists.  Delete all rows. */
-        sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
-      }
-    }
-  }
 
-  /* Open the sqlite_stat[134] tables for writing. */
-  for(i=0; aTable[i].zCols; i++){
-    assert( i<ArraySize(aTable) );
-    sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-    sqlite3VdbeChangeP5(v, aCreateTbl[i]);
+      /* Open the sqlite_stat[134] tables for writing. */
+      for(i=0; aTable[i].zCols; i++){
+        assert( i<ArraySize(aTable) );
+        sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+        sqlite3VdbeChangeP5(v, aCreateTbl[i]);
+      }
   }
   return 0;
 }
