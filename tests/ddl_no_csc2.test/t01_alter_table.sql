@@ -42,3 +42,16 @@ DROP TABLE t5;
 DROP TABLE t6;
 DROP TABLE t7;
 DROP TABLE t8;
+
+CREATE TABLE t1(v VARCHAR(10) DEFAULT 'foo', d DATETIME DEFAULT 'CURRENT_TIMESTAMP', i INT DEFAULT '10') $$
+CREATE INDEX IDX ON t1(i);
+CREATE TABLE t2(v VARCHAR(10) DEFAULT foo, d DATETIME DEFAULT CURRENT_TIMESTAMP, i INT DEFAULT 10) $$
+CREATE INDEX IDX ON t2(i);
+
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;
