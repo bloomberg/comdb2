@@ -405,6 +405,8 @@ assert_schema t1 alltypes.csc2
 #echo "Now call task that uses cdb2api to ins/upd/del"
 ${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
 
+exit 0
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by alltypes_u_short" > orig.txt
 
 

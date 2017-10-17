@@ -98,6 +98,7 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "locks.h"
+#include "eventlog.h"
 
 #include <bbinc/str0.h>
 
@@ -9804,8 +9805,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         return -1;
     }
 
-    typedef struct cson_array cson_array; // forward declare
-    cson_array *get_bind_array(struct reqlogger *logger, int nfields);
     cson_array *arr = get_bind_array(logger, nfields);
 
     for (fld = 0; fld < nfields; fld++) {
@@ -9883,6 +9882,7 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                    fld, f->name, pos, f->type, strtype(f->type), isnull);
         if (isnull) {
             rc = sqlite3_bind_null(stmt, pos);
+            add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
         }
         else {
             switch (f->type) {
@@ -9891,26 +9891,31 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                     rc = sqlite3_bind_int64(stmt, pos, ival);
             printf("AZ: binding field %d name %s position %d type %d %s val %d "
                    "null %d\n", fld, f->name, pos, f->type, strtype(f->type), ival, isnull);
-                add_to_bind_array(arr, f->name, f->type, f->datalen ival, isnull);
+                add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
                 break;
             case CLIENT_UINT:
                 abort();
                 if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
+                add_to_bind_array(arr, f->name, f->type, &uival, f->datalen, isnull);
                 break;
             case CLIENT_REAL:
                 if ((rc = get_real_field(f, buf, &dval)) == 0)
                     rc = sqlite3_bind_double(stmt, pos, dval);
+                add_to_bind_array(arr, f->name, f->type, &dval, f->datalen, isnull);
                 break;
             case CLIENT_CSTR:
             case CLIENT_PSTR:
             case CLIENT_PSTR2:
                 if ((rc = get_str_field(f, buf, &str, &datalen)) == 0)
                     rc = sqlite3_bind_text(stmt, pos, str, datalen, NULL);
+                add_to_bind_array(arr, f->name, f->type, buf, datalen, isnull);
                 break;
             case CLIENT_BYTEARRAY:
                 if ((rc = get_byte_field(f, buf, &byteval, &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
+    printf("AZ: bytearray() dlen=%d, datalen=%d\n", dlen, datalen);
+                add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
                 break;
             case CLIENT_BLOB:
                 if (params) {
@@ -9918,10 +9923,12 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                                              &datalen)) == 0) {
                         rc = sqlite3_bind_blob(stmt, pos, byteval, datalen,
                                                NULL);
+                        add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
                         blobno++;
                     }
                 } else {
                     rc = sqlite3_bind_blob(stmt, pos, buf, f->datalen, NULL);
+                    add_to_bind_array(arr, f->name, f->type, buf, datalen, isnull);
                     blobno++;
                 }
                 break;
@@ -9931,10 +9938,12 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                                              &datalen)) == 0) {
                         rc = sqlite3_bind_text(stmt, pos, byteval, datalen,
                                                NULL);
+                        add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
                         blobno++;
                     }
                 } else {
                     rc = sqlite3_bind_text(stmt, pos, buf, f->datalen, NULL);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen, isnull);
                     blobno++;
                 }
                 break;

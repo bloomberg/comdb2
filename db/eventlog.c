@@ -135,33 +135,35 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
     cson_array *arr = cson_value_get_array(bind_list);
 
     cson_array_reserve(arr, nfields);
+    return arr;
 }
 
-void add_to_bind_array(cson_array *arr, char *name, int type, int dlen, int isnull)
+void add_to_bind_array(cson_array *arr, char *name, int type, 
+                       void *val, int dlen, int isnull)
 {
     if(!arr) return;
 
+    printf("AZ: add_to_bind_array() dlen=%d\n", dlen);
     cson_value *binding = cson_value_new_object();
     cson_object *bobj = cson_value_get_object(binding);
 
     /* name of bound parameter */
     cson_object_set(bobj, "name",
-            cson_value_new_string(f->name, strlen(f->name)));
+            cson_value_new_string(name, strlen(name)));
 
     /* bind binding to array of bindings */
     cson_array_append(arr, binding);
-
-    /* mostly taken from sqltype() and bind_parameters() */
-    int dlen = f->datalen;
+    const char *strtype = "__NO_TYPE_ASSIGNED__";
 
     if (isnull) {
         strtype = "int"; /* log null values as int for simplicity */
         cson_object_set(bobj, "value", cson_value_null());
+        cson_object_set(bobj, "type",
+                        cson_value_new_string(strtype, strlen(strtype)));
+        return;
     }
-    cson_object_set(bobj, "type",
-                    cson_value_new_string(strtype, strlen(strtype)));
 
-    switch (f->type) {
+    switch (type) {
         case CLIENT_UINT:
         case CLIENT_INT:
             /* set type */
@@ -171,98 +173,57 @@ void add_to_bind_array(cson_array *arr, char *name, int type, int dlen, int isnu
             case 8: strtype = "largeint"; break;
             }
 
-            if (isnull)
-                break;
-
-            /* set value */
-            int64_t ival;
-            get_int_field(f, buf, (uint64_t*) &ival);
-            if (f->type == CLIENT_UINT) {
-                abort();
-            }
-            printf("AZ GRR: val %d \n", ival);
-            cson_object_set(bobj, "value", cson_value_new_integer(ival));
+            printf("AZ GRR: val %d \n", *(uint64_t *)val);
+            cson_object_set(bobj, "value", cson_value_new_integer(*(uint64_t *)val));
             break;
         case CLIENT_REAL: {
             /* set type */
-            double dval;
             switch (dlen) {
             case 4:
                 strtype = "float";
-                dval = *(float *)(buf + f->offset);
                 break;
             case 8:
                 strtype = "doublefloat";
-                dval = *(double *)(buf + f->offset);
                 break;
             }
 
-            if (isnull)
-                break;
-
-            cson_object_set(bobj, "value", cson_value_new_double(dval));
+            cson_object_set(bobj, "value", cson_value_new_double(*(double *)val));
             break;
         }
         case CLIENT_CSTR:
         case CLIENT_PSTR:
         case CLIENT_PSTR2: {
-            char *str;
-            int datalen;
-
             /* set type */
             strtype = "char";
 
-            if (isnull)
-                break;
-
             /* set value */
-            if (get_str_field(f, buf, &str, &datalen) == 0)
-                cson_object_set(bobj, "value",
-                                cson_value_new_string(str, datalen));
+            cson_object_set(bobj, "value",
+                            cson_value_new_string((char *)val, dlen));
             break;
         }
         case CLIENT_BYTEARRAY:
         case CLIENT_BLOB:
         case CLIENT_VUTF8: {
-            void *byteval = NULL;
-            int datalen;
-            int rc = 0;
-
             /* set type */
             strtype = "blob";
-            if (f->type == CLIENT_VUTF8) 
+            if (type == CLIENT_VUTF8) 
                 strtype = "varchar";
 
-            if (isnull)
-                break;
-
             /* set value */
-            if (f->type == CLIENT_BYTEARRAY) {
-                rc = get_byte_field(f, buf, &byteval, &datalen);
-            } else {
-                if (params) {
-                    rc = get_blob_field(blobno, clnt, &byteval, &datalen);
-                } else {
-                    byteval = buf;
-                    datalen = f->datalen;
-                }
-                if (rc == 0) blobno++;
-            }
-            if (rc == 0) {
-                datalen = min(datalen, 1024); /* cap the datalen logged */
-                const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
-                char *expanded_buf = malloc(exp_len);
-                expanded_buf[0] = 'x';
-                expanded_buf[1] = '\'';
-                util_tohex(&expanded_buf[2], byteval, datalen);
-                expanded_buf[2 + datalen * 2] = '\'';
-                expanded_buf[3 + datalen * 2] = '\0';
-                cson_object_set(bobj, "value",
-                                cson_value_new_string(expanded_buf, exp_len));
-                free(expanded_buf);
-            }
+            int datalen = min(dlen, 1024); /* cap the datalen logged */
+            const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
+            char *expanded_buf = malloc(exp_len);
+            expanded_buf[0] = 'x';
+            expanded_buf[1] = '\'';
+            util_tohex(&expanded_buf[2], val, datalen);
+            expanded_buf[2 + datalen * 2] = '\'';
+            expanded_buf[3 + datalen * 2] = '\0';
+            cson_object_set(bobj, "value",
+                            cson_value_new_string(expanded_buf, exp_len));
+            free(expanded_buf);
             break;
         }
+#if 0
         case CLIENT_DATETIME: {
             char strtime[62];
 
@@ -316,13 +277,18 @@ void add_to_bind_array(cson_array *arr, char *name, int type, int dlen, int isnu
 
             break;
         default: assert(false && "Unknown type being bound");
+#endif
         }
+
+    cson_object_set(bobj, "type",
+                    cson_value_new_string(strtype, strlen(strtype)));
 }
 
 /* get bound parameters, similar to bind_parameters() */
 void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
                      struct schema *params, struct sqlclntstate *clnt)
 {
+    return;
     if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
         return;
 
