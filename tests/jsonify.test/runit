@@ -5,7 +5,7 @@ dbnm=$1
 
 for sql in `ls *.sql`; do
 
-cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnm default | diff "$sql.expected" -
+cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnm default 2>&1 | diff "$sql.expected" -
 if [ "$?" != "0" ]; then
   echo 'Failed.'
   exit 1
