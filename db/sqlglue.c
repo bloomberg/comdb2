@@ -9892,7 +9892,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
                 break;
             case CLIENT_UINT:
-                abort();
                 if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
                 add_to_bind_array(arr, f->name, f->type, &uival, f->datalen, isnull);

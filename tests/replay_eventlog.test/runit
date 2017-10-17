@@ -376,7 +376,6 @@ force_delay_master()
 echo "Test with insert, SC should not fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events detailed on")'
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat alltypes.csc2 ` }"
 
