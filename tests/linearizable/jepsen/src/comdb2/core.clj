@@ -374,6 +374,32 @@
         {:valid? (empty? bad-reads)
          :bad-reads bad-reads}))))
 
+(defn bank-test-nemesis
+  ([n initial-balance]
+   (bank-test-nemesis n initial-balance {}))
+  ([n initial-balance opts]
+   (basic-test
+     (merge
+       {:name "bank"
+        :concurrency 10
+        :model  {:n n :total (* n initial-balance)}
+        :client (bank-client n initial-balance)
+        :generator (->> (gen/mix [bank-read bank-diff-transfer])
+                        (gen/clients)
+                        (gen/stagger 1/10))
+        :final-generator (gen/once bank-read)
+        :time-limit 120
+        :checker (checker/compose
+                   ; TODO: how does this even work? This model isn't compatible
+                   ; with knossos...
+                   {:linearizable (independent/checker checker/linearizable)
+                    :bank (bank-checker)})}
+       opts))))
+
+(defn bank-test
+  [n initial-balance]
+  (bank-test-nemesis n initial-balance {:nemesis nemesis/noop}))
+
 (def nkey
   "A globally unique integer counter"
   (atom 0))
@@ -432,32 +458,6 @@
 (defn sets-test
   []
   (sets-test-nemesis {:nemesis nemesis/noop}))
-
-(defn bank-test-nemesis
-  ([n initial-balance]
-   (bank-test-nemesis n initial-balance {}))
-  ([n initial-balance opts]
-   (basic-test
-     (merge
-       {:name "bank"
-        :concurrency 10
-        :model  {:n n :total (* n initial-balance)}
-        :client (bank-client n initial-balance)
-        :generator (->> (gen/mix [bank-read bank-diff-transfer])
-                        (gen/clients)
-                        (gen/stagger 1/10))
-        :final-generator (gen/once bank-read)
-        :time-limit 120
-        :checker (checker/compose
-                   ; TODO: how does this even work? This model isn't compatible
-                   ; with knossos...
-                   {:linearizable (independent/checker checker/linearizable)
-                    :bank (bank-checker)})}
-       opts))))
-
-(defn bank-test
-  [n initial-balance]
-  (bank-test-nemesis n initial-balance {:nemesis nemesis/noop}))
 
 ; This is the dirty reads test for Galera
 ; TODO: Kyle, review the dirty reads test for galera and figure out what this
