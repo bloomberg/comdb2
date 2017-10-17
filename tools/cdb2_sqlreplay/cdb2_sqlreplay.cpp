@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <unistd.h>
 
+#include "assert.h"
 #include "cdb2api.h"
 #include "cson_amalgamation_core.h"
 
@@ -197,14 +198,28 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
     }
 }
 
+/* out should be appropriately sized */
+void fromhex(uint8_t *out, const uint8_t *in, size_t len)
+{
+    const uint8_t *end = in + len;
+    while (in != end) {
+        uint8_t i0 = tolower(*(in++));
+        uint8_t i1 = tolower(*(in++));
+        i0 -= isdigit(i0) ? '0' : ('a' - 0xa);
+        i1 -= isdigit(i1) ? '0' : ('a' - 0xa);
+        *(out++) = (i0 << 4) | i1;
+    }
+}
+
+
 /* TODO: add all types supported */
 bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
     cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
     if(bound_parameters == nullptr)
         return true;
 
-    unsigned int len = cson_array_length_get(bound_parameters);
-    for (int i = 0; i < len; i++) {
+    unsigned int arr_len = cson_array_length_get(bound_parameters);
+    for (int i = 0; i < arr_len; i++) {
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
@@ -261,13 +276,25 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, strp, strlen(strp) )) != 0) {
+            assert(strp[0] == 'x' && strp[1] == '\'' && "Blob field needs to be in x'123abc' format");
+
+            int slen = strlen(strp) - 3; /* without the x'' */
+            int unexlen = slen/2;
+            uint8_t *unexpanded = (uint8_t *) malloc(unexlen + 1);
+            assert(unexpanded != NULL);
+
+            fromhex(unexpanded, (const uint8_t *) strp + 2, slen); /* no x' */
+            unexpanded[unexlen] = '\0';
+
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, unexpanded, unexlen)) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                free(unexpanded);
                 return false;
             }
+
+            free(unexpanded);
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
-
         else
             std::cout << "error binding unknown "<< type << " column " << name << std::endl;
     }

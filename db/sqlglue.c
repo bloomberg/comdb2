@@ -9747,8 +9747,9 @@ struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
 ** Take data from buffer and blobs, bind to
 ** sqlite parameters.
 */
-int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    struct sqlclntstate *clnt, char **err)
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                    struct schema *params, struct sqlclntstate *clnt, 
+                    char **err)
 {
     /* old parameters */
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
@@ -9802,6 +9803,10 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         }
         return -1;
     }
+
+    typedef struct cson_array cson_array; // forward declare
+    cson_array *get_bind_array(struct reqlogger *logger, int nfields);
+    cson_array *arr = get_bind_array(logger, nfields);
 
     for (fld = 0; fld < nfields; fld++) {
         int pos = 0;
@@ -9873,18 +9878,23 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         }
         if (clnt->nullbits) isnull = btst(clnt->nullbits, fld) ? 1 : 0;
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "binding field %d name %s position %d type %d %s pos %d "
+            logmsg(LOGMSG_USER, "binding field %d name %s position %d type %d %s "
                    "null %d\n",
-                   fld, f->name, pos, f->type, strtype(f->type), pos, isnull);
-        if (isnull)
+                   fld, f->name, pos, f->type, strtype(f->type), isnull);
+        if (isnull) {
             rc = sqlite3_bind_null(stmt, pos);
+        }
         else {
             switch (f->type) {
             case CLIENT_INT:
                 if ((rc = get_int_field(f, buf, (uint64_t *)&ival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
+            printf("AZ: binding field %d name %s position %d type %d %s val %d "
+                   "null %d\n", fld, f->name, pos, f->type, strtype(f->type), ival, isnull);
+                add_to_bind_array(arr, f->name, f->type, f->datalen ival, isnull);
                 break;
             case CLIENT_UINT:
+                abort();
                 if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
                 break;
