@@ -1,6 +1,6 @@
 (ns comdb2.core-test
   (:require [clojure.test :refer :all]
-            [comdb2.core :refer :all]
+            [comdb2.core :as c]
             [clojure.java.jdbc :as j]
             [jepsen.core :as jepsen]))
 
@@ -14,26 +14,30 @@
 
 ; Do serializable transactions work?
 
+(defn check
+  [t]
+  (is (= true (:valid? (:results (jepsen/run! t))))))
+
 (deftest ^:test-bank test-bank
- (let [test-spec (bank-test 10 100)]
-  (is (:valid? (:results (jepsen/run! test-spec))))))
+  (check (c/bank-test 10 100)))
 
 (deftest ^:test-bank-nemesis test-bank-nemesis
- (let [test-spec (bank-test-nemesis 10 100)]
-  (is (:valid? (:results (jepsen/run! test-spec))))))
+  (check (c/bank-test-nemesis 10 100)))
 
-(deftest ^:sets-test' sets-test'
- (is (:valid? (:results (jepsen/run! (sets-test))))))
+(deftest ^:sets-test sets-test
+  (check (c/sets-test)))
 
-(deftest ^:sets-test-nemesis' sets-test-nemesis'
- (is (:valid? (:results (jepsen/run! (sets-test-nemesis {}))))))
+(deftest ^:sets-test-nemesis sets-test-nemesis
+ (check (c/sets-test-nemesis {})))
 
 (deftest ^:dirty-reads-test dirty-reads-test
-  (is (:valid? (:results (jepsen/run! (dirty-reads-test-nemesis 4))))))
+  (check (c/dirty-reads-test-nemesis 4)))
 
 (deftest ^:register-test-nemesis register-test-nemesis
-  (is (:valid? (:results (jepsen/run! (register-tester-nemesis { }))))))
+  (check (c/register-tester-nemesis { })))
 
 (deftest ^:register-test register-test
-  (is (:valid? (:results (jepsen/run! (register-tester { } ))))))
+  (check (c/register-tester {})))
 
+(deftest ^:g2-test g2-test
+  (check (c/g2-test {})))

@@ -6,8 +6,11 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.pprint :refer [pprint]]
+   [dom-top.core :refer [letr with-retry]]
    [jepsen.checker.timeline  :as timeline]
-   [jepsen [client :as client]
+   [jepsen 
+    [adya :as adya]
+    [client :as client]
     [core :as jepsen]
     [db :as db]
     [tests :as tests]
@@ -115,7 +118,7 @@
   "I have a hunch connection state is asynchronous in the comdb2 driver, so we
   may need to block a bit for a connection to become ready."
   [conn]
-  (util/with-retry [tries 30]
+  (with-retry [tries 30]
     (info "Waiting for conn")
     (query conn ["set hasql on"])
     ; I know it says "nontransient" but maaaybe it is???
@@ -159,7 +162,11 @@
                        {:type :conn-not-ready})))
      ~@body))
 
-
+(defn hasql!
+  "Set up hasql for a transaction."
+  [c]
+  (query c ["set hasql on"])
+  (query c ["set max_retries 100000"]))
 
 ;; Error handling
 
@@ -254,6 +261,69 @@
 
 ;; Tests
 
+(defrecord G2Client [ta tb conn]
+  client/Client
+  (setup! [this test node]
+    (let [conn (connect node)]
+      (assoc this :conn conn)))
+
+  (invoke! [this test op]
+    (with-conn [c conn]
+      (with-timeout
+        (let [[k [a-id b-id]] (:value op)]
+          (case (:f op)
+            :insert
+            (j/with-db-transaction [c c {:isolation :serializable}]
+              (hasql! c)
+              (letr [order (< (rand) 0.5)
+                     as (query c [(str "select * from " (if order ta tb)
+                                       " where key = ? and value % 3 = 0") k])
+                     bs (query c [(str "select * from " (if order tb ta)
+                                       " where key = ? and value % 3 = 0") k])
+                     _ (when (or (seq as) (seq bs))
+                         ; The other txn already committed
+                         (return (assoc op :type :fail, :error :too-late)))
+                     table (if a-id ta tb)
+                     id    (or a-id b-id)
+                     r     (insert! c table {:key   k
+                                             :id    id
+                                             :value (* 3 (rand-int 10))})]
+                (assoc op :type :ok)))
+
+            :read
+            (let [as (query c [(str "select * from " ta
+                                    " where key = ? and value % 3 = 0") k])
+                  bs (query c [(str "select * from " tb
+                                    " where key = ? and value % 3 = 0") k])
+                  values (map :id (concat as bs))]
+              (assoc op
+                     :type :ok
+                     :value (independent/tuple k values))))))))
+
+  (teardown! [this test]
+    (rc/close! conn)))
+
+(defn g2-client [] (G2Client. "g2_a" "g2_b" nil))
+
+(defn g2-test-nemesis
+  "A test for Adya's G2 phenomenon: an anti-dependency cycle allowed by
+  snapshot isolation but prohibited by serializability."
+  [opts]
+  (basic-test
+    (merge
+      {:name        "g2"
+       :concurrency 10
+       :client      (g2-client)
+       :generator   (adya/g2-gen)
+       :time-limit  60
+       :checker     (checker/compose {:g2 (adya/g2-checker)
+                                      :timeline (timeline/html)})}
+      opts)))
+
+(defn g2-test
+  [opts]
+  (g2-test-nemesis (merge {:nemesis nemesis/noop} opts)))
+
 (defrecord BankClient [n starting-balance conn]
   client/Client
 
@@ -262,7 +332,7 @@
     (let [conn (connect node)]
       ; Create initial accts
       (dotimes [i n]
-        (util/with-retry [tries 10]
+        (with-retry [tries 10]
           (with-conn [c conn]
             (try
               (Thread/sleep (rand-int 10))
@@ -285,8 +355,7 @@
   (invoke! [this test op]
     (with-conn [c conn]
      (j/with-db-transaction [c c {:isolation :serializable}]
-      (query c ["set hasql on"])
-      (query c ["set max_retries 100000"])
+       (hasql! c)
 
       (try
         (case (:f op)
