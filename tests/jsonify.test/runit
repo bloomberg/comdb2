@@ -3,20 +3,15 @@ bash -n "$0" | exit 1
 
 dbnm=$1
 
-set -e
+for sql in `ls *.sql`; do
 
-# Make sure that all queries go to the same node.
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'CREATE TABLE jsonify (dtms datetime, dtus datetimeus, intvym intervalym, intvds intervalds, intvdsus intervaldsus, dec decimal32)'
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'INSERT INTO jsonify values ("2017-10-17T141720.649 America/New_York", "2017-10-17T141720.648885 America/New_York", "10-0", "365 00:00:00.123", "365 00:00:00.123456", "3.141593")'
-actual=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT json_object('dtms', dtms, 'dtus', dtus, 'intvym', intvym, 'intvds', intvds, 'intvdsus', intvdsus, 'dec', dec) FROM jsonify"`
-expected='{"dtms":2017-10-17T141720.649 America/New_York,"dtus":2017-10-17T141720.648885 America/New_York,"intvym":10-00,"intvds":365 00:00:00.123,"intvdsus":365 00:00:00.123456,"dec":3.141593}'
-
-set +e
-diff  <(echo "$expected" ) <(echo "$actual")
+cdb2sql -s --tabs -f $sql ${CDB2_OPTIONS} $dbnm default | diff "$sql.expected" -
 if [ "$?" != "0" ]; then
   echo 'Failed.'
   exit 1
 fi
+
+done
 
 echo 'Passed.'
 exit 0
