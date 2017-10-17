@@ -3301,8 +3301,8 @@ extern unsigned long long gbl_addupd_blob_cnt;
 
 struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
                                    struct field *c_fld);
-int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt, 
-                    struct schema *params, struct sqlclntstate *clnt, 
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                    struct schema *params, struct sqlclntstate *clnt,
                     char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);

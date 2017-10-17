@@ -124,7 +124,6 @@ static cson_output_opt opt = {.indentation = 0,
                               .indentSingleMemberValues = 0,
                               .escapeForwardSlashes = 1};
 
-
 cson_array *get_bind_array(struct reqlogger *logger, int nfields)
 {
     if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
@@ -138,17 +137,17 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
     return arr;
 }
 
-void add_to_bind_array(cson_array *arr, char *name, int type, 
-                       void *val, int dlen, int isnull)
+void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
+                       int dlen, int isnull)
 {
-    if(!arr) return;
+    if (!arr)
+        return;
 
     cson_value *binding = cson_value_new_object();
     cson_object *bobj = cson_value_get_object(binding);
 
     /* name of bound parameter */
-    cson_object_set(bobj, "name",
-            cson_value_new_string(name, strlen(name)));
+    cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
 
     /* bind binding to array of bindings */
     cson_array_append(arr, binding);
@@ -163,65 +162,72 @@ void add_to_bind_array(cson_array *arr, char *name, int type,
     }
 
     switch (type) {
-        case CLIENT_UINT:
-        case CLIENT_INT:
-            /* set type */
-            switch (dlen) {
-            case 2: strtype = "smallint"; break;
-            case 4: strtype = "int"; break;
-            case 8: strtype = "largeint"; break;
-            }
-
-            printf("AZ GRR: val %d \n", *(uint64_t *)val);
-            cson_object_set(bobj, "value", cson_value_new_integer(*(uint64_t *)val));
+    case CLIENT_UINT:
+    case CLIENT_INT:
+        /* set type */
+        switch (dlen) {
+        case 2:
+            strtype = "smallint";
             break;
-        case CLIENT_REAL: {
-            /* set type */
-            switch (dlen) {
-            case 4:
-                strtype = "float";
-                break;
-            case 8:
-                strtype = "doublefloat";
-                break;
-            }
-
-            cson_object_set(bobj, "value", cson_value_new_double(*(double *)val));
+        case 4:
+            strtype = "int";
+            break;
+        case 8:
+            strtype = "largeint";
             break;
         }
-        case CLIENT_CSTR:
-        case CLIENT_PSTR:
-        case CLIENT_PSTR2: {
-            /* set type */
-            strtype = "char";
 
-            /* set value */
-            cson_object_set(bobj, "value",
-                            cson_value_new_string((char *)val, dlen));
+        printf("AZ GRR: val %d \n", *(uint64_t *)val);
+        cson_object_set(bobj, "value",
+                        cson_value_new_integer(*(uint64_t *)val));
+        break;
+    case CLIENT_REAL: {
+        /* set type */
+        switch (dlen) {
+        case 4:
+            strtype = "float";
+            break;
+        case 8:
+            strtype = "doublefloat";
             break;
         }
-        case CLIENT_BYTEARRAY:
-        case CLIENT_BLOB:
-        case CLIENT_VUTF8: {
-            /* set type */
-            strtype = "blob";
-            if (type == CLIENT_VUTF8) 
-                strtype = "varchar";
 
-            /* set value */
-            int datalen = min(dlen, 1024); /* cap the datalen logged */
-            const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
-            char *expanded_buf = malloc(exp_len);
-            expanded_buf[0] = 'x';
-            expanded_buf[1] = '\'';
-            util_tohex(&expanded_buf[2], val, datalen);
-            expanded_buf[2 + datalen * 2] = '\'';
-            expanded_buf[3 + datalen * 2] = '\0';
-            cson_object_set(bobj, "value",
-                            cson_value_new_string(expanded_buf, exp_len));
-            free(expanded_buf);
-            break;
-        }
+        cson_object_set(bobj, "value", cson_value_new_double(*(double *)val));
+        break;
+    }
+    case CLIENT_CSTR:
+    case CLIENT_PSTR:
+    case CLIENT_PSTR2: {
+        /* set type */
+        strtype = "char";
+
+        /* set value */
+        cson_object_set(bobj, "value",
+                        cson_value_new_string((char *)val, dlen));
+        break;
+    }
+    case CLIENT_BYTEARRAY:
+    case CLIENT_BLOB:
+    case CLIENT_VUTF8: {
+        /* set type */
+        strtype = "blob";
+        if (type == CLIENT_VUTF8)
+            strtype = "varchar";
+
+        /* set value */
+        int datalen = min(dlen, 1024);         /* cap the datalen logged */
+        const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
+        char *expanded_buf = malloc(exp_len);
+        expanded_buf[0] = 'x';
+        expanded_buf[1] = '\'';
+        util_tohex(&expanded_buf[2], val, datalen);
+        expanded_buf[2 + datalen * 2] = '\'';
+        expanded_buf[3 + datalen * 2] = '\0';
+        cson_object_set(bobj, "value",
+                        cson_value_new_string(expanded_buf, exp_len));
+        free(expanded_buf);
+        break;
+    }
 #if 0
         case CLIENT_DATETIME: {
             char strtime[62];
@@ -277,7 +283,7 @@ void add_to_bind_array(cson_array *arr, char *name, int type,
             break;
         default: assert(false && "Unknown type being bound");
 #endif
-        }
+    }
 
     cson_object_set(bobj, "type",
                     cson_value_new_string(strtype, strlen(strtype)));

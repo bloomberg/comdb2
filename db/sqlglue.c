@@ -9749,7 +9749,7 @@ struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
 ** sqlite parameters.
 */
 int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
-                    struct schema *params, struct sqlclntstate *clnt, 
+                    struct schema *params, struct sqlclntstate *clnt,
                     char **err)
 {
     /* old parameters */
@@ -9877,29 +9877,32 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         }
         if (clnt->nullbits) isnull = btst(clnt->nullbits, fld) ? 1 : 0;
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "binding field %d name %s position %d type %d %s "
+            logmsg(LOGMSG_USER,
+                   "binding field %d name %s position %d type %d %s "
                    "null %d\n",
                    fld, f->name, pos, f->type, strtype(f->type), isnull);
         if (isnull) {
             rc = sqlite3_bind_null(stmt, pos);
             add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
-        }
-        else {
+        } else {
             switch (f->type) {
             case CLIENT_INT:
                 if ((rc = get_int_field(f, buf, (uint64_t *)&ival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
-                add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
+                add_to_bind_array(arr, f->name, f->type, &ival, f->datalen,
+                                  isnull);
                 break;
             case CLIENT_UINT:
                 if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
-                add_to_bind_array(arr, f->name, f->type, &uival, f->datalen, isnull);
+                add_to_bind_array(arr, f->name, f->type, &uival, f->datalen,
+                                  isnull);
                 break;
             case CLIENT_REAL:
                 if ((rc = get_real_field(f, buf, &dval)) == 0)
                     rc = sqlite3_bind_double(stmt, pos, dval);
-                add_to_bind_array(arr, f->name, f->type, &dval, f->datalen, isnull);
+                add_to_bind_array(arr, f->name, f->type, &dval, f->datalen,
+                                  isnull);
                 break;
             case CLIENT_CSTR:
             case CLIENT_PSTR:
@@ -9911,7 +9914,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             case CLIENT_BYTEARRAY:
                 if ((rc = get_byte_field(f, buf, &byteval, &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
-                add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
+                add_to_bind_array(arr, f->name, f->type, byteval, datalen,
+                                  isnull);
                 break;
             case CLIENT_BLOB:
                 if (params) {
@@ -9919,12 +9923,14 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                                              &datalen)) == 0) {
                         rc = sqlite3_bind_blob(stmt, pos, byteval, datalen,
                                                NULL);
-                        add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
+                        add_to_bind_array(arr, f->name, f->type, byteval,
+                                          datalen, isnull);
                         blobno++;
                     }
                 } else {
                     rc = sqlite3_bind_blob(stmt, pos, buf, f->datalen, NULL);
-                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen, isnull);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                      isnull);
                     blobno++;
                 }
                 break;
@@ -9934,12 +9940,14 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                                              &datalen)) == 0) {
                         rc = sqlite3_bind_text(stmt, pos, byteval, datalen,
                                                NULL);
-                        add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
+                        add_to_bind_array(arr, f->name, f->type, byteval,
+                                          datalen, isnull);
                         blobno++;
                     }
                 } else {
                     rc = sqlite3_bind_text(stmt, pos, buf, f->datalen, NULL);
-                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen, isnull);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                      isnull);
                     blobno++;
                 }
                 break;
