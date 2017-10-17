@@ -40,6 +40,7 @@ char *cltype = "dev";
 char *argv0 = NULL;
 int fixtest_after = 0;
 int partition_master = 1;
+int partition_whole_network = 1;
 int is_hasql = 1;
 int inserts_per_txn = 1;
 int exit_at_failure = 0;
@@ -70,6 +71,7 @@ void usage(FILE *f)
     fprintf(f, "        -i <count>          - insert this many records per "
                "transaction\n");
     fprintf(f, "        -M                  - partition the master\n");
+    fprintf(f, "        -W                  - partition by port\n");
     fprintf(f, "        -m <max-retries>    - set max-retries in the api\n");
     fprintf(f, "        -D                  - enable debug trace\n");
     fprintf(f, "        -o                  - run only main thread\n");
@@ -878,7 +880,7 @@ int main(int argc, char *argv[])
     /* This is dumb.. i can ask the api */
     // setcluster("m1,m2,m3,m4,m5");
 
-    while ((c = getopt(argc, argv, "G:d:t:c:T:i:hMFeoxDsS:YBm:")) != EOF) {
+    while ((c = getopt(argc, argv, "G:d:t:c:T:i:hMFeoxDsS:YBm:W")) != EOF) {
         switch (c) {
         case 'd': dbname = optarg; break;
         case 'G':
@@ -907,6 +909,7 @@ int main(int argc, char *argv[])
         case 'o': nthreads = 1; break;
         case 'D': debug_trace = 1; break;
         case 'M': partition_master = 1; break;
+        case 'W': partition_whole_network = 0; break;
         case 'T': nthreads = atoi(optarg); break;
         case 'r': runtime = atoi(optarg); break;
         default:
@@ -934,6 +937,7 @@ int main(int argc, char *argv[])
 
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
+    if (partition_whole_network) flags |= NEMESIS_PARTITION_WHOLE_NETWORK;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
     struct nemesis *n = nemesis_open(dbname, cltype, flags);
     fixall(n);

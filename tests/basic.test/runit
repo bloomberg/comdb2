@@ -239,7 +239,8 @@ for node in $cluster ; do
 #    if [ $rc -eq 0 ]; then
 #        failexit "Expected bad rc when connecting with the wrong db name"
 #    fi
-    if [ diff out.txt out.exp ]; then
+    egrep "DB name mismatch" out.txt
+    if [ $? -ne 0 ]; then
         failexit "Expected failure when connecting with the wrong db name"
     fi
 done

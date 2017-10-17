@@ -15,6 +15,7 @@ export TESTDIR:=$(CURRDIR)/test_$(TESTID)
 # get md5sum of executable use check when running every test in a series
 
 export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
+export comdb2ar:=$(SRCHOME)/comdb2ar
 export COMDB2_EXE:=$(SRCHOME)/comdb2
 export CDB2SQL_EXE:=$(SRCHOME)/cdb2sql
 export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2

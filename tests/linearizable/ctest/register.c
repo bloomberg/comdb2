@@ -37,6 +37,7 @@ char *argv0 = NULL;
 uint32_t which_events = 0;
 int is_hasql = 1;
 int partition_master = 1;
+int partition_whole_network = 1;
 int max_retries = 1000000;
 int debug_trace = 0;
 FILE *c_file;
@@ -51,6 +52,7 @@ void usage(FILE *f)
     fprintf(
         f, "        -t <cltype>         - 'dev', 'alpha', 'beta', or 'prod'\n");
     fprintf(f, "        -M                  - partition the master\n");
+    fprintf(f, "        -W                  - partition by port\n");
     fprintf(f, "        -m <max-retries>    - set max-retries in the api\n");
     fprintf(f, "        -D                  - enable debug trace\n");
     fprintf(f, "        -o                  - run only main thread\n");
@@ -486,7 +488,7 @@ int main(int argc, char *argv[])
     int rc, c, errors = 0, cnt;
     argv0 = argv[0];
 
-    while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:")) != EOF) {
+    while ((c = getopt(argc, argv, "d:G:T:t:PMm:Doi:r:j:W")) != EOF) {
         switch (c) {
         case 'd': dbname = optarg; break;
         case 'G':
@@ -504,6 +506,7 @@ int main(int argc, char *argv[])
         case 'T': nthreads = atoi(optarg); break;
         case 't': cltype = optarg; break;
         case 'M': partition_master = 1; break;
+        case 'W': partition_whole_network = 0; break;
         case 'm': max_retries = atoi(optarg); break;
         case 'D': debug_trace = 1; break;
         case 'o': nthreads = 1; break;
@@ -541,6 +544,7 @@ int main(int argc, char *argv[])
 
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
+    if (partition_whole_network) flags |= NEMESIS_PARTITION_WHOLE_NETWORK;
     if (debug_trace) flags |= NEMESIS_VERBOSE;
     struct nemesis *n = NULL;
     for (cnt = 0; cnt < 1000 && n == NULL; cnt++) {

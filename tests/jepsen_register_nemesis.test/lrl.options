@@ -39,7 +39,7 @@ setattr STARTUP_SYNC_ATTEMPTS -1
 perfect_ckp 0
 
 # Enable wait-for-seqnum trace
-# setattr WAIT_FOR_SEQNUM_TRACE 1
+setattr WAIT_FOR_SEQNUM_TRACE 1
 
 # Don't run the watchdog thread
 nowatch
@@ -81,3 +81,50 @@ init_with_genid48
 
 # Don't use direct IO (breaks in LXC)
 setattr directio 0
+
+# The cluster LOCKED UP for hours because of an election bug I don't understand
+setattr RECEIVE_COHERENCY_LEASE_TRACE 1
+
+# Enable trace on messages with bad generation numbers
+rep_badgen_trace on
+
+# Trace when zero coherency ts is set or returned
+dump_zero_coherency_ts on
+
+# Global switch allowing incoherent sql: each session still needs to enable
+allow_incoherent_sql on
+
+# Print rcode from rep_process_message
+rep_process_msg_print_rc on
+
+# Print master-req protocol
+verbose_master_req on
+
+receive_coherency_lease_trace on
+
+# Torque down rep_timeout
+setattr REP_TIMEOUT_MINMS 1000
+
+# Torque down rep_timeout_maxms
+setattr REP_TIMEOUT_MAXMS 2000
+
+# Maybe alot of UDP traffic is being dropped?
+setattr COHERENCY_LEASE_UDP 0
+
+# Making slow replicants incoherent is ideal for normal workloads where a client
+# would be redirected to a different node.  It is BAD for Jepsen testing where a 
+# client is married to a single nodes.
+make_slow_replicants_incoherent off
+
+# Enable trace from the coherency lease thread
+verbose_send_cohlease on
+
+# Assume the network is perfect for Jepsen tests
+downgrade_penalty 0
+
+# Don't reset the master 
+gbl_reset_on_unelectable_cluster off
+
+# Don't use udp for acks
+noudp on
+
