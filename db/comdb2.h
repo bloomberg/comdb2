@@ -2898,9 +2898,6 @@ void reqlog_set_error(struct reqlogger *logger, const char *error,
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 
-void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
-                     struct schema *params, struct sqlclntstate *clnt);
-
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,

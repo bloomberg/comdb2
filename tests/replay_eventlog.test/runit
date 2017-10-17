@@ -385,27 +385,25 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2"
 assert_vers t1 0
 assert_schema t1 alltypes.csc2
 
-# let NEWNUMREC=$((2*INITNUMREC))
-# insert_records 1 $NEWNUMREC
-# assertcnt $NEWNUMREC
-# 
-# update_records 1 $NEWNUMREC
-# assertcnt $NEWNUMREC
-# 
-# delete_records $((INITNUMREC+1)) $NEWNUMREC
-# assertcnt $INITNUMREC
-# 
-# let NEWSTRT=$((INITNUMREC+1))
-# insert_records_with_bind $NEWSTRT $NEWNUMREC
-# assertcnt $NEWNUMREC
-# 
-# #update_records_with_bind $NEWSTRT $NEWNUMREC
-# #assertcnt $NEWNUMREC
+let NEWNUMREC=$((2*INITNUMREC))
+insert_records 1 $NEWNUMREC
+assertcnt $NEWNUMREC
+
+update_records 1 $NEWNUMREC
+assertcnt $NEWNUMREC
+
+delete_records $((INITNUMREC+1)) $NEWNUMREC
+assertcnt $INITNUMREC
+
+let NEWSTRT=$((INITNUMREC+1))
+insert_records_with_bind $NEWSTRT $NEWNUMREC
+assertcnt $NEWNUMREC
+
+#update_records_with_bind $NEWSTRT $NEWNUMREC
+#assertcnt $NEWNUMREC
 
 #echo "Now call task that uses cdb2api to ins/upd/del"
 ${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
-
-exit 0
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by alltypes_u_short" > orig.txt
 

@@ -9889,8 +9889,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             case CLIENT_INT:
                 if ((rc = get_int_field(f, buf, (uint64_t *)&ival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
-            printf("AZ: binding field %d name %s position %d type %d %s val %d "
-                   "null %d\n", fld, f->name, pos, f->type, strtype(f->type), ival, isnull);
                 add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
                 break;
             case CLIENT_UINT:
@@ -9914,7 +9912,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             case CLIENT_BYTEARRAY:
                 if ((rc = get_byte_field(f, buf, &byteval, &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
-    printf("AZ: bytearray() dlen=%d, datalen=%d\n", dlen, datalen);
                 add_to_bind_array(arr, f->name, f->type, byteval, datalen, isnull);
                 break;
             case CLIENT_BLOB:
@@ -9928,7 +9925,7 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                     }
                 } else {
                     rc = sqlite3_bind_blob(stmt, pos, buf, f->datalen, NULL);
-                    add_to_bind_array(arr, f->name, f->type, buf, datalen, isnull);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen, isnull);
                     blobno++;
                 }
                 break;

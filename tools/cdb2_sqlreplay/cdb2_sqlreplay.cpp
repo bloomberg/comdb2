@@ -213,7 +213,7 @@ void fromhex(uint8_t *out, const uint8_t *in, size_t len)
 
 
 /* TODO: add all types supported */
-bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
+bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, std::vector<uint8_t *> &blobs_vect) {
     cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
     if(bound_parameters == nullptr)
         return true;
@@ -286,13 +286,15 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             fromhex(unexpanded, (const uint8_t *) strp + 2, slen); /* no x' */
             unexpanded[unexlen] = '\0';
 
+            std::cout << "have strp "<< strp << " unexpanded " << unexpanded << std::endl;
+
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, unexpanded, unexlen)) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 free(unexpanded);
                 return false;
             }
 
-            free(unexpanded);
+            blobs_vect.push_back(unexpanded);
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
         else
@@ -336,8 +338,8 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 
 void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
 {
-    int string_blobs = 1;
-    switch (cdb2_column_type(cdb2h, col)) {
+  int string_blobs = 1;
+  switch (cdb2_column_type(cdb2h, col)) {
     case CDB2_INTEGER:
         if (printmode == DEFAULT)
             fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
@@ -433,9 +435,13 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
                 ds->sec, ds->usec);
         break;
     }
-    }
+  }
 }
 
+inline void free_blobs(std::vector<uint8_t *> &blobs_vect) {
+    for(std::vector<uint8_t *>::iterator it = blobs_vect.begin(); it != blobs_vect.end(); ++it)
+        free(*it);
+}
 
 void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     const char *sql = get_strprop(event_val, "sql");
@@ -453,13 +459,17 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
 	    sql = (*s).second.c_str();
     }
 
-    bool ok = do_bindings(db, event_val);
-    if (!ok)
+    std::vector<uint8_t *> blobs_vect;
+    bool ok = do_bindings(db, event_val, blobs_vect);
+    if (!ok) {
+        free_blobs(blobs_vect);
         return;
+    }
 
     std::cout << sql << std::endl;
     int rc = cdb2_run_statement(db, sql);
     cdb2_clearbindings(db);
+    free_blobs(blobs_vect);
 
     if (rc != CDB2_OK) {
         std::cerr << "run rc " << rc << ": " << cdb2_errstr(db) << std::endl;
