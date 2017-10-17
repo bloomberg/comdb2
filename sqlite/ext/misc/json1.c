@@ -336,6 +336,14 @@ static void jsonAppendValue(
       jsonAppendRaw(p, z, n);
       break;
     }
+    /* vvvvvv COMDB2 MODIFICATION vvvvvv */
+    case SQLITE_DATETIME:
+    case SQLITE_DATETIMEUS:
+    case SQLITE_INTERVAL_YM:
+    case SQLITE_INTERVAL_DS:
+    case SQLITE_INTERVAL_DSUS:
+    case SQLITE_DECIMAL:
+    /* ^^^^^^ COMDB2 MODIFICATION ^^^^^^ */
     case SQLITE_TEXT: {
       const char *z = (const char*)sqlite3_value_text(pValue);
       u32 n = (u32)sqlite3_value_bytes(pValue);
