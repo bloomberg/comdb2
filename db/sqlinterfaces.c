@@ -4029,7 +4029,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
           sql_response.n_value = 0;
           sql_response.value = NULL;
           sql_response.error_code = 0;
-          sql_response.info_string = "-- New Candidates ---------------------------\n";
+          sql_response.info_string = "---------- Recommended Indexes ---------------------------\n";
           newsql_write_response(
               clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
               1 /*flush*/, malloc, __func__, __LINE__);
@@ -4059,9 +4059,14 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }else{
           fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
         }
+        newsql_send_dummy_resp(clnt, __func__, __LINE__);
+        newsql_send_last_row(clnt, 1, __func__, __LINE__);
 
         sqlite3_expert_destroy(p);
         sqlite3_free(zErr);
+        unlock_schema_lk();
+        clnt->no_transaction = 0;
+        return -1; /* Don't process anything else */
     }
 
     /* if don't have a stmt */
