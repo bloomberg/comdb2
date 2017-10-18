@@ -41,3 +41,6 @@
 
 (deftest ^:g2-test g2-test
   (check (c/g2-test {})))
+
+(deftest ^:a6-test a6-test
+  (check (c/a6-test {})))
