@@ -106,7 +106,6 @@ int main(int argc, char *argv[])
         table = argv[2];
 
 #if 0
-#endif
     // insert records
     for (int j = 1000; j < 2000; j++) {
         std::ostringstream ss;
@@ -197,6 +196,7 @@ int main(int argc, char *argv[])
         std::string s = ss.str();
         runsql(db, s);
     }
+#endif
 
 
     // insert records with bind params
@@ -229,6 +229,10 @@ int main(int argc, char *argv[])
         time_t t = 1356998400;
         cdb2_client_datetime_t datetime = {0};
         gmtime_r(&t, (struct tm *)&datetime.tm);
+        datetime.msec = 1234;
+        cdb2_client_datetimeus_t datetimeus = {0};
+        gmtime_r(&t, (struct tm *)&datetimeus.tm);
+        datetimeus.usec = 12345678;
 
 
         if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
@@ -255,10 +259,12 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Error binding palltypes_cstring.\n");
         if(cdb2_bind_param(db, "palltypes_datetime", CDB2_DATETIME, &datetime, sizeof(datetime)))
             fprintf(stderr, "Error binding palltypes_datetime.\n");
+        if(cdb2_bind_param(db, "palltypes_datetimeus", CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
+            fprintf(stderr, "Error binding palltypes_datetimeus.\n");
 
         ss << "insert into " << table 
-           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime) values "
-              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime)" ;
+           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime   alltypes_datetimeus) values "
+              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime @palltypes_datetimeus)" ;
 
         //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
            /*

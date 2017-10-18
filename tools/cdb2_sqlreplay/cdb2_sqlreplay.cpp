@@ -260,7 +260,8 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
             }
             std::cout << "binding "<< type << " column " << name << " to value " << *dv << std::endl;
         }
-        else if (strcmp(type, "char") == 0 || strcmp(type, "datetime") == 0) {
+        else if (strcmp(type, "char") == 0 || strcmp(type, "datetime" || 
+                 strcmp(type, "datetimeus") == 0) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;

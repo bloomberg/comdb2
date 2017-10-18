@@ -215,32 +215,21 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
         char strtime[62];
         strtype = "datetime";
 
-        if (isnull)
-            break;
+        if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
+            cson_object_set(bobj, "value", 
+                            cson_value_new_string(strtime, sizeof(strtime)));
+        break;
+    }
+    case CLIENT_DATETIMEUS: {
+        char strtime[65];
+        strtype = "datetimeus";
 
-        /* set value */
         if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
             cson_object_set(bobj, "value", 
                             cson_value_new_string(strtime, sizeof(strtime)));
         break;
     }
 #if 0
-        case CLIENT_DATETIMEUS: {
-            char strtime[65];
-
-            /* set type */
-            strtype = "datetimeus";
-
-            if (isnull)
-                break;
-
-            /* set value */
-            if (structdatetime2string_ISO((void *)buf, strtime,
-                                          sizeof(strtime)) == 0)
-                cson_object_set(bobj, "value", cson_value_new_string(
-                                                   strtime, sizeof(strtime)));
-            break;
-        }
         case CLIENT_INTVYM:
             strtype = "interval month";
             if (isnull)

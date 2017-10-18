@@ -9954,14 +9954,18 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
                                              little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
-                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
-                                      isnull);
+
+                add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                  isnull);
                 break;
 
             case CLIENT_DATETIMEUS:
                 if ((rc = get_datetimeus_field(f, buf, clnt->tzname, &dt,
                                                little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
+
+                add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                  isnull);
                 break;
 
             case CLIENT_INTVYM: {
