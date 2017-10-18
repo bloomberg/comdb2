@@ -164,32 +164,19 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
     switch (type) {
     case CLIENT_UINT:
     case CLIENT_INT:
-        /* set type */
         switch (dlen) {
-        case 2:
-            strtype = "smallint";
-            break;
-        case 4:
-            strtype = "int";
-            break;
-        case 8:
-            strtype = "largeint";
-            break;
+        case 2: strtype = "smallint"; break;
+        case 4: strtype = "int"; break;
+        case 8: strtype = "largeint"; break;
         }
 
-        printf("AZ GRR: val %d \n", *(uint64_t *)val);
         cson_object_set(bobj, "value",
                         cson_value_new_integer(*(uint64_t *)val));
         break;
     case CLIENT_REAL: {
-        /* set type */
         switch (dlen) {
-        case 4:
-            strtype = "float";
-            break;
-        case 8:
-            strtype = "doublefloat";
-            break;
+        case 4: strtype = "float"; break;
+        case 8: strtype = "doublefloat"; break;
         }
 
         cson_object_set(bobj, "value", cson_value_new_double(*(double *)val));
@@ -198,10 +185,8 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
     case CLIENT_CSTR:
     case CLIENT_PSTR:
     case CLIENT_PSTR2: {
-        /* set type */
         strtype = "char";
 
-        /* set value */
         cson_object_set(bobj, "value",
                         cson_value_new_string((char *)val, dlen));
         break;
@@ -209,12 +194,10 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
     case CLIENT_BYTEARRAY:
     case CLIENT_BLOB:
     case CLIENT_VUTF8: {
-        /* set type */
         strtype = "blob";
         if (type == CLIENT_VUTF8)
             strtype = "varchar";
 
-        /* set value */
         int datalen = min(dlen, 1024);         /* cap the datalen logged */
         const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
         char *expanded_buf = malloc(exp_len);
@@ -228,23 +211,20 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
         free(expanded_buf);
         break;
     }
-#if 0
-        case CLIENT_DATETIME: {
-            char strtime[62];
+    case CLIENT_DATETIME: {
+        char strtime[62];
+        strtype = "datetime";
 
-            /* set type */
-            strtype = "datetime";
-
-            if (isnull)
-                break;
-
-            /* set value */
-            if (structdatetime2string_ISO((void *)buf, strtime,
-                                          sizeof(strtime)) == 0)
-                cson_object_set(bobj, "value", cson_value_new_string(
-                                                   strtime, sizeof(strtime)));
+        if (isnull)
             break;
-        }
+
+        /* set value */
+        if (structdatetime2string_ISO(val, strtime, sizeof(strtime)) == 0)
+            cson_object_set(bobj, "value", 
+                            cson_value_new_string(strtime, sizeof(strtime)));
+        break;
+    }
+#if 0
         case CLIENT_DATETIMEUS: {
             char strtime[65];
 

@@ -105,6 +105,8 @@ int main(int argc, char *argv[])
     if (argc > 2) 
         table = argv[2];
 
+#if 0
+#endif
     // insert records
     for (int j = 1000; j < 2000; j++) {
         std::ostringstream ss;
@@ -224,6 +226,9 @@ int main(int argc, char *argv[])
                 palltypes_blob[i] = 'a' + (i % 26);
              palltypes_blob[sizeof(palltypes_blob)] = '\0';
         }
+        time_t t = 1356998400;
+        cdb2_client_datetime_t datetime = {0};
+        gmtime_r(&t, (struct tm *)&datetime.tm);
 
 
         if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
@@ -248,8 +253,13 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Error binding palltypes_cstring.\n");
         if(cdb2_bind_param(db, "palltypes_pstring", CDB2_CSTRING, palltypes_pstring, sizeof(palltypes_pstring) - 1))
             fprintf(stderr, "Error binding palltypes_cstring.\n");
+        if(cdb2_bind_param(db, "palltypes_datetime", CDB2_DATETIME, &datetime, sizeof(datetime)))
+            fprintf(stderr, "Error binding palltypes_datetime.\n");
 
-        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_cstring, alltypes_blob) values (@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob)" ;
+        ss << "insert into " << table 
+           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime) values "
+              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime)" ;
+
         //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
            /*
            << ((1-2*(j%2))) << j 

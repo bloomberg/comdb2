@@ -9878,8 +9878,7 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         if (clnt->nullbits) isnull = btst(clnt->nullbits, fld) ? 1 : 0;
         if (gbl_dump_sql_dispatched)
             logmsg(LOGMSG_USER,
-                   "binding field %d name %s position %d type %d %s "
-                   "null %d\n",
+                   "binding field %d name %s position %d type %d %s null %d\n",
                    fld, f->name, pos, f->type, strtype(f->type), isnull);
         if (isnull) {
             rc = sqlite3_bind_null(stmt, pos);
@@ -9955,6 +9954,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
                                              little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                      isnull);
                 break;
 
             case CLIENT_DATETIMEUS:
