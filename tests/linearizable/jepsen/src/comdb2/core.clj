@@ -261,15 +261,54 @@
 
 ;; Tests
 
+(defn a6-id->key-acct
+  "Converts an id number to [key account] tuple."
+  [id]
+  [(quot id 2) (mod id 2)])
+
+(defn a6-id
+  "Build an id out of a key and account."
+  [key acct]
+  (assert (<= 0 acct 1))
+  (+ (* 2 key) acct))
+
 (defn a6-fetch
   "Fetch an account balance."
   [conn table key account-number]
-  (-> (query conn [(str "select * from " table
-                        " where key = ? and account = ?")
+  (-> (query conn [(str "select * from " table " where key = ? and account = ?")
                         key account-number])
       first
       :value
       (or 0)))
+
+(defn a6-fetch-by-id
+  "Fetch an account balance by ID."
+  [conn table key acct]
+  (-> (query conn [(str "select * from " table " where id = ?")
+                   (a6-id key acct)])
+      first
+      :value
+      (or 0)))
+
+(defn a6-upsert!
+  "Upsert a record using the specified where clause."
+  [conn table key acct value where]
+  (upsert! conn table
+           {:id      (a6-id key acct)
+            :key     key
+            :account acct
+            :value   value}
+           where))
+
+(defn a6-upsert-by-id!
+  "Upsert a record by id."
+  [conn table key acct value]
+  (a6-upsert! conn table key acct value ["id = ?" (a6-id key acct)]))
+
+(defn a6-upsert-by-key-acct!
+  "Upsert a record by key and account."
+  [conn table key acct value]
+  (a6-upsert! conn table key acct value ["key = ? and account = ?" key acct]))
 
 (defrecord A6Client [table conn]
   client/Client
@@ -285,27 +324,31 @@
             (hasql! c)
 
             (case (:f op)
-              :read     (assoc op
-                               :type :ok
-                               :value (independent/tuple
-                                        k
-                                        [(a6-fetch c table k 0)
-                                         (a6-fetch c table k 1)]))
+              :read (let [rows (->> (query c [(str "select * from " table
+                                                   " where key = ?") k])
+                                    (map (juxt :account :value))
+                                    (into {}))]
+                      (assoc op
+                             :type :ok
+                             :value (independent/tuple
+                                      k
+                                      [(rows 0 0)
+                                       (rows 1 0)])))
 
-              :deposit  (let [b1 (+ 20 (a6-fetch c table k 1))]
-                          (upsert! c table {:key k, :account 1, :value b1}
-                                   ["key = ? and account = ?" k 1])
-                          (assoc op :type :ok
+              :deposit  (let [b1 (+ 20 (a6-fetch-by-id c table k 1))]
+                          (a6-upsert-by-id! c table k 1 b1)
+                          (assoc op
+                                 :type :ok
                                  :value (independent/tuple k [nil b1])))
 
-              :withdraw (let [b0  (a6-fetch c table k 0)
-                              b1  (a6-fetch c table k 1)
+              :withdraw (let [b0  (a6-fetch-by-id c table k 0)
+                              b1  (a6-fetch-by-id c table k 1)
                               b0  (- b0 10)   ; Withdraw
                               fee (if (pos? (+ b0 b1)) 0 1)
                               b0  (- b0 fee)] ; Apply fee
-                          (upsert! c table {:key k, :account 0, :value b0}
-                                   ["key = ? and account = ?" k 0])
-                          (assoc op :type :ok
+                          (a6-upsert-by-id! c table k 0 b0)
+                          (assoc op
+                                 :type :ok
                                  :value (independent/tuple k [b0 b1])))))))))
 
   (teardown! [this test]
@@ -421,10 +464,10 @@
   (basic-test
     (merge
       {:name        "a6"
-       :concurrency 100
+       :concurrency 50
        :client      (a6-client)
        :generator   (a6-gen)
-       :time-limit  120
+       :time-limit  60
        :checker     (checker/compose {:a6 (a6-checker)})}
       opts)))
 
