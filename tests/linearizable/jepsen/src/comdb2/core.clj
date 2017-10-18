@@ -315,20 +315,6 @@
   []
   (A6Client. "a6" nil))
 
-(defn a6-gen
-  "Generator for SI read-only anomaly operations."
-  []
-  (independent/concurrent-generator
-    5
-    (range)
-    (fn [k]
-      (gen/seq (shuffle
-                 [{:type :invoke, :f :withdraw}
-                  {:type :invoke, :f :deposit}
-                  {:type :invoke, :f :read}
-                  {:type :invoke, :f :read}
-                  {:type :invoke, :f :read}])))))
-
 (defn merge-vec
   "Merge two sequences into a vector, overlaying non-nil elements of b on top
   of a."
@@ -396,18 +382,50 @@
                                   :errors         []}))]
         results))))
 
+(defn a6-gen
+  "Generator for SI read-only anomaly operations."
+  []
+  (independent/concurrent-generator
+    5
+    (range)
+    (fn [k]
+      (let [withdrawer (atom nil)
+            depositor  (atom nil)
+            withdrawn? (atom false)
+            deposited? (atom false)]
+        (reify gen/Generator
+          (op [_ test process]
+            (let [t (gen/process->thread test process)]
+              ; Withdraw or deposit has completed
+              (when (= @withdrawer t) (reset! withdrawn? true))
+              (when (= @depositor t)  (reset! deposited? true))
+              (cond ; Done
+                    (and @withdrawn? @deposited?)
+                    nil
+
+                    ; We are going to withdraw
+                    (compare-and-set! withdrawer nil t)
+                    {:type :invoke, :f :withdraw}
+
+                    ; We are going to deposit
+                    (compare-and-set! depositor nil t)
+                    {:type :invoke, :f :deposit}
+
+                    ; Otherwise, a read
+                    true
+                    {:type :invoke, :f :read}))))))))
+
 (defn a6-test-nemesis
   "A test for a read-only snapshot isolation phenomenon."
   [opts]
   (basic-test
     (merge
       {:name        "a6"
-       :concurrency 10
+       :concurrency 100
        :client      (a6-client)
        :generator   (a6-gen)
-       :time-limit  60
-       :checker     (checker/compose {:a6       (a6-checker)
-                                      :timeline (timeline/html)})}
+       :time-limit  120
+       :checker     (checker/compose {:a6 (a6-checker)})}
       opts)))
 
 (defn a6-test
