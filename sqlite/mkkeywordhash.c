@@ -267,6 +267,7 @@ static Keyword aKeywordTable[] = {
 
 /**** COMDB2 CUSTOM ***********************************************/
   { "ANALYZESQLITE",    "TK_ANALYZESQLITE", ALWAYS,                 1},
+  { "ANALYZEEXPERT",    "TK_ANALYZEEXPERT", ALWAYS,                 1},
   { "AGGREGATE",        "TK_AGGREGATE",     ALWAYS,                 0},
   { "ALIAS",            "TK_ALIAS",         ALWAYS,                 0},
   { "AUTHENTICATION",   "TK_AUTHENTICATION",ALWAYS,                 0},

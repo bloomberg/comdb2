@@ -3061,6 +3061,7 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)];  /* register which cursors are recording and which not */
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
+  u8 isExpert;              /* If analyze is done using sqlite expert */
   void *comdb2_ddl_ctx;     /* Context for DDL commands */
 };
 

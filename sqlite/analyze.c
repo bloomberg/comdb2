@@ -241,7 +241,7 @@ static int openStatTable(
   assert( sqlite3VdbeDb(v)==db );
   pDb = &db->aDb[iDb];
 
-  if (zWhere != NULL) {
+  if (pParse->isExpert == 0) {
       /* Create new statistic tables if they do not exist, or clear them
       ** if they do already exist.
       */

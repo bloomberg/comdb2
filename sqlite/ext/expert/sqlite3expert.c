@@ -1643,7 +1643,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   rc = idxLargestIndex(p->dbm, &nMax, pzErr);
   if( nMax<=0 || rc!=SQLITE_OK ) return rc;
 
-  rc = sqlite3_exec(p->dbm, "ANALYZESQLITE; PRAGMA writable_schema=1", 0, 0, 0);
+  rc = sqlite3_exec(p->dbm, "ANALYZEEXPERT; PRAGMA writable_schema=1", 0, 0, 0);
 
   if( rc==SQLITE_OK ){
     int nByte = sizeof(struct IdxRemCtx) + (sizeof(struct IdxRemSlot) * nMax);
@@ -1706,7 +1706,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   sqlite3_free(pCtx);
 
   if( rc==SQLITE_OK ){
-    rc = sqlite3_exec(p->dbm, "ANALYZESQLITE sqlite_master", 0, 0, 0);
+    rc = sqlite3_exec(p->dbm, "ANALYZEEXPERT sqlite_master", 0, 0, 0);
   }
 
   sqlite3_exec(p->db, "DROP TABLE IF EXISTS temp."UNIQUE_TABLE_NAME,0,0,0);
