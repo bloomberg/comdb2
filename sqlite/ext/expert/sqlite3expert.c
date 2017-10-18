@@ -1630,7 +1630,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
 
   const char *zAllIndex =
     "SELECT s.rowid, s.name, l.name FROM "
-    "  sqlite_master AS s, "
+    "  sqlite_temp_master AS s, "
     "  pragma_index_list(s.name) AS l "
     "WHERE s.type = 'table'";
   const char *zIndexXInfo = 
