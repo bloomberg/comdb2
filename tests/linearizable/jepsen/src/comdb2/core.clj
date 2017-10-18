@@ -502,17 +502,7 @@
                      r     (insert! c table {:key   k
                                              :id    id
                                              :value (* 3 (rand-int 10))})]
-                (assoc op :type :ok)))
-
-            :read
-            (let [as (query c [(str "select * from " ta
-                                    " where key = ? and value % 3 = 0") k])
-                  bs (query c [(str "select * from " tb
-                                    " where key = ? and value % 3 = 0") k])
-                  values (map :id (concat as bs))]
-              (assoc op
-                     :type :ok
-                     :value (independent/tuple k values))))))))
+                (assoc op :type :ok))))))))
 
   (teardown! [this test]
     (rc/close! conn)))
