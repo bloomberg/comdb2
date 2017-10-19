@@ -10003,6 +10003,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                     *err = sqlite3_mprintf("sqlite3_bind_datetime rc %d\n", rc);
                     return -1;
                 }
+                add_to_bind_array(arr, f->name, f->type, &ci, f->datalen,
+                                  isnull);
 
                 break;
             }
@@ -10048,6 +10050,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                     *err = sqlite3_mprintf("sqlite3_bind_datetime rc %d\n", rc);
                     return -1;
                 }
+                add_to_bind_array(arr, f->name, f->type, &ci, f->datalen,
+                                  isnull);
                 break;
             }
 
@@ -10092,6 +10096,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                     *err = sqlite3_mprintf("sqlite3_bind_datetime rc %d\n", rc);
                     return -1;
                 }
+                add_to_bind_array(arr, f->name, f->type, &ci, f->datalen,
+                                  isnull);
                 break;
             }
 

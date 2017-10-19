@@ -229,27 +229,37 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
                             cson_value_new_string(strtime, sizeof(strtime)));
         break;
     }
-#if 0
-    case CLIENT_INTVYM:
+    case CLIENT_INTVYM: {
         strtype = "interval month";
-        /* TODO: value */
+        cdb2_client_intv_ym_t *ci = val;
+        char strintv[65];
+        sprintf(strintv, "%s%u-%u", ci->sign < 0 ? "- " : "", 
+                ci->years, ci->months);
+        cson_object_set(bobj, "value", 
+                        cson_value_new_string(strintv, sizeof(strintv)));
         break;
-        case CLIENT_INTVDS:
-            strtype = "interval sec";
-            if (isnull)
-                break;
-            /* TODO: value */
-
-            break;
-        case CLIENT_INTVDSUS:
-            strtype = "interval usec";
-            if (isnull)
-                break;
-            /* TODO: value */
-
-            break;
-        default: assert(false && "Unknown type being bound");
-#endif
+    }
+    case CLIENT_INTVDS: {
+        strtype = "interval sec";
+        cdb2_client_intv_ds_t *ci = val;
+        char strintvds[265];
+        sprintf(strintvds, "%s%u %2.2u:%2.2u:%2.2u.%3.3u", 
+                ci->sign < 0 ? "- " : "",
+                ci->days, ci->hours, ci->mins, ci->sec, ci->msec);
+        cson_object_set(bobj, "value", 
+                        cson_value_new_string(strintvds, sizeof(strintvds)));
+        break;
+    }
+    case CLIENT_INTVDSUS:
+        strtype = "interval usec";
+        cdb2_client_intv_dsus_t *ci = val;
+        char strintvds[265];
+        sprintf(strintvds, "%s%d %d:%d:%d.%d", ci->sign ? " " : "- ", 
+                ci->days, ci->hours, ci->mins, ci->sec, ci->usec);
+        cson_object_set(bobj, "value", 
+                        cson_value_new_string(strintvds, sizeof(strintvds)));
+        break;
+    default: assert(false && "Unknown type being bound");
     }
 
     cson_object_set(bobj, "type",

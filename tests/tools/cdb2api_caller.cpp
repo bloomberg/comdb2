@@ -198,9 +198,8 @@ int main(int argc, char *argv[])
         runsql(db, s);
     }
 
-
     // insert records with bind params
-    for (int j = 2000; j < 3000; j++) {
+    for (int j = 2000; j < 2002; j++) {
         std::ostringstream ss;
         time_t rawtime;
         struct tm * timeinfo;
@@ -229,12 +228,16 @@ int main(int argc, char *argv[])
         time_t t = 1386783296; //2013-12-11T123456
         cdb2_client_datetime_t datetime = {0};
         gmtime_r(&t, (struct tm *)&datetime.tm);
-        datetime.msec = 123; // cant be larger than 999
+        datetime.msec = 123; // should not be larger than 999
 
         cdb2_client_datetimeus_t datetimeus = {0};
         gmtime_r(&t, (struct tm *)&datetimeus.tm);
-        datetimeus.usec = 123456; // canit be larger than 999999
+        datetimeus.usec = 123456; // should not be larger than 999999
         cdb2_client_intv_ym_t ym = {1, 5, 2};
+
+        cdb2_client_intv_ds_t ci = {1, 12, 23, 34, 45, 456 };
+        
+        cdb2_client_intv_dsus_t cidsus = {1, 12, 23, 34, 45, 456789 };
 
         if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
             fprintf(stderr, "Error binding palltypes_short.\n");
@@ -262,17 +265,16 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Error binding palltypes_datetime.\n");
         if(cdb2_bind_param(db, "palltypes_datetimeus", CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
             fprintf(stderr, "Error binding palltypes_datetimeus.\n");
-        /*
         if(cdb2_bind_param(db, "palltypes_intervalym", CDB2_INTERVALYM, &ym, sizeof(ym)))
             fprintf(stderr, "Error binding p alltypes_intervalym.\n");
-            */
+        if(cdb2_bind_param(db, "palltypes_intervalds", CDB2_INTERVALDS, &ci, sizeof(ci)))
+            fprintf(stderr, "Error binding p alltypes_intervalds.\n");
+        if(cdb2_bind_param(db, "palltypes_intervaldsus", CDB2_INTERVALDSUS, &cidsus, sizeof(cidsus)))
+            fprintf(stderr, "Error binding p alltypes_intervaldsus.\n");
 
         ss << "insert into " << table 
-
-           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus) values "
-              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus)" ;
-           /* << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym) values "
-              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus, @palltypes_intervalym)" ; */
+           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym,   alltypes_intervalds,   alltypes_intervaldsus) values "
+              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus, @palltypes_intervalym, @palltypes_intervalds, @palltypes_intervaldsus)" ;
         
         //this works too?? runsql(db, s);
         printf("float param: %f\n", palltypes_float);
