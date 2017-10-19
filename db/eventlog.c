@@ -230,12 +230,10 @@ void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
         break;
     }
 #if 0
-        case CLIENT_INTVYM:
-            strtype = "interval month";
-            if (isnull)
-                break;
-            /* TODO: value */
-            break;
+    case CLIENT_INTVYM:
+        strtype = "interval month";
+        /* TODO: value */
+        break;
         case CLIENT_INTVDS:
             strtype = "interval sec";
             if (isnull)

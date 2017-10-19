@@ -105,7 +105,6 @@ int main(int argc, char *argv[])
     if (argc > 2) 
         table = argv[2];
 
-#if 0
     // insert records
     for (int j = 1000; j < 2000; j++) {
         std::ostringstream ss;
@@ -196,7 +195,6 @@ int main(int argc, char *argv[])
         std::string s = ss.str();
         runsql(db, s);
     }
-#endif
 
 
     // insert records with bind params
@@ -226,14 +224,15 @@ int main(int argc, char *argv[])
                 palltypes_blob[i] = 'a' + (i % 26);
              palltypes_blob[sizeof(palltypes_blob)] = '\0';
         }
-        time_t t = 1356998400;
+        time_t t = 1386783296; //2013-12-11T123456
         cdb2_client_datetime_t datetime = {0};
         gmtime_r(&t, (struct tm *)&datetime.tm);
-        datetime.msec = 1234;
+        datetime.msec = 123; // cant be larger than 999
+
         cdb2_client_datetimeus_t datetimeus = {0};
         gmtime_r(&t, (struct tm *)&datetimeus.tm);
-        datetimeus.usec = 12345678;
-
+        datetimeus.usec = 123456; // canit be larger than 999999
+        cdb2_client_intv_ym_t ym = {1, 5, 2};
 
         if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
             fprintf(stderr, "Error binding palltypes_short.\n");
@@ -261,10 +260,14 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Error binding palltypes_datetime.\n");
         if(cdb2_bind_param(db, "palltypes_datetimeus", CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
             fprintf(stderr, "Error binding palltypes_datetimeus.\n");
+        /*
+        if(cdb2_bind_param(db, "p alltypes_intervalym", CDB2_INTERVALYM, &ym, sizeof(ym)))
+            fprintf(stderr, "Error binding p alltypes_intervalym.\n");
+            */
 
         ss << "insert into " << table 
-           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime   alltypes_datetimeus) values "
-              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime @palltypes_datetimeus)" ;
+           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus) values "
+              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus)" ;
 
         //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
            /*
@@ -292,7 +295,8 @@ int main(int argc, char *argv[])
         printf("float param: %f\n", palltypes_float);
         printf("double param: %lf\n", palltypes_double);
         std::string s = ss.str();
-        runtag(db, s, types);
+        if(runtag(db, s, types) != 0);
+            exit(1);
         cdb2_clearbindings(db);
     }
 
