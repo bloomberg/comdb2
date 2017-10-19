@@ -60,7 +60,7 @@ sqlite/mkkeywordhash
 sqlite/lemon
 
 # binaries
-comdb2
+/comdb2
 pmux
 cdb2sql
 cdb2sockpool
