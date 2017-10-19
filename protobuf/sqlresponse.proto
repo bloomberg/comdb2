@@ -44,6 +44,7 @@ enum CDB2_ErrorCode {
     READONLY                = -21;
 
     NOMASTER                = -101;
+    NOTSERIAL               =  230;
     UNTAGGED_DATABASE       = -102;
     CONSTRAINTS             = -103;
     DEADLOCK                =  203;
