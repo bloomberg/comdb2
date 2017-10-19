@@ -1,5 +1,5 @@
 (ns comdb2.a6
- "Tests for Comdb2"
+ "Looks for A6: a read only snapshot isolation phenomenon."
  (:require
    [comdb2.core :as c]
    [clojure.tools.logging :refer :all]

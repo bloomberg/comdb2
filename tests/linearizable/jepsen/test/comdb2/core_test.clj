@@ -1,7 +1,8 @@
 (ns comdb2.core-test
   (:require [clojure.test :refer :all]
             [comdb2 [core :as c]
-                    [a6 :as a6]]
+                    [a6 :as a6]
+                    [atomic-writes :as aw]]
             [clojure.java.jdbc :as j]
             [jepsen.core :as jepsen]))
 
@@ -45,3 +46,6 @@
 
 (deftest ^:a6-test a6-test
   (check (a6/a6-test {})))
+
+(deftest atomic-writes
+  (check (aw/atomic-writes-test {})))
