@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 
         strftime (buffer,80,"'%FT%T'",timeinfo);
 
-        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
+        ss << "insert into " << table << "(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
            << ((1-2*(j%2))) << j << ", " 
            << j << ", " 
            << ((1-2*(j%2))) << "0000" << j << ", " 
@@ -133,7 +133,8 @@ int main(int argc, char *argv[])
            << buffer << ", " 
            << "'myvutf8" << j << "', " 
            << (1-2*(j%2)) << j << ", " 
-           << (1-2*(j%2)) << "0000" << j << ", " 
+           << (1-2*(j%2)) << j << ", " 
+           << "cast(" << (1-2*(j%2)) << "0000" << j << " as secs) , " 
            << (1-2*(j%2)) << "0000" << j << ", " 
            << (1-2*(j%2)) << "00000000" << j << ", " 
            << (1-2*(j%2)) << "00000000000000" << j  << ")"; 
@@ -171,6 +172,7 @@ int main(int argc, char *argv[])
            << "alltypes_vutf8 = " << "'myvutf8" << j << "', " 
            << "alltypes_intervalym = " << (1-2*(j%2)) << j << ", " 
            << "alltypes_intervalds = " << (1-2*(j%2)) << "0000" << j << ", " 
+           << "alltypes_intervaldsus = cast(" << (1-2*(j%2)) << "0000" << j << " as secs), " 
            << "alltypes_decimal32 = " << (1-2*(j%2)) << "0000" << j << ", " 
            << "alltypes_decimal64 = " << (1-2*(j%2)) << "00000000" << j << ", " 
            << "alltypes_decimal128 = " << (1-2*(j%2)) << "00000000000000" << j  << " "
@@ -261,36 +263,17 @@ int main(int argc, char *argv[])
         if(cdb2_bind_param(db, "palltypes_datetimeus", CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
             fprintf(stderr, "Error binding palltypes_datetimeus.\n");
         /*
-        if(cdb2_bind_param(db, "p alltypes_intervalym", CDB2_INTERVALYM, &ym, sizeof(ym)))
+        if(cdb2_bind_param(db, "palltypes_intervalym", CDB2_INTERVALYM, &ym, sizeof(ym)))
             fprintf(stderr, "Error binding p alltypes_intervalym.\n");
             */
 
         ss << "insert into " << table 
+
            << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus) values "
               "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus)" ;
-
-        //, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( "
-           /*
-           << ((1-2*(j%2))) << j 
-           << ", " << j 
-           << ", " << ((1-2*(j%2))) << "0000" << j 
-           << ", " << "10000" << j 
-           << ", " << ((1-2*(j%2))) << "000000000" << j 
-           << ", " << ((1-2*(j%2))) << "00.00" << j 
-           << ", " << ((1-2*(j%2))) << "0000" << j << ".0000" << j 
-           << ", " << "x'" << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << (j%2) << (j%3) << (j%4) << (j%5) << "0000000000000000'" << ", " 
-           << "'mycstring" << j << "', " 
-           << "'mypstring" << j << "', " 
-           << "x'" << (j%2) << (j%3) << (j%4) << (j%5) << "', " 
-           << buffer << ", " 
-           << buffer << ", " 
-           << "'myvutf8" << j << "', " 
-           << (1-2*(j%2)) << j << ", " 
-           << (1-2*(j%2)) << "0000" << j << ", " 
-           << (1-2*(j%2)) << "0000" << j << ", " 
-           << (1-2*(j%2)) << "00000000" << j << ", " 
-           << (1-2*(j%2)) << "00000000000000" << j  << ")"; 
-           */
+           /* << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym) values "
+              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus, @palltypes_intervalym)" ; */
+        
         //this works too?? runsql(db, s);
         printf("float param: %f\n", palltypes_float);
         printf("double param: %lf\n", palltypes_double);
@@ -301,93 +284,6 @@ int main(int argc, char *argv[])
         cdb2_clearbindings(db);
     }
 
-    /*
-    std::vector<int> types;
-
-    int i = INT_MAX;
-    cdb2_bind_param(db1, "i", CDB2_INTEGER, &i, sizeof(i));
-    cdb2_bind_param(db2, "i", CDB2_INTEGER, &i, sizeof(i));
-
-    sp += quote + "@i" + quote;
-    sql += "@i";
-    types.push_back(CDB2_CSTRING);
-
-    unsigned u = UINT_MAX;
-    cdb2_bind_param(db1, "u", CDB2_INTEGER, &u, sizeof(u));
-    cdb2_bind_param(db2, "u", CDB2_INTEGER, &u, sizeof(u));
-    add_param(sp, sql, types, "u");
-
-    long long ll = LLONG_MAX;
-    cdb2_bind_param(db1, "ll", CDB2_INTEGER, &ll, sizeof(ll));
-    cdb2_bind_param(db2, "ll", CDB2_INTEGER, &ll, sizeof(ll));
-    add_param(sp, sql, types, "ll");
-
-    unsigned long long ull = ULLONG_MAX;
-    cdb2_bind_param(db1, "ull", CDB2_INTEGER, &ull, sizeof(ull));
-    cdb2_bind_param(db2, "ull", CDB2_INTEGER, &ull, sizeof(ull));
-    add_param(sp, sql, types, "ull");
-
-    short s = SHRT_MAX;
-    cdb2_bind_param(db1, "s", CDB2_INTEGER, &s, sizeof(s));
-    cdb2_bind_param(db2, "s", CDB2_INTEGER, &s, sizeof(s));
-    add_param(sp, sql, types, "s");
-
-    unsigned short us = USHRT_MAX;
-    cdb2_bind_param(db1, "us", CDB2_INTEGER, &us, sizeof(us));
-    cdb2_bind_param(db2, "us", CDB2_INTEGER, &us, sizeof(us));
-    add_param(sp, sql, types, "us");
-
-    float f = 3.14159;
-    cdb2_bind_param(db1, "f", CDB2_REAL, &f, sizeof(f));
-    cdb2_bind_param(db2, "f", CDB2_REAL, &f, sizeof(f));
-    add_param(sp, sql, types, "f");
-
-    double d = 3.14159;
-    cdb2_bind_param(db1, "d", CDB2_REAL, &d, sizeof(d));
-    cdb2_bind_param(db2, "d", CDB2_REAL, &d, sizeof(d));
-    add_param(sp, sql, types, "d");
-
-    time_t t = 1356998400;
-    cdb2_client_datetime_t datetime = {0};
-    gmtime_r(&t, (struct tm *)&datetime.tm);
-    cdb2_bind_param(db1, "dt", CDB2_DATETIME, &datetime, sizeof(datetime));
-    cdb2_bind_param(db2, "dt", CDB2_DATETIME, &datetime, sizeof(datetime));
-    add_param(sp, sql, types, "dt");
-
-    char cstr[] = "Hello, World!";
-    cdb2_bind_param(db1, "cstr", CDB2_CSTRING, cstr, strlen(cstr));
-    cdb2_bind_param(db2, "cstr", CDB2_CSTRING, cstr, strlen(cstr));
-    add_param(sp, sql, types, "cstr");
-
-    int ba = htonl(0xdbdbdbdb);
-    cdb2_bind_param(db1, "ba", CDB2_BLOB, &ba, sizeof(ba));
-    cdb2_bind_param(db2, "ba", CDB2_BLOB, &ba, sizeof(ba));
-    add_param(sp, sql, types, "ba", "hex(", ")");
-
-    int forblob[] = {htonl(0xdeadbeef), htonl(0xcafebabe), htonl(0xffffffff)};
-    cdb2_bind_param(db1, "blob", CDB2_BLOB, forblob, sizeof(forblob));
-    cdb2_bind_param(db2, "blob", CDB2_BLOB, forblob, sizeof(forblob));
-    add_param(sp, sql, types, "blob", "hex(", ")");
-
-    char forvutf8[] =
-        "Lorem ipsum dolor sit amet, consectetur "
-        "adipisicing elit, sed do eiusmod tempor incididunt ut labore et "
-        "dolore magna aliqua.";
-    cdb2_bind_param(db1, "vutf8", CDB2_CSTRING, forvutf8, strlen(forvutf8));
-    cdb2_bind_param(db2, "vutf8", CDB2_CSTRING, forvutf8, strlen(forvutf8));
-    add_param(sp, sql, types, "vutf8");
-
-    sp += ")";
-    sql += ";";
-
-    int rc = 0;
-    printf("SQL: %s\n", sql.c_str());
-    rc |= runtag(db1, sql, types);
-    printf("SP: %s\n", sp.c_str());
-    rc |= runtag(db2, sp, types);
-
-    cdb2_close(db2);
-    */
     cdb2_close(db);
     return 0;
 }
