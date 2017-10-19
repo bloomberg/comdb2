@@ -87,6 +87,7 @@
   that fails, inserting instead."
   [conn table values where]
   (let [r (update! conn table values where)]
+    (info r)
     (if (zero? (first r))
       (insert! conn table values)
       r)))
@@ -323,8 +324,8 @@
       ; Create initial accts
       (dotimes [i n]
         (with-retry [tries 10]
-          (with-conn [c conn]
-            (try
+          (try
+            (with-conn [c conn]
               (Thread/sleep (rand-int 10))
               (info "Inserting" node i)
               (insert! c :accounts {:id i, :balance starting-balance})
@@ -332,14 +333,14 @@
                 (if (.contains (.getMessage e)
                                "add key constraint duplicate key")
                   nil
-                  (throw e)))))
+                  (throw e))))
           ; I don't know why these nodes close connections on some inserts and
           ; not others, it's the weirdest thing
           (catch java.sql.SQLNonTransientConnectionException e
             (Thread/sleep (rand-int 1000))
             (if (pos? tries)
               (retry (dec tries))
-              (throw e)))))
+              (throw e))))))
       (assoc this :conn conn)))
 
   (invoke! [this test op]
