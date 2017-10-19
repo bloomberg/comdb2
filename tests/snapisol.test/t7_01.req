@@ -27,3 +27,7 @@
 2 commit
 1 select * from t7
 1 select csc2 from sqlite_master where name = 't70'
+1 truncate t7
+1 select * from t7
+1 drop table t7
+1 select * from t7

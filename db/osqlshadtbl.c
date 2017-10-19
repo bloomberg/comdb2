@@ -2652,10 +2652,6 @@ int osql_save_schemachange(struct sql_thread *thd,
     /* packed_sc_key[0]: sc seqnum; packed_sc_key[1]: db version */
     int packed_sc_key[2] = {0, -1};
 
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-        !clnt->in_client_trans)
-        return 0;
-
     if (!osql->sc_tbl) {
         rc = osql_create_schemachange_temptbl(thedb->bdb_env, thd->sqlclntstate,
                                               &bdberr);
@@ -2671,8 +2667,12 @@ int osql_save_schemachange(struct sql_thread *thd,
                __func__, sc->table);
         return -1;
     }
-    sc->rqid = osql->rqid;
-    comdb2uuidcpy(sc->uuid, osql->uuid);
+
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
+        clnt->in_client_trans) {
+        sc->rqid = osql->rqid;
+        comdb2uuidcpy(sc->uuid, osql->uuid);
+    }
 
     if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {
         logmsg(LOGMSG_ERROR, "%s: error packing sc table for \'%s\'\n",
