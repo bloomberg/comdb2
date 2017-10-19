@@ -295,8 +295,9 @@ int main(int argc, char *argv[])
         printf("float param: %f\n", palltypes_float);
         printf("double param: %lf\n", palltypes_double);
         std::string s = ss.str();
-        if(runtag(db, s, types) != 0);
+        if(runtag(db, s, types) != 0) {
             exit(1);
+        }
         cdb2_clearbindings(db);
     }
 
