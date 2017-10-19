@@ -1547,6 +1547,11 @@ int bdb_gbl_pglogs_mem_init(bdb_state_type *bdb_state)
 int bdb_insert_pglogs_logical_int(hash_t *pglogs_hashtbl, unsigned char *fileid,
                                   db_pgno_t pgno, DB_LSN lsn,
                                   DB_LSN commit_lsn);
+static int bdb_insert_logfile_pglog_int(bdb_state_type *bdb_state,
+                                        hash_t *pglogs_hashtbl,
+                                        logfile_pglog_hashkey *pglogs_ent,
+                                        unsigned char *fileid, db_pgno_t pgno,
+                                        DB_LSN lsn, DB_LSN commit_lsn);
 
 static int insert_ltran_pglog(bdb_state_type *bdb_state,
                               unsigned long long logical_tranid,
@@ -2035,7 +2040,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
     struct ltran_pglogs_key key;
     void *hash_cur;
     unsigned int hash_cur_buk;
-    struct pglogs_logical_key *pglogs_ent = NULL;
+    struct pglogs_logical_key *pglog_key = NULL;
     logfile_pglog_hashkey *logfile_pglogs_ent = NULL;
     struct lsn_commit_list *lsn_ent = NULL;
     unsigned filenum;
@@ -2076,14 +2081,38 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
         Pthread_mutex_lock(&ltran_ent->pglogs_mutex);
 
         /* for each recorded page */
-        pglogs_ent =
+        pglog_key =
             hash_first(ltran_ent->pglogs_hashtbl, &hash_cur, &hash_cur_buk);
-        while (pglogs_ent) {
+        while (pglog_key) {
+
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+            logfile_pglog_hashkey *pglog_ent = NULL;
+            /* find the page in the hash */
+            pglog_ent = retrieve_logfile_pglog_hashkey(
+                bdb_state, l_entry->pglogs_hashtbl, pglog_key->fileid,
+                pglog_key->pgno, 1);
+            if (!pglog_ent)
+                return ENOMEM;
+
+#endif
+
             /* for each recorded lsn */
-            while ((lsn_ent = listc_rtl(&pglogs_ent->lsns)) != NULL) {
-                rc = bdb_insert_pglogs_logical_int(
-                    l_entry->pglogs_hashtbl, pglogs_ent->fileid,
-                    pglogs_ent->pgno, lsn_ent->lsn, logical_commit_lsn);
+            while ((lsn_ent = listc_rtl(&pglog_key->lsns)) != NULL) {
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                Pthread_mutex_lock(&pglog_ent->mtx);
+#endif
+                rc = bdb_insert_logfile_pglog_int(
+                    bdb_state, l_entry->pglogs_hashtbl,
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                    pglog_ent,
+#else
+                    NULL,
+#endif
+                    pglog_key->fileid, pglog_key->pgno, lsn_ent->lsn,
+                    logical_commit_lsn);
+#ifdef NEWSI_ASOF_USE_TEMPTABLE
+                Pthread_mutex_unlock(&pglog_ent->mtx);
+#endif
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s: fail to insert to global structure\n",
@@ -2091,7 +2120,7 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
                     goto unlock;
                 }
             }
-            pglogs_ent =
+            pglog_key =
                 hash_next(ltran_ent->pglogs_hashtbl, &hash_cur, &hash_cur_buk);
         }
 
