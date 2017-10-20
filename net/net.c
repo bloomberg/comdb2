@@ -522,9 +522,14 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
     {
         host_node_ptr->closed = 1;
 
-        shutdown_hostnode_socket(host_node_ptr);
-
+        /* this has to be done before notifying the sql transactions
+           that connection dropped, otherwise they will race and 
+           send stuff before the host is reconnected; transaction is
+           send to garbcan without notifying sql, or master, and they
+           will never be applied */
         host_node_ptr->got_hello = 0;
+
+        shutdown_hostnode_socket(host_node_ptr);
 
         /* wake up the writer thread if it's asleep */
         pthread_cond_signal(&(host_node_ptr->write_wakeup));
