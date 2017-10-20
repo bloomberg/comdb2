@@ -46,7 +46,7 @@
 (deftest g2
   (check (g2/g2-test {})))
 
-(deftest ^:a6-test a6-test
+(deftest a6
   (check (a6/a6-test {})))
 
 (deftest atomic-writes
