@@ -448,25 +448,26 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     return rc2;
 }
 
-static inline void signal_master_change(osql_sqlthr_t *rq, int node, const char * line)
+static inline void signal_master_change(osql_sqlthr_t *rq, char *host, const char * line)
 {
-   if (gbl_master_swing_osql_verbose)
-        logmsg(LOGMSG_INFO, "%s signaling rq new master %llx %s\n", line,
-                rq->rqid, comdb2uuidstr(rq->uuid, us));
-   pthread_mutex_lock(&rq->mtx);
-   rq->master_changed = 1;
-   pthread_cond_signal(&rq->cond);
-   pthread_mutex_unlock(&rq->mtx);
+    uuidstr_t us;
+    if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_INFO, "%s signaling rq new master %s %llx %s\n", line,
+                host, rq->rqid, comdb2uuidstr(rq->uuid, us));
+    pthread_mutex_lock(&rq->mtx);
+    rq->master_changed = 1;
+    pthread_cond_signal(&rq->cond);
+    pthread_mutex_unlock(&rq->mtx);
 }
 
 int osql_checkboard_master_changed(void *obj, void *arg) {
-    if (((osql_sqlthr_t*)obj)->master != *(int*)arg) {
-       signal_master_change(obj, *(int*)arg, __func__);
+    if (((osql_sqlthr_t*)obj)->master != arg) {
+       signal_master_change(obj, arg, __func__);
     }
     return 0;
 }
 
-void osql_checkboard_for_each(int node, int (*func)(void*, void*))
+void osql_checkboard_for_each(char *host, int (*func)(void*, void*))
 {
     int rc;
 
@@ -489,15 +490,15 @@ void osql_checkboard_for_each(int node, int (*func)(void*, void*))
 
 int osql_checkboard_check_request_down_node(void *obj, void *arg)
 {
-    if (((osql_sqlthr_t*)obj)->master == *(int*)arg) {
-       signal_master_change(obj, *(int*)arg, __func__);
+    if (((osql_sqlthr_t*)obj)->master == arg) {
+       signal_master_change(obj, arg, __func__);
     }
     return 0;
 }
 
-void osql_checkboard_check_down_nodes(int node)
+void osql_checkboard_check_down_nodes(char *host)
 {
-   osql_checkboard_for_each(node, osql_checkboard_check_request_down_node);
+   osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
 int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
