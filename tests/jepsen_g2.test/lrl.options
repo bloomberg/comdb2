@@ -4,6 +4,12 @@ enable_serial_isolation
 # Enable durable lsn logic
 setattr DURABLE_LSNS 1
 
+# Master tells us what we are allowed to see
+setattr REQUEST_DURABLE_LSN_FROM_MASTER 1
+
+# Retrieve durable LSN at BEGIN
+setattr RETRIEVE_DURABLE_LSN_AT_BEGIN 1
+
 # Maximum time we'll wait to retrieve a durable LSN from the master
 setattr DURABLE_LSN_REQUEST_WAITMS 2000
 
@@ -12,6 +18,9 @@ disable_new_snapshot
 
 # new snapshot_asof isn't prod-ready (and will be rewritten soon)
 # enable_new_snapshot_asof
+
+# Increase netpoll
+netpoll 2000
 
 # Commit should force log to be synced to disk
 setattr SYNCTRANSACTIONS 1
@@ -48,10 +57,10 @@ nowatch
 setattr UDP_DROP_WARN_PERCENT 100
 
 # Enable debug trace
-# on durable_set_trace
-# on dump_fsql_response
-# on extended_sql_debug_trace
-# on verbose_toblock_backouts
+on durable_set_trace
+on dump_fsql_response
+on extended_sql_debug_trace
+on verbose_toblock_backouts
 
 # Fail randomly to test curtran generation changes
 # on test_curtran_change
@@ -61,7 +70,7 @@ init_with_compr none
 init_with_compr_blobs none
 
 # Dump blkseq additions
-# on dump_blkseq
+on dump_blkseq
 
 # Force work_appsock_failures
 # on debug_sqlthd_failures
@@ -78,53 +87,3 @@ init_with_compr_blobs none
 # Log location
 #location logs /db/logs
 init_with_genid48
-
-# Don't use direct IO (breaks in LXC)
-setattr directio 0
-
-# The cluster LOCKED UP for hours because of an election bug I don't understand
-setattr RECEIVE_COHERENCY_LEASE_TRACE 1
-
-# Enable trace on messages with bad generation numbers
-rep_badgen_trace on
-
-# Trace when zero coherency ts is set or returned
-dump_zero_coherency_ts on
-
-# Global switch allowing incoherent sql: each session still needs to enable
-allow_incoherent_sql on
-
-# Print rcode from rep_process_message
-rep_process_msg_print_rc on
-
-# Print master-req protocol
-verbose_master_req on
-
-receive_coherency_lease_trace on
-
-# Torque down rep_timeout
-setattr REP_TIMEOUT_MINMS 1000
-
-# Torque down rep_timeout_maxms
-setattr REP_TIMEOUT_MAXMS 2000
-
-# Maybe alot of UDP traffic is being dropped?
-setattr COHERENCY_LEASE_UDP 0
-
-# Making slow replicants incoherent is ideal for normal workloads where a client
-# would be redirected to a different node.  It is BAD for Jepsen testing where a 
-# client is married to a single nodes.
-make_slow_replicants_incoherent off
-
-# Enable trace from the coherency lease thread
-verbose_send_cohlease on
-
-# Assume the network is perfect for Jepsen tests
-downgrade_penalty 0
-
-# Don't reset the master 
-gbl_reset_on_unelectable_cluster off
-
-# Don't use udp for acks
-noudp on
-

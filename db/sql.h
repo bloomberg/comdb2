@@ -517,6 +517,8 @@ struct sqlclntstate {
 
     hash_t *ddl_tables;
     hash_t *dml_tables;
+
+    int ignore_coherency;
 };
 
 /* Query stats. */

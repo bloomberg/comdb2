@@ -1284,5 +1284,27 @@ REGISTER_TUNABLE("abort_on_bad_upgrade",
 REGISTER_TUNABLE("poll_in_pgfree_recover", "Poll pgfree recovery handler.",
                  TUNABLE_BOOLEAN, &gbl_poll_in_pg_free_recover,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_badgen_trace", "Trace on rep mismatched generations.",
+                 TUNABLE_BOOLEAN, &gbl_rep_badgen_trace,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dump_zero_coherency_ts", "Enable zero-coherency-ts trace.",
+                 TUNABLE_BOOLEAN, &gbl_dump_zero_coherency_timestamp,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("allow_incoherent_sql", "Enable sql against incoherent nodes.",
+                 TUNABLE_BOOLEAN, &gbl_allow_incoherent_sql,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_process_msg_print_rc", "Print rc from rep_process_msg.",
+                 TUNABLE_BOOLEAN, &gbl_rep_process_msg_print_rc,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_master_req", "Print trace showing master-req protocol.",
+                 TUNABLE_BOOLEAN, &gbl_verbose_master_req,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("verbose_send_cohlease", "Print trace from lease-issue thread.",
+                 TUNABLE_BOOLEAN, &gbl_verbose_send_coherency_lease,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
+                 TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */

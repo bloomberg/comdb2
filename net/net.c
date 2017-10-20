@@ -1804,7 +1804,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
     Pthread_mutex_lock(&(host_node_ptr->wait_mutex));
 
     if (waitforack) {
-        seq_ptr = add_seqnum_to_waitlist(host_node_ptr, netinfo_ptr->seqnum);
+        seq_ptr = add_seqnum_to_waitlist(host_node_ptr, msghd.seqnum);
         seq_ptr->ack = 0;
     } else
         seq_ptr = NULL;

@@ -128,6 +128,13 @@ extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
+extern int gbl_rep_badgen_trace;
+extern int gbl_dump_zero_coherency_timestamp;
+extern int gbl_allow_incoherent_sql;
+extern int gbl_rep_process_msg_print_rc;
+extern int gbl_verbose_master_req;
+extern int gbl_verbose_send_coherency_lease;
+extern int gbl_reset_on_unelectable_cluster;
 
 extern long long sampling_threshold;
 
