@@ -348,34 +348,33 @@
      (j/with-db-transaction [c c {:isolation :serializable}]
        (hasql! c)
 
-      (try
-        (case (:f op)
-          :read (->> (query c ["select * from accounts"])
-                     (mapv :balance)
-                     (assoc op :type :ok, :value))
+       (case (:f op)
+         :read (->> (query c ["select * from accounts"])
+                    (mapv :balance)
+                    (assoc op :type :ok, :value))
 
-          :transfer
-          (let [{:keys [from to amount]} (:value op)
-                b1 (-> c
-                       (query ["select * from accounts where id = ?" from]
-                         {:row-fn :balance})
-                       first
-                       (- amount))
-                b2 (-> c
-                       (query ["select * from accounts where id = ?" to]
-                         {:row-fn :balance})
-                       first
-                       (+ amount))]
-            (cond (neg? b1)
-                  (assoc op :type :fail, :value [:negative from b1])
+         :transfer
+         (let [{:keys [from to amount]} (:value op)
+               b1 (-> c
+                      (query ["select * from accounts where id = ?" from]
+                             {:row-fn :balance})
+                      first
+                      (- amount))
+               b2 (-> c
+                      (query ["select * from accounts where id = ?" to]
+                             {:row-fn :balance})
+                      first
+                      (+ amount))]
+           (cond (neg? b1)
+                 (assoc op :type :fail, :value [:negative from b1])
 
-                  (neg? b2)
-                  (assoc op :type :fail, :value [:negative to b2])
+                 (neg? b2)
+                 (assoc op :type :fail, :value [:negative to b2])
 
-                  true
-                    (do (execute! c ["update accounts set balance = balance - ? where id = ?" amount from])
-                        (execute! c ["update accounts set balance = balance + ? where id = ?" amount to])
-                        (assoc op :type :ok)))))))))
+                 true
+                 (do (execute! c ["update accounts set balance = balance - ? where id = ?" amount from])
+                     (execute! c ["update accounts set balance = balance + ? where id = ?" amount to])
+                     (assoc op :type :ok))))))))
 
   (teardown! [_ test]
     (rc/close! conn)))
