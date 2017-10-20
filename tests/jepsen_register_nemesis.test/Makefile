@@ -3,4 +3,8 @@ ifeq ($(TESTSROOTDIR),)
 else
   include $(TESTSROOTDIR)/testcase.mk
 endif
-export TEST_TIMEOUT=30m
+ifeq ($(TEST_TIMEOUT),)
+	export TEST_TIMEOUT=30m
+#else
+#	$(shell echo "TEST_TIMEOUT IS ${TEST_TIMEOUT}")
+endif

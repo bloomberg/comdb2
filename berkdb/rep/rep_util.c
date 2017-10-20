@@ -80,6 +80,9 @@ __rep_check_alloc(dbenv, r, n)
 	return (0);
 }
 
+
+int gbl_verbose_master_req;
+
 /*
  * __rep_send_message --
  *	This is a wrapper for sending a message.  It takes care of constructing
@@ -108,6 +111,21 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+    if (gbl_verbose_master_req) {
+        switch (rtype) {
+            case REP_MASTER_REQ:
+                logmsg(LOGMSG_ERROR, "%s sending REP_MASTER_REQ to %s\n", 
+                        __func__, eid);
+                break;
+            case REP_NEWMASTER:
+                logmsg(LOGMSG_ERROR, "%s sending REP_NEWMASTER to %s\n", 
+                        __func__, eid);
+                break;
+            default:
+                break;
+        }
+    }
 
 	/* Set up control structure. */
 	memset(&cntrl, 0, sizeof(cntrl));

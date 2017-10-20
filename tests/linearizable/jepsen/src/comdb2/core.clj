@@ -6,8 +6,11 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [clojure.pprint :refer [pprint]]
+   [dom-top.core :refer [letr with-retry]]
    [jepsen.checker.timeline  :as timeline]
-   [jepsen [client :as client]
+   [jepsen 
+    [adya :as adya]
+    [client :as client]
     [core :as jepsen]
     [db :as db]
     [tests :as tests]
@@ -20,7 +23,8 @@
     [reconnect :as rc]]
    [knossos.op :as op]
    [knossos.model :as model]
-   [clojure.java.jdbc :as j])
+   [clojure.java.jdbc :as j]
+   [slingshot.slingshot :refer [throw+ try+]])
  (:import [knossos.model Model]))
 
 (java.sql.DriverManager/registerDriver (com.bloomberg.comdb2.jdbc.Driver.))
@@ -78,6 +82,16 @@
   [conn table values where]
   (j/update! conn table values where {:timeout timeout-delay}))
 
+(defn upsert!
+  "Inserts or updates a value in the database, by attempting an update, and if
+  that fails, inserting instead."
+  [conn table values where]
+  (let [r (update! conn table values where)]
+    (info r)
+    (if (zero? (first r))
+      (insert! conn table values)
+      r)))
+
 ;; Connection handling
 
 (defn conn-spec
@@ -105,7 +119,7 @@
   "I have a hunch connection state is asynchronous in the comdb2 driver, so we
   may need to block a bit for a connection to become ready."
   [conn]
-  (util/with-retry [tries 30]
+  (with-retry [tries 30]
     (info "Waiting for conn")
     (query conn ["set hasql on"])
     ; I know it says "nontransient" but maaaybe it is???
@@ -149,7 +163,11 @@
                        {:type :conn-not-ready})))
      ~@body))
 
-
+(defn hasql!
+  "Set up hasql for a transaction."
+  [c]
+  (query c ["set hasql on"])
+  (query c ["set max_retries 100000"]))
 
 ;; Error handling
 
@@ -159,7 +177,7 @@
   gets reset, so we don't accidentally hand off the connection to a later
   invocation with some incomplete transaction."
   [& body]
-  `(util/timeout timeout-delay
+  `(util/timeout (+ 1000 timeout-delay)
                  (throw (RuntimeException. "timeout"))
                  ~@body))
 
@@ -193,52 +211,159 @@
          (recur))
          res#))))
 
-(defmacro with-txn
-  "Executes body in a transaction, with a timeout, automatically retrying
-  conflicts and handling common errors."
-  [op c node & body]
-  `(with-txn-retries
-      ~@body))
+;; Test builders
 
-(defrecord BankClient [node n starting-balance]
+(defn db
+  []
+  (reify
+    db/DB
+    (setup! [_ test node])
+    (teardown! [_ test node])
+
+    db/LogFiles
+    (log-files [_ test node]
+      ["/tmp/comdb2.log"])))
+
+
+(defn basic-test
+  [opts]
+  (assert (pos? (:time-limit opts)))
+  ; Wrap client generator in nemesis, combine final-gen if applicable
+  (let [nemesis   (or (:nemesis opts) nemesis/partition-random-halves)
+        generator (if (identical? nemesis/noop nemesis)
+                    (gen/clients (:generator opts))
+                    (gen/nemesis (gen/start-stop 30 10) (:generator opts)))
+        generator (gen/phases (->> generator
+                                   (gen/time-limit (:time-limit opts)))
+                              (gen/log "Healing network")
+                              (gen/nemesis (gen/once {:type :info, :f :stop})))
+        generator (if-not (:final-generator opts)
+                    generator
+                    (gen/phases generator
+                                (gen/log "Waiting for recovery")
+                                (gen/sleep 30)
+                                (gen/clients (:final-generator opts))))]
+    (merge tests/noop-test
+           {:name     "comdb2"
+            :db       (db)
+            :nemesis  (nemesis/partition-random-halves)
+            :nodes    (cluster-nodes)
+            :ssh {:username "root"
+                  :password "shadow"
+                  :strict-host-key-checking false}
+            :generator generator
+            :checker (checker/compose
+                       {:perf (checker/perf)
+                        :workload (:checker opts)})}
+           (dissoc opts
+                   :checker
+                   :generator
+                   :final-generator))))
+
+;; Tests
+
+(defrecord G2Client [ta tb conn]
+  client/Client
+  (setup! [this test node]
+    (let [conn (connect node)]
+      (assoc this :conn conn)))
+
+  (invoke! [this test op]
+    (with-conn [c conn]
+      (with-timeout
+        (let [[k [a-id b-id]] (:value op)]
+          (case (:f op)
+            :insert
+            (j/with-db-transaction [c c {:isolation :serializable}]
+              (hasql! c)
+              (letr [order (< (rand) 0.5)
+                     as (query c [(str "select * from " (if order ta tb)
+                                       " where key = ? and value % 3 = 0") k])
+                     bs (query c [(str "select * from " (if order tb ta)
+                                       " where key = ? and value % 3 = 0") k])
+                     _ (when (or (seq as) (seq bs))
+                         ; The other txn already committed
+                         (return (assoc op :type :fail, :error :too-late)))
+                     table (if a-id ta tb)
+                     id    (or a-id b-id)
+                     r     (insert! c table {:key   k
+                                             :id    id
+                                             :value (* 3 (rand-int 10))})]
+                (assoc op :type :ok))))))))
+
+  (teardown! [this test]
+    (rc/close! conn)))
+
+(defn g2-client [] (G2Client. "g2_a" "g2_b" nil))
+
+(defn g2-test-nemesis
+  "A test for Adya's G2 phenomenon: an anti-dependency cycle allowed by
+  snapshot isolation but prohibited by serializability."
+  [opts]
+  (basic-test
+    (merge
+      {:name        "g2"
+       :concurrency 10
+       :client      (g2-client)
+       :generator   (adya/g2-gen)
+       :time-limit  60
+       :checker     (checker/compose {:g2 (adya/g2-checker)
+                                      :timeline (timeline/html)})}
+      opts)))
+
+(defn g2-test
+  [opts]
+  (g2-test-nemesis (merge {:nemesis nemesis/noop} opts)))
+
+(defrecord BankClient [n starting-balance conn]
   client/Client
 
   (setup! [this test node]
     ; (println "n " (:n this) "test " test "node " node)
-    (j/with-db-connection [c (conn-spec node)]
+    (let [conn (connect node)]
       ; Create initial accts
       (dotimes [i n]
-        (try
-         (insert! c :accounts {:id i, :balance starting-balance})
-         (catch java.sql.SQLException e
-          (if (.contains (.getMessage e) "add key constraint duplicate key")
-            nil
-            (throw e))))))
-
-    (assoc this :node node))
+        (with-retry [tries 10]
+          (try
+            (with-conn [c conn]
+              (Thread/sleep (rand-int 10))
+              (info "Inserting" node i)
+              (insert! c :accounts {:id i, :balance starting-balance})
+              (catch java.sql.SQLException e
+                (if (.contains (.getMessage e)
+                               "add key constraint duplicate key")
+                  nil
+                  (throw e))))
+          ; I don't know why these nodes close connections on some inserts and
+          ; not others, it's the weirdest thing
+          (catch java.sql.SQLNonTransientConnectionException e
+            (Thread/sleep (rand-int 1000))
+            (if (pos? tries)
+              (retry (dec tries))
+              (throw e))))))
+      (assoc this :conn conn)))
 
   (invoke! [this test op]
-    (with-txn op (conn-spec node) nil
-     (j/with-db-transaction [connection (conn-spec node) :isolation :serializable]
-      (query connection ["set hasql on"])
-      (query connection ["set max_retries 100000"])
+    (with-conn [c conn]
+     (j/with-db-transaction [c c {:isolation :serializable}]
+       (hasql! c)
 
       (try
         (case (:f op)
-          :read (->> (query connection ["select * from accounts"])
+          :read (->> (query c ["select * from accounts"])
                      (mapv :balance)
                      (assoc op :type :ok, :value))
 
           :transfer
           (let [{:keys [from to amount]} (:value op)
-                b1 (-> connection
+                b1 (-> c
                        (query ["select * from accounts where id = ?" from]
-                         :row-fn :balance)
+                         {:row-fn :balance})
                        first
                        (- amount))
-                b2 (-> connection
+                b2 (-> c
                        (query ["select * from accounts where id = ?" to]
-                         :row-fn :balance)
+                         {:row-fn :balance})
                        first
                        (+ amount))]
             (cond (neg? b1)
@@ -248,17 +373,18 @@
                   (assoc op :type :fail, :value [:negative to b2])
 
                   true
-                    (do (execute! connection ["update accounts set balance = balance - ? where id = ?" amount from])
-                        (execute! connection ["update accounts set balance = balance + ? where id = ?" amount to])
+                    (do (execute! c ["update accounts set balance = balance - ? where id = ?" amount from])
+                        (execute! c ["update accounts set balance = balance + ? where id = ?" amount to])
                         (assoc op :type :ok)))))))))
 
-  (teardown! [_ test]))
+  (teardown! [_ test]
+    (rc/close! conn)))
 
 (defn bank-client
   "Simulates bank account transfers between n accounts, each starting with
   starting-balance."
   [n starting-balance]
-  (BankClient. nil n starting-balance))
+  (BankClient. n starting-balance nil))
 
 (defn bank-read
   "Reads the current state of all accounts without any synchronization."
@@ -308,32 +434,31 @@
         {:valid? (empty? bad-reads)
          :bad-reads bad-reads}))))
 
-(defn with-nemesis
-  "Wraps a client generator in a nemesis that induces failures and eventually
-  stops."
-  [client]
-  (gen/phases
-    (gen/phases
-      (->> client
-           (gen/nemesis
-             (gen/seq (cycle [(gen/sleep 0)
-                              {:type :info, :f :start}
-                              (gen/sleep 10)
-                              {:type :info, :f :stop}])))
-           (gen/time-limit 30))
-      (gen/nemesis (gen/once {:type :info, :f :stop}))
-      (gen/sleep 5))))
+(defn bank-test-nemesis
+  ([n initial-balance]
+   (bank-test-nemesis n initial-balance {}))
+  ([n initial-balance opts]
+   (basic-test
+     (merge
+       {:name "bank"
+        :concurrency 10
+        :model  {:n n :total (* n initial-balance)}
+        :client (bank-client n initial-balance)
+        :generator (->> (gen/mix [bank-read bank-diff-transfer])
+                        (gen/clients)
+                        (gen/stagger 1/10))
+        :final-generator (gen/once bank-read)
+        :time-limit 120
+        :checker (checker/compose
+                   ; TODO: how does this even work? This model isn't compatible
+                   ; with knossos...
+                   {:linearizable (independent/checker checker/linearizable)
+                    :bank (bank-checker)})}
+       opts))))
 
-(defn basic-test
-  [opts]
-  (merge tests/noop-test
-         {:name "comdb2-bank"
-          :nemesis (nemesis/partition-random-halves)
-          :nodes (cluster-nodes)
-          :ssh {:username "root"
-                :password "shadow"
-                :strict-host-key-checking false}}
-          (dissoc opts :name :version)))
+(defn bank-test
+  [n initial-balance]
+  (bank-test-nemesis n initial-balance {:nemesis nemesis/noop}))
 
 (def nkey
   "A globally unique integer counter"
@@ -345,123 +470,54 @@
   (swap! nkey inc))
 
 (defn set-client
-  [node]
+  [conn]
   (reify client/Client
     (setup! [this test node]
-     (set-client node))
+      (set-client (connect node)))
 
     (invoke! [this test op]
-     (println op)
-     ; TODO: Open our own connection instead of using the global conn-spec?
-      (j/with-db-transaction [connection (conn-spec node) :isolation :serializable]
-
-        (query connection ["set hasql on"])
-        (query connection ["set transaction serializable"])
+      (with-conn [c conn]
+        (query c ["set hasql on"])
+        (query c ["set transaction serializable"])
         (when (System/getenv "COMDB2_DEBUG")
-          (query connection ["set debug on"]))
-;        (query connection ["set debug on"])
-        (query connection ["set max_retries 100000"])
-        (with-txn op (conn-spec node) node
-          (try
-            (case (:f op)
-              :add  (do (execute! connection [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
-                        (assoc op :type :ok))
+          (query c ["set debug on"]))
+        ;        (query connection ["set debug on"])
+        (query c ["set max_retries 100000"])
 
-              :read (->> (query connection ["select * from jepsen"])
-                         (mapv :value)
-                         (into (sorted-set))
-                         (assoc op :type :ok, :value)))))))
+        (case (:f op)
+          :add  (do (execute! c [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
+                    (assoc op :type :ok))
 
-    (teardown! [_ test])))
+          :read (->> (query c ["select * from jepsen"])
+                     (mapv :value)
+                     (into (sorted-set))
+                     (assoc op :type :ok, :value)))))
+
+    (teardown! [_ test]
+      (rc/close! conn))))
 
 (defn sets-test-nemesis
- []
- (basic-test
-   {:name "set"
-    :client (set-client nil)
-    :generator (gen/phases
-                 (->> (range)
-                      (map (partial array-map
-                                    :type :invoke
-                                    :f :add
-                                    :value))
-                      gen/seq
-                      (gen/delay 1/10)
-                      with-nemesis)
-                 (->> {:type :invoke, :f :read, :value nil}
-                      gen/once
-                      gen/clients))
-    :checker (checker/compose
-               {:perf (checker/perf)
-                :set checker/set})}))
-
-(defn sets-test
-  []
+  [opts]
   (basic-test
-    {:name "set"
-     :client (set-client nil)
-     :generator (gen/phases
-                  (->> (range)
+    (merge
+      {:name "set"
+       :client (set-client nil)
+       :generator (->> (range)
                        (map (partial array-map
                                      :type :invoke
                                      :f :add
                                      :value))
                        gen/seq
-                       (gen/delay 1/10)
-                       )
-                  (->> {:type :invoke, :f :read, :value nil}
-                       gen/once
-                       gen/clients))
-     :checker (checker/compose
-                {:perf (checker/perf)
-                 :set checker/set})}))
+                       (gen/delay 1/10))
+       :final-generator (gen/once {:type :invoke, :f :read, :value nil})
+       :time-limit 120
+       :checker (checker/set)}
+      opts)))
 
 
-
-
-(defn bank-test-nemesis
-  [n initial-balance]
-  (basic-test
-    {:name "bank"
-     :concurrency 10
-     :model  {:n n :total (* n initial-balance)}
-     :client (bank-client n initial-balance)
-     :generator (gen/phases
-                  (->> (gen/mix [bank-read bank-diff-transfer])
-                       (gen/clients)
-                       (gen/stagger 1/10)
-                       (gen/time-limit 100)
-                       with-nemesis)
-                  (gen/log "waiting for quiescence")
-                  (gen/sleep 10)
-                  (gen/clients (gen/once bank-read)))
-     :nemesis (nemesis/partition-random-halves)
-     :checker (checker/compose
-                {:perf (checker/perf)
-                 :linearizable (independent/checker checker/linearizable)
-                 :bank (bank-checker)})}))
-
-
-(defn bank-test
-  [n initial-balance]
-  (basic-test
-    {:name "bank"
-     :concurrency 10
-     :model  {:n n :total (* n initial-balance)}
-     :client (bank-client n initial-balance)
-     :generator (gen/phases
-                  (->> (gen/mix [bank-read bank-diff-transfer])
-                       (gen/clients)
-                       (gen/stagger 1/10)
-                       (gen/time-limit 100))
-                  (gen/log "waiting for quiescence")
-                  (gen/sleep 10)
-                  (gen/clients (gen/once bank-read)))
-     :nemesis nemesis/noop
-     :checker (checker/compose
-                {:perf (checker/perf)
-                 :linearizable (independent/checker checker/linearizable)
-                 :bank (bank-checker)})}))
+(defn sets-test
+  []
+  (sets-test-nemesis {:nemesis nemesis/noop}))
 
 ; This is the dirty reads test for Galera
 ; TODO: Kyle, review the dirty reads test for galera and figure out what this
@@ -483,7 +539,7 @@
 
   (invoke! [this test op]
    (try
-    (j/with-db-transaction [c (conn-spec node) :isolation :serializable]
+    (j/with-db-transaction [c (conn-spec node) {:isolation :serializable}]
      (try ; TODO: no catch?
       (case (:f op)
        ; skip initial records - not all threads are done initial writing, and
@@ -508,7 +564,7 @@
   (teardown! [_ test]))
 
 (defmacro with-txn-prep!
-  "Takes a connection, an op, and a body.
+  "Takes a connection and a body.
 
   1. Turns on hasql
   2. Sets transaction to serializable
@@ -516,108 +572,126 @@
   4. Sets maximum retries
 
   If this fails because of a connection error, sleeps briefly (to avoid
-  hammering a down node with reconnects), and returns the op with :type fail.
-  If it succeeds, moves on to execute body.
+  hammering a down node with reconnects), and throws a special error, {:type
+  :connect-failure-during-txn-prep}, which we know means no side effects have
+  transpired. If it succeeds, moves on to execute body.
 
   TODO: what... should this actually be called? I don't exactly understand how
   these four commands work together, and what their purpose is"
-  [c op & body]
-  `(try (query ~c ["set hasql on"])
-        (query ~c ["set transaction serializable"])
-        (when (System/getenv "COMDB2_DEBUG")
-          (query ~c ["set debug on"]))
-        (query ~c ["set max_retries 100000"])
+  [c & body]
+  `(do (try (query ~c ["set hasql on"])
+            (query ~c ["set transaction serializable"])
+            (when (System/getenv "COMDB2_DEBUG")
+              (query ~c ["set debug on"]))
+            (query ~c ["set max_retries 100000"])
+            ; I don't think the previous queries actually detect network
+            ; faults? Are they maybe executed locally?
+            (query ~c ["select 1=1"])
 
-        ~@body
+            (catch java.sql.SQLNonTransientConnectionException e#
+              (when-not (re-find #"Can't connect to db\."
+                                 (.getMessage e#))
+                (throw e#))
 
-        (catch java.sql.SQLNonTransientConnectionException e#
-          (when-not (re-find #"Can't connect to db\." (.getMessage e#))
-            (throw e#))
+              (Thread/sleep 5000) ; Give node a chance to wake up again
+              (throw+ {:type :connect-failure-during-txn-prep})))
+       ~@body))
 
-          (Thread/sleep 5000) ; Give node a chance to wake up again
-          (assoc ~op :type :fail, :error :can't-connect))))
-
-(defmacro with-sql-exceptions-as-errors
-  "Takes an op and a body. Executes body, catching SQLExceptions and converting
-  common error codes to failing or info ops."
+(defmacro with-logical-failures
+  "Takes an op and a body. Executes body, catching known logical (not
+  connection!) failures and converting them to failing ops."
   [op & body]
   `(try
      ~@body
+
+     ; Constraint violations are known failures
+     (catch java.sql.SQLIntegrityConstraintViolationException e#
+       (assoc ~op :type :fail, :error (.getMessage e#)))
+
+     ; And explicitly retriable failures are of course safe
      (catch java.sql.SQLException e#
        (condp = (.getErrorCode e#)
          2  (assoc ~op :type :fail, :error (.getMessage e#))
             (throw e#)))))
 
+(defmacro with-io-failures
+  "Takes an op and a body. Executes body, catching Exceptions and converting
+  common error codes to failing or info ops. Used *outside* of with-conn, so
+  with-conn has a chance to repair connections before we convert exceptions to
+  ops."
+  [op & body]
+  `(try+
+     (try
+       ~@body
+       (catch Exception e#
+         (if (= :read (:f ~op))
+           ; All read crashes are idempotent, so we convert to failures.
+           (assoc ~op :type :fail, :error (.getMessage e#))
+           (throw e#))))
+
+     ; We know these failures are idempotent because they happen prior to
+     ; actual work
+     (catch [:type :connect-failure-during-txn-prep] e#
+       (assoc ~op :type :fail, :error :can't-connect))))
+
 (defn comdb2-cas-register-client
   "Comdb2 register client"
-  [conn]
-  (reify client/Client
-    (setup! [this test node]
-      (let [conn (connect node)]
-        (with-conn [c conn]
-          ; TODO: why don't we create a table here?
-          (j/delete! c :register ["1 = 1"]))
-        (comdb2-cas-register-client conn)))
+  ([]
+   (comdb2-cas-register-client "register" nil nil))
+  ([table conn uids]
+   (reify client/Client
+     (setup! [this test node]
+       (let [conn (connect node)]
+         (with-conn [c conn]
+           ; TODO: why don't we create a table here?
+           (j/delete! c :register ["1 = 1"]))
+         (comdb2-cas-register-client table conn (atom -1))))
 
-    (invoke! [this test op]
-      (with-conn [c conn]
-        (with-txn-prep! c op
-          (with-sql-exceptions-as-errors op
-            (case (:f op)
-              :read
-              (let [[id val'] (:value op)
-                    [val uid] (second (query c ["select val,uid from register where id = 1"] {:as-arrays? true}))]
-                (assoc op
-                       :type  :ok
-                       :uid   uid
-                       :value (independent/tuple 1 val)))
+     (invoke! [this test op]
+       (with-io-failures op
+         (with-conn [c conn]
+           (with-logical-failures op
+             (with-timeout
+               (with-txn-prep! c
+                 (case (:f op)
+                   :read
+                   (let [[id val'] (:value op)
+                         [val uid] (second
+                                     (query c [(str "select val,uid from "
+                                                    table " where id = ?") id]
+                                            {:as-arrays? true}))]
+                     (assoc op
+                            :type  :ok
+                            :uid   uid
+                            :value (independent/tuple id val)))
 
-              ; TODO: clean this up and break it into understandable bits
-              :write
-              (j/with-db-transaction [c c]
-                (let [[id val'] (:value op)
-                      [val uid] (second
-                                  (query c ["select val,uid from register where id = 1"]
-                                           {:as-arrays? true}))
-                      uid' (+ (* 1000 (rand-int 100000)) (:process op))
-                      updated (first
-                                (if val
-                                  ; We have an existing row
-                                  ; TODO: why "where 1"?
-                                  (execute! c [(str "update register set val=" val' ",uid=" uid' " where 1")])
-                                  ; No existing row; insert
-                                  (execute! c [(str "insert into register (id, val, uid) values (" id "," val' "," uid' ")")])))]
-                  (assert (<= 0 updated 1))
-                  (if (zero? updated)
-                    (assoc op :type :fail)
-                    (assoc op
-                           :type  :ok,
-                           :uid   uid'))))
+                   :write
+                   (let [[id val] (:value op)
+                         uid      (swap! uids inc)
+                         updated  (first (upsert! c table
+                                                  {:id id, :val val, :uid uid}
+                                                  ["id = ?" id]))]
+                     (assert (<= 0 updated 1))
+                     (assoc op :type (if (zero? updated) :fail :ok), :uid uid))
 
-              :cas
-              (j/with-db-transaction [c c]
-                (let [[id [expected-val val']] (:value op)
-                      [val uid] (second
-                                  (query c ["select val,uid from register where id = 1"] {:as-arrays? true}))
-                      uid' (+ (* 1000 (rand-int 100000)) (:process op))
-                      updated (first
-                                (execute! c [(str "update register set val=" val' ",uid=" uid' " where id=" id " and val=" expected-val " -- old-uid is " uid)]))]
-                  (assert (<= 0 updated 1))
-                  (if (zero? updated)
-                    (assoc op :type :fail)
-                    (assoc op
-                           :type  :ok
-                           :uid   uid')))))))))
+                   :cas
+                   (let [[id [v v']] (:value op)
+                         uid (swap! uids inc)
+                         updated (first (update! c table
+                                                 {:val v', :uid uid}
+                                                 ["id = ? and val = ?" id v]))]
+                     (assert (<= 0 updated 1))
+                     (assoc op
+                            :type (if (zero? updated) :fail :ok)
+                            :uid uid)))))))))
 
-    ; TODO: disconnect
-    (teardown! [_ test]
-      (rc/close! conn))))
+       (teardown! [_ test]
+                  (rc/close! conn)))))
 
 ; Test on only one register for now
-; TODO: get rid of the 1s, move UIDs to a separate op field
-(defn r   [_ _] {:type :invoke, :f :read, :value [1 nil]})
-(defn w   [_ _] {:type :invoke, :f :write, :value [1 (rand-int 5)]})
-(defn cas [_ _] {:type :invoke, :f :cas, :value [1 [(rand-int 5) (rand-int 5)]]})
+(defn r   [_ _] {:type :invoke, :f :read, :value nil})
+(defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
+(defn cas [_ _] {:type :invoke, :f :cas, :value [(rand-int 5) (rand-int 5)]})
 
 ; TODO: better name for this, move it near the dirty-reads client
 (defn client
@@ -646,6 +720,7 @@
                        (r/map :value))
 
             inconsistent-reads (->> reads
+                                    (r/filter seq)
                                     (r/filter (partial apply not=))
                                     (into []))
             filthy-reads (->> reads
@@ -664,111 +739,46 @@
                                :value))
                  gen/seq))
 
-(defn dirty-reads-basic-test
-  [opts]
-  (merge tests/noop-test
-         {:name "dirty-reads"
-          :nodes (cluster-nodes)
-          :ssh {
-            :username "root"
-            :password "shadow"
-            :strict-host-key-checking false
-          }
-          :nemesis (nemesis/partition-random-halves)}
-         (dissoc opts :name :version)))
-
-; TODO: unused, delete?
-(defn minutes [seconds] (* 60 seconds))
-
-(defn dirty-reads-tester
-  [version n]
-  (dirty-reads-basic-test
-    {:name "dirty reads"
-     :concurrency 1
-     :version version
-     :client (client n)
-     :generator (->> (gen/mix [dirty-reads-reads dirty-reads-writes])
-                     gen/clients
-                     (gen/time-limit 10))
-     :nemesis nemesis/noop
-     :checker (checker/compose
-                {:perf (checker/perf)
-                 :dirty-reads (dirty-reads-checker)
-                 :linearizable (independent/checker checker/linearizable)})}))
-
-(defrecord CASRegisterComdb2 [value]
-  Model
-  (step [r op]
-    (do
-      (condp = (:f op)
-        :write (do (info "STEP " value " -> " op " SUCCESSFUL WRITE " (:value op))
-                   (CASRegisterComdb2. (second (:value op))))
-        :cas   (let [[cur new] (second (:value op))]
-                 (if (= cur value)
-                   (do (info "STEP " value " -> " op " SUCCESSFUL CAS FROM " cur " TO " new)
-                       (CASRegisterComdb2. new))
-                   (do (info "STEP " value " -> " op " FAILING CAS BECAUSE CUR IS " cur " AND VALUE IS " value)
-                       (model/inconsistent (str ">> can't CAS " value " from " cur " to " new)))))
-        :read  (if (or (nil? (second (:value op)))
-                       (= value (second (:value op))))
-                 (do (info "STEP " value " -> " op " SUCCESSFUL READ, VALUE=" value " :VALUE OP=" (:value op))
-                     r)
-                 (do (info "STEP " value " -> " op " FAILING READ BECAUSE VALUE IS " value " AND :VALUE OP IS " (:value op))
-                     (model/inconsistent (str ">> can't read " (:value op) " from register with value " value)))))))
-
-  Object
-  (toString [this] (pr-str value)))
-
-(defn cas-register-comdb2
-  "A compare-and-set register" 
-  ([]      (CASRegisterComdb2. nil))
-  ([value] (CASRegisterComdb2. (second value))))
-
-; TODO: just change the nemesis, no need for two copies with only slightly
-; different schedules, right?
-(defn register-tester
-  [opts]
-  (basic-test
-    (merge
-      {:name        "register"
-       :client      (comdb2-cas-register-client nil)
-       :concurrency 10
-
-       :generator   (gen/phases
-                      (->> (gen/mix [w cas cas r])
-                           (gen/clients)
-                           (gen/stagger 1/10)
-                           (gen/time-limit 10))
-                      (gen/log "waiting for quiescence")
-                      (gen/sleep 10))
-       :model       (cas-register-comdb2 [1 1])
-       :time-limit   100
-       :recovery-time  30
-       :checker     (checker/compose
-                      {:perf  (checker/perf)
-                       :linearizable (checker/linearizable)}) }
-      opts)))
+(defn dirty-reads-test-nemesis
+  ([n]
+   (dirty-reads-test-nemesis n {}))
+  ([n opts]
+   (basic-test
+     (merge
+       {:name "dirty reads"
+        :concurrency 1
+        :client (client n)
+        :generator (gen/mix [dirty-reads-reads dirty-reads-writes])
+        :checker (checker/compose
+                   {:dirty-reads (dirty-reads-checker)
+                    ; TODO: OK this *definitely* shouldn't work, why is this
+                    ; here??
+                    :linearizable (independent/checker checker/linearizable)})
+        :time-limit 120}
+     opts))))
 
 (defn register-tester-nemesis
   [opts]
   (basic-test
     (merge
       {:name        "register"
-       :client      (comdb2-cas-register-client nil)
-       :concurrency 10
-
-       :generator   (gen/phases
-                      (->> (gen/mix [w cas cas r])
-                           (gen/clients)
-                           (gen/stagger 1/10)
-                           (gen/time-limit 10)
-                           with-nemesis)
-                      (gen/log "waiting for quiescence")
-                      (gen/sleep 10))
-       :model       (cas-register-comdb2 [1 1])
-       :time-limit   180
-       :recovery-time  30
-       :checker     (checker/compose
-                      {:perf  (checker/perf)
-                       :linearizable (checker/linearizable)}) }
+       :client      (comdb2-cas-register-client)
+       :concurrency 50
+       :generator   (independent/concurrent-generator
+                      10
+                      (range)
+                      (fn [k]
+                        (->> (gen/reserve 5 (gen/mix [w cas cas]) r)
+                             (gen/stagger 1/10)
+                             (gen/limit 200))))
+       :time-limit  120
+       :model       (model/cas-register)
+       :checker     (independent/checker
+                      (checker/compose
+                        {:timeline (timeline/html)
+                         :linearizable (checker/linearizable)}))}
       opts)))
+
+(defn register-tester
+  [opts]
+  (register-tester-nemesis {:nemesis nemesis/noop}))
