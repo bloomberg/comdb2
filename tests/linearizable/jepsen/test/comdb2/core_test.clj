@@ -2,7 +2,8 @@
   (:require [clojure.test :refer :all]
             [comdb2 [core :as c]
                     [a6 :as a6]
-                    [atomic-writes :as aw]]
+                    [atomic-writes :as aw]
+                    [bank :as bank]]
             [clojure.java.jdbc :as j]
             [jepsen.core :as jepsen]))
 
@@ -20,11 +21,11 @@
   [t]
   (is (= true (:valid? (:results (jepsen/run! t))))))
 
-(deftest ^:test-bank test-bank
-  (check (c/bank-test 10 100)))
+(deftest bank
+  (check (bank/bank-test 10 100)))
 
-(deftest ^:test-bank-nemesis test-bank-nemesis
-  (check (c/bank-test-nemesis 10 100)))
+(deftest bank-nemesis
+  (check (bank/bank-test-nemesis 10 100)))
 
 (deftest ^:sets-test sets-test
   (check (c/sets-test)))
