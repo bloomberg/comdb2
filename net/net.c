@@ -523,7 +523,7 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         host_node_ptr->closed = 1;
 
         /* this has to be done before notifying the sql transactions
-           that connection dropped, otherwise they will race and 
+           that connection dropped, otherwise they will race and
            send stuff before the host is reconnected; transaction is
            send to garbcan without notifying sql, or master, and they
            will never be applied */
