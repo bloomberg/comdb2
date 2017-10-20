@@ -6,6 +6,7 @@
                     [bank :as bank]
                     [dirty-reads :as dr]
                     [g2 :as g2]
+                    [register :as register]
                     [sets :as sets]]
             [clojure.java.jdbc :as j]
             [jepsen.core :as jepsen]))
@@ -39,11 +40,11 @@
 (deftest dirty-reads-nemesis
   (check (dr/dirty-reads-test-nemesis 4)))
 
-(deftest ^:register-test-nemesis register-test-nemesis
-  (check (c/register-tester-nemesis { })))
+(deftest register-nemesis
+  (check (register/register-tester-nemesis { })))
 
-(deftest ^:register-test register-test
-  (check (c/register-tester {})))
+(deftest register
+  (check (register/register-tester {})))
 
 (deftest g2
   (check (g2/g2-test {})))

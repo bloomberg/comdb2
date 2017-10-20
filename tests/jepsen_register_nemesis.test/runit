@@ -6,7 +6,7 @@
 
 [[ "$debug" == 1 ]] && set -x
 needcluster=1
-jepsentest=":register-nemesis"
+jepsentest=":only comdb2.core-test/register-nemesis"
 db=$1
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
