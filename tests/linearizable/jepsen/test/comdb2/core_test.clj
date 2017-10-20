@@ -28,10 +28,10 @@
 (deftest bank-nemesis
   (check (bank/bank-test-nemesis 10 100)))
 
-(deftest ^:sets-test sets-test
+(deftest sets
   (check (c/sets-test)))
 
-(deftest ^:sets-test-nemesis sets-test-nemesis
+(deftest sets-nemesis
  (check (c/sets-test-nemesis {})))
 
 (deftest ^:dirty-reads-test dirty-reads-test

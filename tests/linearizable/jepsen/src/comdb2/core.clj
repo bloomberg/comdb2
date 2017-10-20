@@ -260,65 +260,6 @@
                    :generator
                    :final-generator))))
 
-(def nkey
-  "A globally unique integer counter"
-  (atom 0))
-
-(defn next-key
-  "Obtain a new, globally unique integer counter"
-  []
-  (swap! nkey inc))
-
-(defn set-client
-  [conn]
-  (reify client/Client
-    (setup! [this test node]
-      (set-client (connect node)))
-
-    (invoke! [this test op]
-      (with-conn [c conn]
-        (query c ["set hasql on"])
-        (query c ["set transaction serializable"])
-        (when (System/getenv "COMDB2_DEBUG")
-          (query c ["set debug on"]))
-        ;        (query connection ["set debug on"])
-        (query c ["set max_retries 100000"])
-
-        (case (:f op)
-          :add  (do (execute! c [(str "insert into jepsen(id, value) values(" (next-key) ", " (:value op) ")")])
-                    (assoc op :type :ok))
-
-          :read (->> (query c ["select * from jepsen"])
-                     (mapv :value)
-                     (into (sorted-set))
-                     (assoc op :type :ok, :value)))))
-
-    (teardown! [_ test]
-      (rc/close! conn))))
-
-(defn sets-test-nemesis
-  [opts]
-  (basic-test
-    (merge
-      {:name "set"
-       :client (set-client nil)
-       :generator (->> (range)
-                       (map (partial array-map
-                                     :type :invoke
-                                     :f :add
-                                     :value))
-                       gen/seq
-                       (gen/delay 1/10))
-       :final-generator (gen/once {:type :invoke, :f :read, :value nil})
-       :time-limit 120
-       :checker (checker/set)}
-      opts)))
-
-
-(defn sets-test
-  []
-  (sets-test-nemesis {:nemesis nemesis/noop}))
-
 ; This is the dirty reads test for Galera
 ; TODO: Kyle, review the dirty reads test for galera and figure out what this
 ; was supposed to do
