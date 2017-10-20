@@ -4616,12 +4616,6 @@ done:
     host_node_ptr->have_reader_thread = 0;
     if (gbl_verbose_net)
         host_node_printf(LOGMSG_INFO, host_node_ptr, "%s exiting\n", __func__);
-    /* Check if failure is not during connection setup. */
-    if (((time_epoch() - th_start_time) > netinfo_ptr->heartbeat_check_time) &&
-        !host_node_ptr->closed) {
-        /* Close other sockets related to this hostname */
-        shutdown_other_hostnodes(host_node_ptr);
-    }
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
