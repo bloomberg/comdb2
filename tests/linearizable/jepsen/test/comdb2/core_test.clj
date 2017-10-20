@@ -2,6 +2,7 @@
   (:require [clojure.test :refer :all]
             [comdb2 [core :as c]
                     [a6 :as a6]
+                    [g2 :as g2]
                     [atomic-writes :as aw]
                     [bank :as bank]]
             [clojure.java.jdbc :as j]
@@ -42,8 +43,8 @@
 (deftest ^:register-test register-test
   (check (c/register-tester {})))
 
-(deftest ^:g2-test g2-test
-  (check (c/g2-test {})))
+(deftest g2
+  (check (g2/g2-test {})))
 
 (deftest ^:a6-test a6-test
   (check (a6/a6-test {})))
