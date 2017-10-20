@@ -746,18 +746,18 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
 
         comdb2_partition_info_all(opt);
-   } else if(tokcmp(tok,ltok, "killnet")==0) {
-       char subnet[100];
-       tok=segtok(line, lline, &st, &ltok);
-       if (ltok == 0) {
-           logmsg(LOGMSG_ERROR, "Expected name for killnet\n");
-           return -1;
-       }
-       tokcpy0(tok, ltok, subnet, sizeof(subnet));
-       logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
-       kill_subnet(subnet);
-   } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
-       extern int gbl_fdb_track;
+    } else if (tokcmp(tok, ltok, "killnet") == 0) {
+        char subnet[100];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected name for killnet\n");
+            return -1;
+        }
+        tokcpy0(tok, ltok, subnet, sizeof(subnet));
+        logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
+        kill_subnet(subnet);
+    } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
+        extern int gbl_fdb_track;
 
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);

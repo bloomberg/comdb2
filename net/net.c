@@ -4127,31 +4127,31 @@ static int create_reader_writer_threads(host_node_type *host_node_ptr,
 
 void kill_subnet(char *subnet)
 {
-   host_node_type *ptr;
-   int len = strlen(subnet)+1;
-   netinfo_node_t *curpos, *tmppos;
+    host_node_type *ptr;
+    int len = strlen(subnet) + 1;
+    netinfo_node_t *curpos, *tmppos;
 
-   Pthread_mutex_lock(&nets_list_lk);
-   LISTC_FOR_EACH_SAFE(&nets_list, curpos, tmppos, lnk)
-   {
-      netinfo_type *netinfo_ptr = curpos->netinfo_ptr;
-      ptr = netinfo_ptr->head;
+    Pthread_mutex_lock(&nets_list_lk);
+    LISTC_FOR_EACH_SAFE(&nets_list, curpos, tmppos, lnk)
+    {
+        netinfo_type *netinfo_ptr = curpos->netinfo_ptr;
+        ptr = netinfo_ptr->head;
 
-      while(ptr != NULL)  {
-         if (!strncmp(ptr->subnet, subnet, len)) {
-            if(!ptr->closed) {
-                logmsg(LOGMSG_INFO, "Shutting down socket for %s %s\n",
-                       ptr->host, ptr->netinfo_ptr->service);
-                shutdown_hostnode_socket(ptr);
-            } else {
-                logmsg(LOGMSG_INFO, "Already closed socket for %s %s\n",
-                       ptr->host, ptr->netinfo_ptr->service);
+        while (ptr != NULL) {
+            if (!strncmp(ptr->subnet, subnet, len)) {
+                if (!ptr->closed) {
+                    logmsg(LOGMSG_INFO, "Shutting down socket for %s %s\n",
+                           ptr->host, ptr->netinfo_ptr->service);
+                    shutdown_hostnode_socket(ptr);
+                } else {
+                    logmsg(LOGMSG_INFO, "Already closed socket for %s %s\n",
+                           ptr->host, ptr->netinfo_ptr->service);
+                }
             }
-         }
-         ptr = ptr->next;
-      }
-   }
-   Pthread_mutex_unlock(&nets_list_lk);
+            ptr = ptr->next;
+        }
+    }
+    Pthread_mutex_unlock(&nets_list_lk);
 }
 
 static void *writer_thread(void *args)
@@ -5116,29 +5116,31 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-static void get_subnet_incomming_syn( host_node_type *host_node_ptr)
+static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
-   struct sockaddr_in lcl_addr_inet;
-   int lcl_len = sizeof(lcl_addr_inet);
-   struct hostent *he;
-   int hlen;
-   char *subnet;
+    struct sockaddr_in lcl_addr_inet;
+    int lcl_len = sizeof(lcl_addr_inet);
+    struct hostent *he;
+    int hlen;
+    char *subnet;
 
-   if(!getsockname(host_node_ptr->fd, &lcl_addr_inet, &lcl_len)) {
-      he = gethostbyaddr(&lcl_addr_inet.sin_addr, sizeof lcl_addr_inet.sin_addr, AF_INET);
-      /*if (gbl_verbose_net)*/
-         fprintf(stderr, "Incoming connection from name: %s (%s:%u)\n",
-               (he && he->h_name)?he->h_name:"unknown",
-               inet_ntoa(lcl_addr_inet.sin_addr),
-               (unsigned)ntohs(lcl_addr_inet.sin_port));
-   }
+    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet, &lcl_len)) {
+        he = gethostbyaddr(&lcl_addr_inet.sin_addr,
+                           sizeof lcl_addr_inet.sin_addr, AF_INET);
+        /*if (gbl_verbose_net)*/
+        fprintf(stderr, "Incoming connection from name: %s (%s:%u)\n",
+                (he && he->h_name) ? he->h_name : "unknown",
+                inet_ntoa(lcl_addr_inet.sin_addr),
+                (unsigned)ntohs(lcl_addr_inet.sin_port));
+    }
 
-   hlen = strlen(host_node_ptr->netinfo_ptr->myhostname);
-   if (strncmp(host_node_ptr->netinfo_ptr->myhostname, he->h_name, hlen) == 0) {
-      subnet = &he->h_name[hlen];
-      if(subnet[0])
-         strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
-   }
+    hlen = strlen(host_node_ptr->netinfo_ptr->myhostname);
+    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, he->h_name, hlen) ==
+        0) {
+        subnet = &he->h_name[hlen];
+        if (subnet[0])
+            strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
+    }
 }
 
 static void accept_handle_new_host(netinfo_type *netinfo_ptr,
