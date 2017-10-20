@@ -2,9 +2,11 @@
   (:require [clojure.test :refer :all]
             [comdb2 [core :as c]
                     [a6 :as a6]
-                    [g2 :as g2]
                     [atomic-writes :as aw]
-                    [bank :as bank]]
+                    [bank :as bank]
+                    [dirty-reads :as dr]
+                    [g2 :as g2]
+                    [sets :as sets]]
             [clojure.java.jdbc :as j]
             [jepsen.core :as jepsen]))
 
@@ -29,13 +31,13 @@
   (check (bank/bank-test-nemesis 10 100)))
 
 (deftest sets
-  (check (c/sets-test)))
+  (check (sets/sets-test)))
 
 (deftest sets-nemesis
- (check (c/sets-test-nemesis {})))
+ (check (sets/sets-test-nemesis {})))
 
-(deftest ^:dirty-reads-test dirty-reads-test
-  (check (c/dirty-reads-test-nemesis 4)))
+(deftest dirty-reads-nemesis
+  (check (dr/dirty-reads-test-nemesis 4)))
 
 (deftest ^:register-test-nemesis register-test-nemesis
   (check (c/register-tester-nemesis { })))
