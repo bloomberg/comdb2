@@ -117,9 +117,9 @@ int subnet_blackout_timems = 5000;
 
 void net_set_subnet_blackout(int ms)
 {
-   if(ms>=0) {
-     subnet_blackout_timems = ms; 
-   }
+    if (ms >= 0) {
+        subnet_blackout_timems = ms;
+    }
 }
 
 static unsigned long long gettmms(void)
@@ -2159,7 +2159,9 @@ int net_send_authcheck_all(netinfo_type *netinfo_ptr)
         rc = net_send_message(netinfo_ptr, nodes[i], NET_AUTHENTICATION_CHECK,
                               NULL, 0, 0, 5000);
         if (rc < 0) {
-            logmsg(LOGMSG_ERROR, "Sending Auth Check failed for node %s rc=%d\n", nodes[i],rc);
+            logmsg(LOGMSG_ERROR,
+                   "Sending Auth Check failed for node %s rc=%d\n", nodes[i],
+                   rc);
             outrc++;
         }
     }
@@ -4640,69 +4642,72 @@ done:
 // MAXSUBNETS + Slot for the Non-dedicated net
 static char *subnet_suffices[MAXSUBNETS + 1] = {0};
 static uint8_t num_dedicated_subnets = 0;
-static time_t subnet_disabled[MAXSUBNETS + 1] = {0}; 
+static time_t subnet_disabled[MAXSUBNETS + 1] = {0};
 static int last_bad_subnet_idx = -1;
 static time_t last_bad_subnet_time = 0;
 uint8_t _non_dedicated_subnet = 0;
 pthread_mutex_t subnet_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int net_check_bad_subnet_lk(int ii)
-{ 
-   int rc = 0;
+{
+    int rc = 0;
 
-   if (subnet_disabled[ii])
-      return 1;
-   
-   if (!last_bad_subnet_time) {
-      if(gbl_verbose_net)
-         logmsg(LOGMSG_USER, "%x %s Not set %d %s\n", pthread_self(), __func__, ii, subnet_suffices[ii]);
-      goto out;
-   }
+    if (subnet_disabled[ii])
+        return 1;
 
-   if(last_bad_subnet_time*1000 + subnet_blackout_timems < time_epochms()) {
-      if(gbl_verbose_net)
-         logmsg(LOGMSG_USER, "%x %s Clearing out net %d %s\n", pthread_self(), __func__, ii, subnet_suffices[ii]);
-      last_bad_subnet_time = 0;
-      goto out;
-   }
+    if (!last_bad_subnet_time) {
+        if (gbl_verbose_net)
+            logmsg(LOGMSG_USER, "%x %s Not set %d %s\n", pthread_self(),
+                   __func__, ii, subnet_suffices[ii]);
+        goto out;
+    }
 
-   if(ii == last_bad_subnet_idx) {
-      if(gbl_verbose_net)
-         logmsg(LOGMSG_USER, "%x %s Bad net %d %s\n", pthread_self(), __func__, ii, subnet_suffices[ii]);
-      rc = 1;
-   }
+    if (last_bad_subnet_time * 1000 + subnet_blackout_timems < time_epochms()) {
+        if (gbl_verbose_net)
+            logmsg(LOGMSG_USER, "%x %s Clearing out net %d %s\n",
+                   pthread_self(), __func__, ii, subnet_suffices[ii]);
+        last_bad_subnet_time = 0;
+        goto out;
+    }
+
+    if (ii == last_bad_subnet_idx) {
+        if (gbl_verbose_net)
+            logmsg(LOGMSG_USER, "%x %s Bad net %d %s\n", pthread_self(),
+                   __func__, ii, subnet_suffices[ii]);
+        rc = 1;
+    }
 out:
-   return rc;
+    return rc;
 }
 
 void net_subnet_status(FILE *out)
 {
-   int i = 0;
-   pthread_mutex_lock(&subnet_mtx);
-   for(i = 0; i < num_dedicated_subnets; i++) {
-      fprintf(out, "Subnet %s %s%s%s", subnet_suffices[i],
-            subnet_disabled[i]?"disabled":"enabled\n",
-            subnet_disabled[i]?" at ":"",
-            subnet_disabled[i]?ctime(&subnet_disabled[i]):"");
-   }
-   pthread_mutex_unlock(&subnet_mtx);
+    int i = 0;
+    pthread_mutex_lock(&subnet_mtx);
+    for (i = 0; i < num_dedicated_subnets; i++) {
+        fprintf(out, "Subnet %s %s%s%s", subnet_suffices[i],
+                subnet_disabled[i] ? "disabled" : "enabled\n",
+                subnet_disabled[i] ? " at " : "",
+                subnet_disabled[i] ? ctime(&subnet_disabled[i]) : "");
+    }
+    pthread_mutex_unlock(&subnet_mtx);
 }
 
 void net_set_bad_subnet(const char *subnet)
 {
-   int i = 0;
-   pthread_mutex_lock(&subnet_mtx);
-   for(i = 0; i < num_dedicated_subnets; i++) {
-      if(strncmp(subnet, subnet_suffices[i], strlen(subnet)+1) == 0) {
-         last_bad_subnet_time = time_epochms();
-         last_bad_subnet_idx = i;
-         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Marking %s bad, idx %d time %d\n",
-                  pthread_self(), __func__, subnet_suffices[i], last_bad_subnet_idx,
-                  last_bad_subnet_time);
-      }
-   }
-   pthread_mutex_unlock(&subnet_mtx);
+    int i = 0;
+    pthread_mutex_lock(&subnet_mtx);
+    for (i = 0; i < num_dedicated_subnets; i++) {
+        if (strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
+            last_bad_subnet_time = time_epochms();
+            last_bad_subnet_idx = i;
+            if (gbl_verbose_net)
+                logmsg(LOGMSG_USER, "%x %s Marking %s bad, idx %d time %d\n",
+                       pthread_self(), __func__, subnet_suffices[i],
+                       last_bad_subnet_idx, last_bad_subnet_time);
+        }
+    }
+    pthread_mutex_unlock(&subnet_mtx);
 }
 
 int net_add_nondedicated_subnet(void *context, void *value)
@@ -4726,7 +4731,7 @@ int net_add_to_subnets(const char *suffix, const char *lrlname)
     pthread_mutex_lock(&subnet_mtx);
     if (num_dedicated_subnets >= MAXSUBNETS) {
         logmsg(LOGMSG_ERROR, "too many subnet suffices (max=%d) in lrl %s\n",
-                MAXSUBNETS, lrlname);
+               MAXSUBNETS, lrlname);
         pthread_mutex_unlock(&subnet_mtx);
         return -1;
     }
@@ -4760,8 +4765,8 @@ void net_cleanup_subnets()
 static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 {
     static unsigned int counter = 0xffff;
-    struct  hostent * phe = NULL;
-    uint8_t ii = 0; //do the loop no more that max subnets
+    struct hostent *phe = NULL;
+    uint8_t ii = 0; // do the loop no more that max subnets
 
     pthread_mutex_lock(&subnet_mtx);
     if (num_dedicated_subnets == 0) {
@@ -4785,8 +4790,8 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 
         /* skip last bad network, if we have a choice */
         if (num_dedicated_subnets > 1) {
-           if (net_check_bad_subnet_lk(counter % num_dedicated_subnets))
-              continue;
+            if (net_check_bad_subnet_lk(counter % num_dedicated_subnets))
+                continue;
         }
 
         char rephostname[HOSTNAME_LEN * 2 + 1];

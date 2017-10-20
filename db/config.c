@@ -1313,20 +1313,24 @@ done:
     return rc;
 }
 
-
-static int global_is_local(const char *lrlfile, const char *pwd, const char *cfgfile)
+static int global_is_local(const char *lrlfile, const char *pwd,
+                           const char *cfgfile)
 {
     int pwdlen;
-    
-    if (!pwd || !lrlfile) return 0;
 
-    pwdlen = strlen(pwd)+1 /* / */;
+    if (!pwd || !lrlfile)
+        return 0;
 
-    if (strlen(lrlfile)<= pwdlen) return 0;
+    pwdlen = strlen(pwd) + 1 /* / */;
 
-    if (strncasecmp(lrlfile, pwd, strlen(pwd))) return 0;
+    if (strlen(lrlfile) <= pwdlen)
+        return 0;
 
-    if (strncasecmp(&lrlfile[pwdlen], cfgfile, strlen(cfgfile)+1)) return 0;
+    if (strncasecmp(lrlfile, pwd, strlen(pwd)))
+        return 0;
+
+    if (strncasecmp(&lrlfile[pwdlen], cfgfile, strlen(cfgfile) + 1))
+        return 0;
 
     /* identical */
     return 1;
@@ -1385,12 +1389,14 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     }
 
     /* look for overriding lrl's in the local directory */
-    if (!loaded_comdb2 && !read_lrl_file(dbenv, "comdb2.lrl", 0 /*not required*/)) {
+    if (!loaded_comdb2 &&
+        !read_lrl_file(dbenv, "comdb2.lrl", 0 /*not required*/)) {
         return 0;
     }
 
     /* local defaults */
-    if (!loaded_comdb2_local && !read_lrl_file(dbenv, "comdb2_local.lrl", 0 /*not required*/)) {
+    if (!loaded_comdb2_local &&
+        !read_lrl_file(dbenv, "comdb2_local.lrl", 0 /*not required*/)) {
         return 0;
     }
 
