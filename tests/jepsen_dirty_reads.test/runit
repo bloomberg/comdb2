@@ -22,7 +22,7 @@ fi
 function createtables
 {
     [[ "$debug" == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $db $stage "create table dirty {schema{int id int x}}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table dirty {schema{int id int x} keys { \"id\" = id }}" >/dev/null 2>&1
 }
 
 function checkforerrors

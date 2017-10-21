@@ -26,45 +26,62 @@
 ; TODO: Kyle, review the dirty reads test for galera and figure out what this
 ; was supposed to do
 
-(defrecord DirtyReadsClient [node n]
+(defrecord DirtyReadsClient [conn n]
   client/Client
   (setup! [this test node]
-   (warn "setup")
-   (j/with-db-connection [c (c/conn-spec node)]
-    ; Create table
-    (dotimes [i n]
-     (try ; TODO: no catch?
-      (c/with-txn-retries
-       (Thread/sleep (rand-int 10))
-       (c/insert! c :dirty {:id i, :x -1})))))
+    (let [conn (c/connect node)]
+      (c/with-conn [c conn]
+        (if false
+          ; This causes reliable connection disconnects and I cannot for the
+          ; life of me figure out why
+          (dotimes [i n]
+            (try
+              (c/with-txn-retries
+                (Thread/sleep (rand-int 10))
+                (c/insert! c :dirty {:id i, :x -1}))
+              (catch java.sql.SQLIntegrityConstraintViolationException e nil)))
 
-    (assoc this :node node))
+          (try
+            (j/with-db-transaction [c c {:isolation :read-committed}]
+              (c/hasql! c)
+              (dotimes [i n]
+                ; Can't use parameters in a transaction, woooo
+                (c/execute! c [(str "insert into dirty (id, x) values ("
+                                    i ", " -1 ");")])))
+            (catch java.sql.SQLIntegrityConstraintViolationException e
+              ; Someone else inserted
+              nil))))
+
+    (assoc this :conn conn)))
 
   (invoke! [this test op]
-   (try
-    (j/with-db-transaction [c (c/conn-spec node) {:isolation :serializable}]
-     (try ; TODO: no catch?
-      (case (:f op)
-       ; skip initial records - not all threads are done initial writing, and
-       ; the initial writes aren't a single transaction so we won't see
-       ; consistent reads
-       :read (->> (c/query c ["select * from dirty where x != -1"])
-                  (mapv :x)
-                  (assoc op :type :ok, :value))
+   (c/with-io-failures op
+     (c/with-conn [c conn]
+       (c/with-logical-failures op
+         (try+
+           (c/with-timeout
+             (j/with-db-transaction [c c {:isolation :read-committed}]
+               (case (:f op)
+                 ; skip initial records - not all threads are done initial
+                 ; writing, and the initial writes aren't a single transaction so
+                 ; we won't see consistent reads
+                 :read (->> (c/query c ["select * from dirty where x != -1"])
+                            (mapv :x)
+                            (assoc op :type :ok, :value))
 
-       :write (let [x (:value op)
-                    order (shuffle (range n))]
-                ; TODO: why is there a discarded read here?
-                (doseq [i order]
-                  (c/query c ["select * from dirty where id = ?" i]))
-                (doseq [i order]
-                  (c/update! c :dirty {:x x} ["id = ?" i]))
-                (assoc op :type :ok)))))
-    (catch java.sql.SQLException e
-     ; TODO: why do we know this is a definite failure?
-     (assoc op :type :fail :reason (.getMessage e)))))
+                 :write (let [x (:value op)
+                              order (shuffle (range n))]
+                          (doseq [i order]
+                            (c/update! c :dirty {:x x} ["id = ?" i])
+                            (when (< (rand) 1/10)
+                              (throw+ {:type :deliberate-abort})))
+                          (assoc op :type :ok)))))
+           (catch [:type :deliberate-abort] e
+             (assoc op :type :fail, :error :deliberate-abort)))))))
 
-  (teardown! [_ test]))
+
+  (teardown! [_ test]
+    (rc/close! conn)))
 
 ; TODO: better name for this, move it near the dirty-reads client
 (defn client
@@ -77,19 +94,11 @@
   []
   (reify checker/Checker
     (check [this test model history opts]
-      (let [failed-writes
-            ; Add a dummy failed write so we have something to compare to in the
-            ; unlikely case that there's no other write failures
-            (merge {:type     :fail
-                    :f        :write
-                    :value    -12
-                    :process  0
-                    :time     0}
-                   (->> history
-                        (r/filter op/fail?)
-                        (r/filter #(= :write (:f %)))
-                        (r/map :value)
-                        (into (hash-set))))
+      (let [failed-writes (->> history
+                               (r/filter op/fail?)
+                               (r/filter #(= :write (:f %)))
+                               (r/map :value)
+                               (into (hash-set)))
 
             reads (->> history
                        (r/filter op/ok?)
@@ -97,12 +106,19 @@
                        (r/map :value))
 
             inconsistent-reads (->> reads
-                                    (r/filter seq)
-                                    (r/filter (partial apply not=))
+                                    (r/filter
+                                      (fn [r]
+                                        ; Because of COMDB2's weird predicate
+                                        ; visibility bug, we might only read a
+                                        ; subset of the full table :-(
+                                        (or (= r [])
+                                            (apply not= r))))
                                     (into []))
+
             filthy-reads (->> reads
                               (r/filter (partial some failed-writes))
                               (into []))]
+
         {:valid?              (empty? filthy-reads)
          :inconsistent-reads  inconsistent-reads
          :dirty-reads         filthy-reads}))))
