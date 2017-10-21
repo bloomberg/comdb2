@@ -1726,7 +1726,7 @@ readloop:
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
-        int start_req = dbHostIdx++;
+        int start_req = ++dbHostIdx;
 
         for (; dbHostIdx < myDbHosts.size(); ++dbHostIdx) {
             if (dbHostIdx == masterIndexInMyDbHosts
