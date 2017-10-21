@@ -6,7 +6,7 @@
 
 [[ "$debug" == 1 ]] && set -x
 needcluster=0
-jepsentest=":only comdb2.core-test/register"
+testargs="--workload register --concurrency 50"
 db=$1
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
@@ -93,7 +93,7 @@ function runtestwithoptions
     export CDB2_CONFIG_FILE=${CDB2_CONFIG}
     (
         cd ${TESTSROOTDIR}/linearizable/jepsen
-        lein test $jepsentest > $outfile 2>&1 < /dev/null
+        lein run test $testargs > $outfile 2>&1 < /dev/null
         r=$? ; [[ $r != 0 ]] && echo "XXX JEPSEN ERROR Lein test returns $r" >> $outfile
     )
     cat $outfile

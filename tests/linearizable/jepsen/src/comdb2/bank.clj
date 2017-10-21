@@ -154,24 +154,14 @@
         {:valid? (empty? bad-reads)
          :bad-reads bad-reads}))))
 
-(defn bank-test-nemesis
-  ([n initial-balance]
-   (bank-test-nemesis n initial-balance {}))
-  ([n initial-balance opts]
-   (c/basic-test
-     (merge
-       {:name "bank"
-        :concurrency 10
-        :model  {:n n :total (* n initial-balance)}
-        :client (bank-client n initial-balance)
-        :generator (->> (gen/mix [bank-read bank-diff-transfer])
-                        (gen/clients)
-                        (gen/stagger 1/10))
-        :final-generator (gen/once bank-read)
-        :time-limit 120
-        :checker (bank-checker)}
-       opts))))
-
-(defn bank-test
-  [n initial-balance]
-  (bank-test-nemesis n initial-balance {:nemesis nemesis/noop}))
+(defn workload
+  []
+  (let [n               10
+        initial-balance 100]
+    {:model  {:n n :total (* n initial-balance)}
+     :client (bank-client n initial-balance)
+     :generator (->> (gen/mix [bank-read bank-diff-transfer])
+                     (gen/clients)
+                     (gen/stagger 1/10))
+     :final-generator (gen/once bank-read)
+     :checker (bank-checker)}))

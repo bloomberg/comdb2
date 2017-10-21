@@ -83,29 +83,18 @@
 (defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
 (defn cas [_ _] {:type :invoke, :f :cas, :value [(rand-int 5) (rand-int 5)]})
 
-(defn register-tester-nemesis
-  [opts]
-  (c/basic-test
-    (merge
-      {:name        "register"
-       :client      (comdb2-cas-register-client)
-       :concurrency 50
-       :generator   (independent/concurrent-generator
-                      10
-                      (range)
-                      (fn [k]
-                        (->> (gen/reserve 5 (gen/mix [w cas cas]) r)
-                             (gen/stagger 1/10)
-                             (gen/limit 200))))
-       :time-limit  120
-       :model       (model/cas-register)
-       :checker     (independent/checker
-                      (checker/compose
-                        {:timeline (timeline/html)
-                         :linearizable (checker/linearizable)}))}
-      opts)))
-
-(defn register-tester
-  [opts]
-  (register-tester-nemesis {:nemesis nemesis/noop}))
-
+(defn workload
+  []
+  {:client (comdb2-cas-register-client)
+   :generator   (independent/concurrent-generator
+                  10
+                  (range)
+                  (fn [k]
+                    (->> (gen/reserve 5 (gen/mix [w cas cas]) r)
+                         (gen/stagger 1/10)
+                         (gen/limit 200))))
+   :model       (model/cas-register)
+   :checker     (independent/checker
+                  (checker/compose
+                    {:timeline (timeline/html)
+                     :linearizable (checker/linearizable)}))})

@@ -120,16 +120,9 @@
                      :value))
        gen/seq))
 
-(defn dirty-reads-test-nemesis
-  ([n]
-   (dirty-reads-test-nemesis n {}))
-  ([n opts]
-   (c/basic-test
-     (merge
-       {:name "dirty reads"
-        :concurrency 1
-        :client (client n)
-        :generator (gen/mix [(reads) (writes)])
-        :checker (dirty-reads-checker)
-        :time-limit 120}
-     opts))))
+(defn workload
+  []
+  (let [n 4]
+    {:client (client n)
+     :generator (gen/mix [(reads) (writes)])
+     :checker (dirty-reads-checker)}))

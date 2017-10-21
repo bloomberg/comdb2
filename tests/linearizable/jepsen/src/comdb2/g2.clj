@@ -57,21 +57,12 @@
 
 (defn g2-client [] (G2Client. "g2_a" "g2_b" nil))
 
-(defn g2-test-nemesis
+(defn workload
   "A test for Adya's G2 phenomenon: an anti-dependency cycle allowed by
   snapshot isolation but prohibited by serializability."
-  [opts]
-  (c/basic-test
-    (merge
-      {:name        "g2"
-       :concurrency 10
-       :client      (g2-client)
-       :generator   (adya/g2-gen)
-       :time-limit  60
-       :checker     (checker/compose {:g2 (adya/g2-checker)
-                                      :timeline (timeline/html)})}
-      opts)))
-
-(defn g2-test
-  [opts]
-  (g2-test-nemesis (merge {:nemesis nemesis/noop} opts)))
+  []
+  {:name        "g2"
+   :client      (g2-client)
+   :generator   (adya/g2-gen)
+   :checker     (checker/compose {:g2       (adya/g2-checker)
+                                  :timeline (timeline/html)})})

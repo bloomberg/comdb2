@@ -31,7 +31,7 @@
 
     (invoke! [this test op]
       (c/with-conn [c conn]
-        (c/with-txn-prep!
+        (c/with-txn-prep! c
           (case (:f op)
             :add  (do (c/execute! c [(str "insert into jepsen(id, value) values(" (swap! id inc) ", " (:value op) ")")])
                       (assoc op :type :ok))
@@ -44,25 +44,15 @@
     (teardown! [_ test]
       (rc/close! conn))))
 
-(defn sets-test-nemesis
-  [opts]
-  (c/basic-test
-    (merge
-      {:name "set"
-       :client (set-client nil (atom -1))
-       :generator (->> (range)
-                       (map (partial array-map
-                                     :type :invoke
-                                     :f :add
-                                     :value))
-                       gen/seq
-                       (gen/delay 1/10)) 
-       :final-generator (gen/once {:type :invoke, :f :read, :value nil})
-       :time-limit 120
-       :checker (checker/set)}
-      opts)))
-
-
-(defn sets-test
+(defn workload
   []
-  (sets-test-nemesis {:nemesis nemesis/noop}))
+  {:client (set-client nil (atom -1))
+   :generator (->> (range)
+                   (map (partial array-map
+                                 :type :invoke
+                                 :f :add
+                                 :value))
+                   gen/seq
+                   (gen/delay 1/10))
+   :final-generator (gen/once {:type :invoke, :f :read, :value nil})
+   :checker (checker/set)})

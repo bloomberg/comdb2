@@ -218,19 +218,8 @@
                     true
                     {:type :invoke, :f :read}))))))))
 
-(defn a6-test-nemesis
-  "A test for a read-only snapshot isolation phenomenon."
-  [opts]
-  (c/basic-test
-    (merge
-      {:name        "a6"
-       :concurrency 50
-       :client      (a6-client)
-       :generator   (a6-gen)
-       :time-limit  60
-       :checker     (checker/compose {:a6 (a6-checker)})}
-      opts)))
-
-(defn a6-test
-  [opts]
-  (a6-test-nemesis (merge {:nemesis nemesis/noop} opts)))
+(defn workload
+  []
+  {:client    (a6-client)
+   :generator (a6-gen)
+   :checker     (checker/compose {:a6 (a6-checker)})})
