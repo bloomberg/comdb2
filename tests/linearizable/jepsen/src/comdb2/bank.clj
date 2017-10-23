@@ -41,9 +41,9 @@
                 (info "Inserting" node i)
                 ; Can't use insert because parameter substitution is broken
                 ; hurraaaaaayyyyyy
-                ; (c/insert! c :accounts {:id i, :balance starting-balance})
-                (c/execute! c [(str "insert into accounts (id, balance) values ("
-                                   i ", " starting-balance ");")])
+                (c/insert! c :accounts {:id i, :balance starting-balance})
+                ; (c/execute! c [(str "insert into accounts (id, balance) values ("
+                ;                   i ", " starting-balance ");")])
                 (catch java.sql.SQLException e
                   (if (.contains (.getMessage e)
                                  "add key constraint duplicate key")
