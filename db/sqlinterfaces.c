@@ -4943,6 +4943,7 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     int rc = 0;
     int i;
+    uint64_t data_len = 0;
 
     for (i = 0; i < ncols; i++) {
         cdb2__sqlresponse__column__init(columns[i]);
@@ -4956,6 +4957,7 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             columns[i]->value.len = thd->offsets[i].len;
             columns[i]->value.data = thd->buf + thd->offsets[i].offset;
         }
+        data_len += columns[i]->value.len;
     }
 
     if (clnt->num_retry) {
@@ -4979,12 +4981,16 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     sql_response.value = columns;
+
+    void *(*alloc_func)(size_t size) = malloc;
+    if(gbl_blob_sz_thresh_bytes > 0) { /* TODO: if data_len > 1024) use malloc */
+        int pksize = cdb2__sqlresponse__get_packed_size(&sql_response);
+        if (pksize + 1 > gbl_blob_sz_thresh_bytes)
+            alloc_func = blob_alloc_override;
+    }
+
     return _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, 
-                         columns, ncols, 
-                         ((cdb2__sqlresponse__get_packed_size(&sql_response)+1)
-                            > gbl_blob_sz_thresh_bytes) 
-                            ?  blob_alloc_override: malloc,
-                         0);
+                         columns, ncols, alloc_func, 0);
 }
 
 static int send_row_old(struct sqlthdstate *thd, struct sqlclntstate *clnt,
