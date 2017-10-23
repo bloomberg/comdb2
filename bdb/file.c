@@ -5862,6 +5862,10 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
     bdb_state->isopen = 1;
 
+    if (bdbtype == BDBTYPE_QUEUEDB) {
+        bdb_trigger_open(bdb_state);
+    }
+
     if (bdb_state->attr->dtastripe && (!bdb_state->attr->genids)) {
         logmsg(LOGMSG_WARN, "dtastripe implies genids!\n");
     }
