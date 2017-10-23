@@ -16,8 +16,6 @@
 
 extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
-extern int __berkdb_seek_alarm_ms;
-extern int __berkdb_fsync_alarm_ms;
 
 #include <pthread.h>
 
@@ -89,7 +87,6 @@ extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_sleepns;
 extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
-extern int n_fstrap;
 extern unsigned long long gbl_sql_deadlock_reconstructions;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern int gbl_dump_sql_dispatched;
@@ -101,14 +98,11 @@ extern int gbl_enable_cache_internal_nodes;
 extern int gbl_test_badwrite_intvl;
 extern int gbl_skip_ratio_trace;
 extern int gbl_test_blob_race;
-extern int gbl_test_badwrite_zerop_intvl;
-extern unsigned long long gbl_verify_retry;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_notimeouts;
 
 void debug_bulktraverse_data(char *tbl);
 
@@ -119,7 +113,6 @@ extern void reinit_sql_hint_table();
 
 static void dump_table_sizes(struct dbenv *dbenv);
 static void request_stats(struct dbenv *dbenv);
-void loadrawfile(char *fname, char *table);
 void berk_memp_sync_alarm_ms(int x);
 int berkdb_get_max_rep_retries();
 
@@ -140,7 +133,6 @@ void rowlocks_bench(void *, int, int);
 void rowlocks_lock1_bench(void *, int, int);
 void rowlocks_lock2_bench(void *, int, int);
 void commit_bench(void *, int, int);
-void set_cursor_rowlocks(int cr);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
