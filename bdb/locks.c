@@ -157,11 +157,8 @@ int bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbtlk, char *out, int outlen)
     }
     /* stripe lock */
     else if (lklen == 32) {
-        rc = __dbreg_get_name(dbenv, (u_int8_t *)lkname, &file);
-        if (rc)
-            snprintf(out, outlen, "tablelock, unknown file");
-        else
-            snprintf(out, outlen, "tablelock %s", file);
+        snprintf(out, outlen, "tablelock %.*s", SHORT_TABLENAME_LEN,
+                lkname);
     } else {
         snprintf(out, outlen, "unknown lock %d\n", lklen);
         abort();

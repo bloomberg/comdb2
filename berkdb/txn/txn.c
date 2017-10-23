@@ -896,6 +896,9 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
 	dbenv = txnp->mgrp->dbenv;
 
+    if(txnp->parent == NULL)
+        printf("Hi!\n");
+
 	PANIC_CHECK(dbenv);
 
 	if ((ret = __txn_isvalid(txnp, &td, TXN_OP_COMMIT)) != 0) {

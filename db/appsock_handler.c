@@ -124,6 +124,7 @@ static const struct appsock_cmd *cmd_remtran;
 static const struct appsock_cmd *cmd_alias;
 static const struct appsock_cmd *cmd_partition;
 static const struct appsock_cmd *cmd_genid48;
+static const struct appsock_cmd *cmd_debug;
 
 static void appsock_thd_start(struct thdpool *pool, void *thddata);
 static void appsock_thd_end(struct thdpool *pool, void *thddata);
@@ -173,7 +174,8 @@ int appsock_init(void)
     cmd_alias = add_command("alias");
     cmd_partition = add_command("partition");
     cmd_genid48 = add_command("genid48");
-
+    cmd_debug = add_command("debug");
+    
     gbl_appsock_thdpool =
         thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
 
@@ -721,6 +723,32 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             }
             break;
         } 
+        else if (cmd == cmd_debug) {
+            char dbg_trap[1024];
+
+
+            while (sbuf2gets(dbg_trap, sizeof(dbg_trap), sb) > 0) {
+                FILE *out = tmpfile();
+                io_override_set_std(out);
+                char *rrr = strchr(dbg_trap, '\r');
+                if(rrr) *rrr = '\0';
+                rrr = strchr(dbg_trap, '\n');
+                if(rrr) *rrr = '\0';
+                process_command(thedb, dbg_trap, strlen(dbg_trap)+1,0);
+                io_override_set_std(NULL);
+                rewind(out);
+                while (fgets(dbg_trap, sizeof(dbg_trap), out)) {
+                    char *s;
+                    s = strchr(dbg_trap, '\n');
+                    if (s) *s = 0;
+                    s = strchr(dbg_trap, '\r');
+                    if (s) *s = 0;
+                    /*sbuf2printf(sb, "%s\n", dbg_trap);*/
+                    fprintf(stdout, "%s\n", dbg_trap);
+                }
+                fclose(out);
+            }
+        }
         else if (cmd == cmd_genid48) {
             tok = segtok(line, rc, &st, &ltok);
             if (ltok <= 0) {

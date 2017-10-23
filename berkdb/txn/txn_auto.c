@@ -233,11 +233,11 @@ do_put:
 
 	if (!is_durable)
 		LSN_NOT_LOGGED(*ret_lsnp);
-#ifdef LOG_DIAGNOSTIC
+//#ifdef LOG_DIAGNOSTIC
 	if (ret != 0)
 		(void)__txn_regop_print(dbenv,
 		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
-#endif
+//#endif
 
 #ifndef DIAGNOSTIC
 	if (is_durable || txnid == NULL)
@@ -2273,11 +2273,11 @@ do_put:
 
 	if (!is_durable)
 		LSN_NOT_LOGGED(*ret_lsnp);
-#ifdef LOG_DIAGNOSTIC
-	if (ret != 0)
+//#ifdef LOG_DIAGNOSTIC
+//	if (ret != 0)
 		(void)__txn_regop_rowlocks_print(dbenv,
 		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
-#endif
+//#endif
 
 #ifndef DIAGNOSTIC
 	if (is_durable || txnid == NULL)
@@ -2534,6 +2534,14 @@ __txn_regop_rowlocks_read(dbenv, recbuf, argpp)
 	return __txn_regop_rowlocks_read_int (dbenv, recbuf, 1, argpp);
 }
 
+int
+__txn_regop_gen_print(
+	DB_ENV *dbenv,
+	DBT *dbtp,
+	DB_LSN *lsnp,
+	db_recops notused2,
+	void *notused3);
+
 /*
  * PUBLIC: int __txn_regop_gen_log __P((DB_ENV *, DB_TXN *, DB_LSN *,
  * PUBLIC:     u_int32_t, u_int32_t, u_int32_t, u_int64_t, u_int64_t,
@@ -2725,11 +2733,11 @@ do_put:
 
 	if (!is_durable)
 		LSN_NOT_LOGGED(*ret_lsnp);
-#ifdef LOG_DIAGNOSTIC
-	if (ret != 0)
+//#ifdef LOG_DIAGNOSTIC
+//	if (ret != 0)
 		(void)__txn_regop_gen_print(dbenv,
 		    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);
-#endif
+//#endif
 
 #ifndef DIAGNOSTIC
 	if (is_durable || txnid == NULL)

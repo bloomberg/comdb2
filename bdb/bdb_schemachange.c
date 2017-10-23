@@ -100,6 +100,12 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     assert(sizeof(type) == scdoneop->fastinit.size);
     memcpy(&type, scdoneop->fastinit.data, sizeof(type));
     scdone_t sctype = ntohl(type);
+#if 0
+    if(sctype == rename_table) {
+        assert(strlen(table)+1 <= scdoneop->table.size);
+        newtable = &table[strlen(table)+1];
+    }
+#endif
 
     if(sctype == rename_table) {
         assert(strlen(table)+1 < scdoneop->table.size);
