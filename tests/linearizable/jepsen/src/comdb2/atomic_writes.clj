@@ -71,19 +71,9 @@
          :mixed-reads mixed-reads}))))
 
 
-(defn atomic-writes-test-nemesis
-  [opts]
+(defn workload
+  []
   (let [id-count 5]
-    (c/basic-test
-      (merge
-        {:name "atomic-writes"
-         :concurrency 10
-         :client (AtomicWriteClient. "atomic_writes" (vec (range id-count)) nil)
-         :generator (a6-gen)
-         :time-limit 60
-         :checker (atomic-checker id-count)}
-        opts))))
-
-(defn atomic-writes-test
-  [opts]
-  (atomic-writes-test-nemesis (merge {:nemesis nemesis/noop} opts)))
+    {:client (AtomicWriteClient. "atomic_writes" (vec (range id-count)) nil)
+     :generator (a6-gen)
+     :checker (atomic-checker id-count)}))
