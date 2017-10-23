@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <unistd.h>
 
+#include "assert.h"
 #include "cdb2api.h"
 #include "cson_amalgamation_core.h"
 
@@ -69,7 +70,7 @@ static bool get_ispropnull(cson_value *objval, const char *key)
     cson_object *obj;
     cson_value_fetch_object(objval, &obj);
     cson_value *propval = cson_object_get(obj, key);
-    if (propval == nullptr)
+    if (propval == nullptr || cson_value_is_null(propval))
         return true;
     return false;
 }
@@ -197,19 +198,36 @@ void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
     }
 }
 
+/* out should be appropriately sized */
+void fromhex(uint8_t *out, const uint8_t *in, size_t len)
+{
+    const uint8_t *end = in + len;
+    while (in != end) {
+        uint8_t i0 = tolower(*(in++));
+        uint8_t i1 = tolower(*(in++));
+        i0 -= isdigit(i0) ? '0' : ('a' - 0xa);
+        i1 -= isdigit(i1) ? '0' : ('a' - 0xa);
+        *(out++) = (i0 << 4) | i1;
+    }
+}
+
+
 /* TODO: add all types supported */
-bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
+bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val, 
+                 std::vector<uint8_t *> &blobs_vect)
+{
     cson_array *bound_parameters = get_arrprop(event_val, "bound_parameters");
     if(bound_parameters == nullptr)
         return true;
 
-    unsigned int len = cson_array_length_get(bound_parameters);
-    for (int i = 0; i < len; i++) {
+    unsigned int arr_len = cson_array_length_get(bound_parameters);
+    for (int i = 0; i < arr_len; i++) {
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
         int ret;
         if(get_ispropnull(bp, "value")) {
+            /* bind null value as type INT for simplicity */
             if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, NULL, 0)) != 0) {
                 std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
                 return false;
@@ -242,7 +260,12 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             }
             std::cout << "binding "<< type << " column " << name << " to value " << *dv << std::endl;
         }
-        else if (strcmp(type, "char") == 0) {
+        else if (strcmp(type, "char") == 0 || strcmp(type, "datetime") == 0 ||
+                 strcmp(type, "datetimeus") == 0 ||
+                 strcmp(type, "interval month") == 0 ||
+                 strcmp(type, "interval sec") == 0 ||
+                 strcmp(type, "interval usec") == 0 
+                 ) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
@@ -254,8 +277,33 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val) {
             }
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
+        else if( strcmp(type, "byte") == 0 || strcmp(type, "blob") == 0) {
+            const char *strp = get_strprop(bp, "value");
+            if (strp == nullptr) {
+                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                return false;
+            }
+            assert(strp[0] == 'x' && strp[1] == '\'' && "Blob field needs to be in x'123abc' format");
+
+            int slen = strlen(strp) - 3; /* without the x'' */
+            int unexlen = slen/2;
+            uint8_t *unexpanded = (uint8_t *) malloc(unexlen + 1);
+            assert(unexpanded != NULL);
+
+            fromhex(unexpanded, (const uint8_t *) strp + 2, slen); /* no x' */
+            unexpanded[unexlen] = '\0';
+
+            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, unexpanded, unexlen)) != 0) {
+                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
+                free(unexpanded);
+                return false;
+            }
+
+            blobs_vect.push_back(unexpanded);
+            std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
+        }
         else
-            std::cout << "binding unknown "<< type << " column " << name << std::endl;
+            std::cout << "error binding unknown "<< type << " column " << name << std::endl;
     }
 
     return true;
@@ -295,8 +343,8 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 
 void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
 {
-    int string_blobs = 1;
-    switch (cdb2_column_type(cdb2h, col)) {
+  int string_blobs = 1;
+  switch (cdb2_column_type(cdb2h, col)) {
     case CDB2_INTEGER:
         if (printmode == DEFAULT)
             fprintf(f, "%s=%lld", cdb2_column_name(cdb2h, col),
@@ -392,9 +440,13 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
                 ds->sec, ds->usec);
         break;
     }
-    }
+  }
 }
 
+inline void free_blobs(std::vector<uint8_t *> &blobs_vect) {
+    for(std::vector<uint8_t *>::iterator it = blobs_vect.begin(); it != blobs_vect.end(); ++it)
+        free(*it);
+}
 
 void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     const char *sql = get_strprop(event_val, "sql");
@@ -412,13 +464,17 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
 	    sql = (*s).second.c_str();
     }
 
-    bool ok = do_bindings(db, event_val);
-    if (!ok)
+    std::vector<uint8_t *> blobs_vect;
+    bool ok = do_bindings(db, event_val, blobs_vect);
+    if (!ok) {
+        free_blobs(blobs_vect);
         return;
+    }
 
     std::cout << sql << std::endl;
     int rc = cdb2_run_statement(db, sql);
     cdb2_clearbindings(db);
+    free_blobs(blobs_vect);
 
     if (rc != CDB2_OK) {
         std::cerr << "run rc " << rc << ": " << cdb2_errstr(db) << std::endl;

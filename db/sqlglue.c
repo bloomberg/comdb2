@@ -98,6 +98,7 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "locks.h"
+#include "eventlog.h"
 
 #include <bbinc/str0.h>
 
@@ -9747,12 +9748,12 @@ struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
 ** Take data from buffer and blobs, bind to
 ** sqlite parameters.
 */
-int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    struct sqlclntstate *clnt, char **err)
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                    struct schema *params, struct sqlclntstate *clnt,
+                    char **err)
 {
     /* old parameters */
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
-    char *buf = (char *)clnt->tagbuf;
 
     /* initial stack variables */
     int fld;
@@ -9762,10 +9763,6 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
     int datalen;
     char parmname[32];
     int namelen;
-    int isnull = 0;
-    int rc;
-    int blobno = 0;
-    int little_endian = 0;
     int outsz;
 
     /* values from buffer */
@@ -9784,7 +9781,6 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
     intv_t it;
 
     int nfields;
-    int do_intv_flip = 0;
 
     *err = NULL;
 
@@ -9803,9 +9799,19 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         return -1;
     }
 
+    if (nfields < 1) 
+        return 0;
+
+    cson_array *arr = get_bind_array(logger, nfields);
+    char *buf = (char *)clnt->tagbuf;
+    int do_intv_flip = 0;
+    int little_endian = 0;
+    int blobno = 0;
+    int rc = 0;
+
     for (fld = 0; fld < nfields; fld++) {
         int pos = 0;
-        isnull = 0;
+        int isnull = 0;
         if (params) {
             f = &params->member[fld];
         } else {
@@ -9873,34 +9879,44 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
         }
         if (clnt->nullbits) isnull = btst(clnt->nullbits, fld) ? 1 : 0;
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "binding field %d name %s position %d type %d %s pos %d "
-                   "null %d\n",
-                   fld, f->name, pos, f->type, strtype(f->type), pos, isnull);
-        if (isnull)
+            logmsg(LOGMSG_USER,
+                   "binding field %d name %s position %d type %d %s null %d\n",
+                   fld, f->name, pos, f->type, strtype(f->type), isnull);
+        if (isnull) {
             rc = sqlite3_bind_null(stmt, pos);
-        else {
+            add_to_bind_array(arr, f->name, f->type, &ival, f->datalen, isnull);
+        } else {
             switch (f->type) {
             case CLIENT_INT:
                 if ((rc = get_int_field(f, buf, (uint64_t *)&ival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
+                add_to_bind_array(arr, f->name, f->type, &ival, f->datalen,
+                                  isnull);
                 break;
             case CLIENT_UINT:
                 if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
+                add_to_bind_array(arr, f->name, f->type, &uival, f->datalen,
+                                  isnull);
                 break;
             case CLIENT_REAL:
                 if ((rc = get_real_field(f, buf, &dval)) == 0)
                     rc = sqlite3_bind_double(stmt, pos, dval);
+                add_to_bind_array(arr, f->name, f->type, &dval, f->datalen,
+                                  isnull);
                 break;
             case CLIENT_CSTR:
             case CLIENT_PSTR:
             case CLIENT_PSTR2:
                 if ((rc = get_str_field(f, buf, &str, &datalen)) == 0)
                     rc = sqlite3_bind_text(stmt, pos, str, datalen, NULL);
+                add_to_bind_array(arr, f->name, f->type, buf, datalen, isnull);
                 break;
             case CLIENT_BYTEARRAY:
                 if ((rc = get_byte_field(f, buf, &byteval, &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
+                add_to_bind_array(arr, f->name, f->type, byteval, datalen,
+                                  isnull);
                 break;
             case CLIENT_BLOB:
                 if (params) {
@@ -9908,10 +9924,14 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                                              &datalen)) == 0) {
                         rc = sqlite3_bind_blob(stmt, pos, byteval, datalen,
                                                NULL);
+                        add_to_bind_array(arr, f->name, f->type, byteval,
+                                          datalen, isnull);
                         blobno++;
                     }
                 } else {
                     rc = sqlite3_bind_blob(stmt, pos, buf, f->datalen, NULL);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                      isnull);
                     blobno++;
                 }
                 break;
@@ -9921,10 +9941,14 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                                              &datalen)) == 0) {
                         rc = sqlite3_bind_text(stmt, pos, byteval, datalen,
                                                NULL);
+                        add_to_bind_array(arr, f->name, f->type, byteval,
+                                          datalen, isnull);
                         blobno++;
                     }
                 } else {
                     rc = sqlite3_bind_text(stmt, pos, buf, f->datalen, NULL);
+                    add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                      isnull);
                     blobno++;
                 }
                 break;
@@ -9932,12 +9956,18 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                 if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
                                              little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
+
+                add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                  isnull);
                 break;
 
             case CLIENT_DATETIMEUS:
                 if ((rc = get_datetimeus_field(f, buf, clnt->tzname, &dt,
                                                little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
+
+                add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
+                                  isnull);
                 break;
 
             case CLIENT_INTVYM: {
@@ -9975,6 +10005,8 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                     *err = sqlite3_mprintf("sqlite3_bind_datetime rc %d\n", rc);
                     return -1;
                 }
+                add_to_bind_array(arr, f->name, f->type, &ci, f->datalen,
+                                  isnull);
 
                 break;
             }
@@ -10020,6 +10052,8 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                     *err = sqlite3_mprintf("sqlite3_bind_datetime rc %d\n", rc);
                     return -1;
                 }
+                add_to_bind_array(arr, f->name, f->type, &ci, f->datalen,
+                                  isnull);
                 break;
             }
 
@@ -10064,6 +10098,8 @@ int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
                     *err = sqlite3_mprintf("sqlite3_bind_datetime rc %d\n", rc);
                     return -1;
                 }
+                add_to_bind_array(arr, f->name, f->type, &ci, f->datalen,
+                                  isnull);
                 break;
             }
 

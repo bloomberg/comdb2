@@ -1515,6 +1515,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
     reqlog_set_vreplays(logger, clnt->verify_retries);
 
+    if (clnt->saved_rc)
+        reqlog_set_error(logger, clnt->saved_errstr, clnt->saved_rc);
+
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
@@ -4133,28 +4136,19 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     char *errstr = NULL;
     int rc = 0;
+    bool newsqlbind = clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars;
 
-    if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
-        assert(rec->parameters_to_bind == NULL);
-        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
-        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
-        if (rc) {
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-        }
-    } else if (rec->parameters_to_bind) {
-        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
-        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
-        if(rc) {
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-        }
-    } else {
-        if (sqlite3_bind_parameter_count(rec->stmt)) {
-            reqlog_logf(thd->logger, REQL_TRACE, "parameter bind failed \n");
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s", 
-                               "Query specified parameters, but no values"
-                               " provided.");
-            rc = -1;
-        }
+    if (newsqlbind || rec->parameters_to_bind) {
+        assert(!newsqlbind || rec->parameters_to_bind == NULL);
+        rc = bind_parameters(thd->logger, rec->stmt, rec->parameters_to_bind,
+                             clnt, &errstr);
+        if (rc) errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
+    } else if (sqlite3_bind_parameter_count(rec->stmt)) {
+        reqlog_logf(thd->logger, REQL_TRACE, "parameter bind failed \n");
+        errstat_set_rcstrf(err, ERR_PREPARE, "%s", 
+                           "Query specified parameters, but no values"
+                           " provided.");
+        rc = -1;
     }
 
     return rc;
@@ -5484,8 +5478,6 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
-                reqlog_set_event(thd->logger, "sql"); /* set before error */
-                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
             }
             goto errors;
         }
@@ -5523,6 +5515,8 @@ done:
     return rc;
 
 errors:
+    reqlog_set_event(thd->logger, "sql"); /* set before error */
+    reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
     handle_sqlite_error(thd, clnt, &rec);
     goto done;
 }
