@@ -7651,6 +7651,10 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->want_stored_procedure_trace = 1;
                 }
+            } else if (strncasecmp(sqlstr, "cursordebug", 11) == 0) {
+                sqlstr += 11;
+                sqlstr = cdb2_skipws(sqlstr);
+                bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
             } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = cdb2_skipws(sqlstr);
