@@ -5810,6 +5810,9 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
     case LLMETA_ANALYZECOVERAGE_TABLE:
         logmsg(LOGMSG_USER, "LLMETA_ANALYZECOVERAGE_TABLE\n");
         break;
+    case LLMETA_TABLE_PARAMETERS:
+        printf("LLMETA_TABLE_PARAMETERS\n");
+        break;
     case LLMETA_TABLE_VERSION: {
         char tblname[LLMETA_TBLLEN + 1];
         buf_no_net_get(&(tblname),
@@ -5818,7 +5821,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         logmsg(LOGMSG_USER,
                "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
                flibc_ntohll(version));
-        } break;
+    } break;
     case LLMETA_GENID_FORMAT: {
         uint64_t genid_format;
         genid_format = flibc_htonll(*(unsigned long long*)data);
@@ -5826,8 +5829,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                (genid_format==LLMETA_GENID_ORIGINAL)?"LLMETA_GENID_ORIGINAL":
                (genid_format==LLMETA_GENID_48BIT)?"LLMETA_GENID_48BIT":
                "UNKNOWN GENID FORMAT");
-        break;
-        }
+    } break;
     default:
         logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
         break;
