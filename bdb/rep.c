@@ -2994,6 +2994,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     uint32_t nodegen;
     int num_successfully_acked = 0;
     int total_connected;
+    int lock_desired = 0;
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -3102,7 +3103,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 goto got_ack;
             }
         }
-    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms);
+    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
+             !(lock_desired = bdb_lock_desired(bdb_state)));
 
     /* if we get here then we timed out without finding even one good node.
      * allow a waitms of ZERO for the remaining nodes - we've run out of
@@ -3115,8 +3117,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         bdb_state->attr->rep_timeout_minms - bdb_state->attr->rep_timeout_maxms;
     if (waitms < 0)
         waitms = 0;
-    logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
-            lsn_to_str(str, &(seqnum->lsn)));
+    if(!lock_desired)
+        logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
+               lsn_to_str(str, &(seqnum->lsn)));
+    else
+        logmsg(LOGMSG_WARN,
+               "lock desired, not waiting for initial replication of <%s>\n",
+               lsn_to_str(str, &(seqnum->lsn)));
 
 got_ack:
 
