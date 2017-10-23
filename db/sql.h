@@ -517,6 +517,8 @@ struct sqlclntstate {
 
     hash_t *ddl_tables;
     hash_t *dml_tables;
+    CDB2SQLRESPONSE__Column **columns;
+    int columns_count;
 };
 
 /* Query stats. */

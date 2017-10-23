@@ -1121,11 +1121,32 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
                          malloc, 1);
 }
 
+static int newsql_realloc_row(int ncols, CDB2SQLRESPONSE__Column ***columns, int *columns_count)
+{
+    if(ncols <= *columns_count)
+        return 0; /* nothing to do */
+
+    void **ptr = realloc(*columns, ncols * sizeof(CDB2SQLRESPONSE__Column **));
+    if (!ptr) {
+        return -1;
+    }
+
+    *columns = (CDB2SQLRESPONSE__Column **)ptr;
+    for (int i = *columns_count; i < ncols; i++) {
+        (*columns)[i] = malloc(sizeof(CDB2SQLRESPONSE__Column));
+        if (!(*columns)[i]) {
+            for (i--; i >= *columns_count; i--)
+                free((*columns)[i]);
+            return -1;
+        }
+    }
+    *columns_count = ncols;
+    return 0;
+}
+
 CDB2SQLRESPONSE__Column **newsql_alloc_row(int ncols)
 {
     CDB2SQLRESPONSE__Column **columns;
-    int col;
-
     columns = (CDB2SQLRESPONSE__Column **)calloc(
         ncols, sizeof(CDB2SQLRESPONSE__Column **));
     if (columns) {
@@ -1452,43 +1473,21 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     int rc;
-    struct sockaddr_in peeraddr;
-    int len = sizeof(struct sockaddr_in);
-    char addr[64];
-
-    int fd = sbuf2fileno(clnt->sb);
-    rc = getpeername(fd, (struct sockaddr *)&peeraddr, &len);
-    if (rc)
-        snprintf(addr, sizeof(addr), "<unknown>");
-    else {
-        if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addr,
-                      sizeof(addr)) == NULL)
-            snprintf(addr, sizeof(addr), "<unknown>");
-    }
-
     if (clnt->limits.maxcost_warn && (thd->cost > clnt->limits.maxcost_warn)) {
         logmsg(LOGMSG_USER,
                "[%s] warning: query exceeded cost threshold (%f >= %f): %s\n",
-               addr, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
+               clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
     }
     if (clnt->limits.tablescans_warn && thd->had_tablescans) {
-        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", addr,
+        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", clnt->origin,
                clnt->sql);
     }
     if (clnt->limits.temptables_warn && thd->had_temptables) {
         logmsg(LOGMSG_USER,
-               "[%s] warning: query created a temporary table: %s\n", addr,
+               "[%s] warning: query created a temporary table: %s\n", clnt->origin,
                clnt->sql);
     }
-
-    unsigned long long rqid = clnt->osql.rqid;
-    if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(logger, &rqid, sizeof(rqid));
-    else {
-        /* have an "id_set" instead? */
-        if (!comdb2uuid_is_zero(clnt->osql.uuid))
-            reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
-    }
+    
 
     LISTC_T(struct sql_hist) lst;
     listc_init(&lst, offsetof(struct sql_hist, lnk));
@@ -1498,33 +1497,17 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup(clnt->sql);
     else
         h->sql = strdup("unknown");
-    int cost = h->cost = query_cost(thd);
+    h->cost = query_cost(thd);
     int timems = h->time = time_epochms() - thd->startms;
     h->when = thd->stime;
-    h->txnid = rqid;
+    h->txnid = clnt->osql.rqid;
 
-    /* request logging framework takes care of logging long sql requests */
-    reqlog_set_cost(logger, h->cost);
-    if (rqid) {
-        reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
-    }
-
-    if (clnt->query_stats == NULL) {
-        record_query_cost(thd, clnt);
-        reqlog_set_path(logger, clnt->query_stats);
-    }
-    reqlog_set_vreplays(logger, clnt->verify_retries);
-
-    reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
 
     if (clnt->conninfo.pename[0]) {
         h->conn = clnt->conninfo;
     }
-
-    reqlog_set_cost(logger, cost);
-    reqlog_set_rows(logger, clnt->nrows);
 
     pthread_mutex_lock(&gbl_sql_lock);
     {
@@ -1547,6 +1530,34 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         }
     }
     pthread_mutex_unlock(&gbl_sql_lock);
+
+    if (logger) {
+        unsigned long long rqid = clnt->osql.rqid;
+        if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
+            reqlog_set_rqid(logger, &rqid, sizeof(rqid));
+        else {
+            /* have an "id_set" instead? */
+            if (!comdb2uuid_is_zero(clnt->osql.uuid))
+                reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+        }
+
+        /* request logging framework takes care of logging long sql requests */
+        reqlog_set_cost(logger, h->cost);
+        if (rqid) {
+            reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
+        }
+
+        if (clnt->query_stats == NULL) {
+            record_query_cost(thd, clnt);
+            reqlog_set_path(logger, clnt->query_stats);
+        }
+        reqlog_set_vreplays(logger, clnt->verify_retries);
+
+
+        reqlog_set_rows(logger, clnt->nrows);
+        reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
+    }
+
     for (h = listc_rtl(&lst); h; h = listc_rtl(&lst)) {
         free(h->sql);
         free(h);
@@ -4890,7 +4901,7 @@ int make_retrow(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     *fast_error = 1;
 
-    isNullCol = (uint8_t *)malloc(sizeof(uint8_t) * ncols);
+    isNullCol = (uint8_t *)alloca(sizeof(uint8_t) * ncols);
     if (!isNullCol)
         return -1;
 
@@ -4917,7 +4928,6 @@ int make_retrow(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     rc = set_retrow_columns(thd, clnt, rec->stmt, new_row_data_type, ncols,
                             isNullCol, total_col, rowcount, err);
 out:
-    free(isNullCol);
     return rc; /*error */
 }
 
@@ -5216,7 +5226,6 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     struct errstat *err,
                     struct client_comm_if *comm)
 {
-    CDB2SQLRESPONSE__Column **columns;
     sqlite3_stmt *stmt = rec->stmt;
     int new_row_data_type = 0;
     int ncols;
@@ -5254,13 +5263,13 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     /* create the row format and send it to client */
-    columns = newsql_alloc_row(ncols);
-    if (!columns)
+    rc = newsql_realloc_row(ncols, &clnt->columns, &clnt->columns_count);
+    if (rc)
         return -1;
 
     set_ret_column_info(thd, clnt, rec, ncols);
     if(comm->send_row_format) {
-        rc = comm->send_row_format(thd, clnt, rec, ncols, columns);
+        rc = comm->send_row_format(thd, clnt, rec, ncols, clnt->columns);
         if (rc)
             goto out;
     }
@@ -5328,7 +5337,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         logmsg(LOGMSG_USER, "%s: cnonce '%s' sending row\n", __func__, cnonce);
                     }
                     rc = comm->send_row_data(thd, clnt, new_row_data_type, 
-                                             ncols, row_id, rc, columns);
+                                             ncols, row_id, rc, clnt->columns);
                     if (rc)
                         goto out;
                 }
@@ -5364,12 +5373,10 @@ postprocessing:
         rc = 0;
 
     /* closing: error codes, postponed write result and so on*/
-    rc =
-        post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id,
-                               columns, comm);
+    rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id,
+                               clnt->columns, comm);
 
 out:
-    newsql_dealloc_row(columns, ncols);
     return rc;
 }
 
