@@ -436,11 +436,13 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
 
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
-    pthread_mutex_lock(q->lock);
-    if (*q->open) {
-        bdb_trigger_unsubscribe(q->iq.usedb->handle);
+    if (q->lock) {
+        pthread_mutex_lock(q->lock);
+        if (*q->open) {
+            bdb_trigger_unsubscribe(q->iq.usedb->handle);
+        }
+        pthread_mutex_unlock(q->lock);
     }
-    pthread_mutex_unlock(q->lock);
 
     logmsg(LOGMSG_DEBUG,
            "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
@@ -6780,17 +6782,10 @@ void *exec_trigger(trigger_reg_t *reg)
         free(q);
     } else {
         //setup fake dbconsumer_t to send unregister
-        uint8_t open = 0;
-        int spname_len = htonl(reg->spname_len);
-        pthread_mutex_t dummy = PTHREAD_MUTEX_INITIALIZER;
-        q = alloca(dbconsumer_sz(reg->spname));
-        q->lock = &dummy;
-        q->open = &open;
+        trigger_reg_init(q->info, reg->spname);
+        q->lock = NULL;
         q->info = *reg;
-        strcpy(q->info.spname, reg->spname);
-        strcpy(q->info.spname + spname_len + 1, reg->spname + spname_len + 1);
         luabb_trigger_unregister(q);
-        pthread_mutex_destroy(q->lock);
     }
     close_sp(&clnt);
     reset_clnt(&clnt, NULL, 0);
