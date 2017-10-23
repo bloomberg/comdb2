@@ -5,8 +5,8 @@
 #debug_trace="-D"
 
 [[ "$debug" == 1 ]] && set -x
-needcluster=1
-testargs="--workload bank --concurrency 2n --nemesis partition-random-halves"
+needcluster=0
+testargs="--workload a6 --concurrency 50 --nemesis partition-random-halves"
 db=$1
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
@@ -22,7 +22,8 @@ fi
 function createtables
 {
     [[ "$debug" == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $db $stage "create table accounts {schema{int id int balance} keys{ \"id\" = id }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table a6 {schema{int id int key int account int value} keys{ \"id\" = id }}" >/dev/null 2>&1
 }
 
 function checkforerrors
