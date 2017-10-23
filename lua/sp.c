@@ -436,11 +436,13 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
 
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
-    pthread_mutex_lock(q->lock);
-    if (*q->open) {
-        bdb_trigger_unsubscribe(q->iq.usedb->handle);
+    if (q->lock) {
+        pthread_mutex_lock(q->lock);
+        if (*q->open) {
+            bdb_trigger_unsubscribe(q->iq.usedb->handle);
+        }
+        pthread_mutex_unlock(q->lock);
     }
-    pthread_mutex_unlock(q->lock);
 
     logmsg(LOGMSG_DEBUG,
            "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
@@ -4192,7 +4194,7 @@ static int db_consumer(Lua L)
     }
 
     dbconsumer_t *q;
-    size_t sz = dbconsumer_sz(qname);
+    size_t sz = dbconsumer_sz(spname);
     new_lua_t_sz(L, q, dbconsumer_t, DBTYPES_DBCONSUMER, sz);
     if (setup_dbconsumer(q, consumer, db, t) != 0) {
         luabb_error(L, sp, "failed to register consumer with qdb");
@@ -6590,7 +6592,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
         return -1;
     }
 
-    size_t sz = dbconsumer_sz(qname);
+    size_t sz = dbconsumer_sz(spname);
     dbconsumer_t *newq = calloc(1, sz);
     init_new_t(newq, DBTYPES_DBCONSUMER);
     if (setup_dbconsumer(newq, consumer, db, reg) != 0) {
@@ -6786,17 +6788,10 @@ void *exec_trigger(trigger_reg_t *reg)
         free(q);
     } else {
         //setup fake dbconsumer_t to send unregister
-        uint8_t open = 0;
-        int spname_len = htonl(reg->spname_len);
-        pthread_mutex_t dummy = PTHREAD_MUTEX_INITIALIZER;
         q = alloca(dbconsumer_sz(reg->spname));
-        q->lock = &dummy;
-        q->open = &open;
-        q->info = *reg;
-        strcpy(q->info.spname, reg->spname);
-        strcpy(q->info.spname + spname_len + 1, reg->spname + spname_len + 1);
+        q->lock = NULL;
+        memcpy(&q->info, reg, trigger_reg_sz(reg->spname));
         luabb_trigger_unregister(q);
-        pthread_mutex_destroy(q->lock);
     }
     close_sp(&clnt);
     reset_clnt(&clnt, NULL, 0);
