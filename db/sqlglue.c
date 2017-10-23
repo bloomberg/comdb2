@@ -9754,7 +9754,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
 {
     /* old parameters */
     CDB2SQLQUERY *sqlquery = clnt->sql_query;
-    char *buf = (char *)clnt->tagbuf;
 
     /* initial stack variables */
     int fld;
@@ -9764,10 +9763,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
     int datalen;
     char parmname[32];
     int namelen;
-    int isnull = 0;
-    int rc;
-    int blobno = 0;
-    int little_endian = 0;
     int outsz;
 
     /* values from buffer */
@@ -9786,7 +9781,6 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
     intv_t it;
 
     int nfields;
-    int do_intv_flip = 0;
 
     *err = NULL;
 
@@ -9805,11 +9799,19 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         return -1;
     }
 
+    if (nfields < 1) 
+        return 0;
+
     cson_array *arr = get_bind_array(logger, nfields);
+    char *buf = (char *)clnt->tagbuf;
+    int do_intv_flip = 0;
+    int little_endian = 0;
+    int blobno = 0;
+    int rc = 0;
 
     for (fld = 0; fld < nfields; fld++) {
         int pos = 0;
-        isnull = 0;
+        int isnull = 0;
         if (params) {
             f = &params->member[fld];
         } else {
