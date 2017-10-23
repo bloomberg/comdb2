@@ -1,4 +1,4 @@
-ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle
+ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle cdb2api_caller ptrantest
 all:$(ALL)
 
 include ../../main.mk

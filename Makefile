@@ -67,6 +67,7 @@ all: comdb2
 .PHONY: clean
 clean:
 	rm -f $(TASKS) $(ARS) $(OBJS) $(GENC) $(GENH) $(GENMISC)
+	make -sC tests/tools clean
 
 # Supply our own deb builder to make packaging easier.  In case
 # there's ever an official Debian package being maintained, use 'deb'

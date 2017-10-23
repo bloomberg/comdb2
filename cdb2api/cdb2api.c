@@ -2482,6 +2482,14 @@ done:
     return 0;
 }
 
+
+/* combine hashes similar to hash_combine from boost library */
+uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+{
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+}
+
 /* make_random_str() will return a randomly generated string
  * this is used to get a cnonce, composed of four components:
  * the first part is the id of this host machine
@@ -2491,14 +2499,26 @@ done:
  */
 static void make_random_str(char *str, int *len)
 {
-    static int PID = 0;
+    static __thread int PID = 0;
+    static __thread unsigned short rand_state[3];
+
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (PID == 0) {
-        PID = getpid();
-        srandom(tv.tv_sec);
+    if (PID == 0) { /* Initialize PID and rand_state once per thread */
+         /* PID will ensure that cnonce will be different accross processes */
+        PID = getpid(); 
+
+        /* Get the initial random state by using thread id and time info. */
+        uint32_t tmp[2];
+        tmp[0] = tv.tv_sec;
+        tmp[1] = tv.tv_usec;
+        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
+        rand_state[0] = hash;
+        rand_state[1] = hash >> 16;
+        rand_state[2] = hash >> 32;
     }
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
+    int randval = nrand48(rand_state);
+    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }
