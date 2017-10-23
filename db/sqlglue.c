@@ -6691,15 +6691,18 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
     case SERVER_BLOB: {
         int len;
-
         memcpy(&len, &in[1], 4);
         len = ntohl(len);
-        if (len == 0) { /* this blob is zerolen, we should'nt need to fetch*/
+        if (stype_is_null(in)) {
+            m->flags = MEM_Null;
+        } else if (len == 0) {
+            /* this blob is zerolen, we should'nt need to fetch*/
             m->z = NULL;
             m->flags = MEM_Blob;
             m->n = 0;
-        } else
+        } else {
             rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m);
+        }
         break;
     }
     case SERVER_DECIMAL:
