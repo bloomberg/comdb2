@@ -1308,7 +1308,7 @@ int remove_constraint_pointers(struct dbtable *db)
 int rename_constraint_pointers(struct dbtable *db, const char *newname)
 {
     for (int i = 0; i < thedb->num_dbs; i++) {
-        struct db *rdb = thedb->dbs[i];
+        struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;

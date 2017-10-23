@@ -27,14 +27,14 @@
 int do_rename_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db;
-    iq->usedb = db = s->db = getdbbyname(s->table);
+    struct dbtable *db;
+    iq->usedb = db = s->db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
         return SC_TABLE_DOESNOT_EXIST;
     }
-    if (getdbbyname(s->newtable)) {
+    if (get_dbtable_by_name(s->newtable)) {
         sc_errf(s, "New table name exists\n");
         reqerrstr(iq, ERR_SC, "New table name exists");
         return SC_TABLE_ALREADY_EXIST;
@@ -52,7 +52,7 @@ int do_rename_table(struct ireq *iq, tran_type *tran)
 int finalize_rename_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db = s->db;
+    struct dbtable *db = s->db;
     char *newname = strdup(s->newtable);
     int rc = 0;
     int bdberr = 0;
@@ -117,7 +117,7 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
         sc_errf(s, "create_sqlmaster_records failed\n");
         goto recover_memory;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     gbl_sc_commit_count++;
 

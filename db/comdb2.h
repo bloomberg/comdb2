@@ -2333,7 +2333,7 @@ void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
-int rename_db(struct db *db, const char *newname);
+int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
                            void *fnddta, int *fndlen, int *recnum, int maxlen);
@@ -3640,6 +3640,6 @@ int db_is_stopped(void);
  */
 int is_tablename_queue(const char *tablename, int len);
 
-int rename_table_options(void *tran, struct db *db, const char *newname);
+int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
 #endif /* !INCLUDED_COMDB2_H */

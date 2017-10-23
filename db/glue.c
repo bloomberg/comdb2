@@ -6221,7 +6221,7 @@ int table_version_set(tran_type *tran, const char *tablename,
     return rc;
 }
 
-int rename_table_options(void *tran, struct db *db, const char *newname)
+int rename_table_options(void *tran, struct dbtable *db, const char *newname)
 {
     char *oldname;
     int rc;

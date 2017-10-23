@@ -5355,7 +5355,7 @@ void delete_db(char *db_name)
 }
 
 /* rename in memory db names; fragile */
-int rename_db(struct db *db, const char *newname)
+int rename_db(struct dbtable *db, const char *newname)
 {
     int rc;
     char *tag_name = strdup(newname);

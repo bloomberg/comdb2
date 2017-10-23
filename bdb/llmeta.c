@@ -8683,7 +8683,7 @@ int bdb_rename_table_csonparameters(void *tran, const char *oldname,
     int cson_len = 0;
     int rc;
 
-    rc = bdb_get_table_csonparameters_tran(tran, oldname, &cson, &cson_len);
+    rc = bdb_get_table_csonparameters(tran, oldname, &cson, &cson_len);
     if(rc) {
         if (rc == 1) rc = 0; /* not found */
         goto done;
