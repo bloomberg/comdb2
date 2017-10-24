@@ -1893,8 +1893,16 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT) {
+            /* 
+             * We defer waits, making sure the coherency lease expires for
+             * the disconnected replicant;  the node needs to be incoherent,
+             * no need to wait for it.
+             * Once the node reconnects, master will switch the state
+             * to STATE_INCOHERENT_WAIT, and master will wait for it again;
+             * replicant will run recovery to catch up
+             */
             defer_commits(bdb_state, host, __func__);
-            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT_WAIT;
+            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
         }
 
         /* hostdown can defer commits */
@@ -1911,6 +1919,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     if (host == master_host) {
         logmsg(LOGMSG_WARN, "net_hostdown_rtn: HOSTDOWN was the master, calling "
                         "for election\n");
+        
+        /* this is replicant, we are running election followed by recovery */
 
         call_for_election(bdb_state);
     }
