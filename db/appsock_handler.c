@@ -90,7 +90,7 @@ struct appsock_thd_state {
 struct thdpool *gbl_appsock_thdpool = NULL;
 
 char appsock_unknown_old[] = "-1 #unknown command\n";
-char appsock_unknown[] = "Error: -1 #unknown command\n";
+char appsock_unknown[] = "Error: -1 #unknown command";
 char appsock_supported[] = "supported\n";
 
 static unsigned long long total_appsock_conns = 0;
@@ -265,6 +265,7 @@ struct loadrrn_cmd {
     int parm;
 };
 
+/* TODO: obsolete */
 enum { LOAD_ADD_RECORD, LOAD_GET_STATUS };
 static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
 {
@@ -350,9 +351,6 @@ static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
         return 0;
     }
 }
-
-extern void verify_table(char *table, SBUF2 *sb, int progress_report_seconds,
-                    int attempt_fix);
 
 struct fstdmp_t {
     int rc;
@@ -756,7 +754,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             handle_partition(sb);
             return 0;
         } else {
-            sbuf2printf(sb, appsock_unknown);
+            sbuf2printf(sb, "%s: %.*s\n", appsock_unknown, 100, line);
             sbuf2flush(sb);
             continue;
         }

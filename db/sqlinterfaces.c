@@ -144,9 +144,6 @@ extern int gbl_stable_rootpages_test;
 */
 
 /* An alternate interface. */
-extern pthread_mutex_t appsock_mutex;
-extern pthread_attr_t appsock_attr;
-extern int gbl_dtastripe;
 extern int gbl_notimeouts;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 int gbl_dump_fsql_response = 0;
