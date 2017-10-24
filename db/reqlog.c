@@ -1007,7 +1007,10 @@ static void reqlog_free_all(struct reqlogger *logger)
     struct print_event *pevent;
     struct tablelist *table;
 
-    if (logger->stmt) free(logger->stmt);
+    if (logger->stmt) {
+        free(logger->stmt);
+        logger->stmt = NULL;
+    }
 
     while (event = logger->events) {
         logger->events = event->next;
@@ -1017,11 +1020,13 @@ static void reqlog_free_all(struct reqlogger *logger)
         }
         free(event);
     }
+    assert(logger->events == NULL);
 
     while (table = logger->tables) {
         logger->tables = table->next;
         free(table);
     }
+    assert(logger->tables == NULL);
 }
 
 void reqlog_free(struct reqlogger *logger)
@@ -1356,7 +1361,7 @@ static void reqlog_start_request(struct reqlogger *logger)
     }
 
     /* always gather info */
-    logger->event_mask |= REQL_INFO;
+    //logger->event_mask |= REQL_INFO;
 
     /* try to filter out this request based on opcode */
     gather = 0;
@@ -1454,7 +1459,7 @@ void reqlog_diffstat_init(struct reqlogger *logger)
     logger->request_type = "stat dump";
     logger->opcode = OP_DEBUG;
     logger->mask = REQL_INFO;
-    logger->event_mask = REQL_INFO;
+    //logger->event_mask = REQL_INFO;
 }
 
 /* Get the origin string for the request */
@@ -1914,10 +1919,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
     logger->have_id = 0;
     logger->have_fingerprint = 0;
-    free(logger->tables);
-    logger->tables = NULL;
-    free(logger->error);
-    logger->error = NULL;
     logger->error_code = 0;
 }
 
