@@ -4052,10 +4052,6 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
               1 /*flush*/, malloc, __func__, __LINE__);
 
 #if 0
-          newsql_send_dummy_resp(clnt, __func__, __LINE__);
-          newsql_send_last_row(clnt, 1, __func__, __LINE__);
-#endif
-
           for(int i=0; i<nQuery; i++){
             const char *zSql = sqlite3_expert_report(p, i, EXPERT_REPORT_SQL);
             const char *zIdx = sqlite3_expert_report(p, i, EXPERT_REPORT_INDEXES);
@@ -4065,6 +4061,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             fprintf(stdout, "%s\n\n", zSql);
             fprintf(stdout, "%s\n%s\n", zIdx, zEQP);
           }
+#endif
         }else{
           fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
         }
