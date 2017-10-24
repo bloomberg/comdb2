@@ -137,8 +137,8 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
             } else if (rc != IX_FND && rc != IX_FNDMORE) {
                 logmsg(LOGMSG_ERROR,
                        "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
-                       ct->lclkeyname, db->tablename, ct->keynm[ri], ct->table[ri],
-                       rc);
+                       ct->lclkeyname, db->tablename, ct->keynm[ri],
+                       ct->table[ri], rc);
                 fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
                 logmsg(LOGMSG_ERROR, "\n");
                 goto bad;
@@ -209,16 +209,16 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             snprintf(ondisk_tag, sizeof(ondisk_tag), ".NEW..ONDISK_IX_%d",
                      ixnum);
             /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
-            rc = stag_to_stag_buf(newdb->tablename, from, od_dta, ondisk_tag, lkey,
-                                  NULL);
+            rc = stag_to_stag_buf(newdb->tablename, from, od_dta, ondisk_tag,
+                                  lkey, NULL);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed to convert to '%s'\n",
                        __func__, ondisk_tag);
                 return ERR_CONVERT_IX;
             }
             /* here we convert the key into return db format */
-            rc = getidxnumbyname(cnstrt->lcltable->tablename, cnstrt->lclkeyname,
-                                 &rixnum);
+            rc = getidxnumbyname(cnstrt->lcltable->tablename,
+                                 cnstrt->lclkeyname, &rixnum);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: unknown keytag '%s'\n", __func__,
                        cnstrt->lclkeyname);
@@ -446,7 +446,8 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
 
     ondisk_schema = find_tag_schema(db->tablename, ".ONDISK");
     if (NULL == ondisk_schema) {
-        logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n", db->tablename);
+        logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
+               db->tablename);
         exit(1);
     }
     ver_one = clone_schema(ondisk_schema);
@@ -757,8 +758,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
     for (blobn = 0; blobn < newdb->numblobs; blobn++) {
         int map;
-        map = tbl_blob_no_to_tbl_blob_no(newdb->tablename, ".NEW..ONDISK", blobn,
-                                         olddb->tablename, ".ONDISK");
+        map = tbl_blob_no_to_tbl_blob_no(newdb->tablename, ".NEW..ONDISK",
+                                         blobn, olddb->tablename, ".ONDISK");
         /* Sanity check, although I don't see how this can possibly
          * happen - make sure we haven't already decided to use this
          * blob file for anything. */
@@ -783,8 +784,8 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
         } else if (map >= 0 && map < olddb->numblobs) {
             int oldidx =
                 get_schema_blob_field_idx(olddb->tablename, ".ONDISK", map);
-            int newidx =
-                get_schema_blob_field_idx(newdb->tablename, ".NEW..ONDISK", blobn);
+            int newidx = get_schema_blob_field_idx(newdb->tablename,
+                                                   ".NEW..ONDISK", blobn);
 
             /* rebuild if the blob length changed (should only happen for vutf8
              * blobs) */
@@ -1033,11 +1034,13 @@ int compare_constraints(const char *table, struct dbtable *newdb)
          * would've been picked up in forward check */
 
         /*fprintf(stderr, "%s\n", ct->lcltable->tablename);*/
-        if (!strcasecmp(ct->lcltable->tablename, db->tablename)) continue;
+        if (!strcasecmp(ct->lcltable->tablename, db->tablename))
+            continue;
 
         for (j = 0; j < ct->nrules; j++) {
             /* skip references to other tables*/
-            if (strcasecmp(ct->table[j], db->tablename)) continue;
+            if (strcasecmp(ct->table[j], db->tablename))
+                continue;
             /* fprintf(stderr, "  rule %s:%s\n", ct->table[j], ct->keynm[j]);*/
             rc = has_index_changed(db, ct->keynm[j], 1, 0 /*old table key */,
                                    NULL, 0);
@@ -1253,7 +1256,8 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
     int i, j, k;
     for (i = 0; i < thedb->num_dbs; ++i) {
         struct dbtable *db = thedb->dbs[i];
-        if (strcmp(db->tablename, dbname) == 0) continue;
+        if (strcmp(db->tablename, dbname) == 0)
+            continue;
         for (j = 0; j < db->n_constraints; ++j) {
             constraint_t *ct = &db->constraints[j];
             for (k = 0; k < ct->nrules; ++k) {

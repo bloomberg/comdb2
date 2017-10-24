@@ -944,12 +944,13 @@ void showdbenv(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "-----\n");
     for (jj = 0; jj < dbenv->num_dbs; jj++) {
         usedb = dbenv->dbs[jj]; /*de-stink*/
-        logmsg(LOGMSG_USER, "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
+        logmsg(LOGMSG_USER,
+               "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
                "nconns %d  nrevconns %d\n",
                usedb->tablename, usedb->dbnum, dbenv->basedir,
                (usedb->lrlfname) ? usedb->lrlfname : "NULL",
                usedb->n_constraints, usedb->n_rev_constraints);
-       logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
+        logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
@@ -2073,9 +2074,10 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
            routines and SQL can get at it */
         rc = add_cmacc_stmt(tbl, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to load schema: can't process schema file "
-                            "%s\n",
-                    tbl->tablename);
+            logmsg(LOGMSG_ERROR,
+                   "Failed to load schema: can't process schema file "
+                   "%s\n",
+                   tbl->tablename);
             ++i; /* this tblname has already been marshalled so we dont want to
                   * free it below */
             rc = 1;
@@ -2195,8 +2197,8 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                            "number for %s's main data files\n",
-                    dbenv->dbs[i]->tablename);
+                                 "number for %s's main data files\n",
+                   dbenv->dbs[i]->tablename);
             rc = -1;
             goto done;
         }
@@ -2212,9 +2214,10 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                                           j /*dtanum*/, &version_num,
                                           &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's blob num %d's files\n",
-                        dbenv->dbs[i]->tablename, j);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's blob num %d's files\n",
+                       dbenv->dbs[i]->tablename, j);
                 rc = -1;
                 goto done;
             }
@@ -2230,9 +2233,10 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                                            j /*dtanum*/, &version_num,
                                            &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's index num %d\n",
-                        dbenv->dbs[i]->tablename, j);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's index num %d\n",
+                       dbenv->dbs[i]->tablename, j);
                 rc = -1;
                 goto done;
             }
@@ -2271,8 +2275,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         bdberr != BDBERR_NOERROR) {
         if (err)
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                            "number for %s's main data files\n",
-                    p_db->tablename);
+                                 "number for %s's main data files\n",
+                   p_db->tablename);
         else
             ctrace("llmeta_dump_mapping: failed to fetch version number for "
                    "%s's main data files\n",
@@ -2284,7 +2288,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
                p_db->tablename, flibc_htonll(version_num));
     else
-        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n", p_db->tablename,
+        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n",
+               p_db->tablename,
                (long long unsigned int)flibc_htonll(version_num));
 
     /* print the blobs' version numbers */
@@ -2293,9 +2298,10 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's blob num %d's files\n",
-                        p_db->tablename, i);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's blob num %d's files\n",
+                       p_db->tablename, i);
             else
                 ctrace("llmeta_dump_mapping: failed to fetch version number "
                        "for %s's blob num %d's files\n",
@@ -2317,9 +2323,10 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                        &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's index num %d\n",
-                        p_db->tablename, i);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's index num %d\n",
+                       p_db->tablename, i);
             else
                 ctrace("llmeta_dump_mapping: failed to fetch version number "
                        "for %s's index num %d\n",
@@ -2486,7 +2493,8 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
                 if (strcasecmp(dbenv->dbs[ii]->tablename,
                                dbenv->dbs[jj]->tablename) == 0) {
                     have_bad_schema = 1;
-                    logmsg(LOGMSG_FATAL, "Two tables have identical names (%s) tblnums %d "
+                    logmsg(LOGMSG_FATAL,
+                           "Two tables have identical names (%s) tblnums %d "
                            "%d\n",
                            dbenv->dbs[ii]->tablename, ii, jj);
                 }
@@ -2614,8 +2622,8 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
         if (get_csc2_fname(thedb->dbs[i], p_data->lrl_fname_out_dir,
                            p_data->csc2_paths[i],
                            sizeof(p_data->csc2_paths[i]))) {
-            logmsg(LOGMSG_ERROR, "%s: get_csc2_fname failed for: %s\n", __func__,
-                    thedb->dbs[i]->tablename);
+            logmsg(LOGMSG_ERROR, "%s: get_csc2_fname failed for: %s\n",
+                   __func__, thedb->dbs[i]->tablename);
 
             free(p_data);
             return -1;
@@ -2624,9 +2632,10 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
         /* dump the csc2 */
         if (dump_table_csc2_to_disk_fname(thedb->dbs[i],
                                           p_data->csc2_paths[i])) {
-            logmsg(LOGMSG_ERROR, "%s: dump_table_csc2_to_disk_fname failed for: "
-                            "%s\n",
-                    __func__, thedb->dbs[i]->tablename);
+            logmsg(LOGMSG_ERROR,
+                   "%s: dump_table_csc2_to_disk_fname failed for: "
+                   "%s\n",
+                   __func__, thedb->dbs[i]->tablename);
 
             free(p_data);
             return -1;
@@ -5428,10 +5437,12 @@ static int put_all_csc2()
             int rc;
             
             if (thedb->dbs[ii]->lrlfname)
-               rc = load_new_table_schema_file(thedb, thedb->dbs[ii]->tablename,
-                     thedb->dbs[ii]->lrlfname);
+                rc = load_new_table_schema_file(
+                    thedb, thedb->dbs[ii]->tablename, thedb->dbs[ii]->lrlfname);
             else
-               rc = load_new_table_schema_tran(thedb, NULL, thedb->dbs[ii]->tablename, thedb->dbs[ii]->csc2_schema);
+                rc = load_new_table_schema_tran(thedb, NULL,
+                                                thedb->dbs[ii]->tablename,
+                                                thedb->dbs[ii]->csc2_schema);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "error storing schema for table '%s'\n",
                        thedb->dbs[ii]->tablename);

@@ -562,7 +562,7 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->tablename);
+               pCur->db->tablename);
         if (key)
             free(key);
         return -1;
@@ -655,7 +655,7 @@ int osql_get_shadowdata(BtCursor *pCur, unsigned long long genid, void **buf,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->add_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->tablename);
+               pCur->db->tablename);
         return -1;
     }
 
@@ -872,7 +872,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->upd_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->tablename);
+               pCur->db->tablename);
         return -1;
     }
 
@@ -1020,7 +1020,7 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->add_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->tablename);
+               pCur->db->tablename);
         return -1;
     }
 
@@ -2033,8 +2033,8 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             memcpy(key, thd->sqlclntstate->idxInsert[ix],
                    pCur->db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(pCur->db->tablename, ".ONDISK", pCur->ondisk_buf,
-                                  namebuf, key, NULL);
+            rc = stag_to_stag_buf(pCur->db->tablename, ".ONDISK",
+                                  pCur->ondisk_buf, namebuf, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "insert_record:stag_to_stag_buf ix %d\n", ix);
                 return SQLITE_INTERNAL;
@@ -2513,8 +2513,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     if (!osql->verify_tbl || !osql->verify_cur) {
-        logmsg(LOGMSG_ERROR, "%s: error getting verify table for \'%s\'\n", __func__,
-                pCur->db->tablename);
+        logmsg(LOGMSG_ERROR, "%s: error getting verify table for \'%s\'\n",
+               __func__, pCur->db->tablename);
         return -1;
     }
 
@@ -2602,7 +2602,8 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
         if (old_tblnum != tblnum) {
             /*printf("RECGENID SENDING USEDB= %d %s\n", tblnum,
              * thedb->dbs[tblnum]->tablename);*/
-            rc = process_local_shadtbl_usedb(clnt, thedb->dbs[tblnum]->tablename);
+            rc = process_local_shadtbl_usedb(clnt,
+                                             thedb->dbs[tblnum]->tablename);
             if (rc) {
                 logmsg(LOGMSG_ERROR, 
                         "%s:%d: error writting record to master in offload mode!\n",

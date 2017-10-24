@@ -27,8 +27,8 @@ int close_all_dbs(void)
         db = thedb->dbs[ii];
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n", db->tablename,
-                   bdberr);
+            logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n",
+                   db->tablename, bdberr);
             return -1;
         }
     }
@@ -46,8 +46,8 @@ int open_all_dbs(void)
         rc = bdb_open_again(db->handle, &bdberr);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR,
-                   "morestripe: failed reopening table '%s': %d\n", db->tablename,
-                   bdberr);
+                   "morestripe: failed reopening table '%s': %d\n",
+                   db->tablename, bdberr);
             return -1;
         }
     }

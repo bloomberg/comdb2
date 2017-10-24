@@ -779,8 +779,8 @@ backout:
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->tablename, db->version, db->instant_schema_change, db->lrl, db->odh,
-           db->handle);
+           db->tablename, db->version, db->instant_schema_change, db->lrl,
+           db->odh, db->handle);
 
     return -1;
 

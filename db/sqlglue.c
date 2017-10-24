@@ -1600,8 +1600,8 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
         type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
             logmsg(LOGMSG_ERROR, "Unsupported type in schema: column '%s' [%d] "
-                            "table %s\n",
-                    schema->member[field].name, field, db->tablename);
+                                 "table %s\n",
+                   schema->member[field].name, field, db->tablename);
             return -1;
         }
         strbuf_append(sql, type);
@@ -1615,11 +1615,11 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
                 strbuf_append(sql, dstr);
                 sqlite3_free(dstr);
             } else {
-                logmsg(LOGMSG_ERROR, 
-                        "Failed to convert default value column '%s' table "
-                        "%s type %d\n",
-                        schema->member[field].name, db->tablename,
-                        schema->member[field].type);
+                logmsg(LOGMSG_ERROR,
+                       "Failed to convert default value column '%s' table "
+                       "%s type %d\n",
+                       schema->member[field].name, db->tablename,
+                       schema->member[field].type);
                 strbuf_free(sql);
                 return -1;
             }
@@ -1657,7 +1657,8 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
         snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ixnum);
         schema = find_tag_schema(db->tablename, namebuf);
         if (schema == NULL) {
-            logmsg(LOGMSG_ERROR, "No %s tag for table %s\n", namebuf, db->tablename);
+            logmsg(LOGMSG_ERROR, "No %s tag for table %s\n", namebuf,
+                   db->tablename);
             strbuf_free(sql);
             return -1;
         }
@@ -6265,7 +6266,7 @@ again:
             }
             if (nretries >= gbl_maxretries) {
                 logmsg(LOGMSG_ERROR, "too much contention fetching "
-                       "tbl %s blob %s tried %d times\n",
+                                     "tbl %s blob %s tried %d times\n",
                        pCur->db->tablename, f->name, nretries);
                 return SQLITE_DEADLOCK;
             }
@@ -7274,9 +7275,9 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             short_version = fdb_table_version(version);
             if (gbl_fdb_track) {
                 logmsg(LOGMSG_ERROR, "%s: table \"%s\" has version %llu (%u), "
-                                "checking against %u\n",
-                        __func__, db->tablename, version, short_version,
-                        clnt->fdb_state.version);
+                                     "checking against %u\n",
+                       __func__, db->tablename, version, short_version,
+                       clnt->fdb_state.version);
             }
 
             if (short_version != clnt->fdb_state.version) {
@@ -7317,7 +7318,8 @@ int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
 
         if (after_recovery) {
-            unsigned long long table_version = comdb2_table_version(db->tablename);
+            unsigned long long table_version =
+                comdb2_table_version(db->tablename);
 
             /* NOTE: returning here error is very low level, branching many code
                paths.
@@ -8585,7 +8587,10 @@ i64 sqlite3BtreeNewRowid(BtCursor *pCur)
     return bdb_recno_to_genid(++thd->sqlclntstate->recno);
 }
 
-char *sqlite3BtreeGetTblName(BtCursor *pCur) { return pCur->db->tablename; }
+char *sqlite3BtreeGetTblName(BtCursor *pCur)
+{
+    return pCur->db->tablename;
+}
 
 void cancel_sql_statement(int id)
 {
@@ -8702,8 +8707,8 @@ void sql_dump_running_statements(void)
                     else if (cur->ixnum == -1)
                         logmsg(LOGMSG_USER, " table %s", cur->db->tablename);
                     else
-                        logmsg(LOGMSG_USER, " table %s index %d", cur->db->tablename,
-                               cur->ixnum);
+                        logmsg(LOGMSG_USER, " table %s index %d",
+                               cur->db->tablename, cur->ixnum);
                     logmsg(LOGMSG_USER, " nmove %d nfind %d nwrite %d\n", cur->nmove,
                            cur->nfind, cur->nwrite);
                 }
@@ -11231,8 +11236,8 @@ int bt_hash_table(char *table, int szkb)
 
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
-    logmsg(LOGMSG_WARN, "Building bthash for table %s, size %dkb per stripe\n", db->tablename,
-           szkb);
+    logmsg(LOGMSG_WARN, "Building bthash for table %s, size %dkb per stripe\n",
+           db->tablename, szkb);
     bdb_handle_dbp_add_hash(bdb_state, szkb);
     trans_commit(&iq, tran, gbl_mynode);
 

@@ -533,7 +533,8 @@ static int bthash_callback(const char *table)
                    db->tablename, bthashsz);
             bdb_handle_dbp_add_hash(db->handle, bthashsz);
         } else {
-            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n", db->tablename);
+            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n",
+                   db->tablename);
             bdb_handle_dbp_drop_hash(db->handle);
         }
         return 0;

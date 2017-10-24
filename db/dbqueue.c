@@ -165,7 +165,7 @@ static void condbgf(struct consumer *consumer, const char *format, ...)
     va_list args;
     va_start(args, format);
     logmsg(LOGMSG_USER, "[DBGconsumer:%s:%d]::", consumer->db->tablename,
-            consumer->consumern);
+           consumer->consumern);
     logmsgv(LOGMSG_USER, format, args);
     va_end(args);
 }
@@ -400,24 +400,25 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
     if (!checkonly && db &&
         (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)) {
         logmsg(LOGMSG_ERROR, "dbqueue_add_consumer: %s is not a queue\n",
-                db->tablename);
+               db->tablename);
         rc = -1;
         goto done;
     }
 
     if (!checkonly && consumern < 0 || consumern >= MAXCONSUMERS) {
-        logmsg(LOGMSG_ERROR, 
-                "dbqueue_add_consumer: %s consumer number %d out of range\n",
-                db->tablename, consumern);
+        logmsg(LOGMSG_ERROR,
+               "dbqueue_add_consumer: %s consumer number %d out of range\n",
+               db->tablename, consumern);
         rc = -1;
         goto done;
     }
 
     if (!checkonly && db && consumern >= 0 && db->consumers[consumern]) {
         if (noremove) {
-            logmsg(LOGMSG_ERROR, 
-                    "dbqueue_add_consumer: %s consumer number %d in use already\n",
-                    db->tablename, consumern);
+            logmsg(
+                LOGMSG_ERROR,
+                "dbqueue_add_consumer: %s consumer number %d in use already\n",
+                db->tablename, consumern);
             rc = -1;
             goto done;
         } else {
@@ -473,9 +474,10 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
         strncpy0(buf, method + 7, sizeof(buf));
         dbnumstr = strchr(buf, ':');
         if (!dbnumstr) {
-            logmsg(LOGMSG_ERROR, "dbqueue_add_consumer: %s consumer number %d has "
-                            "unknown delivery method '%s'\n",
-                    db ? db->tablename : "???", consumern, method);
+            logmsg(LOGMSG_ERROR,
+                   "dbqueue_add_consumer: %s consumer number %d has "
+                   "unknown delivery method '%s'\n",
+                   db ? db->tablename : "???", consumern, method);
             free(consumer);
             rc = -1;
             goto done;
@@ -513,20 +515,22 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
         }
 
         if (consumer->dbnum <= 0) {
-            logmsg(LOGMSG_ERROR, "dbqueue_add_consumer: %s consumer number %d has "
-                            "unknown delivery method '%s' - invalid remote "
-                            "database number\n",
-                    db->tablename, consumern, method);
+            logmsg(LOGMSG_ERROR,
+                   "dbqueue_add_consumer: %s consumer number %d has "
+                   "unknown delivery method '%s' - invalid remote "
+                   "database number\n",
+                   db->tablename, consumern, method);
             free(consumer);
             rc = -1;
             goto done;
         }
 
         if (consumer->rmtmach == NULL && consumer->ndesthosts == 0) {
-            logmsg(LOGMSG_ERROR, "dbqueue_add_consumer: %s consumer number %d has "
-                            "unknown delivery method '%s' - invalid remote "
-                            "machine name or number '%s'\n",
-                    db->tablename, consumern, method, machstr);
+            logmsg(LOGMSG_ERROR,
+                   "dbqueue_add_consumer: %s consumer number %d has "
+                   "unknown delivery method '%s' - invalid remote "
+                   "machine name or number '%s'\n",
+                   db->tablename, consumern, method, machstr);
             free(consumer);
             rc = -1;
             goto done;
@@ -542,8 +546,8 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
         consumer = NULL;
     } else {
         logmsg(LOGMSG_ERROR, "dbqueue_add_consumer: %s consumer number %d has "
-                        "unknown delivery method '%s'\n",
-                db->tablename, consumern, method);
+                             "unknown delivery method '%s'\n",
+               db->tablename, consumern, method);
         free(consumer);
         rc = -1;
         goto done;
@@ -598,7 +602,7 @@ int dbqueue_set_consumern_options(struct dbtable *db, int consumern,
         return dbqueue_set_consumer_options(consumer, opts);
     else {
         logmsg(LOGMSG_ERROR, "Bad consumer number %d for queue %s\n", consumern,
-                db->tablename);
+               db->tablename);
         return -1;
     }
 }
@@ -617,8 +621,8 @@ int dbqueue_set_consumer_options(struct consumer *consumer, const char *opts)
 
     tok = strtok_r(copy, delims, &lasts);
     while (tok) {
-        logmsg(LOGMSG_USER, "Queue %s consumer %d option '%s'\n", consumer->db->tablename,
-               consumer->consumern, tok);
+        logmsg(LOGMSG_USER, "Queue %s consumer %d option '%s'\n",
+               consumer->db->tablename, consumer->consumern, tok);
         if (strcmp(tok, "no_rtcpu") == 0)
             consumer->rtcpu_mode = NO_RTCPU;
         else if (strcmp(tok, "use_rtcpu") == 0)
@@ -629,7 +633,7 @@ int dbqueue_set_consumer_options(struct consumer *consumer, const char *opts)
             consumer->randomize_list = 1;
         else {
             logmsg(LOGMSG_USER, "Bad option for queue %s consumer %d: '%s'\n",
-                    consumer->db->tablename, consumer->consumern, tok);
+                   consumer->db->tablename, consumer->consumern, tok);
             nerrors++;
         }
 
@@ -683,7 +687,9 @@ void dbqueue_admin(struct dbenv *dbenv)
                             if (rc < 0) {
                                 consumer->active = 0;
                                 MEMORY_SYNC;
-                                logmsg(LOGMSG_USER, "%s: cannot create %s consumer %d:%d %s\n",
+                                logmsg(
+                                    LOGMSG_USER,
+                                    "%s: cannot create %s consumer %d:%d %s\n",
                                     __func__, db->tablename, consumern, errno,
                                     strerror(errno));
                             }
@@ -763,7 +769,8 @@ again:
      * goose - if it isn't then don't go any further. */
     rc = dbq_check_goose(&iq, NULL);
     if (debug)
-        logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_check_goose rc=%d\n", db->tablename, rc);
+        logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_check_goose rc=%d\n",
+               db->tablename, rc);
     if (rc != 0)
         return;
 
@@ -780,15 +787,16 @@ again:
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {
             if (debug)
-                logmsg(LOGMSG_USER, "[GOOSE:%s]::trans_start rc=%d\n", db->tablename, rc);
+                logmsg(LOGMSG_USER, "[GOOSE:%s]::trans_start rc=%d\n",
+                       db->tablename, rc);
             return;
         }
 
         /* Check again for goose under transaction. */
         rc = dbq_check_goose(&iq, trans);
         if (debug)
-            logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_check_goose (trans) rc=%d\n", db->tablename,
-                   rc);
+            logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_check_goose (trans) rc=%d\n",
+                   db->tablename, rc);
         if (rc != 0) {
             trans_abort(&iq, trans);
             if (rc == RC_INTERNAL_RETRY)
@@ -810,7 +818,8 @@ again:
 
             rc = dbq_consume_goose(&iq, trans);
             if (debug)
-                logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_consume_goose rc=%d\n", db->tablename, rc);
+                logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_consume_goose rc=%d\n",
+                       db->tablename, rc);
             if (rc != 0) {
                 trans_abort(&iq, trans);
                 if (gotlk)
@@ -823,7 +832,8 @@ again:
 
             rc = trans_commit(&iq, trans, 0);
             if (debug)
-                logmsg(LOGMSG_USER, "[GOOSE:%s]::trans_commit rc=%d\n", db->tablename, rc);
+                logmsg(LOGMSG_USER, "[GOOSE:%s]::trans_commit rc=%d\n",
+                       db->tablename, rc);
             if (rc != RC_INTERNAL_RETRY) {
                 /* If we consumed a goose then go again, but make sure we don't
                  * end up running hot on CPU just consuming geese.  If that
@@ -880,7 +890,8 @@ void dbqueue_goose(struct dbtable *db, int force)
     if (!force) {
         rc = dbq_check_goose(&iq, NULL);
         if (debug)
-            logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_check_goose rc=%d\n", db->tablename, rc);
+            logmsg(LOGMSG_USER, "[GOOSE:%s]::dbq_check_goose rc=%d\n",
+                   db->tablename, rc);
         if (rc == 0)
             return;
     }
@@ -903,7 +914,8 @@ void dbqueue_goose(struct dbtable *db, int force)
         rc = trans_start(&iq, NULL, &trans);
         if (rc != 0) {
             if (debug)
-                logmsg(LOGMSG_USER, "[ADDGOOSE:%s]::trans_start rc=%d\n", db->tablename, rc);
+                logmsg(LOGMSG_USER, "[ADDGOOSE:%s]::trans_start rc=%d\n",
+                       db->tablename, rc);
             if (gotlk)
                 pthread_rwlock_unlock(&gbl_block_qconsume_lock);
             return;
@@ -911,7 +923,8 @@ void dbqueue_goose(struct dbtable *db, int force)
 
         rc = dbq_add_goose(&iq, trans);
         if (debug)
-            logmsg(LOGMSG_USER, "[ADDGOOSE:%s]:: dbq_add_goose rc=%d\n", db->tablename, rc);
+            logmsg(LOGMSG_USER, "[ADDGOOSE:%s]:: dbq_add_goose rc=%d\n",
+                   db->tablename, rc);
         if (rc != 0) {
             trans_abort(&iq, trans);
             if (gotlk)
@@ -924,7 +937,8 @@ void dbqueue_goose(struct dbtable *db, int force)
 
         rc = trans_commit(&iq, trans, 0);
         if (debug)
-            logmsg(LOGMSG_USER, "[ADDGOOSE:%s]:: trans_commit rc=%d\n", db->tablename, rc);
+            logmsg(LOGMSG_USER, "[ADDGOOSE:%s]:: trans_commit rc=%d\n",
+                   db->tablename, rc);
         if (rc != RC_INTERNAL_RETRY) {
             if (gotlk)
                 pthread_rwlock_unlock(&gbl_block_qconsume_lock);
@@ -983,7 +997,8 @@ static void dbqueue_stat_thread_int(struct dbtable *db, int fullstat, int walk_q
         iq.usedb = db;
 
         bzero(stats, sizeof(stats));
-        logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n", db->tablename);
+        logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
+               db->tablename);
         if (!walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
@@ -1179,8 +1194,8 @@ static void dbqueue_flush(struct dbtable *db, int consumern)
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
 
-   logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n", db->tablename,
-           consumern);
+    logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n",
+           db->tablename, consumern);
 
     if (db->dbenv->master != machine()) {
         logmsg(LOGMSG_WARN, "... but I am not the master node, so I do nothing.\n");
@@ -1216,7 +1231,8 @@ static void dbqueue_flush(struct dbtable *db, int consumern)
         }
     }
 
-    logmsg(LOGMSG_INFO, "Done flush for queue '%s' consumer %d, flushed %d items\n",
+    logmsg(LOGMSG_INFO,
+           "Done flush for queue '%s' consumer %d, flushed %d items\n",
            db->tablename, consumern, nflush);
 }
 
@@ -1409,9 +1425,9 @@ static void *dbqueue_consume_thread(void *arg)
     if (consumer->rmtmach && !allow_broadcast_to_remote(consumer->rmtmach)) {
         if (!consumer->complained) {
             logmsg(LOGMSG_WARN, "consumer %d for queue '%s' WILL NOT START - "
-                            "I will not broadcast to %s machine %s!\n",
-                    consumer->consumern, db->tablename,
-                    get_mach_class_str(consumer->rmtmach), consumer->rmtmach);
+                                "I will not broadcast to %s machine %s!\n",
+                   consumer->consumern, db->tablename,
+                   get_mach_class_str(consumer->rmtmach), consumer->rmtmach);
             consumer->complained = 1;
         }
         consumer->active = 0;
@@ -1421,8 +1437,8 @@ static void *dbqueue_consume_thread(void *arg)
 
     consumer->complained = 0;
 
-    logmsg(LOGMSG_INFO, "consumer %d starting for queue '%s'\n", consumer->consumern,
-           db->tablename);
+    logmsg(LOGMSG_INFO, "consumer %d starting for queue '%s'\n",
+           consumer->consumern, db->tablename);
 
     pthread_mutex_lock(&consumer->mutex);
     consumer->stopped = 0;
@@ -1620,8 +1636,8 @@ static void *dbqueue_consume_thread(void *arg)
     bzero(consumer->items, sizeof(consumer->items));
     consumer->numitems = 0;
 
-    logmsg(LOGMSG_INFO, "consumer %d exiting for queue '%s'\n", consumer->consumern,
-           db->tablename);
+    logmsg(LOGMSG_INFO, "consumer %d exiting for queue '%s'\n",
+           consumer->consumern, db->tablename);
     consumer->active = 0;
     MEMORY_SYNC;
 
@@ -1702,7 +1718,8 @@ int consume(struct ireq *iq, const void *fnd, struct consumer *consumer,
                 break;
         }
 
-        logmsg(LOGMSG_WARN, "difficulty consuming key from queue '%s' consumer %d\n",
+        logmsg(LOGMSG_WARN,
+               "difficulty consuming key from queue '%s' consumer %d\n",
                iq->usedb->tablename, consumern);
         if (!consumer)
             sleep(sleeptime);
@@ -1781,7 +1798,8 @@ beginning:
         /* Populate header */
         bzero(buf, offsetof(struct dbq_msgbuf, msgs));
         strncpy(buf->comdb2, "CDB2_MSG", sizeof(buf->comdb2));
-        strncpy(buf->queue_name, consumer->db->tablename, sizeof(buf->queue_name));
+        strncpy(buf->queue_name, consumer->db->tablename,
+                sizeof(buf->queue_name));
         strncpy(buf->dbname, consumer->db->dbenv->envname, sizeof(buf->dbname));
         /* XXX endian */
         buf->buflen = htonl(offsetof(struct dbq_msgbuf, msgs));
@@ -1897,7 +1915,9 @@ int consumer_connect_host(struct consumer *consumer, char *host)
 
     fd = portmux_connect_to(host, "comdb2", "triggers", "0", 2000);
     if (fd < 0) {
-        logmsg(LOGMSG_ERROR, "consumer_connect_host queue %s consumer %d host %s rc %d %d %s\n",
+        logmsg(
+            LOGMSG_ERROR,
+            "consumer_connect_host queue %s consumer %d host %s rc %d %d %s\n",
             consumer->db->tablename, consumer->consumern, host, fd, errno,
             strerror(errno));
         return -1;
@@ -1987,16 +2007,18 @@ static int consumer_send(struct consumer *consumer, int len)
 
     if (rsp.followlen) {
         if (rsp.followlen < 0 || rsp.followlen > getlclbfpoolwidthbigsnd()) {
-            logmsg(LOGMSG_ERROR, "queue %s consumer %d (%s) suspicious response length %d\n",
-                    consumer->db->tablename, consumer->consumern,
-                    consumer_current_dest(consumer), rsp.followlen);
+            logmsg(LOGMSG_ERROR,
+                   "queue %s consumer %d (%s) suspicious response length %d\n",
+                   consumer->db->tablename, consumer->consumern,
+                   consumer_current_dest(consumer), rsp.followlen);
             return 996;
         }
         rc = tcpreadmsg(consumer->listener_fd, consumer->buf, rsp.followlen, 0);
         if (rc <= 0) {
-            logmsg(LOGMSG_ERROR, "queue %s consumer %d (%s) read response rc %d\n",
-                    consumer->db->tablename, consumer->consumern,
-                    consumer_current_dest(consumer), rc);
+            logmsg(LOGMSG_ERROR,
+                   "queue %s consumer %d (%s) read response rc %d\n",
+                   consumer->db->tablename, consumer->consumern,
+                   consumer_current_dest(consumer), rc);
             return 996;
         }
     }

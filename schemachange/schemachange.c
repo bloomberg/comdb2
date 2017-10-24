@@ -919,8 +919,8 @@ int add_schema_change_tables()
             char *abort_filename =
                 comdb2_location("marker", "%s.scabort", thedb->envname);
             if (access(abort_filename, F_OK) == 0) {
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename, NULL,
-                                              0, &bdberr);
+                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
+                                              NULL, 0, &bdberr);
                 if (rc)
                     logmsg(LOGMSG_ERROR,
                            "Failed to cancel resuming schema change %d %d\n",
@@ -1111,8 +1111,8 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     /*do_crap*/
     {
         /* Find the existing table and use its current schema */
-        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &schemabuf,
-                          NULL /*csc2len*/)) {
+        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/,
+                          &schemabuf, NULL /*csc2len*/)) {
             xerr->errval = SC_VIEW_ERR_BUG;
             snprintf(xerr->errstr, sizeof(xerr->errstr),
                      "%s: could not get schema for table: %s\n", __func__,
@@ -1579,8 +1579,8 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
             return -1;
         }
 
-        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &schemabuf,
-                          NULL /*csc2len*/)) {
+        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/,
+                          &schemabuf, NULL /*csc2len*/)) {
             fprintf(stderr, "%s: could not get schema for table: %s\n",
                     __func__, db->tablename);
             cleanup_strptr(&schemabuf);

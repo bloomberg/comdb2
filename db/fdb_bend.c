@@ -648,8 +648,8 @@ again:
             }
 
             if (nretries >= gbl_maxretries) {
-               logmsg(LOGMSG_ERROR, "too much contention fetching "
-                       "tbl %s blob %s tried %d times\n",
+                logmsg(LOGMSG_ERROR, "too much contention fetching "
+                                     "tbl %s blob %s tried %d times\n",
                        thedb->dbs[cur->tblnum]->tablename, f->name, nretries);
                 return SQLITE_DEADLOCK;
             }

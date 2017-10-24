@@ -427,13 +427,14 @@ int check_update_constraints(struct ireq *iq, void *trans,
                     if (iq->debug)
                         reqprintf(iq, "RTNKYCNSTRT SKIP CNSTRT CHECK DUE TO "
                                       "SAME KEY DATA. TBL %s INDEX %d (%s)",
-                                  iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
+                                  iq->usedb->tablename, ixnum,
+                                  cnstrt->keynm[j]);
                     continue;
                 }
             }
             /* here we convert the key into return db format */
-            rc = getidxnumbyname(cnstrt->lcltable->tablename, cnstrt->lclkeyname,
-                                 &rixnum);
+            rc = getidxnumbyname(cnstrt->lcltable->tablename,
+                                 cnstrt->lclkeyname, &rixnum);
             if (rc) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT: UNKNOWN TABLE %s KEYTAG %s",
@@ -450,8 +451,8 @@ int check_update_constraints(struct ireq *iq, void *trans,
             int nulls = 0;
 
             rixlen = rc = stag_to_stag_buf_ckey(
-                iq->usedb->tablename, ondisk_tag, lkey, cnstrt->lcltable->tablename,
-                rondisk_tag, rkey, &nulls, PK2FK);
+                iq->usedb->tablename, ondisk_tag, lkey,
+                cnstrt->lcltable->tablename, rondisk_tag, rkey, &nulls, PK2FK);
             if (rc == -1) {
 
 #if 0
@@ -500,9 +501,10 @@ int check_update_constraints(struct ireq *iq, void *trans,
                    source of
                    new data for everyone else.
                 */
-                rixlen = rc = stag_to_stag_buf_ckey(
-                    iq->usedb->tablename, ondisk_tag, nkey,
-                    cnstrt->lcltable->tablename, rondisk_tag, rnkey, NULL, PK2FK);
+                rixlen = rc =
+                    stag_to_stag_buf_ckey(iq->usedb->tablename, ondisk_tag,
+                                          nkey, cnstrt->lcltable->tablename,
+                                          rondisk_tag, rnkey, NULL, PK2FK);
                 if (rc == -1) {
 /* same thing as for delete.  If the key cannot be formed,
    it is not a failure, no one's referencing us..so,
@@ -686,8 +688,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
                           "verify key constraint cannot form new data table "
                           "'%s' index %d from %s index %d ",
-                          bct->dstdb->tablename, bct->dixnum, bct->srcdb->tablename,
-                          bct->sixnum);
+                          bct->dstdb->tablename, bct->dixnum,
+                          bct->srcdb->tablename, bct->sixnum);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 close_constraint_table_cursor(cur);
                 return ERR_CONVERT_IX;
@@ -711,8 +713,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
                           "verify key constraint cannot form table '%s' index "
                           "%d from %s index %d key '%s",
-                          bct->dstdb->tablename, bct->dixnum, bct->srcdb->tablename,
-                          bct->sixnum,
+                          bct->dstdb->tablename, bct->dixnum,
+                          bct->srcdb->tablename, bct->sixnum,
                           get_keynm_from_db_idx(bct->srcdb, bct->sixnum));
                 reqdumphex(iq, skey, bct->sixlen);
                 reqmoref(iq, " RC %d", rc);
@@ -1066,7 +1068,8 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 reqprintf(iq, "%p:ADDKYCNSTRT BAD TABLE %s\n", trans,
                           iq->usedb->tablename);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
-                      "add key constraint bad table '%s'", iq->usedb->tablename);
+                      "add key constraint bad table '%s'",
+                      iq->usedb->tablename);
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
@@ -1406,8 +1409,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 int ridx = 0, lixnum = -1;
                 char lkey[MAXKEYLEN];
 
-                rc =
-                    getidxnumbyname(iq->usedb->tablename, ct->lclkeyname, &lixnum);
+                rc = getidxnumbyname(iq->usedb->tablename, ct->lclkeyname,
+                                     &lixnum);
                 if (rc) {
                     if (iq->debug)
                         reqprintf(iq, "VERKYCNSTRT: UNKNOWN LCL KEYTAG %s",
@@ -1494,13 +1497,14 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     fixlen = getkeysize(ftable, fixnum);
 
                     /*snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", fixnum);
-                      rc=stag_to_stag_bufx(iq->usedb->tablename, ".ONDISK",od_dta,
+                      rc=stag_to_stag_bufx(iq->usedb->tablename,
+                      ".ONDISK",od_dta,
                       ftable->tablename, ondisk_tag, fkey);*/
 
                     snprintf(fondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", fixnum);
                     fixlen = rc = stag_to_stag_buf_ckey(
-                        iq->usedb->tablename, ondisk_tag, lkey, ftable->tablename,
-                        fondisk_tag, fkey, &nulls, FK2PK);
+                        iq->usedb->tablename, ondisk_tag, lkey,
+                        ftable->tablename, fondisk_tag, fkey, &nulls, FK2PK);
                     if (rc == -1) {
                         if (iq->debug)
                             reqprintf(
@@ -1619,17 +1623,17 @@ void dump_all_constraints(struct dbenv *env)
 void dump_rev_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n", table->tablename,
-            table->n_rev_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n",
+           table->tablename, table->n_rev_constraints);
     for (i = 0; i < table->n_rev_constraints; i++) {
         constraint_t *ct = table->rev_constraints[i];
         int j = 0;
         logmsg(LOGMSG_USER, "(%d)REV CONSTRAINT TBL: '%s' KEY '%s'  CSCUPD: %c "
-                        "CSCDEL: %c #RULES %d:\n",
-                i + 1, ct->lcltable->tablename, ct->lclkeyname,
-                ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
-                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
-                ct->nrules);
+                            "CSCDEL: %c #RULES %d:\n",
+               i + 1, ct->lcltable->tablename, ct->lclkeyname,
+               ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
+               ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
+               ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
             logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j],
                     ct->keynm[j]);
@@ -1642,7 +1646,7 @@ void dump_constraints(struct dbtable *table)
 {
     int i = 0;
     logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->tablename,
-            table->n_constraints);
+           table->n_constraints);
     for (i = 0; i < table->n_constraints; i++) {
         constraint_t *ct = &table->constraints[i];
         int j = 0;
@@ -1920,9 +1924,10 @@ static void constraint_err(void *s, struct dbtable *db, constraint_t *ct, int ru
              ct->keynm[rule],
              err);
        else */
-    logmsg(LOGMSG_ERROR, 
-            "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s\n",
-            db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
+    logmsg(
+        LOGMSG_ERROR,
+        "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s\n",
+        db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
 }
 
 static inline int key_has_expressions_members(struct schema *key)
@@ -2031,7 +2036,8 @@ int populate_reverse_constraints(struct dbtable *db)
         sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);
         if (sc == NULL) {
             ++n_errors;
-            logmsg(LOGMSG_ERROR, "constraint error: key %s is not found in table %s\n",
+            logmsg(LOGMSG_ERROR,
+                   "constraint error: key %s is not found in table %s\n",
                    cnstrt->lclkeyname, db->tablename);
         }
 

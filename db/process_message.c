@@ -1907,7 +1907,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                     int version;
                     version = get_csc2_version(thedb->dbs[ii]->tablename);
                     logmsg(LOGMSG_USER, "table %s is at csc2 version %d\n",
-                            thedb->dbs[ii]->tablename, version);
+                           thedb->dbs[ii]->tablename, version);
                 }
             }
         } else if (tokcmp(tok, ltok, "dumpcsc2") == 0) {
@@ -1939,8 +1939,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 char *csc2 = NULL;
                 int rc, len;
                 rc = get_csc2_file(db->tablename, version, &csc2, &len);
-                logmsg(LOGMSG_ERROR, "Table '%s' get schema returned rcode %d\n", db->tablename,
-                       rc);
+                logmsg(LOGMSG_ERROR,
+                       "Table '%s' get schema returned rcode %d\n",
+                       db->tablename, rc);
                 if (csc2) {
                     logmsg(LOGMSG_USER, "%s\n", csc2);
                     free(csc2);
@@ -3477,7 +3478,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 rc = bdb_find_oldest_genid(iq.usedb->handle, NULL, stripe, buf,
                                            &reclen, 64 * 1024, &genid, &ver,
                                            &bdberr);
-               logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->tablename, stripe);
+                logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->tablename,
+                       stripe);
                 if (rc == 0)
                    logmsg(LOGMSG_USER, "%016llx %d", genid, bdb_genid_timestamp(genid));
                 else if (rc == 1)
@@ -4002,7 +4004,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
             logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
-                   "inplace_updates:%s  version:%d\n",
+                                "inplace_updates:%s  version:%d\n",
                    db->tablename, YESNO(db->instant_schema_change),
                    YESNO(db->inplace_updates), YESNO(db->odh), db->version);
         } else {
@@ -5262,9 +5264,10 @@ static void dump_table_sizes(struct dbenv *dbenv)
             percent = (db->totalsize * 100ULL) / total;
         else
             percent = 0;
-       logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname, db->tablename,
-               fmt_size(b, sizeof(b), db->totalsize), (int)percent);
-       logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
+        logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname,
+               db->tablename, fmt_size(b, sizeof(b), db->totalsize),
+               (int)percent);
+        logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
         for (ii = 0; ii < db->nix; ii++) {
            logmsg(LOGMSG_USER, ", ix%d %s", ii, fmt_size(b, sizeof(b), db->ixsizes[ii]));
         }
@@ -5281,9 +5284,9 @@ static void dump_table_sizes(struct dbenv *dbenv)
             percent = (db->totalsize * 100ULL) / total;
         else
             percent = 0;
-        logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n", maxtblname, db->tablename,
-               fmt_size(b, sizeof(b), db->totalsize), (int)percent,
-               db->numextents);
+        logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n",
+               maxtblname, db->tablename, fmt_size(b, sizeof(b), db->totalsize),
+               (int)percent, db->numextents);
     }
     if (total > 0)
         percent = (logsize * 100ULL) / total;
@@ -5330,8 +5333,8 @@ void curstats(struct dbenv *dbenv)
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];
-        logmsg(LOGMSG_USER, "table '%s' : ix = %u cur = %u\n", db->tablename, db->sqlcur_ix,
-               db->sqlcur_cur);
+        logmsg(LOGMSG_USER, "table '%s' : ix = %u cur = %u\n", db->tablename,
+               db->sqlcur_ix, db->sqlcur_cur);
     }
 }
 

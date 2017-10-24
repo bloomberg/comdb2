@@ -815,8 +815,8 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
                         logmsg(LOGMSG_ERROR, "prefault_thd:cannot get key size"
-                                        " tbl %s. idx %d\n",
-                                iq.usedb->tablename, ixnum);
+                                             " tbl %s. idx %d\n",
+                               iq.usedb->tablename, ixnum);
                         break;
                     }
                     snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
@@ -940,18 +940,18 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
                         logmsg(LOGMSG_ERROR, "prefault_thd:cannot get key size"
-                                        " tbl %s. idx %d\n",
-                                iq.usedb->tablename, ixnum);
+                                             " tbl %s. idx %d\n",
+                               iq.usedb->tablename, ixnum);
                         continue;
                     }
                     snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
                     rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                           (char *)fnddta, keytag, key, NULL);
                     if (rc == -1) {
-                        logmsg(LOGMSG_ERROR, 
-                                "prefault_thd:cannot convert .ONDISK to IDX"
-                                " %d of TBL %s\n",
-                                ixnum, iq.usedb->tablename);
+                        logmsg(LOGMSG_ERROR,
+                               "prefault_thd:cannot convert .ONDISK to IDX"
+                               " %d of TBL %s\n",
+                               ixnum, iq.usedb->tablename);
                         continue;
                     }
 
@@ -976,8 +976,9 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                         convert_failure_reason_str(&reason, iq.usedb->tablename,
                                                    tag, ".ONDISK", str,
                                                    sizeof(str));
-                        logmsg(LOGMSG_USER, "%s: conv failed for %s:%s->.ONDISK rc %d\n",
-                                __func__, iq.usedb->tablename, tag, rc);
+                        logmsg(LOGMSG_USER,
+                               "%s: conv failed for %s:%s->.ONDISK rc %d\n",
+                               __func__, iq.usedb->tablename, tag, rc);
                         logmsg(LOGMSG_USER, "%s: reason: %s\n", __func__, str);
                     }
 
@@ -994,18 +995,18 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
                         logmsg(LOGMSG_ERROR, "prefault_thd:cannot get key size"
-                                        " tbl %s. idx %d\n",
-                                iq.usedb->tablename, ixnum);
+                                             " tbl %s. idx %d\n",
+                               iq.usedb->tablename, ixnum);
                         continue;
                     }
                     snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
                     rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                           (char *)od_dta, keytag, key, NULL);
                     if (rc == -1) {
-                        logmsg(LOGMSG_ERROR, 
-                                "prefault_thd:cannot convert .ONDISK to IDX"
-                                " %d of TBL %s\n",
-                                ixnum, iq.usedb->tablename);
+                        logmsg(LOGMSG_ERROR,
+                               "prefault_thd:cannot convert .ONDISK to IDX"
+                               " %d of TBL %s\n",
+                               ixnum, iq.usedb->tablename);
                         continue;
                     }
 

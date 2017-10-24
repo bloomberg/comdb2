@@ -194,7 +194,8 @@ void req_stats(struct dbtable *db)
         int flag = 0;
         if (db->typcnt[ii]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "%-20s %u\n", req2a(ii), db->typcnt[ii]);
@@ -203,7 +204,8 @@ void req_stats(struct dbtable *db)
     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
         if (db->blocktypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj),
@@ -213,7 +215,8 @@ void req_stats(struct dbtable *db)
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
         if (db->blockosqltypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->tablename);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "    %-20s %u\n", osql_breq2a(jj),

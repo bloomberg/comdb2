@@ -825,7 +825,8 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid, &bdberr);
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+                                &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
@@ -1134,8 +1135,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         }
         for (ii = 0; ii < data.to->numblobs; ii++) {
             int map;
-            map = tbl_blob_no_to_tbl_blob_no(data.to->tablename, ".NEW..ONDISK",
-                                             ii, data.from->tablename, ".ONDISK");
+            map =
+                tbl_blob_no_to_tbl_blob_no(data.to->tablename, ".NEW..ONDISK",
+                                           ii, data.from->tablename, ".ONDISK");
             if (map < 0 && map != -3) {
                 sc_errf(data.s,
                         "convert_all_records: error mapping blob %d "

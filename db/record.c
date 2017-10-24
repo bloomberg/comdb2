@@ -330,8 +330,9 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         od_len = (size_t)od_len_int;
         mallocced_memory = alloca(od_len);
         if (!mallocced_memory) {
-            logmsg(LOGMSG_ERROR, "add_record: malloc %u failed! (table %s tag %s)\n",
-                    (unsigned)od_len, iq->usedb->tablename, tag);
+            logmsg(LOGMSG_ERROR,
+                   "add_record: malloc %u failed! (table %s tag %s)\n",
+                   (unsigned)od_len, iq->usedb->tablename, tag);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
             ERR;
@@ -343,10 +344,10 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             conv_flags |= CONVERT_LITTLE_ENDIAN_CLIENT;
         }
 
-        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record, WHOLE_BUFFER,
-                                   fldnullmap, ondisktag, od_dta, conv_flags,
-                                   &reason /*fail reason*/, blobs, maxblobs,
-                                   iq->tzname);
+        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+                                   WHOLE_BUFFER, fldnullmap, ondisktag, od_dta,
+                                   conv_flags, &reason /*fail reason*/, blobs,
+                                   maxblobs, iq->tzname);
         if (rc == -1) {
             char str[128];
             convert_failure_reason_str(&reason, iq->usedb->tablename, tag,
@@ -955,8 +956,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         mallocced_bytes += od_len;
     mallocced_memory = alloca(mallocced_bytes);
     if (!mallocced_memory) {
-        logmsg(LOGMSG_ERROR, "upd_record: malloc %u failed! (table %s tag %s)\n",
-                (unsigned)mallocced_bytes, iq->usedb->tablename, tag);
+        logmsg(LOGMSG_ERROR,
+               "upd_record: malloc %u failed! (table %s tag %s)\n",
+               (unsigned)mallocced_bytes, iq->usedb->tablename, tag);
         *opfailcode = OP_FAILED_INTERNAL;
         retrc = ERR_INTERNAL;
         goto err;
@@ -1141,8 +1143,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
         /* used for schema-change */
         if (record != NULL && (NULL == updCols) &&
-            (0 ==
-             describe_update_columns(iq->usedb->tablename, tag, myupdatecols))) {
+            (0 == describe_update_columns(iq->usedb->tablename, tag,
+                                          myupdatecols))) {
             using_myupdatecols = 1;
             updCols = myupdatecols;
         }
@@ -1163,7 +1165,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
                     *opfailcode = ERR_NULL_CONSTRAINT;
                     retrc = ERR_NULL_CONSTRAINT;
                 }
-                reqerrstrhdr(iq,
+                reqerrstrhdr(
+                    iq,
                     "Null constraint violation for column '%s' on table '%s'. ",
                     reason.target_schema->member[reason.target_field_idx].name,
                     iq->usedb->tablename);
@@ -2932,8 +2935,7 @@ int save_old_blobs(struct ireq *iq, void *trans, const char *tag, const void *re
 
     /* make sure the blobs are consistent with the record; if they're not then
      * we have a database corruption situation. */
-    rc =
-        check_blob_consistency(iq, iq->usedb->tablename, tag, blobs, record);
+    rc = check_blob_consistency(iq, iq->usedb->tablename, tag, blobs, record);
     if (iq->debug)
         reqprintf(iq, "CHECK OLD BLOB CONSISTENCY RRN %d GENID 0x%llx RC %d",
                   rrn, genid, rc);
@@ -3114,16 +3116,16 @@ int updbykey_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         keysz = getkeysize(iq->usedb, ixnum);
         if (keysz < 0) {
             logmsg(LOGMSG_ERROR, "cannot get key size"
-                            " tbl %s. idx %d\n",
-                    iq->usedb->tablename, ixnum);
+                                 " tbl %s. idx %d\n",
+                   iq->usedb->tablename, ixnum);
             /* XXX is this an error? */
         }
         snprintf(keytag, sizeof(keytag), "%s_IX_%d", ondisktag, ixnum);
 
-        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record, WHOLE_BUFFER,
-                                   fldnullmap, keytag, key, conv_flags,
-                                   &reason /*fail reason*/, blobs, maxblobs,
-                                   iq->tzname);
+        rc = ctag_to_stag_blobs_tz(iq->usedb->tablename, tag, record,
+                                   WHOLE_BUFFER, fldnullmap, keytag, key,
+                                   conv_flags, &reason /*fail reason*/, blobs,
+                                   maxblobs, iq->tzname);
         if (rc == -1) {
             char str[128];
             convert_failure_reason_str(&reason, iq->usedb->tablename, tag,

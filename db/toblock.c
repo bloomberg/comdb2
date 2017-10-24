@@ -117,7 +117,7 @@ extern int gbl_prefault_udp;
     err.errcode = (blockerrcode);                                              \
     err.ixnum = -1;                                                            \
     numerrs = 1;                                                               \
-    free_dynamic_schema(iq->usedb->tablename, dynschema);                         \
+    free_dynamic_schema(iq->usedb->tablename, dynschema);                      \
     dynschema = NULL;                                                          \
     goto backout
 #define BACKOUT_BLOCK_FREE_SCHEMA_OP(rcode, ii)                                \
@@ -2765,8 +2765,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     if (iq->debug) {
         /* TODO print trans twice? No parent_trans? */
-        reqprintf(iq, "%llx:START TRANSACTION ID %p DB %d '%s'", 
-                pthread_self(), trans, iq->usedb->dbnum, iq->usedb->tablename);
+        reqprintf(iq, "%llx:START TRANSACTION ID %p DB %d '%s'", pthread_self(),
+                  trans, iq->usedb->dbnum, iq->usedb->tablename);
     }
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
@@ -3859,12 +3859,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                    capture comdb clients that are trying to verify
                    only a prefix of the row (size < .default rowsize)
                  */
-                int rowsz =
-                    get_size_of_schema_by_name(iq->usedb->tablename, ".DEFAULT");
+                int rowsz = get_size_of_schema_by_name(iq->usedb->tablename,
+                                                       ".DEFAULT");
                 if (rowsz != vlen) {
-                    logmsg(LOGMSG_ERROR, 
-                            "%s: %s prefix bug, client sz=%d, default-tag sz=%d\n",
-                            getorigin(iq), iq->usedb->tablename, newlen, rowsz);
+                    logmsg(
+                        LOGMSG_ERROR,
+                        "%s: %s prefix bug, client sz=%d, default-tag sz=%d\n",
+                        getorigin(iq), iq->usedb->tablename, newlen, rowsz);
                 }
             }
 
@@ -3955,7 +3956,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 BACKOUT;
             }
             if (iq->debug)
-                reqprintf(iq, "DB NUM %d '%s'", use.dbnum, iq->usedb->tablename);
+                reqprintf(iq, "DB NUM %d '%s'", use.dbnum,
+                          iq->usedb->tablename);
             break;
         }
 
@@ -4233,7 +4235,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 rc = ERR_BADREQ;
                 break;
             }
-            dtalen = get_size_of_schema_by_name(iq->usedb->tablename, ".ONDISK");
+            dtalen =
+                get_size_of_schema_by_name(iq->usedb->tablename, ".ONDISK");
 
             if (!trans) {
                 if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
@@ -4274,7 +4277,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "DELETE_OLDER %d %s genid %016llx rc "
                                   "%d\n",
-                              delolder.timestamp, iq->usedb->tablename, genid, rc);
+                              delolder.timestamp, iq->usedb->tablename, genid,
+                              rc);
                 if (rc) {
                     fromline = __LINE__;
                     goto backout;
@@ -5878,8 +5882,8 @@ static int keyless_range_delete_formkey(void *record, size_t record_len,
     snprintf(index_tag_name, sizeof(index_tag_name), ".ONDISK_IX_%d",
              index_num);
 
-    rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", record, index_tag_name,
-                          index, NULL);
+    rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", record,
+                          index_tag_name, index, NULL);
     if (rc == -1) {
         if (iq->debug)
             reqprintf(iq, "%p:RNGDELKL CALLBACK CANT FORM INDEX %d",
@@ -5936,9 +5940,9 @@ static int keyless_range_delete_post_delete(void *record, size_t record_len,
                                 rngdel_info->iq->usedb->tablename);
         if (rngdel_info->saveblobs)
             javasp_rec_set_blobs(jrec, rngdel_info->oldblobs);
-        rc = javasp_trans_tagged_trigger(rngdel_info->javasp_trans_handle,
-                                         JAVASP_TRANS_LISTEN_AFTER_DEL, jrec,
-                                         NULL, rngdel_info->iq->usedb->tablename);
+        rc = javasp_trans_tagged_trigger(
+            rngdel_info->javasp_trans_handle, JAVASP_TRANS_LISTEN_AFTER_DEL,
+            jrec, NULL, rngdel_info->iq->usedb->tablename);
         javasp_dealloc_rec(jrec);
         if (rngdel_info->iq->debug)
             reqprintf(rngdel_info->iq,

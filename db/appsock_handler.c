@@ -335,9 +335,9 @@ static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
             rec = newrec;
         }
         vtag_to_ondisk(tbl, rec, &len, ver, 0);
-        rc =
-            stag_to_ctag_buf_tz(tbl->tablename, ".ONDISK", rec, len, tag, clientrec,
-                                nulls, conv_flags, NULL, NULL, tzname);
+        rc = stag_to_ctag_buf_tz(tbl->tablename, ".ONDISK", rec, len, tag,
+                                 clientrec, nulls, conv_flags, NULL, NULL,
+                                 tzname);
     } else {
         memcpy(clientrec, rec, clientreclen);
     }

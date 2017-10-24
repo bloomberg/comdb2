@@ -353,14 +353,15 @@ static void *handle_comptest_thd(void *_arg)
 
         while (rc == IX_FND || rc == IX_FNDMORE) {
             if (gbl_sc_abort) {
-                logmsg(LOGMSG_ERROR, "Abort compression testing %s\n", db->tablename);
+                logmsg(LOGMSG_ERROR, "Abort compression testing %s\n",
+                       db->tablename);
                 ++arg->rc;
                 break;
             }
             rc = test_compress(&comp);
             if (rc) {
-               logmsg(LOGMSG_ERROR, "Failed compressing %s, rc:%d (%s:%d)\n", db->tablename, rc,
-                       __FILE__, __LINE__);
+                logmsg(LOGMSG_ERROR, "Failed compressing %s, rc:%d (%s:%d)\n",
+                       db->tablename, rc, __FILE__, __LINE__);
                 ++arg->rc;
                 break;
             }

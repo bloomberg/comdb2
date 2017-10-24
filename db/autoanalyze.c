@@ -150,7 +150,8 @@ int load_auto_analyze_counters(void)
                                     &tbl->aa_lastepoch);
 
             ctrace("AUTOANALYZE: Loading table %s, count %d, last run time %s",
-                   tbl->tablename, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
+                   tbl->tablename, tbl->aa_saved_counter,
+                   ctime(&tbl->aa_lastepoch));
         }
     }
 
@@ -195,7 +196,8 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     s = iq.usedb->schema;
 
     /* create a stat1 record */
-    rc = stat1_ondisk_record(&iq, tbldb->tablename, ix_txt, NULL, (void **)&rec);
+    rc =
+        stat1_ondisk_record(&iq, tbldb->tablename, ix_txt, NULL, (void **)&rec);
     if (rc != 0) {
         fprintf(stderr, "%s: couldn't create ondisk record for sqlite_stat1\n",
                 __func__);
@@ -287,10 +289,11 @@ void stat_auto_analyze(void)
             new_aa_percnt =
                 (100.0 * newautoanalyze_counter) / get_num_rows_from_stat1(tbl);
 
-        logmsg(LOGMSG_USER, "Table %s, aa counter=%d (saved %d, new %d, percent of tbl "
+        logmsg(LOGMSG_USER,
+               "Table %s, aa counter=%d (saved %d, new %d, percent of tbl "
                "%.2f), last run time=",
-               tbl->tablename, newautoanalyze_counter, tbl->aa_saved_counter, delta,
-               (new_aa_percnt > 100 ? 100 : new_aa_percnt));
+               tbl->tablename, newautoanalyze_counter, tbl->aa_saved_counter,
+               delta, (new_aa_percnt > 100 ? 100 : new_aa_percnt));
         loc_print_date(&tbl->aa_lastepoch);
         logmsg(LOGMSG_USER, "\n");
     }
@@ -415,7 +418,8 @@ void *auto_analyze_main(void *unused)
                                          // auto_analyze_table()
             pthread_t analyze;
             char *tblname = strdup(
-                (char *)tbl->tablename); // will be freed in auto_analyze_table()
+                (char *)
+                    tbl->tablename); // will be freed in auto_analyze_table()
             pthread_create(&analyze, &gbl_pthread_attr_detached,
                            auto_analyze_table, tblname);
         } else if (delta > 0 && save_freq > 0 &&

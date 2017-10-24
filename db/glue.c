@@ -4105,7 +4105,8 @@ int backend_open(struct dbenv *dbenv)
         db = dbenv->dbs[ii];
 
         if (db->dbnum)
-            logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename, db->dbnum);
+            logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename,
+                   db->dbnum);
         else
             logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
@@ -4116,7 +4117,8 @@ int backend_open(struct dbenv *dbenv)
             dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
-            logmsg(LOGMSG_ERROR, "bdb_open:failed to open table %s/%s, rcode %d\n",
+            logmsg(LOGMSG_ERROR,
+                   "bdb_open:failed to open table %s/%s, rcode %d\n",
                    dbenv->basedir, db->tablename, bdberr);
             return -1;
         }
@@ -4140,10 +4142,11 @@ int backend_open(struct dbenv *dbenv)
         }
 
         db->handle = bdb_open_more_queue(
-            db->tablename, dbenv->basedir, db->avgitemsz, pagesize, dbenv->bdb_env,
-            db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
+            db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
+            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
         if (db->handle == NULL) {
-            logmsg(LOGMSG_ERROR, "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
+            logmsg(LOGMSG_ERROR,
+                   "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
                    dbenv->basedir, db->tablename, bdberr);
             return -1;
         }
@@ -4219,7 +4222,8 @@ int backend_open(struct dbenv *dbenv)
         }
 
         if (bthashsz) {
-            logmsg(LOGMSG_INFO, "Building bthash for table %s, size %dkb per stripe\n",
+            logmsg(LOGMSG_INFO,
+                   "Building bthash for table %s, size %dkb per stripe\n",
                    d->tablename, bthashsz);
             bdb_handle_dbp_add_hash(d->handle, bthashsz);
         }
@@ -4332,9 +4336,10 @@ int fix_consumers_with_bdblib(struct dbenv *dbenv)
             int rc, bdberr;
             rc = bdb_queue_consumer(db->handle, consumern, active, &bdberr);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                       "bdb_queue_consumer error for queue %s/%s/%d, rcode %d\n",
-                       dbenv->basedir, db->tablename, consumern, bdberr);
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_queue_consumer error for queue %s/%s/%d, rcode %d\n",
+                    dbenv->basedir, db->tablename, consumern, bdberr);
                 return -1;
             }
         }
@@ -5755,8 +5760,8 @@ void print_tableparams()
             logmsg(LOGMSG_ERROR, "bdb_get_analyzecoverage_table rc = %d, bdberr=%d\n", rc,
                    bdberr);
 
-        rc = bdb_get_analyzethreshold_table(NULL, db->tablename, &thresholdvalue,
-                                            &bdberr);
+        rc = bdb_get_analyzethreshold_table(NULL, db->tablename,
+                                            &thresholdvalue, &bdberr);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "bdb_get_analyzethreshold_table rc = %d, bdberr=%d\n", rc,
                    bdberr);
@@ -5783,7 +5788,8 @@ void print_tableparams()
 
         char *tableparams = NULL;
         int tbplen = 0;
-        bdb_get_table_csonparameters(NULL, db->tablename, &tableparams, &tbplen);
+        bdb_get_table_csonparameters(NULL, db->tablename, &tableparams,
+                                     &tbplen);
         if (tableparams) {
             logmsg(LOGMSG_USER, " tableparams: %10s", tableparams);
             free(tableparams);

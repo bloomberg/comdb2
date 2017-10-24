@@ -260,8 +260,8 @@ static int sample_index_int(index_descriptor_t *ix_des)
 
     /* failed */
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to sample table '%s' idx %d\n", __func__,
-                tbl->tablename, ix);
+        logmsg(LOGMSG_ERROR, "%s: failed to sample table '%s' idx %d\n",
+               __func__, tbl->tablename, ix);
         return -1;
     }
 

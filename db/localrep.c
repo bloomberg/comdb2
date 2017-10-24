@@ -57,8 +57,8 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
        in a format the client can understand.  It goes out in this format to
        some intermediary machine (gsrv) from where it goes out via rmque. */
     rc = stag_to_ctag_buf_tz(
-        iq->usedb->tablename, ".ONDISK", od_dta, -1, ".ONDISK_CLIENT", client_buf,
-        (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
+        iq->usedb->tablename, ".ONDISK", od_dta, -1, ".ONDISK_CLIENT",
+        client_buf, (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
 
     /* We send down an array of comdb2_field_types.  The offset field is the
        field in the
@@ -93,7 +93,8 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                     server_schema =
                         find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->tablename);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -112,11 +113,11 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     rc = ERR_BADREQ;
     if ((p = buf_put(&s->nmembers, sizeof(int), p, lim)) == NULL)
         goto err;
-    if ((p = buf_no_net_put(iq->usedb->tablename, strlen(iq->usedb->tablename), p,
-                            lim)) == NULL)
+    if ((p = buf_no_net_put(iq->usedb->tablename, strlen(iq->usedb->tablename),
+                            p, lim)) == NULL)
         goto err;
-    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->tablename), p, lim)) ==
-        NULL)
+    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->tablename), p,
+                          lim)) == NULL)
         goto err;
 
     offset = sizeof(int) + MAXTABLELEN;
@@ -142,7 +143,8 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                     server_schema =
                         find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->tablename);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -447,7 +449,8 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                     server_schema =
                         find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->tablename);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -467,11 +470,11 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     rc = ERR_BADREQ;
     if ((p = buf_put(&s->nmembers, sizeof(int), p, lim)) == NULL)
         goto err;
-    if ((p = buf_no_net_put(iq->usedb->tablename, strlen(iq->usedb->tablename), p,
-                            lim)) == NULL)
+    if ((p = buf_no_net_put(iq->usedb->tablename, strlen(iq->usedb->tablename),
+                            p, lim)) == NULL)
         goto err;
-    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->tablename), p, lim)) ==
-        NULL)
+    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->tablename), p,
+                          lim)) == NULL)
         goto err;
 
     offset = sizeof(int) + MAXTABLELEN;
@@ -495,7 +498,8 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                     server_schema =
                         find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->tablename);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }

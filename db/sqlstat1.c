@@ -55,8 +55,9 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
 
     fix = find_field_idx_in_tag(s, fld);
     if (fix < 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't find '%s' field in %s's ONDISK tag\n",
-                __func__, fld, iq->usedb->tablename);
+        logmsg(LOGMSG_ERROR,
+               "%s: couldn't find '%s' field in %s's ONDISK tag\n", __func__,
+               fld, iq->usedb->tablename);
         return NULL;
     }
 

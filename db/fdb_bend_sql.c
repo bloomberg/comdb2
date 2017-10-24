@@ -742,8 +742,9 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *
                               NULL, 0, fail_reason, pCur);
         if (rc != getkeysize(db, i)) {
             char errs[128];
-            convert_failure_reason_str(fail_reason, db->tablename, "SQLite format",
-                                       ".ONDISK_ix", errs, sizeof(errs));
+            convert_failure_reason_str(fail_reason, db->tablename,
+                                       "SQLite format", ".ONDISK_ix", errs,
+                                       sizeof(errs));
             return -1;
         }
         free(pIndexes[i]);

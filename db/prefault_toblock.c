@@ -118,9 +118,9 @@ static int add_record_prefault(
 
         od_dta = stackbuf;
 
-        rc = ctag_to_stag_buf(iq->usedb->tablename, tag, (const char *)p_buf_rec,
-                              WHOLE_BUFFER, fldnullmap, ondisktag, od_dta, 0,
-                              &reason);
+        rc = ctag_to_stag_buf(iq->usedb->tablename, tag,
+                              (const char *)p_buf_rec, WHOLE_BUFFER, fldnullmap,
+                              ondisktag, od_dta, 0, &reason);
         if (rc == -1) {
             if (iq->debug) {
                 char str[128];
@@ -153,8 +153,8 @@ static int add_record_prefault(
         }
 
         snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
-        rc = stag_to_stag_buf(iq->usedb->tablename, ondisktag, od_dta, ixtag, key,
-                              NULL);
+        rc = stag_to_stag_buf(iq->usedb->tablename, ondisktag, od_dta, ixtag,
+                              key, NULL);
         if (rc == -1) {
             if (iq->debug)
                 reqprintf(iq, "CAN'T FORM INDEX %d", ixnum);
@@ -602,7 +602,8 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                     iq->usedb = iq->origdb;
                     skipblock = 1;
                 } else if (iq->debug)
-                    reqprintf(iq, "DB NUM %d '%s'", dbnum, iq->usedb->tablename);
+                    reqprintf(iq, "DB NUM %d '%s'", dbnum,
+                              iq->usedb->tablename);
             }
             break;
         }
