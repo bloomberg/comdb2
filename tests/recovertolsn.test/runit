@@ -97,7 +97,7 @@ function update_all_records
 
     while :; do 
 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
         let iter=iter+1
 
         if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then

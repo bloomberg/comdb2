@@ -405,13 +405,13 @@ function update_rand_t1
 
     # Make the blob a NULL once every 3 times
     if [[ "0" == "$rd" ]]; then
-        cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b10=NULL, id10 = $id10, b9=NULL, id9 = $id9, b8=NULL, id8 = $id8, b7=NULL, id7 = $id7, b6=NULL, id6 = $id6, b5=NULL, id5 = $id5, b4=NULL, id4 = $id4, b3=NULL, id3 = $id3, b2=NULL, id2 = $id2, b1=NULL, id1 = $id1 where id1=$id1" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b10=NULL, id10 = $id10, b9=NULL, id9 = $id9, b8=NULL, id8 = $id8, b7=NULL, id7 = $id7, b6=NULL, id6 = $id6, b5=NULL, id5 = $id5, b4=NULL, id4 = $id4, b3=NULL, id3 = $id3, b2=NULL, id2 = $id2, b1=NULL, id1 = $id1 where id1=$id1" >/dev/null 2>&1
     elif [[ "1" == "$rd" ]]; then
-        cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b10=x'bb', id10 = $id10, b9=x'bb', id9 = $id9, b8=x'bb', id8 = $id8, b7=x'bb', id7 = $id7, b6=x'bb', id6 = $id6, b5=x'bb', id5 = $id5, b4=x'bb', id4 = $id4, b3=x'bb', id3 = $id3, b2=x'bb', id2 = $id2, b1=x'bb', id1 = $id1 where id1=$id1" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b10=x'bb', id10 = $id10, b9=x'bb', id9 = $id9, b8=x'bb', id8 = $id8, b7=x'bb', id7 = $id7, b6=x'bb', id6 = $id6, b5=x'bb', id5 = $id5, b4=x'bb', id4 = $id4, b3=x'bb', id3 = $id3, b2=x'bb', id2 = $id2, b1=x'bb', id1 = $id1 where id1=$id1" >/dev/null 2>&1
     elif [[ "2" == "$rd" ]]; then
-        cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id10 = $id10, id9 = $id9, id8 = $id8, id7 = $id7, id6 = $id6, id5 = $id5, id4 = $id4, id3 = $id3, id2 = $id2, id1 = $id1 where id1=$id1" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set id10 = $id10, id9 = $id9, id8 = $id8, id7 = $id7, id6 = $id6, id5 = $id5, id4 = $id4, id3 = $id3, id2 = $id2, id1 = $id1 where id1=$id1" >/dev/null 2>&1
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b10=x'$b10', id10 = $id10, b9=x'$b9', id9 = $id9, b8=x'$b8', id8 = $id8, b7=x'$b7', id7 = $id7, b6=x'$b6', id6 = $id6, b5=x'$b5', id5 = $id5, b4=x'$b4', id4 = $id4, b3=x'$b3', id3 = $id3, b2=x'$b2', id2 = $id2, b1=x'$b1', id1 = $id1 where id1=$id1" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b10=x'$b10', id10 = $id10, b9=x'$b9', id9 = $id9, b8=x'$b8', id8 = $id8, b7=x'$b7', id7 = $id7, b6=x'$b6', id6 = $id6, b5=x'$b5', id5 = $id5, b4=x'$b4', id4 = $id4, b3=x'$b3', id3 = $id3, b2=x'$b2', id2 = $id2, b1=x'$b1', id1 = $id1 where id1=$id1" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -567,7 +567,7 @@ if [[ "1" == "$bgdebug" ]]; then
 fi
 
 echo "Inserting records into t1."
-[[ "0" == "$noins" ]] && cdb2sql ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
+[[ "0" == "$noins" ]] && -s cdb2sql ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
 
 # Select t1 back.
 echo "Selecting t1."
@@ -609,7 +609,7 @@ fi
 
 
 echo "Updating records in t1."
-cdb2sql ${CDB2_OPTIONS} $dbnm default - < update_t1.cfg > /dev/null 2>&1 &
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < update_t1.cfg > /dev/null 2>&1 &
 bkpid=$!
 bkcnt=1 
 

@@ -300,7 +300,7 @@ function insert_rand_t1
         echo "cdb2sql ${CDB2_OPTIONS} $db default \"insert into t1(id, b1) values ($id, x'$bl')\""
         cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')"
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -330,7 +330,7 @@ function insert_rand_t2
         echo "cdb2sql ${CDB2_OPTIONS} $db default \"insert into t2(id) values ($id)\""
         cdb2sql ${CDB2_OPTIONS} $db default "insert into t2(id) values ($id)"
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "insert into t2(id) values ($id)" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t2(id) values ($id)" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -361,7 +361,7 @@ function update_noblob_rand_t1
         echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid where id=$id\""
         cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id"
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -414,9 +414,9 @@ function update_onlyblob_rand_t1
 
     else
         if [[ "1" == "$nullblob" ]]; then
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=NULL where id=$id" >/dev/null 2>&1
+            cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=NULL where id=$id" >/dev/null 2>&1
         else
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bl' where id=$id" >/dev/null 2>&1
+            cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bl' where id=$id" >/dev/null 2>&1
         fi
     fi
 
@@ -476,9 +476,9 @@ function update_rand_t1
 
     else
         if [[ "1" == "$nullblob" ]]; then
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=NULL where id=$id" >/dev/null 2>&1
+            cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=NULL where id=$id" >/dev/null 2>&1
         else
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=x'$bl' where id=$id" >/dev/null 2>&1
+            cdb2sql -s ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=x'$bl' where id=$id" >/dev/null 2>&1
         fi
     fi
 
@@ -514,7 +514,7 @@ function update_rand_t2
         echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t2 set id=$upid where id=$id\"" 
         cdb2sql ${CDB2_OPTIONS} $db default "update t2 set id=$upid where id=$id"
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "update t2 set id=$upid where id=$id" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "update t2 set id=$upid where id=$id" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -544,7 +544,7 @@ function delete_rand_t1
         echo "cdb2sql ${CDB2_OPTIONS} $db default \"delete from t1 where id=$id\""
         cdb2sql ${CDB2_OPTIONS} $db default "delete from t1 where id=$id"
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "delete from t1 where id=$id" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "delete from t1 where id=$id" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -575,7 +575,7 @@ function delete_rand_t2
         echo "cdb2sql ${CDB2_OPTIONS} $db default \"delete from t2 where id=$id\""
         cdb2sql ${CDB2_OPTIONS} $db default "delete from t2 where id=$id"
     else
-        cdb2sql ${CDB2_OPTIONS} $db default "delete from t2 where id=$id" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default "delete from t2 where id=$id" >/dev/null 2>&1
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
@@ -784,11 +784,11 @@ gent2insert $maxrc insert_t2.cfg
 
 # Insert records into t1.k
 echo "Inserting records into t1."
-[[ "0" == "$noins" ]] && cdb2sql ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
+[[ "0" == "$noins" ]] && cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
 
 # Insert records into t2.
 echo "Inserting records into t2."
-[[ "0" == "$noins" ]] && cdb2sql ${CDB2_OPTIONS} $dbnm default - < insert_t2.cfg >/dev/null
+[[ "0" == "$noins" ]] && cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < insert_t2.cfg >/dev/null
 
 # Select t1 back.
 echo "Selecting t1."

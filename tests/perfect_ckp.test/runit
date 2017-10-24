@@ -31,8 +31,8 @@ if [ "$tier" = "" ]; then
 fi
 
 echo Creating table
-cdb2sql ${CDB2_OPTIONS} $dbnm $tier "drop table t" >/dev/null
-cdb2sql ${CDB2_OPTIONS} $dbnm $tier "create table t { schema {int i} }" >/dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "drop table t" >/dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "create table t { schema {int i} }" >/dev/null
 
 ###### Step 2: Start background writers ######
 echo Inserting 10k records
@@ -40,13 +40,13 @@ i=0
 while [ $i -lt 10000 ] ; do
     echo "INSERT INTO t VALUES(99999999)"
     i=$((i + 1))
-done >>/dev/stdout | cdb2sql ${CDB2_OPTIONS} $dbnm $tier - >/dev/null
+done >>/dev/stdout | cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier - >/dev/null
 
 echo Creating 4 random updating background threads
 loop=0
 bgids=''
 while [ $loop -lt 4 ]; do
-    yes "UPDATE t SET i = $loop limit $loop * 2500, 2500" | cdb2sql ${CDB2_OPTIONS} $dbnm $tier - >/dev/null 2>&1 &
+    yes "UPDATE t SET i = $loop limit $loop * 2500, 2500" | cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier - >/dev/null 2>&1 &
     bgids="${bgids}$! "
     loop=$((loop + 1))
 done

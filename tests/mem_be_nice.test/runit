@@ -10,7 +10,7 @@ mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 echo "target machine is $mach"
 
 for i in `seq 1 8`; do
-  cdb2sql --host $mach ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
+  cdb2sql -s --host $mach ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
 done
 
 appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c sqlite`

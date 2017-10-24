@@ -67,7 +67,7 @@ while [ $outloop -le 4 ]; do
   #### tbl and dta
   cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "drop table t"
   cdb2sql ${CDB2_OPTIONS} -f t.csc2 $dbnm --host $master
-  cdb2sql ${CDB2_OPTIONS} -f sql.txt $dbnm --host $master >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} -f sql.txt $dbnm --host $master >/dev/null
   
   inloop=1
   while [ $inloop -le 1200 ]; do
@@ -78,11 +78,11 @@ while [ $outloop -le 4 ]; do
     num=$RANDOM
     let "num %= $numrng"
     
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "delete from t limit $ofs, $num" >/dev/null
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $master "delete from t limit $ofs, $num" >/dev/null
     let inloop=$inloop+1
   done
 
-  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
   
   newfile=`ls -t $dbdir/t_* | head -1`
   
@@ -101,14 +101,14 @@ while [ $outloop -le 4 ]; do
   echo "internal ff is $ffintbefore"
 
   #### fill mpool
-  cdb2sql ${CDB2_OPTIONS} -f dum.txt $dbnm --host $master >/dev/null
-  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "SELECT * from dum" >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} -f dum.txt $dbnm --host $master >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $master "SELECT * from dum" >/dev/null
   
   #### force pgcompact
-  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "SELECT * FROM t" >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $master "SELECT * FROM t" >/dev/null
 
   #### force to disk
-  cdb2sql ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('flush')" >/dev/null
   
   ffafter=0
   ffintafter=0
