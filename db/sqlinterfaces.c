@@ -4085,7 +4085,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
         sqlite3_expert_destroy(p);
         sqlite3_free(zErr);
-        unlock_schema_lk();
         clnt->no_transaction = 0;
         return -1; /* Don't process anything else */
     }
