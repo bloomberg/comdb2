@@ -567,7 +567,7 @@ if [[ "1" == "$bgdebug" ]]; then
 fi
 
 echo "Inserting records into t1."
-[[ "0" == "$noins" ]] && -s cdb2sql ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
+[[ "0" == "$noins" ]] && cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
 
 # Select t1 back.
 echo "Selecting t1."
