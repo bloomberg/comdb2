@@ -815,12 +815,12 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
                         logmsg(LOGMSG_ERROR, "prefault_thd:cannot get key size"
-                                        " tbl %s. idx %d\n",
-                                iq.usedb->dbname, ixnum);
+                                             " tbl %s. idx %d\n",
+                               iq.usedb->tablename, ixnum);
                         break;
                     }
                     snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-                    rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+                    rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                           (char *)fnddta, keytag, key, NULL);
                     if (rc == -1) {
                         break;
@@ -877,7 +877,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 if (od_len_int <= 0) {
                     logmsg(LOGMSG_ERROR, "od_len_int = %d\n", od_len_int);
                     if (dynschema)
-                        free_dynamic_schema(iq.usedb->dbname, dynschema);
+                        free_dynamic_schema(iq.usedb->tablename, dynschema);
                     break;
                 }
                 od_len = (size_t)od_len_int;
@@ -891,7 +891,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     i = req->helper_thread;
                     if ((i < 0) || (i >= dbenv->prefault_helper.numthreads)) {
                         if (dynschema)
-                            free_dynamic_schema(iq.usedb->dbname, dynschema);
+                            free_dynamic_schema(iq.usedb->tablename, dynschema);
                         break;
                     }
 
@@ -904,7 +904,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                          dbenv->prefault_helper.threads[i].seqnum)) {
                         dbenv->prefault_stats.skipped_seq++;
                         if (dynschema)
-                            free_dynamic_schema(iq.usedb->dbname, dynschema);
+                            free_dynamic_schema(iq.usedb->tablename, dynschema);
                         break;
                     }
 #endif
@@ -913,7 +913,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     if (btst(op_bitmap, 63)) {
                         dbenv->prefault_stats.skipped++;
                         if (dynschema)
-                            free_dynamic_schema(iq.usedb->dbname, dynschema);
+                            free_dynamic_schema(iq.usedb->tablename, dynschema);
                         break;
                     }
 #endif
@@ -927,7 +927,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     dbenv->prefault_stats
                         .num_prfq_data_keys_newkeys_no_olddta++;
                     if (dynschema)
-                        free_dynamic_schema(iq.usedb->dbname, dynschema);
+                        free_dynamic_schema(iq.usedb->tablename, dynschema);
 
                     break;
                 }
@@ -940,18 +940,18 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
                         logmsg(LOGMSG_ERROR, "prefault_thd:cannot get key size"
-                                        " tbl %s. idx %d\n",
-                                iq.usedb->dbname, ixnum);
+                                             " tbl %s. idx %d\n",
+                               iq.usedb->tablename, ixnum);
                         continue;
                     }
                     snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-                    rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+                    rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                           (char *)fnddta, keytag, key, NULL);
                     if (rc == -1) {
-                        logmsg(LOGMSG_ERROR, 
-                                "prefault_thd:cannot convert .ONDISK to IDX"
-                                " %d of TBL %s\n",
-                                ixnum, iq.usedb->dbname);
+                        logmsg(LOGMSG_ERROR,
+                               "prefault_thd:cannot convert .ONDISK to IDX"
+                               " %d of TBL %s\n",
+                               ixnum, iq.usedb->tablename);
                         continue;
                     }
 
@@ -965,7 +965,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                  * old record and the changes.
                  */
                 memcpy(od_dta, fnddta, od_len);
-                rc = ctag_to_stag_buf(iq.usedb->dbname, tag, req->record,
+                rc = ctag_to_stag_buf(iq.usedb->tablename, tag, req->record,
                                       WHOLE_BUFFER, fldnullmap, ".ONDISK",
                                       od_dta, CONVERT_UPDATE, &reason);
                 if (rc < 0) {
@@ -973,16 +973,17 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                      * trace on a turnoffable switch */
                     if (gbl_prefault_verbose) {
                         char str[128];
-                        convert_failure_reason_str(&reason, iq.usedb->dbname,
+                        convert_failure_reason_str(&reason, iq.usedb->tablename,
                                                    tag, ".ONDISK", str,
                                                    sizeof(str));
-                        logmsg(LOGMSG_USER, "%s: conv failed for %s:%s->.ONDISK rc %d\n",
-                                __func__, iq.usedb->dbname, tag, rc);
+                        logmsg(LOGMSG_USER,
+                               "%s: conv failed for %s:%s->.ONDISK rc %d\n",
+                               __func__, iq.usedb->tablename, tag, rc);
                         logmsg(LOGMSG_USER, "%s: reason: %s\n", __func__, str);
                     }
 
                     if (dynschema)
-                        free_dynamic_schema(iq.usedb->dbname, dynschema);
+                        free_dynamic_schema(iq.usedb->tablename, dynschema);
                     break;
                 }
 
@@ -994,18 +995,18 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                     keysz = getkeysize(iq.usedb, ixnum);
                     if (keysz < 0) {
                         logmsg(LOGMSG_ERROR, "prefault_thd:cannot get key size"
-                                        " tbl %s. idx %d\n",
-                                iq.usedb->dbname, ixnum);
+                                             " tbl %s. idx %d\n",
+                               iq.usedb->tablename, ixnum);
                         continue;
                     }
                     snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-                    rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+                    rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                           (char *)od_dta, keytag, key, NULL);
                     if (rc == -1) {
-                        logmsg(LOGMSG_ERROR, 
-                                "prefault_thd:cannot convert .ONDISK to IDX"
-                                " %d of TBL %s\n",
-                                ixnum, iq.usedb->dbname);
+                        logmsg(LOGMSG_ERROR,
+                               "prefault_thd:cannot convert .ONDISK to IDX"
+                               " %d of TBL %s\n",
+                               ixnum, iq.usedb->tablename);
                         continue;
                     }
 
@@ -1015,7 +1016,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 }
 
                 if (dynschema)
-                    free_dynamic_schema(iq.usedb->dbname, dynschema);
+                    free_dynamic_schema(iq.usedb->tablename, dynschema);
                 break;
             }
 

@@ -6631,7 +6631,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                    "duplicate key '%s' on "
                                                    "table '%s' index %d",
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                          iq->usedb->dbname, err->ixnum);
+                          iq->usedb->tablename, err->ixnum);
             } else if (rc != RC_INTERNAL_RETRY) {
                 reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
                           "unable to add record rc = %d", rc);
@@ -6716,7 +6716,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             /* Make sure this is sane before sending to upd_record. */
             for (ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
-                    int idx = get_schema_blob_field_idx(iq->usedb->dbname,
+                    int idx = get_schema_blob_field_idx(iq->usedb->tablename,
                                                         ".ONDISK", ii);
                     assert(idx < ncols);
                     assert(-1 == (*updCols)[idx + 1]);
@@ -6786,7 +6786,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_CLRTBL: {
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_CLRTBL %s\n", rqid,
-                        comdb2uuidstr(uuid, us), iq->usedb->dbname);
+                        comdb2uuidstr(uuid, us), iq->usedb->tablename);
             sbuf2flush(logsb);
         }
 
@@ -7758,7 +7758,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     case OSQL_CLRTBL: {
         sbuf2printf(logsb, "[%llx %s] OSQL_CLRTBL %s\n", id, us,
-                    iq->usedb->dbname);
+                    iq->usedb->tablename);
         sbuf2flush(logsb);
     } break;
 
@@ -8443,18 +8443,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 break;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK", (char *)fnddta,
-                                  keytag, key, NULL);
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+                                  (char *)fnddta, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, 
-                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 break;
             }
 
@@ -8477,18 +8477,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                   (char *)req->record, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, 
-                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 continue;
             }
 
@@ -8541,17 +8541,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK", (char *)fnddta,
-                                  keytag, key, NULL);
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+                                  (char *)fnddta, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 continue;
             }
 
@@ -8569,17 +8570,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                   (char *)req->record, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 continue;
             }
 
@@ -8818,10 +8820,11 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     p_buf_op_hdr_end = p_buf;
 
     usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->dbname) + 1 /*NUL byte*/;
+    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, p_buf_end)))
         return NULL;
-    if (!(p_buf = buf_no_net_put(db->dbname, usekl.taglen, p_buf, p_buf_end)))
+    if (!(p_buf =
+              buf_no_net_put(db->tablename, usekl.taglen, p_buf, p_buf_end)))
         return NULL;
 
     op_hdr.opcode = BLOCK2_USE;
