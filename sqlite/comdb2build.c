@@ -135,7 +135,6 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     
     if(!timepart_is_timepart(dst, 1))
     {
-/*
         struct dbtable *db = get_dbtable_by_name(dst);
 
         if (db == NULL && mustexist)
@@ -155,7 +154,6 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             setError(pParse, SQLITE_ERROR, "Shards cannot be schema changed independently");
             return SQLITE_ERROR;
         }
-*/
     }
     else
     {

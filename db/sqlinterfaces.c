@@ -3415,6 +3415,19 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
             return 0;
         }
     }
+    len = 6; // strlen "pragma"
+    if (strncasecmp(sql, "pragma", len) == 0) {
+        sql += len;
+        if (!isspace(*sql)) {
+            return 0;
+        }
+    error: /* pretend that a real prepare error occured */
+        strcpy(buf, "near \"");
+        strncat(buf + len, sql, len);
+        strcat(buf, "\": syntax error");
+        send_prepare_error(clnt, buf, 0);
+        return SQLITE_ERROR;
+    }
     len = 6; // strlen "create"
     if (strncasecmp(sql, "create", len) == 0) {
         char *trigger = sql;
@@ -3429,11 +3442,7 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
         }
         trigger += 7;
         if (isspace(*trigger)) {
-            strcpy(buf, "near \"");
-            strncat(buf + len, sql, len);
-            strcat(buf, "\": syntax error");
-            send_prepare_error(clnt, buf, 0);
-            return SQLITE_ERROR;
+            goto error;
         }
     }
     return 0;
