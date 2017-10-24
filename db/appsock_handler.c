@@ -277,7 +277,7 @@ static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
     char *dta;
     unsigned char nullbits[MAXNULLBITS] = {0};
 
-    len = get_size_of_schema_by_name(tbl->dbname, tag);
+    len = get_size_of_schema_by_name(tbl->tablename, tag);
     if (len == 0)
         return -1;
     buf = malloc(len);
@@ -298,7 +298,7 @@ static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
                 break;
             }
 
-            rc = ctag_to_stag_buf(tbl->dbname, tag, buf, len, nullbits,
+            rc = ctag_to_stag_buf(tbl->tablename, tag, buf, len, nullbits,
                                   ".ONDISK", dta, 0, NULL);
             if (rc != -1) {
                 rc = load_record(tbl, buf);
@@ -336,7 +336,7 @@ static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
         }
         vtag_to_ondisk(tbl, rec, &len, ver, 0);
         rc =
-            stag_to_ctag_buf_tz(tbl->dbname, ".ONDISK", rec, len, tag, clientrec,
+            stag_to_ctag_buf_tz(tbl->tablename, ".ONDISK", rec, len, tag, clientrec,
                                 nulls, conv_flags, NULL, NULL, tzname);
     } else {
         memcpy(clientrec, rec, clientreclen);

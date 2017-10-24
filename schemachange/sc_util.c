@@ -27,7 +27,7 @@ int close_all_dbs(void)
         db = thedb->dbs[ii];
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n", db->dbname,
+            logmsg(LOGMSG_ERROR, "failed closing table '%s': %d\n", db->tablename,
                    bdberr);
             return -1;
         }
@@ -46,7 +46,7 @@ int open_all_dbs(void)
         rc = bdb_open_again(db->handle, &bdberr);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR,
-                   "morestripe: failed reopening table '%s': %d\n", db->dbname,
+                   "morestripe: failed reopening table '%s': %d\n", db->tablename,
                    bdberr);
             return -1;
         }
@@ -110,7 +110,7 @@ int llmeta_get_dbnum(char *tablename, int *bdberr)
 /* careful this can cause overflows, do not use */
 char *get_temp_db_name(struct dbtable *db, char *prefix, char tmpname[])
 {
-    sprintf(tmpname, "%s%s", prefix, db->dbname);
+    sprintf(tmpname, "%s%s", prefix, db->tablename);
 
     return tmpname;
 }
