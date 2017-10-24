@@ -4762,7 +4762,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     return rc;
 }
 
-int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
+int has_index_changed(struct dbtable *tbl, char *keynm, int ct_check, int newkey,
                       FILE *out, int accept_type_change)
 {
     struct schema *old, *new;
@@ -4773,24 +4773,24 @@ int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
     char oldtag[MAXTAGLEN + 16];
     char newtag[MAXTAGLEN + 16];
     const char *tag = ".ONDISK";
-    const char *table = NULL;
+    const char *tblname = NULL;
 
     snprintf(oldtag, sizeof(oldtag), "%s", tag);
     snprintf(newtag, sizeof(newtag), ".NEW.%s", tag);
 
-    table = db->tablename;
+    tblname = tbl->tablename;
 
-    if (table == NULL) {
-        logmsg(LOGMSG_INFO, "Invalid table\n");
+    if (tblname == NULL) {
+        logmsg(LOGMSG_INFO, "Invalid table name\n");
         return -1;
     }
-    rc = getidxnumbyname(table, keynm, &ix);
+    rc = getidxnumbyname(tblname, keynm, &ix);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "No index %s in old schema\n", keynm);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s", keynm);
-    rc = getidxnumbyname(table, ixbuf, &fidx);
+    rc = getidxnumbyname(tblname, ixbuf, &fidx);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "No index %s in new schema\n", keynm);
         return 1;
@@ -4803,15 +4803,15 @@ int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
     /*fprintf(stderr, "key %s ix %d\n", keynm, ix);*/
 
     snprintf(ixbuf, sizeof(ixbuf), "%s_ix_%d", tag, ix);
-    old = find_tag_schema(table, ixbuf);
+    old = find_tag_schema(tblname, ixbuf);
     if (old == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n", table, ix);
+        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n", tblname, ix);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s_ix_%d", tag, fidx);
-    new = find_tag_schema(table, ixbuf);
+    new = find_tag_schema(tblname, ixbuf);
     if (new == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n", table, fidx);
+        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n", tblname, fidx);
         return 1;
     }
 
@@ -4932,7 +4932,7 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
  * rebuild. */
 int compare_indexes(const char *table, FILE *out)
 {
-    struct dbtable *db;
+    struct dbtable *tbl;
     struct schema *old, *new;
     struct field *fnew, *fold;
     int fidx;
@@ -4945,8 +4945,8 @@ int compare_indexes(const char *table, FILE *out)
     snprintf(oldtag, sizeof(oldtag), "%s", tag);
     snprintf(newtag, sizeof(newtag), ".NEW.%s", tag);
 
-    db = get_dbtable_by_name(table);
-    if (db == NULL) {
+    tbl = get_dbtable_by_name(table);
+    if (tbl == NULL) {
         logmsg(LOGMSG_INFO, "Invalid table %s\n", table);
         return 0;
     }
@@ -4970,7 +4970,7 @@ int compare_indexes(const char *table, FILE *out)
     }
 
     /* go through indices */
-    for (ix = 0; ix < db->nix; ix++) {
+    for (ix = 0; ix < tbl->nix; ix++) {
         char descr[128];
         snprintf(ixbuf, sizeof(ixbuf), "%s_ix_%d", tag, ix);
         old = find_tag_schema(table, ixbuf);
@@ -5621,8 +5621,8 @@ int have_all_schemas(void)
 
         if (sqlite_stat1 && table_field && index_field &&
             strcasecmp(thedb->dbs[tbl]->tablename, "sqlite_stat1")) {
-            if (strlen(thedb->dbs[tbl]->tablename) >= table_field->len ||
-                strlen(thedb->dbs[tbl]->tablename) >= index_field->len) {
+            int nlen = strlen(thedb->dbs[tbl]->tablename);
+            if (nlen >= table_field->len || nlen >= index_field->len) {
                 logmsg(LOGMSG_WARN,
                        "WARNING: table name %s too long for analyze\n",
                        thedb->dbs[tbl]->tablename);
@@ -5648,21 +5648,21 @@ int have_all_schemas(void)
         return 1;
 }
 
-int getdefaultkeysize(const struct dbtable *db, int ixnum)
+int getdefaultkeysize(const struct dbtable *tbl, int ixnum)
 {
     char tagbuf[MAXTAGLEN];
 
     snprintf(tagbuf, MAXTAGLEN, ".DEFAULT_ix_%d", ixnum);
-    struct schema *s = find_tag_schema(db->tablename, tagbuf);
+    struct schema *s = find_tag_schema(tbl->tablename, tagbuf);
     if (s == NULL)
         return -1;
     return get_size_of_schema(s);
     /* return s->member[s->nmembers-1].offset + s->member[s->nmembers-1].len; */
 }
 
-int getdefaultdatsize(const struct dbtable *db)
+int getdefaultdatsize(const struct dbtable *tbl)
 {
-    struct schema *s = find_tag_schema(db->tablename, ".DEFAULT");
+    struct schema *s = find_tag_schema(tbl->tablename, ".DEFAULT");
 
     if (s == NULL)
         return -1;
