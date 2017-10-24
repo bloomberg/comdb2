@@ -42,7 +42,7 @@
 
 #include <ctrace.h>
 
-char *bdb_trans(const char infile[], char outfile[]);
+char *bdb_trans(const char infile[], char outfile[], size_t len);
 
 int ___os_abspath(const char *path);
 int __os_abspath(const char *path)

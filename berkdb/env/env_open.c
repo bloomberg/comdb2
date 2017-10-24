@@ -22,6 +22,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include <stdarg.h>
 #endif
 #include <unistd.h>
+#include <limits.h>
 
 #include <plhash.h>
 #include "db_int.h"
@@ -1276,7 +1277,7 @@ __db_tmp_open(dbenv, tmp_oflags, path, fhpp)
 #include "dbinc/hmac.h"
 #include "dbinc_auto/hmac_ext.h"
 
-extern char *bdb_trans(const char infile[], char outfile[]);
+extern char *bdb_trans(const char infile[], char outfile[], size_t len);
 extern int ___os_openhandle(DB_ENV *dbenv, const char *name, int flags,
     int mode, DB_FH ** fhpp);
 extern int __os_closehandle(DB_ENV *dbenv, DB_FH * fhp);
@@ -1285,8 +1286,8 @@ int
 __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 {
 	int ret = 0;
-	char buf[256];
-	char fname[256];
+	char buf[PATH_MAX];
+	char fname[PATH_MAX];
 	const char *pbuf;
 	struct __db_checkpoint ckpt = { 0 };
 	int niop = 0;
@@ -1294,7 +1295,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	size_t sz;
 
 	snprintf(fname, sizeof(fname), "%s/checkpoint", db_home);
-	pbuf = bdb_trans(fname, buf);
+	pbuf = bdb_trans(fname, buf, sizeof(buf));
 
 	ret =
 	    ___os_openhandle(dbenv, pbuf, O_SYNC | O_RDWR, 0666,

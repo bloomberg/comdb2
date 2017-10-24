@@ -16,7 +16,7 @@
 static DB_ENV *dbenv = NULL;
 static u_int32_t commit_delay_ms = 2;
 
-char *bdb_trans(const char infile[], char outfile[]);
+char *bdb_trans(const char infile[], char outfile[], size_t len);
 
 /* Common among tables */
 typedef struct globalopts {
@@ -90,7 +90,7 @@ static int create_and_open(berktable_t *table)
 static void close_tables(berktable_t *tables, int tablecount)
 {
     int i, rc;
-    char new[100];
+    char new[PATH_MAX];
     berktable_t *table;
 
     for (i = 0; i < tablecount; i++) {
@@ -100,7 +100,7 @@ static void close_tables(berktable_t *tables, int tablecount)
                 logmsg(LOGMSG_ERROR, "%s close error: %d\n", __func__, rc);
                 continue;
             }
-            unlink(bdb_trans(table->name, new));
+            unlink(bdb_trans(table->name, new, sizeof(new)));
         }
     }
     free(tables);
@@ -110,14 +110,14 @@ static berktable_t *create_tables(int *tablecount)
 {
     berktable_t *tables = calloc(sizeof(berktable_t), 2), *table;
     u_int32_t uniq = getpid() * random();
-    char new[100];
+    char new[PATH_MAX];
     int count, rc;
 
     /* Index */
     count = 0;
     table = &tables[count];
     snprintf(table->name, sizeof(table->name), "XXX._berktest%d.index", uniq);
-    unlink(bdb_trans(table->name, new));
+    unlink(bdb_trans(table->name, new, sizeof(new)));
     table->pagesize = 4096;
     table->keysize = 13;
     table->datasize = 8;
@@ -131,7 +131,7 @@ static berktable_t *create_tables(int *tablecount)
     count++;
     table = &tables[count];
     snprintf(table->name, sizeof(table->name), "XXX._berktest%d.data", uniq);
-    unlink(bdb_trans(table->name, new));
+    unlink(bdb_trans(table->name, new, sizeof(new)));
     table->pagesize = 4096;
     table->keysize = 8;
     table->datasize = 12;

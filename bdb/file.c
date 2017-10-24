@@ -1317,14 +1317,13 @@ int bdb_del_list_free(void *list, int *bdberr)
 
 bdb_state_type *gbl_bdb_state;
 
-char *bdb_trans(const char infile[], char outfile[])
+char *bdb_trans(const char infile[], char outfile[], size_t len)
 {
 #ifdef COMPILING_FOR_DB_TOOLS
-    return strcpy(outfile, infile);
+    return strncpy0(outfile, infile, len);
 #else
     bdb_state_type *bdb_state;
     char *p;
-    int len;
 
     if (!infile) {
         if (outfile)
@@ -1336,29 +1335,32 @@ char *bdb_trans(const char infile[], char outfile[])
     bdb_state = gbl_bdb_state;
 
 #ifndef NAME_MANGLE
-    strcpy(outfile, infile);
+    strncpy0(outfile, infile, len);
     return outfile;
 #endif
 
     if (bdb_state == NULL) {
-        strcpy(outfile, infile);
+        strncpy0(outfile, infile, len);
         return outfile;
     }
 
     /* Copy to outfile.  If leading with a XXX., strip this off and replace with
      * full path. */
     if (strncmp(infile, "XXX.", 4) == 0) {
-        sprintf(outfile, "%s/%s", bdb_state->dir, infile + 4);
+        snprintf0(outfile, len, "%s/%s", bdb_state->dir, infile + 4);
     } else {
-        strcpy(outfile, infile);
+        strncpy0(outfile, infile, len);
     }
 
     /* Look for queue extents and correct them. */
     p = strstr(outfile, "/__dbq.XXX.");
     if (p) {
+	int sz;
+
         p += 7;
-        len = strlen(p);
-        memmove(p, p + 4, len - 4 + 1 /* copy \0 byte too! */);
+	sz = strlen(p);
+
+        memmove(p, p + 4, sz - 4 + 1 /* copy \0 byte too! */);
     }
 
     /*printf("bdb_trans: <%s> -> <%s>\n", infile, outfile);*/
@@ -3996,9 +3998,9 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                                    sizeof(tmpname));
 
                 if (create) {
-                    char new[100];
-                    print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-                    unlink(bdb_trans(tmpname, new));
+                    char new[PATH_MAX];
+                    print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new, sizeof(new)));
+                    unlink(bdb_trans(tmpname, new, sizeof(new)));
                 }
 
                 rc = db_create(&dbp, bdb_state->dbenv, 0);
@@ -4142,10 +4144,10 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                            bdb_state->name, ext);
 #endif
         if (create) {
-            char new[100];
+            char new[PATH_MAX];
 
-            print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-            unlink(bdb_trans(tmpname, new));
+            print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new, sizeof(new)));
+            unlink(bdb_trans(tmpname, new, sizeof(new)));
         }
 
         rc = db_create(&dbp, bdb_state->dbenv, 0);
@@ -4233,10 +4235,10 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
             form_indexfile_name(bdb_state, tid, i, tmpname, sizeof(tmpname));
 
             if (create) {
-                char new[100];
+                char new[PATH_MAX];
 
-                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-                unlink(bdb_trans(tmpname, new));
+                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new, sizeof(new)));
+                unlink(bdb_trans(tmpname, new, sizeof(new)));
             }
 
             /* Give indicies a 50% priority boost in the bufferpool. */
@@ -4466,8 +4468,8 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
         /* Add the extra stripes. */
         for (strnum = numstripes; strnum < newdtastripe; strnum++) {
-            char tmpname[100];
-            char new[100];
+            char tmpname[PATH_MAX];
+            char new[PATH_MAX];
             int pagesize;
             DB *dbp = NULL;
 
@@ -4481,7 +4483,7 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
             form_file_name(bdb_state, tid, 1 /*is_data_file*/, dtanum,
                            1 /*isstriped*/, strnum, tmpname, sizeof(tmpname));
 
-            unlink(bdb_trans(tmpname, new));
+            unlink(bdb_trans(tmpname, new, sizeof(new)));
 
             rc = db_create(&dbp, bdb_state->dbenv, 0);
             if (rc != 0) {
@@ -6384,8 +6386,8 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 {
     DB_ENV *dbenv;
     DB *dbp;
-    char transname[256];
-    char *pname = bdb_trans(filename, transname);
+    char transname[PATH_MAX];
+    char *pname = bdb_trans(filename, transname, sizeof(transname));
     int rc = 0;
 
     if (bdb_state->parent)
@@ -7055,7 +7057,7 @@ static uint64_t mystat(const char *filename)
 
 uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
 {
-    char bdbname[256], physname[256];
+    char bdbname[PATH_MAX], physname[PATH_MAX];
 
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
@@ -7063,7 +7065,7 @@ uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
 #ifdef NAME_MANGLE
 
     form_indexfile_name(bdb_state, NULL, ixnum, bdbname, sizeof(bdbname));
-    bdb_trans(bdbname, physname);
+    bdb_trans(bdbname, physname, sizeof(physname));
 #else
     form_indexfile_name(bdb_state, NULL, bdb_state->name, ixnum, bdbname,
                         sizeof(bdbname));
@@ -7084,10 +7086,10 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
         numstripes = bdb_state->attr->dtastripe;
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
-        char bdbname[256], physname[256];
+        char bdbname[PATH_MAX], physname[PATH_MAX];
         form_datafile_name(bdb_state, NULL, dtanum, stripenum, bdbname,
                            sizeof(bdbname));
-        bdb_trans(bdbname, physname);
+        bdb_trans(bdbname, physname, sizeof(physname));
         total += mystat(physname);
     }
 
