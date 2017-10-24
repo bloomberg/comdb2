@@ -4489,7 +4489,7 @@ static int cson_to_table(Lua lua, cson_value *v)
         }
     } else if (cson_value_is_array(v)) {
         cson_array *a = cson_value_get_array(v);
-        int i, len = cson_array_length_get(a);
+        unsigned int i, len = cson_array_length_get(a);
         for (i = 0; i < len; ++i) {
             if (cson_push_value(lua, cson_array_get(a, i)) != 0) return -1;
             lua_rawseti(lua, -2, i + 1);
@@ -4539,7 +4539,7 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         return cson_push_null(L, type);
     } else if (strcmp(type, "object") == 0 || strcmp(type, "array") == 0) {
         lua_newtable(L);
-        return cson_to_table_annotated(L, v, 1);
+        return cson_to_table_annotated(L, val, 1);
     } else if (strcmp(type, "string") == 0) {
         if (!cson_value_is_string(v)) return -1;
         lua_pushstring(L, cson_value_get_cstr(v));
@@ -4563,9 +4563,15 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         double d = cson_value_get_double(v);
         luabb_pushreal(L, d);
     } else if (strcmp(type, "number") == 0) {
-        if (!cson_value_is_double(v)) return -1;
-        double d = cson_value_get_double(v);
-        lua_pushnumber(L, d);
+        if (cson_value_is_integer(v)) {
+            int64_t i = cson_value_get_integer(v);
+            luabb_pushinteger(L, i);
+        } else if (cson_value_is_double(v)) {
+            double d = cson_value_get_double(v);
+            lua_pushnumber(L, d);
+        } else {
+            return -1;
+        }
     } else if (strcmp(type, "bool") == 0) {
         if (!cson_value_is_bool(v)) return -1;
         lua_pushboolean(L, cson_value_get_bool(v));
@@ -4634,7 +4640,7 @@ static int cson_to_table_annotated(Lua L, cson_value *val, int annotate)
         }
     } else if (strcmp(type, "array") == 0) {
         cson_array *a = cson_value_get_array(v);
-        int i, len = cson_array_length_get(a);
+        unsigned int i, len = cson_array_length_get(a);
         for (i = 0; i < len; ++i) {
             if (cson_push_value_annotated(L, cson_array_get(a, i)) != 0)
                 return -1;
