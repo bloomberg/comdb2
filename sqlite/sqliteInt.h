@@ -1056,9 +1056,11 @@ typedef struct VtabCtx VtabCtx;
 typedef struct Walker Walker;
 typedef struct WhereInfo WhereInfo;
 typedef struct With With;
+/* COMDB2 MODIFICATION */
 typedef struct Cdb2TrigEvent Cdb2TrigEvent;
 typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
+typedef struct comdb2_ddl_context Cdb2DDL;
 
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and
@@ -1404,7 +1406,6 @@ struct sqlite3 {
   /* COMDB2 MODIFICATION */
   u8 should_fingerprint;
   char fingerprint[16];              /* Figerprint of the last query that was prepared */
-  int force_sqlite_impl;
 };
 
 /*
@@ -1474,6 +1475,7 @@ struct sqlite3 {
 #define SQLITE_Transitive     0x0200   /* Transitive constraints */
 #define SQLITE_OmitNoopJoin   0x0400   /* Omit unused tables in joins */
 #define SQLITE_Stat34         0x0800   /* Use STAT3 or STAT4 data */
+#define SQLITE_CountOfView    0x1000   /* The count-of-view optimization */
 #define SQLITE_CursorHints    0x2000   /* Add OP_CursorHint opcodes */
 #define SQLITE_AllOpts        0xffff   /* All optimizations */
 
@@ -3062,7 +3064,7 @@ struct Parse {
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
   u8 isExpert;              /* If analyze is done using sqlite expert */
-  void *comdb2_ddl_ctx;     /* Context for DDL commands */
+  Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
 };
 
 /* COMDB2 MODIFICATION */

@@ -1,0 +1,75 @@
+create table t5  { schema
+{
+  int uuid
+  int uuida
+  int uuidb
+  int uuidc
+  int uuidd
+  int uuide
+  int value
+}
+
+keys
+{
+    "UUID1"      = uuid
+    "UUID2"      = uuida
+    "UUID3"      = uuidb
+    "UUID4"      = uuidc
+    "UUID5"      = uuidd
+    "UUID6"      = uuide
+}
+
+constraints
+{
+    "UUID1" -> <"t1":"UUID"> on delete cascade
+    "UUID1" -> "t2":"UUID1"
+    UUID1 -> t2:UUID1
+    "UUID2" -> "t1":"UUID" on update cascade on delete restrict
+    "UUID2" -> <"t2":"UUID1">
+    "UUID3" -> <"t1":"UUID"> <"t2":"UUID1">
+    "UUID4" -> <"t1":"UUID"> <"t2":"UUID1"> on delete cascade
+    //Need to add tbl first then alter with this line : "UUID5" -> "t5":"UUID6"
+}
+} $$
+
+insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,1,1,1,1,1,1)
+insert into t2(uuid, value) values(1,1)
+insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,1,1,1,1,1,1)
+insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,2,1,1,1,1,1)
+delete from t5 where uuid = 1
+insert into t5(uuid, uuida, uuidb, uuidc, uuidd, uuide, value) values(1,2,1,1,1,1,1)
+
+
+create table t6  { schema
+{
+  int uuid
+  int uuida
+  int uuidb
+  int uuidc
+  int uuidd
+  int uuide
+  int value
+}
+
+keys
+{
+    "UUID1"      = uuid
+    "UUID2"      = uuida
+    "UUID3"      = uuidb
+    "UUID4"      = uuidc
+    "UUID5"      = uuidd
+    "UUID6"      = uuide
+}
+
+constraints
+{
+    "UUID1" -> <"t1":"UUID"> on delete cascade
+    "UUID1" -> "t2":"UUID1"
+    UUID1 -> t2:UUID1
+    "UUID2" -> "t1":"UUID" on update cascade on delete restrict
+    "UUID2" -> <"t2":"UUID1">
+    "UUID3" -> "t1":"UUID" "t2":"UUID1" //no angle brackets -- should fail
+}
+} $$
+
+

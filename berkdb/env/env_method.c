@@ -109,6 +109,13 @@ int __dbenv_getattr __P((DB_ENV *dbenv, char *attr, char **val, int *ival));
 int __dbenv_dumpattrs __P((DB_ENV *dbenv, FILE *out));
 void __dbenv_attr_init __P((DB_ENV *dbenv));
 
+static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
+					  pthread_cond_t **, pthread_mutex_t **,
+					  const uint8_t **active));
+static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
+static int __dbenv_trigger_open __P((DB_ENV *, const char *));
+static int __dbenv_trigger_close __P((DB_ENV *, const char *));
+
 /*
  * db_env_create --
  *	DB_ENV constructor.
@@ -329,6 +336,11 @@ __dbenv_init(dbenv)
 
 	dbenv->set_is_tmp_tbl = __dbenv_set_is_tmp_tbl;
 	dbenv->set_use_sys_malloc = __dbenv_set_use_sys_malloc;
+
+	dbenv->trigger_subscribe = __dbenv_trigger_subscribe;
+	dbenv->trigger_unsubscribe = __dbenv_trigger_unsubscribe;
+	dbenv->trigger_open = __dbenv_trigger_open;
+	dbenv->trigger_close = __dbenv_trigger_close;
 
 	return (0);
 }
@@ -1323,4 +1335,67 @@ void __dbenv_get_durable_lsn __P((dbenv, lsnp, generation))
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;
 	pthread_mutex_unlock(&dbenv->durable_lsn_lk);
+}
+
+static int
+__dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
+	DB_ENV *dbenv;
+	const char *fname;
+	pthread_cond_t **cond;
+	pthread_mutex_t **lock;
+	const uint8_t **open;
+{
+	int rc = 1;
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	pthread_mutex_lock(&t->lock);
+	if (t->open) {
+		t->active = 1;
+		*cond = &t->cond;
+		*lock = &t->lock;
+		*open = &t->open;
+		rc = 0;
+	}
+	pthread_mutex_unlock(&t->lock);
+	return rc;
+}
+
+static int
+__dbenv_trigger_unsubscribe(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	/* trigger_lock should be held by caller */
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	t->active = 0;
+	return 0;
+}
+
+static int
+__dbenv_trigger_open(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	pthread_mutex_lock(&t->lock);
+	t->open = 1;
+	pthread_cond_signal(&t->cond);
+	pthread_mutex_unlock(&t->lock);
+	return 0;
+}
+
+static int
+__dbenv_trigger_close(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	pthread_mutex_lock(&t->lock);
+	t->open = 0;
+	pthread_cond_signal(&t->cond);
+	pthread_mutex_unlock(&t->lock);
+	return 0;
 }

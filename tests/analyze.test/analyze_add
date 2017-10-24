@@ -42,6 +42,6 @@ function addrecs {
 }
 
 for table in 1 2 3; do 
-    addrecs $table | cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null 2>&1 &
+    addrecs $table | $CDB2SQL_EXE ${CDB2_OPTIONS} $dbname default - >/dev/null 2>&1 &
 done
 wait

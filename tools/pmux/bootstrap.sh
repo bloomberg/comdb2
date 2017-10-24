@@ -32,7 +32,7 @@ echo exit | nc localhost ${PMUXPORT}
 PORT=$(sqlite3 ${SQLITE3DB} "select port from pmux where svc='${SVC}';")
 CONN="@${HOSTNAME}:port=${PORT}"
 ${CDB2SQL} -s pmuxdb ${CONN} - <<EOF
-CREATE TABLE IF NOT EXISTS pmux {tag ondisk {
+CREATE TABLE IF NOT EXISTS pmux {schema {
   cstring host[128]
   cstring svc[256]
   u_short port

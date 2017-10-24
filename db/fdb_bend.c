@@ -170,7 +170,8 @@ int fdb_svc_init(void)
 {
     center = (svc_center_t *)calloc(1, sizeof(svc_center_t));
     if (!center) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, sizeof(svc_center_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(svc_center_t));
         return -1;
     }
 
@@ -304,7 +305,6 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
    svc_cursor_t   *cur;
    bdb_state_type *state;
    int            bdberr = 0;
-   int            tblnum;
    int            ixnum;
    int            outlen;
    int            rc;
@@ -315,16 +315,15 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
       /* TODO: check the version here, after transaction is created */
 
       struct sql_thread *thd = pthread_getspecific(query_info_key);
-      get_sqlite_tblnum_and_ixnum(thd, rootpage, &tblnum, &ixnum);
+      db = get_sqlite_db(thd, rootpage, &ixnum);
 
-      if (tblnum<0 || tblnum >=thedb->num_dbs || thedb->dbs[tblnum]->nix < ixnum)
+      if (!db)
       {
          fprintf(stderr, "%s: failed to retrieve bdb_state for table rootpage=%d\n", 
                __func__, rootpage);
          return NULL;
       }
 
-      db = thedb->dbs[tblnum];
       sc = (ixnum<0)?db->schema:db->ixschema[ixnum];
       state = thedb->dbs[tblnum]->handle;
 
@@ -439,7 +438,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%d: CLosing rem cursor cid=%llx autocommit=%d\n",
+        logmsg(LOGMSG_USER, "%lu: CLosing rem cursor cid=%llx autocommit=%d\n",
                pthread_self(), *(unsigned long long *)cur->cid,
                cur->autocommit);
 
@@ -565,7 +564,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
                 rc = cur->bdbc->last(cur->bdbc, &bdberr);
                 break;
             default:
-                logmsg(LOGMSG_FATAL, "%s: unknown move\n", __func__, type);
+                logmsg(LOGMSG_FATAL, "%s: unknown move %d\n", __func__, type);
                 abort();
             }
         } while (0); /* here loop until no deadlock */
@@ -643,8 +642,8 @@ again:
 
             if (recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %d failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return SQLITE_DEADLOCK;
             }
 

@@ -114,8 +114,8 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
     return 0;
 }
 
-int bpfunc_prepare(bpfunc_t **f, void *tran, int32_t data_len,
-        uint8_t *data, bpfunc_info *info)
+int bpfunc_prepare(bpfunc_t **f, int32_t data_len, uint8_t *data,
+                   bpfunc_info *info)
 {
     bpfunc_t *func = *f = (bpfunc_t *)malloc(sizeof(bpfunc_t));
 

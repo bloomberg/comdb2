@@ -502,7 +502,7 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
         return SC_INTERNAL_ERROR;
     } else {
         /* found some seed */
-        logmsg(LOGMSG_INFO, "stored seed %016llx, sc seed %016llx, stored host "
+        logmsg(LOGMSG_INFO, "stored seed %016llx, sc seed %016lx, stored host "
                             "%u, sc host %u\n",
                *stored_sc_genid, sc_seed, *stored_sc_host, sc_host);
         logmsg(
@@ -1333,36 +1333,17 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
     }
 }
 
-static int reset_sc_from(const char *table)
-{
-    struct dbtable *db = get_dbtable_by_name(table);
-    if (db == NULL) {
-        return -1;
-    }
-
-    live_sc_off(db);
-
-    return 0;
-}
-
 void change_schemas_recover(char *table)
 {
     struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
-        if (unlikely(!timepart_is_timepart(table, 1))) {
-            /* shouldn't happen */
-            logmsg(LOGMSG_ERROR, "change_schemas_recover: invalid table %s\n",
-                   table);
-            return;
-        }
+        /* shouldn't happen */
+        logmsg(LOGMSG_ERROR, "change_schemas_recover: invalid table %s\n",
+               table);
+        return;
     }
     backout_schemas(table);
-    if (db) {
-        live_sc_off(db);
-    } else {
-        /*timepart*/
-        timepart_for_each_shard(table, reset_sc_from);
-    }
+    live_sc_off(db);
 
     if (thedb->stopped) {
         resume_threads(thedb);

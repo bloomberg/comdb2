@@ -108,6 +108,7 @@ static void do_init_once(void)
 
 static int is_sql_read(const char *sqlstr)
 {
+    const char get[] = "GET";
     const char sp_exec[] = "EXEC";
     const char with[] = "WITH";
     const char sel[] = "SELECT";
@@ -119,6 +120,10 @@ static int is_sql_read(const char *sqlstr)
         sqlstr++;
     int slen = strlen(sqlstr);
     if (slen) {
+        if (slen < sizeof(get) - 1)
+            return 0;
+        if (!strncasecmp(sqlstr, get, sizeof(get) - 1))
+            return 1;
         if (slen < sizeof(sp_exec) - 1)
             return 0;
         if (!strncasecmp(sqlstr, sp_exec, sizeof(sp_exec) - 1))
@@ -823,9 +828,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
             if (strcasecmp("default_type", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
-                    if (hndl) {
+                    if (hndl && (strcasecmp(hndl->cluster, "default") == 0)) {
                         strcpy(hndl->cluster, tok);
-                    } else {
+                    } else if (!hndl) {
                         strcpy(cdb2_default_cluster, tok);
                     }
                 }
@@ -953,7 +958,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (num_db_hosts)
         *num_db_hosts = 0;
     if (master)
-        *master = 0;
+        *master = -1;
 
     if (CDB2DBCONFIG_BUF != NULL) {
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
@@ -2048,23 +2053,29 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         n_features++;
     }
 
-    if (hndl && retries_done >= hndl->num_hosts) {
-        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
-        n_features++;
-    }
-
+#if WITH_SSL
+    features[n_features] = CDB2_CLIENT_FEATURES__SSL;
+    n_features++;
+#endif
     if (hndl) {
         features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         n_features++;
-#if WITH_SSL
-        features[n_features] = CDB2_CLIENT_FEATURES__SSL;
-        n_features++;
-#endif
         if ((hndl->flags & CDB2_DIRECT_CPU) ||
             (retries_done && hndl->master == hndl->connected_host)) {
             features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
             n_features++;
         }
+        if (retries_done >= hndl->num_hosts) {
+            features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
+            n_features++;
+        }
+    } else if (retries_done) {
+        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
+        n_features++;
+        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
+        n_features++;
+        features[n_features] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
+        n_features++;
     }
 
     if (hndl && hndl->cnonce_len > 0) {
@@ -2471,16 +2482,43 @@ done:
     return 0;
 }
 
+
+/* combine hashes similar to hash_combine from boost library */
+uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+{
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+}
+
+/* make_random_str() will return a randomly generated string
+ * this is used to get a cnonce, composed of four components:
+ * the first part is the id of this host machine
+ * the second part is the PID of this client process
+ * the third part is the current time usec portion
+ * the fourth part is a [pseudo]random number
+ */
 static void make_random_str(char *str, int *len)
 {
-    static int PID = 0;
+    static __thread int PID = 0;
+    static __thread unsigned short rand_state[3];
+
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (PID == 0) {
-        PID = getpid();
-        srandom(tv.tv_sec);
+    if (PID == 0) { /* Initialize PID and rand_state once per thread */
+         /* PID will ensure that cnonce will be different accross processes */
+        PID = getpid(); 
+
+        /* Get the initial random state by using thread id and time info. */
+        uint32_t tmp[2];
+        tmp[0] = tv.tv_sec;
+        tmp[1] = tv.tv_usec;
+        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
+        rand_state[0] = hash;
+        rand_state[1] = hash >> 16;
+        rand_state[2] = hash >> 32;
     }
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, random());
+    int randval = nrand48(rand_state);
+    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }
@@ -3580,6 +3618,12 @@ read_record:
             goto retry_queries;
         }
     } else if (hndl->firstresponse->error_code == CDB2__ERROR_CODE__WRONG_DB && !hndl->in_trans) {
+        newsql_disconnect(hndl, hndl->sb, __LINE__);
+        hndl->sb = NULL;
+        hndl->retry_all = 1;
+        for (int i = 0; i < hndl->num_hosts; i++) {
+            hndl->ports[i] = -1;
+        }
         if (retries_done < MAX_RETRIES) {
             goto retry_queries;
         }
@@ -4048,7 +4092,7 @@ done:
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
                                 int comdb2db_num, char *host, int port,
                                 char hosts[][64], int *num_hosts, char *dbname,
-                                char *cluster, int *dbnum)
+                                char *cluster, int *dbnum, int num_retries)
 {
     char sql_query[256];
     int rc = 0;
@@ -4129,7 +4173,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
         sbuf2flush(ss);
     }
     rc = cdb2_send_query(NULL, ss, comdb2db_name, sql_query, 0, 0, NULL, 3,
-                         bindvars, 0, NULL, 0, 0, 0, 0, __LINE__);
+                         bindvars, 0, NULL, 0, 0, num_retries, 0, __LINE__);
     int i = 0;
     for (i = 0; i < 3; i++) {
         free(bindvars[i]);
@@ -4334,7 +4378,7 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     char comdb2db_hosts[MAX_NODES][64];
     int comdb2db_ports[MAX_NODES];
     int num_comdb2db_hosts;
-    int master = 0, rc = 0;
+    int master = -1, rc = 0;
     int num_retry = 0;
     int comdb2db_num = COMDB2DB_NUM;
     char comdb2db_name[32] = COMDB2DB;
@@ -4390,12 +4434,13 @@ retry:
     if (rc && num_retry < MAX_RETRIES) {
         num_retry++;
         poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
+        rc = 0;
     } else if (rc) {
         return rc;
     }
     if (hndl->num_hosts == 0) {
         int i = 0;
-        if (!master) {
+        if (master == -1) {
             for (i = 0; i < num_comdb2db_hosts; i++) {
                 rc = cdb2_dbinfo_query(
                     hndl, cdb2_default_cluster, comdb2db_name, comdb2db_num,
@@ -4420,7 +4465,7 @@ retry:
             rc = comdb2db_get_dbhosts(
                 hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[i],
                 comdb2db_ports[i], hndl->hosts, &hndl->num_hosts, hndl->dbname,
-                hndl->cluster, &hndl->dbnum);
+                hndl->cluster, &hndl->dbnum, num_retry);
             if (rc == 0) {
                 break;
             }
@@ -4429,7 +4474,7 @@ retry:
             rc = comdb2db_get_dbhosts(
                 hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master],
                 comdb2db_ports[master], hndl->hosts, &hndl->num_hosts,
-                hndl->dbname, hndl->cluster, &hndl->dbnum);
+                hndl->dbname, hndl->cluster, &hndl->dbnum, num_retry);
         }
 
         if (rc != 0) {

@@ -180,18 +180,6 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 
-/* some random prototypes that should have their own header */
-void buffer_origin_(int *mch, int *pid, int *slot);
-void swapinit_(int *, int *);
-int set_db_rngkeymode(int dbnum);
-int set_db_rngextmode(int dbnum);
-void enable_ack_trace(void);
-void disable_ack_trace(void);
-void set_cursor_rowlocks(int cr);
-void walkback_set_warnthresh(int thresh);
-void walkback_disable(void);
-void walkback_enable(void);
-
 static int put_all_csc2();
 
 static void *purge_old_blkseq_thread(void *arg);
@@ -200,12 +188,7 @@ static int lrllinecmp(char *lrlline, char *cmpto);
 static void ttrap(struct timer_parm *parm);
 int clear_temp_tables(void);
 
-int q_reqs_len(void);
-int handle_buf_bbipc(struct dbenv *, uint8_t *p_buf, const uint8_t *p_buf_end,
-                     int debug, int frommach, int do_inline);
-
 pthread_key_t comdb2_open_key;
-pthread_key_t blockproc_retry_key;
 
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = "R7.0pre";
@@ -768,6 +751,7 @@ int gbl_memstat_freq = 60 * 5;
 int gbl_accept_on_child_nets = 0;
 int gbl_disable_etc_services_lookup = 0;
 int gbl_fingerprint_queries = 1;
+int gbl_stable_rootpages_test = 0;
 
 char *gbl_dbdir = NULL;
 
@@ -957,8 +941,8 @@ void showdbenv(struct dbenv *dbenv)
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
-        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii, dbenv->sibling_hostname[ii],
-               dbenv->sibling_port[ii]);
+        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii,
+               dbenv->sibling_hostname[ii], *dbenv->sibling_port[ii]);
     }
 }
 
@@ -2280,8 +2264,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016llx\n\tblob files\n",
-                p_db->dbname, flibc_htonll(version_num));
+        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
+               p_db->dbname, flibc_htonll(version_num));
     else
         ctrace("table %s\n\tdata files: %016llx\n\tblob files\n", p_db->dbname,
                (long long unsigned int)flibc_htonll(version_num));
@@ -2302,8 +2286,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016llx\n", i,
-                    flibc_htonll(version_num));
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tblob num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -2327,8 +2311,8 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016llx\n", i,
-                    flibc_htonll(version_num));
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tindex num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -3827,7 +3811,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "create_sqlmaster_records rc %d\n", rc);
         return -1;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
 
@@ -4312,17 +4296,16 @@ void *statthd(void *p)
                 if (diff_nretries)
                     logmsg(LOGMSG_USER, " n_retries %d", diff_nretries);
                 if (diff_vreplays)
-                    logmsg(LOGMSG_USER, " vreplays %lld", diff_vreplays);
+                    logmsg(LOGMSG_USER, " vreplays %d", diff_vreplays);
                 if (diff_newsql)
-                    logmsg(LOGMSG_USER, " nnewsql %lld", diff_newsql);
+                    logmsg(LOGMSG_USER, " nnewsql %d", diff_newsql);
                 if (diff_ncommit_time)
                     logmsg(LOGMSG_USER, " n_commit_time %f ms",
-                           diff_ncommit_time / (1000 * diff_ncommits));
+                           (double)diff_ncommit_time / (1000 * diff_ncommits));
                 if (diff_bpool_hits)
-                    logmsg(LOGMSG_USER, " cache_hits %llu", diff_bpool_hits);
+                    logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %llu",
-                           diff_bpool_misses);
+                    logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 have_scon_stats = 1;
             }
         }
@@ -4419,7 +4402,7 @@ void *statthd(void *p)
                                             tbl->dbnum, tbl->dbname);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         breq2a(jj), diff);
                         }
                         tbl->prev_blocktypcnt[jj] = tbl->blocktypcnt[jj];
@@ -4433,7 +4416,7 @@ void *statthd(void *p)
                                             tbl->dbnum, tbl->dbname);
                                 hdr = 1;
                             }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                         osql_breq2a(jj), diff);
                         }
                         tbl->prev_blockosqltypcnt[jj] = tbl->blockosqltypcnt[jj];
@@ -4446,7 +4429,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns committed", diff);
                     }
                     dbenv->prev_txns_committed = dbenv->txns_committed;
@@ -4458,7 +4441,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "txns aborted", diff);
                     }
                     dbenv->prev_txns_aborted = dbenv->txns_aborted;
@@ -4470,7 +4453,7 @@ void *statthd(void *p)
                                         tbl->dbnum, tbl->dbname);
                             hdr = 1;
                         }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-16s %u\n",
+                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
                                     "nsql", diff);
                     }
                     tbl->prev_nsql = tbl->nsql;
@@ -4999,6 +4982,10 @@ static void register_all_int_switches()
     register_int_switch("durable_replay_test",
                         "Enables periodic durable failures in blkseq replay",
                         &gbl_durable_replay_test);
+    register_int_switch(
+        "stable_rootpages_test",
+        "Delay sql processing to allow a schema change to finish",
+        &gbl_stable_rootpages_test);
     register_int_switch("durable_set_trace",
                         "Print trace set durable and commit lsn trace",
                         &gbl_durable_set_trace);

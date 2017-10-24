@@ -316,11 +316,13 @@ char *bb_tmpnam(char *s)
 
 int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
 #ifdef _LINUX_SOURCE
-    int rc;
-    *dent = readdir(d);
-    if (*dent == NULL)
+    struct dirent *rv;
+    *dent = rv = readdir(d);
+    if (rv == NULL)
         return errno;
-    memcpy(buf, *dent, sizeof(struct dirent));
+    /* rv->d_reclen is the actual size of rv.
+       It may not match sizeof(struct dirent). */
+    memcpy(buf, rv, rv->d_reclen);
     return 0;
 #else
     int rc;

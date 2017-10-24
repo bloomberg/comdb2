@@ -346,6 +346,7 @@ int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
+    iq->use_handle = thedb->bdb_env;
     return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
 }
 
@@ -994,8 +995,9 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     default:
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_delkey return unhandled rc %d\n", bdberr);
         while (1) {
-            logmsg(LOGMSG_ERROR, "Thread %d got delete key error - send lockstat.\n",
-                    pthread_self());
+            logmsg(LOGMSG_ERROR,
+                   "Thread %lu got delete key error - send lockstat.\n",
+                   pthread_self());
             sleep(5);
         }
         return ERR_INTERNAL;
@@ -1052,8 +1054,10 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
         return ERR_VERIFY;
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_updvrfy return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1084,8 +1088,10 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
         return ERR_VERIFY;
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_updvrfy return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1116,8 +1122,10 @@ int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
     switch (bdberr) {
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_upd_genid return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1168,7 +1176,7 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_allocdta return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1200,7 +1208,7 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_adddta_n_genid return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1233,7 +1241,7 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_adddta_n_genid return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1346,7 +1354,7 @@ int dat_upgrade(struct ireq *iq, void *trans, void *newdta, int newlen,
         // txns may sneak in and change the genid. consider it done.
         return 0;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_upgrade return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -2878,6 +2886,8 @@ static int new_master_callback(void *bdb_handle, char *host)
             load_auto_analyze_counters();
             trigger_clear_hash();
             trigger_timepart = 1;
+
+            osql_repository_cancelall();
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
@@ -3197,7 +3207,7 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
     rc = reload_schema(table, csc2, NULL);
 
     rc2 = create_sqlmaster_records(NULL);
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     net_ack_message(hndl, rc || rc2);
 
@@ -3231,7 +3241,7 @@ void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
     logmsg(LOGMSG_DEBUG, "table %s free_handle %d\n", table, free_handle);
 
     db = get_dbtable_by_name(table);
-    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%08x\n", db);
+    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%p\n", db);
     if (db == NULL) {
         net_ack_message(hndl, 1);
         return;
@@ -3580,8 +3590,11 @@ int broadcast_sc_start(uint64_t seed, uint32_t host, time_t t)
     struct start_sc *sc;
     int len;
     const char *from = get_hostname_with_crc32(thedb->bdb_env, host);
+    if (from == NULL) {
+        from = "unknown";
+    }
 
-    len = offsetof(struct start_sc, host) + strlen(gbl_mynode) + 1;
+    len = offsetof(struct start_sc, host) + strlen(from) + 1;
 
     sc = alloca(len);
     sc->seed = flibc_htonll(seed);
@@ -4048,20 +4061,6 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
     return 0;
 }
 
-// set to val the in-memory parameter for all the indices of this table
-void set_skipscan_for_table_indices(struct dbtable *tbl, int val)
-{
-    for (int ii = 0; ii < tbl->nix; ii++) {
-        struct schema *s = tbl->ixschema[ii];
-        s->disableskipscan = val;
-#ifdef DEBUGSKIPSCAN
-        printf("%s: setting disableskipscan for %s.%s %d\n", __func__,
-               tbl->dbname, s->sqlitetag, val);
-#endif
-    }
-}
-
-
 static void get_disable_skipscan(struct dbtable *tbl)
 {
     if (tbl->dbtype != DBTYPE_UNTAGGED_TABLE &&
@@ -4071,15 +4070,12 @@ static void get_disable_skipscan(struct dbtable *tbl)
     char *str = NULL;
     int rc = bdb_get_table_parameter(tbl->dbname, "disableskipscan", &str);
     if (rc != 0) {
-        set_skipscan_for_table_indices(tbl, 0);
+        tbl->disableskipscan = 0;
         return;
     }
 
-    int disable = (strncmp(str, "true", 4) == 0);
+    tbl->disableskipscan = (strncmp(str, "true", 4) == 0);
     free(str);
-
-    // set the in-memory parameter for the indices
-    set_skipscan_for_table_indices(tbl, disable);
 }
 
 
@@ -4414,10 +4410,10 @@ void backend_stat(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "!!! I AM NOT COHERENT !!!\n");
     f = dbenv->cacheszkb / 1024.0;
     logmsg(LOGMSG_USER, "cachesize %.3f mb\n", f);
-    logmsg(LOGMSG_USER, "hits        %llu\n", hits);
-    logmsg(LOGMSG_USER, "misses      %llu\n", misses);
-    logmsg(LOGMSG_USER, "page reads  %llu\n", reads);
-    logmsg(LOGMSG_USER, "page writes %llu\n", writes);
+    logmsg(LOGMSG_USER, "hits        %lu\n", hits);
+    logmsg(LOGMSG_USER, "misses      %lu\n", misses);
+    logmsg(LOGMSG_USER, "page reads  %lu\n", reads);
+    logmsg(LOGMSG_USER, "page writes %lu\n", writes);
     if ((hits + misses) == 0)
         f = 100.0;
     else
@@ -5787,7 +5783,7 @@ void print_tableparams()
 
         char *tableparams = NULL;
         int tbplen = 0;
-        bdb_get_table_csonparameters(db->dbname, &tableparams, &tbplen);
+        bdb_get_table_csonparameters(NULL, db->dbname, &tableparams, &tbplen);
         if (tableparams) {
             logmsg(LOGMSG_USER, " tableparams: %10s", tableparams);
             free(tableparams);
@@ -6191,6 +6187,37 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     }
 
     return version;
+}
+
+/**
+ * Set schema for a specific table, used for pinning table to certain versions
+ * upon re-creation (for example)
+ *
+ */
+int table_version_set(tran_type *tran, const char *tablename,
+                      unsigned long long version)
+{
+    struct dbtable *db;
+    unsigned long long ret;
+    int rc;
+    int bdberr = 0;
+
+    if (is_tablename_queue(tablename, strlen(tablename)))
+        return 0;
+
+    db = get_dbtable_by_name(tablename);
+    if (!db) {
+        ctrace("table unknown \"%s\"\n", tablename);
+        return -1;
+    }
+
+    rc = bdb_table_version_update(db->handle, tran, version, &bdberr);
+    if (!rc && bdberr)
+        rc = -1;
+
+    db->tableversion = version;
+
+    return rc;
 }
 
 void *get_bdb_env(void) { return thedb->bdb_env; }

@@ -88,7 +88,7 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
         }
     }
     return setError(pParse, SQLITE_MISUSE,
-                    "DDL commands operate only on local schema only.");
+                    "DDL commands operate on local schema only.");
 }
 
 extern int gbl_allow_user_schema;
@@ -407,9 +407,6 @@ static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
     thd->sqlclntstate->osql.long_request = 1;
-    if (usedb && getdbidxbyname(s->table) < 0) { // view
-        usedb = 0;
-    }
     f->rc = osql_schemachange_logic(s, thd, usedb);
     if (f->rc == SQLITE_DDL_MISUSE)
         f->errorMsg = "Transactional DDL Error: Overlapping Tables";
@@ -469,35 +466,20 @@ void free_rstMsg(struct rstMsg* rec)
 */
 int comdb2SendBpfunc(OpFunc *f)
 {
-   struct sql_thread    *thd = pthread_getspecific(query_info_key);
-   struct sqlclntstate  *clnt = thd->sqlclntstate;
-   osqlstate_t          *osql = &clnt->osql;
-   char                 *node = osql->host;
+   struct sql_thread *thd = pthread_getspecific(query_info_key);
    int rc = 0;
-   
    BpfuncArg *arg = (BpfuncArg*)f->arg;
 
-   //osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
-
-   rc = osql_send_bpfunc(node, osql->rqid, osql->uuid, arg, NET_OSQL_SOCK_RPL,osql->logsb);
-   
-   //rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
-
-   rc = osql->xerr.errval;
-   osql->xerr.errval = 0;
-   osql->xerr.errstr[0] = '\0';
+   rc = osql_bpfunc_logic(thd, arg);
     
-    
-    if (rc)
-    {
-        f->rc = rc;
-        f->errorMsg = "FAIL"; // TODO This must be translated to a description
-    } else
-    {
-        f->rc = SQLITE_OK;
-        f->errorMsg = "";
-    } 
-   return rc;
+   if (rc) {
+       f->rc = rc;
+       f->errorMsg = "FAIL"; // TODO This must be translated to a description
+   } else {
+       f->rc = SQLITE_OK;
+       f->errorMsg = "";
+   }
+   return f->rc;
 }
 
 
@@ -513,7 +495,10 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, uint8_t opt);
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if(gbl_schema_change_in_progress) return -1;
+    if (gbl_schema_change_in_progress) {
+        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
+        return -1;
+    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
@@ -1022,7 +1007,8 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to", nm->n + lnm->n, nm->z, nm2->n +lnm2->n, nm2->z);
+    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
+           nm->z, nm2->n +lnm2->n, nm2->z);
 }
 
 /********************* ANALYZE ***************************************************/
@@ -1781,7 +1767,10 @@ struct comdb2_ddl_context {
 };
 
 /* Type properties */
-enum { COMDB2_TYPE_FLAG_ALLOW_ARRAY = 1 };
+enum {
+    FLAG_ALLOW_ARRAY = 1 << 0,
+    FLAG_QUOTE_DEFAULT = 1 << 1,
+};
 
 #define COMDB2_TYPE(A, B, C)                                                   \
     {                                                                          \
@@ -1808,15 +1797,15 @@ struct comdb2_type_mapping {
     COMDB2_TYPE("u_int", "u_int", 0),
     COMDB2_TYPE("int", "int", 0),
     COMDB2_TYPE("longlong", "longlong", 0),
-    COMDB2_TYPE("cstring", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("vutf8", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("blob", "blob", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("byte", "byte", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("datetime", "datetime", 0),
-    COMDB2_TYPE("datetimeus", "datetimeus", 0),
-    COMDB2_TYPE("intervalds", "intervalds", 0),
-    COMDB2_TYPE("intervaldsus", "intervaldsus", 0),
-    COMDB2_TYPE("intervalym", "intervalym", 0),
+    COMDB2_TYPE("cstring", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("vutf8", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("blob", "blob", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("byte", "byte", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("datetime", "datetime", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("datetimeus", "datetimeus", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervalds", "intervalds", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervaldsus", "intervaldsus", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervalym", "intervalym", FLAG_QUOTE_DEFAULT),
     COMDB2_TYPE("decimal32", "decimal32", 0),
     COMDB2_TYPE("decimal64", "decimal64", 0),
     COMDB2_TYPE("decimal128", "decimal128", 0),
@@ -1824,14 +1813,15 @@ struct comdb2_type_mapping {
     COMDB2_TYPE("double", "double", 0),
 
     /* Additional types mapped to a Comdb2 type. */
-    COMDB2_TYPE("varchar", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("char", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
+    COMDB2_TYPE("varchar", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("char", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("text", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
     COMDB2_TYPE("integer", "int", 0),
     COMDB2_TYPE("smallint", "short", 0),
     COMDB2_TYPE("bigint", "longlong", 0),
     COMDB2_TYPE("real", "float", 0),
-};
+    /* End marker */
+    {NULL, 0, NULL, 0}};
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
@@ -1902,11 +1892,10 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
     type_len = strlen(type);
 
-    for (int i = 0;
-         i < sizeof(type_mapping) / sizeof(struct comdb2_type_mapping); ++i) {
+    for (int i = 0; type_mapping[i].sql_type != NULL; ++i) {
 
         /* Check if current type could accept size. */
-        accepts_size = (type_mapping[i].flag & COMDB2_TYPE_FLAG_ALLOW_ARRAY);
+        accepts_size = (type_mapping[i].flag & FLAG_ALLOW_ARRAY);
 
         if ((accepts_size == 0) && (type_mapping[i].sql_type_len != type_len)) {
             continue;
@@ -2038,139 +2027,6 @@ err:
     return 1;
 }
 
-/*
-  Return the null-terminated string representation of the specified
-  value.
-
-  TODO(Nirbhay): How to detect/represent NULL values?
-
-  @return
-    Success    NULL-terminated string
-    Error      NULL
-*/
-static char *format_val(comdb2ma ma, char *val, int type, int len)
-{
-    char *buf;
-    int buf_len;
-
-    switch (type) {
-    case SERVER_UINT:
-        switch (len) {
-        case 3: {
-            unsigned short v;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohs(v);
-            buf_len = snprintf(NULL, 0, "%hu", v);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%hu", v);
-            return buf;
-        }
-        case 5: {
-            unsigned int v;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohs(v);
-            buf_len = snprintf(NULL, 0, "%u", v);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%hu", v);
-            return buf;
-        }
-        default: goto err;
-        }
-    case SERVER_BINT:
-        switch (len) {
-        case 3: {
-            int2b v;
-            short sval;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohs(v);
-            int2b_to_int2(v, &sval);
-            buf_len = snprintf(NULL, 0, "%hd", sval);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%hd", sval);
-            return buf;
-        }
-        case 5: {
-            int4b v;
-            int ival;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohl(v);
-            int4b_to_int4(v, &ival);
-            buf_len = snprintf(NULL, 0, "%d", ival);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%d", ival);
-            return buf;
-        }
-        case 9: {
-            int8b v;
-            long long lval;
-            memcpy(&v, val + 1, len - 1);
-            v = flibc_ntohll(v);
-            int8b_to_int8(v, &lval);
-            buf_len = snprintf(NULL, 0, "%lld", lval);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%lld", lval);
-            return buf;
-        }
-        default: goto err;
-        }
-    case SERVER_BREAL:
-        switch (len) {
-        case 5: {
-            ieee4b v;
-            float fval;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohl(v);
-            ieee4b_to_ieee4(v, &fval);
-            buf_len = snprintf(NULL, 0, "%f", (double)fval);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%f", (double)fval);
-            return buf;
-        }
-        case 9: {
-            ieee8b v;
-            double dval;
-            memcpy(&v, val + 1, len - 1);
-            v = flibc_ntohll(v);
-            ieee8b_to_ieee8(v, &dval);
-            buf_len = snprintf(NULL, 0, "%f", dval);
-            buf_len++;
-            buf = comdb2_malloc(ma, buf_len);
-            snprintf(buf, buf_len, "%f", dval);
-            return buf;
-        }
-        default: goto err;
-        }
-    case SERVER_BCSTR:
-        buf_len = strlen(val + 1) + 3;
-        buf = comdb2_malloc(ma, buf_len);
-        snprintf(buf, buf_len, "\"%s\"", val + 1);
-        return buf;
-        break;
-    case SERVER_BYTEARRAY:  /* fallthrough */
-    case SERVER_BLOB:       /* fallthrough */
-    case SERVER_DATETIME:   /* fallthrough */
-    case SERVER_INTVYM:     /* fallthrough */
-    case SERVER_INTVDS:     /* fallthrough */
-    case SERVER_VUTF8:      /* fallthrough */
-    case SERVER_DECIMAL:    /* fallthrough */
-    case SERVER_BLOB2:      /* fallthrough */
-    case SERVER_DATETIMEUS: /* fallthrough */
-    case SERVER_INTVDSUS:   /* fallthrough */
-    default: goto err;
-    }
-
-err:
-    logmsg(LOGMSG_ERROR, "%s:%d Invalid value encountered\n", __FILE__,
-           __LINE__);
-    return 0;
-}
-
 struct csc2_constraint {
     char *lclkey;
     int ncnstrts;
@@ -2211,7 +2067,19 @@ static char *format_csc2(struct comdb2_ddl_context *ctx, int nconstraints,
 
         /* Append default. The default is always a null-terminated string. */
         if (field->in_default) {
-            strbuf_appendf(csc2, "dbstore = %s ", field->in_default);
+            assert(field->type < ((sizeof(type_mapping) /
+                                   sizeof(struct comdb2_type_mapping)) -
+                                  1));
+
+            /*
+              Check whether the default value needs to be quoted. Note: CSC2
+              does not allow single quoted value.
+            */
+            if ((type_mapping[field->type].flag & FLAG_QUOTE_DEFAULT) != 0) {
+                strbuf_appendf(csc2, "dbstore = \"%s\" ", field->in_default);
+            } else {
+                strbuf_appendf(csc2, "dbstore = %s ", field->in_default);
+            }
         }
 
         if (field->convopts.dbpad > 0) {
@@ -2658,6 +2526,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     struct comdb2_field *fentry;
     struct comdb2_schema *sentry;
     struct comdb2_constraint *centry;
+    char *def_str;
 
     assert(ctx != 0);
 
@@ -2687,9 +2556,13 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         fentry->field = &schema->member[i];
         /* Convert the default value to string. */
         if (fentry->field->in_default) {
-            fentry->field->in_default = format_val(
-                ctx->mem, fentry->field->in_default,
-                fentry->field->in_default_type, fentry->field->in_default_len);
+            def_str = sql_field_default_trans(fentry->field, 0);
+            /* Remove the quotes around the default value (if any). */
+            sqlite3Dequote(def_str);
+
+            fentry->field->in_default = comdb2_strdup(ctx->mem, def_str);
+            fentry->field->in_default_len = strlen(def_str);
+            sqlite3_free(def_str);
         }
         listc_abl(&ctx->column_list, fentry);
     }
@@ -2780,14 +2653,7 @@ cleanup:
     return 1;
 }
 
-static inline int use_sqlite_impl(Parse *pParse)
-{
-    if (pParse->db->init.busy || IN_DECLARE_VTAB ||
-        pParse->db->force_sqlite_impl) {
-        return 1;
-    }
-    return 0;
-}
+#define use_sqlite_impl(parse) (parse->comdb2_ddl_ctx == NULL)
 
 void comdb2AlterTableStart(
     Parse *pParse, /* Parser context */
@@ -2838,12 +2704,9 @@ cleanup:
 */
 void comdb2AlterTableEnd(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx;
     Vdbe *v;
     int max_size;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -2910,13 +2773,8 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    struct comdb2_ddl_context *ctx;
-
-    assert(pParse->comdb2_ddl_ctx == 0);
-
-    if (isTemp) pParse->db->force_sqlite_impl = 1;
-
-    if (use_sqlite_impl(pParse)) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy || IN_DECLARE_VTAB) {
+        pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
         return;
@@ -2926,7 +2784,7 @@ void comdb2CreateTableStart(
         return;
     }
 
-    ctx = create_ddl_context(pParse);
+    struct comdb2_ddl_context *ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
     ctx->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
@@ -2957,13 +2815,10 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema_change_type *sc = 0;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
     int max_size;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3EndTable(pParse, pCons, pEnd, tabOpts, 0);
@@ -3027,12 +2882,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pType   /* Type of the column */
                      )
 {
-    struct comdb2_ddl_context *ctx;
-    char type[pType->n + 1];
     struct field *field;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    char type[pType->n + 1];
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         // TODO: BAD ASSERT: if ((pParse->pNewTable) == 0) assert(0);
@@ -3100,11 +2952,10 @@ cleanup:
 
 void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 {
-    struct comdb2_ddl_context *ctx;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct field *field;
     char *def;
     int def_len;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
@@ -3120,9 +2971,13 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
     def_len = pSpan->zEnd - pSpan->zStart;
     def = comdb2_strndup(ctx->mem, pSpan->zStart, def_len);
     if (def == 0) goto oom;
+    /* Remove the quotes around the default value (if any). */
+    sqlite3Dequote(def);
 
-    ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field->in_default =
-        def;
+    field = ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field;
+
+    field->in_default = def;
+    field->in_default_len = strlen(def);
 
     return;
 
@@ -3139,10 +2994,7 @@ cleanup:
 */
 void comdb2AddNull(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
@@ -3170,10 +3022,7 @@ void comdb2AddNull(Parse *pParse)
 */
 void comdb2AddNotNull(Parse *pParse, int onError)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddNotNull(pParse, onError);
@@ -3198,10 +3047,7 @@ void comdb2AddNotNull(Parse *pParse, int onError)
 
 void comdb2AddDbpad(Parse *pParse, int dbpad)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
@@ -3229,12 +3075,9 @@ void comdb2AddPrimaryKey(
     int sortOrder    /* SQLITE_SO_ASC or SQLITE_SO_DESC */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddPrimaryKey(pParse, pList, onError, autoInc, sortOrder);
@@ -3319,12 +3162,9 @@ void comdb2AddIndex(
     u8 idxType       /* The index type */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
@@ -3422,9 +3262,7 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
-    assert(pParse->comdb2_ddl_ctx == 0);
-
-    if (temp || use_sqlite_impl(pParse)) {
+    if (temp || pParse->db->init.busy || IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);
@@ -3628,11 +3466,8 @@ void comdb2CreateForeignKey(
     int flags           /* Conflict resolution algorithms. */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct constraint *constraint;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateForeignKey(pParse, pFromCol, pTo, pToCol, flags);
@@ -3749,10 +3584,7 @@ cleanup:
 
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
@@ -3843,12 +3675,9 @@ void comdb2DropColumn(Parse *pParse, /* Parser context */
                       Token *pName   /* Name of the column */
                       )
 {
-    struct comdb2_ddl_context *ctx;
     char *name;
     int column_exists = 0;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -3998,12 +3827,14 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
     struct dbtable *parent_table;
     int index_count = 0;
 
+    /*
+    ** When will we ever need SQLite's impl for this?
     assert(pParse->comdb2_ddl_ctx == 0);
-
     if (use_sqlite_impl(pParse)) {
         sqlite3DropIndex(pParse, pName, ifExists);
         return;
     }
+    */
 
     assert(pName->nSrc == 1);
 

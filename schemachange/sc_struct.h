@@ -37,4 +37,7 @@ void set_sc_flgs(struct schema_change_type *s);
 
 int schema_change_headers(struct schema_change_type *s);
 
+struct schema_change_type *
+clone_schemachange_type(struct schema_change_type *sc);
+
 #endif

@@ -60,13 +60,13 @@ sqlite/mkkeywordhash
 sqlite/lemon
 
 # binaries
-comdb2
-pmux
-cdb2sql
-cdb2sockpool
-comdb2ar
-cdb2_sqlreplay
-cdb2_perf
+/comdb2
+/pmux
+/cdb2sql
+/cdb2sockpool
+/comdb2ar
+/cdb2_sqlreplay
+/cdb2_perf
 
 # fluff produced by various tools that tends to accumulate
 *.sw[op]
@@ -81,6 +81,10 @@ debian/comdb2.install-stamp
 tags
 dbsize
 callgrind.*
+*.output
+.nfs*
+.gdb_history
+cscope.*
 
 # Bloomberg-specific
 *.tsk
@@ -138,9 +142,6 @@ protobuf/mem_protobuf.c
 protobuf/mem_protobuf.h
 sqlite/mem_sqlite.c
 sqlite/mem_sqlite.h
-util/mem_int.h
-util/mem_util.c
-util/mem_util.h
 schemachange/mem_schemachange.c
 schemachange/mem_schemachange.h
 lua/mem_lua.c
@@ -157,13 +158,6 @@ berkdb/dist/template/rec_dbreg
 berkdb/dist/template/rec_fileops
 berkdb/dist/template/rec_hash
 berkdb/dist/template/rec_qam
-*.output
-.nfs*
-.gdb_history
-cscope.files
-cscope.in.out
-cscope.out
-cscope.po.out
 sundev1
 linux
 ibm
@@ -177,6 +171,8 @@ dbsize
 !cdb2jdbc/**
 cdb2jdbc/target/**
 cdb2jdbc/maven.m2/**
+cdb2jdbc/.gradle/**
+cdb2jdbc/build/**
 
 # generated docs
 _site/
@@ -194,6 +190,7 @@ tests/tools/bound
 tests/tools/localrep
 tests/tools/utf8
 tests/tools/crle
+tests/tools/cdb2api_caller
 
 # jepsen c test
 jepsen/ctest/test*

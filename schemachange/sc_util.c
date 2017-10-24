@@ -90,7 +90,7 @@ int llmeta_get_dbnum_tran(void *tran, char *tablename, int *bdberr)
     if (rc) {
         /* TODO: errors */
         logmsg(LOGMSG_ERROR, "%s:%d bdb_llmeta_get_tables rc %d bdberr %d\n",
-               __FILE__, __LINE__, rc, bdberr);
+               __FILE__, __LINE__, rc, *bdberr);
         return rc;
     }
     for (i = 0; i < numtbls; i++) {

@@ -455,22 +455,15 @@ int analyze_get_nrecs(int iTable)
     struct dbtable *db;
     sampled_idx_t *s_ix;
     int ixnum;
-    int tblnum;
 
     /* get client structures */
     thd = pthread_getspecific(query_info_key);
     client = thd->sqlclntstate;
 
     /* comdb2-ize table-num and ixnum */
-    get_sqlite_tblnum_and_ixnum(thd, iTable, &tblnum, &ixnum);
-    assert(tblnum < thedb->num_dbs);
+    db = get_sqlite_db(thd, iTable, &ixnum);
 
-    /* retrieve table pointer  */
-    if (tblnum < thedb->num_dbs) {
-        db = thedb->dbs[tblnum];
-    } else {
-        return -1;
-    }
+    assert(db);
 
     /* grab sampled table descriptor */
     s_ix = find_sampled_index(client, db->dbname, ixnum);

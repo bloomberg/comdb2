@@ -4429,10 +4429,7 @@ int sqlite3OpenTempDatabase(Parse *pParse){
 
     /* COMDB2 MODIFICATION, BTreeOpen doesn't create Btree actually. */
     int pgno;
-    void comdb2_use_tmptbl_lk(int);
-    comdb2_use_tmptbl_lk(0);
     rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);    
-    comdb2_use_tmptbl_lk(1);
     if( rc!=SQLITE_OK ){
       sqlite3ErrorMsg(pParse, "unable to open a temporary database "
         "file for storing temporary tables");

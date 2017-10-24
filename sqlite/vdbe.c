@@ -942,7 +942,7 @@ int sqlite3VdbeExec(
 
     /* COMDB2 MODIFICATION */
     if( gbl_debug_sql_opcodes ){
-      logmsg(LOGMSG_USER, "tid 0x%x step %d pc %d op %d %s\n", pthread_self(), nVmStep, 
+      logmsg(LOGMSG_USER, "tid 0x%lx step %d pc %d op %d %s\n", pthread_self(), nVmStep,
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 

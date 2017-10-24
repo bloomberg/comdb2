@@ -510,9 +510,9 @@ done:
 #endif
             } else if (rc) {
                 // not able to recover back to that point
-                logmsg(LOGMSG_ERROR, "%s:%d unable to recover db to epoch %lld, "
-                                "file %d, offset %d\n",
-                        __func__, __LINE__, epoch, file, offset);
+                logmsg(LOGMSG_ERROR, "%s:%d unable to recover db to epoch %d, "
+                                     "file %d, offset %d\n",
+                       __func__, __LINE__, epoch, file, offset);
                 *bdberr = BDBERR_NO_LOG;
             }
         }
@@ -848,41 +848,6 @@ done:
     return rc;
 }
 
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
-
-static void hexdump(char *key, int keylen)
-{
-    char *mem;
-    char *output;
-
-    mem = alloca((2 * keylen) + 2);
-    output = tohex(mem, key, keylen);
-
-    logmsg(LOGMSG_USER, "%s\n", output);
-}
 
 struct clients_update_req {
     bdb_state_type *bdb_state;

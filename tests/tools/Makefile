@@ -1,4 +1,4 @@
-ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle
+ALL=hatest selectv overflow_blobtest recom stepper serial bound localrep utf8 crle cdb2api_caller ptrantest
 all:$(ALL)
 
 include ../../main.mk
@@ -37,6 +37,9 @@ serial: serial.o
 
 ptrantest: ptrantest.o
 	$(CC) -o $@ $^ $(LDFLAGS) $(CDB2LIBS) -lsqlite3 -lpthread
+
+cdb2api_caller: cdb2api_caller.o
+	$(CXX) -o cdb2api_caller $< $(LDFLAGS) $(CDB2LIBS) -lpthread
 
 crle:CFLAGS+=-I../../comdb2rle
 

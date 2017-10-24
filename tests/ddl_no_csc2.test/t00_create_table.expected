@@ -173,7 +173,7 @@ keys
 [DROP TABLE t4] failed with rc -3 no such table: t4
 [DROP TABLE t7] failed with rc -3 no such table: t7
 [DROP TABLE t8] failed with rc -3 no such table: t8
-[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 304 Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
 (tablename='t2')
 (tablename='t3')
 (tablename='t4')
@@ -456,7 +456,7 @@ constraints
 	}
 ')
 [DROP TABLE t6] failed with rc -3 no such table: t6
-[CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate only on local schema only.
+[CREATE TABLE remotedb.t1(i INT)] failed with rc -3 DDL commands operate on local schema only.
 [CREATE TABLE t2(b blob[1])] failed with rc -3 Invalid type specified.
 [CREATE TABLE t6(b blob(-100))] failed with rc -3 Invalid type specified.
 (tablename='t1', columnname='b', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -620,3 +620,18 @@ keys
 	}
 ')
 (type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" (i, j);', csc2=NULL)
+(rows inserted=1)
+(i=1, j=1)
+(rows inserted=1)
+(i=1, j=1)
+(rows inserted=1)
+(i=1, c='0')
+(rows inserted=1)
+(i=1, c='foo')
+(rows inserted=1)
+(rows inserted=1)
+(COUNT(*) = 2=1)
+[CREATE TABLE t1(i INT, d INTERVALDS DEFAULT '1 11:11:11.111')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
+[CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
+(rows inserted=1)
+(i=1, f1=1.100000, f2=1.100000, f3=1.100000)

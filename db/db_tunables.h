@@ -634,6 +634,10 @@ REGISTER_TUNABLE("master_swing_osql_verbose_off",
                  "Disables 'master_swing_osql_verbose'", TUNABLE_BOOLEAN,
                  &gbl_master_swing_osql_verbose, INVERSE_VALUE | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("master_swing_sock_restart_sleep",
+                 "For testing: sleep in osql_sock_restart when master swings",
+                 TUNABLE_INTEGER, &gbl_master_swing_sock_restart_sleep,
+                 READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("maxblobretries", NULL, TUNABLE_INTEGER, &gbl_maxblobretries,
                  READONLY, NULL, maxretries_verify, NULL, NULL);
 REGISTER_TUNABLE("maxblockops", NULL, TUNABLE_INTEGER, &gbl_maxblockops,
@@ -1131,6 +1135,10 @@ REGISTER_TUNABLE("temptable_limit",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("test_blob_race", NULL, TUNABLE_INTEGER, &gbl_test_blob_race,
                  READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("test_scindex_deadlock",
+                 "Test index on expressions schema change deadlock",
+                 TUNABLE_BOOLEAN, &gbl_test_scindex_deadlock, READONLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("throttlesqloverlog",
                  "On a full queue of SQL requests, dump the current thread "
                  "pool this often (in secs). (Default: 5sec)",

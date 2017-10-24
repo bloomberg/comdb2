@@ -16,8 +16,6 @@
 
 extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
-extern int __berkdb_seek_alarm_ms;
-extern int __berkdb_fsync_alarm_ms;
 
 #include <pthread.h>
 
@@ -89,7 +87,6 @@ extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_sleepns;
 extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
-extern int n_fstrap;
 extern unsigned long long gbl_sql_deadlock_reconstructions;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern int gbl_dump_sql_dispatched;
@@ -101,14 +98,11 @@ extern int gbl_enable_cache_internal_nodes;
 extern int gbl_test_badwrite_intvl;
 extern int gbl_skip_ratio_trace;
 extern int gbl_test_blob_race;
-extern int gbl_test_badwrite_zerop_intvl;
-extern unsigned long long gbl_verify_retry;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_notimeouts;
 
 void debug_bulktraverse_data(char *tbl);
 
@@ -119,7 +113,6 @@ extern void reinit_sql_hint_table();
 
 static void dump_table_sizes(struct dbenv *dbenv);
 static void request_stats(struct dbenv *dbenv);
-void loadrawfile(char *fname, char *table);
 void berk_memp_sync_alarm_ms(int x);
 int berkdb_get_max_rep_retries();
 
@@ -140,7 +133,6 @@ void rowlocks_bench(void *, int, int);
 void rowlocks_lock1_bench(void *, int, int);
 void rowlocks_lock2_bench(void *, int, int);
 void commit_bench(void *, int, int);
-void set_cursor_rowlocks(int cr);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
@@ -402,13 +394,14 @@ void replication_stats(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "Replication statistics:-\n");
     logmsg(LOGMSG_USER, "   Num commits      %d\n", dbenv->num_txns);
     if (dbenv->num_txns > 0) {
-        logmsg(LOGMSG_USER, "   Avg txn sz           %llu\n",
+        logmsg(LOGMSG_USER, "   Avg txn sz           %lu\n",
                dbenv->total_txn_sz / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep timeout  %d\n",
                dbenv->total_timeouts_ms / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep time     %d\n",
                dbenv->total_reptime_ms / dbenv->num_txns);
-        logmsg(LOGMSG_USER, "   Max txn sz           %llu\n", dbenv->biggest_txn);
+        logmsg(LOGMSG_USER, "   Max txn sz           %lu\n",
+               dbenv->biggest_txn);
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
     }
@@ -637,8 +630,8 @@ void *handle_exit_thd(void *arg)
     static pthread_mutex_t exiting_lock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_lock(&exiting_lock);
     if( gbl_exit ) {
-       pthread_mutex_unlock(&exiting_lock);
-       return NULL;
+        pthread_mutex_unlock(&exiting_lock);
+        return NULL;
     }
     gbl_exit = 1;
     pthread_mutex_unlock(&exiting_lock);
@@ -648,9 +641,10 @@ void *handle_exit_thd(void *arg)
 
     /* this defaults to 5 minutes */
     alarm(alarmtime);
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
 
     if (bdb_is_an_unconnected_master(dbenv->dbs[0]->handle)) {
-       logmsg(LOGMSG_INFO, "This was standalone\n");
+        logmsg(LOGMSG_INFO, "This was standalone\n");
         wait_for_sc_to_stop(); /* single node, need to stop SC */
     }
     else {
@@ -683,7 +677,6 @@ void *handle_exit_thd(void *arg)
             dbqueue_stat(thedb->qdbs[ii], 0, 0, 1 /*(blocking call)*/);
     }
 
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     flush_db();
     clean_exit();
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -725,8 +718,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         pthread_attr_setstacksize(&thd_attr, 4 * 1024); /* 4K */
         pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
 
-        int rc = pthread_create(&thread_id, &thd_attr,
-                handle_exit_thd, (void *)dbenv);
+        int rc = pthread_create(&thread_id, &thd_attr, handle_exit_thd,
+                                (void *)dbenv);
         if (rc != 0) {
             logmsgperror("create exit thread: pthread_create");
             exit(1);
@@ -2001,7 +1994,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
 
-            logmsg(LOGMSG_USER, "commit %lu abort %lu repcommit %llu retry %lu "
+            logmsg(LOGMSG_USER,
+                   "commit %u abort %u repcommit %llu retry %lu "
                    "verify retry %lld rep retry %llu max retry %d\n",
                    dbenv->txns_committed, dbenv->txns_aborted, txns_applied,
                    n_retries, gbl_verify_tran_replays, rep_retry, max_retries);
@@ -2209,7 +2203,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             gbl_who = 0;
             gbl_debug = 0;
-            logmsg(LOGMSG_USER, "Debugging requests disabled\n", gbl_who);
+            logmsg(LOGMSG_USER, "Debugging requests disabled\n");
         }
     } else if (tokcmp(tok, ltok, "inflatelog") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -2233,7 +2227,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             gbl_who = 0;
             gbl_sdebug = 0;
-            logmsg(LOGMSG_USER, "Debugging sql requests disabled\n", gbl_who);
+            logmsg(LOGMSG_USER, "Debugging sql requests disabled\n");
         }
     } else if (tokcmp(tok, ltok, "who") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -2326,7 +2320,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         if (ltok >= sizeof(fname) - 1) {
-            logmsg(LOGMSG_ERROR, "Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
+            logmsg(LOGMSG_ERROR, "Invalid file name: too long (max %zu)\n",
+                   sizeof(fname) - 1);
             return -1;
         }
         tokcpy(tok, ltok, fname);
@@ -3371,7 +3366,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
         tid = toknum(tok, ltok);
         rc = pthread_kill(tid, 0);
-        logmsg(LOGMSG_USER, "kill tid %d rc %d\n", tid, rc);
+        logmsg(LOGMSG_USER, "kill tid %lu rc %d\n", tid, rc);
     } else if (tokcmp(tok, ltok, "chkpoint_alarm_time") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
@@ -5184,7 +5179,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         case TUNABLE_ERR_INVALID_TUNABLE:
             logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
             break;
-        default: logmsg(LOGMSG_ERROR, tunable_error(rc));
+        default:
+            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
         }
         return rc;
     }

@@ -43,4 +43,10 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
 
 const struct bdb_queue_stats *bdb_queuedb_get_stats(bdb_state_type *bdb_state);
 
+int bdb_trigger_subscribe(bdb_state_type *, pthread_cond_t **,
+                          pthread_mutex_t **, const uint8_t **open);
+int bdb_trigger_unsubscribe(bdb_state_type *);
+int bdb_trigger_open(bdb_state_type *);
+int bdb_trigger_close(bdb_state_type *);
+
 #endif

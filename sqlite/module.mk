@@ -84,9 +84,9 @@ sqlite/parse.c: sqlite/lemon sqlite/parse.y sqlite/lempar.c
 	rm -rf sqlite/inline/; mkdir sqlite/inline
 	sqlite/lemon $(SQLITE_FLAGS) sqlite/parse.y
 	mv sqlite/parse.h sqlite/parse.h.temp
-	tclsh sqlite/addopcodes.tcl sqlite/parse.h.temp > sqlite/parse.h
-	cat sqlite/parse.h sqlite/vdbe.c | tclsh sqlite/mkopcodeh.tcl > sqlite/opcodes.h
-	sort -n -b -k 3 sqlite/opcodes.h | tclsh sqlite/mkopcodec.tcl sqlite/opcodes.h > sqlite/opcodes.c
+	$(TCLSH) sqlite/addopcodes.tcl sqlite/parse.h.temp > sqlite/parse.h
+	cat sqlite/parse.h sqlite/vdbe.c | $(TCLSH) sqlite/mkopcodeh.tcl > sqlite/opcodes.h
+	sort -n -b -k 3 sqlite/opcodes.h | $(TCLSH) sqlite/mkopcodec.tcl sqlite/opcodes.h > sqlite/opcodes.c
 
 # This file depends on db/ which depends on protobuf
 sqlite/parse.c: protobuf/sqlquery.pb-c.c protobuf/bpfunc.pb-c.c db/mem_uncategorized.h

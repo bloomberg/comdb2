@@ -107,8 +107,8 @@ int main(int argc,char *argv[])
     {
         cdb2_clearbindings(sqlh);
         /* Prepare my sql. */
-        snprintf( sql, sizeof( sql ), "insert into t1(objid, data, timestamp) values(@objid, @data, %lld)", 
-                get_timestamp());
+        snprintf( sql, sizeof( sql ), "insert into t1(objid, data, timestamp, i) values(@objid, @data, %lld, %d)", 
+                get_timestamp(), iters);
 
         /* Bind objid - test binding with values large and smaller than 12. */
         if( cdb2_bind_param( sqlh, "objid", CDB2_BLOB, objid, sizeof( objid ) ) )

@@ -28,7 +28,7 @@
 #include <strings.h>
 #include <signal.h>
 #include <unistd.h>
-#include <getopt.h>
+#include <bb_getopt_long.h>
 
 #include <sbuf2.h>
 #include <string.h>
@@ -1161,8 +1161,8 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "hsr:p:c:f:g:t:n:",
-                            long_options, &opt_indx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:", long_options,
+                               &opt_indx)) != -1) {
         switch (c) {
         case 0:
             break;

@@ -178,7 +178,7 @@ are refused to join the cluster.
 |---|---|---|---|
 |  `ALLOW` | Maybe |  Yes |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead if the server requires SSL. No overhead otherwise. |
 |  `REQUIRE` | Yes  | Yes  |  SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead |
-| `VERIFY-CA` | Yes | Maybe if signed by 3rd party CA. No if self-signed or signed by a local CA. | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification |
-| `VERIFY-HOSTNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation |
+| `VERIFY_CA` | Yes | Maybe if signed by 3rd party CA. No if self-signed or signed by a local CA. | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification |
+| `VERIFY_HOSTNAME` | Yes | No | SSL negotiation<sup>[1](#sslfootnote)</sup> + TLS protocol overhead + certificate verification + host name validation |
 
 <a name="sslfootnote">[1]</a>: In order to establish an SSL connection to server, the client needs to negotiate with the server over the plaintext connection before upgrading to SSL. This happens only once for each connection establishment.
