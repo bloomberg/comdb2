@@ -14,7 +14,7 @@ exit 1
 fi
 
 echo "Running t2.req"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table dtus" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table dtus" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table dtus { `cat t_dtus.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} -s -f t2.req $dbnm default >t2.actual 2> t2.err
 diff t2.expected t2.actual
@@ -73,7 +73,7 @@ exit 1
 fi
 
 echo "Running vesselalerts.req"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table vesselalerts" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table vesselalerts" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table vesselalerts { `cat vesselalerts.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} -s -f vesselalerts.req $dbnm default &> vesselalerts.actual
 diff vesselalerts.expected vesselalerts.actual

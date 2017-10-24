@@ -22,7 +22,7 @@ rcount=$(replay_count) ; i=0
 echo "Replay count is $rcount"
 while [[ $i -lt 1000 ]]; do
     out=$(cdb2sql ${CDB2_OPTIONS} $dbname default - < insert.t1 2>&1)
-    echo "$out" | egrep "insert into t1 values \(1\)] rc 0" >/dev/null 2>&1
+    echo "$out" | egrep "insert into t1 values \(1\)] rc 0" &> /dev/null
 
     if [[ $? != 0 ]]; then
         echo "Unexpected output inserting a row into t1"
@@ -39,13 +39,13 @@ if [[ "$(replay_count)" == "$rcount" ]]; then
     error=1
 fi
 
-cdb2sql ${CDB2_OPTIONS} $dbname default - < insert.t2 >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbname default - < insert.t2 &> /dev/null
 
 rcount=$(replay_count) ; i=0
 echo "Replay count is $rcount"
 while [[ $i -lt 1000 ]]; do
     out=$(cdb2sql ${CDB2_OPTIONS} $dbname default - < insert.t2 2>&1)
-    echo "$out" | egrep "failed with rc 299" >/dev/null 2>&1
+    echo "$out" | egrep "failed with rc 299" &> /dev/null
 
     if [[ $? != 0 ]]; then
         echo "Unexpected output inserting a row into t2"

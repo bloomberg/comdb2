@@ -129,42 +129,6 @@ do_verify()
 }
 
 
-# Update all records in the table
-update_all_records()
-{
-    typeset prmsg=$1
-    typeset iter=0
-
-    [[ "$debug" == 1 ]] && set -x
-
-    while :; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
-        let iter=iter+1
-
-        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
-
-            echo "Updated all of table t1 $iter times."
-
-        fi
-
-    done
-}
-
-
-update_records()
-{
-    j=0
-    nrecs=$1
-    echo "Updating $nrecs records."
-    echo "" > update.out
-
-    while [[ $j -lt $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=c+100000 where a = $j" >> update.out 
-        let j=j+1
-    done
-}
-
 
 insert_records()
 {
