@@ -695,7 +695,7 @@ typedef struct timepart_views timepart_views_t;
 struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
-    char *dbname;
+    char *tablename;
 
     int dbnum;
     int lrl; /*dat len in bytes*/
@@ -2601,8 +2601,8 @@ void purge_old_cached_blobs(void);
 void commit_schemas(const char *tblname);
 struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
-int getdefaultkeysize(const struct dbtable *db, int ixnum);
-int getdefaultdatsize(const struct dbtable *db);
+int getdefaultkeysize(const struct dbtable *tbl, int ixnum);
+int getdefaultdatsize(const struct dbtable *tbl);
 int update_sqlite_stats(struct ireq *iq, void *trans, void *dta);
 void *do_verify(void *);
 void dump_tagged_buf(const char *table, const char *tag,

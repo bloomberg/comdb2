@@ -859,12 +859,13 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /* provide db[0], it doesn't matter anyway */
     db = thedb->dbs[0];
     usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->dbname) + 1 /*NUL byte*/;
+    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
 
     /* pack usekl */
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, *pp_buf_end)))
         return -1;
-    if (!(p_buf = buf_no_net_put(db->dbname, usekl.taglen, p_buf, *pp_buf_end)))
+    if (!(p_buf =
+              buf_no_net_put(db->tablename, usekl.taglen, p_buf, *pp_buf_end)))
         return -1;
 
     /* build usekl op hdr */

@@ -144,7 +144,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
             sc = db->ixschema[cinfo->ix];
         } else {
             snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
-            sc = find_tag_schema(db->dbname, scname);
+            sc = find_tag_schema(db->tablename, scname);
         }
     } else {
         sc = db->schema;
@@ -201,7 +201,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
                 sc = db->ixschema[cinfo->ix];
             } else {
                 snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
-                sc = find_tag_schema(db->dbname, scname);
+                sc = find_tag_schema(db->tablename, scname);
             }
             strbuf_appendf(out, "index \"%s\" of ",
                            sc ? (sc->csctag ? sc->csctag : sc->tag) : "???");
@@ -221,7 +221,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
             }
             */
         }
-        strbuf_appendf(out, "table \"%s\"", db->dbname);
+        strbuf_appendf(out, "table \"%s\"", db->tablename);
     }
     strbuf_appendf(out, " ");
     return is_index;

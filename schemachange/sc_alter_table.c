@@ -77,7 +77,7 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
     }
     if (changed < 0) {
         /* some errors during constraint verifications */
-        backout_schemas(newdb->dbname);
+        backout_schemas(newdb->tablename);
         resume_threads(thedb); /* can now restart stopped threads */
 
         /* these checks should be present in dryrun_int as well */
@@ -286,7 +286,7 @@ static int switch_versions_with_plan(void *tran, struct dbtable *db,
 
 static void backout(struct dbtable *db)
 {
-    backout_schemas(db->dbname);
+    backout_schemas(db->tablename);
     live_sc_off(db);
 }
 
@@ -351,7 +351,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         sc_errf(s, "Internal error\n");
         return SC_INTERNAL_ERROR;
     }
-    newdb->version = get_csc2_version(newdb->dbname);
+    newdb->version = get_csc2_version(newdb->tablename);
 
     newdb->iq = iq;
 
@@ -633,7 +633,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     /*begin updating things*/
     if (newdb->version == 1) {
         /* newdb's version has been reset */
-        bdberr = bdb_reset_csc2_version(transac, db->dbname, db->version);
+        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->version);
         if (bdberr != BDBERR_NOERROR)
             goto backout;
     }
@@ -642,7 +642,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         goto backout;
 
     /* load new csc2 data */
-    rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->dbname,
+    rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->tablename,
                                     s->newcsc2);
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
@@ -673,7 +673,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         goto backout;
     }
 
-    if ((rc = mark_schemachange_over_tran(db->dbname, transac))) {
+    if ((rc = mark_schemachange_over_tran(db->tablename, transac))) {
         goto backout;
     }
 
@@ -693,7 +693,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     fix_constraint_pointers(db, newdb);
 
     /* update tags in memory */
-    commit_schemas(/*s->table*/ db->dbname);
+    commit_schemas(/*s->table*/ db->tablename);
     update_dbstore(db); // update needs to occur after refresh of hashtbl
 
     MEMORY_SYNC;
@@ -721,11 +721,11 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     }
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->dbname,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->tablename,
                newdb->version);
     }
 
-    llmeta_dump_mapping_table_tran(transac, thedb, db->dbname, 1);
+    llmeta_dump_mapping_table_tran(transac, thedb, db->tablename, 1);
 
     sc_printf(s, "Schema change ok\n");
 
@@ -757,7 +757,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     if (olddb_bthashsz) {
         logmsg(LOGMSG_INFO,
                "Rebuilding bthash for table %s, size %dkb per stripe\n",
-               db->dbname, olddb_bthashsz);
+               db->tablename, olddb_bthashsz);
         bdb_handle_dbp_add_hash(db->handle, olddb_bthashsz);
     }
 
@@ -775,12 +775,12 @@ backout:
 #if 0 /* bp sc backout deals with this */
     delete_temp_table(iq, newdb);
 #endif
-    change_schemas_recover(/*s->table*/ db->dbname);
+    change_schemas_recover(/*s->table*/ db->tablename);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-           db->dbname, db->version, db->instant_schema_change, db->lrl, db->odh,
-           db->handle);
+           db->tablename, db->version, db->instant_schema_change, db->lrl,
+           db->odh, db->handle);
 
     return -1;
 
@@ -869,7 +869,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         rc = trans_start_sc(&iq, NULL, &tran);
         if (rc != 0) continue;
 
-        rc = mark_schemachange_over_tran(s->db->dbname, tran);
+        rc = mark_schemachange_over_tran(s->db->tablename, tran);
         if (rc != 0) continue;
 
         rc = trans_commit(&iq, tran, gbl_mynode);

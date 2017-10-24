@@ -76,7 +76,7 @@ int create_sqlite_master(void)
     for (i = 0, tblnum = 0; tblnum < thedb->num_dbs; tblnum++) {
         ent = &new_arr[i];
         db = thedb->dbs[tblnum];
-        ent->tblname = strdup(db->dbname);
+        ent->tblname = strdup(db->tablename);
         ent->isstrdup = 1;
         ent->ixnum = -1;
         ent->entry = create_sqlite_master_row(i + RTPAGE_START, db->csc2_schema,
@@ -186,7 +186,7 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
     assert(tblnum < thedb->num_dbs);
 
     db = thedb->dbs[tblnum];
-    dbname = db->dbname;
+    dbname = db->tablename;
 
     if (ixnum == -1) {
         strcpy(name, dbname);
