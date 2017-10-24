@@ -4029,7 +4029,7 @@ static int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
           sql_response.n_value = 0;
           sql_response.value = NULL;
           sql_response.error_code = 0;
-          sql_response.info_string = "---------- Recommended Indexes ---------------------------\n";
+          sql_response.info_string = "---------- Recommended Indexes --------------\n";
           newsql_write_response(
               clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
               1 /*flush*/, malloc, __func__, __LINE__);
