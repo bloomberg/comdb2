@@ -80,14 +80,14 @@ function insertrec
     if [[ -f $insrec ]]; then
 
         echo "cdb2sql ${CDB2_OPTIONS} $db default - < $insrec"
-        cdb2sql ${CDB2_OPTIONS} $db default - < $insrec >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $db default - < $insrec &> /dev/null
 
     else
 
         while [[ $i -lt $iter ]]; do
 
-            echo cdb2sql ${CDB2_OPTIONS} $db default "insert into t(id) values($id)"
-            cdb2sql ${CDB2_OPTIONS} $db default "insert into t(id) values($id)" >/dev/null 2>&1
+            echo cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t(id) values($id)"
+            cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t(id) values($id)" &> /dev/null
 
             if [[ $? != 0 ]]; then
 
