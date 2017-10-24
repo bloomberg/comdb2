@@ -4762,8 +4762,8 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     return rc;
 }
 
-int has_index_changed(struct dbtable *tbl, char *keynm, int ct_check, int newkey,
-                      FILE *out, int accept_type_change)
+int has_index_changed(struct dbtable *tbl, char *keynm, int ct_check,
+                      int newkey, FILE *out, int accept_type_change)
 {
     struct schema *old, *new;
     struct field *fnew, *fold;
@@ -4805,13 +4805,15 @@ int has_index_changed(struct dbtable *tbl, char *keynm, int ct_check, int newkey
     snprintf(ixbuf, sizeof(ixbuf), "%s_ix_%d", tag, ix);
     old = find_tag_schema(tblname, ixbuf);
     if (old == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n", tblname, ix);
+        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n",
+               tblname, ix);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s_ix_%d", tag, fidx);
     new = find_tag_schema(tblname, ixbuf);
     if (new == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n", tblname, fidx);
+        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n",
+               tblname, fidx);
         return 1;
     }
 
