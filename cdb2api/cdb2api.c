@@ -81,6 +81,9 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int allow_pmux_route = 0;
 
+static __thread int PID = 0;
+static __thread int HOSTID;
+
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 #define MAX_NODES 16
@@ -1994,9 +1997,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    cinfo.pid = getpid();
+    cinfo.pid = PID;
     cinfo.th_id = pthread_self();
-    cinfo.host_id = cdb2_hostid();
+    cinfo.host_id = HOSTID;
 
     sqlquery.client_info = &cinfo;
     sqlquery.dbname = dbname;
@@ -2013,7 +2016,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     sqlquery.n_types = ntypes;
     sqlquery.types = types;
 
-    char *env_tz = getenv("COMDB2TZ");
     char *host = "NOT-CONNECTED";
     if (hndl && hndl->connected_host >= 0)
         host = hndl->hosts[hndl->connected_host];
@@ -2025,13 +2027,15 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 retries_done, do_append);
     }
 
-    if (env_tz == NULL) {
-        env_tz = getenv("TZ");
-    }
+    static char *env_tz = NULL;
+    if (env_tz == NULL)
+        env_tz = getenv("COMDB2TZ");
 
-    if (env_tz == NULL) {
+    if (env_tz == NULL)
+        env_tz = getenv("TZ");
+
+    if (env_tz == NULL)
         env_tz = DB_TZNAME_DEFAULT;
-    }
 
     sqlquery.tzname = env_tz;
 
@@ -2499,7 +2503,6 @@ uint64_t val_combine(uint64_t lhs, uint64_t rhs)
  */
 static void make_random_str(char *str, int *len)
 {
-    static __thread int PID = 0;
     static __thread unsigned short rand_state[3];
 
     struct timeval tv;
@@ -2507,6 +2510,7 @@ static void make_random_str(char *str, int *len)
     if (PID == 0) { /* Initialize PID and rand_state once per thread */
          /* PID will ensure that cnonce will be different accross processes */
         PID = getpid(); 
+        HOSTID = cdb2_hostid();
 
         /* Get the initial random state by using thread id and time info. */
         uint32_t tmp[2];
@@ -2518,7 +2522,7 @@ static void make_random_str(char *str, int *len)
         rand_state[2] = hash >> 32;
     }
     int randval = nrand48(rand_state);
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
+    sprintf(str, "%d-%d-%lld-%d", HOSTID, PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }
