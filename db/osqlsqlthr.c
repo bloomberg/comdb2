@@ -740,6 +740,21 @@ retry:
                  * retry */
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == 999) {
+                    if (bdb_attr_get(thedb->bdb_attr,
+                                     BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+                        !clnt->in_client_trans && clnt->ddl_tables) {
+                        int num_ddl = 0;
+                        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL,
+                                  &num_ddl, NULL, NULL);
+                        if (num_ddl == 1) {
+                            clnt->osql.xerr.errval = ERR_SC;
+                            errstat_cat_str(&(clnt->osql.xerr),
+                                            "Master node downgrading - new "
+                                            "master will resume schemachange");
+                            rcout = SQLITE_ABORT;
+                            goto err;
+                        }
+                    }
                     if (retries++ < gbl_survive_n_master_swings) {
                         if (gbl_master_swing_osql_verbose ||
                             gbl_extended_sql_debug_trace)
