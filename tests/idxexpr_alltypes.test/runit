@@ -86,7 +86,7 @@ function insert
     for i in $(seq $s $e); do
         bl=$(randbl 32)
         echo "insert into alltypes values ($i, $i, $i, $i, $i, '$i.$i', cast(now(6) as real), x'$bl', 'abcdefghij$i', now(), now(6), cast($i as years), cast($i as days), cast($i as days), '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 92))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 381))', '$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 6141))')"
-    done | cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
 }
 
 insert 1 2000 &
@@ -164,7 +164,7 @@ for i in $(seq 1 $NRUNS); do
         2)  echo "update alltypes set alltypes_short=$rd, alltypes_ushort=$rd, alltypes_int=$rd, alltypes_uint=$rd, alltypes_longlong=$rd, alltypes_float='$rd.$rd', alltypes_double=cast(now(6) as real), alltypes_byte=x'$bl', alltypes_cstring='abcdefghij$rd', alltypes_datetime=now(), alltypes_datetimeus=now(6), alltypes_intervalym=cast($rd as years), alltypes_intervalds=cast($rd as days), alltypes_intervaldsus=cast($rd as days), alltypes_decimal32='$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 92))', alltypes_decimal64='$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 381))', alltypes_decimal128='$(($RANDOM % 1000)).$(($RANDOM % 1000))e$(($RANDOM % 6141))' where alltypes_int = $id"
         ;;
     esac
-done | cdb2sql ${CDB2_OPTIONS} $dbname default - >/dev/null
+done | cdb2sql -s ${CDB2_OPTIONS} $dbname default - >/dev/null
 
 do_verify alltypes
 
