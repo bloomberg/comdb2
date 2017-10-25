@@ -99,6 +99,7 @@ public class Comdb2Handle extends AbstractConnection {
     private int snapshotOffset;
     private boolean isHASql = false;
     private int isRetry;
+    private int nSetsQuerySent;
     private int nSetsSent;
     private int errorInTxn = 0;
     private boolean skipFeature = false;
@@ -604,6 +605,7 @@ public class Comdb2Handle extends AbstractConnection {
                 queryList.add(new QueryItem(payload, sql, isRead));
             }
             tdlog(Level.FINEST, "sendQuery returns a good rcode");
+            nSetsQuerySent = sets.size();
             return true;
         } catch (IOException e) {
             last_non_logical_err = e;
@@ -1391,7 +1393,7 @@ public class Comdb2Handle extends AbstractConnection {
                 return lastResp.errCode;
 
             if (lastResp.respType == 3) {
-                nSetsSent = sets.size();
+                nSetsSent = nSetsQuerySent;
                 return Errors.CDB2_OK_DONE;
             }
             return Errors.CDB2ERR_IO_ERROR;
@@ -1549,7 +1551,7 @@ readloop:
                 return rc;
             }
 
-            nSetsSent = sets.size();
+            nSetsSent = nSetsQuerySent;
 
             if (inTxn && CDB2ServerFeatures.SKIP_ROWS_VALUE > 0
                     && lastResp.features != null) {
@@ -1670,7 +1672,7 @@ readloop:
                         return false;
                     dbHostConnected = prefIdx;
                     dbHostIdx = prefIdx;
-                    nSetsSent = 0;
+                    nSetsQuerySent = nSetsSent = 0;
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -1706,7 +1708,7 @@ readloop:
                         if (!trySSL())
                             return false;
                         dbHostConnected = try_node;
-                        nSetsSent = 0;
+                        nSetsQuerySent = nSetsSent = 0;
                         opened = true;
                         return true;
                     } catch (IOException e) {
@@ -1743,7 +1745,7 @@ readloop:
                     if (!trySSL())
                         return false;
                     dbHostConnected = dbHostIdx;
-                    nSetsSent = 0;
+                    nSetsQuerySent = nSetsSent = 0;
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -1772,7 +1774,7 @@ readloop:
                     if (!trySSL())
                         return false;
                     dbHostConnected = dbHostIdx;
-                    nSetsSent = 0;
+                    nSetsQuerySent = nSetsSent = 0;
                     opened = true;
                     return true;
                 } catch (IOException e) {
@@ -1800,7 +1802,7 @@ readloop:
                         return false;
                     dbHostConnected = masterIndexInMyDbHosts;
                     dbHostIdx = masterIndexInMyDbHosts;
-                    nSetsSent = 0;
+                    nSetsQuerySent = nSetsSent = 0;
                     opened = true;
                     return true;
                 } catch (IOException e) {
