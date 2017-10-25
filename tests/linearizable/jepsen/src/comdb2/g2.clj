@@ -35,8 +35,8 @@
         (let [[k [a-id b-id]] (:value op)]
           (case (:f op)
             :insert
+            (c/hasql! c)
             (j/with-db-transaction [c c {:isolation :serializable}]
-              (c/hasql! c)
               (letr [order (< (rand) 0.5)
                      as (c/query c [(str "select * from " (if order ta tb)
                                        " where key = ? and value % 3 = 0") k])
