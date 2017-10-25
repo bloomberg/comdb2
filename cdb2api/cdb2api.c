@@ -81,8 +81,8 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int allow_pmux_route = 0;
 
-static __thread int PID;
-static __thread int MACHINE_ID;
+static __thread int _PID;
+static __thread int _MACHINE_ID;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
@@ -107,8 +107,8 @@ static void do_init_once(void)
         /* can't call back cdb2_set_comdb2db_config from do_init_once */
         strncpy(CDB2DBCONFIG_NOBBENV, config, 511);
     }
-    PID = getpid(); 
-    MACHINE_ID = gethostid();
+    _PID = getpid();
+    _MACHINE_ID = gethostid();
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -1113,7 +1113,7 @@ static int open_sockpool_ll(void)
     /* Connected - write hello message */
     memcpy(hello.magic, "SQLP", 4);
     hello.protocol_version = 0;
-    hello.pid = getpid();
+    hello.pid = _PID;
     hello.slot = 0;
 
     ptr = (const char *)&hello;
@@ -1979,7 +1979,7 @@ retry_read:
 
 static inline int cdb2_hostid()
 {
-    return MACHINE_ID;
+    return _MACHINE_ID;
 }
 
 static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
@@ -1995,7 +1995,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    cinfo.pid = PID;
+    cinfo.pid = _PID;
     cinfo.th_id = pthread_self();
     cinfo.host_id = cdb2_hostid();
 
@@ -2505,9 +2505,9 @@ static void make_random_str(char *str, int *len)
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (rand_state[0] == 0) { 
-        /* Initialize rand_state once per thread 
-         * PID will ensure that cnonce will be different accross processes 
+    if (rand_state[0] == 0) {
+        /* Initialize rand_state once per thread
+         * _PID will ensure that cnonce will be different accross processes
 
          * Get the initial random state by using thread id and time info. */
         uint32_t tmp[2];
@@ -2519,7 +2519,7 @@ static void make_random_str(char *str, int *len)
         rand_state[2] = hash >> 32;
     }
     int randval = nrand48(rand_state);
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
+    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), _PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }
