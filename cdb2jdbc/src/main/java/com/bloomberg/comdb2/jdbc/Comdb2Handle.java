@@ -769,6 +769,13 @@ public class Comdb2Handle extends AbstractConnection {
         sql = sql.trim();
         String lowerSql = sql.toLowerCase();
 
+        while (next_int() == Errors.CDB2_OK)
+            ;
+
+        clearResp();
+
+        rowsRead = 0;
+
         tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
@@ -803,12 +810,6 @@ public class Comdb2Handle extends AbstractConnection {
             return 0;
         }
 
-        while (next_int() == Errors.CDB2_OK)
-            ;
-
-        clearResp();
-
-        rowsRead = 0;
         boolean is_begin = false, is_commit = false, is_rollback = false;
 
         if (lowerSql.equals("begin"))

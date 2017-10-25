@@ -29,6 +29,73 @@
   client/Client
 
   (setup! [this test node]
+    ; (println "n " (:n this) "test " test "node " node)
+    (let [conn (c/connect node)]
+      ; Create initial accts
+      (dotimes [i n]
+        (with-retry [tries 10]
+          (Thread/sleep (rand-int 10))
+          (try
+            (c/with-conn [c conn]
+;              (c/hasql! c)
+              (info "Inserting" node i)
+              (c/insert! c :accounts {:id i, :balance starting-balance})
+;              (c/execute! c [(str "insert into accounts (id, balance) values (" i "," starting-balance ")")])
+              (catch java.sql.SQLException e
+                (if (.contains (.getMessage e)
+                               "add key constraint duplicate key")
+                  nil
+                  (throw e))))
+          ; I don't know why these nodes close connections on some inserts and
+          ; not others, it's the weirdest thing
+          (catch java.sql.SQLNonTransientConnectionException e
+            (Thread/sleep (rand-int 1000))
+            (if (pos? tries)
+              (retry (dec tries))
+              (throw e))))))
+      (assoc this :conn conn)))
+
+  (invoke! [this test op]
+    (c/with-conn [c conn]
+     (j/with-db-transaction [c c {:isolation :serializable}]
+       (c/hasql! c)
+
+       (case (:f op)
+         :read (->> (c/query c ["select *, comdb2_rowid from accounts"])
+;         :read (->> (c/query c ["select * from accounts"])
+                    (mapv :balance)
+                    (assoc op :type :ok, :value))
+
+         :transfer
+         (let [{:keys [from to amount]} (:value op)
+               b1 (-> c
+                      (c/query ["select * from accounts where id = ?" from]
+                             {:row-fn :balance})
+                      first
+                      (- amount))
+               b2 (-> c
+                      (c/query ["select * from accounts where id = ?" to]
+                             {:row-fn :balance})
+                      first
+                      (+ amount))]
+           (cond (neg? b1)
+                 (assoc op :type :fail, :value [:negative from b1])
+
+                 (neg? b2)
+                 (assoc op :type :fail, :value [:negative to b2])
+
+                 true
+                 (do (c/execute! c ["update accounts set balance = balance - ? where id = ?" amount from])
+                     (c/execute! c ["update accounts set balance = balance + ? where id = ?" amount to])
+                     (assoc op :type :ok))))))))
+
+  (teardown! [_ test]
+    (rc/close! conn)))
+
+(defrecord BankClientWorking [n starting-balance conn]
+  client/Client
+
+  (setup! [this test node]
     (let [conn (c/connect node)]
       ; Create initial accts
       (dotimes [i n]
