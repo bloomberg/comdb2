@@ -76,7 +76,7 @@ void thdpool_set_mem_size(struct thdpool *pool, size_t sz_bytes);
 void thdpool_print_stats(FILE *fh, struct thdpool *pool);
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info);
+                    int queue_override);
 
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);

@@ -8148,8 +8148,7 @@ int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum
     if ((keylen > 0) && (keylen < MAXKEYLEN))
         memcpy(qdata->key, key, keylen);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata, 0);
 
     if (rc != 0) {
         free(qdata);
@@ -8183,8 +8182,7 @@ int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum
     if ((keylen > 0) && (keylen < MAXKEYLEN))
         memcpy(qdata->key, key, keylen);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata, 0);
 
     if (rc != 0) {
         free(qdata);
@@ -8218,8 +8216,7 @@ int enque_osqlpfault_olddata_oldkeys(struct dbtable *db, unsigned long long geni
     qdata->rqid = rqid;
     comdb2uuidcpy(qdata->uuid, uuid);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata, 0);
 
     if (rc != 0) {
         free(qdata);
@@ -8256,8 +8253,7 @@ int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record, int recle
     qdata->rqid = rqid;
     comdb2uuidcpy(qdata->uuid, uuid);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata, 0);
 
     if (rc != 0) {
         free(qdata->record);
@@ -8300,8 +8296,7 @@ int enque_osqlpfault_olddata_oldkeys_newkeys(
     qdata->rqid = rqid;
     comdb2uuidcpy(qdata->uuid, uuid);
 
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL);
+    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata, 0);
 
     if (rc != 0) {
         free(qdata->record);

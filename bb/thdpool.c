@@ -63,7 +63,6 @@ struct workitem {
     int queue_time_ms;
     LINKC_T(struct workitem) linkv;
     int available;
-    char *persistent_info;
 };
 
 struct thd {
@@ -566,10 +565,6 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
             if (thd->pool->maxqueueagems > 0 &&
                 time_epochms() - work->queue_time_ms >
                     thd->pool->maxqueueagems) {
-                if (next->persistent_info) {
-                    free(next->persistent_info);
-                    next->persistent_info = NULL;
-                }
                 thd->work.work_fn(thd->pool, next->work, NULL, THD_FREE);
                 pool_relablk(thd->pool->pool, next);
                 thd->pool->num_timeout++;
@@ -579,7 +574,6 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
             memcpy(work, next, sizeof(*work));
             pool_relablk(thd->pool->pool, next);
             thd->pool->num_dequeued++;
-            thd->work.persistent_info = next->persistent_info;
             return 1;
         }
 
@@ -587,15 +581,6 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
     }
 }
 
-// call after obtaining pool lock
-static inline void free_work_persistent_info(struct thd *thd,
-                                             struct workitem *work)
-{
-    free(work->persistent_info);
-    if (thd->work.persistent_info == work->persistent_info)
-        thd->work.persistent_info = NULL;
-    work->persistent_info = NULL;
-}
 
 static void *thdpool_thd(void *voidarg)
 {
@@ -629,9 +614,6 @@ static void *thdpool_thd(void *voidarg)
 
         LOCK(&pool->mutex)
         {
-            if (work.persistent_info) {
-                free_work_persistent_info(thd, &work);
-            }
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
@@ -715,11 +697,6 @@ static void *thdpool_thd(void *voidarg)
     }
 thread_exit:
 
-    if (work.persistent_info) {
-        LOCK(&pool->mutex) { free_work_persistent_info(thd, &work); }
-        UNLOCK(&pool->mutex);
-    }
-
     delt_fn = pool->delt_fn;
     if (delt_fn)
         delt_fn(pool, thddata);
@@ -734,7 +711,7 @@ thread_exit:
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info)
+                    int queue_override)
 {
     static time_t last_dump = 0;
     time_t crt_dump;
@@ -904,10 +881,8 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                             LISTC_FOR_EACH(&pool->thdlist, thd, thdlist_linkv)
                             {
                                 crt++;
-                                ctrace("%d. %s\n", crt,
-                                       (thd->work.persistent_info)
-                                           ? thd->work.persistent_info
-                                           : "NULL");
+                                extern void ctrace_origin_and_sql(int count, void *ptr);
+                                ctrace_origin_and_sql(crt, thd->work.work);
                             }
                             ctrace(" === Done (%d sql queries)\n", crt);
                             last_dump = time(
@@ -943,7 +918,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 
         item->work = work;
         item->work_fn = work_fn;
-        item->persistent_info = persistent_info;
         item->queue_time_ms = time_epochms();
         item->available = 1;
 
