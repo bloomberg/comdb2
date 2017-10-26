@@ -1,0 +1,42 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -e
+set -x
+
+# Debug variable
+debug=0
+
+dbnm=$1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of insert_records function calls
+nins=0
+
+
+failexit()
+{
+    echo "Failed $1"
+    exit -1
+}
+
+
+echo "create t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (a int) "
+
+
+cnt=0
+while [ $cnt -lt 100 ] ; do
+   cdb2sql -s ${CDB2_OPTIONS} $dbnm default 'insert into t1 values(1)' &>> insert1.txt &
+   cdb2sql -s ${CDB2_OPTIONS} $dbnm default 'select sleep(20)' &>> output1.txt &
+   cnt=$((cnt+1))
+done 
+
+wait
+
+
+echo "Success"
