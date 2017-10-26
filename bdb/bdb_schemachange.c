@@ -59,6 +59,10 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
 {
     int rc;
     bdb_state_type *bdb_state;
+    char *db_newtable;
+    
+    if (newtable && newtable[0])
+        db_newtable = strdup(newtable);
 
     if (bdb_state_in == NULL)
         return 0;
@@ -72,17 +76,17 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
         return 0;
 
     if (!bdb_state->callback->scdone_rtn) {
-        logmsg(LOGMSG_ERROR, "bdb_scdone_int: no scdone callback\n");
+        logmsg(LOGMSG_ERROR, "%s: no scdone callback\n", __func__);
         return -1;
     }
 
     /* TODO fail gracefully now that inline? */
     /* reload the changed table (if necesary) and update the schemas in memory*/
     if ((rc = bdb_state->callback->scdone_rtn(bdb_state_in, table,
-                                              (char*)newtable, fastinit))) {
+                                             db_newtable, fastinit))) {
         if (rc == BDBERR_DEADLOCK)
             rc = DB_LOCK_DEADLOCK;
-        logmsg(LOGMSG_ERROR, "bdb_scdone_int: callback failed\n");
+        logmsg(LOGMSG_ERROR, "%s: callback failed\n", __func__);
         return rc;
     }
 
@@ -100,12 +104,6 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     assert(sizeof(type) == scdoneop->fastinit.size);
     memcpy(&type, scdoneop->fastinit.data, sizeof(type));
     scdone_t sctype = ntohl(type);
-#if 0
-    if(sctype == rename_table) {
-        assert(strlen(table)+1 <= scdoneop->table.size);
-        newtable = &table[strlen(table)+1];
-    }
-#endif
 
     if(sctype == rename_table) {
         assert(strlen(table)+1 < scdoneop->table.size);
@@ -234,7 +232,7 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
 }
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, const char *newtable,
+                         tran_type *tran, const char *origtable,
                          int *bdberr)
 {
     int rc = 0;
@@ -251,11 +249,12 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         dtbl->data = bdb_state->name;
         dtbl->size = strlen(bdb_state->name) + 1;
         if (type == rename_table) {
-            assert(newtable);
-            int len = dtbl->size+strlen(newtable)+1;
+            assert(origtable);
+            int leno = strlen(origtable)+1;
+            int len = leno+dtbl->size;
             char *mashup = alloca(len);
-            memcpy(mashup, dtbl->data, dtbl->size);
-            memcpy(mashup+dtbl->size, newtable, strlen(newtable)+1);
+            memcpy(mashup, origtable, leno);
+            memcpy(mashup+leno, dtbl->data, dtbl->size);
             dtbl->data = mashup;
             dtbl->size = len; 
         }

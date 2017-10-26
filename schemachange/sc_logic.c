@@ -323,7 +323,7 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
     } else {
         int bdberr = 0;
         rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran,
-                                  s->newtable,&bdberr);
+                                  s->table, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
