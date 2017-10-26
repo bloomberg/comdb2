@@ -32,11 +32,12 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (a int) "
 cnt=0
 while [ $cnt -lt 100 ] ; do
    cdb2sql -s ${CDB2_OPTIONS} $dbnm default 'insert into t1 values(1)' &>> insert1.txt &
-   cdb2sql -s ${CDB2_OPTIONS} $dbnm default 'select sleep(20)' &>> output1.txt &
+   cdb2sql -s ${CDB2_OPTIONS} $dbnm default 'select sleep(10)' &>> output1.txt &
    cnt=$((cnt+1))
 done 
 
 wait
 
+awk '/Dumping current pool/{f=1;next};/Done/{f=0}f' ${TESTDIR}/var/log/cdb2/${DBNAME}.trc.c
 
 echo "Success"

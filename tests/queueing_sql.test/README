@@ -1,4 +1,2 @@
-Run select 1 on db. Run with valgrind/cachegrind to get performance information
-on hotspots in db. To run this test use:
-
-make select_one DEBUGGER=callgrind
+Run multiple queries at once on the db, causing server 
+to put queries on sql queue.
