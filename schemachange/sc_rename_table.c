@@ -79,24 +79,24 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
     rc = bdb_rename_table_metadata(db->handle, tran, newname, db->version,
                                    &bdberr);
     if (rc) {
-        sc_errf(s, "Failed to rename metadata structure for %s\n", db->dbname);
+        sc_errf(s, "Failed to rename metadata structure for %s\n", db->tablename);
         goto tran_error;
     }
 
     /* update the table options */
     rc = rename_table_options(tran, db, newname);
     if (rc) {
-        sc_errf(s, "Failed to rename table options for %s\n", db->dbname);
+        sc_errf(s, "Failed to rename table options for %s\n", db->tablename);
         goto tran_error;
     }
 
-    rc = mark_schemachange_over_tran(db->dbname, tran);
+    rc = mark_schemachange_over_tran(db->tablename, tran);
     if (rc) {
-        sc_errf(s, "Failed to mark schema change over for %s\n", db->dbname);
+        sc_errf(s, "Failed to mark schema change over for %s\n", db->tablename);
         goto tran_error;
     }
     /* fragile, handle with care */
-    oldname = db->dbname;
+    oldname = db->tablename;
     rc = rename_db(db, newname);
     if (rc) {
         /* crash the schema change, next master will hopefully have more memory */
