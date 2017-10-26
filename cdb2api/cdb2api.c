@@ -674,6 +674,7 @@ struct cdb2_hndl {
     cdb2_ssl_sess_list *sess_list;
 #endif
     struct context_messages context_msgs;
+    char *env_tz;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -2025,17 +2026,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 retries_done, do_append);
     }
 
-    static char *env_tz = NULL;
-    if (env_tz == NULL)
-        env_tz = getenv("COMDB2TZ");
-
-    if (env_tz == NULL)
-        env_tz = getenv("TZ");
-
-    if (env_tz == NULL)
-        env_tz = DB_TZNAME_DEFAULT;
-
-    sqlquery.tzname = env_tz;
+    sqlquery.tzname = hndl->env_tz;
 
     sqlquery.mach_class = cdb2_default_cluster;
 
@@ -4917,6 +4908,15 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
+
+    hndl->env_tz = getenv("COMDB2TZ");
+
+    if (hndl->env_tz == NULL)
+        hndl->env_tz = getenv("TZ");
+
+    if (hndl->env_tz == NULL)
+        hndl->env_tz = DB_TZNAME_DEFAULT;
+
 
     cdb2_init_context_msgs(hndl);
 
