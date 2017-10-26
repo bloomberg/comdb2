@@ -45,17 +45,13 @@ function build_pidfilelist() {
     fi
 }
 
-function cleanup {    
+function cleanup_cluster {    
     for node in $CLUSTER; do
-        if [ $node == `hostname` ] ; then
-            eval $deregister_db
-        else
+        if [ $node != `hostname` ] ; then
             ssh -o StrictHostKeyChecking=no $node "${deregister_db}"
         fi
         if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-            if [ $node == `hostname` ]  ; then
-                rm -rf ${DBDIR}
-            else
+            if [ $node != `hostname` ]  ; then
                 ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR}"
             fi
         fi
@@ -76,11 +72,6 @@ if [[ -z "$CLUSTER" ]]; then
     sleep 1
     
     kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-    eval $deregister_db
-
-    if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-        rm -rf ${DBDIR}
-    fi
 
 else
     pidfilelist=""
@@ -98,8 +89,14 @@ else
         echo "killing $pidfilelist"
         kill -9 $pidfilelist
     fi
-    cleanup
+    cleanup_cluster
+fi
+
+eval $deregister_db
+
+if [ "$CLEANUPDBDIR" == "1" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
+    rm -rf ${DBDIR}
+    rm -rf ${TESTDIR}/var/log/cdb2/${DBNAME}.*
 fi
 
 echo "Unsetup completed"
-exit 0

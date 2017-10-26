@@ -39,6 +39,9 @@ maxt2=20
 # Keep track of select iterations.
 iter=1
 
+TMPDIR=tmp
+mkdir $TMPDIR
+
 # Final tmpfile for t1.
 tmp1=${TMPDIR}/cdb2tst_t1.$$.final
 
@@ -1480,7 +1483,7 @@ trap - INT EXIT
 
 # If we made it here we passed.
 if [[ "$rcode" == "0" ]]; then
-    # Print a final message.
+    rm -rf $TMPDIR
     echo "Testcase passed."
 fi
 
