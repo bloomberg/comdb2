@@ -80,6 +80,7 @@ FileInfo& FileInfo::operator=(const FileInfo& rhs)
         m_checksums = rhs.m_checksums;
         m_sparse = rhs.m_sparse;
         m_do_direct_io = rhs.m_do_direct_io;
+        m_filesize = rhs.m_filesize;
     }
     return *this;
 }
