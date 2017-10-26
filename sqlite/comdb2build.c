@@ -2773,7 +2773,7 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    if (isTemp || isView || isVirtual || pParse->db->init.busy || IN_DECLARE_VTAB || use_sqlite_impl(pParse)) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -3262,7 +3262,7 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
-    if (temp || use_sqlite_impl(pParse) || pParse->db->init.busy || IN_DECLARE_VTAB) {
+    if (temp || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);

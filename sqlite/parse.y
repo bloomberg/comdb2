@@ -102,7 +102,7 @@ static void disableLookaside(Parse *pParse){
 }
 
 static void setExpert(Parse *pParse){
-  pParse->isExpert = 1;
+  pParse->db->isExpert = 1;
 }
 
 } // end %include
