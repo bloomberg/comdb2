@@ -4035,37 +4035,40 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         char *zErr = 0;
         sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
         if (!p) {
-            printf("%s\n",zErr);
+            printf("%s\n", zErr);
             return -1;
         }
         rc = sqlite3_expert_sql(p, rec->sql, &zErr);
 
-        if( rc==SQLITE_OK ){
-          rc = sqlite3_expert_analyze(p, &zErr);
+        if (rc == SQLITE_OK) {
+            rc = sqlite3_expert_analyze(p, &zErr);
         }
 
-        if( rc==SQLITE_OK ){
-          int nQuery = sqlite3_expert_count(p);
-          const char *zCand = sqlite3_expert_report(p,0,EXPERT_REPORT_CANDIDATES);
-          fprintf(stdout, "-- Candidates -------------------------------\n");
-          fprintf(stdout, "%s\n", zCand);
-          CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-          sql_response.response_type = RESPONSE_TYPE__SP_TRACE;
-          sql_response.n_value = 0;
-          sql_response.value = NULL;
-          sql_response.error_code = 0;
-          sql_response.info_string = "---------- Recommended Indexes --------------\n";
-          newsql_write_response(
-              clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
-              1 /*flush*/, malloc, __func__, __LINE__);
-          sql_response.info_string = (char*)zCand;
-          newsql_write_response(
-              clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
-              1 /*flush*/, malloc, __func__, __LINE__);
-          sql_response.info_string = "---------------------------------------------\n";
-          newsql_write_response(
-              clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE, &sql_response,
-              1 /*flush*/, malloc, __func__, __LINE__);
+        if (rc == SQLITE_OK) {
+            int nQuery = sqlite3_expert_count(p);
+            const char *zCand =
+                sqlite3_expert_report(p, 0, EXPERT_REPORT_CANDIDATES);
+            fprintf(stdout, "-- Candidates -------------------------------\n");
+            fprintf(stdout, "%s\n", zCand);
+            CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
+            sql_response.response_type = RESPONSE_TYPE__SP_TRACE;
+            sql_response.n_value = 0;
+            sql_response.value = NULL;
+            sql_response.error_code = 0;
+            sql_response.info_string =
+                "---------- Recommended Indexes --------------\n";
+            newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                                  &sql_response, 1 /*flush*/, malloc, __func__,
+                                  __LINE__);
+            sql_response.info_string = (char *)zCand;
+            newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                                  &sql_response, 1 /*flush*/, malloc, __func__,
+                                  __LINE__);
+            sql_response.info_string =
+                "---------------------------------------------\n";
+            newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                                  &sql_response, 1 /*flush*/, malloc, __func__,
+                                  __LINE__);
 
 #if 0
           for(int i=0; i<nQuery; i++){
@@ -4078,8 +4081,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             fprintf(stdout, "%s\n%s\n", zIdx, zEQP);
           }
 #endif
-        }else{
-          fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
+        } else {
+            fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
         }
         newsql_send_dummy_resp(clnt, __func__, __LINE__);
         newsql_send_last_row(clnt, 1, __func__, __LINE__);

@@ -7051,7 +7051,7 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
                 __func__);
         return SQLITE_INTERNAL;
     }
- 
+
     int num_tables = 0;
     sqlite3BtreeCreateTable(pBt, &num_tables, BTREE_INTKEY);
 
