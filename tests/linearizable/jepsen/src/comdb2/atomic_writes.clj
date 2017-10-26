@@ -29,8 +29,8 @@
   (invoke! [this test op]
     (c/with-conn [c conn]
       (c/with-timeout
+        (c/hasql! c)
         (j/with-db-transaction [c c {:isolation :serializable}]
-          (c/hasql! c)
 
           (case (:f op)
             :read (->> (c/query c [(str "select * from " table)])
