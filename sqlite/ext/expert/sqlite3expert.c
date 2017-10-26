@@ -908,9 +908,11 @@ static int idxCreateFromCons(
     IdxTable *pTab = pScan->pTab;
     char *zCols = 0;
     char *zIdx = 0;
+    char *zIdx_p = 0;
     IdxConstraint *pCons;
     int h = 0;
     const char *zFmt;
+    const char *zFmt_p;
 
     for(pCons=pEq; pCons; pCons=pCons->pLink){
       zCols = idxAppendColDefn(&rc, zCols, pTab, pCons);
@@ -932,19 +934,23 @@ static int idxCreateFromCons(
         rc = SQLITE_NOMEM;
       }else{
         if( idxIdentifierRequiresQuotes(zTable) ){
-          zFmt = "CREATE INDEX '%q' ON %Q(%s)";
+          zFmt = "CREATE TEMP INDEX '%q' ON %Q(%s)";
+          zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
         }else{
-          zFmt = "CREATE INDEX %s ON %s(%s)";
+          zFmt = "CREATE TEMP INDEX %s ON %s(%s)";
+          zFmt_p = "CREATE INDEX %s ON %s(%s)";
         }
         zIdx = sqlite3_mprintf(zFmt, zName, zTable, zCols);
-        if( !zIdx ){
+        zIdx_p = sqlite3_mprintf(zFmt_p, zName, zTable, zCols);
+        if( !zIdx || !zIdx_p){
           rc = SQLITE_NOMEM;
         }else{
           rc = sqlite3_exec(dbm, zIdx, 0, 0, p->pzErrmsg);
-          idxHashAdd(&rc, &p->hIdx, zName, zIdx);
+          idxHashAdd(&rc, &p->hIdx, zName, zIdx_p);
         }
         sqlite3_free(zName);
         sqlite3_free(zIdx);
+        sqlite3_free(zIdx_p);
       }
     }
 
