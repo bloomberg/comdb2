@@ -129,10 +129,18 @@ void unpack_incr_data(
             throw Error(ss);
         }
 
+        const FileInfo fi = fd_it->second.first;
+        if (fi.get_filesize() == 0)
+            abort();
         update_tree(abs_filepath, fd_it->second, dryrun);
         // zap the file size to what we expect
-        // TBD
-        // truncate(abs_filepath.c_str(), (*fd_it).first./*TODO*/);
+        struct stat st;
+        int rc = stat(abs_filepath.c_str(), &st);
+        if (rc) {
+            abort();
+        }
+        std::cerr << "truncating to " << fi.get_filesize() << " current size " << st.st_size << std::endl;
+        // truncate(abs_filepath.c_str(), fi.get_filesize());
     }
 }
 

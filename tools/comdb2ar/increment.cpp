@@ -135,9 +135,15 @@ bool compare_checksum(
         throw SerialiseError(filename, ss.str());
     }
 
-    // wrong, but a good estimage, and good enough if we truncate BEFORE
+    // wrong, but a good estimate, and good enough if we truncate BEFORE
     // writing pages on restore
     file.set_filesize(new_st.st_size); 
+    {
+        std::ostringstream ss;
+        ss << "ls -l " << file.get_filepath() << " >&2";
+        system(ss.str().c_str());
+        std::cerr << "stat says size " << new_st.st_size << std::endl;
+    }
 
     // For a new file, make pages empty (upon returning, an empty pages list
     // denotes a new file) and mark the size as the full size
