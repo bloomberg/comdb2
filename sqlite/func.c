@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "vdbeInt.h"
+#include <openssl/sha.h>
 #include <unistd.h>
 #include <uuid/uuid.h>
 
@@ -416,7 +417,7 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   for(i = 0; i < n; i++) {
     sleep(1);
     if( comdb2_sql_tick() )
-      break;  
+      break;
     /* We could also return error by doing
      * sqlite3_result_error(context, "Interrupted", -1); */
   }
@@ -787,7 +788,7 @@ static void partitionInfoFunc(
     return;
   }
   partition_name = sqlite3_value_text(argv[0]);
-  
+
   if( sqlite3_value_type(argv[1]) != SQLITE_TEXT ){
     return;
   }
@@ -934,7 +935,7 @@ static int patternCompare(
   u32 matchAll = pInfo->matchAll;  /* "*" or "%" */
   u8 noCase = pInfo->noCase;       /* True if uppercase==lowercase */
   const u8 *zEscaped = 0;          /* One past the last escaped input char */
-  
+
   while( (c = Utf8Read(zPattern))!=0 ){
     if( c==matchAll ){  /* Match "*" */
       /* Skip over multiple "*" characters in the pattern.  If there
@@ -1154,6 +1155,53 @@ static void nullifFunc(
     sqlite3_result_value(context, argv[0]);
   }
 }
+
+static void shaFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  const unsigned char * data = sqlite3_value_text(argv[0]);
+  int len = sqlite3_value_bytes(argv[0]);
+
+  assert( argc==1 );
+  UNUSED_PARAMETER(argc);
+
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+  char hashStr[SHA256_DIGEST_LENGTH * 2];
+
+  switch( sqlite3_value_type(argv[0]) ){
+    case SQLITE_INTERVAL_YM:
+    case SQLITE_INTERVAL_DS:
+    case SQLITE_INTERVAL_DSUS:
+    case SQLITE_DATETIME:
+    case SQLITE_DATETIMEUS:
+    case SQLITE_DECIMAL:
+    case SQLITE_INTEGER:
+    case SQLITE_FLOAT:
+    case SQLITE_BLOB:
+    case SQLITE_TEXT: {
+      SHA256_CTX sha256;
+      SHA256_Init(&sha256);
+
+      SHA256_Update(&sha256, data, len);
+      SHA256_Final(hash, &sha256);
+
+      for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        sprintf(&hashStr[2 * i], "%02x", (unsigned int)hash[i]);
+      }
+
+      sqlite3_result_text(context, hashStr, SHA256_DIGEST_LENGTH * 2, SQLITE_TRANSIENT);
+      break;
+    }
+    default: {
+      sqlite3_result_null(context);
+      return;
+    }
+  }
+
+}
+
 
 /*
 ** Implementation of the sqlite_version() function.  The result is the version
@@ -1780,7 +1828,7 @@ static void sumStep(sqlite3_context *context, int argc, sqlite3_value **argv){
        }else{
          decContext ctx;
          decQuad    res;
-       
+
          dec_ctx_init( &ctx, DEC_INIT_DECQUAD, gbl_decimal_rounding);
          decQuadAdd( &res, &p->decSum, &v.u.dec, &ctx);
 
@@ -2166,6 +2214,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(guid,               1, 0, 0, guidFromStrFunc  ),
     FUNCTION(guid_str,           1, 0, 0, guidFromByteFunc ),
     FUNCTION(nullif,             2, 0, 1, nullifFunc       ),
+    FUNCTION(sha256,             1, 0, 0, shaFunc          ),
 #ifndef SQLITE_BUILDING_FOR_COMDB2
     DFUNCTION(sqlite_version,    0, 0, 0, versionFunc      ),
     DFUNCTION(sqlite_source_id,  0, 0, 0, sourceidFunc     ),
