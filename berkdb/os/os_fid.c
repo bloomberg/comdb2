@@ -35,6 +35,10 @@ static const char revid[] = "$Id: os_fid.c,v 11.17 2003/05/05 19:55:04 bostic Ex
 #define	SERIAL_INIT	0
 static u_int32_t fid_serial = SERIAL_INIT;
 
+#if 0
+static pthread_mutex_t out_mtx = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 /*
  * __os_fileid --
  *	Return a unique identifier for a file.  The structure
@@ -58,6 +62,7 @@ ___os_fileid(dbenv, fname, unique_okay, fidp)
 	int ret, retries;
 	u_int32_t tmp;
 	u_int8_t *p;
+    u_int8_t *saved_fidp = fidp;
 
 	retries = 0;
 
@@ -146,5 +151,16 @@ retry:
 			*fidp++ = *p++;
 	}
 
+
+#if 0
+    pthread_mutex_lock(&out_mtx);
+    extern void hexdump(FILE *fp, unsigned char *key, int keylen);
+    fprintf(stderr, "Allocated FID for \"%s\" : ", (fname)?fname:"UNNAMED");
+    hexdump(stderr, saved_fidp, DB_FILE_ID_LEN); 
+    fprintf(stderr, "\n");
+    fflush(stderr);
+    pthread_mutex_unlock(&out_mtx);
+#endif
+    
 	return (0);
 }

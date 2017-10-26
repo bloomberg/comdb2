@@ -132,6 +132,10 @@ struct schema_change_type {
     int is_sfunc; /* lua scalar func */
     int is_afunc; /* lua agg func */
 
+    /* table rename support */
+    int rename; /* new table name */
+    char newtable[MAXTABLELEN]; /* rename table */
+
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
     int nothrevent;

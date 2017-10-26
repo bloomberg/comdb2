@@ -2070,6 +2070,17 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	int did_abort, grant_dirty, no_dd, ret, t_ret;
 	extern int gbl_locks_check_waiters;
 
+#if 0
+    if (obj->size == sizeof(DB_LOCK_ILOCK)) {
+        if (((DB_LOCK_ILOCK *)(obj->data))->type == DB_HANDLE_LOCK) {
+            fprintf(stderr, "Getting a handle lock for:\n");
+            hexdump(stderr, ((DB_LOCK_ILOCK*)(obj->data))->fileid, 20);
+            fprintf(stderr, "\n");
+            fprintf(stderr, "\n");
+        }
+    }
+#endif
+
 	/* Set a locker's status */
 	int locker_deadlock = 0;
 	/*
@@ -2101,7 +2112,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
 
-	/*printf("%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
+	/*printf("%x put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
 
 	/*snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
 	/*printf("%d get lid %x %s size=%d ", pthread_self(), locker, desc, obj->size); */
@@ -4934,7 +4945,7 @@ __lock_fix_list(dbenv, list_dbt, nlocks, has_pglk_lsn)
 	/*
 	 * if (nlocks > 1)
 	 * {
-	 * fprintf(stderr, "__lock_fix_list nlocks=%d\n", nlocks);
+	 * fprintf(stderr, "%s nlocks=%d\n", __func__, nlocks);
 	 * }
 	 */
 
@@ -5157,22 +5168,22 @@ not_ilock:
 
 		if (gbl_new_snapisol_logging) {
 			if (dp + sizeof(u_int32_t) > (uint8_t *)endptr) {
-				logmsg(LOGMSG_USER, "%d: __lock_fix_list about to overrun (PUT_COUNT)\n",
-				    __LINE__);
+				logmsg(LOGMSG_USER, "%d: %s about to overrun (PUT_COUNT)\n",
+				    __func__, __LINE__);
 				abort();
 			}
 			PUT_COUNT(dp, MAX_LOCK_COUNT);
 			if (dp + sizeof(u_int32_t) > (uint8_t *)endptr) {
-				logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_NKEYS)\n",
-				    __LINE__);
+				logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_NKEYS)\n",
+				    __func__, __LINE__);
 				abort();
 			}
 			PUT_NKEYS(dp, has_pglk_lsn ? nlsns : 0);
 		}
 
 		if (dp + sizeof(u_int32_t) > (uint8_t *)endptr) {
-            logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_COUNT)\n",
-			    __LINE__);
+            logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_COUNT)\n",
+			    __func__, __LINE__);
 			abort();
 		}
 		PUT_COUNT(dp, nfid);
@@ -5186,22 +5197,22 @@ not_ilock:
 			for (i = 0; i < nlocks; i = j) {
 
 				if (dp + sizeof(u_int16_t) > (uint8_t *)endptr) {
-					logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_PCOUNT)\n",
-					    __LINE__);
+					logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_PCOUNT)\n",
+					    __func__, __LINE__);
 					abort();
 				}
 				PUT_PCOUNT(dp, obj_lsn[i].ulen);
 
 				if (dp + sizeof(u_int16_t) > (uint8_t *)endptr) {
-					logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_SIZE)\n",
-					    __LINE__);
+					logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_SIZE)\n",
+					    __func__, __LINE__);
 					abort();
 				}
 				PUT_SIZE(dp, obj_lsn[i].size);
 
 				if (dp + obj_lsn[i].size > (uint8_t *)endptr) {
-					logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (COPY_OBJ)\n",
-					    __LINE__);
+					logmsg(LOGMSG_FATAL, "%d: %s about to overrun (COPY_OBJ)\n",
+					    __func__, __LINE__);
 					abort();
 				}
 				COPY_OBJ(dp, &obj_lsn[i]);
@@ -5209,8 +5220,8 @@ not_ilock:
 				if (gbl_new_snapisol_logging) {
 					if (dp + sizeof(u_int16_t) >
 					    (uint8_t *)endptr) {
-						logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSNCOUNT)\n",
-						    __LINE__);
+						logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_LSNCOUNT)\n",
+						    __func__, __LINE__);
 						abort();
 					}
 					PUT_LSNCOUNT(dp, obj_lsn[i].nlsns);
@@ -5231,8 +5242,8 @@ not_ilock:
 					if (gbl_new_snapisol_logging) {
 						if (dp + sizeof(DB_LSN) >
 						    (uint8_t *)endptr) {
-							logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSN)\n",
-							    __LINE__);
+							logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_LSN)\n",
+							    __func__, __LINE__);
 							abort();
 						}
 						PUT_LSN(dp, &(lsnp->llsn));
@@ -5265,7 +5276,7 @@ not_ilock:
 					if (dp + sizeof(db_pgno_t) >
 					    (uint8_t *)endptr) {
 						logmsg(LOGMSG_FATAL,
-						    "__lock_fix_list about to overrun (PUT_PGNO)\n");
+						    "%s about to overrun (PUT_PGNO)\n", __func__);
 						abort();
 					}
 					PUT_PGNO(dp, lock->pgno);
@@ -5273,8 +5284,8 @@ not_ilock:
 					if (gbl_new_snapisol_logging) {
 						if (dp + sizeof(u_int16_t) >
 						    (uint8_t *)endptr) {
-							logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSNCOUNT)\n",
-							    __LINE__);
+							logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_LSNCOUNT)\n",
+							    __func__, __LINE__);
 							abort();
 						}
 						PUT_LSNCOUNT(dp,
@@ -5299,8 +5310,8 @@ not_ilock:
 							if (dp +
 							    sizeof(DB_LSN) >
 							    (uint8_t *)endptr) {
-								logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (PUT_LSN)\n",
-								    __LINE__);
+								logmsg(LOGMSG_FATAL, "%d: %s about to overrun (PUT_LSN)\n",
+								    __func__, __LINE__);
 								abort();
 							}
 							PUT_LSN(dp,
@@ -5320,20 +5331,23 @@ not_ilock:
 			for (i = 0; i < nlocks; i = j) {
 
 				if (dp + sizeof(u_int16_t) > (uint8_t *)endptr) {
-					logmsg(LOGMSG_FATAL, "__lock_fix_list about to overrun (PUT_PCOUNT)\n");
-					abort();
+					logmsg(LOGMSG_FATAL, "%s about to overrun (PUT_PCOUNT)\n",
+                            __func__);
+                    abort();
 				}
 				PUT_PCOUNT(dp, obj_dbt[i].ulen);
 
 				if (dp + sizeof(u_int16_t) > (uint8_t *)endptr) {
-					logmsg(LOGMSG_FATAL, "__lock_fix_list about to overrun (PUT_SIZE)\n");
-					abort();
+					logmsg(LOGMSG_FATAL, "%s about to overrun (PUT_SIZE)\n",
+                            __func__);
+                    abort();
 				}
 				PUT_SIZE(dp, obj_dbt[i].size);
 
 				if (dp + obj_dbt[i].size > (uint8_t *)endptr) {
-                    logmsg(LOGMSG_FATAL, "__lock_fix_list about to overrun (COPY_OBJ)\n");
-					abort();
+                    logmsg(LOGMSG_FATAL, "%s about to overrun (COPY_OBJ)\n",
+                            __func__);
+                    abort();
 				}
 				COPY_OBJ(dp, &obj_dbt[i]);
 				/*
@@ -5360,8 +5374,9 @@ not_ilock:
 
 					if (dp + sizeof(db_pgno_t) >
 					    (uint8_t *)endptr) {
-						logmsg(LOGMSG_FATAL, "__lock_fix_list about to overrun (PUT_PGNO)\n");
-						abort();
+						logmsg(LOGMSG_FATAL, "%s about to overrun (PUT_PGNO)\n",
+                                __func__);
+                        abort();
 					}
 					PUT_PGNO(dp, lock->pgno);
 					/* 
@@ -5372,8 +5387,8 @@ not_ilock:
 		}
 
 		if (dp + sizeof(unsigned long long) > (uint8_t *)endptr) {
-			logmsg(LOGMSG_FATAL, "%d: __lock_fix_list about to overrun (context)\n",
-			    __LINE__);
+			logmsg(LOGMSG_FATAL, "%d: %s about to overrun (context)\n",
+			    __func__, __LINE__);
 			abort();
 		}
 		bzero(dp, sizeof(unsigned long long));
@@ -5505,10 +5520,28 @@ ilock_type_str(int type)
 	case DB_PAGE_LOCK:
 		return "PAGE-LOCK";
 		break;
-	default:
-		return "UNKNOWN-LOCK";
+	default: {
+        static char error[128];
+        snprintf(error, sizeof(error), "UNKNOWN-LOCK %d", type);
+		return error;
+        }
 		break;
 	}
+}
+
+static char * lock_type_str(DBT *obj_dbt)
+{
+    switch(obj_dbt->size) 
+    {
+        case 32:
+            return "TABLE-LOCK";
+        case 31:
+            return "MINMAX-LOCK";
+        case 20:
+            return "STRIPE-LOCK";
+        default:
+            return ilock_type_str(((DB_LOCK_ILOCK *)obj_dbt->data)->type);
+    }    
 }
 
 static int
@@ -5737,6 +5770,12 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 					uint32_t lflags =
 					    (flags & (~(LOCK_GET_LIST_GETLOCK |
 						    LOCK_GET_LIST_PRINTLOCK)));
+                    if(obj_dbt.size == sizeof(DB_LOCK_ILOCK) && 
+                        ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
+                        logmsg(LOGMSG_INFO, 
+                                "Skipping handle lock in write mode, protection by table lock!\n");
+                        ret = 0;
+                    } else
 					if ((ret =
 						__lock_get_internal(lt, locker,
 						    sh_locker, lflags, &obj_dbt,
@@ -5747,23 +5786,37 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 					}
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                    if (fp) 
-                        fprintf(fp, "\t\tFILEID: ");
-                    else
-                        logmsg(LOGMSG_USER, "\t\tFILEID: ");
+                    if(obj_dbt.size == sizeof(DB_LOCK_ILOCK)) {
+                        if (fp) 
+                            fprintf(fp, "\t\tFILEID: ");
+                        else
+                            logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
-					hexdump(fp, lock->fileid,
-					    sizeof(lock->fileid));
-                    if (fp) {
-                        fprintf(fp, " TYPE: %s",
-                                ilock_type_str(lock->type));
-                        fprintf(fp, " PAGE: %u\n", lock->pgno);
+                        hexdump(fp, lock->fileid,
+                                sizeof(lock->fileid));
+
+                        if (fp) {
+                            fprintf(fp, " TYPE: %s",
+                                    ilock_type_str(lock->type));
+                            fprintf(fp, " PAGE: %u\n", lock->pgno);
+                        } else {
+                            logmsg(LOGMSG_USER, " TYPE: %s",
+                                    ilock_type_str(lock->type));
+                            logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
+                        }
                     } else {
-                        logmsg(LOGMSG_USER, " TYPE: %s",
-                                ilock_type_str(lock->type));
-                        logmsg(LOGMSG_USER, " PAGE: %u\n", lock->pgno);
-                    }
-				}
+                        char lock_description[128];
+                        extern int bdb_describe_lock_dbt(DB_ENV*,DBT*,char*,int);
+                        bdb_describe_lock_dbt(dbenv, &obj_dbt, lock_description, 
+                                sizeof(lock_description));
+                        if (fp) {
+                            fprintf(fp, "\t\t%s\n", lock_description);
+                        } else {
+                            logmsg(LOGMSG_USER, "\t\t%s\n", lock_description);
+                        }
+                    } 
+
+                }
 
 				if (npgno != 0)
 					GET_PGNO(dp, lock->pgno);
@@ -5923,14 +5976,20 @@ __lock_sort_cmp(a, b)
 	d1 = a;
 	d2 = b;
 
-	/* Force all non-standard locks to sort at end. */
+	/* Force all non-standard locks to sort at end, but for table locks. */
 	if (d1->size != sizeof(DB_LOCK_ILOCK)) {
 		if (d2->size != sizeof(DB_LOCK_ILOCK))
 			return (d1->size - d2->size);
-		else
+		else if(d1->size == 32)
+            return (-1);
+        else
 			return (1);
-	} else if (d2->size != sizeof(DB_LOCK_ILOCK))
-		return (-1);
+	} else if (d2->size != sizeof(DB_LOCK_ILOCK)) {
+        if (d2->size == 32)
+            return (1);
+        else
+            return (-1);
+    }
 
 	l1 = d1->data;
 	l2 = d2->data;

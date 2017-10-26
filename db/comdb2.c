@@ -5351,8 +5351,35 @@ void delete_db(char *db_name)
 
     thedb->num_dbs -= 1;
     thedb->dbs[thedb->num_dbs] = NULL;
+    pthread_rwlock_unlock(&thedb_lock);
+}
+
+/* rename in memory db names; fragile */
+int rename_db(struct dbtable *db, const char *newname)
+{
+    int rc;
+    char *tag_name = strdup(newname);
+    char *bdb_name = strdup(newname);
+
+    if(!tag_name || !bdb_name)
+        return -1;
+
+    pthread_rwlock_wrlock(&thedb_lock);
+    
+    /* tags */
+    rename_schema(db->tablename, tag_name);
+
+    /* bdb_state */
+     bdb_state_rename(db->handle, bdb_name);
+
+    /* db */
+    hash_del(thedb->db_hash, db);
+    db->tablename = (char*)newname;
+    db->version = 0; /* reset, new table */
+    hash_add(thedb->db_hash, db);
 
     pthread_rwlock_unlock(&thedb_lock);
+    return 0;
 }
 
 void replace_db_idx(struct dbtable *p_db, int idx)

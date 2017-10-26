@@ -28,6 +28,51 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 
+
+static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
+        const char *newtable)
+{
+    void *tran = NULL;
+    int rc;
+    int bdberr = 0;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
+    struct dbtable *db = get_dbtable_by_name(name);
+   
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
+        return -1;
+    }
+
+    if(rename_db(db, newtable)) {
+        logmsg(LOGMSG_ERROR, "%s: failed to rename %s to %s \n", __func__,
+               name, newtable);
+        return -1;
+    }
+
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
+
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
+    ++gbl_dbopen_gen;
+
+    bdb_set_tran_lockerid(tran, lid);
+    rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (rc) 
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction\n", __func__, rc);
+
+    sc_set_running(0 /*running*/, 0 /*seed*/, NULL, 0);
+
+    return rc;
+}
+
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
     int bdberr, rc;
@@ -562,7 +607,7 @@ static int replicant_reload_views(const char *name)
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
 int scdone_callback(bdb_state_type *bdb_state, const char table[],
-                    scdone_t type)
+                    void *arg, scdone_t type)
 {
     switch (type) {
     case luareload:
@@ -584,6 +629,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
+    case rename_table: return reload_rename_table(bdb_state, table, (char*)arg);
     }
 
     int add_new_db = 0;

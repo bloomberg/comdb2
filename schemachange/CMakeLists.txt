@@ -1,6 +1,7 @@
 add_library(schemachange
   sc_add_table.c
   sc_alter_table.c
+  sc_rename_table.c
   sc_callbacks.c
   sc_csc2.c
   sc_drop_table.c
