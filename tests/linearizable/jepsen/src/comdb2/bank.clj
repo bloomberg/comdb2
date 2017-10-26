@@ -37,7 +37,7 @@
           (Thread/sleep (rand-int 10))
           (try
             (c/with-conn [c conn]
-;              (c/hasql! c)
+              (c/hasql! c)
               (info "Inserting" node i)
               (c/insert! c :accounts {:id i, :balance starting-balance})
 ;              (c/execute! c [(str "insert into accounts (id, balance) values (" i "," starting-balance ")")])
@@ -57,8 +57,8 @@
 
   (invoke! [this test op]
     (c/with-conn [c conn]
+     (c/hasql! c)
      (j/with-db-transaction [c c {:isolation :serializable}]
-       (c/hasql! c)
 
        (case (:f op)
          :read (->> (c/query c ["select *, comdb2_rowid from accounts"])
@@ -102,8 +102,8 @@
         (with-retry [tries 10]
           (Thread/sleep (rand-int 1000))
           (c/with-conn [c conn]
+            (c/hasql! c)
             (j/with-db-transaction [c c {:isolation :serializable}]
-              (c/hasql! c)
               (try
                 (info "Inserting" node i)
                 ; Can't use insert because parameter substitution is broken
@@ -133,8 +133,8 @@
 
   (invoke! [this test op]
     (c/with-conn [c conn]
+     (c/hasql! c)
      (j/with-db-transaction [c c {:isolation :serializable}]
-       (c/hasql! c)
 
        (case (:f op)
          :read (->> (c/query c ["select * from accounts"])

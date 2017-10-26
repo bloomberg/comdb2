@@ -42,8 +42,8 @@
               (catch java.sql.SQLIntegrityConstraintViolationException e nil)))
 
           (try
+            (c/hasql! c)
             (j/with-db-transaction [c c {:isolation :read-committed}]
-              (c/hasql! c)
               (dotimes [i n]
                 ; Can't use parameters in a transaction, woooo
                 (c/execute! c [(str "insert into dirty (id, x) values ("
