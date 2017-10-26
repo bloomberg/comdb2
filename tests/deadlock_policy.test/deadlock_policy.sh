@@ -27,7 +27,7 @@ function gen {
     while [[ $i -le $count ]]; do
         echo "insert into t1(a, b, c) values($i, $i, $i)"
         i=$(($i+1))
-    done | cdb2sql ${CDB2_OPTIONS} $db default - >/dev/null
+    done | cdb2sql -s ${CDB2_OPTIONS} $db default - >/dev/null
 }
 
 function upd {
@@ -38,7 +38,7 @@ function upd {
         key=$(($RANDOM % 3))
         echo "select * from t1 where "${keys[$key]}" = $val limit 1"
         echo "update t1 set a=$val where "${keys[$key]}" = $val"
-    done | cdb2sql ${CDB2_OPTIONS} $db default - >/dev/null
+    done | cdb2sql -s ${CDB2_OPTIONS} $db default - >/dev/null
 }
 
 

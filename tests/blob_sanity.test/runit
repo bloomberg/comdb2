@@ -8,7 +8,7 @@ dbnm=$1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 # Insert
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
 if [[ $? != 0 ]]; then
     echo "failed tagged test"
@@ -20,18 +20,18 @@ fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 # Insert
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
 # Fastinit
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 # Insert
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
 # Test 1
 for i in $(seq 0 4095) ; do
     echo "update t1 set a=1 where a = 1" 
-done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>&1
+done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - &> /dev/null
 
 function do_verify
 {
@@ -56,7 +56,7 @@ fi
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 # Insert
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b) values (1, x'aa')" &> /dev/null
 
 # Test 2
 for i in $(seq 0 4096) ; do
@@ -65,7 +65,7 @@ for i in $(seq 0 4096) ; do
     else
         echo "update t1 set a=1 where a = 1" 
     fi
-done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null 2>&1
+done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - &> /dev/null
 
 do_verify t1
 

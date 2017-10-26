@@ -16,7 +16,7 @@ NROWS=60
 echo "Inserting $NROWS rows"
 j=0
 while (( $j != $NROWS )); do
-   cdb2sql ${CDB2_OPTIONS} ${dbname} default "insert into ${tblname} values ($j, 10+$j, 100+$j, 1000+$j)" >/dev/null 2>&1
+   cdb2sql -s ${CDB2_OPTIONS} ${dbname} default "insert into ${tblname} values ($j, 10+$j, 100+$j, 1000+$j)" >/dev/null 2>&1
    let j=j+1
 done
 

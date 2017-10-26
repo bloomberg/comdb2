@@ -102,60 +102,6 @@ function do_rebuild
     return 0
 }
 
-# Update all records in the table
-function update_all_records
-{
-    typeset prmsg=$1
-    typeset iter=0
-
-    [[ "$debug" == 1 ]] && set -x
-
-    while :; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=x'1234' where b='test1'" >/dev/null 2>&1
-        let iter=iter+1
-
-        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
-
-            echo "Updated all of table $tbl $iter times."
-
-        fi
-
-    done
-}
-
-
-function update_same_record
-{
-    j=0
-    loc_recs=5000
-    echo "Updating same $nrecs records."
-
-    while [[ $j -lt $loc_recs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1 where a = 10" >> update.out 2>&1
-        assertcnt $nrecs
-        let j=j+1
-    done
-}
-
-
-function update_records
-{
-    j=0
-    t=0
-    echo "Updating $nrecs records."
-    echo "" > update.out
-
-    while [[ $t -lt 10 ]]; do 
-        while [[ $j -lt $nrecs ]]; do 
-            cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set d=d+1, e=e+10000 where a = $j" >> update.out 2>&1
-            let j=j+1
-            assertcnt $nrecs
-            #sleep 0.1
-        done
-        let t=t+1
-    done
-}
 
 function insert_records
 {

@@ -562,7 +562,7 @@ int osql_fetch_shadblobs_by_genid(BtCursor *pCur, int *blobnum,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->dbname);
+               pCur->db->tablename);
         if (key)
             free(key);
         return -1;
@@ -655,7 +655,7 @@ int osql_get_shadowdata(BtCursor *pCur, unsigned long long genid, void **buf,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->add_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->dbname);
+               pCur->db->tablename);
         return -1;
     }
 
@@ -872,7 +872,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->upd_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->dbname);
+               pCur->db->tablename);
         return -1;
     }
 
@@ -1020,7 +1020,7 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
     if (!(tbl = open_shadtbl(pCur)) || !tbl->add_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
-                pCur->db->dbname);
+               pCur->db->tablename);
         return -1;
     }
 
@@ -1414,7 +1414,7 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
         tbl->nops = 0;
 
         /* set the table we operate on */
-        rc = process_local_shadtbl_usedb(clnt, tbl->db->dbname);
+        rc = process_local_shadtbl_usedb(clnt, tbl->db->tablename);
         if (rc)
             return -1;
 
@@ -1686,7 +1686,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
         blob_key_t *key;
 
         if (updCols && gbl_osql_blob_optimization) {
-            idx = get_schema_blob_field_idx(tbl->db->dbname, ".ONDISK", i);
+            idx = get_schema_blob_field_idx(tbl->db->tablename, ".ONDISK", i);
             ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i, seq,
@@ -2033,8 +2033,8 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             memcpy(key, thd->sqlclntstate->idxInsert[ix],
                    pCur->db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(pCur->db->dbname, ".ONDISK", pCur->ondisk_buf,
-                                  namebuf, key, NULL);
+            rc = stag_to_stag_buf(pCur->db->tablename, ".ONDISK",
+                                  pCur->ondisk_buf, namebuf, key, NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "insert_record:stag_to_stag_buf ix %d\n", ix);
                 return SQLITE_INTERNAL;
@@ -2129,7 +2129,7 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
         if (gbl_expressions_indexes && db->ix_expr) {
             memcpy(key, thd->sqlclntstate->idxDelete[ix], db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(db->dbname, ".ONDISK", dta, namebuf, key,
+            rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, namebuf, key,
                                   NULL);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "%s:stag_to_stag_buf ix %d\n", __func__, ix);
@@ -2513,8 +2513,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     if (!osql->verify_tbl || !osql->verify_cur) {
-        logmsg(LOGMSG_ERROR, "%s: error getting verify table for \'%s\'\n", __func__,
-                pCur->db->dbname);
+        logmsg(LOGMSG_ERROR, "%s: error getting verify table for \'%s\'\n",
+               __func__, pCur->db->tablename);
         return -1;
     }
 
@@ -2601,8 +2601,9 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
         /* do we need to send a new usedb? */
         if (old_tblnum != tblnum) {
             /*printf("RECGENID SENDING USEDB= %d %s\n", tblnum,
-             * thedb->dbs[tblnum]->dbname);*/
-            rc = process_local_shadtbl_usedb(clnt, thedb->dbs[tblnum]->dbname);
+             * thedb->dbs[tblnum]->tablename);*/
+            rc = process_local_shadtbl_usedb(clnt,
+                                             thedb->dbs[tblnum]->tablename);
             if (rc) {
                 logmsg(LOGMSG_ERROR, 
                         "%s:%d: error writting record to master in offload mode!\n",
@@ -2652,10 +2653,6 @@ int osql_save_schemachange(struct sql_thread *thd,
     /* packed_sc_key[0]: sc seqnum; packed_sc_key[1]: db version */
     int packed_sc_key[2] = {0, -1};
 
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-        !clnt->in_client_trans)
-        return 0;
-
     if (!osql->sc_tbl) {
         rc = osql_create_schemachange_temptbl(thedb->bdb_env, thd->sqlclntstate,
                                               &bdberr);
@@ -2671,8 +2668,12 @@ int osql_save_schemachange(struct sql_thread *thd,
                __func__, sc->table);
         return -1;
     }
-    sc->rqid = osql->rqid;
-    comdb2uuidcpy(sc->uuid, osql->uuid);
+
+    if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
+        clnt->in_client_trans) {
+        sc->rqid = osql->rqid;
+        comdb2uuidcpy(sc->uuid, osql->uuid);
+    }
 
     if (pack_schema_change_type(sc, &packed_sc_data, &packed_sc_data_len)) {
         logmsg(LOGMSG_ERROR, "%s: error packing sc table for \'%s\'\n",

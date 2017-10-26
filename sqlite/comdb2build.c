@@ -2383,7 +2383,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         csc2_constraint.ncnstrts = 1;
         csc2_constraint.flags = current_constraint->constraint->flags;
         csc2_constraint.table[0] =
-            comdb2_strdup(ctx->mem, parent_table->dbname);
+            comdb2_strdup(ctx->mem, parent_table->tablename);
         if (csc2_constraint.table[0] == 0) goto oom;
         csc2_constraint.keynm[0] = comdb2_strdup(ctx->mem, parent_key->csctag);
         if (csc2_constraint.keynm[0] == 0) goto oom;
@@ -2626,7 +2626,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (centry == 0) goto oom;
 
             constraint->referenced_table =
-                comdb2_strdup(ctx->mem, parent_table->dbname);
+                comdb2_strdup(ctx->mem, parent_table->tablename);
             if (constraint->referenced_table == 0) goto oom;
             constraint->ncols = parent_key->nmembers;
             constraint->flags = table->constraints[i].flags;
@@ -3747,7 +3747,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
     ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
-    ctx->name = table->dbname;
+    ctx->name = table->tablename;
 
     /*
       Add all the columns, indexes and constraints in the table to the
