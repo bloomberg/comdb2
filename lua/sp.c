@@ -436,11 +436,13 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg)
 
 static void luabb_trigger_unregister(dbconsumer_t *q)
 {
-    pthread_mutex_lock(q->lock);
-    if (*q->open) {
-        bdb_trigger_unsubscribe(q->iq.usedb->handle);
+    if (q->lock) {
+        pthread_mutex_lock(q->lock);
+        if (*q->open) {
+            bdb_trigger_unsubscribe(q->iq.usedb->handle);
+        }
+        pthread_mutex_unlock(q->lock);
     }
-    pthread_mutex_unlock(q->lock);
 
     logmsg(LOGMSG_DEBUG,
            "%s waiting for %s elect_cookie:%d trigger_cookie:0x%lx\n",
@@ -4489,7 +4491,7 @@ static int cson_to_table(Lua lua, cson_value *v)
         }
     } else if (cson_value_is_array(v)) {
         cson_array *a = cson_value_get_array(v);
-        int i, len = cson_array_length_get(a);
+        unsigned int i, len = cson_array_length_get(a);
         for (i = 0; i < len; ++i) {
             if (cson_push_value(lua, cson_array_get(a, i)) != 0) return -1;
             lua_rawseti(lua, -2, i + 1);
@@ -4539,7 +4541,7 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         return cson_push_null(L, type);
     } else if (strcmp(type, "object") == 0 || strcmp(type, "array") == 0) {
         lua_newtable(L);
-        return cson_to_table_annotated(L, v, 1);
+        return cson_to_table_annotated(L, val, 1);
     } else if (strcmp(type, "string") == 0) {
         if (!cson_value_is_string(v)) return -1;
         lua_pushstring(L, cson_value_get_cstr(v));
@@ -4563,9 +4565,15 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         double d = cson_value_get_double(v);
         luabb_pushreal(L, d);
     } else if (strcmp(type, "number") == 0) {
-        if (!cson_value_is_double(v)) return -1;
-        double d = cson_value_get_double(v);
-        lua_pushnumber(L, d);
+        if (cson_value_is_integer(v)) {
+            int64_t i = cson_value_get_integer(v);
+            luabb_pushinteger(L, i);
+        } else if (cson_value_is_double(v)) {
+            double d = cson_value_get_double(v);
+            lua_pushnumber(L, d);
+        } else {
+            return -1;
+        }
     } else if (strcmp(type, "bool") == 0) {
         if (!cson_value_is_bool(v)) return -1;
         lua_pushboolean(L, cson_value_get_bool(v));
@@ -4634,7 +4642,7 @@ static int cson_to_table_annotated(Lua L, cson_value *val, int annotate)
         }
     } else if (strcmp(type, "array") == 0) {
         cson_array *a = cson_value_get_array(v);
-        int i, len = cson_array_length_get(a);
+        unsigned int i, len = cson_array_length_get(a);
         for (i = 0; i < len; ++i) {
             if (cson_push_value_annotated(L, cson_array_get(a, i)) != 0)
                 return -1;
@@ -6780,17 +6788,10 @@ void *exec_trigger(trigger_reg_t *reg)
         free(q);
     } else {
         //setup fake dbconsumer_t to send unregister
-        uint8_t open = 0;
-        int spname_len = htonl(reg->spname_len);
-        pthread_mutex_t dummy = PTHREAD_MUTEX_INITIALIZER;
-        q = alloca(dbconsumer_sz(reg->spname));
-        q->lock = &dummy;
-        q->open = &open;
+        trigger_reg_init(q->info, reg->spname);
+        q->lock = NULL;
         q->info = *reg;
-        strcpy(q->info.spname, reg->spname);
-        strcpy(q->info.spname + spname_len + 1, reg->spname + spname_len + 1);
         luabb_trigger_unregister(q);
-        pthread_mutex_destroy(q->lock);
     }
     close_sp(&clnt);
     reset_clnt(&clnt, NULL, 0);
