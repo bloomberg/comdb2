@@ -300,10 +300,6 @@ err:	if (lp != NULL)
 	return (ret);
 }
 
-int bdb_relink_txn_pglogs(void *bdb_state, void *relinks_hashtbl,
-	pthread_mutex_t * mutexp, unsigned char *fileid, db_pgno_t pgno,
-	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
-
 int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
 	db_pgno_t prev_pgno, db_pgno_t next_pgno, DB_LSN lsn);
 
@@ -503,13 +499,7 @@ __bam_page(dbc, pp, cp)
 			    PGNO_INVALID, &log_dbt, opflags)) != 0)
 			 goto err;
 
-		if (!dbc->txn->relinks_hashtbl) {
-			DB_ASSERT(F_ISSET(dbc->txn, TXN_COMPENSATE));
-		} else if (bdb_relink_txn_pglogs(dbp->dbenv->app_private,
-			dbc->txn->relinks_hashtbl, &dbc->txn->pglogs_mutex,
-			mpf->fileid, PGNO(cp->page), PGNO_INVALID,
-			PGNO(alloc_rp), LSN(cp->page)) != 0 ||
-		    bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
+		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,
 			PGNO(cp->page), PGNO_INVALID, PGNO(alloc_rp),
 			LSN(cp->page)) != 0) {
 			logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n", __func__);

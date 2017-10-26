@@ -45,6 +45,13 @@
 #include <ctrace.h>
 #include <logmsg.h>
 
+#ifdef NEWSI_STAT
+#include <time.h>
+#include <sys/time.h>
+#include <util.h>
+extern struct timeval logical_undo_time;
+#endif
+
 /**
  * Each snapshot/serializable transaction registers one bdb_osql_trn
  *
@@ -494,9 +501,8 @@ done:
                 }
                 pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
-                shadow_tran->asof_hashtbl = hash_init_o(
-                    offsetof(struct shadows_pglogs_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+                shadow_tran->asof_hashtbl =
+                    hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
                 bdb_checkpoint_list_get_ckplsn_before_lsn(
                     shadow_tran->asof_lsn, &shadow_tran->asof_ref_lsn);
 #ifdef ASOF_TRACE
@@ -1219,8 +1225,17 @@ static int bdb_osql_trn_create_backfill(bdb_state_type *bdb_state,
             trn->shadow_tran->snapy_commit_lsn.offset = offset;
         }
 
+#ifdef NEWSI_STAT
+        struct timeval before, after, diff;
+        gettimeofday(&before, NULL);
+#endif
         rc = bdb_osql_trn_process_bfillhndl(bdb_state, trn, bdberr, bkfill_hndl,
                                             0 /* dont skip committed trans */);
+#ifdef NEWSI_STAT
+        gettimeofday(&after, NULL);
+        timeval_diff(&before, &after, &diff);
+        timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+#endif
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s:%d failed to process backfill handler, rc = %d\n",
@@ -1251,6 +1266,10 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
         bdb_tran_open_shadow(cur->state, cur->dbnum, cur->shadow_tran, cur->idx,
                              cur->type, (type == BERKDB_SHAD_CREATE), bdberr);
 
+#ifdef NEWSI_STAT
+    struct timeval before, after, diff;
+    gettimeofday(&before, NULL);
+#endif
     /* backfill only snapshot/serializable for now */
     if ((cur->shadow_tran->tranclass == TRANCLASS_SERIALIZABLE ||
          cur->shadow_tran->tranclass == TRANCLASS_SNAPISOL) &&
@@ -1301,6 +1320,12 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
         if (rc)
             return NULL;
     }
+
+#ifdef NEWSI_STAT
+    gettimeofday(&after, NULL);
+    timeval_diff(&before, &after, &diff);
+    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+#endif
 
     if (dirty && !shadcur) {
         /* retrieve now a cursor for the newly created shadow */

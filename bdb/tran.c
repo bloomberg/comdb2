@@ -1245,13 +1245,10 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
         tran->birth_lsn = tran->snapy_commit_lsn;
     }
 
-    tran->pglogs_hashtbl =
-        hash_init_o(offsetof(struct shadows_pglogs_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+    tran->pglogs_hashtbl = hash_init_o(PGLOGS_KEY_OFFSET, PAGE_KEY_SIZE);
 
     tran->relinks_hashtbl =
-        hash_init_o(offsetof(struct pglogs_relink_key, fileid),
-                    DB_FILE_ID_LEN * sizeof(unsigned char) + sizeof(db_pgno_t));
+        hash_init_o(PGLOGS_RELINK_KEY_OFFSET, PAGE_KEY_SIZE);
 
     pthread_mutex_init(&tran->pglogs_mutex, NULL);
 

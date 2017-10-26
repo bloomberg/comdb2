@@ -1035,7 +1035,6 @@ struct __db_txn {
 					 * existing startlsn usage, so
 					 * this is a new one */
 	void            *pglogs_hashtbl;
-	void            *relinks_hashtbl;
    pthread_mutex_t pglogs_mutex;
 };
 

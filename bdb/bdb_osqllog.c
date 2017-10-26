@@ -3444,13 +3444,15 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
         }
 
         if (rc) {
-            /* fprintf(stderr, "NEWSI tran %p shadow_tran %p birthlsn[%d][%d]
-               applying log lsn[%d][%d] type[%d] genid[%llx] dbnum[%d]
-               dtafile[%d] dtastripe[%d]\n",
-                 trn, shadow_tran, shadow_tran->birth_lsn.file,
-               shadow_tran->birth_lsn.offset,
-                 rec->lsn.file, rec->lsn.offset, rec->type, rec->genid,
-               rec->dbnum, rec->dtafile, rec->dtastripe); */
+            /*
+            fprintf(stderr, "NEWSI tran %p shadow_tran %p birthlsn[%d][%d] "
+                            "applying log lsn[%d][%d] type[%d] genid[%llx] "
+                            "dbnum[%d] dtafile[%d] dtastripe[%d]\n",
+                    trn, shadow_tran, shadow_tran->birth_lsn.file,
+                    shadow_tran->birth_lsn.offset, rec->lsn.file,
+                    rec->lsn.offset, rec->type, rec->genid, rec->dbnum,
+                    rec->dtafile, rec->dtastripe);
+            */
 
             rc = bdb_osql_log_try_run_optimized(cur, logcur, NULL, rec, trn,
                                                 dirty, trak, bdberr);

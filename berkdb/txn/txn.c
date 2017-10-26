@@ -235,9 +235,9 @@ __txn_begin_set_retries_pp(dbenv, parent, txnpp, flags, retries)
 }
 
 int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
-    void **relinks_hashtbl, pthread_mutex_t * mutexp);
+    pthread_mutex_t * mutexp);
 int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,
-    void **relinks_hashtbl, pthread_mutex_t * mutexp);
+    pthread_mutex_t * mutexp);
 
 /*
  * __txn_begin --
@@ -327,9 +327,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 				goto err;
 	}
 
-	ret =
-	    bdb_txn_pglogs_init(dbenv->app_private, &txn->pglogs_hashtbl,
-	    &txn->relinks_hashtbl, &txn->pglogs_mutex);
+	ret = bdb_txn_pglogs_init(dbenv->app_private, &txn->pglogs_hashtbl,
+		&txn->pglogs_mutex);
 	if (ret)
 		goto err;
 
@@ -848,7 +847,6 @@ __txn_deallocate_ltrans(dbenv, lt)
 extern int gbl_new_snapisol;
 extern int gbl_new_snapisol_logging;
 int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl, 
-    void *relinks_hashtbl,
     pthread_mutex_t *mutexp, DB_LSN commit_lsn, uint32_t flags,
     unsigned long long logical_tranid, int32_t timestamp,
     unsigned long long context);
@@ -1146,7 +1144,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						bdb_transfer_txn_pglogs(
 						    dbenv->app_private,
 						    txnp->pglogs_hashtbl,
-						    txnp->relinks_hashtbl,
 						    &txnp->pglogs_mutex,
 						    txnp->last_lsn,
 						    (flags & 
@@ -1194,7 +1191,6 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					bdb_transfer_txn_pglogs(
 					    dbenv->app_private,
 					    txnp->pglogs_hashtbl,       
-					    txnp->relinks_hashtbl,
 					    &txnp->pglogs_mutex,
 					    txnp->parent->last_lsn,
 					    fl, 0, timestamp, 0);
@@ -1526,8 +1522,8 @@ __txn_discard(txnp, flags)
 	if (freep != NULL) {
 		if (freep->pglogs_hashtbl)
 			bdb_txn_pglogs_close(dbenv->app_private,
-			    &freep->pglogs_hashtbl, &freep->relinks_hashtbl,
-			    &freep->pglogs_mutex);
+				&freep->pglogs_hashtbl,
+				&freep->pglogs_mutex);
 		__os_free(dbenv, freep);
 	}
 
@@ -1860,8 +1856,8 @@ __txn_end(txnp, is_commit)
 
 		if (txnp->pglogs_hashtbl)
 			bdb_txn_pglogs_close(dbenv->app_private,
-			    &txnp->pglogs_hashtbl, &txnp->relinks_hashtbl,
-			    &txnp->pglogs_mutex);
+				&txnp->pglogs_hashtbl,
+				&txnp->pglogs_mutex);
 
 		__os_free(dbenv, txnp);
 	}

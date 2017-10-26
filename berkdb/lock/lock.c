@@ -5484,8 +5484,8 @@ err:
 	return (ret);
 }
 
-int bdb_shadows_pglogs_key_list_init(void **listp, int n);
-int bdb_update_add_pglogs_key_list(int i, void **listp,
+int bdb_pglogs_key_list_init(void **listp, int n);
+int bdb_add_pglogs_key_list(int i, void **listp,
     db_pgno_t pgno, unsigned char *fileid, DB_LSN lsn, DB_LSN commit_lsn);
 
 static char *
@@ -5568,7 +5568,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 		}
 	}
 	if (LF_ISSET(LOCK_GET_LIST_GETLOCK | LOCK_GET_LIST_PAGELOGS))
-		bdb_shadows_pglogs_key_list_init(pglogs, nkeys);
+		bdb_pglogs_key_list_init(pglogs, nkeys);
 	*keycnt = nkeys;
 	keyidx = 0;
 	for (i = 0; i < nlocks; i++) {
@@ -5598,42 +5598,51 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 
 			GET_LSNCOUNT(dp, nlsns);
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                if (fp)
-                    fprintf(fp, "\t\tFILEID: ");
-                else
-                    logmsg(LOGMSG_USER, "\t\tFILEID: ");
+				if (fp)
+					fprintf(fp, "\t\tFILEID: ");
+				else
+					logmsg(LOGMSG_USER, "\t\tFILEID: ");
 
 				hexdump(fp, lock->fileid, sizeof(lock->fileid));
-                if (fp) {
-                    fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
-                    fprintf(fp, " PAGE: %u", lock->pgno);
-                } else {
-                    logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
-                    logmsg(LOGMSG_USER, " PAGE: %u", lock->pgno);
-                }
-				if (nlsns)
-					logmsg(LOGMSG_USER, " LSNS: ");
+				if (fp) {
+					fprintf(fp, " TYPE: %s", ilock_type_str(lock->type));
+					fprintf(fp, " PAGE: %u", lock->pgno);
+				} else {
+					logmsg(LOGMSG_USER, " TYPE: %s", ilock_type_str(lock->type));
+					logmsg(LOGMSG_USER, " PAGE: %u", lock->pgno);
+				}
+				if (nlsns) {
+					if (fp)
+						fprintf(fp, " LSNS: ");
+					else
+						logmsg(LOGMSG_USER, " LSNS: ");
+				}
 			}
 			for (j = 0; j < nlsns; j++) {
 				GET_LSN(dp, &llsn);
 				if (keyidx >= nkeys) {
 					logmsg(LOGMSG_FATAL, "%s:%d keyidx = %d, nkeys = %d\n",
-					    __func__, __LINE__, keyidx, nkeys);
+						__func__, __LINE__, keyidx, nkeys);
 					abort();
 				}
 				if (LF_ISSET(LOCK_GET_LIST_GETLOCK |
 					LOCK_GET_LIST_PAGELOGS)) {
-					bdb_update_add_pglogs_key_list(keyidx++,
-					    pglogs, lock->pgno, lock->fileid,
-					    llsn, *maxlsn);
+					bdb_add_pglogs_key_list(keyidx++,
+						pglogs, lock->pgno, lock->fileid,
+						llsn, *maxlsn);
 				}
 				if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-					logmsg(LOGMSG_USER, "%d:%d ", llsn.file,
-					    llsn.offset);
+					if (fp)
+						fprintf(fp, "%d:%d ", llsn.file, llsn.offset);
+					else
+						logmsg(LOGMSG_USER, "%d:%d ", llsn.file, llsn.offset);
 				}
 			}
 			if (LF_ISSET(LOCK_GET_LIST_PRINTLOCK)) {
-                logmsg(LOGMSG_USER, "\n");
+				if (fp)
+					fprintf(fp, "\n");
+				else
+					logmsg(LOGMSG_USER, "\n");
 			}
 			if (npgno != 0)
 				GET_PGNO(dp, lock->pgno);
@@ -5769,7 +5778,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 	} else {
 		ret =
 		    __lock_list_parse_pglogs_int(dbenv, locker, flags,
-		    lock_mode, list, maxlsn, pglogs, keycnt, 1, &dp);
+		    lock_mode, list, maxlsn, pglogs, keycnt, 1, &dp, fp);
 		if (ret)
 			return ret;
 	}
@@ -5828,7 +5837,7 @@ lock_list_parse_pglogs(dbenv, list, maxlsn, pglogs, keycnt)
 	u_int32_t *keycnt;
 {
 	return __lock_list_parse_pglogs_int(dbenv, 0, LOCK_GET_LIST_PAGELOGS, 0,
-	    list, maxlsn, pglogs, keycnt, 0, NULL);
+	    list, maxlsn, pglogs, keycnt, 0, NULL, NULL);
 }
 
 
