@@ -5968,14 +5968,20 @@ __lock_sort_cmp(a, b)
 	d1 = a;
 	d2 = b;
 
-	/* Force all non-standard locks to sort at end. */
+	/* Force all non-standard locks to sort at end, but for table locks. */
 	if (d1->size != sizeof(DB_LOCK_ILOCK)) {
 		if (d2->size != sizeof(DB_LOCK_ILOCK))
 			return (d1->size - d2->size);
-		else
+		else if(d1->size == 32)
+            return (-1);
+        else
 			return (1);
-	} else if (d2->size != sizeof(DB_LOCK_ILOCK))
-		return (-1);
+	} else if (d2->size != sizeof(DB_LOCK_ILOCK)) {
+        if (d2->size == 32)
+            return (1);
+        else
+            return (-1);
+    }
 
 	l1 = d1->data;
 	l2 = d2->data;
