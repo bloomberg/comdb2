@@ -2110,8 +2110,27 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         hndl->context_msgs.has_changed = 0;
     }
 
+    uint8_t trans_append = hndl && hndl->in_trans && do_append;
     int len = cdb2__query__get_packed_size(&query);
-    unsigned char *buf = malloc(len + 1);
+
+    unsigned char *buf;
+    if(trans_append) {
+        buf = malloc(len + 1);
+    }
+    else {
+        static unsigned char *staticbuf = NULL;
+        static size_t staticbuf_size = 0;
+        if (staticbuf_size <= len) {
+            size_t newsz = 1.5 * len + 1;
+            buf = realloc(staticbuf, newsz);
+            if(!buf)
+                return -1;
+            staticbuf_size = newsz;
+            staticbuf = buf;
+        }
+        else
+            buf = staticbuf;
+    }
 
     cdb2__query__pack(&query, buf);
 
@@ -2129,7 +2148,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     if (rc < 0)
         return -1;
 
-    if (hndl && hndl->in_trans && do_append) {
+    if (trans_append) {
         /* Retry number of transaction is different from that of query.*/
         cdb2_query_list *item = malloc(sizeof(cdb2_query_list));
         item->buf = buf;
@@ -2145,9 +2164,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 last = last->next;
             last->next = item;
         }
-    } else {
-        free(buf);
-    }
+    } 
 
     return 0;
 }
