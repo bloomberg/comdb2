@@ -1195,6 +1195,111 @@ end
 }$$
 put default procedure json_annotate 'sptest'
 exec procedure json_annotate()
+
+create procedure nested_json version 'sptest' {
+local function main()
+    db:num_columns(1)
+    db:column_name("val", 1)
+    db:column_type("text", 1)
+
+    local j = [[
+[
+    {
+        "id": "0001",
+        "type": "donut",
+        "name": "Cake",
+        "ppu": 0.55,
+        "batters":
+            {
+                "batter":
+                    [
+                        { "id": "1001", "type": "Regular" },
+                        { "id": "1002", "type": "Chocolate" },
+                        { "id": "1003", "type": "Blueberry" },
+                        { "id": "1004", "type": "Devil's Food" }
+                    ]
+            },
+        "topping":
+            [
+                { "id": "5001", "type": "None" },
+                { "id": "5002", "type": "Glazed" },
+                { "id": "5005", "type": "Sugar" },
+                { "id": "5007", "type": "Powdered Sugar" },
+                { "id": "5006", "type": "Chocolate with Sprinkles" },
+                { "id": "5003", "type": "Chocolate" },
+                { "id": "5004", "type": "Maple" }
+            ]
+    },
+    {
+        "id": "0002",
+        "type": "donut",
+        "name": "Raised",
+        "ppu": 0.55,
+        "batters":
+            {
+                "batter":
+                    [
+                        { "id": "1001", "type": "Regular" }
+                    ]
+            },
+        "topping":
+            [
+                { "id": "5001", "type": "None" },
+                { "id": "5002", "type": "Glazed" },
+                { "id": "5005", "type": "Sugar" },
+                { "id": "5003", "type": "Chocolate" },
+                { "id": "5004", "type": "Maple" }
+            ]
+    },
+    {
+        "id": "0003",
+        "type": "donut",
+        "name": "Old Fashioned",
+        "ppu": 0.55,
+        "batters":
+            {
+                "batter":
+                    [
+                        { "id": "1001", "type": "Regular" },
+                        { "id": "1002", "type": "Chocolate" }
+                    ]
+            },
+        "topping":
+            [
+                { "id": "5001", "type": "None" },
+                { "id": "5002", "type": "Glazed" },
+                { "id": "5003", "type": "Chocolate" },
+                { "id": "5004", "type": "Maple" }
+            ]
+    }
+]
+    ]]
+
+    local t = db:json_to_table(j)
+    j = db:table_to_json(t)
+    local j_annotation = db:table_to_json(t, {type_annotate = true})
+
+    db:emit(j)
+
+    local t_annotation = db:json_to_table(j_annotation, {type_annotate = true})
+    for i, _ in ipairs(t_annotation) do
+        db:emit(t_annotation[i].id)
+        db:emit(t_annotation[i].type)
+        db:emit(t_annotation[i].name)
+        db:emit(t_annotation[i].ppu)
+        for j, _ in ipairs(t_annotation[i].batters.batter) do
+            db:emit(t_annotation[i].batters.batter[j].id)
+            db:emit(t_annotation[i].batters.batter[j].type)
+        end
+        for j, _ in ipairs(t_annotation[i].topping) do
+            db:emit(t_annotation[i].topping[j].id)
+            db:emit(t_annotation[i].topping[j].type)
+        end
+    end
+end}$$
+put default procedure nested_json 'sptest'
+exec procedure nested_json()
+
 EOF
 
 wait
