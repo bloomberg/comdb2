@@ -103,7 +103,7 @@ Add the key                             ll_key_add (same call)
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <fsnap.h>
 
 #include <ctrace.h>
@@ -112,7 +112,7 @@ Add the key                             ll_key_add (same call)
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "db_swap.h"
+#include <dbinc/db_swap.h>
 #include "plbitlib.h" /* for bset/btst */
 
 #include "logmsg.h"

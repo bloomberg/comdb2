@@ -49,9 +49,9 @@ if [ $? != 0 ]; then
   exit 1
 fi
 
-./ssl_bench $dbnm
+./simple_ssl $dbnm
 if [ $? != 0 ]; then
-  echo "ssl_bench test failed."
+  echo "simple_ssl test failed."
   exit 1
 fi
 

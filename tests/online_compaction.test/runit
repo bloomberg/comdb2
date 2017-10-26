@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 dbnm=$1
 dbdir=${DBDIR}

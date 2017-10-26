@@ -198,7 +198,11 @@ __berkdb_direct_read(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		flags = fcntl(nfd, F_GETFL);
+#ifdef __APPLE__
+		flags &= ~F_NOCACHE;
+#else
 		flags &= ~O_DIRECT;
+#endif
 		rc = fcntl(nfd, F_SETFL, flags);
 		if (rc) {
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
@@ -318,7 +322,11 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		flags = fcntl(nfd, F_GETFL);
+#ifdef __APPLE__
+		flags &= ~F_NOCACHE;
+#else
 		flags &= ~O_DIRECT;
+#endif
 		rc = fcntl(nfd, F_SETFL, flags);
 		if (rc) {
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
@@ -1391,7 +1399,7 @@ bb_berkdb_fasttime(void)
 
 	return hr_ustime;
 
-#elif defined(__linux)
+#elif defined(__linux__) || defined(__APPLE__)
 	struct timeval tp;
 	long long absolute_time;
 	gettimeofday(&tp, NULL);
@@ -1411,9 +1419,7 @@ bb_berkdb_fasttime(void)
 	return hr_ustime;
 
 #else
-
-	logmsg(LOGMSG_FATAL, "need a way to get fast time here!\n");
-	*abort();
+	#error "need a way to get fast time!"
 #endif
 }
 

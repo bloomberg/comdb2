@@ -189,15 +189,6 @@ static int ctrace_gzip;
   =========================================================
 */
 
-static int dir_verify(void *context, void *basedir)
-{
-    if (!gooddir((char *)basedir)) {
-        logmsg(LOGMSG_ERROR, "bad directory %s in lrl\n", (char *)basedir);
-        return 1;
-    }
-    return 0;
-}
-
 static void *init_with_compr_value(void *context)
 {
     comdb2_tunable *tunable = (comdb2_tunable *)context;

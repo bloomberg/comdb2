@@ -30,7 +30,7 @@
 #include <ctrace.h>
 #include <alloca.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_int.h"
 #include "bdb_cursor.h"
@@ -721,7 +721,8 @@ void bdb_osql_trn_clients_status()
         return;
     }
 
-    if (rc = bdb_osql_trn_count_clients(&count, 0, &bdberr)) {
+    rc = bdb_osql_trn_count_clients(&count, 0, &bdberr);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
     } else {
         logmsg(LOGMSG_USER, "snapshot registered: %u\n", bdb_osql_trn_count);

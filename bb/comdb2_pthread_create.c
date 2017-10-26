@@ -24,7 +24,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <sys/mman.h>
 
 #include "comdb2_pthread_create.h"

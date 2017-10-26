@@ -487,7 +487,7 @@ __db_c_unpause(dbc, dbcps)
 
 	return (0);
 
-err:	if (t_ret = __db_c_close(dbc) != 0)
+err:	if ((t_ret = __db_c_close(dbc)) != 0)
 		return (t_ret);
 	return (ret);
 }
@@ -783,7 +783,7 @@ __db_c_idup(dbc_orig, dbcp, flags)
 	*dbcp = dbc_n;
 
 	/* associated the clone the originating one, in negative form to identify cloned */
-	dbc_n->tid = -1 * pthread_self();
+	dbc_n->tid = (pthread_t) (-1 * (intptr_t)pthread_self());
 
 #ifdef LULU2
 	fprintf(stdout,

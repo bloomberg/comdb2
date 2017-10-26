@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 while :; do 
     cdb2sql -s ${CDB2_OPTIONS} $dbname default "update load set data=x'2222' where 1 limit 100" &> /dev/null

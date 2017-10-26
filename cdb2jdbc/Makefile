@@ -1,6 +1,6 @@
 # shortcut for building jdbc driver via make
 BASEDIR:=$(realpath ..)
-VERSION?=$(shell grep ^comdb2 ../deb/changelog  | sed 's/^comdb2 .//; s/-.*//g')
+VERSION?=$(shell grep ^comdb2 ../pkg/changelog  | sed 's/^comdb2 .//; s/-.*//g')
 
 .PHONY: jdbc
 MAVEN_VER := $(shell mvn -version 2>/dev/null)

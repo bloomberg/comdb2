@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/statvfs.h>
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 #include <sys/vfs.h>
 #endif
 #include <sys/msg.h>
@@ -106,46 +106,6 @@ u_int strhashfunc(u_char **keyp, int len)
     for (hash = 0; *key; key++)
         hash = ((hash % 8388013) << 8) + (TOUPPER(*key));
     return hash;
-}
-
-int gooddir(char *d)
-{
-#ifndef _LINUX_SOURCE
-    struct statvfs buf;
-#else
-    struct statfs buf;
-#endif
-    int rc;
-
-#ifndef _LINUX_SOURCE
-    rc = statvfs(d, &buf);
-#else
-    rc = statfs(d, &buf);
-#endif
-
-    if (gbl_force_bad_directory) {
-        return 1;
-    }
-
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "* * * INVALID DATA DIRECTORY * * *\n");
-        logmsg(LOGMSG_ERROR, "* * * STATVFS FAILED * * *\n");
-        return 0;
-    }
-
-#ifndef _LINUX_SOURCE
-    /* expected types: nfs, nfs3 */
-    if (!strncmp(buf.f_basetype, "nfs", 3)) {
-#else
-    /* TODO: there must be a #define for the NFS magic value somewhere */
-    if (buf.f_type == 0x6969 /*NFS_SUPER_MAGIC*/) {
-#endif
-        logmsg(LOGMSG_ERROR, "* * * INVALID DATA DIRECTORY * * *\n");
-        logmsg(LOGMSG_ERROR, "* * * %s IS A NFS DIRECTORY! * * *\n", d);
-        return 0;
-    }
-
-    return 1;
 }
 
 void xorbufcpy(char *dest, const char *src, size_t len)

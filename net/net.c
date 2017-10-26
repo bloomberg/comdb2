@@ -16,7 +16,7 @@
 
 #define NODELAY
 #define NOLINGER
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 #define TCPBUFSZ
 #endif
 
@@ -4740,21 +4740,10 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 
 int net_get_port_by_service(const char *dbname)
 {
-    int rc;
-    struct servent servval, *serv = NULL;
-    char namebuf[1024];
-#ifdef _LINUX_SOURCE
-    rc = getservbyname_r(dbname, "tcp", &servval, namebuf, sizeof(namebuf),
-                         &serv);
-    if (rc || serv == NULL)
+    struct servent *serv = bb_getservbyname(dbname, "tcp");
+    if (serv == NULL)
         return 0;
     return ntohs(serv->s_port);
-#elif _IBM_SOURCE
-    rc = getservbyname_r(dbname, "tcp", &servval, namebuf);
-    if (rc)
-        return 0;
-    return ntohs(serv->s_port);
-#endif
 }
 
 

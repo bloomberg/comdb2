@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
+#include <strings.h>
 
 #include <algorithm>
 #include <iostream>
@@ -53,8 +54,9 @@
 #include <signal.h>
 #include <syslog.h>
 #include <netdb.h>
-
+#ifdef VERBOSE
 #include <fsnapf.h>
+#endif
 #include <passfd.h>
 
 #include "pmux_store.h"
@@ -190,6 +192,7 @@ int client_func(int fd)
         active_services_mutex.unlock();
         connect_instance(listenfd, cmd);
     }
+    return 0;
 }
 
 static void unwatchfd(struct pollfd &fd)

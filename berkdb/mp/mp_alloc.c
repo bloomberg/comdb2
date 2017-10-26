@@ -254,10 +254,10 @@ __memp_alloc_flags(dbmp, memreg, mfp, len, offsetp, flags, retp)
 	void *p;
 	int sleeptime = 0;
 
-	if (gbl_debug_memp_alloc_size && (len > (100 * 1024) || mfp &&
-		len > mfp->stat.st_pagesize)) {
-		logmsg(LOGMSG_USER, "allocating %zu bytes (pgsize %zu)\n",
-		    len, (mfp ? mfp->stat.st_pagesize : 0));
+	if (gbl_debug_memp_alloc_size &&
+	    ((len > (100 * 1024)) || (mfp && len > mfp->stat.st_pagesize))) {
+		logmsg(LOGMSG_USER, "allocating %zu bytes (pgsize %zu)\n", len,
+		       (mfp ? mfp->stat.st_pagesize : 0));
 	}
 
 	dbenv = dbmp->dbenv;

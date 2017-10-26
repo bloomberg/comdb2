@@ -1616,7 +1616,8 @@ __log_write_td(arg)
 {
 	DB_LOG *dblp;
 	LOG *lp;
-	int ret, bytes_written;
+	int ret;
+	uint32_t bytes_written;
 
 	dblp = (DB_LOG *)arg;
 	lp = dblp->reginfo.primary;
@@ -1654,12 +1655,9 @@ static void
 __log_write_segments_init(void)
 {
 	int ret;
-
-	if (ret =
-	    pthread_create(&log_write_td, NULL, __log_write_td,
-		log_write_dblp)) {
+	if ((ret = pthread_create(&log_write_td, NULL, __log_write_td,
+			   log_write_dblp)) != 0) {
 		DB_ENV *dbenv = log_write_dblp->dbenv;
-
 		__db_err(dbenv,
 		    "DB_ENV->log_write_segments_init: error creating pthread");
 		ret = __db_panic(dbenv, ret);

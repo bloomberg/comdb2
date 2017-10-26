@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Test to verify COMDB2_USER & COMDB2_PASSWORD environment variables.

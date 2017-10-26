@@ -30,7 +30,7 @@
 #define write_size (1000*1024)
 
 void update_tree(const std::string& filename,
-    const std::pair<FileInfo, std::vector<uint32_t>>& file_data
+    const std::pair<FileInfo, std::vector<uint32_t> >& file_data
 )
 // Given a filename and a vector of pages that have been changed in that file
 // overwrite the pages with the new data read in from STDIN
@@ -39,7 +39,10 @@ void update_tree(const std::string& filename,
     FileInfo file_info = file_data.first;
     std::vector<uint32_t> pages = file_data.second;
 
-    int flags = O_RDONLY | O_LARGEFILE;
+    int flags = O_RDONLY;
+#   ifndef __APPLE__
+    flags |= O_LARGEFILE;
+#   endif
     int fd = open(filename.c_str(), flags);
 
     struct stat st;
@@ -103,7 +106,7 @@ void update_tree(const std::string& filename,
 
 void unpack_incr_data(
     const std::vector<std::string>& file_order,
-    const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>& updated_files,
+    const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >& updated_files,
     const std::string& datadestdir
 )
 // Driver for updating the BTree files
@@ -115,7 +118,7 @@ void unpack_incr_data(
 
         std::string filename = *it;
         std::string abs_filepath = datadestdir + "/" + filename;
-        std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>>::const_iterator
+        std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >::const_iterator
             fd_it = updated_files.find(filename);
 
         if(fd_it == updated_files.end()){
