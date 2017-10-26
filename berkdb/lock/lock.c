@@ -2070,6 +2070,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	int did_abort, grant_dirty, no_dd, ret, t_ret;
 	extern int gbl_locks_check_waiters;
 
+#if 0
     if (obj->size == sizeof(DB_LOCK_ILOCK)) {
         if (((DB_LOCK_ILOCK *)(obj->data))->type == DB_HANDLE_LOCK) {
             fprintf(stderr, "Getting a handle lock for:\n");
@@ -2078,6 +2079,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
             fprintf(stderr, "\n");
         }
     }
+#endif
 
 	/* Set a locker's status */
 	int locker_deadlock = 0;
@@ -2110,7 +2112,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		snprintf(desc, sizeof(desc), "NULL OBJ LK");
 	}
 
-	/*printf("%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
+	/*printf("%x put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
 
 	/*snprintf(lkbuffer[idx], LKBUFSZ, "%d put %s size=%d", pthread_self(), desc, sh_obj->lockobj.size); */
 	/*printf("%d get lid %x %s size=%d ", pthread_self(), locker, desc, obj->size); */
@@ -5768,6 +5770,12 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 					uint32_t lflags =
 					    (flags & (~(LOCK_GET_LIST_GETLOCK |
 						    LOCK_GET_LIST_PRINTLOCK)));
+                    if(obj_dbt.size == sizeof(DB_LOCK_ILOCK) && 
+                        ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
+                        logmsg(LOGMSG_INFO, 
+                                "Skipping handle lock in write mode, protection by table lock!\n");
+                        ret = 0;
+                    } else
 					if ((ret =
 						__lock_get_internal(lt, locker,
 						    sh_locker, lflags, &obj_dbt,
