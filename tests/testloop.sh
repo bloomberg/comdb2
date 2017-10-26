@@ -1,14 +1,12 @@
 #!/bin/bash
 
-#debug=1
+debug=1
 [[ "$debug" == "1" ]] && set -x
 
-# Heal everything
-for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
-
-email="mhannum72@gmail.com mhannum@bloomberg.net"
-tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
-#tests="jepsen_sets_nemesis"
+email="mhannum72@gmail.com"
+#tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
+#tests="jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
+tests="jepsen_a6_nemesis jepsen_a6 jepsen_atomic_writes jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets"
 
 # mailperiod=86400
 mailperiod=7200
@@ -45,20 +43,18 @@ while :; do
     rm -Rf $(find . -type d -mmin +$test_linger | egrep test_)
     for x in $tests 
     do echo "$(date) - starting $x" 
-        make $x > out ; r=$? 
+
+        for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
+        for m in $CLUSTER; do ssh $m 'killall -s 9 comdb2';  done
+
+        export out=test_$x_$(date '+%Y%m%d%H%M%S')
+        make $x > $out ; r=$? 
         looktest=1
-        cat out 
-        egrep "setup failed" out 
+        cat $out 
+        egrep "setup failed" $out 
         if [[ $? == 0 ]] ; then 
             echo "TEST DID NOT SET UP" 
             let setup_failures=setup_failures+1
-            looktest=0
-        fi
-
-        egrep "timeout" out
-        if [[ $? == 0 ]] ; then 
-            echo "TEST TIMED OUT" 
-            let timeouts=timeouts+1
             looktest=0
         fi
 
@@ -67,11 +63,11 @@ while :; do
         fi
 
         if [[ $r != 0 && $looktest == 1 ]]; then
-            ll=$(egrep "logs in" out | awk '{print $NF}') 
-            l=${ll%%\)}
 
             # Okay .. some errors don't indicate a jepsen failure 
             # & I'm not going to 
+            ll=$(egrep "logs in" $out | awk '{print $NF}') 
+            l=${ll%%\)}
 
             err=1
             egrep "java.lang.OutOfMemoryError" $l
@@ -106,7 +102,6 @@ while :; do
             fi
         fi
     done
-
 
     export now=$(date +%s)
     echo "now is $now lasttime is $lasttime"
