@@ -7,6 +7,7 @@
 #include <epochlib.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 
 static char *argv0=NULL;
 

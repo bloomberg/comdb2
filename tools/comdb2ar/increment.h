@@ -83,7 +83,7 @@ bool process_incr_manifest(
 void unpack_incr_data(
     const std::vector<std::string>& file_order,
     const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >& updated_files,
-    const std::string& datadestdir
+    const std::string& datadestdir, bool dryrun
 );
 // Unpack the changed files from the .data file read in from STDIN
 

@@ -1030,8 +1030,28 @@ void restore_partials(
     std::string manifest_sha;
 
     parse_lrl_file(lrlpath, &dbname, &dbdir, &support_files, &table_names, &queue_names, &nonames, &has_cluster_info);
+    nonames = true;  // TODO: need to figure out if really nonames - can't tell from lrl file since
+                     // our defaults changed.
 
     std::cout << "start restore, datapath " << dbdir << std::endl;
+
+    // The first thing we need to do is to delete all the logs - we 
+    // don't want recovery run on partial logs
+    std::string logpath;
+    if (nonames)
+        logpath = dbdir + "/logs";
+    else
+        logpath = dbdir + "/" + dbname + ".txn";
+    std::list<std::string> logfiles;
+    listdir(logfiles, logpath);
+    for (std::list<std::string>::const_iterator it = logfiles.begin();
+            it != logfiles.end(); ++it) {
+        if (it->compare(0, 4, "log.") == 0 && it->length() == 14) {
+            std::string logfile = logpath + "/" + *it;
+            unlink(logfile.c_str());
+        }
+    }
+
 
     for (;;) {
         ssize_t rb = readall(0, &hdr, sizeof(hdr));
@@ -1108,7 +1128,6 @@ void restore_partials(
             std::cout << "unmentioned " << filename << std::endl;
             write_file = true;
         }
-
 
         if (!write_file)
             continue;

@@ -30,7 +30,7 @@
 #define write_size (1000*1024)
 
 void update_tree(const std::string& filename,
-    const std::pair<FileInfo, std::vector<uint32_t> >& file_data
+    const std::pair<FileInfo, std::vector<uint32_t> >& file_data, bool dryrun
 )
 // Given a filename and a vector of pages that have been changed in that file
 // overwrite the pages with the new data read in from STDIN
@@ -109,7 +109,7 @@ void update_tree(const std::string& filename,
 void unpack_incr_data(
     const std::vector<std::string>& file_order,
     const std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > >& updated_files,
-    const std::string& datadestdir
+    const std::string& datadestdir, bool dryrun
 )
 // Driver for updating the BTree files
 // Iterates through changed files and calls update_tree on them
@@ -140,7 +140,7 @@ void unpack_incr_data(
             abort();
         }
         std::cerr << "truncating to " << fi.get_filesize() << " current size " << st.st_size << std::endl;
-        // truncate(abs_filepath.c_str(), fi.get_filesize());
+        truncate(abs_filepath.c_str(), fi.get_filesize());
     }
 }
 
