@@ -2004,15 +2004,19 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     while (isspace(*sql))
         sql++;
     sqlquery.sql_query = sql;
-    sqlquery.little_endian = 0;
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
+#else
+    sqlquery.little_endian = 0;
 #endif
 
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
     sqlquery.n_types = ntypes;
     sqlquery.types = types;
+    sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
+    sqlquery.mach_class = cdb2_default_cluster;
+
 
     char *host = "NOT-CONNECTED";
     if (hndl && hndl->connected_host >= 0)
@@ -2024,10 +2028,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 (uint32_t)pthread_self(), __func__, sql, host, fromline,
                 retries_done, do_append);
     }
-
-    sqlquery.tzname = hndl->env_tz;
-
-    sqlquery.mach_class = cdb2_default_cluster;
 
     query.sqlquery = &sqlquery;
 
