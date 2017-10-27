@@ -30,32 +30,28 @@
 #include <plbitlib.h>
 #include <fsnap.h>
 
-#include <db.h>
-#include <dbinc_auto/dbreg_auto.h>
-#include "llog_auto.h"
-#include "llog_int.h"
-#include "db_int.h"
-#include "dbinc/db_swap.h"
-#include "bdb_osqllog.h"
-#include "bdb_osqltrn.h"
-#include "bdb_int.h"
-#include "bdb_osqlcur.h"
-#include "flibc.h"
+#include <bdb_osqllog.h>
+#include <bdb_osqltrn.h>
+#include <bdb_int.h>
+#include <bdb_osqlcur.h>
+#include <flibc.h>
 
-#undef STDC_HEADERS
-#define STDC_HEADERS
-#include <db_int.h>
-#include <db_page.h>
-#include <db_shash.h>
+#include <build/db.h>
+#include <build/db_int.h>
 #include <dbinc_auto/db_auto.h>
+#include <dbinc_auto/dbreg_auto.h>
+#include <dbinc/txn.h>
 #include <dbinc_auto/txn_auto.h>
-#include <txn.h>
 #include <dbinc_auto/txn_ext.h>
-#include <btree.h>
-#include <lock.h>
-#include <mp.h>
-#include <db.h>
-#undef STDC_HEADERS
+#include <dbinc/btree.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_shash.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/lock.h>
+#include <dbinc/mp.h>
+
+#include <llog_auto.h>
+#include <llog_ext.h>
 
 int serial_check_this_txn(bdb_state_type *bdb_state, DB_LSN lsn, void *ranges)
 {

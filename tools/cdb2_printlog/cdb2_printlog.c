@@ -5,7 +5,7 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "db_config.h"
+#include "build/db_config.h"
 
 #ifndef lint
 static const char copyright[] =
@@ -25,8 +25,8 @@ static const char revid[] =
 #include <sys/stat.h>
 
 /*#include "list.h"*/
-#include "db.h"
-#include "db_int.h"
+#include "build/db.h"
+#include "build/db_int.h"
 #include "dbinc/db_page.h"
 
 #if (! _SUN_SOURCE )
@@ -45,7 +45,7 @@ __bam_init_print(DB_ENV *dbenv, int (***dtabp) (DB_ENV *, DBT *, DB_LSN *,
 #include "dbinc/txn.h"
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 
 #include "bdb_int.h"
 #include <crc32c.h>

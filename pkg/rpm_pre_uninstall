@@ -1,0 +1,7 @@
+if [ ! -e /.dockerenv ]; then
+    systemctl stop pmux
+    systemctl disable pmux
+
+    systemctl stop cdb2sockpool
+    systemctl disable cdb2sockpool
+fi

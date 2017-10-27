@@ -18,7 +18,8 @@ static const char revid[] = "$Id: os_falloc.c,v 11.32 2014/09/32 12:27:03 bostic
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
-#ifdef _LINUX_SOURCE
+
+#ifdef __linux__
 #include <sys/syscall.h>
 #include <linux/falloc.h>
 #endif
@@ -42,7 +43,7 @@ __os_fallocate(dbenv, offset, len, fhp)
 {
 	int ret = 0;
 
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 	/*
 	 * We use FALLOC_FL_KEEP_SIZE because we want the same behavior
 	 * for file size as before. Also we need to use syscall because

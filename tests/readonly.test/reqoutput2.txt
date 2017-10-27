@@ -1,0 +1,2 @@
+[insert into t values (1)] failed with rc -106 SET READONLY ON for the client
+[update t set id=id+1 limit 1] failed with rc -106 SET READONLY ON for the client

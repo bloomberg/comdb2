@@ -20,8 +20,10 @@
 
 #include <bb_inttypes.h>
 
+#ifndef BUILDING_TOOLS
 #include "mem_bb.h"
 #include "mem_override.h"
+#endif
 #include "logmsg.h"
 
 typedef struct linkc_t {

@@ -68,9 +68,25 @@ BEGIN {
 	printf("/* Do not edit: automatically built by gen_rec.awk. */\n") \
 	    > CFILE
 
+	printf("#include \"db_config.h\"\n\n") >> CFILE
+
+	if (!dbprivate) {
+		printf("#include <errno.h>\n") >> CFILE
+		printf("#include <stdlib.h>\n") >> CFILE
+		printf("#include <string.h>\n") >> CFILE
+		printf("#include \"db.h\"\n") >> CFILE
+		printf("#include \"db_int.h\"\n") >> CFILE
+		printf("#include \"dbinc/db_swap.h\"\n") >> CFILE
+		printf("#include <alloca.h>\n") >> CFILE
+		printf("#include <fsnapf.h>\n") >> CFILE
+	}
+
+	printf("/* #define %s_DEBUG to turn on debug trace */\n", prefix) >> CFILE
+
 	# Start .h file, make the entire file conditional.
-	printf("/* Do not edit: automatically built by gen_rec.awk. */\n\n") \
+	printf("/* Do not edit: automatically built by gen_rec_endian.awk. */\n\n") \
 	    > HFILE
+
 	printf("#ifndef\t%s_AUTO_H\n#define\t%s_AUTO_H\n", prefix, prefix) \
 	    >> HFILE;
 
@@ -85,6 +101,10 @@ BEGIN {
 	printf("#include \"dbinc/db_page.h\"\n") >> TFILE
 	printf("#include \"dbinc/%s.h\"\n", prefix) >> TFILE
 	printf("#include \"dbinc/log.h\"\n\n") >> TFILE
+	printf("#include \"dbinc/db_swap.h\"\n") >> TFILE
+	printf("#include <alloca.h>\n") >> TFILE
+	printf("/* DEFINE %s_DEBUG to turn on debug trace */\n", prefix) >> TFILE
+
 }
 /^[ 	]*INCLUDE/ {
 	for (i = 2; i < NF; i++)
@@ -99,7 +119,9 @@ BEGIN {
 	in_begin = 1;
 	is_dbt = 0;
 	has_dbp = 0;
+	has_pgdbt = 0;
 	is_uint = 0;
+	is_uint64 = 0;
 	need_log_function = ($1 == "BEGIN");
 	nvars = 0;
 
@@ -127,9 +149,20 @@ BEGIN {
 		has_dbp = 1;
 	}
 
+	if ($1 == "PGDBT") {
+		has_pgdbt = 1;
+	}
+
 	if ($1 == "DB" || $1 == "ARG" || $1 == "TIME") {
-		sizes[nvars] = sprintf("sizeof(u_int32_t)");
-		is_uint = 1;
+		if (types[nvars] == "u_int64_t" || types[nvars] == "genid_t") {
+		    sizes[nvars] = sprintf("sizeof(u_int64_t)");
+		    is_uint64 = 1;
+		}
+		else {
+		    sizes[nvars] = sprintf("sizeof(u_int32_t)");
+		    is_uint = 1;
+		}
+		# printf("hello! 1=%s 2=%s 3=%s   types=%s  sizes=%s\n", $1, $2, $3, types[nvars], sizes[nvars]);
 	} else if ($1 == "POINTER")
 		sizes[nvars] = sprintf("sizeof(*%s)", $2);
 	else { # DBT, PGDBT
@@ -163,6 +196,9 @@ BEGIN {
 			ndx = index(t, "*");
 			t = substr(types[i], 0, ndx - 2);
 		}
+		else if (types[i] == "genid_t") {
+			t = "u_int64_t"
+		}
 		printf("\t%s\t%s;\n", t, vars[i]) >> HFILE
 	}
 	printf("} %s_args;\n\n", funcname) >> HFILE
@@ -177,13 +213,16 @@ BEGIN {
 		if (dbprivate) {
 			getpgnos_function();
 		}
+		getallpgnos_function();
 	}
+
+	read_function_int();
 	print_function();
 	read_function();
 
 	# Recovery template
 	cmd = sprintf(\
-    "sed -e s/PREF/%s/ -e s/FUNC/%s/ < template/rec_ctemp >> %s",
+    "sed -e s/PREF/%s/ -e s/FUNC/%s/ < dist/template/rec_ctemp >> %s",
 	    prefix, thisfunc, TFILE)
 	system(cmd);
 
@@ -263,6 +302,30 @@ END {
 	}
 	printf("\treturn (0);\n}\n#endif /* HAVE_REPLICATION */\n\n") >> CFILE;
 
+	# Page number initialization routine; function prototype
+	printf("#ifdef HAVE_REPLICATION\n") >> CFILE;
+	p[1] = sprintf("int %s_init_getallpgnos %s%s", prefix,
+	    "__P((DB_ENV *, int (***)(DB_ENV *, DBT *, DB_LSN *, ",
+	    "db_recops, void *), size_t *));");
+	p[2] = "";
+	proto_format(p);
+
+	# Create the routine to call db_add_recovery(pgno_fn, id)
+	printf("int\n%s_init_getallpgnos(dbenv, dtabp, dtabsizep)\n", \
+	    prefix) >> CFILE;
+	printf("\tDB_ENV *dbenv;\n") >> CFILE;
+	printf("\tint (***dtabp)__P((DB_ENV *, DBT *, DB_LSN *,") >> CFILE;
+	printf(" db_recops, void *));\n") >> CFILE;
+	printf("\tsize_t *dtabsizep;\n{\n\tint ret;\n\n") >> CFILE;
+	for (i = 0; i < num_funcs; i++) {
+		printf("\tif ((ret = __db_add_recovery(dbenv, ") >> CFILE;
+		printf("dtabp, dtabsizep,\n") >> CFILE;
+		printf("\t    %s_getallpgnos, DB_%s)) != 0)\n", \
+		    funcs[i], funcs[i]) >> CFILE;
+		printf("\t\treturn (ret);\n") >> CFILE;
+	}
+	printf("\treturn (0);\n}\n#endif /* HAVE_REPLICATION */\n\n") >> CFILE;
+
 	# Recover initialization routine
 	p[1] = sprintf("int %s_init_recover %s%s", prefix,
 	    "__P((DB_ENV *, int (***)(DB_ENV *, DBT *, DB_LSN *, ",
@@ -303,7 +366,7 @@ function log_function() {
 		p[pi++] = ", ";
 		p[pi++] = sprintf("%s%s%s",
 		    (modes[i] == "DBT" || modes[i] == "PGDBT") ? "const " : "",
-		    types[i],
+		    (types[i] == "genid_t") ? "u_int64_t" : types[i],
 		    (modes[i] == "DBT" || modes[i] == "PGDBT") ? " *" : "");
 	}
 	p[pi++] = "";
@@ -347,7 +410,7 @@ function log_function() {
 		if (modes[i] == "DBT" || modes[i] == "PGDBT")
 			printf("\tconst %s *%s;\n", types[i], vars[i]) >> CFILE;
 		else if (modes[i] != "DB")
-			printf("\t%s %s;\n", types[i], vars[i]) >> CFILE;
+			printf("\t%s %s;\n", (types[i] == "genid_t") ? "u_int64_t" : types[i] , vars[i]) >> CFILE;
 	}
 
 	# Function body and local decls
@@ -364,13 +427,22 @@ function log_function() {
 	if (is_uint == 1)
 		printf("uinttmp, ") >> CFILE;
 	printf("rectype, txn_num;\n") >> CFILE;
+	if (is_uint64 == 1)
+		printf("\tu_int64_t uint64tmp;\n") >> CFILE;
 	printf("\tu_int npad;\n") >> CFILE;
 	printf("\tu_int8_t *bp;\n") >> CFILE;
+	if(has_dbp == 0)
+		printf("\tDB *dbp = NULL;\n") >> CFILE;
 	printf("\tint ") >> CFILE;
 	if (dbprivate) {
 		printf("is_durable, ") >> CFILE;
 	}
-	printf("ret;\n\n") >> CFILE;
+	printf("ret;\n") >> CFILE;
+	printf("\tint used_malloc = 0;\n\n") >> CFILE;
+
+	printf("#ifdef %s_DEBUG\n", prefix) >> CFILE;
+	printf("\tfprintf(stderr,\"%s_log: begin\\n\");\n", funcname) >> CFILE;
+	printf("#endif\n\n") >> CFILE;
 
 	# Initialization
 	if (has_dbp == 1)
@@ -439,17 +511,26 @@ function log_function() {
 		printf("#ifdef DIAGNOSTIC\n") >> CFILE;
 		printf("do_malloc:\n") >> CFILE;
 		printf("#endif\n") >> CFILE;
-		printf("\t\tif ((ret =\n\t\t    __os_malloc(dbenv, ") >> CFILE;
+		printf("\t\tif (logrec.size > 4096) {\n") >> CFILE;
+
+		printf("\t\t\tif ((ret =\n\t\t\t    __os_malloc(dbenv, ") >> CFILE;
 		printf("logrec.size, &logrec.data)) != 0) {\n") >> CFILE;
 		printf("#ifdef DIAGNOSTIC\n") >> CFILE;
-		printf("\t\t\tif (!is_durable && txnid != NULL)\n") >> CFILE;
-		printf("\t\t\t\t(void)__os_free(dbenv, lr);\n") >> CFILE;
+		printf("\t\t\t\tif (!is_durable && txnid != NULL)\n") >> CFILE;
+		printf("\t\t\t\t\t(void)__os_free(dbenv, lr);\n") >> CFILE;
 		printf("#endif\n") >> CFILE;
-		printf("\t\t\treturn (ret);\n") >> CFILE;
+		printf("\t\t\t\treturn (ret);\n") >> CFILE;
+
+		printf("\t\t\t}\n") >> CFILE;
+		printf("\t\t\tused_malloc = 1;\n") >> CFILE;
+		printf("\t\t} else {\n") >> CFILE;
+
+		printf("\t\t\tused_malloc = 0;\n") >> CFILE;
+		printf("\t\t\tlogrec.data = alloca(logrec.size);\n") >> CFILE;
 		printf("\t\t}\n") >> CFILE;
 		printf("\t}\n") >> CFILE;
 	} else
-		write_malloc("\t", "logrec.data", "logrec.size", CFILE)
+		write_cond_malloc("\t", "logrec.data", "logrec.size", CFILE)
 
 	printf("\tif (npad > 0)\n") >> CFILE;
 	printf("\t\tmemset((u_int8_t *)logrec.data + logrec.size ") >> CFILE;
@@ -457,56 +538,83 @@ function log_function() {
 
 	# Copy args into buffer
 	printf("\tbp = logrec.data;\n\n") >> CFILE;
-	printf("\tmemcpy(bp, &rectype, sizeof(rectype));\n") >> CFILE;
+	printf("\tLOGCOPY_32(bp, &rectype);\n") >> CFILE;
 	printf("\tbp += sizeof(rectype);\n\n") >> CFILE;
-	printf("\tmemcpy(bp, &txn_num, sizeof(txn_num));\n") >> CFILE;
+	printf("\tLOGCOPY_32(bp, &txn_num);\n") >> CFILE;
 	printf("\tbp += sizeof(txn_num);\n\n") >> CFILE;
-	printf("\tmemcpy(bp, lsnp, sizeof(DB_LSN));\n") >> CFILE;
+	printf("\tLOGCOPY_FROMLSN(bp, lsnp);\n") >> CFILE;
 	printf("\tbp += sizeof(DB_LSN);\n\n") >> CFILE;
 
 	for (i = 0; i < nvars; i ++) {
 		if (modes[i] == "ARG" || modes[i] == "TIME") {
-			printf("\tuinttmp = (u_int32_t)%s;\n", \
-			    vars[i]) >> CFILE;
-			printf("\tmemcpy(bp, &uinttmp, sizeof(uinttmp));\n") \
-			    >> CFILE;
-			printf("\tbp += sizeof(uinttmp);\n\n") >> CFILE;
+			if (types[i] == "u_int64_t") {
+				printf("\tuint64tmp = (u_int64_t)%s;\n", \
+						vars[i]) >> CFILE;
+				printf("\tLOGCOPY_64(bp, &uint64tmp);\n") \
+					>> CFILE;
+				printf("\tbp += sizeof(uint64tmp);\n\n") >> CFILE;
+			}
+			else if (types[i] == "genid_t") {
+				printf("\tuint64tmp = (u_int64_t)%s;\n", \
+						vars[i]) >> CFILE;
+				printf("\tmemcpy(bp, &uint64tmp, sizeof(u_int64_t));\n") \
+					>> CFILE;
+				printf("\tbp += sizeof(uint64tmp);\n\n") >> CFILE;
+			}
+			else {
+				printf("\tuinttmp = (u_int32_t)%s;\n", \
+						vars[i]) >> CFILE;
+				printf("\tLOGCOPY_32(bp, &uinttmp);\n") \
+					>> CFILE;
+				printf("\tbp += sizeof(uinttmp);\n\n") >> CFILE;
+			}
 		} else if (modes[i] == "DBT" || modes[i] == "PGDBT") {
+			#   if (var == NULL)
 			printf("\tif (%s == NULL) {\n", vars[i]) >> CFILE;
-			printf("\t\tzero = 0;\n") >> CFILE;
-			printf("\t\tmemcpy(bp, &zero, sizeof(u_int32_t));\n") \
+			printf("\t\tzero = 0;\n") \
 				>> CFILE;
-			printf("\t\tbp += sizeof(u_int32_t);\n") >> CFILE;
-			printf("\t} else {\n") >> CFILE;
-			printf("\t\tmemcpy(bp, &%s->size, ", vars[i]) >> CFILE;
-			printf("sizeof(%s->size));\n", vars[i]) >> CFILE;
+			printf("\t\tLOGCOPY_32(bp, &zero);\n") \
+				>> CFILE;
+			printf("\t\tbp += sizeof(u_int32_t);\n") \
+				>> CFILE;
+			printf("\t} else {\n") \
+				>> CFILE;
+			printf("\t\tLOGCOPY_32(bp, &%s->size);\n",vars[i]) \
+				>> CFILE;
 			printf("\t\tbp += sizeof(%s->size);\n", vars[i]) \
-			    >> CFILE;
+				>> CFILE;
 			printf("\t\tmemcpy(bp, %s->data, %s->size);\n", \
-			    vars[i], vars[i]) >> CFILE;
+					vars[i], vars[i]) >> CFILE;
+			if(modes[i] == "PGDBT") {
+				printf("\t\tif (LOG_SWAPPED() && dbp)\n") >> CFILE
+					printf("\t\t\tif((ret = __db_pageswap(dbp,\n") >> CFILE
+					printf("\t\t\t    (PAGE *)bp, (size_t)%s->size, 0)) != 0)\n", vars[i], vars[i]) >> CFILE
+					printf("\t\t\t\treturn (ret);\n") >> CFILE
+			}
 			printf("\t\tbp += %s->size;\n\t}\n\n", \
-			    vars[i]) >> CFILE;
+					vars[i]) >> CFILE;
 		} else if (modes[i] == "DB") {
 			# We need to log a DB handle.  To do this, we
 			# actually just log its fileid;  from that, we'll
 			# be able to acquire an open handle at recovery time.
 			printf("\tDB_ASSERT(dbp->log_filename != NULL);\n") \
-			    >> CFILE;
+				>> CFILE;
 			printf("\tif (dbp->log_filename->id == ") >> CFILE;
 			printf("DB_LOGFILEID_INVALID &&\n\t    ") >> CFILE
-			printf("(ret = __dbreg_lazy_id(dbp)) != 0)\n") \
-			    >> CFILE;
+				printf("(ret = __dbreg_lazy_id(dbp)) != 0)\n") \
+				>> CFILE;
 			printf("\t\treturn (ret);\n\n") >> CFILE;
 
 			printf("\tuinttmp = ") >> CFILE;
 			printf("(u_int32_t)dbp->log_filename->id;\n") >> CFILE;
-			printf("\tmemcpy(bp, &uinttmp, sizeof(uinttmp));\n") \
-			    >> CFILE;
+			printf("\tLOGCOPY_32(bp, &uinttmp);\n") \
+				>> CFILE;
 			printf("\tbp += sizeof(uinttmp);\n\n") >> CFILE;
-		} else { # POINTER
+		} 
+		else { # POINTER
 			printf("\tif (%s != NULL)\n", vars[i]) >> CFILE;
-			printf("\t\tmemcpy(bp, %s, %s);\n", vars[i], \
-			    sizes[i]) >> CFILE;
+			printf("\t\tLOGCOPY_FROMLSN(bp, %s);\n", vars[i]) \
+				>> CFILE;
 			printf("\telse\n") >> CFILE;
 			printf("\t\tmemset(bp, 0, %s);\n", sizes[i]) >> CFILE;
 			printf("\tbp += %s;\n\n", sizes[i]) >> CFILE;
@@ -542,7 +650,7 @@ function log_function() {
 		printf("\t\tmemcpy(lr->data, logrec.data, logrec.size);\n") \
 		    >> CFILE;
 		printf("\t\trectype |= DB_debug_FLAG;\n") >> CFILE;
-		printf("\t\tmemcpy(logrec.data, &rectype, sizeof(rectype));\n")\
+		printf("\t\tLOGCOPY_32(logrec.data, &rectype);\n")\
 		    >> CFILE;
 		printf("\t}\n") >> CFILE;
 		printf("#endif\n\n") >> CFILE;
@@ -555,9 +663,8 @@ function log_function() {
 		printf("#ifdef DIAGNOSTIC\n") >> CFILE;
 		printf("\t\tgoto do_put;\n") >> CFILE;
 		printf("#endif\n") >> CFILE;
-		printf("\t}") >> CFILE;
 		# Output the log record.
-		printf(" else{\n") >> CFILE;
+		printf("\t} else {\n") >> CFILE;
 		printf("#ifdef DIAGNOSTIC\n") >> CFILE;
 		printf("do_put:\n") >> CFILE;
 		printf("#endif\n") >> CFILE;
@@ -585,15 +692,15 @@ function log_function() {
 	printf("#ifdef LOG_DIAGNOSTIC\n") >> CFILE
 	printf("\tif (ret != 0)\n") >> CFILE;
 	printf("\t\t(void)%s_print(dbenv,\n", funcname) >> CFILE;
-	printf("\t\t    (DBT *)&logrec, ret_lsnp, NULL, NULL);\n") >> CFILE
-	printf("#endif\n") >> CFILE
+	printf("\t\t    (DBT *)&logrec, ret_lsnp, (db_recops)0 , NULL);\n") >> CFILE
+	printf("#endif\n\n") >> CFILE
 
 	# Free and return
 	if (dbprivate) {
 		printf("#ifndef DIAGNOSTIC\n") >> CFILE
 		printf("\tif (is_durable || txnid == NULL)\n") >> CFILE;
 		printf("#endif\n") >> CFILE
-		write_free("\t\t", "logrec.data", CFILE)
+		write_cond_free("\t\t", "logrec.data", CFILE)
 	} else {
 		write_free("\t", "logrec.data", CFILE)
 	}
@@ -635,7 +742,7 @@ function print_function() {
 	printf("\tnotused2 = DB_TXN_ABORT;\n\tnotused3 = NULL;\n\n") >> CFILE;
 
 	# Call read routine to initialize structure
-	printf("\tif ((ret = %s_read(dbenv, dbtp->data, &argp)) != 0)\n", \
+	printf("\tif ((ret = %s_read_int(dbenv, dbtp->data, 0, &argp)) != 0)\n", \
 	    funcname) >> CFILE;
 	printf("\t\treturn (ret);\n") >> CFILE;
 
@@ -664,14 +771,15 @@ function print_function() {
 			printf("\t(void)printf(\"\\t%s: ", vars[i]) >> CFILE;
 
 		if (modes[i] == "DBT" || modes[i] == "PGDBT") {
-			printf("\");\n") >> CFILE;
-			printf("\tfor (i = 0; i < ") >> CFILE;
-			printf("argp->%s.size; i++) {\n", vars[i]) >> CFILE;
-			printf("\t\tch = ((u_int8_t *)argp->%s.data)[i];\n", \
-			    vars[i]) >> CFILE;
-			printf("\t\tprintf(isprint(ch) || ch == 0x0a") >> CFILE;
-			printf(" ? \"%%c\" : \"%%#x \", ch);\n") >> CFILE;
-			printf("\t}\n\t(void)printf(\"\\n\");\n") >> CFILE;
+			printf("\\n\");\n") >> CFILE;
+			printf("\tfsnapf(stdout, argp->%s.data, argp->%s.size);\n", vars[i], vars[i]) >> CFILE;
+			#printf("\tfor (i = 0; i < ") >> CFILE;
+			#printf("argp->%s.size; i++) {\n", vars[i]) >> CFILE;
+			#printf("\t\tch = ((u_int8_t *)argp->%s.data)[i];\n", \
+			#   vars[i]) >> CFILE;
+			#printf("\t\tprintf(isprint(ch) || ch == 0x0a") >> CFILE;
+			#printf(" ? \"%%c\" : \"%%#x \", ch);\n") >> CFILE;
+			#printf("\t}\n\t(void)printf(\"\\n\");\n") >> CFILE;
 		} else if (types[i] == "DB_LSN *") {
 			printf("[%%%s][%%%s]\\n\",\n", \
 			    formats[i], formats[i]) >> CFILE;
@@ -704,6 +812,7 @@ function print_function() {
 				printf("(long)") >> CFILE;
 			printf("argp->%s);\n", vars[i]) >> CFILE;
 		}
+        printf("\tfflush(stdout);\n") >> CFILE;
 	}
 	printf("\t(void)printf(\"\\n\");\n") >> CFILE;
 	write_free("\t", "argp", CFILE);
@@ -712,8 +821,7 @@ function print_function() {
 }
 
 function read_function() {
-	# Write the read function; function prototype
-	p[1] = sprintf("int %s_read __P((DB_ENV *, void *,", funcname);
+	p[1] = sprintf("int %s_read __P((DB_ENV *, void *, ", funcname);
 	p[2] = " ";
 	p[3] = sprintf("%s_args **));", funcname);
 	p[4] = "";
@@ -728,11 +836,35 @@ function read_function() {
 	printf("\t%s_args **argpp;\n", funcname) >> CFILE;
 
 	# Function body and local decls
+	printf("{\n\treturn %s_read_int (dbenv, recbuf, 1, argpp);\n}\n\n", funcname) >> CFILE;
+}
+
+function read_function_int() {
+	# Write the read function; function prototype
+	p[1] = sprintf("int %s_read_int __P((DB_ENV *, void *, int do_pgswp, ", funcname);
+	p[2] = " ";
+	p[3] = sprintf("%s_args **));", funcname);
+	p[4] = "";
+	proto_format(p);
+
+	# Function declaration
+	printf("int\n%s_read_int(dbenv, recbuf, do_pgswp, argpp)\n", funcname) >> CFILE;
+
+	# Now print the parameters
+	printf("\tDB_ENV *dbenv;\n") >> CFILE;
+	printf("\tvoid *recbuf;\n") >> CFILE;
+	printf("\tint do_pgswp;\n") >> CFILE;
+	printf("\t%s_args **argpp;\n", funcname) >> CFILE;
+
+	# Function body and local decls
 	printf("{\n\t%s_args *argp;\n", funcname) >> CFILE;
 	if (is_uint == 1)
 		printf("\tu_int32_t uinttmp;\n") >> CFILE;
+	if (is_uint64 == 1)
+		printf("\tu_int64_t uint64tmp;\n") >> CFILE;
 	printf("\tu_int8_t *bp;\n") >> CFILE;
 
+	printf("\tDB *dbp = NULL;\n") >> CFILE;
 
 	if (dbprivate) {
 		# We only use dbenv and ret in the private malloc case.
@@ -741,6 +873,9 @@ function read_function() {
 		printf("\t/* Keep the compiler quiet. */\n") >> CFILE;
 		printf("\n\tdbenv = NULL;\n") >> CFILE;
 	}
+	printf("#ifdef %s_DEBUG\n", prefix) >> CFILE;
+	printf("\tfprintf(stderr,\"%s_read_int: begin\\n\");\n",funcname) >> CFILE;
+	printf("#endif\n\n") >> CFILE;
 
 	malloc_size = sprintf("sizeof(%s_args) + sizeof(DB_TXN)", funcname)
 	write_malloc("\t", "argp", malloc_size, CFILE)
@@ -751,12 +886,11 @@ function read_function() {
 	# First get the record type, prev_lsn, and txnid fields.
 
 	printf("\tbp = recbuf;\n") >> CFILE;
-	printf("\tmemcpy(&argp->type, bp, sizeof(argp->type));\n") >> CFILE;
+	printf("\tLOGCOPY_32(&argp->type, bp);\n") >> CFILE;
 	printf("\tbp += sizeof(argp->type);\n\n") >> CFILE;
-	printf("\tmemcpy(&argp->txnid->txnid,  bp, ") >> CFILE;
-	printf("sizeof(argp->txnid->txnid));\n") >> CFILE;
+	printf("\tLOGCOPY_32(&argp->txnid->txnid,  bp);\n") >> CFILE;
 	printf("\tbp += sizeof(argp->txnid->txnid);\n\n") >> CFILE;
-	printf("\tmemcpy(&argp->prev_lsn, bp, sizeof(DB_LSN));\n") >> CFILE;
+	printf("\tLOGCOPY_TOLSN(&argp->prev_lsn, bp);\n") >> CFILE;
 	printf("\tbp += sizeof(DB_LSN);\n\n") >> CFILE;
 
 	# Now get rest of data.
@@ -764,22 +898,44 @@ function read_function() {
 		if (modes[i] == "DBT" || modes[i] == "PGDBT") {
 			printf("\tmemset(&argp->%s, 0, sizeof(argp->%s));\n", \
 			    vars[i], vars[i]) >> CFILE;
-			printf("\tmemcpy(&argp->%s.size, ", vars[i]) >> CFILE;
-			printf("bp, sizeof(u_int32_t));\n") >> CFILE;
+			printf("\tLOGCOPY_32(&argp->%s.size, bp);\n", vars[i]) >> CFILE;
 			printf("\tbp += sizeof(u_int32_t);\n") >> CFILE;
 			printf("\targp->%s.data = bp;\n", vars[i]) >> CFILE;
 			printf("\tbp += argp->%s.size;\n", vars[i]) >> CFILE;
-		} else if (modes[i] == "ARG" || modes[i] == "TIME" ||
-		    modes[i] == "DB") {
-			printf("\tmemcpy(&uinttmp, bp, sizeof(uinttmp));\n") \
-			    >> CFILE;
-			printf("\targp->%s = (%s)uinttmp;\n", vars[i], \
-			    types[i]) >> CFILE;
-			printf("\tbp += sizeof(uinttmp);\n") >> CFILE;
+
+			if(modes[i] == "PGDBT") {
+				printf("\tif (LOG_SWAPPED() && dbp && do_pgswp)\n") >> CFILE;
+				printf("\t\tif ((ret = __db_pageswap(dbp, \n") >> CFILE;
+				printf("\t\t\t(PAGE *)argp->%s.data,(size_t)argp->%s.size, 1)) != 0)\n", vars[i], vars[i]) >> CFILE;
+				printf("\t\t\t\treturn (ret);\n") >> CFILE;
+			}
+		} else if (modes[i] == "ARG" || modes[i] == "TIME" || modes[i] == "DB") {
+			if (types[i] == "u_int64_t") {
+				printf("\tLOGCOPY_64(&uint64tmp, bp);\n") >> CFILE;
+				printf("\targp->%s = (%s)uint64tmp;\n", vars[i], \
+						types[i]) >> CFILE;
+				printf("\tbp += sizeof(uint64tmp);\n") >> CFILE;
+			} else if (types[i] == "genid_t") {
+				printf("\tmemcpy(&uint64tmp, bp, sizeof(u_int64_t));\n") >> CFILE;
+				printf("\targp->%s = uint64tmp;\n", vars[i]) >> CFILE;
+				printf("\tbp += sizeof(uint64tmp);\n") >> CFILE;
+			} else {
+				printf("\tLOGCOPY_32(&uinttmp, bp);\n") \
+					>> CFILE;
+				printf("\targp->%s = (%s)uinttmp;\n", vars[i], \
+						types[i]) >> CFILE;
+				printf("\tbp += sizeof(uinttmp);\n") >> CFILE;
+
+				if(modes[i] == "DB") {
+					printf("\tif (do_pgswp) \n") >> CFILE;
+					printf("\t\tret = __dbreg_id_to_db(\n") >> CFILE;
+					printf("\t\t\tdbenv, argp->txnid, &dbp, argp->%s, 1, NULL, 0);\n", vars[i]) >> CFILE;
+					printf("\n") >> CFILE;
+				}
+			}
 		} else { # POINTER
-			printf("\tmemcpy(&argp->%s, bp, ", vars[i]) >> CFILE;
-			printf(" sizeof(argp->%s));\n", vars[i]) >> CFILE;
-			printf("\tbp += sizeof(argp->%s);\n", vars[i]) >> CFILE;
+			printf("\tLOGCOPY_TOLSN(&argp->%s, bp);\n",vars[i]) >> CFILE;
+			printf("\tbp += sizeof(argp->%s);\n",vars[i]) >> CFILE;
 		}
 		printf("\n") >> CFILE;
 	}
@@ -852,7 +1008,7 @@ function getpgnos_function() {
 
 	# Get file ID.
 	printf("\n\tif ((ret = __dbreg_id_to_db(dbenv,\n\t    ") >> CFILE;
-	printf("argp->txnid, &dbp, argp->fileid, 0)) != 0)\n") >> CFILE;
+	printf("argp->txnid, &dbp, argp->fileid, 0, NULL, 0)) != 0)\n") >> CFILE;
 	printf("\t\tgoto err;\n") >> CFILE;
 
 	printf("\n\tif ((ret = __rep_check_alloc(dbenv, t, %d)) != 0)\n", \
@@ -887,6 +1043,74 @@ function getpgnos_function() {
 
 	printf("\nerr:\tif (argp != NULL)\n") >> CFILE;
 	write_free("\t", "argp", CFILE);
+
+	printf("\treturn (ret);\n") >> CFILE;
+
+	printf("}\n#endif /* HAVE_REPLICATION */\n\n") >> CFILE;
+}
+
+function getallpgnos_function() {
+	# Write the getpgnos function;  function prototype
+	printf("#ifdef HAVE_REPLICATION\n") >> CFILE;
+	p[1] = sprintf("int %s_getallpgnos", funcname);
+	p[2] = " ";
+	p[3] = "__P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));";
+	p[4] = "";
+	proto_format(p);
+
+	# Function declaration
+	printf("int\n%s_getallpgnos(dbenv, ", funcname) >> CFILE;
+	printf("rec, lsnp, notused1, summary)\n") >> CFILE;
+	printf("\tDB_ENV *dbenv;\n") >> CFILE;
+	printf("\tDBT *rec;\n") >> CFILE;
+	printf("\tDB_LSN *lsnp;\n") >> CFILE;
+	printf("\tdb_recops notused1;\n") >> CFILE;
+	printf("\tvoid *summary;\n{\n") >> CFILE;
+
+	has_fileid = 0;
+	npages = 0;
+	for (i = 0; i < nvars; i++) {
+		if (types[i] == "db_pgno_t") {
+			npages++;
+		}
+		if (vars[i] == "fileid") {
+			has_fileid = 1;
+		}
+	}
+
+	printf("\tTXN_RECS *t;\n") >> CFILE;
+	printf("\t%s_args *argp;\n", funcname) >> CFILE;
+	printf("\tint ret = 0;\n\n") >> CFILE;
+
+	# Shut up compiler.
+	printf("\tCOMPQUIET(notused1, DB_TXN_ABORT);\n\n") >> CFILE;
+
+	printf("\targp = NULL;\n") >> CFILE;
+	printf("\tt = (TXN_RECS *)summary;\n\n") >> CFILE;
+
+	if (has_fileid && npages > 0) {
+		printf("\tif ((ret = %s_read(dbenv, rec->data, &argp)) != 0)\n", \
+				funcname) >> CFILE;
+		printf("\t\treturn (ret);\n") >> CFILE;
+
+		printf("\n\tif ((ret = __rep_check_alloc(dbenv, t, %d)) != 0)\n", \
+				npages) >> CFILE;
+		printf("\t\tgoto err;\n\n") >> CFILE;
+
+		for (i = 0; i <  nvars; i++) {
+			if (types[i] == "db_pgno_t") {
+				printf("\tt->array[t->npages].flags = 0;\n") >> CFILE;
+				printf("\tt->array[t->npages].fid = argp->fileid;\n") >> CFILE;
+				printf("\tt->array[t->npages].lsn = *lsnp;\n") >> CFILE;
+				printf("\tt->array[t->npages].pgdesc.pgno = argp->%s;\n", vars[i]) >> CFILE;
+				printf("\tt->array[t->npages].comment = \"%s\";\n", vars[i]) >> CFILE;
+				printf("\tt->npages++;\n", indent) >> CFILE;
+			}
+		}
+	}
+
+	printf("\nerr:\tif (argp != NULL)\n") >> CFILE;
+	write_free("\t\t", "argp", CFILE);
 
 	printf("\treturn (ret);\n") >> CFILE;
 
@@ -936,6 +1160,40 @@ function write_malloc(tab, ptr, size, file)
 		print(tab "if ((" ptr " = malloc(" size ")) == NULL)") >> file
 		print(tab "\treturn (ENOMEM);") >> file
 	}
+}
+
+function write_cond_malloc(tab, ptr, size, file)
+{
+   	if (dbprivate) {
+        print(tab "if (" size " > 4096)") >> file
+        print(tab "{") >> file
+        print(tab "\tused_malloc = 1;") >> file
+		print(tab "\tif ((ret = __os_malloc(dbenv,") >> file
+		print(tab "\t      " size ", &" ptr ")) != 0)") >> file
+		print(tab "\t\treturn (ret);") >> file;
+        print(tab "}") >> file
+        print(tab "else") >> file
+        print(tab "{") >> file
+        print(tab "\tused_malloc = 0;") >> file
+        print(tab "\t" ptr " = alloca(" size ");") >> file
+        print(tab "}") >> file
+	} else {
+		print(tab "if ((" ptr " = malloc(" size ")) == NULL)") >> file
+		print(tab "\treturn (ENOMEM);") >> file
+	}
+
+}
+
+function write_cond_free(tab, ptr, file)
+{
+	if (dbprivate) {
+        print(tab "if (used_malloc)") >> file
+		print(tab "\t__os_free(dbenv, " ptr ");\n") >> file
+	} else {
+		print(tab "free(" ptr ");\n") >> file
+	}
+
+
 }
 
 function write_free(tab, ptr, file)

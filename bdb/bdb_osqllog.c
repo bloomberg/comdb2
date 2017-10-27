@@ -27,41 +27,32 @@
 #include <list.h>
 #include <plbitlib.h>
 #include <fsnap.h>
-#include <db.h>
-#include <dbinc_auto/dbreg_auto.h>
-#include "llog_auto.h"
-#include "llog_int.h"
-#include "db_int.h"
-#include "dbinc/db_swap.h"
-#include "bdb_osqllog.h"
-#include "bdb_osqltrn.h"
-#include "bdb_int.h"
-#include "bdb_osqlcur.h"
-#include "flibc.h"
-#include "locks.h"
+#include <bdb_osqllog.h>
+#include <bdb_osqltrn.h>
+#include <bdb_int.h>
+#include <bdb_osqlcur.h>
+#include <flibc.h>
+#include <locks.h>
 
-#include "dbinc/db_page.h"
-#include "dbinc/db_shash.h"
-#include "dbinc/btree.h"
-#include "dbinc/lock.h"
-#include "dbinc/log.h"
-#include "dbinc/mp.h"
+#include <logmsg.h>
 
-#include "logmsg.h"
-
-#undef STDC_HEADERS
-#define STDC_HEADERS
-#include <db_int.h>
-#include <db_page.h>
-#include <db_shash.h>
+#include <build/db.h>
+#include <build/db_int.h>
 #include <dbinc_auto/db_auto.h>
+#include <dbinc_auto/dbreg_auto.h>
+#include <dbinc/txn.h>
 #include <dbinc_auto/txn_auto.h>
-#include <txn.h>
-#include <txn_ext.h>
-#include <btree.h>
-#include <mp.h>
-#include <db.h>
-#undef STDC_HEADERS
+#include <dbinc_auto/txn_ext.h>
+#include <dbinc/btree.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_shash.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/lock.h>
+#include <dbinc/log.h>
+#include <dbinc/mp.h>
+
+#include <llog_auto.h>
+#include <llog_ext.h>
 
 #define MAXTABLENAME 128
 #define LOG_DTA_PTR_BIT 1
@@ -2097,8 +2088,8 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
 
         case DB_llog_undo_upd_ix_lk:
 
-            rc == llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                           &upd_ix_lk);
+            rc = llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
+                                          &upd_ix_lk);
             if (rc) goto done;
 
             /* queue the record */
@@ -2530,7 +2521,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
         return 0;
 
     /* Skip entirely if there are no clients */
-    if (rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) {
+    if ((rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) !=0 ) {
         logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
         return rc;
     }

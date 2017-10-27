@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Test basic functionality for incremental backups
 #export debug=1
 [[ $debug == 1 ]] && set -x

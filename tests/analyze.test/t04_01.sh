@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # this tests the ability of the node doing analyze to 
 # abort if there is not enough free space on the node.
 # To achieve correct testing, we need to connect to 

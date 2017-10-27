@@ -208,7 +208,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 		F_SET(dbc, DBC_DISCARD_PAGES);
 	}
 #ifndef TESTSUITE
-#ifndef __linux
+#ifndef __linux__
 	if (gbl_berk_track_cursors)
 		stack_pc_getlist(NULL, dbc->stackinfo.stack, MAXSTACKDEPTH,
 		    &dbc->stackinfo.nframes);
@@ -434,9 +434,9 @@ int __db_cprint_item(dbc)
 	    s, P_TO_ULONG(dbc), P_TO_ULONG(cp->opd));
 
 	fprintf(stderr,
-	    "\ttxn: %#lx lid: %lu locker: %lu tid: %d [pp_allocated: %u]\n",
+	    "\ttxn: %#lx lid: %lu locker: %lu tid: %p [pp_allocated: %u]\n",
 	    P_TO_ULONG(dbc->txn), (u_long)dbc->lid, (u_long)dbc->locker,
-	    dbc->tid, dbc->pp_allocated);
+	    (void *)dbc->tid, dbc->pp_allocated);
 
 	fprintf(stderr, "\troot: %lu page/index: %lu/%lu",
 	    (u_long)cp->root, (u_long)cp->pgno, (u_long)cp->indx);
@@ -1164,7 +1164,7 @@ __db_check_all_btree_cursors(dbp, pgno)
 		tmp_pgno = __bam_get_dbc_page(dbc);
 		if (tmp_pgno == pgno) {
 			fprintf(stderr,
-			    "Cursor %x locks the page %u [%u %u] txn=%x %d\n",
+			    "Cursor %p locks the page %u [%u %u] txn=%p %d\n",
 			    dbc, pgno, dbc->lid, dbc->locker, dbc->txn,
 			    dbc->pp_allocated);
 		}

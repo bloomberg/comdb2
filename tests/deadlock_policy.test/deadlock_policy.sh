@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # deadlock policy tester for the cdb2tcm testsuite
 

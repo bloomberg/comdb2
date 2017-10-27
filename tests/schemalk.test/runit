@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 num=500
 sec=0.2
 
