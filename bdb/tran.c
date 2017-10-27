@@ -38,7 +38,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 #include <plbitlib.h> /* for bset/btst */
 #include <lockmacro.h>
@@ -53,7 +53,7 @@
 #include "bdb_osqlcur.h"
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "missing.h"
 #include <alloca.h>
 

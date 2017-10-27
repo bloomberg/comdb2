@@ -1896,8 +1896,9 @@ static void log_client_context(struct reqlogger *logger,
     if (clnt->sql_query->n_context > 0) {
         int i = 0;
         while (i < clnt->sql_query->n_context) {
-            reqlog_logf(logger, REQL_INFO, "(%d) %s", ++i,
+            reqlog_logf(logger, REQL_INFO, "(%d) %s", i,
                         clnt->sql_query->context[i]);
+            ++i;
         }
     }
 

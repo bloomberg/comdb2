@@ -185,7 +185,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     if (unlikely(bdb_state->rep_trace)) {
         char str[80];
         lsn_to_str(str, &seqnum.lsn);
-        fprintf(stderr, "sending NEWSEQ to %d <%s>\n", master, str);
+        fprintf(stderr, "sending NEWSEQ to %s <%s>\n", master, str);
     }
 
     if (gbl_udp) {
@@ -228,14 +228,16 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
     int rc = getnameinfo((struct sockaddr *)addr, len, name, sizeof(name),
                          service, sizeof(service), 0);
     if (rc) {
-        sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, strerror_r(rc, errbuf, sizeof(errbuf)));
+        strerror_r(rc, errbuf, sizeof(errbuf));
+        sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, errbuf);
         return buf;
     }
 
     if (inet_ntop(addr->sin_family, &addr->sin_addr.s_addr, ip, sizeof(ip))) {
         sprintf(buf, "[%s %s:%s] ", name, ip, service);
     } else {
-        sprintf(buf, "%s:inet_ntop:%s", __func__, strerror_r(errno, errbuf, sizeof(errbuf)));
+        strerror_r(errno, errbuf, sizeof(errbuf));
+        sprintf(buf, "%s:inet_ntop:%s", __func__, errbuf);
     }
     return buf;
 }
@@ -253,7 +255,7 @@ static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
         if (nsent != -999) {
             logmsgperror("udp_send:sendto");
             ack_info_to_cpu(info);
-            printf("sz:%d, hdr:%d payload:%d type:%d from:me to:%s\n", len,
+            printf("sz:%u, hdr:%d payload:%d type:%d from:me to:%s\n", len,
                    info->hdrsz, info->len, info->type, to);
         }
         ++fail_udp;
@@ -359,7 +361,7 @@ void udp_ping_ip(bdb_state_type *bdb_state, char *ip)
     if (nsent != len) {
         logmsgperror("udp_ping_ip:sendto");
         ack_info_to_cpu(info);
-        printf("total len:%d, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
+        printf("total len:%u, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
                info->hdrsz, info->type, info->len, info->from, info->to,
                print_addr(&addr, straddr));
         return;
@@ -628,7 +630,7 @@ static void *udp_reader(void *arg)
 
 
         default:
-            printf("%s: recd unknown packet type:%d from:%d\n", __func__, type,
+            printf("%s: recd unknown packet type:%d from:%s\n", __func__, type,
                    from);
             break;
         }

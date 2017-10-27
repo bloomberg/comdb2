@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
@@ -32,7 +32,7 @@ else
 fi
 
 (
-echo "#!/bin/bash"
+echo "#!/usr/bin/env bash"
 echo
 echo echo comdb2_config:allow_pmux_route:true
 for db in $*; do

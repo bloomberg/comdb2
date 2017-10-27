@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 set -x
@@ -68,7 +68,7 @@ if [[ $debug -eq 1 ]]; then
     export PATH="${SRCHOME}/:${PATH}"
     RUNTEST="${PWD}/runtest.sh "
     echo "Once db is ready, please run: $RUNTEST"
-    echo "#!/bin/bash" > $RUNTEST
+    echo "#!/usr/bin/env bash" > $RUNTEST
     #echo "set +x"  >> $RUNTEST
     for env in $vars; do
         echo "export $env=\"${!env}\"" >> $RUNTEST
@@ -124,6 +124,7 @@ if [[ -n "$CLUSTER" ]]; then
     echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
     echo "cluster nodes $CLUSTER" >> $DBDIR/$DBNAME.lrl
 else
+    mkdir -p $(dirname $CDB2_CONFIG)
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
 fi
 

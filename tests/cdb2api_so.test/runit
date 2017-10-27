@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Test case to verify libcdb2api.so.
@@ -9,13 +9,6 @@ if [[ -z $dbname ]] ; then
     exit 1
 fi
 
-ldd ./cdb2_client | grep "libcdb2api.so => not found" > /dev/null
-if [ $? -ne 0 ]; then
-  echo 'Missing libcdb2api dependency.' >&2
-  exit 1
-fi
-
-export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${SRCHOME}/cdb2api/:${SRCHOME}/protobuf
 ldd ./cdb2_client | grep "libcdb2api.so => not found" > /dev/null
 if [ $? -ne 1 ]; then
   echo 'Could not find libcdb2api.so' >&2

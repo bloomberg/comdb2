@@ -1705,7 +1705,6 @@ extern int gbl_init_with_compr_blobs;
 extern int gbl_init_with_bthash;
 
 extern int gbl_sqlhistsz;
-extern int gbl_force_bad_directory;
 extern int gbl_replicate_local;
 extern int gbl_replicate_local_concurrent;
 

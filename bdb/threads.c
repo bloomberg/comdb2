@@ -37,7 +37,7 @@
 #include <stddef.h>
 #include <str0.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>

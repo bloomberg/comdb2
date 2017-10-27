@@ -402,7 +402,7 @@ __pgtrash(DB_ENV *dbenv, int32_t fileid, db_pgno_t pgno)
 	ret = __memp_fget(mpf, &pgno, 0, &pagep);
 	if (ret) {
 		fprintf(stderr,
-		    "pgdump> __memp_fget %s pgno %" PRIu32 " " PRIi32
+		    "pgdump> __memp_fget %s pgno %" PRIu32 " %" PRIi32
 		    " error=%d\n", dbp->fname, pgno, fileid, ret);
 		return;
 	}

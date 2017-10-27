@@ -23,9 +23,9 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "sqliteInt.h"
 #include "comdb2.h"
 #include "intern_strings.h"
-#include "sqliteInt.h"
 #include "bb_oscompat.h"
 #include "switches.h"
 #include "plugin.h"
@@ -1384,11 +1384,17 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     /* switch to keyless mode as long as no mode has been selected yet */
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL && gbl_dbdir) dbenv->basedir = gbl_dbdir;
-    if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
-    if (dbenv->basedir == NULL)
+    if (dbenv->basedir == NULL && gbl_dbdir) {
+        dbenv->basedir = strdup(gbl_dbdir);
+    }
+    if (dbenv->basedir == NULL) {
+        if ((dbenv->basedir = getenv("COMDB2_DB_DIR")) != NULL) {
+            dbenv->basedir = strdup(dbenv->basedir);
+        }
+    }
+    if (dbenv->basedir == NULL) {
         dbenv->basedir = comdb2_location("database", "%s", dbenv->envname);
-
+    }
     if (dbenv->basedir == NULL) {
         logmsg(LOGMSG_ERROR, "must specify database directory\n");
         return 0;

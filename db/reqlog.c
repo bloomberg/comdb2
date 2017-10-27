@@ -1189,6 +1189,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         s = realloc(s, len);
         if (!s) {
             logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
+            va_end(args_c);
             return -1;
         }
         len = vsnprintf(s, len, fmt, args_c);
@@ -1578,8 +1579,8 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
     flushdump(logger, out);
 }
 
-static void log(struct reqlogger *logger, struct output *out,
-                unsigned event_mask)
+static void log_rule(struct reqlogger *logger, struct output *out,
+                     unsigned event_mask)
 {
     struct logevent *event;
 
@@ -1821,7 +1822,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                 logmsg(LOGMSG_USER, "print to %s with event_mask 0x%x\n",
                        use_rule->out->filename, use_rule->event_mask);
             }
-            log(logger, use_rule->out, use_rule->event_mask);
+            log_rule(logger, use_rule->out, use_rule->event_mask);
             deref_output_ll(use_rule->out);
         }
         while (use_rule = use_rules) {
