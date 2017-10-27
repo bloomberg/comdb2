@@ -80,6 +80,9 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int allow_pmux_route = 0;
 
+static __thread int _PID;
+static __thread int _MACHINE_ID;
+
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 #define MAX_NODES 16
@@ -103,6 +106,8 @@ static void do_init_once(void)
         /* can't call back cdb2_set_comdb2db_config from do_init_once */
         strncpy(CDB2DBCONFIG_NOBBENV, config, 511);
     }
+    _PID = getpid();
+    _MACHINE_ID = gethostid();
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -667,6 +672,7 @@ struct cdb2_hndl {
     cdb2_ssl_sess_list *sess_list;
 #endif
     struct context_messages context_msgs;
+    char *env_tz;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -1107,7 +1113,7 @@ static int open_sockpool_ll(void)
     /* Connected - write hello message */
     memcpy(hello.magic, "SQLP", 4);
     hello.protocol_version = 0;
-    hello.pid = getpid();
+    hello.pid = _PID;
     hello.slot = 0;
 
     ptr = (const char *)&hello;
@@ -1971,13 +1977,9 @@ retry_read:
     return 0;
 }
 
-static int cdb2_hostid()
+static inline int cdb2_hostid()
 {
-    static int MACHINE_ID = 0;
-    if (MACHINE_ID == 0) {
-        MACHINE_ID = gethostid();
-    }
-    return MACHINE_ID;
+    return _MACHINE_ID;
 }
 
 static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
@@ -1993,7 +1995,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    cinfo.pid = getpid();
+    cinfo.pid = _PID;
     cinfo.th_id = (int)pthread_self();
     cinfo.host_id = cdb2_hostid();
 
@@ -2002,17 +2004,20 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     while (isspace(*sql))
         sql++;
     sqlquery.sql_query = sql;
-    sqlquery.little_endian = 0;
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
+#else
+    sqlquery.little_endian = 0;
 #endif
 
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
     sqlquery.n_types = ntypes;
     sqlquery.types = types;
+    sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
+    sqlquery.mach_class = cdb2_default_cluster;
 
-    char *env_tz = getenv("COMDB2TZ");
+
     char *host = "NOT-CONNECTED";
     if (hndl && hndl->connected_host >= 0)
         host = hndl->hosts[hndl->connected_host];
@@ -2023,18 +2028,6 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 (uint32_t)pthread_self(), __func__, sql, host, fromline,
                 retries_done, do_append);
     }
-
-    if (env_tz == NULL) {
-        env_tz = getenv("TZ");
-    }
-
-    if (env_tz == NULL) {
-        env_tz = DB_TZNAME_DEFAULT;
-    }
-
-    sqlquery.tzname = env_tz;
-
-    sqlquery.mach_class = cdb2_default_cluster;
 
     query.sqlquery = &sqlquery;
 
@@ -2498,16 +2491,15 @@ uint64_t val_combine(uint64_t lhs, uint64_t rhs)
  */
 static void make_random_str(char *str, int *len)
 {
-    static __thread int PID = 0;
-    static __thread unsigned short rand_state[3];
+    static __thread unsigned short rand_state[3] = {0};
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (PID == 0) { /* Initialize PID and rand_state once per thread */
-         /* PID will ensure that cnonce will be different accross processes */
-        PID = getpid(); 
+    if (rand_state[0] == 0) {
+        /* Initialize rand_state once per thread
+         * _PID will ensure that cnonce will be different accross processes
 
-        /* Get the initial random state by using thread id and time info. */
+         * Get the initial random state by using thread id and time info. */
         uint32_t tmp[2];
         tmp[0] = tv.tv_sec;
         tmp[1] = tv.tv_usec;
@@ -2517,7 +2509,7 @@ static void make_random_str(char *str, int *len)
         rand_state[2] = hash >> 32;
     }
     int randval = nrand48(rand_state);
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
+    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), _PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }
@@ -4915,6 +4907,15 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
+
+    hndl->env_tz = getenv("COMDB2TZ");
+
+    if (hndl->env_tz == NULL)
+        hndl->env_tz = getenv("TZ");
+
+    if (hndl->env_tz == NULL)
+        hndl->env_tz = DB_TZNAME_DEFAULT;
+
 
     cdb2_init_context_msgs(hndl);
 
