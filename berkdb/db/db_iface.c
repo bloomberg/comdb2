@@ -440,8 +440,8 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 					void *stack[MAXSTACKDEPTH];
 
 					fprintf(stderr,
-					    "ERROR thread %d opened 2 cursors w/ 2 lockerids %d %d\n",
-					    pthread_self(), l, d->locker);
+					    "ERROR thread %p opened 2 cursors w/ 2 lockerids %d %d\n",
+					    (void *)pthread_self(), l, d->locker);
 
 					fprintf(stderr, "First stack:\n");
 					for (i = SKIPFRAMES; i < vptr->nframes;
@@ -450,7 +450,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 						    i - SKIPFRAMES,
 						    vptr->stack[i]);
 
-#ifndef __linux
+#ifndef __linux__
 					rc = stack_pc_getlist(NULL, stack,
 					    MAXSTACKDEPTH, &nframes);
 					if (!rc) {
@@ -471,7 +471,7 @@ __db_cursor_ser_pp(dbp, txn, dbcs, dbcp, flags)
 			vptr->lockerid = d->locker;
 			vptr->nframes = 0;
 			/* save the first stack */
-#ifndef __linux
+#ifndef __linux__
 			stack_pc_getlist(NULL, vptr->stack, MAXSTACKDEPTH,
 			    &vptr->nframes);
 #endif
@@ -950,15 +950,15 @@ __db_get_pp(dbp, txn, key, data, flags)
 		lid = vptr->lockerid;
 		if (lid && debug_switch_check_multiple_lockers()) {
 			fprintf(stderr,
-			    "ERROR thread %d called __db_get_pp with an open "
-			    "cursor (lockerid %d)\n", pthread_self(), lid);
+			    "ERROR thread %p called __db_get_pp with an open "
+			    "cursor (lockerid %d)\n", (void *)pthread_self(), lid);
 			fprintf(stderr, "First stack:\n");
 			for (i = SKIPFRAMES; i < vptr->nframes; i++)
 				fprintf(stderr, " %d %p", i - SKIPFRAMES,
 				    vptr->stack[i]);
 			printf("\n");
 
-#ifndef __linux
+#ifndef __linux__
 			rc = stack_pc_getlist(NULL, stack, MAXSTACKDEPTH,
 			    &nframes);
 			if (!rc) {

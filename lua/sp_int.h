@@ -51,9 +51,6 @@ struct stored_proc {
     int  rc;
     SP parent;
 
-    int in_parent_trans;
-    int make_parent_trans;
-
     pthread_mutex_t *emit_mutex; //parent only
     int ntypes; //parent only
     char **clntname; //parent only
@@ -63,8 +60,12 @@ struct stored_proc {
     LIST_HEAD(, tmptbl_info_t) tmptbls;
 
     dbstmt_t *prev_dbstmt; // for db_bind -- deprecated
-    int pingpong;
-    int have_consumer;
+
+    unsigned initial           : 1;
+    unsigned pingpong          : 1;
+    unsigned have_consumer     : 1;
+    unsigned in_parent_trans   : 1;
+    unsigned make_parent_trans : 1;
 };
 
 #define getsp(x) ((SP)lua_getsp(x))

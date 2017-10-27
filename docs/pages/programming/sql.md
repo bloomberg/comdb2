@@ -205,7 +205,7 @@ number and the offset is the second number. If a comma is used instead of the ``
 offset is the first number and the limit is the second number. This seeming contradiction is intentional - it 
 maximizes compatibility with legacy SQL database systems.
 
-<a id="UNION">
+<a id="UNION"/>
 A compound ```SELECT``` is formed from two or more simple ```SELECT``` statements connected by one of the 
 operators ```UNION```, ```UNION ALL``` , ```INTERSECT```, or ```EXCEPT```. In a compound ```SELECT```, all the 
 constituent ```SELECT``` statements must specify the same number of result columns. There may be only a 
@@ -274,19 +274,49 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
+CREATE TABLE (I):
+
 ![CREATE TABLE](images/create-table.gif)
 
-The ```CREATE TABLE``` statement creates a new table.  If the table already exists, the statement returns an error
-unless the ```IF NOT EXISTS``` clause is present.  
+CREATE TABLE (II):
 
-Note that this the syntax of ```CREATE TABLE``` is different from other traditional database systems.  Table 
-declarations in comdb2 aren't incremental - there's no separate "CREATE INDEX" statement to add indices.  The 
-schema definition defines all keys and constraints.  The schema definition language deserves its 
-[own page](table_schema.html)
+![CREATE TABLE](images/create-table-ddl.gif)
+
+Column list:
+
+![COLUMN LIST](images/column-list.gif)
+
+Column constraint:
+
+![COLUMN CONSTRAINT](images/column-constraint.gif)
+
+Table constraint:
+
+![TABLE CONSTRAINT](images/table-constraint.gif)
+
+Foreign key definition:
+
+![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
+
+Table options:
+
+![TABLE OPTIONS](images/table-options.gif)
+
+The ```CREATE TABLE``` statement creates a new table. If the table already
+exists, the statement returns an error unless the ```IF NOT EXISTS``` clause
+is present.
+
+Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach,
+the schema definition defines all keys and constraints (more information can be
+found on the [table schema](table_schema.html) page).
+
+The second approach, added in version 7.0, follows the usual standard data
+definition language syntax supported by other relational database systems.
+A primary key created using ```CREATE TABLE (II)``` implicitly creates a
+```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
+```NOT NULL```.
 
 See also:
-
-[table-options](#table-options)
 
 [table-schema](table_schema.html)
 
@@ -338,23 +368,45 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
+ALTER TABLE (I):
+
 ![ALTER](images/alter-table.gif)
 
-The ```ALTER TABLE``` statement will change the definition of the named table to the one provided.  Note that the
-change not incremental like in other traditional databases.  There's no need to alter the table multiple times to
-add several indices.  The ```ALTER TABLE``` statement will try to form the most efficient to change the old table
-definition to the new one.  Any fields present in the new schema but absent from the old will be added to the 
-table definition.  Any fields absent in the new schema but present int the old will be dropped.  Keys will be added,
-renamed, or changed.  Constraints will be added or removed. See the [Schema definition](table_schema.html) section
-for details on the table schema definition syntax.  See the [Table options](#table-options) section a list of options 
-that may be set for a table.
+ALTER TABLE (II):
 
-**All** schema changes in Comdb2 are always live.  The database will not acquire long duration table locks during 
-the change and may be freely read from and written to.  If the schema change adds a new field, or grows the size 
-of an existing field, and doesn't modify the table keys, the change is "*instant*" (unless the ```ISC``` table 
-option is set to ```OFF```).  No table rebuild will take place (unless the table option ```REBUILD``` is specified) 
-if it's not needed.  If fields are removed or the size of an existing field is reduced, the schema change will 
-need to rebuild the existing table.  If any key is modified, it'll be rebuilt.
+![ALTER](images/alter-table-ddl.gif)
+
+_**Schema changes in Comdb2 are always live**. The database will not acquire
+long duration table locks during the change and may be freely read from and
+written to.  If the schema change adds a new field, or grows the size of an
+existing field, and doesn't modify the table keys, the change is "*instant*"
+(unless the ```ISC``` table option is set to ```OFF```). No table rebuild will
+take place (unless the table option ```REBUILD``` is specified) if it's not
+needed. If fields are removed or the size of an existing field is reduced, the
+schema change will need to rebuild the existing table. If any key is modified,
+it'll be rebuilt._
+
+The ```ALTER TABLE``` statement will change the definition of the named table
+to the one provided. Note that Comdb2 supports two variants of ```ALTER TABLE```
+syntax.
+
+The first approach uses a [declarative language](table_schema.html) and is not
+incremental like SQL. In this approach there is no need to alter the table
+multiple times to add several indices. The ```ALTER TABLE``` statement will try
+to form the most efficient to change the old table definition to the new one.
+Any fields present in the new schema but absent from the old will be added to
+the table definition. Any fields absent in the new schema but present int the
+old will be dropped. Keys will be added, renamed or changed. Constraints will
+be added or removed. See the [Schema definition](table_schema.html) section for
+details on the table schema definition syntax. See the [table options](#table-options)
+section a list of options that may be set for a table.
+
+The second approach, added in version 7.0, supports the usual standard data
+definition language, like other relational database systems. This syntax can
+be used to ```ADD``` a new column or ```DROP``` an existing column from the
+table. Multiple ADD/DROP operations can be used in the same command. In case of
+```DROP``` operation, the references to the column being dropped will be
+silently removed from the referring keys and constraints definitions.
 
 See also:
 
@@ -377,6 +429,22 @@ to operate on tables that have foreign key constraints, or are referred to by ta
 This restriction is necessary since it's not possible to quickly verify that no constraints are violated.  If all
 records need to be deleted from a table with/referenced by foreign key constrains, please use the ```DELETE``` 
 statement instead.
+
+### CREATE INDEX
+
+![CREATE INDEX](images/create-index.gif)
+
+The ```CREATE INDEX``` statement can be used to create an index on an existing
+table. The support for ```CREATE INDEX``` was added in version 7.0.
+
+### DROP INDEX
+
+![DROP INDEX](images/drop-index.gif)
+
+The ```DROP INDEX``` statement can be used to drop an existing index. A ```DROP
+INDEX``` command without ```ON``` will drop an index with the specified name.
+It, however, would fail if there are multiple indexes in the database with the
+same name. The support for ```DROP INDEX``` was added in version 7.0.
 
 ## Access control
 

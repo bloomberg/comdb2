@@ -23,8 +23,6 @@
 #include <dbqueue.h>
 #include <translistener.h>
 
-#define LISTC_NEXT(currentp, linkv) ((currentp)->linkv.next)
-
 typedef struct trigger trigger;
 struct trigger {
   LINKC_T(trigger) lnk;
@@ -104,7 +102,7 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     if( thedb->qdbs[i] == NULL )
       continue;
     t = sqlite3_malloc(sizeof(trigger));
-    t->name = strdup(thedb->qdbs[i]->dbname);
+    t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;
     if( thedb->qdbs[i]->consumers && thedb->qdbs[i]->consumers[0] )
       t->type = thedb->qdbs[i]->consumers[0]->type;

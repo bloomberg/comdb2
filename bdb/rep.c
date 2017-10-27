@@ -32,7 +32,7 @@
 #include <math.h>
 
 #include <epochlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <rtcpu.h>
 #include "debug_switches.h"
 
@@ -58,7 +58,7 @@
 #include "crc32c.h"
 #include "gettimeofday_ms.h"
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "dbinc/db_page.h"
 #include "dbinc/db_swap.h"
 #include "dbinc/db_shash.h"
@@ -626,7 +626,8 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
     for (i = 0; i < count; i++) {
         if (gblcontext == -1ULL) {
-            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %d\n", hostlist[i]);
+            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %s\n",
+                   hostlist[i]);
             cheap_stack_trace();
         }
 
@@ -846,9 +847,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                             "(rectype %d lsn %s)\n",
                     rectype, lsn_to_str(str, &tmp));
         else
-            logmsg(LOGMSG_USER, "--- berkdb told us to send to %d (%s) "
-                            "(rectype %d lsn %s)\n",
-                    host, host, rectype, lsn_to_str(str, &tmp));
+            logmsg(LOGMSG_USER, "--- berkdb told us to send to %s (%s) "
+                                "(rectype %d lsn %s)\n",
+                   host, host, rectype, lsn_to_str(str, &tmp));
     }
 
     if (bdb_state->attr->repchecksum) {
@@ -963,8 +964,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     if (!gbl_rowlocks && !dontsend) {
 
                         if (gblcontext == -1ULL) {
-                            logmsg(LOGMSG_ERROR, "SENDING context -1 to node %d\n",
-                                    hostlist[i]);
+                            logmsg(LOGMSG_ERROR,
+                                   "SENDING context -1 to node %s\n",
+                                   hostlist[i]);
                             cheap_stack_trace();
                         }
 
@@ -1192,7 +1194,7 @@ static void *elect_thread(void *args)
         return NULL;
     }
 
-    logmsg(LOGMSG_INFO, "thread 0x%x in election\n", pthread_self());
+    logmsg(LOGMSG_INFO, "thread 0x%lx in election\n", pthread_self());
 
     bdb_state->repinfo->in_election = 1;
 
@@ -1302,7 +1304,9 @@ elect_again:
         strcat(hoststring, " ");
     }
 
-    logmsg(LOGMSG_INFO, "0x%x: calling for election with cluster"
+    logmsg(
+        LOGMSG_INFO,
+        "0x%lx: calling for election with cluster"
         " of %d nodes (%d connected) : %s,  %f secs timeout and priority %d\n",
         pthread_self(), elect_count, num_connected, hoststring,
         ((double)elect_time) / 1000000.00, rep_pri);
@@ -1466,7 +1470,7 @@ void call_for_election_and_lose(bdb_state_type *bdb_state)
 */
 static void bdb_reopen(bdb_state_type *bdb_state)
 {
-    logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%x\n", pthread_self());
+    logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%lx\n", pthread_self());
 
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
 }
@@ -1486,6 +1490,7 @@ char *print_permslsn(DB_LSN lsn, char str[])
     return str;
 }
 
+int gbl_write_dummy_trace;
 static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
 {
     if (add_delay)
@@ -1497,8 +1502,16 @@ static void *add_thread_int(bdb_state_type *bdb_state, int add_delay)
         bdb_state = bdb_state->parent;
 
     if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
-        /*not a master anymore */
+        logmsg(LOGMSG_USER, "%s: not-adding: master-hode=%s myhost=%s\n",
+               __func__, bdb_state->repinfo->master_host,
+               bdb_state->repinfo->myhost);
         goto done;
+    } else {
+        if (gbl_write_dummy_trace) {
+            logmsg(LOGMSG_USER,
+                   "%s: adding dummy record for master %s, host %s\n", __func__,
+                   bdb_state->repinfo->master_host, bdb_state->repinfo->myhost);
+        }
     }
 
     add_dummy(bdb_state);
@@ -1737,7 +1750,8 @@ static inline void defer_commits_int(bdb_state_type *bdb_state,
     cosec = (coherency_commit_timestamp / 1000);
     coms = (coherency_commit_timestamp % 1000);
     localtime_r(&cosec, &r);
-    logmsg(LOGMSG_INFO, "%s node %s deferred commits until %02d:%02d:%02d.%03d\n", func,
+    logmsg(LOGMSG_INFO,
+           "%s node %s deferred commits until %02d:%02d:%02d.%03ld\n", func,
            host ? host : "<all>", r.tm_hour, r.tm_min, r.tm_sec, coms);
 }
 
@@ -2192,9 +2206,10 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
 
     if (current_leases >= ((total_nodes / 2) + 1)) {
         if (verify_trace && (last_rc == 0 || (now = time(NULL)) != lastpr)) {
-            logmsg(LOGMSG_USER, "%s line %d verify_master_leases SUCCEEDED: we have %u "
-                    "current leases from %u nodes epoch=%u\n",
-                    func, line, current_leases, total_nodes, time(NULL));
+            logmsg(LOGMSG_USER,
+                   "%s line %d verify_master_leases SUCCEEDED: we have %u "
+                   "current leases from %u nodes epoch=%ld\n",
+                   func, line, current_leases, total_nodes, time(NULL));
             lastpr = now;
         }
 
@@ -2205,9 +2220,10 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
     bad_count++;
 
     if (verify_trace && (last_rc == 1 || (now = time(NULL)) != lastpr)) {
-        logmsg(LOGMSG_USER, "%s line %d verify_master_leases failed: we have %u "
-                        "current leases from %u nodes epoch=%u\n",
-                func, line, current_leases, total_nodes, time(NULL));
+        logmsg(LOGMSG_USER,
+               "%s line %d verify_master_leases failed: we have %u "
+               "current leases from %u nodes epoch=%ld\n",
+               func, line, current_leases, total_nodes, time(NULL));
         lastpr = now;
     }
 
@@ -2296,10 +2312,11 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 
             if (bdb_state->attr->master_lease_set_trace && (now = time(NULL)) > lastpr)
             {
-                logmsg(LOGMSG_USER, "%s: setting lease time for %s to %llu, current "
-                        "time is %llu issue time is %llu epoch is %u\n",
-                        __func__, host, lease_time, base_ts, issue_time,
-                        time(NULL));
+                logmsg(LOGMSG_USER,
+                       "%s: setting lease time for %s to %lu, current "
+                       "time is %lu issue time is %lu epoch is %ld\n",
+                       __func__, host, lease_time, base_ts, issue_time,
+                       time(NULL));
                 lastpr = now;
             }
         }
@@ -2702,8 +2719,8 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     if ((coherent_state = bdb_state->coherent_state[nodeix(host)]) == STATE_INCOHERENT) {
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s is incoherent, not waiting\n", PARM_LSN(seqnum->lsn),
-                    host);
+            logmsg(LOGMSG_USER, PR_LSN " %s is incoherent, not waiting\n",
+                   PARM_LSN(seqnum->lsn), host);
         }
         return 1;
     }
@@ -2730,8 +2747,8 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
         pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s became incoherent, not waiting\n",
-                    PARM_LSN(seqnum->lsn), host);
+            logmsg(LOGMSG_USER, PR_LSN " %s became incoherent, not waiting\n",
+                   PARM_LSN(seqnum->lsn), host);
         }
         return -2;
     }
@@ -2750,8 +2767,8 @@ again:
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
         if (bdb_state->attr->wait_for_seqnum_trace) {
-            logmsg(LOGMSG_USER, " %s is catching up, not waiting\n",
-                    PARM_LSN(seqnum->lsn), host);
+            logmsg(LOGMSG_USER, PR_LSN " %s is catching up, not waiting\n",
+                   PARM_LSN(seqnum->lsn), host);
         }
         return 1;
     }
@@ -2815,9 +2832,10 @@ again:
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
             trigger_unregister_node(host);
             if (bdb_state->attr->wait_for_seqnum_trace) {
-                logmsg(LOGMSG_USER, " err waiting for seqnum: host %s no "
-                        "longer connected\n",
-                        PARM_LSN(seqnum->lsn), host);
+                logmsg(LOGMSG_USER,
+                       PR_LSN " err waiting for seqnum: host %s no "
+                              "longer connected\n",
+                       PARM_LSN(seqnum->lsn), host);
             }
             return -1;
         }
@@ -3054,9 +3072,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
 
         for (i = 0; i < numnodes; i++) {
             if (bdb_state->rep_trace)
-                logmsg(LOGMSG_USER, 
-                        "waiting for initial NEWSEQ from node %d of >= <%s>\n",
-                        nodelist[i], lsn_to_str(str, &(seqnum->lsn)));
+                logmsg(LOGMSG_USER,
+                       "waiting for initial NEWSEQ from node %s of >= <%s>\n",
+                       nodelist[i], lsn_to_str(str, &(seqnum->lsn)));
 
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                                                    nodelist[i], 1000, __LINE__);
@@ -3123,8 +3141,9 @@ got_ack:
         begin_time = time_epochms();
 
         if (bdb_state->rep_trace)
-            logmsg(LOGMSG_USER, "waiting for NEWSEQ from node %d of >= <%s> timeout %d\n",
-                    nodelist[i], lsn_to_str(str, &(seqnum->lsn)), waitms);
+            logmsg(LOGMSG_USER,
+                   "waiting for NEWSEQ from node %s of >= <%s> timeout %d\n",
+                   nodelist[i], lsn_to_str(str, &(seqnum->lsn)), waitms);
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
                                                waitms, __LINE__);
@@ -3270,9 +3289,7 @@ done_wait:
                             __func__, __LINE__);
                     abort();
                 }
-                pthread_cond_broadcast(&bdb_state->durable_lsn_wait);
                 pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
-                udp_send_durable_lsn(bdb_state, &seqnum->lsn, cur_gen);
                 durable_count++;
                 was_durable = 1;
             }
@@ -3466,8 +3483,8 @@ int send_myseqnum_to_master(bdb_state_type *bdb_state, int nodelay)
 
         count++;
         if ((now = time(NULL)) > lastpr && !bdb_state->attr->createdbs) {
-            logmsg(LOGMSG_WARN, "%s: get_myseqnum returned non-0, count=%llu\n",
-                    __func__, count);
+            logmsg(LOGMSG_WARN, "%s: get_myseqnum returned non-0, count=%lu\n",
+                   __func__, count);
             lastpr = now;
         }
     }
@@ -3502,8 +3519,8 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
                           sizeof(seqnum_type), nodelay);
 
             if (rc) {
-                logmsg(LOGMSG_ERROR, "0x%x %s:%d net_send rc=%d\n", pthread_self(),
-                        __FILE__, __LINE__, rc);
+                logmsg(LOGMSG_ERROR, "0x%lx %s:%d net_send rc=%d\n",
+                       pthread_self(), __FILE__, __LINE__, rc);
             }
         }
     }
@@ -3698,8 +3715,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
-        logmsg(LOGMSG_WARN, "process_berkdb: DB_REP_NEWMASTER %s time=%u generation=%u\n",
-                host, time(NULL), generation);
+        logmsg(LOGMSG_WARN,
+               "process_berkdb: DB_REP_NEWMASTER %s time=%ld generation=%u\n",
+               host, time(NULL), generation);
 
         /* Check if it's us. */
         if (host == bdb_state->repinfo->myhost) {
@@ -3828,8 +3846,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         if (bdb_state->repinfo->master_host != bdb_state->repinfo->myhost) {
             /* force this node to resync its log */
             if (bdb_state->attr->elect_on_mismatched_master) {
-                logmsg(LOGMSG_ERROR, "Call for election on strange msgtype on replicant\n",
-                        r);
+                logmsg(LOGMSG_ERROR,
+                       "Call for election on strange msgtype %d on replicant\n",
+                       r);
                 call_for_election(bdb_state);
             } else
                 abort();
@@ -4093,10 +4112,11 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
 
         // Useless leases suggest intolerable time-skew..
         if ((now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_WARN, "%s: got useless lease: lease_base=%llu "
-                    "my_base=%llu lease_time=%u diff=%u total-useless=%llu\n",
-                    __func__, colease.issue_time, base_ts, colease.lease_ms,
-                    (base_ts - coherency_timestamp), no_lease_count);
+            logmsg(LOGMSG_WARN,
+                   "%s: got useless lease: lease_base=%lu "
+                   "my_base=%lu lease_time=%u diff=%lu total-useless=%lu\n",
+                   __func__, colease.issue_time, base_ts, colease.lease_ms,
+                   (base_ts - coherency_timestamp), no_lease_count);
             lastpr = now;
         }
     }
@@ -4180,7 +4200,7 @@ struct thdpool *gbl_pgcompact_thdpool;
 
 int pgcompact_thdpool_init(void)
 {
-    gbl_pgcompact_thdpool = thdpool_create("PAGE COMPACT pool", 0);
+    gbl_pgcompact_thdpool = thdpool_create("pgcompactpool", 0);
 
     thdpool_set_exit(gbl_pgcompact_thdpool);
     thdpool_set_stack_size(gbl_pgcompact_thdpool, (1 << 20));
@@ -4801,55 +4821,6 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
     }
 }
 
-
-static void update_durable_lsn(bdb_state_type *bdb_state)
-{
-    DB_LSN durable_lsn;
-    uint32_t durable_gen;
-    char *master, *eid;
-
-    BDB_READLOCK("calc_durable_lsn");
-    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master);
-    bdb_state->dbenv->get_rep_eid(bdb_state->dbenv, &eid);
-    if (!strcmp(master, eid)) {
-        DB_LSN old_durable_lsn;
-        uint32_t old_durable_gen;
-        bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &old_durable_lsn,
-                                          &old_durable_gen);
-        calculate_durable_lsn(bdb_state, &durable_lsn, &durable_gen, 0);
-
-        if ((old_durable_gen < durable_gen) ||
-            (old_durable_gen == durable_gen && 
-             (log_compare(&old_durable_lsn, &durable_lsn) < 0))) {
-
-            if (durable_lsn.file <= 0) {
-                logmsg(LOGMSG_WARN, "Watcher thread not updating, calc_durable_lsn "
-                       "returns [%d][%d] generation %d\n", durable_lsn.file,
-                       durable_lsn.offset, durable_gen);
-                durable_gen = old_durable_gen;
-                durable_lsn = old_durable_lsn;
-            }
-            else {
-                bdb_state->dbenv->set_durable_lsn(bdb_state->dbenv, &durable_lsn,
-                                                  durable_gen);
-                ctrace("Watcher updating durable lsn from [%d][%d] gen %d "
-                       "to [%d][%d] gen %d\n", old_durable_lsn.file, 
-                       old_durable_lsn.offset, old_durable_gen, durable_lsn.file,
-                       durable_lsn.offset, durable_gen);
-            }
-        }
-        else {
-            durable_gen = old_durable_gen;
-            durable_lsn = old_durable_lsn;
-        }
-
-        if (durable_lsn.file) {
-            udp_send_durable_lsn(bdb_state, &durable_lsn, durable_gen);
-        }
-    }
-    BDB_RELLOCK();
-}
-
 extern int gbl_dump_locks_on_repwait;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state);
@@ -4976,8 +4947,9 @@ void *watcher_thread(void *arg)
                                       USER_TYPE_COMMITDELAYMORE, NULL, 0, 1);
 
                         if (rc != 0) {
-                            logmsg(LOGMSG_ERROR, "failed to send COMMITDELAYMORE to %d\n",
-                                    bdb_state->repinfo->master_host);
+                            logmsg(LOGMSG_ERROR,
+                                   "failed to send COMMITDELAYMORE to %s\n",
+                                   bdb_state->repinfo->master_host);
                         }
                     }
 
@@ -5092,12 +5064,6 @@ void *watcher_thread(void *arg)
             /* periodically send info too all nodes about our curresnt LSN and
                the current logfile we are on */
             send_myseqnum_to_all(bdb_state, 0);
-        }
-
-        bdb_state->dbenv->getattr(
-            bdb_state->dbenv, "elect_highest_committed_gen", NULL, &is_durable);
-        if (is_durable) {
-            update_durable_lsn(bdb_state);
         }
 
         BDB_RELLOCK();
@@ -5287,8 +5253,8 @@ void *watcher_thread(void *arg)
                     time_t crt = time(NULL);
                     if (crt >= (gbl_lost_master_time +
                                 bdb_state->attr->nomaster_alert_seconds)) {
-                        logmsg(LOGMSG_WARN, "NOMASTER FOR %d seconds\n",
-                                crt - gbl_lost_master_time);
+                        logmsg(LOGMSG_WARN, "NOMASTER FOR %ld seconds\n",
+                               crt - gbl_lost_master_time);
                         gbl_ignore_lost_master_time = 1;
                     }
                 }
@@ -5303,8 +5269,8 @@ void *watcher_thread(void *arg)
 
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
-                logmsg(LOGMSG_DEBUG, "0x%x %s:%d %s: calling for election\n",
-                        pthread_self(), __FILE__, __LINE__, __func__);
+                logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
+                       pthread_self(), __FILE__, __LINE__, __func__);
 
                 call_for_election(bdb_state);
             }
@@ -5522,9 +5488,11 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
             (void *)&data, sizeof(data), (uint8_t **)&buf, &buflen, 1, waitms)) != 0) {
         end_time = gettimeofday_ms();
         if (rc == NET_SEND_FAIL_TIMEOUT) {
-            logmsg(LOGMSG_WARN, "%s line %d: timed out waiting for start_lsn from master %s "
-                    "after %u ms\n", __func__, __LINE__, bdb_state->repinfo->master_host,
-                    end_time - start_time);
+            logmsg(LOGMSG_WARN,
+                   "%s line %d: timed out waiting for start_lsn from master %s "
+                   "after %lu ms\n",
+                   __func__, __LINE__, bdb_state->repinfo->master_host,
+                   end_time - start_time);
         }
         else {
             logmsg(LOGMSG_USER, "%s line %d: net_send_message_payload_ack returns %d\n",
@@ -5572,196 +5540,4 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
     return 0;
 }
 
-void receive_durable_lsn(void *ack_handle, void *usr_ptr, char *from_host,
-                         int usertype, void *dta, int dtalen, uint8_t is_tcp)
-{
-    const uint8_t *p_buf, *p_buf_end;
-    uint32_t cur_gen;
-    udp_durable_lsn_t udp_durable_lsn;
-    bdb_state_type *bdb_state;
 
-    p_buf = (uint8_t *)dta;
-    p_buf_end = p_buf + UDP_DURABLE_LSN_TYPE_LEN;
-
-    if ((p_buf = udp_durable_lsn_type_get(&udp_durable_lsn, p_buf,
-                                          p_buf_end)) == NULL)
-        goto done;
-
-    bdb_state = (bdb_state_type *)usr_ptr;
-    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &cur_gen);
-
-    if (cur_gen == udp_durable_lsn.generation) {
-        pthread_mutex_lock(&bdb_state->durable_lsn_lk);
-        if (udp_durable_lsn.lsn.file == 0) {
-            logmsg(LOGMSG_FATAL, "%s: aborting on insane set-durable-lsn setting\n",
-                    __func__);
-            abort();
-        }
-        bdb_state->dbenv->set_durable_lsn(
-            bdb_state->dbenv, &udp_durable_lsn.lsn, udp_durable_lsn.generation);
-        pthread_cond_broadcast(&bdb_state->durable_lsn_wait);
-        pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
-    }
-
-done:
-    /* Ack regardless - this shouldn't fail, and there's nothing to do if it
-     * does. */
-    if (ack_handle)
-        net_ack_message(ack_handle, 0);
-}
-
-/* Don't allow a snapshot txn to start until lsn that the snapshot 
- * started becomes durable.  If durable lsn is beyond the end of the
- * logfile, return immediately. */
-int bdb_durable_block(bdb_state_type *bdb_state, DB_LSN *commit_lsn,
-                      uint32_t original_gen, int wait_durable)
-{
-    DB_LSN durable_lsn, cur_lsn;
-    struct timespec now;
-    int rc, coherent, desired, maxwait_ms, totwait_ms, valid_master_lease = 1, block_test = 0;
-    int fail = 0;
-    char *failstr = NULL;
-    uint32_t durable_gen, current_gen;
-    extern int gbl_durable_block_test;
-    static unsigned long long reqcount;
-    char lease_machine[128];
-    static time_t lastpr = 0;
-    time_t nowpr;
-
-    reqcount++;
-
-    if (!bdb_state->attr->durable_lsns)
-        return 0;
-
-    maxwait_ms = totwait_ms = 0;
-
-    BDB_READLOCK("bdb_durable_block");
-    __log_txn_lsn(bdb_state->dbenv, &cur_lsn, NULL, NULL);
-    bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
-    bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
-                                      &durable_gen);
-    BDB_RELLOCK();
-
-    pthread_mutex_lock(&bdb_state->durable_lsn_lk);
-
-    while (1) {
-
-        if (!(coherent = bdb_am_i_coherent(bdb_state))) {
-            fail = 1;
-            failstr = "no longer coherent";
-            break;
-        }
-
-        if (desired = bdb_lock_desired(bdb_state)) {
-            fail = 1;
-            failstr = "lock desired";
-            break;
-        }
-            
-        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost &&
-                bdb_state->attr->master_lease && !(valid_master_lease = 
-                verify_master_leases(bdb_state, __func__, __LINE__))) {
-            fail = 1;
-            failstr = "verify master leases failed";
-            break;
-        }
-
-        /* Fail on a generation change (very conservative) */
-        if (current_gen != original_gen) {
-            fail = 1;
-            failstr = "generation change";
-            break;
-        }
-
-        if (wait_durable) {
-            if (durable_gen > current_gen) {
-                fail = 1;
-                failstr = "durable generation jumped current";
-                break;
-            }
-
-            if (gbl_durable_block_test && !(rand() % 10)) {
-                fail = 1;
-                failstr = "durable_block test failure";
-                break;
-            }
-
-            if (durable_gen == original_gen && 
-                    (log_compare(commit_lsn, &durable_lsn) <= 0) &&
-                    (log_compare(commit_lsn, &cur_lsn) <= 0)) {
-                break;
-            }
-        }
-
-        else {
-            if (current_gen > original_gen ||
-                    (log_compare(commit_lsn, &cur_lsn) <= 0)) {
-                break;
-            }
-        }
-
-        if (maxwait_ms && (totwait_ms < maxwait_ms)) {
-            fail = 1;
-            failstr = "timeout waiting";
-            break;
-        }
-
-        int poll_interval_ms = bdb_state->attr->durable_lsn_poll_interval_ms;
-
-        if (poll_interval_ms <= 0)
-            poll_interval_ms = 200;
-
-        clock_gettime(CLOCK_REALTIME, &now);
-
-        now.tv_nsec += (poll_interval_ms * 1000000); // 1 million ms in an ns
-        now.tv_sec += (now.tv_nsec / 1000000000);    // 1 billion ns in a second
-        now.tv_nsec %= 1000000000;
-
-        rc = pthread_cond_timedwait(&bdb_state->durable_lsn_wait,
-                                    &bdb_state->durable_lsn_lk, &now);
-
-        BDB_READLOCK("bdb_durable_block_loop");
-        __log_txn_lsn(bdb_state->dbenv, &cur_lsn, NULL, NULL);
-        bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
-        bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
-                                          &durable_gen);
-        BDB_RELLOCK();
-
-        totwait_ms += poll_interval_ms;
-
-        // allow this to change
-        maxwait_ms = bdb_state->attr->durable_maxwait_ms;
-    }
-    pthread_mutex_unlock(&bdb_state->durable_lsn_lk);
-
-    if (fail) {
-        logmsg(LOGMSG_ERROR, "%s failed: %s, commit-lsn[%d][%d]\n", __func__, failstr, commit_lsn->file, 
-                commit_lsn->offset);
-        return -1;
-    }
-
-    int cmp1=0, cmp2=0;
-    assert(!wait_durable || (((cmp1=log_compare(commit_lsn, &durable_lsn)) <= 0) && 
-            ((cmp2=log_compare(commit_lsn, &cur_lsn)) <= 0)));
-
-    if (bdb_state->attr->verbose_durable_block_trace) {
-        if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
-            logmsg(LOGMSG_USER, "%s: Allowing snapshot to start on master at [%d][%d] "
-                   "generation %u time is %u\n",
-                   __func__, commit_lsn->file, commit_lsn->offset, original_gen,
-                   time(NULL));
-        } else {
-            extern uint64_t coherency_timestamp;
-            extern char coherency_master[128];
-            logmsg(LOGMSG_USER, "%s: Allowing snapshot to start on replicant at [%d][%d] "
-                   "generation %u "
-                   "lease from %s time-remaining %llu time is %u\n",
-                   __func__, commit_lsn->file, commit_lsn->offset, original_gen,
-                   coherency_master,
-                   (uint64_t)(coherency_timestamp - gettimeofday_ms()),
-                   time(NULL));
-        }
-    }
-
-    return 0;
-}

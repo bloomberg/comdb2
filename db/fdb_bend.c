@@ -170,7 +170,8 @@ int fdb_svc_init(void)
 {
     center = (svc_center_t *)calloc(1, sizeof(svc_center_t));
     if (!center) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, sizeof(svc_center_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(svc_center_t));
         return -1;
     }
 
@@ -207,7 +208,6 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
     fdb_tran_t *trans;
 
     comdb2uuid_clear(zerouuid);
-    assert(flags == FDB_MSG_CURSOR_OPEN_SQL);
 
     /* create cursor */
     cur = (svc_cursor_t *)calloc(1, sizeof(svc_cursor_t));
@@ -300,12 +300,11 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
 #if 0
 svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int version, int flags)
 {
-   struct db      *db;
+   struct dbtable      *db;
    struct schema  *sc;
    svc_cursor_t   *cur;
    bdb_state_type *state;
    int            bdberr = 0;
-   int            tblnum;
    int            ixnum;
    int            outlen;
    int            rc;
@@ -316,16 +315,15 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
       /* TODO: check the version here, after transaction is created */
 
       struct sql_thread *thd = pthread_getspecific(query_info_key);
-      get_sqlite_tblnum_and_ixnum(thd, rootpage, &tblnum, &ixnum);
+      db = get_sqlite_db(thd, rootpage, &ixnum);
 
-      if (tblnum<0 || tblnum >=thedb->num_dbs || thedb->dbs[tblnum]->nix < ixnum)
+      if (!db)
       {
          fprintf(stderr, "%s: failed to retrieve bdb_state for table rootpage=%d\n", 
                __func__, rootpage);
          return NULL;
       }
 
-      db = thedb->dbs[tblnum];
       sc = (ixnum<0)?db->schema:db->ixschema[ixnum];
       state = thedb->dbs[tblnum]->handle;
 
@@ -342,8 +340,6 @@ svc_cursor_t* fdb_svc_cursor_open(char *tid, char *cid, int rootpage, int versio
       outlen = 0; /* ?*/
    }
 
-
-   assert(flags == FDB_MSG_CURSOR_OPEN_SQL);
 
    /* create cursor */
    cur = (svc_cursor_t*)calloc(1, sizeof(svc_cursor_t) + outlen);
@@ -442,7 +438,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%d: CLosing rem cursor cid=%llx autocommit=%d\n",
+        logmsg(LOGMSG_USER, "%lu: CLosing rem cursor cid=%llx autocommit=%d\n",
                pthread_self(), *(unsigned long long *)cur->cid,
                cur->autocommit);
 
@@ -568,7 +564,7 @@ int fdb_svc_cursor_move(enum svc_move_types type, char *cid, char **data,
                 rc = cur->bdbc->last(cur->bdbc, &bdberr);
                 break;
             default:
-                logmsg(LOGMSG_FATAL, "%s: unknown move\n", __func__, type);
+                logmsg(LOGMSG_FATAL, "%s: unknown move %d\n", __func__, type);
                 abort();
             }
         } while (0); /* here loop until no deadlock */
@@ -646,15 +642,15 @@ again:
 
             if (recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %d failed dd recovery\n", __func__,
-                            pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
+                           __func__, pthread_self());
                 return SQLITE_DEADLOCK;
             }
 
             if (nretries >= gbl_maxretries) {
-               logmsg(LOGMSG_ERROR, "too much contention fetching "
-                       "tbl %s blob %s tried %d times\n",
-                       thedb->dbs[cur->tblnum]->dbname, f->name, nretries);
+                logmsg(LOGMSG_ERROR, "too much contention fetching "
+                                     "tbl %s blob %s tried %d times\n",
+                       thedb->dbs[cur->tblnum]->tablename, f->name, nretries);
                 return SQLITE_DEADLOCK;
             }
             goto again;
@@ -1049,7 +1045,7 @@ done:
     return rc;
 }
 
-static int fdb_ondisk_to_unpacked(struct db *db, struct schema *s,
+static int fdb_ondisk_to_unpacked(struct dbtable *db, struct schema *s,
                                   svc_cursor_t *cur, char *in,
                                   unsigned long long genid, Mem *m, int nMems,
                                   int *p_hdrsz, int *p_datasz, int *p_ncols)
@@ -1101,7 +1097,7 @@ done:
     return rc;
 }
 
-static int fdb_ondisk_to_packed_sqlite_tz(struct db *db, struct schema *s,
+static int fdb_ondisk_to_packed_sqlite_tz(struct dbtable *db, struct schema *s,
                                           char *in, unsigned long long genid,
                                           char *out, int maxout, int *reqsize,
                                           svc_cursor_t *cur)
@@ -1229,7 +1225,7 @@ done:
 static int fdb_convert_data(svc_cursor_t *cur, unsigned long long *genid,
                             char **data, int *datalen)
 {
-    struct db *db = thedb->dbs[cur->tblnum];
+    struct dbtable *db = thedb->dbs[cur->tblnum];
     struct schema *sc =
         (cur->ixnum < 0) ? db->schema : db->ixschema[cur->ixnum];
     uint8_t ver;
@@ -1274,7 +1270,7 @@ struct key_mem_info {
     int fldidx;
 };
 
-static int fdb_packed_sqlite_to_ondisk_key_tz(struct db *db, struct schema *s,
+static int fdb_packed_sqlite_to_ondisk_key_tz(struct dbtable *db, struct schema *s,
                                               char *in,
                                               unsigned long long genid,
                                               char *out, int maxout,
@@ -1292,7 +1288,7 @@ int fdb_svc_cursor_find(char *cid, int keylen, char *key, int last,
                         char **datacopy, int *datacopylen, int isuuid)
 {
     svc_cursor_t *cur;
-    struct db *db;
+    struct dbtable *db;
     struct schema *sc;
     struct convert_failure convfail;
     int bdberr = 0;
@@ -1384,7 +1380,7 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
 
     trans = &clnt->dbtran;
 
-    assert(trans == NULL);
+    assert(trans != NULL);
 
     pthread_mutex_lock(&clnt->dtran_mtx);
 

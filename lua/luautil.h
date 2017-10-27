@@ -39,6 +39,5 @@ const char *luabb_dbtypename(Lua, int idx);
 #define luabb_dbtype(l, i) luabb_type(l, i)
 dbtypes_enum luabb_type(Lua, int idx);
 int to_positive_index(Lua, int);
-void luabb_tohex(uint8_t *out, const uint8_t *in, size_t len);
 void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
 #endif

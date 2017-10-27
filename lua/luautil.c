@@ -578,18 +578,6 @@ double luabb_tonumber(Lua l, int idx)
     }
 }
 
-/* out should be appropriately sized */
-void luabb_tohex(uint8_t *out, const uint8_t *in, size_t len)
-{
-    char hex[] = "0123456789abcdef";
-    const uint8_t *end = in + len;
-    while (in != end) {
-        uint8_t i = *(in++);
-        *(out++) = hex[(i & 0xf0) >> 4];
-        *(out++) = hex[i & 0x0f];
-    }
-    *out = 0;
-}
 
 /* out should be appropriately sized */
 void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len)

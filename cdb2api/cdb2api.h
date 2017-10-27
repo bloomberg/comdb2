@@ -230,8 +230,8 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 
-void cdb2_enable_sockpool();
-void cdb2_disable_sockpool();
+void cdb2_enable_sockpool(void);
+void cdb2_disable_sockpool(void);
 
 int cdb2_push_context(cdb2_hndl_tp *hndl, const char *msg);
 int cdb2_pop_context(cdb2_hndl_tp *hndl);

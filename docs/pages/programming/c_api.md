@@ -37,8 +37,6 @@ failure before freeing the handle object with [cdb2_close](#cdb2close).
 
 Parameters:
 
-Parameters:
-
 |Name|Type|Description|Notes|
 |-|-|-|-|
 |*hndl*| input/output | pointer to a cdb2 handle | A handle is allocated and a pointer to it is written into *hndl*
@@ -48,11 +46,11 @@ Parameters:
 
 |Flag Value|Description|
 |---|---|
-|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2geteffects)|
+|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2_get_effects)|
 |```CDB2_ROOM``` |  Queries are sent to one of the nodes in the same data center (see section on [comdb2db](clients.html#comdb2db) to see how this is configured) |
 |```CDB2_RANDOMROOM``` |  Queries are sent to one of the randomly selected node of the same data center |
 |```CDB2_RANDOM``` |  Queries are sent to one of the randomly selected node of the same or different data center |
-|```CDB2_DIRECTCPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
+|```CDB2_DIRECT_CPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
 
 
 ### cdb2_close
@@ -62,7 +60,7 @@ int cdb2_close(cdb2_hndl_tp *hndl);
 Description:
 
 This routine closes the cdb2 handle and releases all associated memory. 
-Depending on your [client setup](/clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
+Depending on your [client setup](clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
 
 Parameters:
 
@@ -286,6 +284,7 @@ Return Values:
 |---|---|---|
 |`CDB2_INTEGER`, `CDB2_REAL`, `CDB2_CSTRING`, `CDB2_BLOB`, `CDB2_DATETIME`, `CDB2_DATETIMEUS`, `CDB2T_INTERVALYM`, `CDB2_INTERVALDS`, `CDB2_INTERVALDSUS`| The datatype of the numbered column | Numeric data is always promoted to its largest natural form, eg: a `short` field in the schema will come back from the db as an `int64_t`, see [cdb2_column_value](#cdb2columnvalue).|
 
+
 ### cdb2_bind_param
 ```
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *name, int type, const void *varaddr, int length);
@@ -325,6 +324,37 @@ Parameters:
 |*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
 |*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
+### cdb2_bind_index
+```
+int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type, const void *varaddr, int length);
+```
+
+Description:
+
+This routine is used to bind value pointers to named or unnamed replaceable params in sql statement. The index starts from 1, and increases for every new parameter in the statement. This version of cdb2_bind_* is faster than cdb2_bind_param.
+
+For example:
+
+```c
+char *sql = "INSERT INTO t1(a, b) values(?, ?)”
+
+char *a = "foo";
+int64_t b = "bar";
+
+cdb2_bind_index(db, 1, CDB2_CSTRING, a, strlen(a));
+cdb2_bind_index((db, 2, CDB2_INTEGER, &b, sizeof(int64_t));
+cdb2_run_statement(db, sql);
+```
+
+Parameters:
+
+|Name|Type|Description|Notes|
+|---|---|---|--|
+|*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
+| index | input | The index of replaceable param | The value associated with this pointer (valueaddr  arg) should not change between bind and [cdb2_run_statement](#cdb2runstatement) |
+|*type*| input | The type of replaceable param | |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2runstatement), and for numeric types must be signed. |
+|*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
 ### cdb2_get_effects
 ```
@@ -333,7 +363,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
 
 Description:
 
-This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). 
+This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). This routine initialize the data members of the ```cdb2_effects_tp``` structure (see below), the address of which is supplied as an argument. Number of rows affected is a sum of number of rows updated, deleted and inserted.
 These values only make sense after COMMIT, since the transaction may get replayed and the values for each individual statements may change.  The replay can be turned off by running ```"SET VERIFYRETRY OFF"```, after which you can call ```cdb2_get_effects``` in the middle of a transaction. 
 For rationale, see the [Comdb2 transaction model](transaction_model.html)
 section.
@@ -344,6 +374,16 @@ Parameters:
 |---|---|---|---|
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
 |*effects*| input | The pointer to effects structure | | 
+
+```c
+typedef struct cdb2_effects_type {
+    int num_affected;
+    int num_selected;
+    int num_updated;
+    int num_deleted;
+    int num_inserted;
+} cdb2_effects_tp;
+```
 
 ### cdb2_clearbindings
 ```
@@ -385,7 +425,7 @@ int cdb2_set_comdb2db_config(char *cfg_file);
 Description:
 
 This function sets location of a config file the API uses to discover databases. 
-See the [Client Setup] section for more details.
+See the [Client setup](clients.html) section for more details.
 
 Parameters:
 

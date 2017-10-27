@@ -89,8 +89,8 @@ static int systblColumnsDisconnect(sqlite3_vtab *pVtab){
 
 static int checkRowidAccess(systbl_columns_cursor *pCur) {
   while (pCur->iRowid < thedb->num_dbs) {
-    struct db *pDb = thedb->dbs[pCur->iRowid];
-    char *x = pDb->dbname;
+    struct dbtable *pDb = thedb->dbs[pCur->iRowid];
+    char *x = pDb->tablename;
     int bdberr;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->sqlclntstate->user, x, ACCESS_READ, &bdberr);
@@ -146,12 +146,12 @@ static int systblColumnsColumn(
   int i
 ){
   systbl_columns_cursor *pCur = (systbl_columns_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   struct field *pField = &pDb->schema->member[pCur->iColid];
 
   switch( i ){
     case STCOL_TABLE: {
-      sqlite3_result_text(ctx, pDb->dbname, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
     }
     case STCOL_COLUMN: {

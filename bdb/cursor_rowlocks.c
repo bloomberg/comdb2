@@ -55,7 +55,7 @@
 #include <assert.h>
 #include <strings.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_cursor.h"
 #include "bdb_int.h"
@@ -64,6 +64,7 @@
 #include "bdb_osqllog.h"
 #include <thread_malloc.h>
 #include "locks.h"
+#include "util.h"
 
 /* For pthread self debug trace */
 #include <pthread.h>
@@ -127,31 +128,6 @@ static inline int close_pagelock_cursor(bdb_berkdb_t *berkdb)
     return rc;
 }
 
-/* Character to hex */
-static inline char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-
-/* Return a hex string */
-static inline char *tohex(char *output, char *key, int keylen)
-{
-    char byte[3];
-    int i = 0;
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
 
 /* Nullify cursor after a failed unpause */
 static inline int stale_pagelock_cursor(bdb_berkdb_t *berkdb)
@@ -295,7 +271,7 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
         char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = tohex(srcmemp, (char *)r->lastkey, r->keylen);
+        srckeyp = util_tohex(srcmemp, (char *)r->lastkey, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s return_key='%s'\n", berkdb,
                 __func__, bdb_state->name, curtypetostr(cur->type), srckeyp);
@@ -2016,10 +1992,11 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
     /* I'm just looking for which function to instrument */
     if (debug_trace(berkdb) && exit_lkcount > 100 &&
         exit_lkcount > enter_lkcount) {
-        logmsg(LOGMSG_USER, "thd %x function %s %s %d lock-count incremented from "
-                        "%d to %d\n",
-                pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe",
-                cur->idx, enter_lkcount, exit_lkcount);
+        logmsg(LOGMSG_USER,
+               "thd %lx function %s %s %d lock-count incremented from "
+               "%d to %d\n",
+               pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe",
+               cur->idx, enter_lkcount, exit_lkcount);
 
         /* Grab the number of cursors */
         cursor_count = cur->ifn->count(cur->ifn->countarg);
@@ -2029,19 +2006,19 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
             bdb_state->dbenv, cur->curtran->lockerid, &page_lock_count);
 
         if (page_lock_count > cursor_count) {
-            logmsg(LOGMSG_USER, "thd %x function %s %s %d pagelock-count is "
-                            "%d cursor count is  %d\n",
-                    pthread_self(), func,
-                    cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
-                    page_lock_count, cursor_count);
+            logmsg(LOGMSG_USER, "thd %lx function %s %s %d pagelock-count is "
+                                "%d cursor count is  %d\n",
+                   pthread_self(), func,
+                   cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
+                   page_lock_count, cursor_count);
         }
 
         if (cur->max_page_locks < page_lock_count) {
-            logmsg(LOGMSG_USER, "thd %x function %s %s %d incrementing max "
-                            "pagelock count from %d to %d\n",
-                    pthread_self(), func,
-                    cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
-                    cur->max_page_locks, page_lock_count);
+            logmsg(LOGMSG_USER, "thd %lx function %s %s %d incrementing max "
+                                "pagelock count from %d to %d\n",
+                   pthread_self(), func,
+                   cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
+                   cur->max_page_locks, page_lock_count);
 
             cur->max_page_locks = page_lock_count;
         }
@@ -2081,18 +2058,19 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = tohex(srcmemp, (char *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, (char *)srckey, keylen);
             }
 
             /* Print */
-            logmsg(LOGMSG_USER, "Cur %p thd %d %s tbl %s %s how=%d srch='%s'\n",
-                    berkdb, pthread_self(), func, bdb_state->name,
-                    curtypetostr(cur->type), how, srckeyp);
+            logmsg(LOGMSG_USER,
+                   "Cur %p thd %lu %s tbl %s %s how=%d srch='%s'\n", berkdb,
+                   pthread_self(), func, bdb_state->name,
+                   curtypetostr(cur->type), how, srckeyp);
         } else {
             /* Print */
-            logmsg(LOGMSG_USER, "Cur %p thd %d %s tbl %s %s how=%d\n", berkdb,
-                    pthread_self(), func, bdb_state->name,
-                    curtypetostr(cur->type), how);
+            logmsg(LOGMSG_USER, "Cur %p thd %lu %s tbl %s %s how=%d\n", berkdb,
+                   pthread_self(), func, bdb_state->name,
+                   curtypetostr(cur->type), how);
         }
 
         /* Grab the lock count if debugging */
@@ -2227,13 +2205,13 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = tohex(srcmemp, (char *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, (char *)srckey, keylen);
             }
 
             /* Found key to hex */
             if (fndkey) {
                 fndmemp = alloca((2 * keylen) + 2);
-                fndkeyp = tohex(fndmemp, (char *)fndkey, keylen);
+                fndkeyp = util_tohex(fndmemp, (char *)fndkey, keylen);
             }
 
             /* Print */
@@ -2245,10 +2223,10 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
                     lsn.offset, *bdberr);
         } else {
             /* Print */
-            logmsg(LOGMSG_USER, 
-                "Cur %p %s tbl %s how=%d returns %d lsn='%d:%d' bdberr=%d\n",
-                berkdb, func, bdb_state->name, curtypetostr(cur->type), how,
-                rcode, r->page, r->index, lsn.file, lsn.offset, *bdberr);
+            logmsg(LOGMSG_USER, "Cur %p %s tbl %s type %s how=%d page %d index "
+                                "%d returns %d lsn='%d:%d' bdberr=%d\n",
+                   berkdb, func, bdb_state->name, curtypetostr(cur->type), how,
+                   rcode, r->page, r->index, lsn.file, lsn.offset, *bdberr);
         }
     }
 
@@ -2611,7 +2589,7 @@ int bdb_berkdb_rowlocks_dta(bdb_berkdb_t *berkdb, char **dta, int *bdberr)
         char *srcdtap;
 
         srcmemp = alloca((2 * r->dtalen) + 2);
-        srcdtap = tohex(srcmemp, r->dta, r->dtalen);
+        srcdtap = util_tohex(srcmemp, r->dta, r->dtalen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s dta='%s'\n", berkdb, __func__,
                 bdb_state->name, curtypetostr(cur->type), srcdtap);
@@ -2634,7 +2612,7 @@ int bdb_berkdb_rowlocks_key(bdb_berkdb_t *berkdb, char **key, int *bdberr)
         char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = tohex(srcmemp, (char *)r->key, r->keylen);
+        srckeyp = util_tohex(srcmemp, (char *)r->key, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s key='%s'\n", berkdb, __func__,
                 bdb_state->name, curtypetostr(cur->type), srckeyp);

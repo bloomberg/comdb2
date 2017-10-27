@@ -116,7 +116,12 @@ __os_r_attach(dbenv, infop, rp)
 	dbenv->set_use_sys_malloc(dbenv, 1);
 
 	if (!gbl_largepages || rp->size < MB_2) {
-		ret = __os_calloc(dbenv, 1, rp->size, &infop->addr);
+        if (rp->size != 0)
+            ret = __os_calloc(dbenv, 1, rp->size, &infop->addr);
+        else {
+            infop->addr = NULL;
+            ret = 0;
+        }
 	} else {
 		char name[MAXPATHLEN];
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
@@ -128,10 +133,10 @@ __os_r_attach(dbenv, infop, rp)
 		}
 		size_t less = rp->size % MB_2;
 		if (less) {
-			logmsg(LOGMSG_INFO, "os_r_attach: increasing size from %u ",
+			logmsg(LOGMSG_INFO, "os_r_attach: increasing size from %ld ",
 				rp->size);
 			rp->size += (MB_2 - less);
-			logmsg(LOGMSG_INFO, "to %u\n", rp->size);
+			logmsg(LOGMSG_INFO, "to %ld\n", rp->size);
 		}
 		infop->addr =
 			mmap(NULL, rp->size, PROT_READ | PROT_WRITE, MAP_SHARED,
@@ -142,7 +147,7 @@ __os_r_attach(dbenv, infop, rp)
 			unlink(name);
 			exit(1);
 		}
-		logmsg(LOGMSG_INFO, "os_r_attach: mmaped %s (size: %u) at %p\n",
+		logmsg(LOGMSG_INFO, "os_r_attach: mmaped %s (size: %ld) at %p\n",
 			name, rp->size, infop->addr);
 		ret = 0;
 	}
@@ -169,18 +174,17 @@ __os_r_detach(dbenv, infop, destroy)
 
 	rp = infop->rp;
 
-	if (infop->fd < 0) {
+	if (infop->fd < 0 && infop->addr) {
 		__os_free(dbenv, infop->addr);
 	} else {
 		char name[MAXPATHLEN];
 
 		snprintf(name, sizeof(name) - 1, "/mnt/hugetlbfs/%s.%u",
 		    gbl_dbname, infop->id);
-		munmap(infop->addr, rp->size);
+        if (rp->size)
+            munmap(infop->addr, rp->size);
 		close(infop->fd);
 		unlink(name);
-		fprintf(stderr, "os_r_detach: munmap for region: %d\n",
-		    infop->id);
 	}
 	return (0);
 

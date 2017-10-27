@@ -149,6 +149,7 @@
 
 /* COMDB2 MODIFICATION */
 #include <logmsg.h>
+int is_comdb2_index_disableskipscan(const char *);
 
 #if SQLITE_VERSION_NUMBER == 3007002
 #define SQLITE372
@@ -197,8 +198,6 @@ static void sqlite3VdbeSetP4KeyInfo(Parse *pParse, Index *pIdx){
 
 static __thread int skip2, skip4;
 int analyze_get_nrecs( int iTable );
-/* COMDB2 MODIFICATION */
-int is_comdb2_index_disableskipscan(const char *dbname, char *idx);
 
 
 /*
@@ -1706,11 +1705,9 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
     pIndex->bUnordered = 0;
     decodeIntArray((char*)z, nCol, aiRowEst, pIndex->aiRowLogEst, pIndex);
     if( pIndex->pPartIdxWhere==0 ) pTable->nRowLogEst = pIndex->aiRowLogEst[0];
-    /* COMDB2 MODIFICATION: assign noskipscan parameter, only if not disabled 
-    ** already.  */ 
-    if( !pIndex->noSkipScan ){
-      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName, 
-                                                           pIndex->zName);
+    /* COMDB2 MODIFICATION: assign noskipscan, only if not foreign table */ 
+    if( pIndex->pTable->iDb == 0){
+      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName);
 #ifdef DEBUG
       if(pIndex->noSkipScan)
         printf("SET INDEX %s.%s noskipscan\n", pTable->zName, pIndex->zName);

@@ -33,8 +33,8 @@ int bpfunc_init(void *tran, int32_t function_id, int32_t data_len, bpfunc_info *
 void free_bpfunc(bpfunc_t *func);
 void free_bpfunc_arg(BpfuncArg *arg);
 
-int bpfunc_prepare(bpfunc_t **func, void *tran, int32_t data_len,
-                   uint8_t *data, bpfunc_info *info);
+int bpfunc_prepare(bpfunc_t **func, int32_t data_len, uint8_t *data,
+                   bpfunc_info *info);
 
 struct bpfunc {
     BpfuncArg *arg;

@@ -35,7 +35,7 @@
 
 #include <str0.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <net.h>
@@ -43,7 +43,7 @@
 #include "locks.h"
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "llog_handlers.h"
 
 #include <plbitlib.h> /* for bset/btst */

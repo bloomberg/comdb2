@@ -69,7 +69,7 @@ __memp_dump_bufferpool_info(dbenv, f)
 		memreg = &dbmp->reginfo[n_cache];
 		c_mp = dbmp->reginfo[n_cache].primary;
 		dbht = R_ADDR(memreg, c_mp->htab);
-		logmsgf(LOGMSG_USER, f, "CACHE %d AT 0x%08p\n", n_cache, c_mp);
+		logmsgf(LOGMSG_USER, f, "CACHE %d AT %p\n", n_cache, c_mp);
 
 		for (count = 0; count < c_mp->htab_buckets; count++) {
 			hp = &dbht[count];
@@ -86,11 +86,11 @@ __memp_dump_bufferpool_info(dbenv, f)
 				continue;
 			}
 
-			logmsgf(LOGMSG_USER, f, "HASH-PTR 0x%08x :", hp);
+			logmsgf(LOGMSG_USER, f, "HASH-PTR %p :", hp);
 
 			do {
 				bufcnt++;
-				logmsgf(LOGMSG_USER, f, " (%d:%d:%d)", bhp->mf_offset,
+				logmsgf(LOGMSG_USER, f, " (%ld:%d:%d)", bhp->mf_offset,
 				    bhp->pgno, bhp->priority);
 				bhp = SH_TAILQ_NEXT(bhp, hq, __bh);
 			}
@@ -103,7 +103,7 @@ __memp_dump_bufferpool_info(dbenv, f)
 		logmsgf(LOGMSG_USER, f, "LRU_COUNT = %d\n", c_mp->lru_count);
 		logmsgf(LOGMSG_USER, f, "\n");
 	}
-	logmsgf(LOGMSG_USER, f, "BUFCNT = %lld\n", bufcnt);
+	logmsgf(LOGMSG_USER, f, "BUFCNT = %lu\n", bufcnt);
 	return 0;
 }
 
@@ -136,7 +136,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	dbenv->txn_stat(dbenv, &txn_stats, 0);
    
 	logmsgf(LOGMSG_USER, out, "st_last_ckp: %u:%u\n",  txn_stats->st_last_ckp.file, txn_stats->st_last_ckp.offset);
-	logmsgf(LOGMSG_USER, out, "st_time_ckp: %u\n", txn_stats->st_time_ckp);
+	logmsgf(LOGMSG_USER, out, "st_time_ckp: %lu\n", txn_stats->st_time_ckp);
 	logmsgf(LOGMSG_USER, out, "st_last_txnid: %u\n", txn_stats->st_last_txnid);
 	logmsgf(LOGMSG_USER, out, "st_maxtxns: %u\n", txn_stats->st_maxtxns);
 	logmsgf(LOGMSG_USER, out, "st_nactive: %u\n", txn_stats->st_nactive);
@@ -184,7 +184,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 	logmsgf(LOGMSG_USER, out, "st_page_trickle: %d\n", mpool_stats->st_page_trickle);
 	logmsgf(LOGMSG_USER, out, "st_pages: %d\n", mpool_stats->st_pages);
 	logmsgf(LOGMSG_USER, out, "st_page_clean: %d\n", mpool_stats->st_page_clean);
-	logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", mpool_stats->st_page_dirty);
+	logmsgf(LOGMSG_USER, out, "st_page_dirty: %d\n", mpool_stats->st_page_dirty.value);
 	logmsgf(LOGMSG_USER, out, "st_hash_buckets: %d\n", mpool_stats->st_hash_buckets);
 	logmsgf(LOGMSG_USER, out, "st_hash_searches: %d\n", mpool_stats->st_hash_searches);
 	logmsgf(LOGMSG_USER, out, "st_hash_longest: %d\n", mpool_stats->st_hash_longest);
@@ -254,10 +254,10 @@ __memp_alloc_flags(dbmp, memreg, mfp, len, offsetp, flags, retp)
 	void *p;
 	int sleeptime = 0;
 
-	if (gbl_debug_memp_alloc_size && (len > (100 * 1024) || mfp &&
-		len > mfp->stat.st_pagesize)) {
-		logmsg(LOGMSG_USER, "allocating %d bytes (pgsize %d)\n",
-		    len, (mfp ? mfp->stat.st_pagesize : 0));
+	if (gbl_debug_memp_alloc_size &&
+	    ((len > (100 * 1024)) || (mfp && len > mfp->stat.st_pagesize))) {
+		logmsg(LOGMSG_USER, "allocating %zu bytes (pgsize %zu)\n", len,
+		       (mfp ? mfp->stat.st_pagesize : 0));
 	}
 
 	dbenv = dbmp->dbenv;
@@ -417,7 +417,7 @@ found:		if (offsetp != NULL)
 			case 5:
 			case 6:
 				(void)__memp_sync_int(dbenv, NULL, 0,
-				    DB_SYNC_ALLOC, NULL, 0, NULL);
+				    DB_SYNC_ALLOC, NULL, 0, NULL, 0);
 
 				sleeptime++;
 				if (__gbl_max_mpalloc_sleeptime &&

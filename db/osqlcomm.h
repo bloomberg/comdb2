@@ -55,7 +55,7 @@ int osql_comm_blkout_node(char *host);
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 
 /* Offload upgrade record request. */
-int offload_comm_send_upgrade_records(struct db *db, unsigned long long genid);
+int offload_comm_send_upgrade_records(struct dbtable *db, unsigned long long genid);
 
 /* Offload record upgrade statistics */
 void upgrade_records_stats(void);
@@ -71,12 +71,6 @@ int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen);
 /* Reply to offload block request. */
 int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
                                  int buflen, int rc);
-
-/* Check snap uid request */
-int check_snap_uid_req(char *host, snap_uid_t *snap_info);
-
-/* Check snap uid reply */
-int check_snap_uid_reply(snap_uid_t *snap_info);
 
 /**
  * If "rpl" is a done packet, set xerr to error if any and return 1
@@ -101,7 +95,8 @@ int osql_comm_send_poke(char *tonode, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb);
+                    char *tablename, int type, SBUF2 *logsb,
+                    unsigned long long version);
 
 /**
  * Send INDEX op
@@ -410,9 +405,10 @@ enum osqlpfrq_type {
     OSQLPFRQ_OSQLREQ = 99
 };
 
-int osql_page_prefault(char *rpl, int rplen, struct db **last_db,
+int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
                        unsigned long long seq);
 
 int osql_close_connection(char *host);
+
 #endif

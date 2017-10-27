@@ -186,7 +186,7 @@ const char *req2a(int opcode)
     }
 }
 
-void req_stats(struct db *db)
+void req_stats(struct dbtable *db)
 {
     int ii, jj;
     int hdr = 0;
@@ -194,7 +194,8 @@ void req_stats(struct db *db)
         int flag = 0;
         if (db->typcnt[ii]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "%-20s %u\n", req2a(ii), db->typcnt[ii]);
@@ -203,19 +204,23 @@ void req_stats(struct db *db)
     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
         if (db->blocktypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-16s %u\n", breq2a(jj), db->blocktypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj),
+                   db->blocktypcnt[jj]);
         }
     }
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
         if (db->blockosqltypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-16s %u\n", osql_breq2a(jj), db->blockosqltypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %u\n", osql_breq2a(jj),
+                   db->blockosqltypcnt[jj]);
         }
     }
 }
@@ -415,6 +420,8 @@ int handle_ireq(struct ireq *iq)
                         }
                     }
 
+                    iq->usedb = iq->origdb;
+
                     n_retries++;
                     poll(0, 0, (rand() % 25 + 1));
                     goto retry;
@@ -473,8 +480,8 @@ int handle_ireq(struct ireq *iq)
         }
 
         /* Record the dbname (aka table) for this op */
-        if (iq->usedb && iq->usedb->dbname)
-            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->dbname);
+        if (iq->usedb && iq->usedb->tablename)
+            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
     } else {
         rc = ERR_BADREQ;
         iq->where = "opcode not supported";

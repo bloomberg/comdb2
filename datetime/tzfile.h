@@ -25,12 +25,6 @@ static char	tzfilehid[] = "@(#)tzfile.h	8.1";
 #endif /* !defined NOID */
 #endif /* !defined lint */
 
-/*
-** Information about time zone files.
-*/
-extern char *gbl_tzdir;
-#define TZDIR gbl_tzdir
-
 #ifndef TZDEFAULT
 #define TZDEFAULT	"localtime"
 #endif /* !defined TZDEFAULT */

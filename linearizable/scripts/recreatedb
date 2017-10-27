@@ -5,6 +5,18 @@ if [[ -n "$1" ]]; then
     shift
 fi
 
+lrlpath=""
+if [[ -n "$1" ]]; then
+    lrlpath=$1
+    shift
+fi
+
+add_tables=1
+if [[ "$1" == "noadd" ]]; then
+    add_tables=0
+    shift
+fi
+
 if [[ -z "$db" ]]; then
     echo "Error: db variable is not set"
     exit 1
@@ -15,6 +27,10 @@ debug=0
 pathbase=${COMDB2_PATHBASE:-/home/ubuntu/comdb2}
 scripts=$pathbase/linearizable/scripts
 . $scripts/setvars
+
+if [[ -z "$lrlpath" ]]; then
+    lrlpath=$pathbase/linearizable/linearizable.lrl
+fi
 
 $scripts/addmach_comdb2db $db
 
@@ -65,7 +81,7 @@ mkdir $cpdir
 echo "comdb2 --create --dir $cpdir $db"
 comdb2 --create --dir $cpdir $db
 
-cat $pathbase/linearizable/linearizable.lrl >> $cpdir/$db.lrl
+cat $lrlpath >> $cpdir/$db.lrl
 
 outfile=$db.out.$(date +%Y%m%d%H%M%S)
 
@@ -75,15 +91,19 @@ wait_for_db_up $db @localhost
 cat >> $cpdir/$db.lrl <<EOF
 cluster nodes $machines
 EOF
-echo "adding tables"
-for csc2 in $resources/*.csc2; do 
-    table=${csc2##*/}
-    table=${table%*.csc2}
-    cdb2sql $db @localhost "create table ${table} { $(<$csc2) }"
-done
+if [[ "$add_tables" == 1 ]]; then
+    echo "adding tables"
+    for csc2 in $resources/*.csc2; do 
+        table=${csc2##*/}
+        table=${table%*.csc2}
+        cdb2sql $db @localhost "create table ${table} { $(<$csc2) }"
+    done
+fi
 cdb2sql $db @localhost "exec procedure sys.cmd.send('exit')" > /dev/null 2>&1
 wait_for_db_down $db
-
+cat >> $cpdir/$db.lrl <<EOF
+cluster nodes $machines
+EOF
 printf "copying to cluster "
 for m in $machines; do
     printf "%s " $m

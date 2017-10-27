@@ -56,7 +56,7 @@
 #include <assert.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -514,7 +514,7 @@ static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
 
     rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
 
-#ifdef DEBUG
+#ifdef DEBUG_LOCKS
     fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", pthread_self(),
             __func__, how, name, lid);
 #endif
@@ -694,6 +694,16 @@ int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
                             resolve_locker_id(tran), BDB_LOCK_READ);
 
     return rc;
+}
+
+int bdb_lock_tablename_read(bdb_state_type *bdb_state, const char *name,
+                            tran_type *tran)
+{
+    if (tran->parent)
+        tran = tran->parent;
+
+    return bdb_lock_table_int(bdb_state->dbenv, name, resolve_locker_id(tran),
+                              BDB_LOCK_READ);
 }
 
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)

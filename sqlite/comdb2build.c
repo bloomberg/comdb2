@@ -20,6 +20,7 @@
 #include <net_types.h>
 #include <views.h>
 #include <logmsg.h>
+#include <str0.h>
 
 #define INCLUDE_KEYWORDHASH_H
 #define INCLUDE_FINALKEYWORD_H
@@ -29,7 +30,7 @@ extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
 /******************* Utility ****************************/
 
-static inline int setError(Parse *pParse, int rc, char *msg)
+static inline int setError(Parse *pParse, int rc, const char *msg)
 {
     pParse->rc = rc;
     sqlite3ErrorMsg(pParse, "%s", msg);
@@ -87,7 +88,7 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
         }
     }
     return setError(pParse, SQLITE_MISUSE,
-                    "DDL commands operate only on local schema only.");
+                    "DDL commands operate on local schema only.");
 }
 
 extern int gbl_allow_user_schema;
@@ -134,7 +135,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     
     if(!timepart_is_timepart(dst, 1))
     {
-        struct db *db = getdbbyname(dst);
+        struct dbtable *db = get_dbtable_by_name(dst);
 
         if (db == NULL && mustexist)
         {
@@ -282,6 +283,20 @@ static void fillTableOption(struct schema_change_type* sc, int opt)
     sc->convert_sleep = gbl_convert_sleep;
 }
 
+int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
+                    struct schema_change_type *arg, vdbeFunc func,
+                    vdbeFuncArgFree freeFunc)
+{
+    comdb2WriteTransaction(pParse);
+    Table *t = sqlite3LocateTable(pParse, LOCATE_NOERR, arg->table, NULL);
+    if (t) {
+        sqlite3VdbeAddTable(v, t);
+    }
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    thd->sqlclntstate->verifyretry_off = 1;
+    return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
+}
+
 int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
 {
      struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -387,12 +402,12 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     return f->rc;
 }
 
-static int comdb2SqlSchemaChange(OpFunc *f)
+static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
     thd->sqlclntstate->osql.long_request = 1;
-    f->rc = osql_schemachange_logic(s, thd);
+    f->rc = osql_schemachange_logic(s, thd, usedb);
     if (f->rc == SQLITE_DDL_MISUSE)
         f->errorMsg = "Transactional DDL Error: Overlapping Tables";
     else if (f->rc)
@@ -400,13 +415,21 @@ static int comdb2SqlSchemaChange(OpFunc *f)
     return f->rc;
 }
 
+static int comdb2SqlSchemaChange_usedb(OpFunc *f)
+{
+    return comdb2SqlSchemaChange_int(f, 1);
+}
+
+static int comdb2SqlSchemaChange(OpFunc *f)
+{
+    return comdb2SqlSchemaChange_int(f, 0);
+}
+
 int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct schema_change_type *s = (struct schema_change_type*)f->arg;
-    thd->sqlclntstate->osql.long_request = 1;
     osql_sock_start(thd->sqlclntstate, OSQL_SOCK_REQ ,0);
-    osql_schemachange_logic(s, thd);
+    comdb2SqlSchemaChange(f);
     int rst = osql_sock_commit(thd->sqlclntstate, OSQL_SOCK_REQ);
     osqlstate_t *osql = &thd->sqlclntstate->osql;
     if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
@@ -443,35 +466,20 @@ void free_rstMsg(struct rstMsg* rec)
 */
 int comdb2SendBpfunc(OpFunc *f)
 {
-   struct sql_thread    *thd = pthread_getspecific(query_info_key);
-   struct sqlclntstate  *clnt = thd->sqlclntstate;
-   osqlstate_t          *osql = &clnt->osql;
-   char                 *node = osql->host;
+   struct sql_thread *thd = pthread_getspecific(query_info_key);
    int rc = 0;
-   
    BpfuncArg *arg = (BpfuncArg*)f->arg;
 
-   //osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
-
-   rc = osql_send_bpfunc(node, osql->rqid, osql->uuid, arg, NET_OSQL_SOCK_RPL,osql->logsb);
-   
-   //rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
-
-   rc = osql->xerr.errval;
-   osql->xerr.errval = 0;
-   osql->xerr.errstr[0] = '\0';
+   rc = osql_bpfunc_logic(thd, arg);
     
-    
-    if (rc)
-    {
-        f->rc = rc;
-        f->errorMsg = "FAIL"; // TODO This must be translated to a description
-    } else
-    {
-        f->rc = SQLITE_OK;
-        f->errorMsg = "";
-    } 
-   return rc;
+   if (rc) {
+       f->rc = rc;
+       f->errorMsg = "FAIL"; // TODO This must be translated to a description
+   } else {
+       f->rc = SQLITE_OK;
+       f->errorMsg = "";
+   }
+   return f->rc;
 }
 
 
@@ -481,13 +489,16 @@ int comdb2SendBpfunc(OpFunc *f)
 
 /**************************** Function prototypes ***************************/
 
-static void comdb2rebuild(Parse *p, Token* nm, Token* lnm, uint8_t opt);
+static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, uint8_t opt);
 
 /************************** Function definitions ****************************/
 
 int authenticateSC(const char * table,  Parse *pParse) 
 {
-    if(gbl_schema_change_in_progress) return -1;
+    if (gbl_schema_change_in_progress) {
+        setError(pParse, SQLITE_ERROR, "Schema change already in progress");
+        return -1;
+    }
 
     Vdbe *v  = sqlite3GetVdbe(pParse);
     char *username = strstr(table, "@");
@@ -528,7 +539,7 @@ void comdb2CreateTableCSC2(
     }
 
     TokenStr(table, pName1);
-    if (noErr && getdbbyname(table))
+    if (noErr && get_dbtable_by_name(table))
         goto out;
 
     if (chkAndCopyTableTokens(v, pParse, sc->table, pName1, pName2, 0))
@@ -537,14 +548,13 @@ void comdb2CreateTableCSC2(
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    comdb2WriteTransaction(pParse);
     sc->addonly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
     fillTableOption(sc, opt);
     copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
-                        (vdbeFuncArgFree) &free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -574,10 +584,6 @@ void comdb2AlterTableCSC2(
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    if (dryrun)
-        v->readOnly = 0;
-    else
-        comdb2WriteTransaction(pParse);
     sc->alteronly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -585,14 +591,13 @@ void comdb2AlterTableCSC2(
     sc->scanmode = SCAN_PARALLEL;
     sc->dryrun = dryrun;
     fillTableOption(sc, opt);
-
     copyNosqlToken(v, pParse, &sc->newcsc2, csc2);
     if(dryrun)
         comdb2prepareSString(v, pParse, 0,  sc, &comdb2SqlDryrunSchemaChange,
                             (vdbeFuncArgFree)  &free_schema_change_type);
     else
-        comdb2prepareNoRows(v, pParse, 0,  sc, &comdb2SqlSchemaChange, 
-                            (vdbeFuncArgFree)  &free_schema_change_type);
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -617,7 +622,6 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    comdb2WriteTransaction(pParse);
     sc->same_schema = 1;
     sc->drop_table = 1;
     sc->fastinit = 1;
@@ -629,15 +633,15 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
         goto out;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
-                        (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
     free_schema_change_type(sc);
 }
 
-static inline void comdb2rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t opt)
+static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t opt)
 {
     sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
@@ -654,7 +658,6 @@ static inline void comdb2rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t o
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    v->readOnly = 0;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->scanmode = gbl_default_sc_scanmode;
@@ -679,8 +682,8 @@ static inline void comdb2rebuild(Parse *pParse, Token* nm, Token* lnm, uint8_t o
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
-                        (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -688,25 +691,24 @@ out:
 }
 
 
-void comdb2rebuildFull(Parse* p, Token* nm,Token* lnm)
+void comdb2RebuildFull(Parse* p, Token* nm,Token* lnm)
 {
-    comdb2rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB); 
+    comdb2Rebuild(p, nm,lnm, REBUILD_ALL + REBUILD_DATA + REBUILD_BLOB);
 }
 
 
-void comdb2rebuildData(Parse* p, Token* nm, Token* lnm)
+void comdb2RebuildData(Parse* p, Token* nm, Token* lnm)
 {
-    comdb2rebuild(p,nm,lnm,REBUILD_DATA);
+    comdb2Rebuild(p,nm,lnm,REBUILD_DATA);
 }
 
-void comdb2rebuildDataBlob(Parse* p,Token* nm, Token* lnm)
+void comdb2RebuildDataBlob(Parse* p,Token* nm, Token* lnm)
 {
-    comdb2rebuild(p, nm, lnm, REBUILD_BLOB);
+    comdb2Rebuild(p, nm, lnm, REBUILD_BLOB);
 }
 
-void comdb2truncate(Parse* pParse, Token* nm, Token* lnm)
+void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
 {
-    sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     struct schema_change_type* sc = new_schemachange_type();
@@ -722,7 +724,6 @@ void comdb2truncate(Parse* pParse, Token* nm, Token* lnm)
     if (authenticateSC(sc->table, pParse))
         goto out;
 
-    comdb2WriteTransaction(pParse);
     sc->fastinit = 1;
     sc->nothrevent = 1;
     sc->same_schema = 1;
@@ -733,8 +734,8 @@ void comdb2truncate(Parse* pParse, Token* nm, Token* lnm)
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
-                        (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -742,7 +743,7 @@ out:
 }
 
 
-void comdb2rebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
+void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
 {
     sqlite3 *db = pParse->db;
     Vdbe *v  = sqlite3GetVdbe(pParse);
@@ -779,14 +780,13 @@ void comdb2rebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index)
     
     free(indexname);
 
-    v->readOnly = 0;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
     sc->scanmode = gbl_default_sc_scanmode;
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
-                        (vdbeFuncArgFree)  &free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 out:
@@ -820,7 +820,6 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
         strcpy(sc->fname, version);
     }
     copyNosqlToken(v, pParse, &sc->newcsc2, proc);
-    v->readOnly = 0;
     const char* colname[] = {"version"};
     const int coltype = OPFUNC_STRING_TYPE;
     OpFuncSetup stp = {1, colname, &coltype, 256};
@@ -852,7 +851,6 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
     }
-    v->readOnly = 0;
     sc->defaultsp = 1;
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, 
@@ -885,7 +883,6 @@ void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
     }
-    v->readOnly = 0;
     sc->delsp = 1;
   
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_tran, 
@@ -1010,7 +1007,8 @@ void comdb2bulkimport(Parse* pParse, Token* nm,Token* lnm, Token* nm2, Token* ln
     Vdbe *v  = sqlite3GetVdbe(pParse);
 
     setError(pParse, SQLITE_INTERNAL, "Not Implemented");
-    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to", nm->n + lnm->n, nm->z, nm2->n +lnm2->n, nm2->z);
+    logmsg(LOGMSG_DEBUG, "Bulk import from %.*s to %.*s ", nm->n + lnm->n,
+           nm->z, nm2->n +lnm2->n, nm2->z);
 }
 
 /********************* ANALYZE ***************************************************/
@@ -1889,7 +1887,10 @@ struct comdb2_ddl_context {
 };
 
 /* Type properties */
-enum { COMDB2_TYPE_FLAG_ALLOW_ARRAY = 1 };
+enum {
+    FLAG_ALLOW_ARRAY = 1 << 0,
+    FLAG_QUOTE_DEFAULT = 1 << 1,
+};
 
 #define COMDB2_TYPE(A, B, C)                                                   \
     {                                                                          \
@@ -1911,32 +1912,41 @@ struct comdb2_type_mapping {
       Comdb2 types.
       WARNING: DO NOT CHANGE THE ORDER!
     */
-    COMDB2_TYPE("u_short", "u_short", 0), COMDB2_TYPE("short", "short", 0),
-    COMDB2_TYPE("u_int", "u_int", 0), COMDB2_TYPE("int", "int", 0),
+    COMDB2_TYPE("u_short", "u_short", 0),
+    COMDB2_TYPE("short", "short", 0),
+    COMDB2_TYPE("u_int", "u_int", 0),
+    COMDB2_TYPE("int", "int", 0),
     COMDB2_TYPE("longlong", "longlong", 0),
-    COMDB2_TYPE("cstring", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("vutf8", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("blob", "blob", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("byte", "byte", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("datetime", "datetime", 0),
-    COMDB2_TYPE("datetimeus", "datetimeus", 0),
-    COMDB2_TYPE("intervalds", "intervalds", 0),
-    COMDB2_TYPE("intervaldsus", "intervaldsus", 0),
-    COMDB2_TYPE("intervalym", "intervalym", 0),
+    COMDB2_TYPE("cstring", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("vutf8", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("blob", "blob", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("byte", "byte", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("datetime", "datetime", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("datetimeus", "datetimeus", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervalds", "intervalds", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervaldsus", "intervaldsus", FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("intervalym", "intervalym", FLAG_QUOTE_DEFAULT),
     COMDB2_TYPE("decimal32", "decimal32", 0),
     COMDB2_TYPE("decimal64", "decimal64", 0),
     COMDB2_TYPE("decimal128", "decimal128", 0),
-    COMDB2_TYPE("float", "float", 0), COMDB2_TYPE("double", "double", 0),
+    COMDB2_TYPE("float", "float", 0),
+    COMDB2_TYPE("double", "double", 0),
 
     /* Additional types mapped to a Comdb2 type. */
-    COMDB2_TYPE("varchar", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("char", "cstring", COMDB2_TYPE_FLAG_ALLOW_ARRAY),
-    COMDB2_TYPE("text", "vutf8", COMDB2_TYPE_FLAG_ALLOW_ARRAY)};
+    COMDB2_TYPE("varchar", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("char", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("text", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("integer", "int", 0),
+    COMDB2_TYPE("smallint", "short", 0),
+    COMDB2_TYPE("bigint", "longlong", 0),
+    COMDB2_TYPE("real", "float", 0),
+    /* End marker */
+    {NULL, 0, NULL, 0}};
 
 /*
   Allocate Comdb2 DDL context to be used during parsing.
 */
-static struct comdb2_ddl_context *create_ddl_context()
+static struct comdb2_ddl_context *create_ddl_context(Parse *pParse)
 {
     struct comdb2_ddl_context *ctx;
 
@@ -1959,36 +1969,12 @@ static struct comdb2_ddl_context *create_ddl_context()
     listc_init(&ctx->key_list, offsetof(struct comdb2_schema, lnk));
     listc_init(&ctx->constraint_list, offsetof(struct comdb2_constraint, lnk));
 
+    pParse->comdb2_ddl_ctx = ctx;
     return ctx;
 
 err:
     free(ctx);
     return NULL;
-}
-
-/* Free memory allocated by schema struct. */
-static void free_schema(struct schema *schema)
-{
-    if (schema == 0) return;
-
-    free(schema->tag);
-
-    for (int i = 0; i < schema->nmembers; i++) {
-        free(schema->member[i].name);
-        free(schema->member[i].in_default);
-        free(schema->member[i].out_default);
-    }
-    free(schema->member);
-
-    for (int i = 0; i < schema->nix; i++) {
-        free_schema(schema->ix[i]);
-    }
-    free(schema->ix);
-
-    free(schema->csctag);
-    free(schema->datacopy);
-    free(schema);
-    return;
 }
 
 /*
@@ -2001,7 +1987,6 @@ static void free_ddl_context(Parse *pParse)
     ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) return;
 
-    free_schema(ctx->schema);
     comdb2ma_destroy(ctx->mem);
 
     free(ctx);
@@ -2022,9 +2007,20 @@ static void free_ddl_context(Parse *pParse)
 static int comdb2_parse_sql_type(const char *type, int *size)
 {
     char *endptr;
+    size_t type_len;
+    int accepts_size;
 
-    for (int i = 0;
-         i < sizeof(type_mapping) / sizeof(struct comdb2_type_mapping); ++i) {
+    type_len = strlen(type);
+
+    for (int i = 0; type_mapping[i].sql_type != NULL; ++i) {
+
+        /* Check if current type could accept size. */
+        accepts_size = (type_mapping[i].flag & FLAG_ALLOW_ARRAY);
+
+        if ((accepts_size == 0) && (type_mapping[i].sql_type_len != type_len)) {
+            continue;
+        }
+
         if (strncasecmp(type, type_mapping[i].sql_type,
                         type_mapping[i].sql_type_len) == 0) {
 
@@ -2041,7 +2037,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
             /* A size has been specified. */
 
-            if ((type_mapping[i].flag & COMDB2_TYPE_FLAG_ALLOW_ARRAY) == 0) {
+            if (accepts_size == 0) {
                 /* The type does not accept size. */
                 return -1;
             }
@@ -2056,7 +2052,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
                 (*size)++;
             }
 
-            if (errno == EINVAL || errno == ERANGE) {
+            if (errno == EINVAL || errno == ERANGE || *size < 0) {
                 /* Malformed size. */
                 return -1;
             }
@@ -2120,7 +2116,6 @@ static int fix_type_and_len(int *type, int *len)
         *type = 8;
         *len = in_len - 1;
         break;
-    case SERVER_BLOB: goto err;
     case SERVER_DATETIME: *type = 9; break;
     case SERVER_INTVYM: *type = 13; break;
     case SERVER_INTVDS: *type = 11; break;
@@ -2136,6 +2131,7 @@ static int fix_type_and_len(int *type, int *len)
         default: goto err;
         }
         break;
+    case SERVER_BLOB: /* fallthrough */
     case SERVER_BLOB2:
         *type = 7;
         *len = in_len - 5;
@@ -2149,140 +2145,6 @@ err:
     logmsg(LOGMSG_ERROR, "%s:%d Invalid type encountered\n", __FILE__,
            __LINE__);
     return 1;
-}
-
-/*
-  Return the null-terminated string representation of the specified
-  value.
-
-  TODO(Nirbhay): How to detect/represent NULL values?
-
-  @return
-    Success    NULL-terminated string
-    Error      NULL
-*/
-static char *format_val(struct comdb2_ddl_context *ctx, char *val, int type,
-                        int len)
-{
-    char *buf;
-    int buf_len;
-
-    switch (type) {
-    case SERVER_UINT:
-        switch (len) {
-        case 3: {
-            unsigned short v;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohs(v);
-            buf_len = snprintf(NULL, 0, "%hu", v);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%hu", v);
-            return buf;
-        }
-        case 5: {
-            unsigned int v;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohs(v);
-            buf_len = snprintf(NULL, 0, "%u", v);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%hu", v);
-            return buf;
-        }
-        default: goto err;
-        }
-    case SERVER_BINT:
-        switch (len) {
-        case 3: {
-            int2b v;
-            short sval;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohs(v);
-            int2b_to_int2(v, &sval);
-            buf_len = snprintf(NULL, 0, "%hd", sval);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%hd", sval);
-            return buf;
-        }
-        case 5: {
-            int4b v;
-            int ival;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohl(v);
-            int4b_to_int4(v, &ival);
-            buf_len = snprintf(NULL, 0, "%d", ival);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%d", ival);
-            return buf;
-        }
-        case 9: {
-            int8b v;
-            long long lval;
-            memcpy(&v, val + 1, len - 1);
-            v = flibc_ntohll(v);
-            int8b_to_int8(v, &lval);
-            buf_len = snprintf(NULL, 0, "%lld", lval);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%lld", lval);
-            return buf;
-        }
-        default: goto err;
-        }
-    case SERVER_BREAL:
-        switch (len) {
-        case 5: {
-            ieee4b v;
-            float fval;
-            memcpy(&v, val + 1, len - 1);
-            v = ntohl(v);
-            ieee4b_to_ieee4(v, &fval);
-            buf_len = snprintf(NULL, 0, "%f", (double)fval);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%f", (double)fval);
-            return buf;
-        }
-        case 9: {
-            ieee8b v;
-            double dval;
-            memcpy(&v, val + 1, len - 1);
-            v = flibc_ntohll(v);
-            ieee8b_to_ieee8(v, &dval);
-            buf_len = snprintf(NULL, 0, "%f", dval);
-            buf_len++;
-            buf = comdb2_malloc(ctx->mem, buf_len);
-            snprintf(buf, buf_len, "%f", dval);
-            return buf;
-        }
-        default: goto err;
-        }
-    case SERVER_BCSTR:
-        buf_len = strlen(val + 1) + 3;
-        buf = comdb2_malloc(ctx->mem, buf_len);
-        snprintf(buf, buf_len, "\"%s\"", val + 1);
-        return buf;
-        break;
-    case SERVER_BYTEARRAY:  /* fallthrough */
-    case SERVER_BLOB:       /* fallthrough */
-    case SERVER_DATETIME:   /* fallthrough */
-    case SERVER_INTVYM:     /* fallthrough */
-    case SERVER_INTVDS:     /* fallthrough */
-    case SERVER_VUTF8:      /* fallthrough */
-    case SERVER_DECIMAL:    /* fallthrough */
-    case SERVER_BLOB2:      /* fallthrough */
-    case SERVER_DATETIMEUS: /* fallthrough */
-    case SERVER_INTVDSUS:   /* fallthrough */
-    default: goto err;
-    }
-
-err:
-    logmsg(LOGMSG_ERROR, "%s:%d Invalid value encountered\n", __FILE__,
-           __LINE__);
-    return 0;
 }
 
 struct csc2_constraint {
@@ -2325,7 +2187,19 @@ static char *format_csc2(struct comdb2_ddl_context *ctx, int nconstraints,
 
         /* Append default. The default is always a null-terminated string. */
         if (field->in_default) {
-            strbuf_appendf(csc2, "dbstore = %s ", field->in_default);
+            assert(field->type < ((sizeof(type_mapping) /
+                                   sizeof(struct comdb2_type_mapping)) -
+                                  1));
+
+            /*
+              Check whether the default value needs to be quoted. Note: CSC2
+              does not allow single quoted value.
+            */
+            if ((type_mapping[field->type].flag & FLAG_QUOTE_DEFAULT) != 0) {
+                strbuf_appendf(csc2, "dbstore = \"%s\" ", field->in_default);
+            } else {
+                strbuf_appendf(csc2, "dbstore = %s ", field->in_default);
+            }
         }
 
         if (field->convopts.dbpad > 0) {
@@ -2342,6 +2216,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx, int nconstraints,
     /* Keys section */
     struct comdb2_schema *current_key;
     int nkeys = 0;
+
     LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
     {
         if (current_key->schema != 0) ++nkeys;
@@ -2431,6 +2306,14 @@ static char *gen_key_name(struct comdb2_ddl_context *ctx, const char *tabname,
     return keyname;
 }
 
+#define COMDB2_PK "COMDB2_PK"
+
+static int is_pk(const char *key)
+{
+    return (((strncasecmp(key, COMDB2_PK, sizeof(COMDB2_PK) - 1)) == 0) ? 1
+                                                                        : 0);
+}
+
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     char *csc2;
@@ -2445,7 +2328,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           During ALTER TABLE, the fields are deleted by simply setting
           them to 0.
         */
-        if (current_column->field != 0) ncolumns++;
+        if (current_column->field == 0) continue;
+        ncolumns++;
     }
 
     /* Check whether there is at least one column. */
@@ -2455,6 +2339,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
     }
 
     int unnamed_keys = 0;
+    int pk_count = 0;
     char keyname[100];
     struct comdb2_schema *current_key;
     LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
@@ -2474,13 +2359,46 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
                 gen_key_name(ctx, ctx->name, current_key->schema);
             if (current_key->schema->csctag == 0) goto oom;
         }
+
+        /*
+          Properties of primary keys:
+          * Unique
+          * Columns must not allow NULLs
+          * Must be only one per table
+        */
+        if (is_pk(current_key->schema->csctag)) {
+            struct comdb2_field *col;
+
+            if (++pk_count > 1) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Multiple primary key definitions.");
+                goto cleanup;
+            }
+
+            /* Primary keys mustn't be dup. */
+            assert(((current_key->schema->flags & SCHEMA_DUP) == 0));
+
+            /* Also make sure none of its columns allow NULLs. (n^2)*/
+            for (int i = 0; i < current_key->schema->nmembers; i++) {
+                LISTC_FOR_EACH(&ctx->column_list, col, lnk)
+                {
+                    /* Ignore deleted fields. */
+                    if (col->field == 0) continue;
+
+                    if (strcasecmp(current_key->schema->member[i].name,
+                                   col->name) == 0) {
+                        col->field->flags |= NO_NULL;
+                    }
+                }
+            }
+        }
     }
 
     struct comdb2_constraint *current_constraint;
     LISTC_FOR_EACH(&ctx->constraint_list, current_constraint, lnk)
     {
         int key_found = 0;
-        struct db *parent_table;
+        struct dbtable *parent_table;
         struct schema *parent_key;
         struct schema *child_key;
         struct csc2_constraint csc2_constraint;
@@ -2495,32 +2413,36 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* Find the "non-dropped" child key for current constraint. */
         LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
         {
-            if (current_key->schema != 0 &&
-                current_constraint->constraint->ncols ==
-                    current_key->schema->nmembers) {
-                /*
-                  Let's start by assuming that we have found a matching key.
-                */
-                key_found = 1;
-                ncols = current_key->schema->nmembers;
-                for (int i = 0; i < ncols; ++i) {
-                    if (strcasecmp(current_constraint->constraint->column[i],
-                                   current_key->schema->member[i].name)) {
-                        /* Mismatch */
-                        key_found = 0;
-                        break;
-                    }
-                }
-                if (key_found == 1) {
-                    child_key = current_key->schema;
+            /* Key has been dropped. */
+            if (current_key->schema == 0) continue;
+
+            /* Not the matching key. */
+            if (current_constraint->constraint->ncols !=
+                current_key->schema->nmembers)
+                continue;
+
+            /*
+              Let's start by assuming that we have found a matching key.
+            */
+            key_found = 1;
+            ncols = current_key->schema->nmembers;
+            for (int i = 0; i < ncols; ++i) {
+                if (strcasecmp(current_constraint->constraint->column[i],
+                               current_key->schema->member[i].name)) {
+                    /* Mismatch */
+                    key_found = 0;
                     break;
                 }
+            }
+            if (key_found == 1) {
+                child_key = current_key->schema;
+                break;
             }
         }
         if (key_found == 0) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "A matching key for the FOREIGN KEY was "
-                                    "not found in the child table '%s'",
+                                    "not found in the child table '%s'.",
                             ctx->name);
             goto cleanup;
         }
@@ -2529,8 +2451,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           A matching local key has been found. On to find the parent key
           for current constraint.
         */
-        parent_table =
-            getdbbyname(current_constraint->constraint->referenced_table);
+        parent_table = get_dbtable_by_name(
+            current_constraint->constraint->referenced_table);
         if (parent_table == 0) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(
@@ -2544,9 +2466,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         for (int i = 0; i < parent_table->schema->nix; i++) {
             if (parent_table->schema->ix[i]->nmembers ==
                 current_constraint->constraint->ncols) {
-                /*
-                  Let's start by assuming that we have found a matching key.
-                */
+                /* Let's start by assuming that we have a matching key. */
                 key_found = 1;
                 ncols = current_constraint->constraint->ncols;
                 for (int j = 0; j < ncols; j++) {
@@ -2583,7 +2503,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         csc2_constraint.ncnstrts = 1;
         csc2_constraint.flags = current_constraint->constraint->flags;
         csc2_constraint.table[0] =
-            comdb2_strdup(ctx->mem, parent_table->dbname);
+            comdb2_strdup(ctx->mem, parent_table->tablename);
         if (csc2_constraint.table[0] == 0) goto oom;
         csc2_constraint.keynm[0] = comdb2_strdup(ctx->mem, parent_key->csctag);
         if (csc2_constraint.keynm[0] == 0) goto oom;
@@ -2611,7 +2531,7 @@ cleanup:
     return 0;
 }
 
-static int retrieve_table_options(struct db *table)
+static int retrieve_table_options(struct dbtable *table)
 {
     int table_options = 0;
     int odh;
@@ -2665,13 +2585,60 @@ static int retrieve_table_options(struct db *table)
     return table_options;
 }
 
+static struct schema *clone_schema_ma(comdb2ma ma, struct schema *from)
+{
+    int i;
+
+    struct schema *sc = comdb2_calloc(ma, 1, sizeof(struct schema));
+    sc->tag = comdb2_strdup(ma, from->tag);
+    sc->nmembers = from->nmembers;
+    sc->member = comdb2_malloc(ma, from->nmembers * sizeof(struct field));
+    sc->flags = from->flags;
+    sc->nix = from->nix;
+    if (sc->nix) sc->ix = comdb2_calloc(ma, from->nix, sizeof(struct schema *));
+
+    for (i = 0; i < from->nmembers; i++) {
+        sc->member[i] = from->member[i];
+        sc->member[i].name = comdb2_strdup(ma, from->member[i].name);
+        if (from->member[i].in_default) {
+            sc->member[i].in_default =
+                comdb2_malloc(ma, sc->member[i].in_default_len);
+            memcpy(sc->member[i].in_default, from->member[i].in_default,
+                   from->member[i].in_default_len);
+        }
+        if (from->member[i].out_default) {
+            sc->member[i].out_default =
+                comdb2_malloc(ma, sc->member[i].out_default_len);
+            memcpy(sc->member[i].out_default, from->member[i].out_default,
+                   from->member[i].out_default_len);
+        }
+    }
+
+    for (i = 0; i < from->nix; i++) {
+        if (from->ix && from->ix[i])
+            sc->ix[i] = clone_schema_ma(ma, from->ix[i]);
+    }
+
+    sc->ixnum = from->ixnum;
+    sc->recsize = from->recsize;
+    sc->numblobs = from->numblobs;
+
+    if (from->csctag) sc->csctag = comdb2_strdup(ma, from->csctag);
+
+    if (from->datacopy) {
+        sc->datacopy = comdb2_malloc(ma, from->nmembers * sizeof(int));
+        memcpy(sc->datacopy, from->datacopy, from->nmembers * sizeof(int));
+    }
+    return sc;
+}
+
 /*
   Fetch the schema definition of the table being altered.
 */
 static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
-    struct db *table;
-    struct db *parent_table;
+    struct dbtable *table;
+    struct dbtable *parent_table;
     struct schema *schema = 0;
     struct schema *key;
     struct schema *parent_key;
@@ -2679,10 +2646,11 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     struct comdb2_field *fentry;
     struct comdb2_schema *sentry;
     struct comdb2_constraint *centry;
+    char *def_str;
 
     assert(ctx != 0);
 
-    table = getdbbyname(ctx->name);
+    table = get_dbtable_by_name(ctx->name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->name);
@@ -2691,7 +2659,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     ctx->table_options = retrieve_table_options(table);
 
-    schema = clone_schema(table->schema);
+    schema = clone_schema_ma(ctx->mem, table->schema);
     ctx->schema = schema;
 
     /* Change the type and length of fields in the cloned schema. */
@@ -2708,9 +2676,13 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         fentry->field = &schema->member[i];
         /* Convert the default value to string. */
         if (fentry->field->in_default) {
-            fentry->field->in_default = format_val(
-                ctx, fentry->field->in_default, fentry->field->in_default_type,
-                fentry->field->in_default_len);
+            def_str = sql_field_default_trans(fentry->field, 0);
+            /* Remove the quotes around the default value (if any). */
+            sqlite3Dequote(def_str);
+
+            fentry->field->in_default = comdb2_strdup(ctx->mem, def_str);
+            fentry->field->in_default_len = strlen(def_str);
+            sqlite3_free(def_str);
         }
         listc_abl(&ctx->column_list, fentry);
     }
@@ -2744,7 +2716,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         /* Locate the parent key. */
         for (int j = 0; j < table->constraints->nrules; j++) {
             parent_key = 0;
-            parent_table = getdbbyname(table->constraints[i].table[j]);
+            parent_table = get_dbtable_by_name(table->constraints[i].table[j]);
             if (parent_table == 0) {
                 pParse->rc = SQLITE_ERROR;
                 sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
@@ -2774,7 +2746,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             if (centry == 0) goto oom;
 
             constraint->referenced_table =
-                comdb2_strdup(ctx->mem, parent_table->dbname);
+                comdb2_strdup(ctx->mem, parent_table->tablename);
             if (constraint->referenced_table == 0) goto oom;
             constraint->ncols = parent_key->nmembers;
             constraint->flags = table->constraints[i].flags;
@@ -2801,14 +2773,7 @@ cleanup:
     return 1;
 }
 
-static inline int use_sqlite_impl(Parse *pParse)
-{
-    if (pParse->db->init.busy || IN_DECLARE_VTAB ||
-        pParse->db->force_sqlite_impl) {
-        return 1;
-    }
-    return 0;
-}
+#define use_sqlite_impl(parse) (parse->comdb2_ddl_ctx == NULL)
 
 void comdb2AlterTableStart(
     Parse *pParse, /* Parser context */
@@ -2819,11 +2784,13 @@ void comdb2AlterTableStart(
 {
     struct comdb2_ddl_context *ctx;
 
+    assert(pParse->comdb2_ddl_ctx == 0);
+
     if (isRemote(pParse, &pName1, &pName2)) {
         return;
     }
 
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");
         return;
@@ -2842,8 +2809,6 @@ void comdb2AlterTableStart(
         goto cleanup;
     }
 
-    pParse->comdb2_ddl_ctx = ctx;
-
     return;
 
 oom:
@@ -2857,15 +2822,11 @@ cleanup:
 /*
   Finalize the ALTER TABLE command.
 */
-void comdb2AlterTableEnd(Parse *pParse /* Parser context */
-                         )
+void comdb2AlterTableEnd(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx;
     Vdbe *v;
     int max_size;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -2889,7 +2850,6 @@ void comdb2AlterTableEnd(Parse *pParse /* Parser context */
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
 
-    comdb2WriteTransaction(pParse);
     sc->alteronly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -2901,6 +2861,8 @@ void comdb2AlterTableEnd(Parse *pParse /* Parser context */
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
 
@@ -2908,8 +2870,8 @@ void comdb2AlterTableEnd(Parse *pParse /* Parser context */
         comdb2prepareSString(v, pParse, 0, sc, &comdb2SqlDryrunSchemaChange,
                              (vdbeFuncArgFree)&free_schema_change_type);
     else
-        comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                            (vdbeFuncArgFree)&free_schema_change_type);
+        comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                        (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 oom:
@@ -2931,11 +2893,7 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    struct comdb2_ddl_context *ctx;
-
-    if (isTemp) pParse->db->force_sqlite_impl = 1;
-
-    if (use_sqlite_impl(pParse)) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy || IN_DECLARE_VTAB) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -2946,19 +2904,17 @@ void comdb2CreateTableStart(
         return;
     }
 
-    ctx = create_ddl_context();
+    struct comdb2_ddl_context *ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
     ctx->name = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
     if (ctx->name == 0) goto oom;
     sqlite3Dequote(ctx->name);
 
-    pParse->comdb2_ddl_ctx = ctx;
-
-    if (noErr && getdbbyname(ctx->name)) {
+    if (noErr && get_dbtable_by_name(ctx->name)) {
         ctx->flags |= COMDB2_DDL_CTX_FLAG_NOOP;
         logmsg(LOGMSG_DEBUG, "Table '%s' already exists.", ctx->name);
-        goto cleanup;
+        /* We'll not free the context here, as the flag's needed later. */
     }
 
     return;
@@ -2979,23 +2935,14 @@ void comdb2CreateTableEnd(
     int comdb2Opts /* Comdb2 specific table options. */
     )
 {
-    struct comdb2_ddl_context *ctx;
+    struct schema_change_type *sc = 0;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     Vdbe *v;
     int max_size;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3EndTable(pParse, pCons, pEnd, tabOpts, 0);
         return;
-    } else {
-        /* Comdb2 table; check if Sqlite specific WITHOUT ROWID is used. */
-        if (tabOpts != 0) {
-            setError(pParse, SQLITE_ERROR,
-                     "WITHOUT ROWID is not supported in Comdb2.");
-            goto cleanup;
-        }
     }
 
     if (ctx == 0) {
@@ -3010,7 +2957,7 @@ void comdb2CreateTableEnd(
 
     v = sqlite3GetVdbe(pParse);
 
-    struct schema_change_type *sc = new_schemachange_type();
+    sc = new_schemachange_type();
     if (sc == 0) goto oom;
 
     if (strlen(ctx->name) + 1 <= MAXTABLELEN) {
@@ -3024,7 +2971,6 @@ void comdb2CreateTableEnd(
         goto cleanup;
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
-    comdb2WriteTransaction(pParse);
     sc->addonly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -3033,11 +2979,13 @@ void comdb2CreateTableEnd(
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                        (vdbeFuncArgFree)&free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 oom:
@@ -3054,15 +3002,12 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
                      Token *pType   /* Type of the column */
                      )
 {
-    struct comdb2_ddl_context *ctx;
-    char *type;
     struct field *field;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    char type[pType->n + 1];
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        if ((pParse->pNewTable) == 0) assert(0);
+        // TODO: BAD ASSERT: if ((pParse->pNewTable) == 0) assert(0);
         sqlite3AddColumn(pParse, pName, pType);
         return;
     }
@@ -3087,15 +3032,13 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     sqlite3Dequote(field->name);
 
     /* Field type */
-    type = comdb2_strndup(ctx->mem, pType->z, pType->n);
-    if (type == 0) goto oom;
+    strncpy0(type, pType->z, sizeof(type));
     sqlite3Dequote(type);
 
     if ((field->type = comdb2_parse_sql_type(type, &field->len)) == -1) {
         setError(pParse, SQLITE_MISUSE, "Invalid type specified.");
         goto cleanup;
     }
-    free(type);
 
     struct comdb2_field *entry =
         comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_field));
@@ -3108,7 +3051,9 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     LISTC_FOR_EACH(&ctx->column_list, current, lnk)
     {
         if (strcasecmp(field->name, current->name) == 0) {
-            setError(pParse, SQLITE_ERROR, "Duplicate column name.");
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "Duplicate column name '%s'.",
+                            current->name);
             goto cleanup;
         }
     }
@@ -3127,11 +3072,10 @@ cleanup:
 
 void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
 {
-    struct comdb2_ddl_context *ctx;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct field *field;
     char *def;
     int def_len;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
@@ -3147,9 +3091,13 @@ void comdb2AddDefaultValue(Parse *pParse, ExprSpan *pSpan)
     def_len = pSpan->zEnd - pSpan->zStart;
     def = comdb2_strndup(ctx->mem, pSpan->zStart, def_len);
     if (def == 0) goto oom;
+    /* Remove the quotes around the default value (if any). */
+    sqlite3Dequote(def);
 
-    ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field->in_default =
-        def;
+    field = ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field;
+
+    field->in_default = def;
+    field->in_default_len = strlen(def);
 
     return;
 
@@ -3166,9 +3114,7 @@ cleanup:
 */
 void comdb2AddNull(Parse *pParse)
 {
-    struct comdb2_ddl_context *ctx;
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
@@ -3196,10 +3142,7 @@ void comdb2AddNull(Parse *pParse)
 */
 void comdb2AddNotNull(Parse *pParse, int onError)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddNotNull(pParse, onError);
@@ -3224,9 +3167,7 @@ void comdb2AddNotNull(Parse *pParse, int onError)
 
 void comdb2AddDbpad(Parse *pParse, int dbpad)
 {
-    struct comdb2_ddl_context *ctx;
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         return;
@@ -3254,12 +3195,9 @@ void comdb2AddPrimaryKey(
     int sortOrder    /* SQLITE_SO_ASC or SQLITE_SO_DESC */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3AddPrimaryKey(pParse, pList, onError, autoInc, sortOrder);
@@ -3278,15 +3216,9 @@ void comdb2AddPrimaryKey(
 
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
+    key->csctag = comdb2_strdup(ctx->mem, COMDB2_PK);
+    if (key->csctag == 0) goto oom;
 
-    if (pParse->constraintName.n != 0) {
-        key->csctag = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                     pParse->constraintName.n);
-        if (key->csctag == 0) goto oom;
-    } else {
-        key->csctag = comdb2_strdup(ctx->mem, "PRIMARY_KEY");
-        if (key->csctag == 0) goto oom;
-    }
     key->flags = SCHEMA_INDEX;
 
     /*
@@ -3350,12 +3282,9 @@ void comdb2AddIndex(
     u8 idxType       /* The index type */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
@@ -3376,11 +3305,6 @@ void comdb2AddIndex(
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
 
-    if (pParse->constraintName.n != 0) {
-        key->csctag = comdb2_strndup(ctx->mem, pParse->constraintName.z,
-                                     pParse->constraintName.n);
-        if (key->csctag == 0) goto oom;
-    }
     key->flags = SCHEMA_INDEX;
 
     /*
@@ -3452,12 +3376,12 @@ void comdb2CreateIndex(
     struct comdb2_ddl_context *ctx;
     struct schema *key;
     struct field *member;
-    struct db *table;
+    struct dbtable *table;
     int max_size;
     int found;
     char *keyname;
 
-    if (use_sqlite_impl(pParse)) {
+    if (pParse->db->init.busy || IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);
@@ -3465,7 +3389,7 @@ void comdb2CreateIndex(
     }
 
     assert(pTblName->nSrc == 1);
-    assert(pName1.n != 0);
+    assert(pName1->n != 0);
     assert(pList != 0);
 
     if (isRemote(pParse, &pName1, &pName2)) {
@@ -3482,7 +3406,7 @@ void comdb2CreateIndex(
     assert(idxType == SQLITE_IDXTYPE_APPDEF);
 
     /* Its a CREATE INDEX command. */
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
 
     ctx->name = comdb2_strdup(ctx->mem, pTblName->a[0].zName);
@@ -3490,7 +3414,7 @@ void comdb2CreateIndex(
 
     /* Check if an index already exists with the requested name. */
     found = 0;
-    table = getdbbyname(ctx->name);
+    table = get_dbtable_by_name(ctx->name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->name);
@@ -3500,6 +3424,13 @@ void comdb2CreateIndex(
     keyname = comdb2_strndup(ctx->mem, pName1->z, pName1->n);
     if (keyname == 0) goto oom;
     sqlite3Dequote(keyname);
+
+    if (is_pk(keyname)) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse,
+                        "PRIMARY KEY cannot be created using CREATE INDEX.");
+        goto cleanup;
+    }
 
     for (int i = 0; i < table->schema->nix; i++) {
         if ((strcasecmp(table->schema->ix[i]->csctag, keyname)) == 0) {
@@ -3525,8 +3456,6 @@ void comdb2CreateIndex(
     if (retrieve_schema(pParse, ctx)) {
         goto cleanup;
     }
-
-    pParse->comdb2_ddl_ctx = ctx;
 
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) {
@@ -3588,7 +3517,6 @@ void comdb2CreateIndex(
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
 
-    comdb2WriteTransaction(pParse);
     sc->alteronly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -3600,11 +3528,13 @@ void comdb2CreateIndex(
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                        (vdbeFuncArgFree)&free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 oom:
@@ -3655,11 +3585,8 @@ void comdb2CreateForeignKey(
     int flags           /* Conflict resolution algorithms. */
     )
 {
-    struct comdb2_ddl_context *ctx;
     struct constraint *constraint;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3CreateForeignKey(pParse, pFromCol, pTo, pToCol, flags);
@@ -3728,10 +3655,17 @@ void comdb2CreateForeignKey(
         constraint = comdb2_calloc(ctx->mem, 1, sizeof(struct constraint));
         if (constraint == 0) goto oom;
 
-        constraint->ncols = pToCol->nExpr;
         constraint->referenced_table = comdb2_strndup(ctx->mem, pTo->z, pTo->n);
         if (constraint->referenced_table == 0) goto oom;
         sqlite3Dequote(constraint->referenced_table);
+
+        /*
+          Number of referenced columns in the FK could not be zero. Though
+          some DBMS servers allow this. PG picks the primary key from the
+          referenced table.
+         */
+        assert(pToCol && pToCol->nExpr > 0);
+        constraint->ncols = pToCol->nExpr;
 
         int n;
         for (int i = 0; i < pToCol->nExpr; i++) {
@@ -3769,10 +3703,7 @@ cleanup:
 
 void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
 {
-    struct comdb2_ddl_context *ctx;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
         sqlite3DeferForeignKey(pParse, isDeferred);
@@ -3863,12 +3794,9 @@ void comdb2DropColumn(Parse *pParse, /* Parser context */
                       Token *pName   /* Name of the column */
                       )
 {
-    struct comdb2_ddl_context *ctx;
     char *name;
     int column_exists = 0;
-
-    ctx = (struct comdb2_ddl_context *)pParse->comdb2_ddl_ctx;
-
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     if (ctx == 0) {
         /* An error must have been set. */
         assert(pParse->rc != 0);
@@ -3917,7 +3845,7 @@ cleanup:
 /*
   Internal implementation of DROP INDEX.
 */
-static void comdb2DropIndexInt(Parse *pParse, struct db *table,
+static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
                                const char *idx_name)
 {
     Vdbe *v;
@@ -3935,9 +3863,10 @@ static void comdb2DropIndexInt(Parse *pParse, struct db *table,
         return;
     }
 
-    ctx = create_ddl_context();
+    ctx = create_ddl_context(pParse);
     if (ctx == 0) goto oom;
-    ctx->name = table->dbname;
+
+    ctx->name = table->tablename;
 
     /*
       Add all the columns, indexes and constraints in the table to the
@@ -3946,8 +3875,6 @@ static void comdb2DropIndexInt(Parse *pParse, struct db *table,
     if (retrieve_schema(pParse, ctx)) {
         goto cleanup;
     }
-
-    pParse->comdb2_ddl_ctx = ctx;
 
     /* Mark the index as dropped. */
     struct comdb2_schema *current_key;
@@ -3980,7 +3907,6 @@ static void comdb2DropIndexInt(Parse *pParse, struct db *table,
 
     if (authenticateSC(sc->table, pParse)) goto cleanup;
 
-    comdb2WriteTransaction(pParse);
     sc->alteronly = 1;
     sc->nothrevent = 1;
     sc->live = 1;
@@ -3992,11 +3918,13 @@ static void comdb2DropIndexInt(Parse *pParse, struct db *table,
 
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
         goto cleanup;
     }
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange,
-                        (vdbeFuncArgFree)&free_schema_change_type);
+    comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
+                    (vdbeFuncArgFree)&free_schema_change_type);
     return;
 
 oom:
@@ -4014,14 +3942,18 @@ cleanup:
 */
 void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
 {
-    struct db *table;
-    struct db *parent_table;
+    struct dbtable *table;
+    struct dbtable *parent_table;
     int index_count = 0;
 
+    /*
+    ** When will we ever need SQLite's impl for this?
+    assert(pParse->comdb2_ddl_ctx == 0);
     if (use_sqlite_impl(pParse)) {
         sqlite3DropIndex(pParse, pName, ifExists);
         return;
     }
+    */
 
     assert(pName->nSrc == 1);
 
@@ -4076,12 +4008,14 @@ void comdb2DropIndex(Parse *pParse, SrcList *pName, int ifExists)
 void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
                          int ifExists)
 {
-    struct db *table;
+    struct dbtable *table;
     int found = 0;
+
+    assert(pParse->comdb2_ddl_ctx == 0);
 
     TokenStr(table_name, tabName);
     sqlite3Dequote(table_name);
-    table = getdbbyname(table_name);
+    table = get_dbtable_by_name(table_name);
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", table_name);
@@ -4116,14 +4050,15 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     char *t_name;
     char *t_value;
     int rc;
+    comdb2_tunable_err err;
 
     rc = create_string_from_token(NULL, pParse, &t_name, name);
     if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
     rc = create_string_from_token(NULL, pParse, &t_value, value);
     if (rc != SQLITE_OK) goto cleanup; /* Error has been set. */
 
-    if ((handle_runtime_tunable(t_name, t_value))) {
-        setError(pParse, SQLITE_ERROR, "Failed to update tunable.");
+    if ((err = handle_runtime_tunable(t_name, t_value))) {
+        setError(pParse, SQLITE_ERROR, tunable_error(err));
     }
 
 cleanup:

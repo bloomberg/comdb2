@@ -90,7 +90,7 @@ struct appsock_thd_state {
 struct thdpool *gbl_appsock_thdpool = NULL;
 
 char appsock_unknown_old[] = "-1 #unknown command\n";
-char appsock_unknown[] = "Error: -1 #unknown command\n";
+char appsock_unknown[] = "Error: -1 #unknown command";
 char appsock_supported[] = "supported\n";
 
 static unsigned long long total_appsock_conns = 0;
@@ -175,7 +175,7 @@ int appsock_init(void)
     cmd_genid48 = add_command("genid48");
 
     gbl_appsock_thdpool =
-        thdpool_create("appsock pool", sizeof(struct appsock_thd_state));
+        thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
 
     if (gbl_exit_on_pthread_create_fail)
         thdpool_set_exit(gbl_appsock_thdpool);
@@ -228,7 +228,7 @@ static struct appsock_cmd *tok2command(char *tok, int ltok)
     return NULL;
 }
 
-static void dumprrns(struct db *db, SBUF2 *sb)
+static void dumprrns(struct dbtable *tbl, SBUF2 *sb)
 {
     char key[MAXKEYLEN];
     char fndkey[MAXKEYLEN];
@@ -240,7 +240,7 @@ static void dumprrns(struct db *db, SBUF2 *sb)
     unsigned long long genid;
 
     memset(key, 0, sizeof(key));
-    liq.usedb = db;
+    liq.usedb = tbl;
     rc = ix_find(&liq, 0, key, 1, fndkey, &fndrrn, &genid, fnddta, &fndlen,
                  sizeof(fnddta));
     while (rc >= 0 && rc <= 2) /*got a key*/
@@ -265,8 +265,9 @@ struct loadrrn_cmd {
     int parm;
 };
 
+/* TODO: obsolete */
 enum { LOAD_ADD_RECORD, LOAD_GET_STATUS };
-static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
+static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
 {
     int len;
     char *buf;
@@ -277,11 +278,11 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
     char *dta;
     unsigned char nullbits[MAXNULLBITS] = {0};
 
-    len = get_size_of_schema_by_name(db->dbname, tag);
+    len = get_size_of_schema_by_name(tbl->tablename, tag);
     if (len == 0)
         return -1;
     buf = malloc(len);
-    dta = malloc(getdatsize(db));
+    dta = malloc(getdatsize(tbl));
 
     do {
         rrc = sbuf2fread((char *)&op, sizeof(int), 1, sb);
@@ -298,10 +299,10 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
                 break;
             }
 
-            rc = ctag_to_stag_buf(db->dbname, tag, buf, len, nullbits,
+            rc = ctag_to_stag_buf(tbl->tablename, tag, buf, len, nullbits,
                                   ".ONDISK", dta, 0, NULL);
             if (rc != -1) {
-                rc = load_record(db, buf);
+                rc = load_record(tbl, buf);
                 recno++;
             }
             break;
@@ -322,22 +323,22 @@ static int loadrrns(struct db *db, SBUF2 *sb, char *tag)
 
 /* callback for converting records to given tag */
 static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
-                            size_t clientreclen, struct db *db, const char *tag,
+                            size_t clientreclen, struct dbtable *tbl, const char *tag,
                             const char *tzname, uint8_t ver, int conv_flags)
 {
     unsigned char nulls[MAXNULLBITS];
     int rc = 0;
-    if (db->dbtype == DBTYPE_TAGGED_TABLE) {
+    if (tbl->dbtype == DBTYPE_TAGGED_TABLE) {
         int len = reclen;
-        if (ver < db->version) {
-            void *newrec = alloca(db->lrl);
+        if (ver < tbl->version) {
+            void *newrec = alloca(tbl->lrl);
             memcpy(newrec, rec, reclen);
             rec = newrec;
         }
-        vtag_to_ondisk(db, rec, &len, ver, 0);
-        rc =
-            stag_to_ctag_buf_tz(db->dbname, ".ONDISK", rec, len, tag, clientrec,
-                                nulls, conv_flags, NULL, NULL, tzname);
+        vtag_to_ondisk(tbl, rec, &len, ver, 0);
+        rc = stag_to_ctag_buf_tz(tbl->tablename, ".ONDISK", rec, len, tag,
+                                 clientrec, nulls, conv_flags, NULL, NULL,
+                                 tzname);
     } else {
         memcpy(clientrec, rec, clientreclen);
     }
@@ -350,9 +351,6 @@ static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
         return 0;
     }
 }
-
-extern void verify_table(char *table, SBUF2 *sb, int progress_report_seconds,
-                    int attempt_fix);
 
 struct fstdmp_t {
     int rc;
@@ -388,7 +386,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
     int rc, ltok, st;
     char line[128] = {0};
     char *tok;
-    struct db *usedb, *db;
+    struct dbtable *usedb, *tbl;
     int bdberr, conv_flags = 0;
     struct dbenv *dbenv;
     *keepsocket = 0;
@@ -409,7 +407,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             break;
         st = 0;
 
-#ifdef DEBUG
+#ifdef DEBUGQUERY
         printf("line '%s'\n", line);
 #endif
 
@@ -521,7 +519,8 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
              * function will dispatch to a pooled sql engine for performing
              * queries. */
             thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
-            handle_newsql_requests(thr_self, sb, keepsocket);
+            *keepsocket = 1;
+            handle_newsql_requests(thr_self, sb);
 
             break;
         } else if (cmd == cmd_remcur) {
@@ -755,7 +754,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             handle_partition(sb);
             return 0;
         } else {
-            sbuf2printf(sb, appsock_unknown);
+            sbuf2printf(sb, "%s: %.*s\n", appsock_unknown, 100, line);
             sbuf2flush(sb);
             continue;
         }

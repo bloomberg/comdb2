@@ -316,6 +316,7 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	int ret, i, pgidx, free_buf, ftype;
 	u_int32_t n_cache;
 	db_pgno_t inpg;
+	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	mfp = dbmfp->mfp;
@@ -416,6 +417,10 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	F_SET(bhp, BH_DIRTY);
 	F_CLR(bhp, BH_TRASH);
 
+	/* The page was clean before getting in here, so update the LSN. */
+    if (dbenv->tx_perfect_ckp)
+		bhp->first_dirty_tx_begin_lsn = __txn_get_first_dirty_begin_lsn(largest_lsn);
+
 	logmsg(LOGMSG_INFO, "Found recovery page %d lsn %d:%d at idx %d\n",
 	    pgno, largest_lsn.file, largest_lsn.offset, pgidx);
 
@@ -510,7 +515,7 @@ __memp_pgread(dbmfp, hp, bhp, can_create, is_recovery_page)
 
 	if (0) {
 recover_page:
-		if (ret = __memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
+		if (__memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
 			/* This is a catastrophic error: panic the database. */
 			__db_err(dbenv,
 			    "checksum error: page %lu: catastrophic "
@@ -1096,12 +1101,9 @@ file_dead:
 			atomic_dec(env, &hp->hash_page_dirty);
 			atomic_dec(env, &c_mp->stat.st_page_dirty);
 
-			if (dbenv->mp_perfect_ckp) {
+			if (dbenv->tx_perfect_ckp) {
 				/* Clear first_dirty_lsn. */
-				bhp->first_dirty_lsn = (DB_LSN){
-					.file = UINT32_T_MAX,
-					.offset = UINT32_T_MAX
-				};
+				MAX_LSN(bhp->first_dirty_tx_begin_lsn);
 			}
 
 			F_CLR(bhp, BH_DIRTY | BH_DIRTY_CREATE);

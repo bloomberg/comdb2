@@ -1,0 +1,2 @@
+INSERT INTO t1(id, name, data) VALUES (1, "test", x'11');
+INSERT INTO t1(id, name, data) VALUES (2, "two", x'12');

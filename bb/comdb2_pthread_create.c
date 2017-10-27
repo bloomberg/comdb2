@@ -24,7 +24,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <sys/mman.h>
 
 #include "comdb2_pthread_create.h"
@@ -105,7 +107,8 @@ static void *free_stack_thr(void *unused)
         //![3]
         rc = sleep(STACK_FREE_DELAY);
         if (rc != 0) {
-            logmsg(LOGMSG_INFO, "%s:%d interrupted while sleeping.\n", __func__,
+            logmsg(LOGMSG_INFO,
+                   "%s:%d interrupted with rc %d while sleeping.\n", __func__,
                    __LINE__, rc);
             continue;
         }

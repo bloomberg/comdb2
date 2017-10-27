@@ -75,7 +75,7 @@ void *release_marshal_perr(marshal_t *mm, char *msg);
 void *release_marshal_msg(marshal_t *mm, char *format, ...);
 
 /*marshal a resource*/
-void *marshal_add(marshal_t *mm, void *ptr, marshal_free_func_t *free_func);
+void *marshal_add(marshal_t *mm, void *ptr, marshal_free_func_t *free_mem_func);
 
 /*delete individual item from marshaller. 0=success*/
 int marshal_del(marshal_t *mm, void *ptr);

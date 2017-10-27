@@ -1542,9 +1542,11 @@ int bdb_set_sp_lua_default(bdb_state_type *bdb_state, tran_type *tran,
                            char *sp_name, int lua_ver, int *bdberr);
 
 int bdb_set_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long genid, int *bdberr);
+                               unsigned long long genid, unsigned int host,
+                               int *bdberr);
 int bdb_get_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *genid, int *bdberr);
+                               unsigned long long *genid, unsigned int *host,
+                               int *bdberr);
 int bdb_delete_disable_plan_genid(bdb_state_type *bdb_state, tran_type *tran,
                                   int *bdberr);
 
@@ -1653,6 +1655,7 @@ void bdb_lockspeed(bdb_state_type *bdb_state);
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
 int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
                              tran_type *tran);
+int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
 int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
 unsigned long long get_id(bdb_state_type *bdb_state);
@@ -1803,9 +1806,8 @@ int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr);
 int bdb_get_genid_format(uint64_t *genid_format, int *bdberr);
 int bdb_set_genid_format(uint64_t genid_format, int *bdberr);
 
-int bdb_get_table_csonparameters(const char *table, char **value, int *len);
-int bdb_get_table_csonparameters_tran(void *tran, const char *table, 
-                                      char **value, int *len);
+int bdb_get_table_csonparameters(tran_type *tran, const char *table,
+                                 char **value, int *len);
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
                                  const char *value, int len);
 int bdb_del_table_csonparameters(void *parent_tran, const char *table);
@@ -1872,6 +1874,15 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset);
  */
 int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
                              int *bdberr);
+
+/**
+ * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"
+ * (It creates or, if existing, updates an entry)
+ *
+ */
+int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long val, int *bdberr);
+
 /**
  *  Delete the TABLE VERSION ENTRY for table "bdb_state->name"
  *
@@ -1883,7 +1894,7 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
  *  If an entry doesn't exist, version 0 is returned
  *
  */
-int bdb_table_version_select(bdb_state_type *bdb_state, tran_type *tran,
+int bdb_table_version_select(const char *name, tran_type *tran,
                              unsigned long long *version, int *bdberr);
 
 void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);

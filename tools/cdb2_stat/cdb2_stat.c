@@ -5,7 +5,7 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "db_config.h"
+#include "build/db_config.h"
 
 #ifndef lint
 static const char copyright[] =
@@ -34,7 +34,7 @@ static const char revid[] =
 #include <unistd.h>
 #endif
 
-#include "db_int.h"
+#include "build/db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/txn.h"
 #include <crc32c.h>
@@ -65,7 +65,6 @@ int	 txn_stats __P((DB_ENV *, u_int32_t));
 void	 txn_xid_stats __P((DB_TXN_ACTIVE *));
 int	 cdb2_stat_usage __P((void));
 int	 cdb2_stat_version_check __P((const char *));
-extern int io_override_init(void);
 extern int io_override_set_std(FILE *f);
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
@@ -223,8 +222,6 @@ argcombo:			fprintf(stderr,
 	__db_util_siginit();
 
 
-    if (io_override_init())
-        goto shutdown;
     io_override_set_std(stdout);
 
 

@@ -164,6 +164,54 @@ static void init_pool_list(void)
     listc_init(&threadpools, offsetof(struct thdpool, lnk));
 }
 
+#include "tunables.h"
+
+#define REGISTER_THDPOOL_TUNABLE(POOL, NAME, DESCR, TYPE, VAR_PTR, FLAGS,      \
+                                 VALUE_FN, VERIFY_FN, UPDATE_FN, DESTROY_FN)   \
+    snprintf(buf, sizeof(buf), "%s.%s", POOL, #NAME);                          \
+    REGISTER_TUNABLE(buf, DESCR, TYPE, VAR_PTR, FLAGS, VALUE_FN, VERIFY_FN,    \
+                     UPDATE_FN, DESTROY_FN)
+
+static void register_thdpool_tunables(char *name, struct thdpool *pool)
+{
+    char buf[100];
+
+    REGISTER_TUNABLE(name, NULL, TUNABLE_COMPOSITE, NULL, INTERNAL, NULL, NULL,
+                     NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, mint, "Minimum number of threads in the pool.", TUNABLE_INTEGER,
+        &pool->minnthd, SIGNED, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, maxt, "Maximum number of threads in the pool.", TUNABLE_INTEGER,
+        &pool->maxnthd, SIGNED, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, maxq, "Maximum size of queue.",
+                             TUNABLE_INTEGER, &pool->maxqueue, SIGNED, NULL,
+                             NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, longwait, "Long wait alarm threshold (in milliseconds).",
+        TUNABLE_INTEGER, &pool->longwaitms, SIGNED, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, linger, "Thread linger time (in seconds).",
+                             TUNABLE_INTEGER, &pool->lingersecs, SIGNED, NULL,
+                             NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, stacksz, "Thread stack size.",
+                             TUNABLE_INTEGER, &pool->stack_sz, SIGNED, NULL,
+                             NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, maxqover,
+                             "Maximum client forced queued items above maxq.",
+                             TUNABLE_INTEGER, &pool->maxqueueoverride, SIGNED,
+                             NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(
+        name, maxagems, "Maximum age for in-queue time (in milliseconds).",
+        TUNABLE_INTEGER, &pool->maxqueueagems, SIGNED, NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, exit_on_error, "Exit on pthread error.",
+                             TUNABLE_BOOLEAN, &pool->exit_on_create_fail, NOARG,
+                             NULL, NULL, NULL, NULL);
+    REGISTER_THDPOOL_TUNABLE(name, dump_on_full, "Dump status on full queue.",
+                             TUNABLE_BOOLEAN, &pool->dump_on_full, NOARG, NULL,
+                             NULL, NULL, NULL);
+    return;
+}
+
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
 {
     struct thdpool *pool;
@@ -221,6 +269,9 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     pthread_once(&init_pool_list_once, init_pool_list);
     listc_abl(&threadpools, pool);
     pthread_mutex_unlock(&pool_list_lk);
+
+    /* Register all tunables. */
+    register_thdpool_tunables((char *)name, pool);
 
     return pool;
 }
@@ -325,7 +376,8 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Long wait alarm threshold : %u ms\n", pool->longwaitms);
         logmsgf(LOGMSG_USER, fh, "  Thread linger time        : %u seconds\n",
                 pool->lingersecs);
-        logmsgf(LOGMSG_USER, fh, "  Thread stack size         : %u bytes\n", pool->stack_sz);
+        logmsgf(LOGMSG_USER, fh, "  Thread stack size         : %zu bytes\n",
+                pool->stack_sz);
         logmsgf(LOGMSG_USER, fh, "  Maximum queue overload    : %u\n",
                 pool->maxqueueoverride);
         logmsgf(LOGMSG_USER, fh, "  Maximum queue age         : %u ms\n",
@@ -423,8 +475,8 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
         if (ltok > 0) {
             thdpool_set_stack_size(pool, toknum(tok, ltok));
         }
-        logmsg(LOGMSG_USER, "Pool [%s] thread stack size set to %u bytes\n", pool->name,
-               pool->stack_sz);
+        logmsg(LOGMSG_USER, "Pool [%s] thread stack size set to %zu bytes\n",
+               pool->name, pool->stack_sz);
     } else if (tokcmp(tok, ltok, "maxqover") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
@@ -765,7 +817,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         exit(1);
                 }
 
-                logmsg(LOGMSG_DEBUG, "CREATED %d\n", thd->tid);
+                logmsg(LOGMSG_DEBUG, "CREATED %lu\n", thd->tid);
 
                 listc_rfl(&pool->thdlist, thd);
                 pool->num_failed_dispatches++;
@@ -909,11 +961,142 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 }
 
 /* No locks, so not 100% accurate */
-int thdpool_get_maxthds(struct thdpool *pool) { return pool->maxnthd; }
+char *thdpool_get_name(struct thdpool *pool)
+{
+    return pool->name;
+}
 
-int thdpool_get_nthds(struct thdpool *pool) { return pool->thdlist.count; }
+int thdpool_get_status(struct thdpool *pool)
+{
+    return pool->stopped;
+}
+
+int thdpool_get_nthds(struct thdpool *pool)
+{
+    return pool->thdlist.count;
+}
+
+int thdpool_get_nfreethds(struct thdpool *pool)
+{
+    return pool->freelist.count;
+}
+
+int thdpool_get_maxthds(struct thdpool *pool)
+{
+    return pool->maxnthd;
+}
+
+int thdpool_get_peaknthds(struct thdpool *pool)
+{
+    return pool->peaknthd;
+}
+
+int thdpool_get_creates(struct thdpool *pool)
+{
+    return pool->num_creates;
+}
+
+int thdpool_get_exits(struct thdpool *pool)
+{
+    return pool->num_exits;
+}
+
+int thdpool_get_passed(struct thdpool *pool)
+{
+    return pool->num_passed;
+}
+
+int thdpool_get_enqueued(struct thdpool *pool)
+{
+    return pool->num_enqueued;
+}
+
+int thdpool_get_dequeued(struct thdpool *pool)
+{
+    return pool->num_dequeued;
+}
+
+int thdpool_get_timeouts(struct thdpool *pool)
+{
+    return pool->num_timeout;
+}
+
+int thdpool_get_failed_dispatches(struct thdpool *pool)
+{
+    return pool->num_failed_dispatches;
+}
+
+int thdpool_get_minnthd(struct thdpool *pool)
+{
+    return pool->minnthd;
+}
+
+int thdpool_get_maxnthd(struct thdpool *pool)
+{
+    return pool->maxnthd;
+}
+
+int thdpool_get_peakqueue(struct thdpool *pool)
+{
+    return pool->peakqueue;
+}
+
+int thdpool_get_maxqueue(struct thdpool *pool)
+{
+    return pool->maxqueue;
+}
 
 int thdpool_get_nqueuedworks(struct thdpool *pool)
 {
     return listc_size(&pool->queue);
+}
+
+int thdpool_get_longwaitms(struct thdpool *pool)
+{
+    return pool->longwaitms;
+}
+
+int thdpool_get_lingersecs(struct thdpool *pool)
+{
+    return pool->lingersecs;
+}
+
+int thdpool_get_stacksz(struct thdpool *pool)
+{
+    return pool->stack_sz;
+}
+
+int thdpool_get_maxqueueoverride(struct thdpool *pool)
+{
+    return pool->maxqueueoverride;
+}
+
+int thdpool_get_maxqueueagems(struct thdpool *pool)
+{
+    return pool->maxqueueagems;
+}
+
+int thdpool_get_exit_on_create_fail(struct thdpool *pool)
+{
+    return pool->exit_on_create_fail;
+}
+
+int thdpool_get_dump_on_full(struct thdpool *pool)
+{
+    return pool->dump_on_full;
+}
+
+int thdpool_lock(struct thdpool *pool)
+{
+    return pthread_mutex_lock(&pool->mutex);
+}
+
+int thdpool_unlock(struct thdpool *pool)
+{
+    return pthread_mutex_unlock(&pool->mutex);
+}
+
+struct thdpool *thdpool_next_pool(struct thdpool *pool)
+{
+    return (pool) ? pool->lnk.next : 0;
 }

@@ -142,10 +142,9 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                          UnpackedRecord *upr)
 {
     int rootpage;
-    int tblnum;
     int ixnum;
     Mem *pMem;
-    struct db *db;
+    struct dbtable *db;
     char *sql;
     strbuf *new_sql;
     char *bracket;
@@ -170,9 +169,9 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     rootpage = pMem->u.i;
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    get_sqlite_tblnum_and_ixnum(thd, rootpage, &tblnum, &ixnum);
+    db = get_sqlite_db(thd, rootpage, &ixnum);
 
-    if (unlikely(tblnum < 0 || ixnum < -1)) {
+    if (unlikely(!db)) {
         logmsg(LOGMSG_ERROR, "%s: wrong rootpage %d\n", __func__, rootpage);
         return -1;
     }
@@ -181,9 +180,6 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     if (ixnum == -1) {
         return 0;
     }
-
-    /* for indexes, retrieve the table */
-    db = thedb->dbs[tblnum];
 
     /* if this is a datacopy index, do not do anything */
     if (db->ix_datacopy[ixnum]) {
@@ -443,10 +439,11 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     if (gbl_fdb_track) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%d commiting tid=%s\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%lu commiting tid=%s\n", pthread_self(),
                    comdb2uuidstr(clnt->osql.uuid, us));
         } else
-            logmsg(LOGMSG_USER, "%d commiting tid=%llx\n", pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(),
+                   clnt->osql.rqid);
     }
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
@@ -513,10 +510,11 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     if (gbl_fdb_track) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%d commiting tid=%s\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%lu commiting tid=%s\n", pthread_self(),
                    comdb2uuidstr(clnt->osql.uuid, us));
         } else
-            logmsg(LOGMSG_USER, "%d commiting tid=%llx\n", pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(),
+                   clnt->osql.rqid);
     }
     /* destroying curstran */
     if (clnt->dbtran.cursor_tran) {
@@ -584,14 +582,14 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n",
-                pthread_self());
+        logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu getting a curtran\n",
+               pthread_self());
 
     /* we need a curtran for this one */
     if (!clnt->dbtran.cursor_tran) {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n",
-                    pthread_self());
+            logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu getting a curtran\n",
+                   pthread_self());
 
         clnt->dbtran.cursor_tran =
             bdb_get_cursortran(thedb->bdb_env, 0, &bdberr);
@@ -603,8 +601,9 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
         *standalone = 1;
     } else {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_ERROR, "XYXYXY: thread %p part of transaction %llu\n",
-                    pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_ERROR,
+                   "XYXYXY: thread %lu part of transaction %llu\n",
+                   pthread_self(), clnt->osql.rqid);
 
         *standalone = 0;
     }
@@ -624,10 +623,8 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
     pCur->genid = genid;
 
     /* retrieve the table involved */
-    get_sqlite_tblnum_and_ixnum(thd, rootpage, &pCur->tblnum, &pCur->ixnum);
-
-    pCur->db = thedb->dbs[pCur->tblnum];
-    pCur->numblobs = get_schema_blob_count(pCur->db->dbname, ".ONDISK");
+    pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
+    pCur->numblobs = get_schema_blob_count(pCur->db->tablename, ".ONDISK");
 
     if (need_bdbcursor) {
         pCur->bdbcur = bdb_cursor_open(
@@ -685,8 +682,8 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
     if (standalone) {
         if (clnt->dbtran.cursor_tran) {
             if (gbl_fdb_track)
-                logmsg(LOGMSG_ERROR, "XYXYXY: thread %p releasing curtran\n",
-                        pthread_self());
+                logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu releasing curtran\n",
+                       pthread_self());
 
             rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran,
                                     &bdberr);
@@ -704,8 +701,9 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
         }
     } else {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "XYXYXY: thread %p in transaction, keeping curtran\n",
-                    pthread_self());
+            logmsg(LOGMSG_USER,
+                   "XYXYXY: thread %lu in transaction, keeping curtran\n",
+                   pthread_self());
     }
 
     if (pCur->ondisk_buf) {
@@ -717,7 +715,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
     return rc;
 }
 
-static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct db *db,
+static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *db,
                                       struct convert_failure *fail_reason,
                                       BtCursor *pCur)
 {
@@ -744,8 +742,9 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct db *db,
                               NULL, 0, fail_reason, pCur);
         if (rc != getkeysize(db, i)) {
             char errs[128];
-            convert_failure_reason_str(fail_reason, db->dbname, "SQLite format",
-                                       ".ONDISK_ix", errs, sizeof(errs));
+            convert_failure_reason_str(fail_reason, db->tablename,
+                                       "SQLite format", ".ONDISK_ix", errs,
+                                       sizeof(errs));
             return -1;
         }
         free(pIndexes[i]);
@@ -764,7 +763,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
 {
     BtCursor bCur;
     struct sql_thread *thd;
-    struct db *db;
+    struct dbtable *db;
     char *row;
     int rowlen;
     blob_buffer_t rowblobs[MAXBLOBS];
@@ -801,7 +800,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
                           rowblobs, MAXBLOBS, &clnt->fail_reason, &bCur);
     if (rc < 0) {
         char errs[128];
-        convert_failure_reason_str(&clnt->fail_reason, db->dbname,
+        convert_failure_reason_str(&clnt->fail_reason, db->tablename,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
 
@@ -890,7 +889,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
 {
     BtCursor bCur;
     struct sql_thread *thd;
-    struct db *db;
+    struct dbtable *db;
     char *row;
     int rowlen;
     blob_buffer_t rowblobs[MAXBLOBS];
@@ -936,7 +935,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
                           rowblobs, MAXBLOBS, &clnt->fail_reason, &bCur);
     if (rc < 0) {
         char errs[128];
-        convert_failure_reason_str(&clnt->fail_reason, db->dbname,
+        convert_failure_reason_str(&clnt->fail_reason, db->tablename,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
 

@@ -416,7 +416,9 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   for(i = 0; i < n; i++) {
     sleep(1);
     if( comdb2_sql_tick() )
-      break;
+      break;  
+    /* We could also return error by doing
+     * sqlite3_result_error(context, "Interrupted", -1); */
   }
   sqlite3_result_int(context, i);
 }
@@ -712,6 +714,16 @@ static void comdb2HostFunc(
   UNUSED_PARAMETER2(NotUsed, NotUsed2);
   extern char *gbl_myhostname;
   sqlite3_result_text(context, gbl_myhostname, -1, SQLITE_STATIC);
+}
+
+extern int comdb2_get_server_port();
+static void comdb2PortFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  sqlite3_result_int64(context, comdb2_get_server_port());
 }
 
 
@@ -2189,6 +2201,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(table_version,     1, 0, 0, tableVersionFunc),
     FUNCTION(partition_info,    2, 0, 0, partitionInfoFunc),
     FUNCTION(comdb2_host,       0, 0, 0, comdb2HostFunc),
+    FUNCTION(comdb2_port,       0, 0, 0, comdb2PortFunc),
     FUNCTION(comdb2_dbname,     0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,0,0,0, comdb2PrevquerycostFunc),
 #endif

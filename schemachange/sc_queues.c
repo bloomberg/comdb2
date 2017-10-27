@@ -21,7 +21,7 @@
 
 int consumer_change(const char *queuename, int consumern, const char *method)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
 
     db = getqueuebyname(queuename);
@@ -62,7 +62,7 @@ int consumer_change(const char *queuename, int consumern, const char *method)
 
 int do_alter_queues_int(struct schema_change_type *s)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
     db = getqueuebyname(s->table);
     if (db == NULL) {
@@ -81,7 +81,7 @@ int do_alter_queues_int(struct schema_change_type *s)
     return rc;
 }
 
-int static remove_from_qdbs(struct db *db)
+int static remove_from_qdbs(struct dbtable *db)
 {
     for (int i = 0; i < thedb->num_qdbs; i++) {
         if (db == thedb->qdbs[i]) {
@@ -102,7 +102,7 @@ int static remove_from_qdbs(struct db *db)
 
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
 {
-    struct db *newdb;
+    struct dbtable *newdb;
     int bdberr;
 
     /* regardless of success, the fact that we are getting asked to do this is
@@ -132,21 +132,21 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
     if (newdb->dbenv->master == gbl_mynode) {
         /* I am master: create new db */
         newdb->handle =
-            bdb_create_queue(newdb->dbname, thedb->basedir, avgitemsz, pagesize,
-                             thedb->bdb_env, 0, &bdberr);
+            bdb_create_queue(newdb->tablename, thedb->basedir, avgitemsz,
+                             pagesize, thedb->bdb_env, 0, &bdberr);
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle =
-            bdb_open_more_queue(newdb->dbname, thedb->basedir, avgitemsz,
+            bdb_open_more_queue(newdb->tablename, thedb->basedir, avgitemsz,
                                 pagesize, thedb->bdb_env, 0, &bdberr);
     }
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
-               thedb->basedir, newdb->dbname, bdberr);
+               thedb->basedir, newdb->tablename, bdberr);
         return SC_BDB_ERROR;
     }
     thedb->qdbs =
-        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
+        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
     thedb->qdbs[thedb->num_qdbs++] = newdb;
 
     /* Add queue to the hash. */
@@ -161,7 +161,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
  * perform_trigger_update()? */
 int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 {
-    struct db *db;
+    struct dbtable *db;
     int rc;
     char *config;
     int ndests;
@@ -202,12 +202,12 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
-                   thedb->basedir, db->dbname, bdberr);
+                   thedb->basedir, db->tablename, bdberr);
             rc = -1;
             goto done;
         }
         thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
+            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
         thedb->qdbs[thedb->num_qdbs++] = db;
 
         /* Add queue to the hash. */
@@ -308,7 +308,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * 3) stop/start threads for consumers, as needed
      * 4) send scdone, like any other sc
      */
-    struct db *db;
+    struct dbtable *db;
     void *tran = NULL;
     int rc = 0;
     int bdberr = 0;
@@ -316,7 +316,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     scdone_t scdone_type;
     SBUF2 *sb = sc->sb;
 
-    db = getdbbyname(sc->table);
+    db = get_dbtable_by_name(sc->table);
     if (db) {
         sbuf2printf(sb, "!Trigger name %s clashes with existing table.\n",
                     sc->table);
@@ -417,17 +417,17 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         /* I am master: create new db */
-        db->handle = bdb_create_queue(db->dbname, thedb->basedir, 65536, 65536,
-                                      thedb->bdb_env, 1, &bdberr);
+        db->handle = bdb_create_queue(db->tablename, thedb->basedir, 65536,
+                                      65536, thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
-                   thedb->basedir, db->dbname, bdberr);
+                   thedb->basedir, db->tablename, bdberr);
             goto done;
         }
 
         thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct db *));
+            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
         thedb->qdbs[thedb->num_qdbs++] = db;
 
         /* Add queue to the hash. */
@@ -468,7 +468,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         /* stop */
         dbqueue_stop_consumers(db);
-        rc = javasp_do_procedure_op(JAVASP_OP_RELOAD, db->dbname, NULL, config);
+        rc = javasp_do_procedure_op(JAVASP_OP_RELOAD, db->tablename, NULL,
+                                    config);
         if (rc) {
             sbuf2printf(sb,
                         "!Can't load procedure - check config/destinations?\n");
@@ -491,13 +492,13 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* stop */
         dbqueue_stop_consumers(db);
 
-        javasp_do_procedure_op(JAVASP_OP_UNLOAD, db->dbname, NULL, config);
+        javasp_do_procedure_op(JAVASP_OP_UNLOAD, db->tablename, NULL, config);
 
         /* get us out of database list */
         remove_from_qdbs(db);
 
         /* get us out of llmeta */
-        rc = bdb_llmeta_drop_queue(db->handle, tran, db->dbname, &bdberr);
+        rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n",
                    __func__, rc, bdberr);

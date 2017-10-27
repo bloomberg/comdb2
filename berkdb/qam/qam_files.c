@@ -225,7 +225,7 @@ alloc:			if ((ret = __os_realloc(dbenv,
 		if (array->mpfarray[offset].pinref) {
 			if (debug_switch_verbose_fix_pinref()) {
 				logmsg(LOGMSG_WARN, 
-                    "*** %d *** fixing pinref %d %d %d %p  %s [%d-%d]\n",
+                    "*** %lu *** fixing pinref %d %d %d %p  %s [%d-%d]\n",
 				    pthread_self(),
 				    array->mpfarray[offset].pinref,
 				    offset + array->low_extent, offset,
@@ -445,7 +445,7 @@ __qam_fremove(dbp, pgnoaddr)
 	 * we scrub the buffers before we __memp_fclose-ing the MPF
 	 */
 	if ((ret = __memp_sync_int(dbenv, mpf, 0, DB_SYNC_REMOVABLE_QEXTENT,
-	    &wrote, 0, NULL)) != 0) {
+	    &wrote, 0, NULL, 0)) != 0) {
 		fprintf(stderr, "failure to sync removable extent! ret = %d\n",
 		    ret);
 		/* plunge ahead, hopefully there will be no race */
@@ -520,7 +520,7 @@ __qam_sync(dbp)
 	if (((QUEUE *)dbp->q_internal)->page_ext == 0)
 		return (__memp_fsync(mpf));
 	else
-		return (__memp_sync(dbenv, NULL, NULL));
+		return (__memp_sync(dbenv, NULL));
 }
 
 /*

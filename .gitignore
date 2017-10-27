@@ -1,253 +1,22 @@
-# libraries
-comdb2rle/libcomdb2rle.a
-bb/libbb.a
-bdb/libbdblib.a
-protobuf/libcdb2protobuf.a
-protobuf/libcdb2protobuf.so
-cdb2api/libcdb2api.a
-cdb2api/libcdb2api.so
-csc2/libcsc2lib.a
-lua/liblua.a
-sqlite/libsqlite.a
-crc32c/libcrc32c.a
-net/libnet.a
-datetime/libtz.a
-dlmalloc/libdlmalloc.a
-berkdb/libdb.a
-util/libutil.a
-dfp/decNumber/libdfpal.a
-schemachange/libschemachange.a
-cson/libcson.a
-sockpool/libsockpool.a
-
-# loose object files
-*.o
-bb/libbb.o
-bdb/*.o
-bdb/extern.list
-berkdb/btree/*.o
-berkdb/common/*.o
-berkdb/crypto/*.o
-berkdb/crypto/mersenne/*.o
-berkdb/db/*.o
-berkdb/dbm/*.o
-berkdb/dbreg/*.o
-berkdb/env/*.o
-berkdb/fileops/*.o
-berkdb/hash/*.o
-berkdb/hmac/*.o
-berkdb/hsearch/*.o
-berkdb/lock/*.o
-berkdb/log/*.o
-berkdb/mp/*.o
-berkdb/mutex/*.o
-berkdb/os/*.o
-berkdb/qam/*.o
-berkdb/rep/*.o
-berkdb/txn/*.o
-berkdb/xa/*.o
-cdb2api/*.o
-comdb2rle/*.o
-comdb2sc/*.o
-crc32c/*.o
-csc2/*.o
-datetime/*.o
-dfp/decNumber/*.o
-dfp/dfpal/*.o
-dlmalloc/*.o
-lua/*.o
-net/*.o
-protobuf/google/protobuf-c/*.o
-protobuf/*.o
-sqlite/*.o
-util/*.o
-sqlite/inline/serialget.o
-sqlite/inline/memcompare.o
-sqlite/inline/vdbecompare.o
-
-# loose dependency files
-*.d
-
-# generated headers
-berkdb/dbinc_auto/*_auto.h
-berkdb/dbinc_auto/*_ext.h
-!berkdb/dbinc_auto/clib_ext.h
-!berkdb/dbinc_auto/txn_auto.h
-!berkdb/dbinc_auto/txn_ext.h
-protobuf/sqlquery.pb-c.h
-protobuf/sqlresponse.pb-c.h
-protobuf/bpfunc.pb-c.c
-protobuf/bpfunc.pb-c.h
-protobuf/log.pb-c.c
-protobuf/log.pb-c.h
-sqlite/keywordhash.h
-sqlite/opcodes.h
-bdb/llog_auto.h
-bdb/llog_extern.h
-bdb/llog_int.h
-sqlite/parse.h
-csc2/maccparse.h
-
-# generated logs
-csc2/y.output
-sqlite/parse.h.temp
-sqlite/parse.out
-bdb/int.list
-bdb/template
-
-# generated source
-plink_timestamp.c
-sqlite/opcodes.c
-bdb/llog_auto.c
-sqlite/parse.c
-csc2/macclex.c
-csc2/maccparse.c
-sqlite/inline/memcompare.c
-sqlite/inline/serialget.c
-sqlite/inline/vdbecompare.c
-protobuf/sqlquery.pb-c.c
-protobuf/sqlresponse.pb-c.c
-berkdb/btree/btree_auto.c
-berkdb/db/crdel_auto.c
-berkdb/db/db_auto.c
-berkdb/dbreg/dbreg_auto.c
-berkdb/fileops/fileops_auto.c
-berkdb/hash/hash_auto.c
-berkdb/qam/qam_auto.c
-
-# dependency files
-*.d
-*.Td
-
-# generated tools
-sqlite/mkkeywordhash
-sqlite/lemon
-
-# binaries
-comdb2
-pmux
-cdb2sql
-cdb2sockpool
-comdb2ar
-cdb2_sqlreplay
-cdb2_perf
-
-# built tool libraries
-libcomdb2ar.a
-libcdb2sql.a
-libcdb2sockpool.a
-libcdb2util.a
-libcdb2_sqlreplay.a
-
-# fluff produced by various tools that tends to accumulate
-*.sw[op]
-*~
-debian/comdb2.debhelper.log
-debian/comdb2.substvars
-debian/comdb2/*
-debian/files
-debian/comdb2.build-stamp
-debian/comdb2.binary-stamp
-debian/comdb2.install-stamp
-tags
-dbsize
-callgrind.*
-
-# Bloomberg-specific
-*.tsk
-*.ibm
-*.sundev1
-*.linux
-*.hp
-*.lastlink
-*.mapfile
-*.class
-00deps
-*.realarchive
-*.rh62
-*.trap
-*_plink_timestamp*
-# generated files:
-berkdb/dist/template/rec_btree
-berkdb/dist/template/rec_crdel
-berkdb/dist/template/rec_db
-berkdb/dist/template/rec_dbreg
-berkdb/dist/template/rec_fileops
-berkdb/dist/template/rec_hash
-berkdb/dist/template/rec_qam
-*.output
-!ported.*
-*/ported.*
-.SBUILD_LOG
-db_dump.linux*
-db_dump.ibm*
-db_dump.sundev*
-db_printlog.linux*
-db_printlog.ibm*
-db_printlog.sundev*
-db_stat.linux*
-db_stat.ibm*
-db_stat.sundev*
-!comdb2tests/*
-
-# mem generated files
-bdb/mem_bdb.c
-bdb/mem_bdb.h
-berkdb/mem_berkdb.c
-berkdb/mem_berkdb.h
-csc2/mem_csc2.c
-csc2/mem_csc2.h
-datetime/mem_datetime.c
-datetime/mem_datetime.h
-dfp/decNumber/mem_dfp_decNumber.c
-dfp/decNumber/mem_dfp_decNumber.h
-mem_uncategorized.c
-mem_uncategorized.h
-net/mem_net.c
-net/mem_net.h
-protobuf/mem_protobuf.c
-protobuf/mem_protobuf.h
-sqlite/mem_sqlite.c
-sqlite/mem_sqlite.h
-util/mem_int.h
-util/mem_util.c
-util/mem_util.h
-schemachange/mem_schemachange.c
-schemachange/mem_schemachange.h
-lua/mem_lua.c
-lua/mem_lua.h
-
-# generated files:
-sundev1
-linux
-ibm
-berkdb/dist/template/rec_btree
-berkdb/dist/template/rec_crdel
-berkdb/dist/template/rec_db
-berkdb/dist/template/rec_dbreg
-berkdb/dist/template/rec_fileops
-berkdb/dist/template/rec_hash
-berkdb/dist/template/rec_qam
-*.output
-.nfs*
-.gdb_history
-cscope.files
-cscope.in.out
-cscope.out
-cscope.po.out
-sundev1
-linux
-ibm
-mem_*.c
-mem_*.h
-builddeps
-debian
-dbsize
+# binaries -- still installing these in-source for test suite
+/build
+/cdb2_dump
+/cdb2_printlog
+/cdb2_sqlreplay
+/cdb2_stat
+/cdb2_verify
+/cdb2sockpool
+/cdb2sql
+/comdb2
+/comdb2ar
+/pmux
 
 # jdbc driver
 !cdb2jdbc/**
 cdb2jdbc/target/**
 cdb2jdbc/maven.m2/**
+cdb2jdbc/.gradle/**
+cdb2jdbc/build/**
 
 # generated docs
 _site/
@@ -255,24 +24,37 @@ Comdb2.docset
 Gemfile.lock
 
 # test tools
+tests/blob_size_limit.test/comdb2_blobtest
+tests/bloballoc.test/blob
+tests/cdb2api_so.test/cdb2_client
+tests/cdb2bind.test/cdb2bind
+tests/insert_lots.test/insert_lots_mt
+tests/leakcheck.test/leakcheck
+tests/sicountbug.test/sicountbug
+tests/simple_ssl.test/simple_ssl
+tests/sirace.test/sirace
+tests/sqlite.test/comdb2_sqltest
+tests/tools/bound
+tests/tools/cdb2api_caller
+tests/tools/crle
+tests/tools/hatest
+tests/tools/localrep
 tests/tools/overflow_blobtest
+tests/tools/ptrantest
 tests/tools/recom
 tests/tools/selectv
 tests/tools/serial
 tests/tools/stepper
-tests/tools/hatest
-tests/tools/bound
-tests/tools/localrep
 tests/tools/utf8
-tests/tools/crle
 
-# jepsen c test
-jepsen/ctest/test*
-jepsen/killcluster/*out*
-
-*.d
 tests/test_*
 tests/pmux.sqlite
+
+# jepsen c test
+linearizable/ctest/test*
+linearizable/ctest/*.o
+linearizable/ctest/insert
+linearizable/ctest/register
 
 # generated images
 docs/site/images/*.gif
@@ -280,6 +62,7 @@ docs/sqlitegen/all.html
 docs/sqlitegen/syntax_linkage.tcl
 docker/maven.m2/
 contrib/docker/build
+contrib/docker/volumes
 
 # editor files
-.vscode
+*.swp

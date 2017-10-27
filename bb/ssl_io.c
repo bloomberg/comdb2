@@ -66,7 +66,7 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
     int fd;
     char *funcname;
     struct sockaddr_in peeraddr;
-    int len = sizeof(peeraddr);
+    socklen_t len = sizeof(peeraddr);
     char *host;
 #if SBUF2_SERVER
     struct peer_info *info;

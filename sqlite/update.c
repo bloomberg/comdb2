@@ -310,7 +310,12 @@ void sqlite3Update(
   /*
    * Comdb2 modification: create our updCols array.
    */
-  sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  if(isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
+                       strlen("__hidden__rowid")+1) == 0){
+          sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
+  } else {
+    sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  }
 
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, 1, iDb);
@@ -467,12 +472,18 @@ void sqlite3Update(
     sqlite3VdbeAddOp2(v, OP_Rewind, iEph, labelBreak); VdbeCoverage(v);
     addrTop = sqlite3VdbeAddOp2(v, OP_RowKey, iEph, regKey);
     sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, labelContinue, regKey, 0);
+    /* COMDB2 MODIFICATION */
+    /* use P5 to trigger verify error if not found */
+    sqlite3VdbeChangeP5(v, 1);
     VdbeCoverage(v);
   }else{
     labelContinue = sqlite3VdbeAddOp3(v, OP_RowSetRead, regRowSet, labelBreak,
                              regOldRowid);
     VdbeCoverage(v);
     sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue, regOldRowid);
+    /* COMDB2 MODIFICATION */
+    /* use P5 to trigger verify error if not found */
+    sqlite3VdbeChangeP5(v, 1);
     VdbeCoverage(v);
   }
 

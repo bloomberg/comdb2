@@ -1,4 +1,5 @@
 CREATE TABLE t1(i INT) $$
+ALTER TABLE t1 $$
 ALTER TABLE t1 ADD COLUMN j INT $$
 ALTER TABLE t1 ADD COLUMN k INT NOT NULL $$
 ALTER TABLE t1 ADD COLUMN l INT NULL $$
@@ -25,6 +26,9 @@ ALTER TABLE t6 ADD COLUMN j INT NULL $$
 CREATE TABLE t7(i INT) OPTIONS REC ZLIB, REBUILD $$
 ALTER TABLE t7 ADD COLUMN j INT NULL $$
 
+CREATE TABLE t8(i BLOB) $$
+ALTER TABLE t8 ADD COLUMN j BLOB(100) $$
+
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
@@ -37,4 +41,27 @@ DROP TABLE t4;
 DROP TABLE t5;
 DROP TABLE t6;
 DROP TABLE t7;
+DROP TABLE t8;
 
+CREATE TABLE t1(v VARCHAR(10) DEFAULT 'foo', d DATETIME DEFAULT 'CURRENT_TIMESTAMP', i INT DEFAULT '10') $$
+CREATE INDEX IDX ON t1(i);
+CREATE TABLE t2(v VARCHAR(10) DEFAULT foo, d DATETIME DEFAULT CURRENT_TIMESTAMP, i INT DEFAULT 10) $$
+CREATE INDEX IDX ON t2(i);
+
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+
+DROP INDEX IDX on t1;
+DROP INDEX IDX on t2;
+
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+
+DROP TABLE t1;
+DROP TABLE t2;

@@ -1,5 +1,5 @@
 ---
-title: Info Tables
+title: System Tables
 keywords: code
 sidebar: mydoc_sidebar
 permalink: system_tables.html
@@ -38,7 +38,7 @@ Describes all of the keys in the database.
 
 * `tablename` - Name of the table.
 * `keyname` - Name of the key.
-* `isunique` - `Y` if this column is unique.
+* `isunique` - `Y` if this key is unique.
 * `isdatacopy` - `Y` if the data is inlined with this key.
 * `isrecnum` - `Y` if this key has recnums.
 * `condition` - Where condition for this index.
@@ -52,9 +52,9 @@ Describe all the components of the keys.
 
 * `tablename` - Name of the table.
 * `keyname` - Name of the key.
-* `columnnumber` - Number of a the column `keyname` comprises.
-* `columnname` - Name of a column that `keyname` comprises.
-* `isdescending` - `Y` if this key is descending.
+* `columnnumber` - Position of `columnname` in `keyname`.
+* `columnname` - Name of a column in `keyname`.
+* `isdescending` - `Y` if this column is descending.
 
 ## comdb2_constraints
 
@@ -143,3 +143,39 @@ Describes all the tunables in the database.
 * `type` - Type of the tunable.
 * `value` - Current value of the tunable.
 * `read_only` - 'Y' if the tunable is READ-ONLY, 'N' otherwise.
+
+## comdb2_threadpools
+
+Information about thread pools in the database.
+
+    comdb2_threadpools(name, status, num_thd, free_thd, peak_thd, num_creates,
+                       num_exits, num_passed, num_enqueued, num_dequeued,
+                       num_timeout, num_failed_dispatches, min_thds, max_thds,
+                       peak_queue, max_queue, queue, long_wait_ms,
+                       linger_secs, stack_size, max_queue_override,
+                       max_queue_age_ms, exit_on_create_fail, dump_on_full)
+
+* `name` - Name of the thread pool.
+* `status` - Status of the thread pool.
+* `num_thd` - Total number of threads.
+* `free_thd` - Number of free threads.
+* `peak_thd` - Peak number of threads.
+* `num_creates` - Total number of thread created.
+* `num_exits` - Total number of threads exited.
+* `num_passed` - Work items done immediately.
+* `num_enqueued` - Number of work items enqueued.
+* `num_dequeued` - Number of work items dequeued.
+* `num_timeout` - Number of work items timed-out.
+* `num_failed_dispatches` - Number of failed dispatches.
+* `min_thds` - Desired number of threads.
+* `max_thds` - Maximum number of threads.
+* `peak_queue` - Work queue peak size.
+* `max_queue` - Work queue maximum size.
+* `queue` - Work queue current size.
+* `long_wait_ms` - Long wait alarm threshold.
+* `linger_secs` - Thread linger time.
+* `stack_size` - Thread stack size.
+* `max_queue_override` - Maximum queue overload.
+* `max_queue_age_ms` - Maximum queue age.
+* `exit_on_create_fail` - If 'Y', exit on failure to create thread.
+* `dump_on_full` - If 'Y', dump on queue full.

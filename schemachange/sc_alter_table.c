@@ -29,7 +29,7 @@
 #include "sc_records.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
-                           struct db *db, struct db *newdb,
+                           struct dbtable *db, struct dbtable *newdb,
                            struct scplan *theplan)
 {
     int changed = old_changed;
@@ -58,8 +58,8 @@ static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
     return changed;
 }
 
-static int prepare_changes(struct schema_change_type *s, struct db *db,
-                           struct db *newdb, struct scplan *theplan,
+static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
+                           struct dbtable *newdb, struct scplan *theplan,
                            struct scinfo *scinfo)
 {
     int changed = ondisk_schema_changed(s->table, newdb, stderr, s);
@@ -77,14 +77,20 @@ static int prepare_changes(struct schema_change_type *s, struct db *db,
     }
     if (changed < 0) {
         /* some errors during constraint verifications */
-        backout_schemas(newdb->dbname);
+        backout_schemas(newdb->tablename);
         resume_threads(thedb); /* can now restart stopped threads */
 
         /* these checks should be present in dryrun_int as well */
         if (changed == SC_BAD_NEW_FIELD) {
             sc_errf(s, "cannot add new field without dbstore or null\n");
+            if (s->iq)
+                reqerrstr(s->iq, ERR_SC,
+                          "cannot add new field without dbstore or null");
         } else if (changed == SC_BAD_INDEX_CHANGE) {
             sc_errf(s, "cannot change index referenced by other tables\n");
+            if (s->iq)
+                reqerrstr(s->iq, ERR_SC,
+                          "cannot change index referenced by other tables");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;
@@ -133,8 +139,8 @@ static int prepare_changes(struct schema_change_type *s, struct db *db,
 }
 
 static void adjust_version(int changed, struct scinfo *scinfo,
-                           struct schema_change_type *s, struct db *db,
-                           struct db *newdb)
+                           struct schema_change_type *s, struct dbtable *db,
+                           struct dbtable *newdb)
 {
     /* if we don't want to merely bump the version, reset it to 0. */
     if (changed == SC_TAG_CHANGE && newdb->instant_schema_change) {
@@ -175,8 +181,8 @@ static void adjust_version(int changed, struct scinfo *scinfo,
 }
 
 static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
-                                                      struct db *db,
-                                                      struct db *newdb)
+                                                      struct dbtable *db,
+                                                      struct dbtable *newdb)
 {
     int rc;
     int bdberr;
@@ -197,8 +203,8 @@ static int prepare_version_for_dbs_without_instant_sc(tran_type *tran,
     return SC_OK;
 }
 
-static int switch_versions_with_plan(void *tran, struct db *db,
-                                     struct db *newdb)
+static int switch_versions_with_plan(void *tran, struct dbtable *db,
+                                     struct dbtable *newdb)
 {
     int rc, bdberr;
     int blobno, ixnum;
@@ -278,9 +284,9 @@ static int switch_versions_with_plan(void *tran, struct db *db,
     return SC_OK;
 }
 
-static void backout(struct db *db)
+static void backout(struct dbtable *db)
 {
-    backout_schemas(db->dbname);
+    backout_schemas(db->tablename);
     live_sc_off(db);
 }
 
@@ -297,14 +303,16 @@ static inline void wait_to_resume(struct schema_change_type *s)
     }
 }
 
-int do_alter_table_int(struct ireq *iq, tran_type *tran)
+int gbl_test_scindex_deadlock = 0;
+
+int do_alter_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
-    struct db *db;
+    struct dbtable *db;
     int rc;
     int bdberr = 0;
     int trying_again = 0;
-    struct db *newdb;
+    struct dbtable *newdb;
     int datacopy_odh = 0;
     int stop_tag_thds = 0;
     int retries = 0;
@@ -316,10 +324,14 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
 
     struct scinfo scinfo;
 
+#ifdef DEBUG_SC
+    printf("do_alter_table() %s\n", s->resume ? "resuming" : "");
+#endif
+
     gbl_use_plan = 1;
     gbl_sc_last_writer_time = 0;
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) {
         sc_errf(s, "Table not found:%s\n", s->table);
         return SC_TABLE_DOESNOT_EXIST;
@@ -339,7 +351,7 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         sc_errf(s, "Internal error\n");
         return SC_INTERNAL_ERROR;
     }
-    newdb->version = get_csc2_version(newdb->dbname);
+    newdb->version = get_csc2_version(newdb->tablename);
 
     newdb->iq = iq;
 
@@ -356,7 +368,7 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         (gbl_expressions_indexes && newdb->ix_expr)) {
         int ret = 0;
         char temp_newdb_name[MAXTABLELEN];
-        struct db *temp_newdb;
+        struct dbtable *temp_newdb;
         int len = strlen(s->table);
         len = crc32c(s->table, len);
         snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
@@ -387,57 +399,21 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
                 goto pi_done;
             }
 
-            if (temp_newdb->dbenv->master == gbl_mynode) {
-                /* I am master: create new db */
-                logmsg(LOGMSG_DEBUG, "create new db\n");
-                temp_newdb->handle = bdb_create_tran(
-                    temp_newdb->dbname, thedb->basedir, temp_newdb->lrl,
-                    temp_newdb->nix, temp_newdb->ix_keylen,
-                    temp_newdb->ix_dupes, temp_newdb->ix_recnums,
-                    temp_newdb->ix_datacopy, temp_newdb->ix_collattr,
-                    temp_newdb->ix_nullsallowed, temp_newdb->numblobs + 1,
-                    thedb->bdb_env, 0, &bdberr, tran);
-                open_auxdbs(temp_newdb, 1);
-            } else {
-                /* I am NOT master: open replicated db */
-                logmsg(LOGMSG_DEBUG, "open replicated db\n");
-                temp_newdb->handle = bdb_open_more(
-                    temp_newdb->dbname, thedb->basedir, temp_newdb->lrl,
-                    temp_newdb->nix, temp_newdb->ix_keylen,
-                    temp_newdb->ix_dupes, temp_newdb->ix_recnums,
-                    temp_newdb->ix_datacopy, temp_newdb->ix_collattr,
-                    temp_newdb->ix_nullsallowed, temp_newdb->numblobs + 1,
-                    thedb->bdb_env, &bdberr);
-                open_auxdbs(temp_newdb, 0);
-            }
-            if (temp_newdb->handle == NULL) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed to open table %s/%s, rcode %d\n", __func__,
-                       thedb->basedir, temp_newdb->dbname, bdberr);
-                rc = SC_BDB_ERROR;
-                goto pi_done;
-            }
-
             thedb->dbs =
-                realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+                realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
             thedb->dbs[thedb->num_dbs++] = temp_newdb;
             /* Add table to the hash. */
             hash_add(thedb->db_hash, temp_newdb);
             create_sqlmaster_records(tran);
-            create_master_tables(); /* create sql statements */
+            create_sqlite_master(); /* create sql statements */
             ret = new_indexes_syntax_check(iq);
-            if (bdb_close_only(temp_newdb->handle, &bdberr) != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed to close table %s/%s, rcode %d\n", __func__,
-                       thedb->basedir, temp_newdb->dbname, bdberr);
-            }
             newdb->ix_blob = temp_newdb->ix_blob;
             newdb->schema->ix_blob = newdb->ix_blob;
             delete_schema(temp_newdb_name);
             delete_db(temp_newdb_name);
             cleanup_newdb(temp_newdb);
             create_sqlmaster_records(tran);
-            create_master_tables(); /* create sql statements */
+            create_sqlite_master(); /* create sql statements */
             if (ret) {
                 sc_errf(s, "New indexes syntax error\n");
                 ret = SC_CSC2_ERROR;
@@ -542,9 +518,11 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
         return -1;
     }
 
+    pthread_rwlock_wrlock(&sc_live_rwlock);
     sc_live = 1;
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
+    pthread_rwlock_unlock(&sc_live_rwlock);
     gbl_sc_resume_start = 0; // for resuming SC/toblock_main: pointers are set
     MEMORY_SYNC;
 
@@ -562,10 +540,16 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
     } else
         rc = 0;
 
-    if (rc)
-        rc = SC_CONVERSION_FAILED;
-    else if (stopsc)
+    if (stopsc || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;
+    else if (rc)
+        rc = SC_CONVERSION_FAILED;
+
+    if (gbl_test_scindex_deadlock) {
+        logmsg(LOGMSG_INFO, "%s: sleeping for 30s\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
+    }
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);
@@ -600,163 +584,118 @@ int do_alter_table_int(struct ireq *iq, tran_type *tran)
     return SC_OK;
 }
 
-#define FREE_ARRS                                                              \
-    if (polddb_bthashsz != &olddb_bthashsz) {                                  \
-        if (polddb_bthashsz) free(polddb_bthashsz);                            \
-        if (pold_bdb_handle) free(pold_bdb_handle);                            \
-        if (pnew_bdb_handle) free(pnew_bdb_handle);                            \
-    }
-
 int finalize_alter_table(struct ireq *iq, tran_type *transac)
 {
     struct schema_change_type *s = iq->sc;
     int retries = 0;
     int rc, bdberr;
-    struct db *db;
-    struct db *newdb;
+    struct dbtable *db = s->db;
+    struct dbtable *newdb = s->newdb;
     void *old_bdb_handle, *new_bdb_handle;
     int olddb_bthashsz;
-    struct db **dbs;
-    struct db **newdbs;
-    void **pold_bdb_handle, **pnew_bdb_handle;
-    int *polddb_bthashsz;
-    int indx;
-    int maxindx;
 
-    if (s->timepart_nshards) {
-        maxindx = s->timepart_nshards;
+    iq->usedb = db;
 
-        dbs = s->timepart_dbs;
-        newdbs = s->timepart_newdbs;
+    if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
+        olddb_bthashsz = 0;
 
-        polddb_bthashsz = (int *)malloc(maxindx * sizeof(int));
-        pold_bdb_handle = (void **)malloc(maxindx * sizeof(void *));
-        pnew_bdb_handle = (void **)malloc(maxindx * sizeof(void *));
-    } else {
-        maxindx = 1;
+    bdb_lock_table_write(db->handle, transac);
 
-        dbs = &s->db;
-        newdbs = &s->newdb;
+    /* All records converted ok.  Whether this is live schema change or
+     * not, the db is readonly at this point so we can reset the live
+     * schema change flag. */
 
-        polddb_bthashsz = &olddb_bthashsz;
-        pold_bdb_handle = &old_bdb_handle;
-        pnew_bdb_handle = &new_bdb_handle;
+    sc_printf(s, "---- All records copied --- \n");
+
+    /* Before this handle is closed, lets wait for all the db reads to
+     * finish*/
+
+    pthread_rwlock_wrlock(&sc_live_rwlock);
+    sc_live = 0;
+    pthread_rwlock_unlock(&sc_live_rwlock);
+
+    /* No insert transactions should happen after this
+       so lock the table. */
+    rc = restore_constraint_pointers(db, newdb);
+    if (rc != 0) {
+        sc_errf(s, "Error restoring constraing pointers!\n");
+        goto backout;
     }
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
+    /* from this point on failures should goto either backout if recoverable
+     * or failure if unrecoverable */
 
-        iq->usedb = db;
-
-        if (get_db_bthash_tran(db, &polddb_bthashsz[indx], transac) != 0)
-            polddb_bthashsz[indx] = 0;
-
-        bdb_lock_table_write(db->handle, transac);
-
-        /* All records converted ok.  Whether this is live schema change or
-         * not, the db is readonly at this point so we can reset the live
-         * schema change flag. */
-
-        sc_printf(s, "---- All records copied --- \n");
-
-        /* Before this handle is closed, lets wait for all the db reads to
-         * finish*/
-
-        sc_live = 0;
-
-        /* No insert transactions should happen after this
-           so lock the table. */
-        rc = restore_constraint_pointers(db, newdb);
-        if (rc != 0) {
-            sc_errf(s, "Error restoring constraing pointers!\n");
-            goto backout;
-        }
-
-        /* from this point on failures should goto either backout if recoverable
-         * or failure if unrecoverable */
-
-        newdb->meta = db->meta;
-    }
+    newdb->meta = db->meta;
 
     /* TODO: at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
-
-        /*begin updating things*/
-        if (newdb->version == 1) {
-            /* newdb's version has been reset */
-            bdberr = bdb_reset_csc2_version(transac, db->dbname, db->version);
-            if (bdberr != BDBERR_NOERROR) goto backout;
-        }
-
-        if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db,
-                                                             newdb)))
-            goto backout;
-
-        /* load new csc2 data */
-        rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->dbname,
-                                        s->newcsc2);
-        if (rc != 0) {
-            sc_errf(s, "Error loading new schema into meta tables, "
-                       "trying again\n");
-            goto backout;
-        }
-
-        if ((rc = set_header_and_properties(transac, newdb, s, 1,
-                                            polddb_bthashsz[indx])))
-            goto backout;
-
-        /*update necessary versions and delete unnecessary files from newdb*/
-        if (gbl_use_plan && newdb->plan) {
-            logmsg(LOGMSG_INFO, " Updating versions with plan\n");
-            rc = switch_versions_with_plan(transac, db, newdb);
-        } else {
-            logmsg(LOGMSG_INFO, " Updating versions without plan\n");
-            rc = bdb_commit_temp_file_version_all(
-                newdb->handle, transac,
-                &bdberr) /*set all metapointers to new files*/;
-        }
-
-        if (rc) goto backout;
-
-        /* delete any new file versions this table has */
-        if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||
-            bdberr != BDBERR_NOERROR) {
-            sc_errf(s, "%s: bdb_del_file_versions failed\n", __func__);
-            goto backout;
-        }
-
-        if ((rc = mark_schemachange_over_tran(db->dbname, transac)))
+    /*begin updating things*/
+    if (newdb->version == 1) {
+        /* newdb's version has been reset */
+        bdberr = bdb_reset_csc2_version(transac, db->tablename, db->version);
+        if (bdberr != BDBERR_NOERROR)
             goto backout;
     }
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
+    if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
+        goto backout;
 
-        /* remove the new.NUM. prefix */
-        bdb_remove_prefix(newdb->handle);
-
-        /* TODO: need to free db handle - right now we just leak some memory */
-        /* replace the old db definition with a new one */
-
-        newdb->plan = NULL;
-        db->schema = clone_schema(newdb->schema);
-
-        pnew_bdb_handle[indx] = newdb->handle;
-        pold_bdb_handle[indx] = db->handle;
-
-        free_db_and_replace(db, newdb);
-        fix_constraint_pointers(db, newdb);
-
-        /* update tags in memory */
-        commit_schemas(/*s->table*/ db->dbname);
-        update_dbstore(db); // update needs to occur after refresh of hashtbl
+    /* load new csc2 data */
+    rc = load_new_table_schema_tran(thedb, transac, /*s->table*/ db->tablename,
+                                    s->newcsc2);
+    if (rc != 0) {
+        sc_errf(s, "Error loading new schema into meta tables, "
+                   "trying again\n");
+        goto backout;
     }
+
+    if ((rc = set_header_and_properties(transac, newdb, s, 1, olddb_bthashsz)))
+        goto backout;
+
+    /*update necessary versions and delete unnecessary files from newdb*/
+    if (gbl_use_plan && newdb->plan) {
+        logmsg(LOGMSG_INFO, " Updating versions with plan\n");
+        rc = switch_versions_with_plan(transac, db, newdb);
+    } else {
+        logmsg(LOGMSG_INFO, " Updating versions without plan\n");
+        /*set all metapointers to new files*/;
+        rc = bdb_commit_temp_file_version_all(newdb->handle, transac, &bdberr);
+    }
+
+    if (rc)
+        goto backout;
+
+    /* delete any new file versions this table has */
+    if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||
+        bdberr != BDBERR_NOERROR) {
+        sc_errf(s, "%s: bdb_del_file_versions failed\n", __func__);
+        goto backout;
+    }
+
+    if ((rc = mark_schemachange_over_tran(db->tablename, transac))) {
+        goto backout;
+    }
+
+    /* remove the new.NUM. prefix */
+    bdb_remove_prefix(newdb->handle);
+
+    /* TODO: need to free db handle - right now we just leak some memory */
+    /* replace the old db definition with a new one */
+
+    newdb->plan = NULL;
+    db->schema = clone_schema(newdb->schema);
+
+    new_bdb_handle = newdb->handle;
+    old_bdb_handle = db->handle;
+
+    free_db_and_replace(db, newdb);
+    fix_constraint_pointers(db, newdb);
+
+    /* update tags in memory */
+    commit_schemas(/*s->table*/ db->tablename);
+    update_dbstore(db); // update needs to occur after refresh of hashtbl
+
     MEMORY_SYNC;
 
     if (!have_all_schemas()) sc_errf(s, "Missing schemas (internal error)\n");
@@ -768,12 +707,9 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
         sc_errf(s, "create_sqlmaster_records failed\n");
         goto failed;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        live_sc_off(db);
-    }
+    live_sc_off(db);
 
     /* artificial sleep to aid testing */
     if (s->commit_sleep) {
@@ -785,103 +721,72 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     }
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->dbname,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", newdb->tablename,
                newdb->version);
     }
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
-
-        llmeta_dump_mapping_table_tran(transac, thedb, db->dbname, 1);
-    }
+    llmeta_dump_mapping_table_tran(transac, thedb, db->tablename, 1);
 
     sc_printf(s, "Schema change ok\n");
 
-    for (indx = 0; indx < maxindx; indx++) {
-        rc = bdb_close_only(pold_bdb_handle[indx], &bdberr);
-        if (rc) {
-            sc_errf(s, "Failed closing new db, bdberr\n", bdberr);
-            goto failed;
-        } else
-            sc_printf(s, "Close new db ok\n");
+    rc = bdb_close_only(old_bdb_handle, &bdberr);
+    if (rc) {
+        sc_errf(s, "Failed closing new db, bdberr\n", bdberr);
+        goto failed;
+    } else
+        sc_printf(s, "Close new db ok\n");
 
-        bdb_handle_reset_tran(pnew_bdb_handle[indx], transac);
+    bdb_handle_reset_tran(new_bdb_handle, transac);
 
-        rc = bdb_free_and_replace(pold_bdb_handle[indx], pnew_bdb_handle[indx],
-                                  &bdberr);
-        if (rc) {
-            sc_errf(s, "Failed freeing old db, bdberr %d\n", bdberr);
-            goto failed;
-        } else
-            sc_printf(s, "bdb free ok\n");
+    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
+    if (rc) {
+        sc_errf(s, "Failed freeing old db, bdberr %d\n", bdberr);
+        goto failed;
+    } else
+        sc_printf(s, "bdb free ok\n");
+
+    /* reliable per table versioning */
+    rc = table_version_upsert(db, transac, &bdberr);
+    if (rc) {
+        sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
+        goto failed;
     }
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
+    set_odh_options_tran(db, transac);
 
-        /* reliable per table versioning */
-        rc = table_version_upsert(db, transac, &bdberr);
-        if (rc) {
-            sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
-            goto failed;
-        }
-
-        set_odh_options_tran(db, transac);
-
-        if (polddb_bthashsz[indx]) {
-            logmsg(LOGMSG_INFO,
-                   "Rebuilding bthash for table %s, size %dkb per stripe\n",
-                   db->dbname, polddb_bthashsz[indx]);
-            bdb_handle_dbp_add_hash(db->handle, polddb_bthashsz[indx]);
-        }
+    if (olddb_bthashsz) {
+        logmsg(LOGMSG_INFO,
+               "Rebuilding bthash for table %s, size %dkb per stripe\n",
+               db->tablename, olddb_bthashsz);
+        bdb_handle_dbp_add_hash(db->handle, olddb_bthashsz);
     }
 
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
+    /* This happens in lockstep with bdb_set_in_schema_change */
+    /* delete files we don't need now */
+    sc_del_unused_files_tran(db, transac);
+    memset(newdb, 0xff, sizeof(struct dbtable));
+    free(newdb);
 
-        /* This happens in lockstep with bdb_set_in_schema_change */
-        /* delete files we don't need now */
-        sc_del_unused_files_tran(db, transac);
-        memset(newdb, 0xff, sizeof(struct db));
-        free(newdb);
-    }
-
-    FREE_ARRS;
     sc_printf(s, "Schema change finished, seed %llx\n", sc_seed);
     return 0;
 
 backout:
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        newdb = newdbs[indx];
-
-        backout_constraint_pointers(newdb, db);
+    backout_constraint_pointers(newdb, db);
 #if 0 /* bp sc backout deals with this */
-        delete_temp_table(iq, newdb);
+    delete_temp_table(iq, newdb);
 #endif
-        change_schemas_recover(/*s->table*/ db->dbname);
+    change_schemas_recover(/*s->table*/ db->tablename);
 
-        logmsg(LOGMSG_WARN,
-               "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
-               db->dbname, db->version, db->instant_schema_change, db->lrl,
-               db->odh, db->handle);
-    }
-
-    FREE_ARRS;
+    logmsg(LOGMSG_WARN,
+           "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
+           db->tablename, db->version, db->instant_schema_change, db->lrl,
+           db->odh, db->handle);
 
     return -1;
 
 failed:
     /* TODO why do we do this stuff if we're just going to clean_exit()? */
-    for (indx = 0; indx < maxindx; indx++) {
-        db = dbs[indx];
-        live_sc_off(db);
-    }
-
-    FREE_ARRS;
+    live_sc_off(db);
 
     sc_errf(s, "Fatal error during schema change.  Exiting\n");
     /* from exit msgtrap */
@@ -894,10 +799,10 @@ int do_upgrade_table_int(struct schema_change_type *s)
     int rc = SC_OK;
     int i;
 
-    struct db *db;
+    struct dbtable *db;
     struct scinfo scinfo;
 
-    db = getdbbyname(s->table);
+    db = get_dbtable_by_name(s->table);
     if (db == NULL) return SC_TABLE_DOESNOT_EXIST;
 
     s->db = db;
@@ -964,7 +869,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         rc = trans_start_sc(&iq, NULL, &tran);
         if (rc != 0) continue;
 
-        rc = mark_schemachange_over_tran(s->db->dbname, tran);
+        rc = mark_schemachange_over_tran(s->db->tablename, tran);
         if (rc != 0) continue;
 
         rc = trans_commit(&iq, tran, gbl_mynode);

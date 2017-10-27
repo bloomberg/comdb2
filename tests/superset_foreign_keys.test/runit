@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Cursor moves testcase for comdb2
@@ -77,7 +77,7 @@ for testcase in $files ; do
 
     # applying a filter to change
     # from
-    #   [insert into t3 values(3,99)] 443 failed with rc 3 OP #2 BLOCK_SEQ(800): verify key constraint cannot resolve constraint table 't1' index 'a'
+    #   [insert into t3 values(3,99)] 443 failed with rc 3 verify key constraint cannot resolve constraint table 't1' index 'a'
     # to
     #   [insert into t3 values(3,99)] failed with rc 3
     cdb2sql -s ${CDB2_OPTIONS} -f $new_batch $a_dbn default 2>&1 | sed 's/[0-9]* \(failed with rc [0-9]*\).*/\1/' > $output 

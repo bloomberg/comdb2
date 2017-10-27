@@ -26,7 +26,7 @@
 
 #include <sbuf2.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_int.h"
 #include "locks.h"
@@ -915,15 +915,16 @@ static int bdb_verify_ll(
                 }
 
             } else if (bdb_state->ixcollattr[ix]) {
-                if (dbt_data.size !=
-                    (sizeof(unsigned long long) + bdb_state->ixcollattr[ix])) {
+                if (dbt_data.size != (sizeof(unsigned long long) +
+                                      4 * bdb_state->ixcollattr[ix])) {
                     ret = 1;
-                    locprint(sb, lua_callback, lua_params, "!%016llx ix %d decimal payload wrong size "
-                                    "expected %d got %d\n",
-                                genid_flipped, ix,
-                                sizeof(unsigned long long) +
-                                    bdb_state->ixcollattr[ix],
-                                dbt_data.size);
+                    locprint(sb, lua_callback, lua_params,
+                             "!%016llx ix %d decimal payload wrong size "
+                             "expected %d got %d\n",
+                             genid_flipped, ix,
+                             sizeof(unsigned long long) +
+                                 4 * bdb_state->ixcollattr[ix],
+                             dbt_data.size);
                     goto next_key;
                 }
                 memcpy(&genid_right, (uint8_t *)dbt_data.data, sizeof(genid));

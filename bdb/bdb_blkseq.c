@@ -17,12 +17,12 @@
 #include "bdb_api.h"
 #include "bdb_int.h"
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "printformats.h"
 
-#include <db_swap.h>
+#include <dbinc/db_swap.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -605,8 +605,9 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 k = (int *)blkseq->key.data;
                 if ((now - blkseq->time) >
                     bdb_state->attr->private_blkseq_maxage) {
-                    logmsg(LOGMSG_INFO, "Stopping at " PR_LSN ", blkseq age %d > max %d\n",
-                           lsn, now - blkseq->time,
+                    logmsg(LOGMSG_INFO,
+                           "Stopping at " PR_LSN ", blkseq age %ld > max %d\n",
+                           PARM_LSN(lsn), now - blkseq->time,
                            bdb_state->attr->private_blkseq_maxage);
                     break;
                 }

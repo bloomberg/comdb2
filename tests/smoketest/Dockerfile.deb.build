@@ -2,6 +2,7 @@ FROM ubuntu:latest
 
 RUN apt-get update && \
   apt-get install -y \
+    cmake \
     bc \
     bison \
     build-essential \
@@ -35,6 +36,6 @@ COPY . /build/
 
 WORKDIR /build
 
-RUN make deb-current && dpkg -i ../comdb2*.deb 
+RUN make deb-current && dpkg -i build/comdb2*.deb
 
 ENV PATH="/opt/bb/bin:${PATH}"

@@ -42,7 +42,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
     int ii, rc, bdberr;
     int newdtastripe = s->newdtastripe;
     int newblobstripe = s->blobstripe;
-    struct db *db;
+    struct dbtable *db;
 
     /* STOP THREADS */
     stop_threads(thedb);
@@ -76,7 +76,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
             if (rc != 0) {
                 fprintf(stderr, "morestripe: couldn't rename blob 1 for table "
                                 "'%s' bdberr %d\n",
-                        db->dbname, bdberr);
+                        db->tablename, bdberr);
                 trans_abort(&iq, tran);
                 broadcast_resume_threads();
                 resume_threads(thedb);
@@ -89,7 +89,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
             if (rc != 0) {
                 fprintf(stderr,
                         "morestripe: couldn't record genid for table '%s'\n",
-                        db->dbname);
+                        db->tablename);
                 trans_abort(&iq, tran);
                 broadcast_resume_threads();
                 resume_threads(thedb);
@@ -101,7 +101,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
             db->blobstripe_genid = genid;
 
             printf("Converted table '%s' to blobstripe with genid 0x%llx\n",
-                   db->dbname, genid);
+                   db->tablename, genid);
         }
 
         rc = trans_commit(&iq, tran, gbl_mynode);
@@ -124,7 +124,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
             fprintf(
                 stderr,
                 "morestripe: failed making extra stripes for table '%s': %d\n",
-                db->dbname, bdberr);
+                db->tablename, bdberr);
             return SC_BDB_ERROR;
         }
     }

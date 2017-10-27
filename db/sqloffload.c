@@ -192,6 +192,10 @@ char *osql_breq2a(int op)
         return "INVALID";
     case OSQL_DONE:
         return "OSQL_DONE";
+    case OSQL_DONE_STATS:
+        return "OSQL_DONE_STATS";
+    case OSQL_DONE_SNAP:
+        return "OSQL_DONE_SNAP";
     case OSQL_USEDB:
         return "OSQL_USEDB";
     case OSQL_DELREC:
@@ -208,8 +212,6 @@ char *osql_breq2a(int op)
         return "OSQL_XERR";
     case OSQL_UPDCOLS:
         return "OSQL_UPDCOLS";
-    case OSQL_DONE_STATS:
-        return "OSQL_DONE_STATS";
     case OSQL_SERIAL:
         return "OSQL_SERIAL";
     case OSQL_SELECTV:
@@ -220,6 +222,8 @@ char *osql_breq2a(int op)
         return "OSQL_RECGENID";
     case OSQL_UPDSTAT:
         return "OSQL_UPDSTAT";
+    case OSQL_EXISTS:
+        return "OSQL_EXISTS";
     case OSQL_DBQ_CONSUME:
         return "OSQL_DBQ_CONSUME";
     case OSQL_INSERT:
@@ -228,6 +232,16 @@ char *osql_breq2a(int op)
         return "OSQL_DELETE";
     case OSQL_UPDATE:
         return "OSQL_UPDATE";
+    case OSQL_SCHEMACHANGE:
+        return "OSQL_SCHEMACHANGE";
+    case OSQL_BPFUNC:
+        return "OSQL_BPFUNC";
+    case OSQL_DELIDX:
+        return "OSQL_DELIDX";
+    case OSQL_INSIDX:
+        return "OSQL_INSIDX";
+    case OSQL_DBQ_CONSUME_UUID:
+        return "OSQL_DBQ_CONSUME_UUID";
     default:
         return "UNKNOWN";
     }
@@ -264,10 +278,23 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     int rc2 = 0;
     int usedb_only = 0;
 
+    if (clnt->early_retry == EARLY_ERR_VERIFY) {
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        errstat_cat_str(&(clnt->osql.xerr), "unable to update record rc = 4");
+    } else if (clnt->early_retry == EARLY_ERR_SELECTV) {
+        clnt->osql.xerr.errval = ERR_CONSTR;
+        errstat_cat_str(&(clnt->osql.xerr), "constraints error, no genid");
+    }
+    if (clnt->early_retry) {
+        clnt->early_retry = 0;
+        rc = SQLITE_ABORT;
+        goto goback;
+    }
+
     /* optimization (will catch all transactions with no internal updates */
     if (osql_shadtbl_empty(clnt)) {
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%u %s line %d empty-shadtbl, returning\n",
+            logmsg(LOGMSG_USER, "td=%lu %s line %d empty-shadtbl, returning\n",
                    pthread_self(), __func__, __LINE__);
         }
         return 0;
@@ -277,7 +304,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
     if (usedb_only && !clnt->selectv_arr && gbl_selectv_rangechk) {
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%u %s line %d empty-sv_arr, returning\n",
+            logmsg(LOGMSG_USER, "td=%lu %s line %d empty-sv_arr, returning\n",
                    pthread_self(), __func__, __LINE__);
         }
         return 0;
@@ -291,8 +318,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                               &(clnt->selectv_arr->offset), 0)) {
         rc = SQLITE_ABORT;
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%u %s line %d returning SQLITE_ABORT\n", 
-                    pthread_self(), __func__, __LINE__);
+            logmsg(LOGMSG_USER, "td=%lu %s line %d returning SQLITE_ABORT\n",
+                   pthread_self(), __func__, __LINE__);
         }
         clnt->osql.xerr.errval = ERR_CONSTR;
         errstat_cat_str(&(clnt->osql.xerr), "selectv constraints");
@@ -339,21 +366,21 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
     }
 
     /* process shadow tables */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr);
+    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
 
     if (sentops && clnt->arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SERIAL_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning %d\n", 
-                    pthread_self(), __func__, __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
+                   pthread_self(), __func__, __LINE__, rc);
         }
     }
 
     if (clnt->selectv_arr) {
         rc = osql_serial_send_readset(clnt, NET_OSQL_SOCK_RPL);
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning %d\n", 
-                    pthread_self(), __func__, __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning rc=%d\n",
+                   pthread_self(), __func__, __LINE__, rc);
         }
     }
 
@@ -361,7 +388,7 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
         int irc = 0;
 
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%u %s line %d aborting\n", pthread_self(),
+            logmsg(LOGMSG_USER, "td=%lu %s line %d aborting\n", pthread_self(),
                    __func__, __LINE__);
         }
 
@@ -377,14 +404,12 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             rc = 0;
 
         clnt->osql.xerr.errval = rc;
-
-
     } else {
 
         /* close the block processor session and retrieve the result */
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%u %s line %d committing\n", pthread_self(),
-                   __func__, __LINE__);
+            logmsg(LOGMSG_USER, "td=%lu %s line %d committing\n",
+                   pthread_self(), __func__, __LINE__);
         }
         rc = osql_sock_commit(clnt, osqlreq_type);
         if (rc && rc != SQLITE_ABORT && rc != SQLITE_DEADLOCK &&
@@ -396,8 +421,8 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
             //rc = SQLITE_ERROR;
         }
         if (gbl_extended_sql_debug_trace && rc) {
-            logmsg(LOGMSG_ERROR, "td=%u %s line %d returning %d\n", 
-                    pthread_self(), __func__, __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "td=%lu %s line %d returning %d\n",
+                   pthread_self(), __func__, __LINE__, rc);
         }
     }
 
@@ -649,15 +674,15 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
 
     if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
         clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %d\n", clnt,
-                clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
+               clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
         if (clnt->sql)
             logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
-        logmsg(LOGMSG_ERROR, "%p rqid %llx in USE! %d\n", clnt, clnt->osql.rqid,
-                pthread_self());
+        logmsg(LOGMSG_ERROR, "%p rqid %llx in USE! %lu\n", clnt,
+               clnt->osql.rqid, pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();
@@ -714,6 +739,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 
@@ -729,6 +760,12 @@ static void osql_scdone_abort_callback(struct ireq *iq)
             free_schema_change_type(iq->sc);
             iq->sc = sc_next;
         }
+        iq->sc_pending = NULL;
+        iq->sc_seed = 0;
+    }
+    if (iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 }
 

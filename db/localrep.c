@@ -38,14 +38,14 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     uint8_t *p;
     struct field *fld;
     int offset = 0;
-    struct db *savedb;
+    struct dbtable *savedb;
     int rc;
     const uint8_t *lim;
 
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    s = find_tag_schema(iq->usedb->dbname, ".ONDISK_CLIENT");
+    s = find_tag_schema(iq->usedb->tablename, ".ONDISK_CLIENT");
     if (s == NULL) {
         return OP_FAILED_INTERNAL;
     }
@@ -57,8 +57,8 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
        in a format the client can understand.  It goes out in this format to
        some intermediary machine (gsrv) from where it goes out via rmque. */
     rc = stag_to_ctag_buf_tz(
-        iq->usedb->dbname, ".ONDISK", od_dta, -1, ".ONDISK_CLIENT", client_buf,
-        (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
+        iq->usedb->tablename, ".ONDISK", od_dta, -1, ".ONDISK_CLIENT",
+        client_buf, (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
 
     /* We send down an array of comdb2_field_types.  The offset field is the
        field in the
@@ -91,9 +91,10 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                      * That necessitates looking up the value in the ondisk
                      * schema. */
                     server_schema =
-                        find_tag_schema(iq->usedb->dbname, ".ONDISK");
+                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->dbname);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -112,11 +113,11 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
     rc = ERR_BADREQ;
     if ((p = buf_put(&s->nmembers, sizeof(int), p, lim)) == NULL)
         goto err;
-    if ((p = buf_no_net_put(iq->usedb->dbname, strlen(iq->usedb->dbname), p,
-                            lim)) == NULL)
+    if ((p = buf_no_net_put(iq->usedb->tablename, strlen(iq->usedb->tablename),
+                            p, lim)) == NULL)
         goto err;
-    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->dbname), p, lim)) ==
-        NULL)
+    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->tablename), p,
+                          lim)) == NULL)
         goto err;
 
     offset = sizeof(int) + MAXTABLELEN;
@@ -140,9 +141,10 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
 
                 if (server_schema == NULL) {
                     server_schema =
-                        find_tag_schema(iq->usedb->dbname, ".ONDISK");
+                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->dbname);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -209,7 +211,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                         fprintf(
                             stderr,
                             "table %s field %: can't determine length rc %d\n",
-                            iq->usedb->dbname, fld->name, rc);
+                            iq->usedb->tablename, fld->name, rc);
                         rc = OP_FAILED_INTERNAL;
                         goto err;
                     }
@@ -239,7 +241,7 @@ err:
        We never log comdb2_oplog table inserts (see above) so it won't loop.
        (my name is NOT Steve) */
     savedb = iq->usedb;
-    iq->usedb = getdbbyname("comdb2_oplog");
+    iq->usedb = get_dbtable_by_name("comdb2_oplog");
     if (rc == 0)
         rc = add_oplog_entry(iq, trans, LCL_OP_ADD, serialize_buf, sz);
     iq->usedb = savedb;
@@ -259,7 +261,7 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
     /* log the delete.  once the update succeeds we log the add
        - otherwise the whole thing gets aborted. */
     long long id;
-    struct db *savedb;
+    struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
         long long id;
@@ -289,12 +291,12 @@ int local_replicant_log_delete_for_update(struct ireq *iq, void *trans, int rrn,
     /* printf("genid %016llx rrn %d rc %d\n", vgenid, rrn, rc); */
     if (rc == 0) {
         long long id;
-        strcpy(delop.table, iq->usedb->dbname);
+        strcpy(delop.table, iq->usedb->tablename);
         id = get_record_unique_id(iq->usedb, tmpbuf);
         delop.id = id;
 
         savedb = iq->usedb;
-        iq->usedb = getdbbyname("comdb2_oplog");
+        iq->usedb = get_dbtable_by_name("comdb2_oplog");
         rc = add_oplog_entry(iq, trans, LCL_OP_DEL, &delop, sizeof(delop));
         iq->usedb = savedb;
         free(tmpbuf);
@@ -314,7 +316,7 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
                                int *opfailcode)
 {
     long long id;
-    struct db *savedb;
+    struct dbtable *savedb;
     struct delop {
         char table[MAXTABLELEN];
         long long id;
@@ -324,13 +326,13 @@ int local_replicant_log_delete(struct ireq *iq, void *trans, void *od_dta,
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    strcpy(delop.table, iq->usedb->dbname);
+    strcpy(delop.table, iq->usedb->tablename);
 
     id = get_record_unique_id(iq->usedb, od_dta);
     delop.id = id;
 
     savedb = iq->usedb;
-    iq->usedb = getdbbyname("comdb2_oplog");
+    iq->usedb = get_dbtable_by_name("comdb2_oplog");
     rc = add_oplog_entry(iq, trans, LCL_OP_DEL, &delop, sizeof(delop));
     iq->usedb = savedb;
     if (rc != 0)
@@ -353,7 +355,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     uint8_t *p;
     struct field *fld;
     int offset = 0;
-    struct db *savedb;
+    struct dbtable *savedb;
     int fndlen;
     int odsz, clsz;
     unsigned long long oldgenid;
@@ -372,7 +374,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     if (!iq->usedb->do_local_replication)
         return 0;
 
-    s = find_tag_schema(iq->usedb->dbname, ".ONDISK");
+    s = find_tag_schema(iq->usedb->tablename, ".ONDISK");
     if (s == NULL) {
         rc = OP_FAILED_INTERNAL;
         goto done;
@@ -380,7 +382,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     odsz = get_size_of_schema(s);
     server_buf = malloc(odsz);
 
-    s = find_tag_schema(iq->usedb->dbname, ".ONDISK_CLIENT");
+    s = find_tag_schema(iq->usedb->tablename, ".ONDISK_CLIENT");
     if (s == NULL) {
         free(server_buf);
         server_buf = NULL;
@@ -412,7 +414,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
        in a format the client can understand.  It goes out in this format to
        some intermediary machine (gsrv) from where it goes out via rmque. */
     rc = stag_to_ctag_buf_tz(
-        iq->usedb->dbname, ".ONDISK", server_buf, -1, ".ONDISK_CLIENT",
+        iq->usedb->tablename, ".ONDISK", server_buf, -1, ".ONDISK_CLIENT",
         client_buf, (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
 
     /* We send down an array of comdb2_field_types.  The offset field is the
@@ -445,9 +447,10 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                      * That necessitates looking up the value in the ondisk
                      * schema. */
                     server_schema =
-                        find_tag_schema(iq->usedb->dbname, ".ONDISK");
+                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->dbname);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -467,11 +470,11 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
     rc = ERR_BADREQ;
     if ((p = buf_put(&s->nmembers, sizeof(int), p, lim)) == NULL)
         goto err;
-    if ((p = buf_no_net_put(iq->usedb->dbname, strlen(iq->usedb->dbname), p,
-                            lim)) == NULL)
+    if ((p = buf_no_net_put(iq->usedb->tablename, strlen(iq->usedb->tablename),
+                            p, lim)) == NULL)
         goto err;
-    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->dbname), p, lim)) ==
-        NULL)
+    if ((p = buf_zero_put(MAXTABLELEN - strlen(iq->usedb->tablename), p,
+                          lim)) == NULL)
         goto err;
 
     offset = sizeof(int) + MAXTABLELEN;
@@ -493,9 +496,10 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
 
                 if (server_schema == NULL) {
                     server_schema =
-                        find_tag_schema(iq->usedb->dbname, ".ONDISK");
+                        find_tag_schema(iq->usedb->tablename, ".ONDISK");
                     if (server_schema == NULL) {
-                        printf("can't find schema for %s\n", iq->usedb->dbname);
+                        printf("can't find schema for %s\n",
+                               iq->usedb->tablename);
                         free(client_buf);
                         return OP_FAILED_INTERNAL;
                     }
@@ -558,7 +562,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                         fprintf(
                             stderr,
                             "table %s field %: can't determine length rc %d\n",
-                            iq->usedb->dbname, fld->name, rc);
+                            iq->usedb->tablename, fld->name, rc);
                         rc = OP_FAILED_INTERNAL;
                         goto err;
                     }
@@ -585,7 +589,7 @@ err:
        that logic.
        We never log comdb2_oplog table inserts (see above) so it won't loop. */
     savedb = iq->usedb;
-    iq->usedb = getdbbyname("comdb2_oplog");
+    iq->usedb = get_dbtable_by_name("comdb2_oplog");
     rc = add_oplog_entry(iq, trans, LCL_OP_ADD, serialize_buf, sz);
     iq->usedb = savedb;
     /* don't need this anymore whether or not we failed */
@@ -622,14 +626,14 @@ int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,
     struct oprec rec;
     blob_buffer_t blobs[MAXBLOBS] = {0};
     char *p;
-    struct db *db;
+    struct dbtable *db;
     struct ireq aiq;
 
     p_buf_tag_name = (const uint8_t *)"log";
     p_buf_tag_name_end = p_buf_tag_name + 3;
 
     /* from comdb2_oplog.csc2 -> cmdb2h */
-    db = getdbbyname("comdb2_oplog");
+    db = get_dbtable_by_name("comdb2_oplog");
     if (db == NULL)
         return 0;
 
@@ -697,12 +701,12 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     blob_buffer_t blobs[MAXBLOBS] = {0};
     struct commitrec rec;
 
-    struct db *db;
+    struct dbtable *db;
 
     p_buf_tag_name = (const uint8_t *)"log";
     p_buf_tag_name_end = p_buf_tag_name + 3;
 
-    db = getdbbyname("comdb2_commit_log");
+    db = get_dbtable_by_name("comdb2_commit_log");
     if (db == NULL)
         return 0;
 
@@ -731,7 +735,7 @@ int add_local_commit_entry(struct ireq *iq, void *trans, long long seqno,
     return rc;
 }
 
-int local_replicant_write_clear(struct db *db)
+int local_replicant_write_clear(struct dbtable *db)
 {
     struct schema *s;
     int rc;
@@ -744,10 +748,10 @@ int local_replicant_write_clear(struct db *db)
     struct block_state blkstate = {0};
 
     /* skip if not needed */
-    if (gbl_replicate_local == 0 || getdbbyname("comdb2_oplog") == NULL)
+    if (gbl_replicate_local == 0 || get_dbtable_by_name("comdb2_oplog") == NULL)
         return 0;
 
-    s = find_tag_schema(db->dbname, ".ONDISK_CLIENT");
+    s = find_tag_schema(db->tablename, ".ONDISK_CLIENT");
     if (s == NULL) {
         return OP_FAILED_INTERNAL;
     }
@@ -757,7 +761,7 @@ int local_replicant_write_clear(struct db *db)
         return 0;
     }
 
-    strncpy(table, db->dbname, sizeof(table));
+    strncpy(table, db->tablename, sizeof(table));
 
     table[31] = 0;
 

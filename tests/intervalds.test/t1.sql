@@ -1,6 +1,6 @@
 drop table if exists t1
 create table t1 {
-    tag ondisk {
+    schema {
         intervalds intds
         intervaldsus intdsus
     }

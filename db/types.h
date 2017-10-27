@@ -2043,11 +2043,11 @@ int get_blob_field(int blobno, struct sqlclntstate *clnt, void **out,
 
 short decimal_quantum_get(char *pdec, int len, int *sign);
 void decimal_quantum_set(char *pdec, int len, short *quantum, int *sign);
-struct db;
+struct dbtable;
 struct schema;
-int extract_decimal_quantum(struct db *db, int ix, char *inbuf, char *outbuf,
+int extract_decimal_quantum(struct dbtable *db, int ix, char *inbuf, char *outbuf,
                             int outbuf_max, int *outlen);
-short field_decimal_quantum(struct db *db, struct schema *s, int fnum, 
+short field_decimal_quantum(struct dbtable *db, struct schema *s, int fnum, 
                             char *tail, int taillen, int *sign);
 
 /* don't want duplicate code between sql and lua */

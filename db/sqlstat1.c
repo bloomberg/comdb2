@@ -55,8 +55,9 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
 
     fix = find_field_idx_in_tag(s, fld);
     if (fix < 0) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't find '%s' field in %s's ONDISK tag\n",
-                __func__, fld, iq->usedb->dbname);
+        logmsg(LOGMSG_ERROR,
+               "%s: couldn't find '%s' field in %s's ONDISK tag\n", __func__,
+               fld, iq->usedb->tablename);
         return NULL;
     }
 
@@ -115,7 +116,7 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
 int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
                         unsigned long long *genid)
 {
-    struct db *sdb;
+    struct dbtable *sdb;
     int rc;
     int fndrc;
     int fndlen;
@@ -125,7 +126,7 @@ int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->dbname, ".ONDISK", rec, ".ONDISK_IX_0", key,
+    rc = stag_to_stag_buf(sdb->tablename, ".ONDISK", rec, ".ONDISK_IX_0", key,
                           NULL);
 
     if (rc)
@@ -218,7 +219,7 @@ int stat1_ondisk_record(struct ireq *iq, char *tbl, char *ix, char *stat,
 int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
                             unsigned long long *genid)
 {
-    struct db *sdb;
+    struct dbtable *sdb;
     int rc;
     int fndrc;
     int fndlen;
@@ -228,7 +229,7 @@ int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->dbname, ".ONDISK", rec, ".ONDISK_IX_0", key,
+    rc = stag_to_stag_buf(sdb->tablename, ".ONDISK", rec, ".ONDISK_IX_0", key,
                           NULL);
 
     if (rc)

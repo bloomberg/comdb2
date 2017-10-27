@@ -1056,9 +1056,11 @@ typedef struct VtabCtx VtabCtx;
 typedef struct Walker Walker;
 typedef struct WhereInfo WhereInfo;
 typedef struct With With;
+/* COMDB2 MODIFICATION */
 typedef struct Cdb2TrigEvent Cdb2TrigEvent;
 typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
+typedef struct comdb2_ddl_context Cdb2DDL;
 
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and
@@ -1403,7 +1405,6 @@ struct sqlite3 {
   /* COMDB2 MODIFICATION */
   u8 should_fingerprint;
   char fingerprint[16];              /* Figerprint of the last query that was prepared */
-  int force_sqlite_impl;
 };
 
 /*
@@ -1473,6 +1474,7 @@ struct sqlite3 {
 #define SQLITE_Transitive     0x0200   /* Transitive constraints */
 #define SQLITE_OmitNoopJoin   0x0400   /* Omit unused tables in joins */
 #define SQLITE_Stat34         0x0800   /* Use STAT3 or STAT4 data */
+#define SQLITE_CountOfView    0x1000   /* The count-of-view optimization */
 #define SQLITE_CursorHints    0x2000   /* Add OP_CursorHint opcodes */
 #define SQLITE_AllOpts        0xffff   /* All optimizations */
 
@@ -1772,7 +1774,26 @@ struct CollSeq {
 ** operator is NULL.  It is added to certain comparison operators to
 ** prove that the operands are always NOT NULL.
 */
-#define SQLITE_KEEPNULL     0x08  /* Used by vector == or <> */
+/* COMDB2 MODIFICATION
+** SQLite source:
+** #define SQLITE_KEEPNULL     0x08
+**
+** However, Comdb2 has more affinity types than SQLite and we are using 0x4F as
+** the SQLITE_AFF_MASK whereas SQLite is currently using 0x47.
+** So, using 0x08 for SQLITE_KEEPNULL is ok for SQLite but not with Comdb2 as
+** it will overlap with Comdb2's affinity bits.
+**
+** Comdb2 changes SQLITE_KEEPNULL to be a combination of STOREP2 and JUMPIFNULL.
+** KEEPNULL is checked only when comparison results are stored to P2
+** (i.e. STOREP2 is set)
+** Jump is only taken when STOREP2 is not set and JUMPIFNULL is only checked
+** when we actually jump insteaed of storing result to P2. In other words,
+** STOREP2 and JUMPIFNULL are mutually exclusive. Therefore, it should be ok to
+** combine these two for SQLITE_KEEPNULL and use 0x30.
+**
+** -- Lingzhi Deng
+*/
+#define SQLITE_KEEPNULL     0x30  /* Used by vector == or <> */
 #define SQLITE_JUMPIFNULL   0x10  /* jumps if either operand is NULL */
 #define SQLITE_STOREP2      0x20  /* Store result in reg[P2] rather than jump */
 #define SQLITE_NULLEQ       0x80  /* NULL=NULL */
@@ -3041,7 +3062,7 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)];  /* register which cursors are recording and which not */
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
-  void *comdb2_ddl_ctx;     /* Context for DDL commands */
+  Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
 };
 
 /* COMDB2 MODIFICATION */
@@ -3408,7 +3429,7 @@ struct TreeView {
   int iLevel;             /* Which level of the tree we are on */
   u8  bLine[100];         /* Draw vertical in column i if bLine[i] is true */
 };
-#endif /* SQLITE_DEBUG */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 
 /*
 ** Assuming zIn points to the first byte of a UTF-8 character,

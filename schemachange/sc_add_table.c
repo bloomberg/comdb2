@@ -24,7 +24,7 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 
-static inline int adjust_master_tables(struct db *newdb, const char *csc2,
+static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
 {
     int rc;
@@ -45,7 +45,7 @@ static inline int adjust_master_tables(struct db *newdb, const char *csc2,
         return SC_INTERNAL_ERROR;
     }
     /* TODO: ask why this function has no return codes */
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     extern int gbl_partial_indexes;
     extern int gbl_expressions_indexes;
@@ -60,13 +60,13 @@ static inline int adjust_master_tables(struct db *newdb, const char *csc2,
         return 0;
 }
 
-static inline int get_db_handle(struct db *newdb, void *trans)
+static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
     if (newdb->dbenv->master == gbl_mynode) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
-            newdb->dbname, thedb->basedir, newdb->lrl, newdb->nix,
+            newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
@@ -74,7 +74,7 @@ static inline int get_db_handle(struct db *newdb, void *trans)
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle = bdb_open_more_tran(
-            newdb->dbname, thedb->basedir, newdb->lrl, newdb->nix,
+            newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
             newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, trans, &bdberr);
@@ -83,14 +83,14 @@ static inline int get_db_handle(struct db *newdb, void *trans)
 
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open table %s/%s, rcode %d\n",
-               thedb->basedir, newdb->dbname, bdberr);
+               thedb->basedir, newdb->tablename, bdberr);
         return SC_BDB_ERROR;
     }
 
     return SC_OK;
 }
 
-static inline int init_bthashsize_tran(struct db *newdb, tran_type *tran)
+static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
 {
     int bthashsz;
 
@@ -113,7 +113,7 @@ int add_table_to_environment(char *table, const char *csc2,
                              tran_type *trans)
 {
     int rc;
-    struct db *newdb;
+    struct dbtable *newdb;
 
     if (!csc2) {
         logmsg(LOGMSG_ERROR, "%s: no filename or csc2!\n", __func__);
@@ -130,8 +130,8 @@ int add_table_to_environment(char *table, const char *csc2,
         if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
         sc_errf(s, "%s\n", err);
         sc_errf(s, "error adding new table locally\n");
-        logmsg(LOGMSG_WARN, "Failed to load schema for table %s\n", table);
-        logmsg(LOGMSG_WARN, "Dumping schema for reference: '%s'\n", csc2);
+        logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
+        logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
         return SC_CSC2_ERROR;
     }
     newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
@@ -175,7 +175,7 @@ int add_table_to_environment(char *table, const char *csc2,
         freedb(s->db);
     } else {
         thedb->dbs =
-            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct db *));
+            realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
         newdb->dbs_idx = thedb->num_dbs;
         thedb->dbs[thedb->num_dbs++] = newdb;
 
@@ -209,7 +209,7 @@ int add_table_to_environment(char *table, const char *csc2,
 
 err:
     newdb->iq = NULL;
-    backout_schemas(newdb->dbname);
+    backout_schemas(newdb->tablename);
     cleanup_newdb(newdb);
     return rc;
 }
@@ -227,12 +227,12 @@ int do_add_table(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
     int rc = SC_OK;
-    struct db *db;
+    struct dbtable *db;
     set_empty_options(s);
 
     if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
 
-    if ((db = getdbbyname(s->table))) {
+    if ((db = get_dbtable_by_name(s->table))) {
         sc_errf(s, "Table %s already exists", s->table);
         logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->table);
         return SC_TABLE_ALREADY_EXIST;
@@ -244,7 +244,7 @@ int do_add_table(struct ireq *iq, tran_type *trans)
         return rc;
     }
 
-    if (!(db = getdbbyname(s->table))) return SC_INTERNAL_ERROR;
+    if (!(db = get_dbtable_by_name(s->table))) return SC_INTERNAL_ERROR;
 
     iq->usedb = db->sc_to = s->db = db;
     db->odh = s->headers;
@@ -263,7 +263,7 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = iq->sc;
     int rc, bdberr;
-    struct db *db = s->db;
+    struct dbtable *db = s->db;
 
     sc_printf(s, "Start add table transaction ok\n");
     rc = load_new_table_schema_tran(thedb, tran, s->table, s->newcsc2);
@@ -283,25 +283,26 @@ int finalize_add_table(struct ireq *iq, tran_type *tran)
         return rc;
     }
 
-    if ((rc = bdb_table_version_select(db->handle, tran, &db->tableversion,
+    if ((rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,
                                        &bdberr)) != 0) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;
     }
 
-    if ((rc = mark_schemachange_over_tran(db->dbname, tran))) return rc;
+    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
+        return rc;
 
     /* Save .ONDISK as schema version 1 if instant_sc is enabled. */
     if (db->odh && db->instant_schema_change) {
         struct schema *ver_one;
         if ((rc = prepare_table_version_one(tran, db, &ver_one))) return rc;
-        add_tag_schema(db->dbname, ver_one);
+        add_tag_schema(db->tablename, ver_one);
     }
 
     fix_lrl_ixlen_tran(tran);
 
     create_sqlmaster_records(tran);
-    create_master_tables();
+    create_sqlite_master();
 
     db->sc_to = NULL;
     update_dbstore(db);

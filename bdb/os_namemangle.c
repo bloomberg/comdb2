@@ -44,7 +44,7 @@ int gbl_namemangle_loglevel = 0;
 #include <limits.h>
 #include <stdarg.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include <ctrace.h>
 

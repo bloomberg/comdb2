@@ -12,7 +12,9 @@ static const char revid[] = "$Id: txn_method.c,v 11.66 2003/06/30 17:20:30 bosti
 #endif /* not lint */
 
 #ifndef NO_SYSTEM_INCLUDES
+#include <stdlib.h>
 #include <sys/types.h>
+#include <pthread.h>
 
 #ifdef HAVE_RPC
 #include <rpc/rpc.h>
@@ -40,6 +42,60 @@ static int __txn_set_logical_start __P((DB_ENV *,
 static int __txn_set_logical_commit __P((DB_ENV *,
 	int (*)(DB_ENV *, void *, u_int64_t, DB_LSN *)));
 
+int gbl_use_perfect_ckp = 1;
+pthread_key_t txn_key;
+static pthread_once_t init_txn_key_once = PTHREAD_ONCE_INIT;
+
+/*
+ * __txn_init_key --
+ * Initialize txn_key which is used by pefect checkpoints.
+ */
+static void
+__txn_init_key(void)
+{
+	if (pthread_key_create(&txn_key, NULL) != 0) {
+		logmsgperror("pthread_key_create");
+		abort();
+	}
+}
+
+/*
+ * __txn_get_first_dirty_begin_lsn --
+ *  Return the begin LSN of the thread local DB_TXN object.
+ *  If there is no thread local DB_TXN object (out of the context
+ *  of any transactions or the work is transfered to another
+ *  thread of control), return the default LSN value.
+ *
+ *  I don't think passing or returning a DB_LSN pointer
+ *  is faster than simply using DB_LSN on 64-bit machines:
+ *  DB_LSN is only 8 bytes long - same size as a pointer.
+ *  Plus the caller does not need to take address of the argument
+ *  or dereference the return value.
+ *
+ * PUBLIC: DB_LSN __txn_get_first_dirty_begin_lsn __P((DB_LSN));
+ */
+DB_LSN
+__txn_get_first_dirty_begin_lsn(dfl)
+	DB_LSN dfl;
+{
+	DB_TXN *thrlcltxn = pthread_getspecific(txn_key);
+
+	if (thrlcltxn == NULL)
+		return (dfl);
+
+	if (thrlcltxn->parent != NULL) {
+		do {
+			thrlcltxn = thrlcltxn->parent;
+		} while (thrlcltxn->parent != NULL);
+
+		if (pthread_setspecific(txn_key, thrlcltxn) != 0) {
+			logmsgperror("pthread_setspecific");
+			abort();
+		}
+	}
+
+	return (thrlcltxn->we_start_at_this_lsn);
+}
 
 /*
  * __txn_dbenv_create --
@@ -57,7 +113,6 @@ __txn_dbenv_create(dbenv)
 	 * state or turn off mutex locking, and so we can neither check
 	 * the panic state or acquire a mutex in the DB_ENV create path.
 	 */
-
 	dbenv->tx_max = DEF_MAX_TXNS;
 
 #ifdef HAVE_RPC
@@ -91,6 +146,16 @@ __txn_dbenv_create(dbenv)
 		dbenv->set_logical_commit = __txn_set_logical_commit;
 		dbenv->txn_begin_set_retries = __txn_begin_set_retries_pp;
 	}
+
+	/* If we lazily initialize the key in __txn_begin(), Operations outside
+	   the context of any transaction before the 1st call to __txn_begin()
+	   may end up accessing an unintialized pthread key.
+	   There will be multiple __txn_dbenv_create() calls (e.g., temptables)
+	   thus it needs to be pthread_once. */
+	if (gbl_use_perfect_ckp)
+		pthread_once(&init_txn_key_once, __txn_init_key);
+	/* Make a copy in the structure to improve locality. */
+	dbenv->tx_perfect_ckp = gbl_use_perfect_ckp;
 }
 
 static int
@@ -183,7 +248,7 @@ __txn_print_ltrans(dbenv, lt, f, flags)
 	FILE *f;
 	u_int32_t flags;
 {
-	logmsg(LOGMSG_USER, "LTRANID %016llx ACTIVE-TXN %4d\n", lt->ltranid,
+	logmsg(LOGMSG_USER, "LTRANID %016lx ACTIVE-TXN %4d\n", lt->ltranid,
 	    lt->active_txn_count);
 }
 

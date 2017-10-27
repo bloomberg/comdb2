@@ -1035,7 +1035,6 @@ i16 sqlite3ColumnOfIndex(Index *pIdx, i16 iCol){
   return -1;
 }
 
-extern int gbl_new_indexes;
 /*
 ** Begin constructing a new table representation in memory.  This is
 ** the first of several action routines that get called in response
@@ -1160,14 +1159,8 @@ void sqlite3StartTable(
   pTable->nRef = 1;
   pTable->nRowLogEst = 200; assert( 200==sqlite3LogEst(1048576) );
   /* COMDB2 MODIFICATION */
-  if (gbl_new_indexes) {
-      pTable->hasPartIdx = 1;
-      pTable->hasExprIdx = 1;
-  }
-  else {
-      pTable->hasPartIdx = 0;
-      pTable->hasExprIdx = 0;
-  }
+  pTable->hasPartIdx = 0;
+  pTable->hasExprIdx = 0;
   assert( pParse->pNewTable==0 );
   pParse->pNewTable = pTable;
 
@@ -4430,10 +4423,7 @@ int sqlite3OpenTempDatabase(Parse *pParse){
 
     /* COMDB2 MODIFICATION, BTreeOpen doesn't create Btree actually. */
     int pgno;
-    void comdb2_use_tmptbl_lk(int);
-    comdb2_use_tmptbl_lk(0);
     rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);    
-    comdb2_use_tmptbl_lk(1);
     if( rc!=SQLITE_OK ){
       sqlite3ErrorMsg(pParse, "unable to open a temporary database "
         "file for storing temporary tables");

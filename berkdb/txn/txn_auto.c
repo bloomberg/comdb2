@@ -2472,7 +2472,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->prev_lsn.offset);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
-	(void)printf("\tltranid: %llx\n", argp->ltranid);
+	(void)printf("\tltranid: %"PRIx64"\n", argp->ltranid);
 	fflush(stdout);
 	(void)printf("\tbegin_lsn: [%lu][%lu]\n",
 	    (u_long)argp->begin_lsn.file, (u_long)argp->begin_lsn.offset);
@@ -2480,7 +2480,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tlast_commit_lsn: [%lu][%lu]\n",
 	    (u_long)argp->last_commit_lsn.file, (u_long)argp->last_commit_lsn.offset);
 	fflush(stdout);
-	(void)printf("\tcontext: %llx\n", argp->context);
+	(void)printf("\tcontext: %lx\n", argp->context);
 	fflush(stdout);
     time_t timestamp = argp->timestamp;
 	lt = localtime((time_t *)&timestamp);
@@ -2882,7 +2882,6 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	void *notused3;
 {
 	__txn_regop_gen_args *argp;
-    unsigned long long commit_context = 0;
 	struct tm *lt;
 	u_int32_t i;
 	int ch;
@@ -2905,10 +2904,15 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
 	(void)printf("\tgeneration: %u\n", argp->generation);
-	fflush(stdout);
-	(void)printf("\tcontext: %llx\n", argp->context);
-	fflush(stdout);
-	lt = localtime((time_t *)&argp->timestamp);
+    unsigned long long flipcontext;
+    int *fliporig = (int *)&argp->context;
+    int *flipptr = (int *)&flipcontext;
+    flipptr[0] = htonl(fliporig[1]);
+    flipptr[1] = htonl(fliporig[0]);
+    fflush(stdout);
+    (void)printf("\tcontext: %016lx %016llx\n", argp->context, flipcontext);
+    fflush(stdout);
+    lt = localtime((time_t *)&argp->timestamp);
     if (lt)
     {
         (void)printf(

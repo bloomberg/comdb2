@@ -140,12 +140,12 @@ static int systblConstraintsColumn(
   int i
 ){
   systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
-  struct db *pDb = thedb->dbs[pCur->iRowid];
+  struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   constraint_t *pConstraint = &pDb->constraints[pCur->iConstraintid];
 
   switch( i ){
     case STCON_TABLE: {
-      sqlite3_result_text(ctx, pDb->dbname, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
     }
     case STCON_KEY: {

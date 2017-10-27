@@ -19,6 +19,7 @@ static const char revid[] = "$Id: mp_fput.c,v 11.48 2003/09/30 17:12:00 sue Exp 
 #include "dbinc/log.h"
 #include "dbinc/db_page.h"
 #include "dbinc/mp.h"
+#include "dbinc/txn.h"
 
 #include <string.h>
 
@@ -70,6 +71,7 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 	MPOOL *c_mp;
 	u_int32_t n_cache;
 	int adjust, ret, incr_count = 1;
+	DB_TXN *thrtxn;
 
 	dbenv = dbmfp->dbenv;
 	MPF_ILLEGAL_BEFORE_OPEN(dbmfp, "DB_MPOOLFILE->put");
@@ -165,10 +167,9 @@ __memp_fput_internal(dbmfp, pgaddr, flags, pgorder)
 		atomic_inc(env, &hp->hash_page_dirty);
 		atomic_inc(env, &c_mp->stat.st_page_dirty);
 		F_SET(bhp, BH_DIRTY);
-		if (dbenv->mp_perfect_ckp) {
-			/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
-			bhp->first_dirty_lsn = LSN(pgaddr);
-		}
+		/* Update first_dirty_lsn when flag goes from CLEAN to DIRTY. */
+		if (dbenv->tx_perfect_ckp)
+			bhp->first_dirty_tx_begin_lsn = __txn_get_first_dirty_begin_lsn(LSN(pgaddr));
 	}
 	if (LF_ISSET(DB_MPOOL_DISCARD))
 		F_SET(bhp, BH_DISCARD);

@@ -126,7 +126,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
         return;
     } 
     
-    struct db *db = NULL;
+    struct dbtable *db = NULL;
     if (cinfo->tbl < thedb->num_dbs) {
         db = thedb->dbs[cinfo->tbl];
     }
@@ -144,7 +144,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
             sc = db->ixschema[cinfo->ix];
         } else {
             snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
-            sc = find_tag_schema(db->dbname, scname);
+            sc = find_tag_schema(db->tablename, scname);
         }
     } else {
         sc = db->schema;
@@ -193,7 +193,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
         }
         strbuf_appendf(out, "temp_%d", cinfo->tbl);
     } else {
-        struct db *db;
+        struct dbtable *db;
         db = thedb->dbs[cinfo->tbl];
 
         if (cinfo->ix != -1) {
@@ -201,7 +201,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
                 sc = db->ixschema[cinfo->ix];
             } else {
                 snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
-                sc = find_tag_schema(db->dbname, scname);
+                sc = find_tag_schema(db->tablename, scname);
             }
             strbuf_appendf(out, "index \"%s\" of ",
                            sc ? (sc->csctag ? sc->csctag : sc->tag) : "???");
@@ -221,7 +221,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
             }
             */
         }
-        strbuf_appendf(out, "table \"%s\"", db->dbname);
+        strbuf_appendf(out, "table \"%s\"", db->tablename);
     }
     strbuf_appendf(out, " ");
     return is_index;
@@ -375,7 +375,8 @@ static void describe_cursor(Vdbe *v, int pc, struct cursor_info *cur)
     bzero(cur, sizeof cur);
     if (op->p3 <= 1) {
         struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-        get_sqlite_tblnum_and_ixnum(sqlthd, op->p2, &cur->tbl, &cur->ix);
+        struct dbtable *db = get_sqlite_db(sqlthd, op->p2, &cur->ix);
+        cur->tbl = db->dbs_idx;
         cur->rootpage = op->p2;
         if (op->p3 == 1)
             cur->istemp = 1;
@@ -906,7 +907,7 @@ static void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v,
     }
     case OP_Seek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
-                       op->p3, op->p1);
+                       op->p1, op->p2);
         break;
     case OP_NoConflict:
     case OP_NotFound:
@@ -925,10 +926,13 @@ static void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v,
 
         break;
     case OP_NotExists:
-        strbuf_appendf(
-            out,
-            "If record id in P3 can't be found using cursor [%d], go to %d",
-            op->p1, op->p2);
+        strbuf_appendf(out,
+                       "If record id in R%d can't be found using cursor [%d]",
+                       op->p3, op->p1);
+        if (op->p2)
+            strbuf_appendf(out, "go to %d", op->p2);
+        else
+            strbuf_appendf(out, "raise an SQLITE_CORRUPT error");
         break;
     case OP_Sequence:
         strbuf_appendf(out,
@@ -1425,7 +1429,7 @@ void handle_explain(SBUF2 *sb, int trace, int all)
         struct errstat xerr = {0};
 
         /* how about we are gonna add the views ? */
-        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr);
+        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr, 1);
 
         if (put_curtran(thedb->bdb_env, &client)) {
             logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",

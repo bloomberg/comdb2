@@ -1,0 +1,3 @@
+# this is no loger a valid options, but this test will fail on ealier builds
+# if this is set
+setattr LOGREGIONSZ 61440

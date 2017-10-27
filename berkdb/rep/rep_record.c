@@ -956,13 +956,14 @@ send:			if (__rep_send_message(dbenv,
 			R_LOCK(dbenv, &dblp->reginfo);
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
-            logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                    __func__, __LINE__);
-			(void)__rep_send_message(dbenv,
-			    db_eid_broadcast, REP_NEWMASTER, &lsn, NULL, 0,
-			    NULL);
-		}
-		/*
+                        logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER: "
+                                            "gen=%u egen=%d\n",
+                               __func__, __LINE__, rep->gen, rep->egen);
+                        (void)__rep_send_message(dbenv, db_eid_broadcast,
+                                                 REP_NEWMASTER, &lsn, NULL, 0,
+                                                 NULL);
+                }
+                /*
 		 * Otherwise, clients just ignore it.
 		 */
 		goto errlock;
@@ -1545,7 +1546,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 
 	case REP_PGDUMP_REQ:{
 			extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
-			logmsg(LOGMSG_USER, "pgdump request from %d\n", *eidp);
+			logmsg(LOGMSG_USER, "pgdump request from %s\n", *eidp);
 			__pgdump_reprec(dbenv, rec);
 			break;
 		}
@@ -1720,7 +1721,7 @@ __rep_check_applied_lsns(dbenv, lc, in_recovery_verify)
 			if (db->type != DB_BTREE) {
 				if (dbenv->attr.check_applied_lsns_debug)
 					logmsg(LOGMSG_USER, "check " PR_LSN
-					    " not a btree, skipping\n");
+						" not a btree, skipping\n", PARM_LSN(t.array[i].lsn));
 				continue;
 			}
 
@@ -5087,7 +5088,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 
 	ret = __log_c_get(logc, &lsn, &mylog, DB_LAST);
 	if (ret) {
-		logmsg(LOGMSG_ERROR, "%s:%d failed to get last log entry, ret=%d\n",
+		logmsg(LOGMSG_ERROR, "%s:%d, %u:%u failed to get last log entry, ret=%d\n",
 		    __FILE__, __LINE__, lsn.file, lsn.offset, ret);
 		goto err;
 	}
@@ -5114,7 +5115,7 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
                                             "break-loop because timestamp "
-                                            "(%d) < epoch (%d)\n",
+                                            "(%lu) < epoch (%d)\n",
                                (uint32_t)pthread_self(), __func__, __LINE__,
                                lsn.file, lsn.offset, txn_rl_args->timestamp,
                                epoch);
@@ -5180,10 +5181,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 					    txn_gen_args->timestamp, epoch);
 #endif
                         if (gbl_extended_sql_debug_trace) {
-                            logmsg(LOGMSG_USER, "td %u %s line %d lsn %d:%d "
+                            logmsg(LOGMSG_USER, "td %lu %s line %d lsn %d:%d "
                                                 "break-loop because timestamp "
-                                                "(%d) < epoch (%d)\n",
-                                   (uint32_t)pthread_self(), __func__, __LINE__,
+                                                "(%ld) < epoch (%d)\n",
+                                   pthread_self(), __func__, __LINE__,
                                    lsn.file, lsn.offset,
                                    txn_gen_args->timestamp, epoch);
                         }
@@ -5850,7 +5851,7 @@ __truncate_repdb(dbenv)
 			goto err;
 		}
 
-		sprintf(repdbname, "%s.%d.%d", REPDBBASE, time(NULL),
+		sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
 		    db_rep->repdbcnt++);
 
 		if ((ret = __db_open(dbp, NULL,
@@ -6051,12 +6052,6 @@ __rep_verify_match(dbenv, rp, savetime)
 	ctrace("%s truncated log from [%d:%d] to [%d:%d]\n",
 	    __func__, prevlsn.file, prevlsn.offset, trunclsn.file,
 	    trunclsn.offset);
-
-	/* 
-	 * Closes a race: until the txn_regop, new snapshots start with genid 0.  The first 
-	 * commit-record will be applied to all of their shadows.
-	 */
-    set_commit_context(0, NULL, &trunclsn, NULL, 0);
 
 	/*
 	 * The log has been truncated (either directly by us or by __db_apprec)

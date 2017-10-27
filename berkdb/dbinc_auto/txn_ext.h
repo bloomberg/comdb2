@@ -65,6 +65,7 @@ int __txn_init_print __P((DB_ENV *, int (***)(DB_ENV *, DBT *, DB_LSN *, db_reco
 int __txn_init_getpgnos __P((DB_ENV *, int (***)(DB_ENV *, DBT *, DB_LSN *, db_recops, void *), size_t *));
 int __txn_init_getallpgnos __P((DB_ENV *, int (***)(DB_ENV *, DBT *, DB_LSN *, db_recops, void *), size_t *));
 int __txn_init_recover __P((DB_ENV *, int (***)(DB_ENV *, DBT *, DB_LSN *, db_recops, void *), size_t *));
+DB_LSN __txn_get_first_dirty_begin_lsn __P((DB_LSN));
 void __txn_dbenv_create __P((DB_ENV *));
 int __txn_set_tx_max __P((DB_ENV *, u_int32_t));
 int __txn_regop_recover __P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
