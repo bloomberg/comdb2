@@ -93,6 +93,10 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
 
+void child_atfork(void);
+void parent_atfork(void);
+
+
 static void do_init_once(void)
 {
     char *do_log = getenv("CDB2_LOG_CALLS");
@@ -103,6 +107,7 @@ static void do_init_once(void)
         /* can't call back cdb2_set_comdb2db_config from do_init_once */
         strncpy(CDB2DBCONFIG_NOBBENV, config, 511);
     }
+    pthread_atfork(NULL, parent_atfork, child_atfork);
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -667,6 +672,8 @@ struct cdb2_hndl {
     cdb2_ssl_sess_list *sess_list;
 #endif
     struct context_messages context_msgs;
+    int fork_generation;
+    unsigned char invalidated_by_fork;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -717,6 +724,56 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
     if (log_calls)
         fprintf(stderr, "%p> cdb2_set_comdb2db_info(\"%s\")\n",
                 (void *)pthread_self(), cfg_info);
+}
+
+
+static int gbl_fork_generation; /* global denoting fork generation */
+static int gbl_fork_history;    /* global fork history of parent/child marks */
+
+/*
+ * check fork generation in the case that process has called fork()
+ * if handle invalidated by fork this function will return 1
+ * else return 0
+ */
+static int check_fork_generation(cdb2_hndl_tp *hndl)
+{
+    // if i did'nt have ownership before fork, can't have ownership after fork
+    // if fork generation has not changed, nothing to do
+    if (hndl->invalidated_by_fork || 
+            hndl->fork_generation == gbl_fork_generation)
+        return hndl->invalidated_by_fork;
+
+    int parent_gens = 0; // count parent generations
+    int generations = gbl_fork_generation - hndl->fork_generation;
+    //check the parent/child history bits for the forks since handle creation
+    for (int i = 0; i < generations; i++) {
+        if (gbl_fork_history & (1 << i) ) // parent has mark
+            parent_gens++;
+    }
+    if(hndl->flags & CDB2_INVALIDATE_PARENT_FORK) {
+        //child gets ownership; invalidate parent
+        if (parent_gens > 0) 
+            hndl->invalidated_by_fork = 1;
+    } else {
+        //parent gets ownership; invalidate child
+        if (parent_gens != generations) 
+            hndl->invalidated_by_fork = 1;
+    }
+    hndl->fork_generation = gbl_fork_generation;
+
+    return hndl->invalidated_by_fork;
+}
+
+void parent_atfork(void)
+{
+    gbl_fork_generation++;
+    gbl_fork_history = (gbl_fork_history << 1) | 0x1; // parent gets marked
+}
+
+void child_atfork(void)
+{
+    gbl_fork_generation++;
+    gbl_fork_history = (gbl_fork_history << 1);
 }
 
 static inline char get_char(FILE *fp, char *buf, int *chrno)
@@ -2192,6 +2249,9 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
 
 static int cdb2_next_record_int(cdb2_hndl_tp *hndl, int shouldretry)
 {
+    if(check_fork_generation(hndl))
+        PRINT_RETURN(-1);
+
     int len;
     int rc;
     int num_retry = 0;
@@ -2421,6 +2481,9 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     int rc = 0;
 
     pthread_once(&init_once, do_init_once);
+    
+    if(check_fork_generation(hndl))
+        goto done;
 
     if (!hndl)
         goto done;
@@ -2996,6 +3059,9 @@ static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
                                         int ntypes, int *types, int line)
 {
+    if(check_fork_generation(hndl))
+        PRINT_RETURN(-1);
+
     int return_value;
     int using_hint = 0;
     int hasql_val;
@@ -4891,6 +4957,7 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
 }
 #endif /* !WITH_SSL */
 
+
 int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
               int flags)
 {
@@ -4915,6 +4982,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
+    hndl->fork_generation = gbl_fork_generation;
 
     cdb2_init_context_msgs(hndl);
 
@@ -4955,6 +5023,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         configure_from_literal(hndl, type);
         goto done;
     }
+
     rc = cdb2_get_dbhosts(hndl);
 done:
 #if WITH_SSL

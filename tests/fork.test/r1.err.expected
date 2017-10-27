@@ -1,0 +1,13 @@
+1 CHILD: INSERT 2 success
+1 PARENT: cdb2_next_record failed rc = -1
+1 PARENT: INSERT 2 failed rc = -1
+2 CHILD of CHILD: cdb2_next_record failed rc = -1
+2 CHILD of CHILD: INSERT 4 failed rc = -1
+2 CHILD of PARENT: cdb2_next_record failed rc = -1
+2 CHILD of PARENT: INSERT 4 failed rc = -1
+2 PARENT of CHILD: INSERT 4 success
+2 PARENT of PARENT: INSERT 4 success
+3 CHILD of CHILD: INSERT 5 success
+3 CHILD of PARENT: INSERT 5 failed rc = -1
+3 PARENT of CHILD: INSERT 5 failed rc = -1
+3 PARENT of PARENT: INSERT 5 failed rc = -1

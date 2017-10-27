@@ -1,0 +1,93 @@
+#!/bin/bash
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table "t1"("i" int);'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table "t2"("j" int);'
+
+# parameter 0 gives ownership to parent in both levels 0x00
+./forktst $dbnm default ${CDB2_CONFIG} 0 2>&1 | sort -n > r0.err.res
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1 order by i' > r0.out.res
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2 order by j' >> r0.out.res
+
+if ! diff r0.err.res r0.err.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r0.err.res,r0.err.expected}"
+    exit 1
+fi
+
+if ! diff r0.out.res r0.out.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r0.out.res,r0.out.expected}"
+    exit 1
+fi
+
+
+
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t1 where 1'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t2 where 1'
+
+# parameter 1 gives ownership to child in first fork 0x01
+./forktst $dbnm default ${CDB2_CONFIG} 1 2>&1 | sort -n > r1.err.res
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1 order by i' > r1.out.res
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2 order by j' >> r1.out.res
+
+if ! diff r1.err.res r1.err.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r1.err.res,r1.err.expected}"
+    exit 1
+fi
+
+if ! diff r1.out.res r1.out.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r1.out.res,r1.out.expected}"
+    exit 1
+fi
+
+
+
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t1 where 1'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t2 where 1'
+
+# parameter 2 gives ownership to child in second fork 0x10
+./forktst $dbnm default ${CDB2_CONFIG} 2 2>&1 | sort -n > r2.err.res
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1 order by i' > r2.out.res
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2 order by j' >> r2.out.res
+
+if ! diff r2.err.res r2.err.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r2.err.res,r2.err.expected}"
+    exit 1
+fi
+
+if ! diff r2.out.res r2.out.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r2.out.res,r2.out.expected}"
+    exit 1
+fi
+
+
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t1 where 1'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'delete from t2 where 1'
+
+# parameter 3 gives ownership to child in both levels 0x11
+./forktst $dbnm default ${CDB2_CONFIG} 3 2>&1 | sort -n > r3.err.res
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1 order by i' > r3.out.res
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2 order by j' >> r3.out.res
+
+if ! diff r3.err.res r3.err.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r3.err.res,r3.err.expected}"
+    exit 1
+fi
+
+if ! diff r3.out.res r3.out.expected ; then
+    echo "Output does not match expected, diff ${PWD}/{r3.out.res,r3.out.expected}"
+    exit 1
+fi
+
+
+
+echo "Success"
