@@ -66,3 +66,4 @@ contrib/docker/volumes
 
 # editor files
 *.swp
+/tags
