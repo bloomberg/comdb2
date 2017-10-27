@@ -693,10 +693,6 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
-    newsql_dealloc_row(clnt->columns, clnt->columns_count);
-    clnt->columns = NULL;
-    clnt->columns_count = 0;
-
     return 0;
 }
 
