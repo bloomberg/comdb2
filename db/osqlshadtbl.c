@@ -68,7 +68,7 @@ static int truncate_tablecursor(bdb_state_type *bdb_env,
                                 struct temp_table *tbl, int *bdberr);
 
 static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
-                                       char *tablename);
+                                       char *tablename, int tableversion);
 static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
                                      int *bdberr, int crt_nops);
 static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
@@ -418,7 +418,11 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 
     tbl->seq = 0;
     tbl->env = env;
-    tbl->db = db;
+    tbl->tablename = strdup(db->tablename);
+    tbl->tableversion = db->tableversion;
+    tbl->nix = db->nix;
+    tbl->ix_expr = db->ix_expr;
+    tbl->ix_partial = db->ix_partial;
 
     /* create table add and its cursor */
     rc = create_tablecursor(env->bdb_env, &tbl->add_tbl, &tbl->add_cur, &bdberr,
@@ -876,6 +880,12 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         return -1;
     }
 
+    if (tbl->tableversion != pCur->db->tableversion) {
+        osql->xerr.errval = ERR_BADREQ;
+        errstat_cat_str(&(osql->xerr), "stale table version in shadow table");
+        return SQLITE_ABORT;
+    }
+
     /* generate a new synthetic genid */
     tmp = tbl->seq;
     bdbenv = tbl->env->bdb_env;
@@ -1012,7 +1022,7 @@ int osql_save_updrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                      int nData)
 {
-
+    osqlstate_t *osql = &thd->sqlclntstate->osql;
     int rc = 0;
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
@@ -1022,6 +1032,12 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl for \'%s\'\n", __func__,
                pCur->db->tablename);
         return -1;
+    }
+
+    if (tbl->tableversion != pCur->db->tableversion) {
+        osql->xerr.errval = ERR_BADREQ;
+        errstat_cat_str(&(osql->xerr), "stale table version in shadow table");
+        return SQLITE_ABORT;
     }
 
     tmp = tbl->seq;
@@ -1073,6 +1089,7 @@ int osql_save_insrec(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
 int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd)
 {
+    osqlstate_t *osql = &thd->sqlclntstate->osql;
     shad_tbl_t *tbl = NULL;
     int rc = 0;
     int bdberr = 0;
@@ -1082,6 +1099,12 @@ int osql_save_delrec(struct BtCursor *pCur, struct sql_thread *thd)
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl\n", __func__);
         return -1;
+    }
+
+    if (tbl->tableversion != pCur->db->tableversion) {
+        osql->xerr.errval = ERR_BADREQ;
+        errstat_cat_str(&(osql->xerr), "stale table version in shadow table");
+        return SQLITE_ABORT;
     }
 
     if (is_genid_synthetic(pCur->genid)) {
@@ -1125,6 +1148,12 @@ int osql_save_index(struct BtCursor *pCur, struct sql_thread *thd,
     if (!(tbl = open_shadtbl(pCur))) {
         logmsg(LOGMSG_ERROR, "%s: error getting shadtbl\n", __func__);
         return -1;
+    }
+
+    if (tbl->tableversion != pCur->db->tableversion) {
+        osql->xerr.errval = ERR_BADREQ;
+        errstat_cat_str(&(osql->xerr), "stale table version in shadow table");
+        return SQLITE_ABORT;
     }
 
     if (is_delete) {
@@ -1203,6 +1232,12 @@ int osql_save_updcols(struct BtCursor *pCur, struct sql_thread *thd,
     if (!(tbl = open_shadtbl(pCur)) || !tbl->blb_cur) {
         logmsg(LOGMSG_ERROR, "osql_save_updcols: error getting shadtbl\n");
         return -1;
+    }
+
+    if (tbl->tableversion != pCur->db->tableversion) {
+        osql->xerr.errval = ERR_BADREQ;
+        errstat_cat_str(&(osql->xerr), "stale table version in shadow table");
+        return SQLITE_ABORT;
     }
 
     tmp = tbl->seq;
@@ -1310,6 +1345,12 @@ int osql_save_qblobs(struct BtCursor *pCur, struct sql_thread *thd,
         return -1;
     }
 
+    if (tbl->tableversion != pCur->db->tableversion) {
+        osql->xerr.errval = ERR_BADREQ;
+        errstat_cat_str(&(osql->xerr), "stale table version in shadow table");
+        return SQLITE_ABORT;
+    }
+
     tmp = tbl->seq;
     if (is_update)
         set_genid_upd(&tmp);
@@ -1357,7 +1398,7 @@ void *osql_get_shadow_bydb(struct sqlclntstate *clnt, struct dbtable *db)
 
     LISTC_FOR_EACH(&clnt->osql.shadtbls, tbl, linkv)
     {
-        if (tbl->db == db) {
+        if (strcasecmp(tbl->tablename, db->tablename) == 0) {
             ret = tbl;
             break;
         }
@@ -1414,7 +1455,8 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
         tbl->nops = 0;
 
         /* set the table we operate on */
-        rc = process_local_shadtbl_usedb(clnt, tbl->db->tablename);
+        rc = process_local_shadtbl_usedb(clnt, tbl->tablename,
+                                         tbl->tableversion);
         if (rc)
             return -1;
 
@@ -1519,7 +1561,7 @@ int osql_shadtbl_cleartbls(struct sqlclntstate *clnt)
  * **************************************/
 
 static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
-                                       char *tablename)
+                                       char *tablename, int tableversion)
 {
 
     osqlstate_t *osql = &clnt->osql;
@@ -1527,8 +1569,7 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
 
     rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename,
-                         osql_nettype, osql->logsb,
-                         comdb2_table_version(tablename));
+                         osql_nettype, osql->logsb, tableversion);
 
     return rc;
 }
@@ -1574,7 +1615,7 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             }
 
             rc = osql_send_delrec(osql->host, osql->rqid, osql->uuid, genid,
-                                  (gbl_partial_indexes && tbl->db->ix_partial)
+                                  (gbl_partial_indexes && tbl->ix_partial)
                                       ? get_del_keys(clnt, tbl, genid)
                                       : -1ULL,
                                   osql_nettype, osql->logsb);
@@ -1686,7 +1727,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
         blob_key_t *key;
 
         if (updCols && gbl_osql_blob_optimization) {
-            idx = get_schema_blob_field_idx(tbl->db->tablename, ".ONDISK", i);
+            idx = get_schema_blob_field_idx(tbl->tablename, ".ONDISK", i);
             ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i, seq,
@@ -1746,7 +1787,7 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
     struct temp_cursor *tmp_cur = NULL;
 
-    if (!gbl_expressions_indexes || !tbl->db->ix_expr)
+    if (!gbl_expressions_indexes || !tbl->ix_expr)
         return 0;
 
     if (is_delete) {
@@ -1755,7 +1796,7 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
         tmp_cur = tbl->insidx_cur;
     }
 
-    for (i = 0; i < tbl->db->nix; i++) {
+    for (i = 0; i < tbl->nix; i++) {
         index_key_t *key;
         /* key gets set into cur->key, and is freed when a new key is
            submitted or when the cursor is closed */
@@ -1857,7 +1898,7 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             }
 
             rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, *seq,
-                                  (gbl_partial_indexes && tbl->db->ix_partial)
+                                  (gbl_partial_indexes && tbl->ix_partial)
                                       ? get_ins_keys(clnt, tbl, *seq)
                                       : -1ULL,
                                   data, ldata, osql_nettype, osql->logsb);
@@ -1959,10 +2000,10 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         }
 
         rc = osql_send_updrec(osql->host, osql->rqid, osql->uuid, genid,
-                              (gbl_partial_indexes && tbl->db->ix_partial)
+                              (gbl_partial_indexes && tbl->ix_partial)
                                   ? get_ins_keys(clnt, tbl, *seq)
                                   : -1ULL,
-                              (gbl_partial_indexes && tbl->db->ix_partial)
+                              (gbl_partial_indexes && tbl->ix_partial)
                                   ? get_del_keys(clnt, tbl, genid)
                                   : -1ULL,
                               data, ldata, osql_nettype, osql->logsb);
@@ -2482,7 +2523,9 @@ static int delete_synthetic_row(struct BtCursor *pCur, struct sql_thread *thd,
 #endif
 
 typedef struct recgenid_key {
-    int tblnum;
+    int tablename_len;
+    char tablename[MAXTABLELEN];
+    int tableversion;
     unsigned long long genid;
 } recgenid_key_t;
 
@@ -2492,6 +2535,66 @@ typedef struct recgenid_key {
 #pragma pack() /* return to normal alignment */
 #endif
 
+static void *pack_recgenid_key(recgenid_key_t *key, int *outlen)
+{
+    int len = 0;
+    uint8_t *buf = NULL;
+    uint8_t *buf_end;
+    uint8_t *ret = NULL;
+
+    len += sizeof(key->tablename_len);
+    len += key->tablename_len;
+    len += sizeof(key->tableversion);
+    len += sizeof(key->genid);
+
+    buf = malloc(len);
+    if (buf == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc size %d\n", __func__, len);
+        return NULL;
+    }
+    ret = buf;
+    buf_end = buf + len;
+
+    buf = buf_no_net_put(&key->tablename_len, sizeof(key->tablename_len), buf,
+                         buf_end);
+    buf = buf_no_net_put(key->tablename, key->tablename_len, buf, buf_end);
+    buf = buf_no_net_put(&key->tableversion, sizeof(key->tableversion), buf,
+                         buf_end);
+    buf = buf_no_net_put(&key->genid, sizeof(key->genid), buf, buf_end);
+
+    if (buf != buf_end) {
+        logmsg(LOGMSG_ERROR,
+               "%s: size of date written did not match precomputed size\n",
+               __func__);
+        free(ret);
+        return NULL;
+    }
+
+    *outlen = len;
+    return ret;
+}
+
+static int unpack_recgenid_key(recgenid_key_t *key, uint8_t *buf, int len)
+{
+    uint8_t *buf_end = buf + len;
+
+    bzero(key, sizeof(recgenid_key_t));
+
+    buf = buf_no_net_get(&key->tablename_len, sizeof(key->tablename_len), buf,
+                         buf_end);
+    if (key->tablename_len != strlen((const char *)buf) + 1 ||
+        key->tablename_len > sizeof(key->tablename)) {
+        key->tablename_len = -1;
+        return -1;
+    }
+    buf = buf_no_net_get(key->tablename, key->tablename_len, buf, buf_end);
+    buf = buf_no_net_get(&key->tableversion, sizeof(key->tableversion), buf,
+                         buf_end);
+    buf = buf_no_net_get(&key->genid, sizeof(key->genid), buf, buf_end);
+
+    return 0;
+}
+
 int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
                           unsigned long long genid)
 {
@@ -2500,6 +2603,8 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     int bdberr = 0;
     shad_tbl_t *tbl = NULL;
     recgenid_key_t key;
+    void *packed_key = NULL;
+    int packed_len = 0;
 
     /*create a common verify */
     if (!osql->verify_tbl) {
@@ -2518,13 +2623,23 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
         return -1;
     }
 
-    memcpy(&key.tblnum, &pCur->tblnum, sizeof(key.tblnum));
-    memcpy(&key.genid, &genid, sizeof(key.genid));
+    key.tablename_len = strlen(pCur->db->tablename) + 1;
+    strncpy(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    key.tableversion = pCur->db->tableversion;
+    key.genid = genid;
+
+    packed_key = pack_recgenid_key(&key, &packed_len);
+    if (packed_key == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error packing record genid key for table \'%s\'\n",
+               __func__, pCur->db->tablename);
+        return -1;
+    }
 
     /*printf("RECGENID SAVING %d : %llx\n", pCur->tblnum, genid);*/
 
-    rc = bdb_temp_table_put(thedb->bdb_env, osql->verify_tbl, &key, sizeof(key),
-                            NULL, 0, NULL, &bdberr);
+    rc = bdb_temp_table_put(thedb->bdb_env, osql->verify_tbl, packed_key,
+                            packed_len, NULL, 0, NULL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to save genid %llx\n", __func__, genid);
         return -1;
@@ -2533,7 +2648,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
     return 0;
 }
 
-int is_genid_recorded(struct sql_thread *thd, int tblnum,
+int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
                       unsigned long long genid)
 {
     osqlstate_t *osql = &thd->sqlclntstate->osql;
@@ -2541,6 +2656,8 @@ int is_genid_recorded(struct sql_thread *thd, int tblnum,
     int bdberr = 0;
     recgenid_key_t key;
     struct temp_cursor *cur = NULL;
+    void *packed_key = NULL;
+    int packed_len = 0;
 
     if (!osql->verify_tbl) return 0;
 
@@ -2549,11 +2666,21 @@ int is_genid_recorded(struct sql_thread *thd, int tblnum,
         return -1;
     }
 
-    key.tblnum = tblnum;
+    key.tablename_len = strlen(pCur->db->tablename) + 1;
+    strncpy(key.tablename, pCur->db->tablename, sizeof(key.tablename));
+    key.tableversion = pCur->db->tableversion;
     key.genid = genid;
 
-    rc = bdb_temp_table_find(thedb->bdb_env, osql->verify_cur, &key,
-                             sizeof(key), NULL, &bdberr);
+    packed_key = pack_recgenid_key(&key, &packed_len);
+    if (packed_key == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s: error packing record genid key for table \'%s\'\n",
+               __func__, pCur->db->tablename);
+        return -1;
+    }
+
+    rc = bdb_temp_table_find(thedb->bdb_env, osql->verify_cur, packed_key,
+                             packed_len, NULL, &bdberr);
 
     if (rc < 0) {
         logmsg(LOGMSG_ERROR, "%s: temp table find failed\n", __func__);
@@ -2572,12 +2699,12 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
-    unsigned long long genid;
-    int tblnum;
-    int old_tblnum;
     bdb_state_type *bdb_state = thedb->bdb_env;
     struct temp_cursor *cur = osql->verify_cur;
-    recgenid_key_t *key;
+    char old_tablename[MAXTABLELEN];
+    recgenid_key_t key;
+    void *packed_key = NULL;
+    int packed_len = 0;
 
     if (!cur) {
         return 0;
@@ -2592,34 +2719,38 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
         return SQLITE_INTERNAL;
     }
 
-    old_tblnum = -1;
     while (rc == 0) {
-        key = (recgenid_key_t *)bdb_temp_table_key(cur);
-        memcpy(&tblnum, &key->tblnum, sizeof(tblnum));
-        memcpy(&genid, &key->genid, sizeof(genid));
+        packed_key = bdb_temp_table_key(cur);
+        packed_len = bdb_temp_table_keysize(cur);
+        rc = unpack_recgenid_key(&key, packed_key, packed_len);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed to unpack recgenid key\n",
+                   __func__);
+            return SQLITE_INTERNAL;
+        }
 
         /* do we need to send a new usedb? */
-        if (old_tblnum != tblnum) {
-            /*printf("RECGENID SENDING USEDB= %d %s\n", tblnum,
-             * thedb->dbs[tblnum]->tablename);*/
-            rc = process_local_shadtbl_usedb(clnt,
-                                             thedb->dbs[tblnum]->tablename);
+        if (strncasecmp(old_tablename, key.tablename, MAXTABLELEN)) {
+            /*printf("RECGENID SENDING USEDB= %s:%d\n", tblnum,
+             * key.tablename, key.tableversion);*/
+            rc = process_local_shadtbl_usedb(clnt, key.tablename,
+                                             key.tableversion);
             if (rc) {
                 logmsg(LOGMSG_ERROR, 
                         "%s:%d: error writting record to master in offload mode!\n",
                         __func__, __LINE__);
                 return SQLITE_INTERNAL;
             }
-            old_tblnum = tblnum;
+            strncpy(old_tablename, key.tablename, MAXTABLELEN);
         }
 
 #if 0
       uuidstr_t us;
       comdb2uuidstr(osql->uuid, us);
-      /*printf("RECGENID SENDING %d : %llx %s\n", tblnum, genid, us);*/
+      printf("RECGENID SENDING %s[%d] : %llx %s\n", key.tablename, key.tableversion, key.genid, us);
 #endif
-        rc = osql_send_recordgenid(osql->host, osql->rqid, osql->uuid, genid,
-                                   osql_nettype, osql->logsb);
+        rc = osql_send_recordgenid(osql->host, osql->rqid, osql->uuid,
+                                   key.genid, osql_nettype, osql->logsb);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: error writting record to master in offload mode!\n",

@@ -58,6 +58,11 @@ struct shad_tbl {
 
     unsigned long long seq; /* used to generate uniq row ids */
     struct dbenv *env;
+    char *tablename;
+    int tableversion;
+    int nix;
+    int ix_expr;
+    int ix_partial;
     struct dbtable *db; /* TODO: db has dbenv, chop it */
     int dbnum;
     int nblobs;
@@ -144,7 +149,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 /**
  * Check if a genid was recorded
  */
-int is_genid_recorded(struct sql_thread *thd, int tblnum,
+int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
                       unsigned long long genid);
 
 /**
