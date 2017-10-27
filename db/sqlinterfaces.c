@@ -1476,18 +1476,33 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         return;
     }
 
+    int rc;
+    struct sockaddr_in peeraddr;
+    int len = sizeof(struct sockaddr_in);
+    char addr[64];
+
+    int fd = sbuf2fileno(clnt->sb);
+    rc = getpeername(fd, (struct sockaddr *)&peeraddr, &len);
+    if (rc)
+        snprintf(addr, sizeof(addr), "<unknown>");
+    else {
+        if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addr,
+                      sizeof(addr)) == NULL)
+            snprintf(addr, sizeof(addr), "<unknown>");
+    }
+
     if (clnt->limits.maxcost_warn && (thd->cost > clnt->limits.maxcost_warn)) {
         logmsg(LOGMSG_USER,
                "[%s] warning: query exceeded cost threshold (%f >= %f): %s\n",
-               clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
+               addr, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
     }
     if (clnt->limits.tablescans_warn && thd->had_tablescans) {
-        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", clnt->origin,
+        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", addr,
                clnt->sql);
     }
     if (clnt->limits.temptables_warn && thd->had_temptables) {
         logmsg(LOGMSG_USER,
-               "[%s] warning: query created a temporary table: %s\n", clnt->origin,
+               "[%s] warning: query created a temporary table: %s\n", addr,
                clnt->sql);
     }
 
@@ -1507,12 +1522,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup(clnt->sql);
     else
         h->sql = strdup("unknown");
-    h->cost = query_cost(thd);
+    int cost = h->cost = query_cost(thd);
     int timems = h->time = time_epochms() - thd->startms;
     h->when = thd->stime;
     h->txnid = rqid;
 
     /* request logging framework takes care of logging long sql requests */
+    reqlog_set_cost(logger, h->cost);
     if (rqid) {
         reqlog_logf(logger, REQL_INFO, "rqid=%llx", rqid);
     }
@@ -1521,15 +1537,18 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         record_query_cost(thd, clnt);
         reqlog_set_path(logger, clnt->query_stats);
     }
-    reqlog_set_cost(logger, h->cost);
     reqlog_set_vreplays(logger, clnt->verify_retries);
-    reqlog_set_rows(logger, clnt->nrows);
+
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
 
-    if (clnt->conninfo.pename[0])
+    if (clnt->conninfo.pename[0]) {
         h->conn = clnt->conninfo;
+    }
+
+    reqlog_set_cost(logger, cost);
+    reqlog_set_rows(logger, clnt->nrows);
 
     pthread_mutex_lock(&gbl_sql_lock);
     {
@@ -4933,6 +4952,8 @@ static void *blob_alloc_override(size_t len)
     return comdb2_bmalloc(blobmem, len + 1);
 }
 
+#define DATALEN_THRESHOLD   1024
+
 static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         int ncols, int row_id,
                         CDB2SQLRESPONSE__Column **columns)
@@ -4940,7 +4961,7 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     int rc = 0;
     int i;
-    uint64_t data_len = 0;
+    size_t data_len = 0;
 
     for (i = 0; i < ncols; i++) {
         cdb2__sqlresponse__column__init(columns[i]);
@@ -4980,7 +5001,7 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     sql_response.value = columns;
 
     void *(*alloc_func)(size_t size) = malloc;
-    if(gbl_blob_sz_thresh_bytes > 0) { /* TODO: if data_len > 1024) use malloc */
+    if(gbl_blob_sz_thresh_bytes > 0 && data_len > DATALEN_THRESHOLD) {
         int pksize = cdb2__sqlresponse__get_packed_size(&sql_response);
         if (pksize + 1 > gbl_blob_sz_thresh_bytes)
             alloc_func = blob_alloc_override;
