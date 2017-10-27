@@ -297,11 +297,11 @@ void *coherency_lease_thread(void *arg)
         if (repinfo->master_host == repinfo->myhost) {
             send_coherency_leases(bdb_state, lease_time, &inc_wait);
 
-            if(bdb_state->attr->durable_lsns) {
+            if (bdb_state->attr->durable_lsns) {
                 /* See if master has written a durable LSN */
                 bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
-                bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
-                        &durable_gen);
+                bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
+                                                  &durable_lsn, &durable_gen);
 
                 /* Insert a record if it hasn't */
                 if (durable_gen != current_gen) {
