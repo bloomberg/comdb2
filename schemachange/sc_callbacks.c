@@ -30,7 +30,7 @@
 
 static int reload_rename_table(const char *name, const char *newtable)
 {
-    struct db *db = getdbbyname(name);
+    struct dbtable *db = get_dbtable_by_name(name);
    
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);

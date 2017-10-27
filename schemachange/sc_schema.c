@@ -1313,7 +1313,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
-            if (!strcasecmp(ct->lcltable->tablename, db->dbname)) {
+            if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
                 strcpy(ct->lcltable->tablename, newname);
             }
         }

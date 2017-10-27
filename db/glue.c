@@ -6190,7 +6190,7 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     return version;
 }
 
-int rename_table_options(void *tran, struct db *db, const char *newname)
+int rename_table_options(void *tran, struct dbtable *db, const char *newname)
 {
     char *oldname;
     int rc;
@@ -6215,8 +6215,8 @@ int rename_table_options(void *tran, struct db *db, const char *newname)
     rc = get_db_bthash_tran(db, &bthashsz, tran);
     if(rc) return rc;
   
-    oldname = db->dbname;
-    db->dbname = (char*)newname;
+    oldname = db->tablename;
+    db->tablename = (char*)newname;
 
     rc = put_db_odh(db, tran, odh);
     if(rc) goto done;
@@ -6231,7 +6231,7 @@ int rename_table_options(void *tran, struct db *db, const char *newname)
     rc = put_db_bthash(db, tran, bthashsz);
 
 done:
-    db->dbname = oldname;
+    db->tablename = oldname;
 
     return rc;
 }

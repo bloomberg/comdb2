@@ -1716,7 +1716,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     TokenStr(table, pSrcName);
     TokenStr(newtable, pName);
 
-    if(getdbbyname(newtable)) {
+    if(get_dbtable_by_name(newtable)) {
         setError(pParse, SQLITE_ERROR, "New table name exists");
         return;
     }

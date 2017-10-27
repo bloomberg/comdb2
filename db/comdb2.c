@@ -5355,7 +5355,7 @@ void delete_db(char *db_name)
 }
 
 /* rename in memory db names; fragile */
-int rename_db(struct db *db, const char *newname)
+int rename_db(struct dbtable *db, const char *newname)
 {
     int rc;
     char *tag_name = strdup(newname);
@@ -5367,14 +5367,14 @@ int rename_db(struct db *db, const char *newname)
     pthread_rwlock_wrlock(&thedb_lock);
     
     /* tags */
-    rename_schema(db->dbname, tag_name);
+    rename_schema(db->tablename, tag_name);
 
     /* bdb_state */
      bdb_state_rename(db->handle, bdb_name);
 
     /* db */
     hash_del(thedb->db_hash, db);
-    db->dbname = (char*)newname;
+    db->tablename = (char*)newname;
     db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 
