@@ -2969,12 +2969,84 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     hndl->query_list = NULL;
 }
 
-static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
+static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 {
     hndl->clear_snap_line = line;
     hndl->snapshot_file = 0;
     hndl->snapshot_offset = 0;
 }
+
+static int process_set_command(cdb2_hndl_tp *hndl, const char *sql) 
+{
+    int i, j, k;
+    if (hndl->in_trans) {
+        sprintf(hndl->errstr, "Can't run set query inside transaction.");
+        hndl->error_in_trans = CDB2ERR_BADREQ;
+        hndl->client_side_error = 1;
+        return CDB2ERR_BADREQ;
+    }
+    i = hndl->num_set_commands;
+    if (i > 0) {
+        int skip_len = 4;
+        char *dup_sql = strdup(sql+skip_len); 
+        char *rest;
+        char *set_tok = strtok_r(dup_sql, " ", &rest);
+        /* special case for spversion */
+        if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
+            skip_len += 10;
+            set_tok = strtok_r(rest, " ", &rest);
+        }
+        if (!set_tok) {
+            free(dup_sql);
+            return 0;
+        }
+        int len = strlen(set_tok);
+
+        for (j = 0; j < i; j++) {
+            /* If this matches any of the previous commands. */
+            if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) == 0) &&
+                    (hndl->commands[j][len+skip_len] == ' ')) {
+                free(dup_sql);
+                if (j == (i - 1)) {
+                    if (strcmp(hndl->commands[j], sql) == 0) {
+                        /* Do Nothing. */
+                    } else {
+                        hndl->commands[i-1] = realloc(hndl->commands[i-1], strlen(sql) + 1);
+                        strcpy(hndl->commands[i-1], sql);
+                    }
+                } else {
+                    char *cmd = hndl->commands[j];
+                    /* Move all the commands down the array. */
+                    for (k = j; k < i - 1; k++) {
+                        hndl->commands[k] = hndl->commands[k + 1];
+                    }
+                    if (strcmp(cmd, sql) == 0) {
+                        hndl->commands[i - 1] = cmd;
+                    } else {
+                        hndl->commands[i-1] = realloc(cmd, strlen(sql) + 1);
+                        strcpy(hndl->commands[i-1], sql);
+                    }
+                }
+                if (hndl->num_set_commands_sent)
+                    hndl->num_set_commands_sent--;
+                return 0;
+            }
+        }
+        free(dup_sql);
+    }
+    hndl->num_set_commands++;
+    hndl->commands =
+        realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
+    hndl->commands[i] = malloc(strlen(sql) + 1);
+    strcpy(hndl->commands[i], sql);
+    int hasql_val;
+    if (is_hasql(sql, &hasql_val)) {
+        hndl->is_hasql = hasql_val;
+    }
+    return 0;
+}
+
+
 
 #define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
@@ -2990,7 +3062,6 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 {
     int return_value;
     int using_hint = 0;
-    int hasql_val;
     int rc = 0;
     int is_begin = 0;
     int is_commit = 0;
@@ -3019,73 +3090,10 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     if (!sql)
         return 0;
 
-    // Ohai .. i want to sniff out 'set hasql on' here ..
+    /* sniff out 'set hasql on' here */
     if (strncasecmp(sql, "set", 3) == 0) {
-        int i, j, k;
-        if (hndl->in_trans) {
-            sprintf(hndl->errstr, "Can't run set query inside transaction.");
-            hndl->error_in_trans = CDB2ERR_BADREQ;
-            hndl->client_side_error = 1;
-            return CDB2ERR_BADREQ;
-        }
-        i = hndl->num_set_commands;
-        if (i > 0) {
-            int skip_len = 4;
-            char *dup_sql = strdup(sql+skip_len); 
-            char *rest;
-            char *set_tok = strtok_r(dup_sql, " ", &rest);
-            /* special case for spversion */
-            if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
-                skip_len += 10;
-                set_tok = strtok_r(rest, " ", &rest);
-            }
-            if (!set_tok) {
-                free(dup_sql);
-                return 0;
-            }
-            int len = strlen(set_tok);
-
-            for (j = 0; j < i; j++) {
-                /* If this matches any of the previous commands. */
-                if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) == 0) &&
-                    (hndl->commands[j][len+skip_len] == ' ')) {
-                    free(dup_sql);
-                    if (j == (i - 1)) {
-                        if (strcmp(hndl->commands[j], sql) == 0) {
-                            /* Do Nothing. */
-                        } else {
-                           hndl->commands[i-1] = realloc(hndl->commands[i-1], strlen(sql) + 1);
-                           strcpy(hndl->commands[i-1], sql);
-                        }
-                    } else {
-                        char *cmd = hndl->commands[j];
-                        /* Move all the commands down the array. */
-                        for (k = j; k < i - 1; k++) {
-                            hndl->commands[k] = hndl->commands[k + 1];
-                        }
-                        if (strcmp(cmd, sql) == 0) {
-                            hndl->commands[i - 1] = cmd;
-                        } else {
-                            hndl->commands[i-1] = realloc(cmd, strlen(sql) + 1);
-                            strcpy(hndl->commands[i-1], sql);
-                        }
-                    }
-                    if (hndl->num_set_commands_sent)
-                        hndl->num_set_commands_sent--;
-                    return 0;
-                }
-            }
-            free(dup_sql);
-        }
-        hndl->num_set_commands++;
-        hndl->commands =
-            realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
-        hndl->commands[i] = malloc(strlen(sql) + 1);
-        strcpy(hndl->commands[i], sql);
-        if (is_hasql(sql, &hasql_val)) {
-            hndl->is_hasql = hasql_val;
-        }
-        return 0;
+        rc = process_set_command(hndl, sql);
+        return rc;
     }
 
     if (strncasecmp(sql, "begin", 5) == 0) {
@@ -3301,11 +3309,7 @@ retry_queries:
         sprintf(hndl->errstr, "%s: Can't send query to the db", __func__);
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
-                    pthread_self(), __func__, __LINE__);
-        }
-        goto retry_queries;
+        GOTO_RETRY_QUERIES();
     }
     run_last = 0;
 
