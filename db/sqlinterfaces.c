@@ -5936,6 +5936,15 @@ static int process_debug_pragma(struct sqlclntstate *clnt)
     return -1;
 }
 
+void ctrace_origin_and_sql(int count, void *ptr)
+{
+    struct sqlclntstate *clnt = (struct sqlclntstate *) ptr;
+    ctrace("%d. %s %s\n", count, 
+            clnt->origin ? clnt->origin : "NULL", 
+            clnt->sql ? clnt->sql : "NULL");
+}
+
+
 /* timeradd() for struct timespec*/
 #define TIMESPEC_ADD(a, b, result)                                             \
     do {                                                                       \
@@ -5961,8 +5970,6 @@ static int process_debug_pragma(struct sqlclntstate *clnt)
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     int done;
-    char msg[1024];
-    char *sqlcpy;
     char thdinfo[40];
     int rc;
     struct thr_handle *self = thrman_self();
@@ -5987,24 +5994,21 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
 
     pthread_mutex_unlock(&clnt->wait_mutex);
 
-    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
     clnt->enque_timeus = time_epochus();
 
-    sqlcpy = strdup(msg);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
-                              clnt, (clnt->req.flags & SQLF_QUEUE_ME) ? 1 : 0,
-                              sqlcpy)) != 0) {
+                              clnt, (clnt->req.flags & SQLF_QUEUE_ME) ? 1 : 0)) != 0) {
         if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
-                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy);
+                                 sqlengine_work_appsock_pp, clnt, 1);
         }
 
         if (rc) {
-            free(sqlcpy);
             /* say something back, if the client expects it */
             if (clnt->req.flags & SQLF_FAILDISPATCH_ON) {
+                char msg[1024];
                 snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query\n",
                          __func__);
                 handle_failed_dispatch(clnt, msg);

@@ -431,8 +431,7 @@ start_loading(DBC *dbc)
 #if BTPF_SAME_THREAD
 	start_loading_async_cb(job);
 #else
-	rc = thdpool_enqueue(gbl_udppfault_thdpool, start_loading_async_pp, job,
-	    0, NULL);
+	rc = thdpool_enqueue(gbl_udppfault_thdpool, start_loading_async_pp, job, 0);
 #endif
 	return rc;
 }
