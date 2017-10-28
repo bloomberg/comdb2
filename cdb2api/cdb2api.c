@@ -2018,11 +2018,11 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     sqlquery.mach_class = cdb2_default_cluster;
 
 
-    char *host = "NOT-CONNECTED";
-    if (hndl && hndl->connected_host >= 0)
-        host = hndl->hosts[hndl->connected_host];
-
     if (hndl && hndl->debug_trace) {
+        char *host = "NOT-CONNECTED";
+        if (hndl && hndl->connected_host >= 0)
+            host = hndl->hosts[hndl->connected_host];
+
         fprintf(stderr, "td %u %s sending '%s' to %s from-line %d retries is "
                         "%d do_append is %d\n",
                 (uint32_t)pthread_self(), __func__, sql, host, fromline,
@@ -2647,12 +2647,12 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
     int rc = 0;
-    char *host = "NOT-CONNECTED";
-    if (hndl->connected_host >= 0)
-        host = hndl->hosts[hndl->connected_host];
-
     if (hndl->in_trans && (hndl->snapshot_file ||
                            hndl->query_no <= 1)) { /* Replay all the queries. */
+        char *host = "NOT-CONNECTED";
+        if (hndl->connected_host >= 0)
+            host = hndl->hosts[hndl->connected_host];
+
         /*Send Begin. */
         hndl->is_retry = num_retry;
 
@@ -3384,10 +3384,8 @@ read_record:
         char *host = "NOT-CONNECTED";
         if (hndl && hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %p reading from %s line %d rc=%d type:%d\n",
-                    (void *)pthread_self(), host, __LINE__, rc, type);
-        }
+        fprintf(stderr, "td %p reading from %s line %d rc=%d type:%d\n",
+                (void *)pthread_self(), host, __LINE__, rc, type);
     }
 
 #if WITH_SSL
