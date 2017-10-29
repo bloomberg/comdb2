@@ -144,9 +144,6 @@ extern int gbl_stable_rootpages_test;
 */
 
 /* An alternate interface. */
-extern pthread_mutex_t appsock_mutex;
-extern pthread_attr_t appsock_attr;
-extern int gbl_dtastripe;
 extern int gbl_notimeouts;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 int gbl_dump_fsql_response = 0;
@@ -1451,34 +1448,19 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         return;
     }
 
-    int rc;
-    struct sockaddr_in peeraddr;
-    int len = sizeof(struct sockaddr_in);
-    char addr[64];
-
-    int fd = sbuf2fileno(clnt->sb);
-    rc = getpeername(fd, (struct sockaddr *)&peeraddr, &len);
-    if (rc)
-        snprintf(addr, sizeof(addr), "<unknown>");
-    else {
-        if (inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addr,
-                      sizeof(addr)) == NULL)
-            snprintf(addr, sizeof(addr), "<unknown>");
-    }
-
     if (clnt->limits.maxcost_warn && (thd->cost > clnt->limits.maxcost_warn)) {
         logmsg(LOGMSG_USER,
                "[%s] warning: query exceeded cost threshold (%f >= %f): %s\n",
-               addr, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
+               clnt->origin, thd->cost, clnt->limits.maxcost_warn, clnt->sql);
     }
     if (clnt->limits.tablescans_warn && thd->had_tablescans) {
-        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", addr,
-               clnt->sql);
+        logmsg(LOGMSG_USER, "[%s] warning: query had a table scan: %s\n", 
+               clnt->origin, clnt->sql);
     }
     if (clnt->limits.temptables_warn && thd->had_temptables) {
         logmsg(LOGMSG_USER,
-               "[%s] warning: query created a temporary table: %s\n", addr,
-               clnt->sql);
+               "[%s] warning: query created a temporary table: %s\n", 
+               clnt->origin, clnt->sql);
     }
 
     unsigned long long rqid = clnt->osql.rqid;
@@ -1498,7 +1480,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         h->sql = strdup(clnt->sql);
     else
         h->sql = strdup("unknown");
-    int cost = h->cost = query_cost(thd);
+    h->cost = query_cost(thd);
     int timems = h->time = time_epochms() - thd->startms;
     h->when = thd->stime;
     h->txnid = rqid;
@@ -1515,6 +1497,10 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
     reqlog_set_vreplays(logger, clnt->verify_retries);
 
+    if (clnt->saved_rc)
+        reqlog_set_error(logger, clnt->saved_errstr, clnt->saved_rc);
+
+    reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
@@ -1522,9 +1508,6 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     if (clnt->conninfo.pename[0]) {
         h->conn = clnt->conninfo;
     }
-
-    reqlog_set_cost(logger, cost);
-    reqlog_set_rows(logger, clnt->nrows);
 
     pthread_mutex_lock(&gbl_sql_lock);
     {
@@ -1896,8 +1879,9 @@ static void log_client_context(struct reqlogger *logger,
     if (clnt->sql_query->n_context > 0) {
         int i = 0;
         while (i < clnt->sql_query->n_context) {
-            reqlog_logf(logger, REQL_INFO, "(%d) %s", ++i,
+            reqlog_logf(logger, REQL_INFO, "(%d) %s", i,
                         clnt->sql_query->context[i]);
+            ++i;
         }
     }
 
@@ -4031,6 +4015,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     query_stats_setup(thd, clnt);
     get_cached_stmt(thd, clnt, rec);
+
+    if (rec->sql)
+        reqlog_set_sql(thd->logger, rec->sql);
     const char *tail = NULL;
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
@@ -4048,7 +4035,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->stmt) {
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
-        reqlog_set_sql(thd->logger, rec->sql);
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = FSQL_PREPARE;
@@ -4131,28 +4117,19 @@ static int bind_params(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     char *errstr = NULL;
     int rc = 0;
+    bool newsqlbind = clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars;
 
-    if (clnt->is_newsql && clnt->sql_query && clnt->sql_query->n_bindvars) {
-        assert(rec->parameters_to_bind == NULL);
-        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
-        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
-        if (rc) {
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-        }
-    } else if (rec->parameters_to_bind) {
-        eventlog_params(thd->logger, rec->stmt, rec->parameters_to_bind, clnt);
-        rc = bind_parameters(rec->stmt, rec->parameters_to_bind, clnt, &errstr);
-        if(rc) {
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
-        }
-    } else {
-        if (sqlite3_bind_parameter_count(rec->stmt)) {
-            reqlog_logf(thd->logger, REQL_TRACE, "parameter bind failed \n");
-            errstat_set_rcstrf(err, ERR_PREPARE, "%s", 
-                               "Query specified parameters, but no values"
-                               " provided.");
-            rc = -1;
-        }
+    if (newsqlbind || rec->parameters_to_bind) {
+        assert(!newsqlbind || rec->parameters_to_bind == NULL);
+        rc = bind_parameters(thd->logger, rec->stmt, rec->parameters_to_bind,
+                             clnt, &errstr);
+        if (rc) errstat_set_rcstrf(err, ERR_PREPARE, "%s", errstr);
+    } else if (sqlite3_bind_parameter_count(rec->stmt)) {
+        reqlog_logf(thd->logger, REQL_TRACE, "parameter bind failed \n");
+        errstat_set_rcstrf(err, ERR_PREPARE, "%s", 
+                           "Query specified parameters, but no values"
+                           " provided.");
+        rc = -1;
     }
 
     return rc;
@@ -5471,6 +5448,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     struct errstat err = {0};
     struct sql_state rec = {0};
     rec.sql = clnt->sql;
+
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
@@ -5481,7 +5459,6 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
                 if(comm->send_prepare_error)
                     comm->send_prepare_error(clnt, err.errstr, 
                                              (irc == ERR_PREPARE_RETRY));
-                reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb));
             }
             goto errors;
         }
@@ -5519,6 +5496,8 @@ done:
     return rc;
 
 errors:
+    reqlog_set_event(thd->logger, "sql"); /* set before error */
+    reqlog_set_error(thd->logger, sqlite3_errmsg(thd->sqldb), rc);
     handle_sqlite_error(thd, clnt, &rec);
     goto done;
 }

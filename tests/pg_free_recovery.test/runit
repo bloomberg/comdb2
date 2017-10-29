@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 dbname=$1
 trace=1
@@ -54,7 +54,7 @@ function good_inserter
     [[ "$trace" == 1 ]] && echo "Running good_inserter"
     set i=0
     while [[ $forever || $i -lt 10 ]]; do
-        cdb2sql ${CDB2_OPTIONS} $dbname $stage - < ./good_insert.sql > /dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $dbname $stage - < ./good_insert.sql > /dev/null 2>&1
         let i=i+1
     done
 }
@@ -65,7 +65,7 @@ function bad_inserter
     [[ "$trace" == 1 ]] && echo "Running bad_inserter"
     set i=0
     while [[ $forever || $i -lt 10 ]]; do
-        cdb2sql ${CDB2_OPTIONS} $dbname $stage - < ./bad_insert.sql > /dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $dbname $stage - < ./bad_insert.sql > /dev/null 2>&1
         let i=i+1
     done
 }

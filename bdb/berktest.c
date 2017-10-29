@@ -1,4 +1,4 @@
-#include <db.h>
+#include <build/db.h>
 #include "bdb_int.h"
 #include <unistd.h>
 #include <stdlib.h>

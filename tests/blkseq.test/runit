@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 dbname=$1
 error=0
@@ -37,7 +37,7 @@ rcount=$(replay_count) ; i=0
 echo "Replay count is $rcount"
 while [[ $i -lt 1000 ]]; do
     out=$(cdb2sql ${CDB2_OPTIONS} $dbname $stage - < insert.t1 2>&1)
-    echo "$out" | egrep "(rows inserted=1)" >/dev/null 2>&1
+    echo "$out" | egrep "(rows inserted=1)" &>/dev/null
 
     if [[ $? != 0 ]]; then
         echo "Unexpected output inserting a row into t1"
@@ -54,13 +54,13 @@ if [[ "$(replay_count)" == "$rcount" ]]; then
     error=1
 fi
 
-cdb2sql ${CDB2_OPTIONS} $dbname $stage - < insert.t2 >/dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbname $stage - < insert.t2 &>/dev/null
 
 rcount=$(replay_count) ; i=0
 echo "Replay count is $rcount"
 while [[ $i -lt 1000 ]]; do
     out=$(cdb2sql ${CDB2_OPTIONS} $dbname $stage - < insert.t2 2>&1)
-    echo "$out" | egrep "failed with rc 299" >/dev/null 2>&1
+    echo "$out" | egrep "failed with rc 299" &>/dev/null
 
     if [[ $? != 0 ]]; then
         echo "Unexpected output inserting a row into t2"

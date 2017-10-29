@@ -214,10 +214,18 @@ __db_pgin(dbenv, pg, pp, cookie)
 	}
 	switch (TYPE(pagep)) {
 	case P_INVALID:
-		if (pginfo->type == DB_QUEUE)
+		switch (pginfo->type) {
+		case DB_QUEUE:
 			return (__qam_pgin_out(dbenv, pg, pp, cookie));
-		else
+		case DB_HASH:
 			return (__ham_pgin(dbenv, dbp, pg, pp, cookie));
+		case DB_BTREE:
+		case DB_RECNO:
+			return (__bam_pgin(dbenv, dbp, pg, pp, cookie));
+		default:
+			break;
+		}
+		break;
 	case P_HASH:
 	case P_HASHMETA:
 		return (__ham_pgin(dbenv, dbp, pg, pp, cookie));
@@ -275,10 +283,20 @@ __db_pgout(dbenv, pg, pp, cookie)
 	ret = 0;
 	switch (TYPE(pagep)) {
 	case P_INVALID:
-		if (pginfo->type == DB_QUEUE)
+		switch (pginfo->type) {
+		case DB_QUEUE:
 			ret = __qam_pgin_out(dbenv, pg, pp, cookie);
-		else
+			break;
+                case DB_HASH:
 			ret = __ham_pgout(dbenv, dbp, pg, pp, cookie);
+			break;
+                case DB_BTREE:
+		case DB_RECNO:
+			ret = __bam_pgout(dbenv, dbp, pg, pp, cookie);
+			break;
+		default:
+			return (__db_pgfmt(dbenv, pg));
+		}
 		break;
 	case P_HASH:
 	case P_HASHMETA:

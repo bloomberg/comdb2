@@ -430,12 +430,12 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
     }
     bzero(s, sizeof(struct schema_change_type));
     s->type = DBTYPE_TAGGED_TABLE;
-    strncpy0(s->table, db->dbname, sizeof(s->table));
+    strncpy0(s->table, db->tablename, sizeof(s->table));
 
-    if (get_csc2_file(db->dbname, -1 /*highest csc2_version*/, &s->newcsc2,
+    if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &s->newcsc2,
                       NULL /*csc2len*/)) {
         logmsg(LOGMSG_ERROR, "%s: could not get schema for table: %s\n",
-               __func__, db->dbname);
+               __func__, db->tablename);
         return -1;
     }
 
@@ -523,7 +523,7 @@ done:
         sbuf2printf(s->sb, "FAILED\n");
     }
     if (newdb) {
-        backout_schemas(newdb->dbname);
+        backout_schemas(newdb->tablename);
         newdb->schema = NULL;
         freedb(newdb);
     }
@@ -839,15 +839,15 @@ static int add_table_for_recovery(struct ireq *iq)
     /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
-    newdb->version = get_csc2_version(newdb->dbname);
+    newdb->version = get_csc2_version(newdb->tablename);
 
     if (add_cmacc_stmt(newdb, 1) != 0) {
-        backout_schemas(newdb->dbname);
+        backout_schemas(newdb->tablename);
         abort();
     }
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
-        backout_schemas(newdb->dbname);
+        backout_schemas(newdb->tablename);
         abort();
     }
 
@@ -855,7 +855,7 @@ static int add_table_for_recovery(struct ireq *iq)
 
     rc = open_temp_db_resume(newdb, new_prefix, 1, 0, NULL);
     if (rc) {
-        backout_schemas(newdb->dbname);
+        backout_schemas(newdb->tablename);
         abort();
     }
 
@@ -881,13 +881,13 @@ int add_schema_change_tables()
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len = 0;
-        if (bdb_get_in_schema_change(thedb->dbs[i]->dbname, &packed_sc_data,
+        if (bdb_get_in_schema_change(thedb->dbs[i]->tablename, &packed_sc_data,
                                      &packed_sc_data_len, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to discover "
                    "whether table: %s is in the middle of a schema change\n",
-                   __func__, thedb->dbs[i]->dbname);
+                   __func__, thedb->dbs[i]->tablename);
             continue;
         }
 
@@ -896,7 +896,7 @@ int add_schema_change_tables()
             struct schema_change_type *s;
             logmsg(LOGMSG_WARN, "%s: table: %s is in the middle of a "
                                 "schema change, adding table...\n",
-                   __func__, thedb->dbs[i]->dbname);
+                   __func__, thedb->dbs[i]->tablename);
 
             s = new_schemachange_type();
             if (!s) {
@@ -919,8 +919,8 @@ int add_schema_change_tables()
             char *abort_filename =
                 comdb2_location("marker", "%s.scabort", thedb->envname);
             if (access(abort_filename, F_OK) == 0) {
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->dbname, NULL,
-                                              0, &bdberr);
+                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename,
+                                              NULL, 0, &bdberr);
                 if (rc)
                     logmsg(LOGMSG_ERROR,
                            "Failed to cancel resuming schema change %d %d\n",
@@ -986,7 +986,7 @@ int sc_timepart_add_table(const char *existingTableName,
                  existingTableName);
         goto error_prelock;
     }
-    if (get_csc2_file(db->dbname, -1 /*highest csc2_version*/, &schemabuf,
+    if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/, &schemabuf,
                       NULL /*csc2len*/)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
@@ -1111,12 +1111,12 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     /*do_crap*/
     {
         /* Find the existing table and use its current schema */
-        if (get_csc2_file(db->dbname, -1 /*highest csc2_version*/, &schemabuf,
-                          NULL /*csc2len*/)) {
+        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/,
+                          &schemabuf, NULL /*csc2len*/)) {
             xerr->errval = SC_VIEW_ERR_BUG;
             snprintf(xerr->errstr, sizeof(xerr->errstr),
                      "%s: could not get schema for table: %s\n", __func__,
-                     db->dbname);
+                     db->tablename);
             cleanup_strptr(&schemabuf);
             goto error;
         }
@@ -1579,10 +1579,10 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
             return -1;
         }
 
-        if (get_csc2_file(db->dbname, -1 /*highest csc2_version*/, &schemabuf,
-                          NULL /*csc2len*/)) {
+        if (get_csc2_file(db->tablename, -1 /*highest csc2_version*/,
+                          &schemabuf, NULL /*csc2len*/)) {
             fprintf(stderr, "%s: could not get schema for table: %s\n",
-                    __func__, db->dbname);
+                    __func__, db->tablename);
             cleanup_strptr(&schemabuf);
             return -1;
         }

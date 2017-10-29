@@ -194,8 +194,8 @@ int bdb_osql_shadow_is_bkfilled(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
             return shadow->tables[cur->dbnum].ix_shadows[cur->idx].bkfill;
         break;
     }
-
     return 0;
+
 }
 
 /**

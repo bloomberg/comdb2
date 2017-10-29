@@ -1,8 +1,0 @@
-#!/bin/sh
-
-systemctl stop pmux
-systemctl disable pmux
-systemctl stop supervisor_cdb2
-systemctl disable supervisor_cdb2
-systemctl stop cdb2sockpool
-systemctl disable cdb2sockpool

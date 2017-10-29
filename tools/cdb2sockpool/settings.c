@@ -14,14 +14,8 @@
    limitations under the License.
  */
 
-
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <strings.h>
-
-#include "sockpool.h"
+#include <cdb2sockpool.h>
 
 struct setting {
     unsigned *variable;

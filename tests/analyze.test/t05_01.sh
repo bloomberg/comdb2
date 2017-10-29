@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # This runs analyze and makes sure that getting count(*)
 # in stat1 and stat4 succeeds (can rely on a value?
 # and after backout there should be half as many?)

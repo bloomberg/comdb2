@@ -45,7 +45,7 @@
 #include <str0.h>
 #include <pthread.h>
 #include <netinet/in.h>
-#include <db.h>
+#include <build/db.h>
 #include <portmuxapi.h>
 #include <bb_oscompat.h>
 
@@ -81,7 +81,7 @@
 #include <flibc.h>
 #include <cdb2_constants.h>
 #include <autoanalyze.h>
-#include "comdb2util.h"
+#include "util.h"
 #include <schemachange/sc_global.h>
 
 #include "rtcpu.h"
@@ -201,7 +201,7 @@ static void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
 
     if (iq->usedb) {
         if (auxdb == AUXDB_NONE)
-            reqlog_usetable(iq->reqlogger, iq->usedb->dbname);
+            reqlog_usetable(iq->reqlogger, iq->usedb->tablename);
         return get_bdb_handle(iq->usedb, auxdb);
     }
 
@@ -1054,8 +1054,10 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
         return ERR_VERIFY;
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_updvrfy return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1086,8 +1088,10 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
         return ERR_VERIFY;
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_updvrfy return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1118,8 +1122,10 @@ int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
     switch (bdberr) {
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
+    case BDBERR_READONLY:
+        return ERR_NOMASTER;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_upd_genid return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -1170,7 +1176,7 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_allocdta return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1202,7 +1208,7 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_adddta_n_genid return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1235,7 +1241,7 @@ int blob_add_auxdb(int auxdb, struct ireq *iq, void *trans, int blobno,
         return RC_TRAN_TOO_COMPLEX;
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_adddta_n_genid return unhandled rc %d\n", bdberr);
+    logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
 
@@ -1348,7 +1354,7 @@ int dat_upgrade(struct ireq *iq, void *trans, void *newdta, int newlen,
         // txns may sneak in and change the genid. consider it done.
         return 0;
     default:
-        logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_upgrade return unhandled rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
         return ERR_INTERNAL;
     }
 }
@@ -2880,6 +2886,8 @@ static int new_master_callback(void *bdb_handle, char *host)
             load_auto_analyze_counters();
             trigger_clear_hash();
             trigger_timepart = 1;
+
+            osql_repository_cancelall();
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
@@ -3702,8 +3710,8 @@ int open_auxdbs(struct dbtable *db, int force_create)
         snprintf(name, sizeof(name), "comdb2_meta");
         snprintf(litename, sizeof(litename), "comdb2_metalite");
     } else {
-        snprintf(name, sizeof(name), "%s.meta", db->dbname);
-        snprintf(litename, sizeof(litename), "%s.metalite", db->dbname);
+        snprintf(name, sizeof(name), "%s.meta", db->tablename);
+        snprintf(litename, sizeof(litename), "%s.metalite", db->tablename);
     }
 
     ctrace("bdb_open_more: opening <%s>\n", name);
@@ -4060,7 +4068,7 @@ static void get_disable_skipscan(struct dbtable *tbl)
         return;
 
     char *str = NULL;
-    int rc = bdb_get_table_parameter(tbl->dbname, "disableskipscan", &str);
+    int rc = bdb_get_table_parameter(tbl->tablename, "disableskipscan", &str);
     if (rc != 0) {
         tbl->disableskipscan = 0;
         return;
@@ -4097,19 +4105,21 @@ int backend_open(struct dbenv *dbenv)
         db = dbenv->dbs[ii];
 
         if (db->dbnum)
-            logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->dbname, db->dbnum);
+            logmsg(LOGMSG_INFO, "open table '%s' (dbnum %d)\n", db->tablename,
+                   db->dbnum);
         else
-            logmsg(LOGMSG_INFO, "open table '%s'\n", db->dbname);
+            logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
         db->handle = bdb_open_more(
-            db->dbname, dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
+            db->tablename, dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, /* main record + n blobs */
             dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
-            logmsg(LOGMSG_ERROR, "bdb_open:failed to open table %s/%s, rcode %d\n",
-                   dbenv->basedir, db->dbname, bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "bdb_open:failed to open table %s/%s, rcode %d\n",
+                   dbenv->basedir, db->tablename, bdberr);
             return -1;
         }
     }
@@ -4117,7 +4127,7 @@ int backend_open(struct dbenv *dbenv)
     for (ii = 0; ii < dbenv->num_qdbs; ii++) {
         int pagesize;
         db = dbenv->qdbs[ii];
-        logmsg(LOGMSG_INFO, "open queue '%s'\n", db->dbname);
+        logmsg(LOGMSG_INFO, "open queue '%s'\n", db->tablename);
 
         /* Work out best page size for the expected average item size. */
         if (db->queue_pagesize_override) {
@@ -4132,11 +4142,12 @@ int backend_open(struct dbenv *dbenv)
         }
 
         db->handle = bdb_open_more_queue(
-            db->dbname, dbenv->basedir, db->avgitemsz, pagesize, dbenv->bdb_env,
-            db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
+            db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
+            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, &bdberr);
         if (db->handle == NULL) {
-            logmsg(LOGMSG_ERROR, "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
-                   dbenv->basedir, db->dbname, bdberr);
+            logmsg(LOGMSG_ERROR,
+                   "bdb_open_more_queue:failed to open queue %s/%s, rcode %d\n",
+                   dbenv->basedir, db->tablename, bdberr);
             return -1;
         }
     }
@@ -4211,8 +4222,9 @@ int backend_open(struct dbenv *dbenv)
         }
 
         if (bthashsz) {
-            logmsg(LOGMSG_INFO, "Building bthash for table %s, size %dkb per stripe\n",
-                   d->dbname, bthashsz);
+            logmsg(LOGMSG_INFO,
+                   "Building bthash for table %s, size %dkb per stripe\n",
+                   d->tablename, bthashsz);
             bdb_handle_dbp_add_hash(d->handle, bthashsz);
         }
 
@@ -4228,7 +4240,7 @@ int backend_open(struct dbenv *dbenv)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               d->dbname, d->version, d->odh ? "yes" : "no",
+               d->tablename, d->version, d->odh ? "yes" : "no",
                d->instant_schema_change ? "yes" : "no",
                datacopy_odh ? "yes" : "no", d->inplace_updates ? "yes" : "no");
     }
@@ -4302,9 +4314,9 @@ static void fix_blobstripe_genids(void)
             if (rc == 0) {
                 bdb_set_blobstripe_genid(db->handle, db->blobstripe_genid);
                 ctrace("blobstripe genid 0x%llx for table %s\n",
-                       db->blobstripe_genid, db->dbname);
+                       db->blobstripe_genid, db->tablename);
             } else {
-                ctrace("no blobstripe genid for table %s\n", db->dbname);
+                ctrace("no blobstripe genid for table %s\n", db->tablename);
             }
         }
     }
@@ -4324,9 +4336,10 @@ int fix_consumers_with_bdblib(struct dbenv *dbenv)
             int rc, bdberr;
             rc = bdb_queue_consumer(db->handle, consumern, active, &bdberr);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, 
-                       "bdb_queue_consumer error for queue %s/%s/%d, rcode %d\n",
-                       dbenv->basedir, db->dbname, consumern, bdberr);
+                logmsg(
+                    LOGMSG_ERROR,
+                    "bdb_queue_consumer error for queue %s/%s/%d, rcode %d\n",
+                    dbenv->basedir, db->tablename, consumern, bdberr);
                 return -1;
             }
         }
@@ -4471,7 +4484,7 @@ retry:
 
     for (i = 0; i < db->nix; i++) {
         snprintf(tag, MAXTAGLEN, ".ONDISK_ix_%d", i);
-        rc = stag_to_stag_buf(db->dbname, ".ONDISK", buf, tag, key, NULL);
+        rc = stag_to_stag_buf(db->tablename, ".ONDISK", buf, tag, key, NULL);
         if (rc) {
             if (rc == RC_INTERNAL_RETRY)
                 need_to_retry = 1;
@@ -4795,7 +4808,7 @@ static int meta_put(struct dbtable *db, void *input_tran, struct metahdr *hdr1,
     if (db->dbenv->meta) {
         bzero(&hdr2, sizeof(struct metahdr2));
         memcpy(&hdr2.hdr1, hdr1, sizeof(struct metahdr));
-        snprintf(hdr2.keystr, sizeof(hdr2.keystr), "/%s", db->dbname);
+        snprintf(hdr2.keystr, sizeof(hdr2.keystr), "/%s", db->tablename);
         keysize = sizeof(struct metahdr2);
         metahdr2_type_put(&hdr2, p_hdr2_buf, p_hdr2_buf_end);
         hdr = &p_metahdr2;
@@ -4924,7 +4937,7 @@ static int meta_get_tran(tran_type *tran, struct dbtable *db, struct metahdr *ke
     if (db->dbenv->meta) {
         bzero(&key2, sizeof(struct metahdr2));
         memcpy(&key2.hdr1, key1, sizeof(struct metahdr));
-        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->dbname);
+        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->tablename);
         metahdr2_type_put(&key2, p_hdr2_buf, p_hdr2_buf_end);
         key = &p_metahdr2;
     } else {
@@ -4984,7 +4997,7 @@ static int meta_get_var_tran(tran_type *tran, struct dbtable *db,
     if (db->dbenv->meta) {
         bzero(&key2, sizeof(struct metahdr2));
         memcpy(&key2.hdr1, key1, sizeof(struct metahdr));
-        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->dbname);
+        snprintf(key2.keystr, sizeof(key2.keystr), "/%s", db->tablename);
         metahdr2_type_put(&key2, p_hdr2_buf, p_hdr2_buf_end);
         key = &p_metahdr2;
     } else {
@@ -5533,7 +5546,7 @@ retry:
         goto retry;
     } else if (rc) {
         int rc2;
-        logmsg(LOGMSG_ERROR, "reinit_db %s error %d\n", db->dbname, bdberr);
+        logmsg(LOGMSG_ERROR, "reinit_db %s error %d\n", db->tablename, bdberr);
         rc2 = trans_abort(&iq, trans);
         if (rc2) {
             logmsg(LOGMSG_ERROR, "tran_abort failed, rc=%d\n", rc2); /* shouldn't happen */
@@ -5614,7 +5627,7 @@ void diagnostics_dump_dta(struct dbtable *db, int dtanum)
 
     char *filename;
     filename =
-        comdb2_location("debug", "%s.dump_dta%d.txt", db->dbname, dtanum);
+        comdb2_location("debug", "%s.dump_dta%d.txt", db->tablename, dtanum);
     fh = fopen(filename, "w");
     if (!fh) {
         logmsg(LOGMSG_ERROR, "diagnostics_dump_dta: cannot open %s: %s\n", filename,
@@ -5718,7 +5731,7 @@ void compr_print_stats()
         struct dbtable *db = thedb->dbs[ii];
         bdb_get_compr_flags(db->handle, &odh, &compr, &blob_compr);
 
-        logmsg(LOGMSG_USER, "[%-16s] ", db->dbname);
+        logmsg(LOGMSG_USER, "[%-16s] ", db->tablename);
         logmsg(LOGMSG_USER, "ODH: %3s Compress: %-8s Blob compress: %-8s  in-place updates: "
                "%-3s  instant schema change: %-3s",
                odh ? "yes" : "no", bdb_algo2compr(compr),
@@ -5734,27 +5747,27 @@ void print_tableparams()
     int ii;
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *db = thedb->dbs[ii];
-        logmsg(LOGMSG_USER, "[%-16s] ", db->dbname);
+        logmsg(LOGMSG_USER, "[%-16s] ", db->tablename);
 
         int bdberr = 0;
         int coveragevalue = 0;
         long long thresholdvalue = 0;
         int rc = 0;
 
-        rc = bdb_get_analyzecoverage_table(NULL, db->dbname, &coveragevalue,
+        rc = bdb_get_analyzecoverage_table(NULL, db->tablename, &coveragevalue,
                                            &bdberr);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "bdb_get_analyzecoverage_table rc = %d, bdberr=%d\n", rc,
                    bdberr);
 
-        rc = bdb_get_analyzethreshold_table(NULL, db->dbname, &thresholdvalue,
-                                            &bdberr);
+        rc = bdb_get_analyzethreshold_table(NULL, db->tablename,
+                                            &thresholdvalue, &bdberr);
         if (rc != 0)
             logmsg(LOGMSG_ERROR, "bdb_get_analyzethreshold_table rc = %d, bdberr=%d\n", rc,
                    bdberr);
 
         char *disableskipscanval = NULL;
-        bdb_get_table_parameter(db->dbname, "disableskipscan",
+        bdb_get_table_parameter(db->tablename, "disableskipscan",
                                 &disableskipscanval);
 
         if (coveragevalue >= 0)
@@ -5775,7 +5788,8 @@ void print_tableparams()
 
         char *tableparams = NULL;
         int tbplen = 0;
-        bdb_get_table_csonparameters(NULL, db->dbname, &tableparams, &tbplen);
+        bdb_get_table_csonparameters(NULL, db->tablename, &tableparams,
+                                     &tbplen);
         if (tableparams) {
             logmsg(LOGMSG_USER, " tableparams: %10s", tableparams);
             free(tableparams);
@@ -5959,7 +5973,7 @@ int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
                                    int *blobnums, void **blobptrs)
 {
-    char *table = iq->usedb->dbname;
+    char *table = iq->usedb->tablename;
     struct schema *sch;
     struct field *fld;
     int i;
@@ -6050,11 +6064,6 @@ int ix_check_genid(struct ireq *iq, void *trans, unsigned long long genid,
 unsigned long long get_commit_context(const void *plsn, uint32_t generation)
 {
     return bdb_gen_commit_genid(thedb->bdb_env, plsn, generation);
-}
-
-void set_commit_lsn_gen(const DB_LSN *lsn, uint32_t generation)
-{
-    bdb_set_commit_lsn_gen(thedb->bdb_env, lsn, generation);
 }
 
 int set_commit_context(unsigned long long context, uint32_t *generation,
@@ -6150,7 +6159,7 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr)
     //select needs to be done with the same transaction to avoid 
     //undetectable deadlock for writing and reading from same thread
     unsigned long long version;
-    rc = bdb_table_version_select(db->dbname, trans, &version, bdberr);
+    rc = bdb_table_version_select(db->tablename, trans, &version, bdberr);
     if (rc || *bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, *bdberr);
@@ -6171,7 +6180,7 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     unsigned long long version;
     int rc;
 
-    rc = bdb_table_version_select(db->dbname, tran, &version, &bdberr);
+    rc = bdb_table_version_select(db->tablename, tran, &version, &bdberr);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s error version=%llu rc=%d bdberr=%d\n", __func__,
                 version, rc, bdberr);

@@ -32,7 +32,7 @@
 #include <math.h>
 
 #include <epochlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <rtcpu.h>
 #include "debug_switches.h"
 
@@ -58,7 +58,7 @@
 #include "crc32c.h"
 #include "gettimeofday_ms.h"
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "dbinc/db_page.h"
 #include "dbinc/db_swap.h"
 #include "dbinc/db_shash.h"

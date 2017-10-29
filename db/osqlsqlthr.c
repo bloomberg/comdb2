@@ -42,7 +42,6 @@
 #include <bdb_api.h>
 #include "comdb2.h"
 #include "genid.h"
-#include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "nodemap.h"
 #include <bpfunc.h>
@@ -85,7 +84,8 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
 static int osql_send_updstat_logic(struct BtCursor *pCur,
                                    struct sql_thread *thd, char *pData,
                                    int nData, int nStat, int nettype);
-static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype);
+static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
+                                  int nettype);
 static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype);
 static int check_osql_capacity(struct sql_thread *thd);
 static int access_control_check_sql_write(struct BtCursor *pCur,
@@ -364,7 +364,7 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
 int osql_block_commit(struct sql_thread *thd)
 {
 
-    return osql_send_commit_logic(thd->sqlclntstate, NET_OSQL_BLOCK_RPL);
+    return osql_send_commit_logic(thd->sqlclntstate, 0, NET_OSQL_BLOCK_RPL);
 }
 
 /**
@@ -507,6 +507,7 @@ retry:
     return rc;
 }
 
+int gbl_master_swing_sock_restart_sleep = 0;
 /**
  * Restart a broken socksql connection by opening
  * a new blockproc on the provided master and
@@ -594,7 +595,7 @@ again:
         goto error;
 
     /* process messages from cache */
-    rc = osql_shadtbl_process(clnt, &sentops, &bdberr);
+    rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 1);
     if (rc == SQLITE_TOOBIG) {
         logmsg(LOGMSG_ERROR, "%s: transaction too big %d\n", __func__, sentops);
         return rc;
@@ -602,6 +603,10 @@ again:
     if (rc == ERR_SC) {
         logmsg(LOGMSG_ERROR, "%s: schema change error\n", __func__);
         return rc;
+    }
+
+    if (keep_session && gbl_master_swing_sock_restart_sleep) {
+        sleep(gbl_master_swing_sock_restart_sleep);
     }
 
     /* selectv skip optimization, not an error */
@@ -626,8 +631,9 @@ again:
             goto again;
         }
 
-        logmsg(LOGMSG_ERROR, "%s:%d %s failed 10 times to restart socksql session\n",
-                __FILE__, __LINE__, __func__);
+        logmsg(LOGMSG_ERROR,
+               "%s:%d %s failed %d times to restart socksql session\n",
+               __FILE__, __LINE__, __func__, retries);
         return -1;
     }
 
@@ -692,7 +698,7 @@ retry:
         }
     }
 
-    rc = osql_send_commit_logic(clnt, req2netrpl(type));
+    rc = osql_send_commit_logic(clnt, retries, req2netrpl(type));
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d: failed to send commit to master rc was %d\n", __FILE__,
                 __LINE__, rc);
@@ -733,6 +739,21 @@ retry:
                  * retry */
                 if (osql->xerr.errval == ERR_NOMASTER ||
                     osql->xerr.errval == 999) {
+                    if (bdb_attr_get(thedb->bdb_attr,
+                                     BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
+                        !clnt->in_client_trans && clnt->ddl_tables) {
+                        int num_ddl = 0;
+                        hash_info(clnt->ddl_tables, NULL, NULL, NULL, NULL,
+                                  &num_ddl, NULL, NULL);
+                        if (num_ddl == 1) {
+                            clnt->osql.xerr.errval = ERR_SC;
+                            errstat_cat_str(&(clnt->osql.xerr),
+                                            "Master node downgrading - new "
+                                            "master will resume schemachange");
+                            rcout = SQLITE_ABORT;
+                            goto err;
+                        }
+                    }
                     if (retries++ < gbl_survive_n_master_swings) {
                         if (gbl_master_swing_osql_verbose ||
                             gbl_extended_sql_debug_trace)
@@ -747,8 +768,12 @@ retry:
                         rc = osql_sock_restart(
                             clnt, 1,
                             1 /*no new rqid*/); /* retry at higher level */
-                        if (rc != SQLITE_TOOBIG && rc != ERR_SC)
+                        if (rc != SQLITE_TOOBIG && rc != ERR_SC) {
+                            if (gbl_master_swing_sock_restart_sleep) {
+                                sleep(gbl_master_swing_sock_restart_sleep);
+                            }
                             goto retry;
+                        }
                     }
                 }
                 /* transaction failed on the master, abort here as well */
@@ -965,10 +990,9 @@ static int should_restart(struct sqlclntstate *clnt, int rc)
     return 0;
 }
 
-#define RESTART_SOCKSQL                                                        \
+#define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
     if (should_restart(clnt, rc)) {                                            \
-        rc = osql_sock_restart(clnt, gbl_survive_n_master_swings,              \
-                               0 /*new rqid*/);                                \
+        rc = osql_sock_restart(clnt, gbl_survive_n_master_swings, keep_rqid);  \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR,                                               \
                    "%s: failed to restart socksql session rc=%d\n", __func__,  \
@@ -984,6 +1008,8 @@ static int should_restart(struct sqlclntstate *clnt, int rc)
     } else {                                                                   \
         rc = SQLITE_OK;                                                        \
     }
+
+#define RESTART_SOCKSQL RESTART_SOCKSQL_KEEP_RQID(0)
 
 static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                                      int nettype)
@@ -1033,7 +1059,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype)
 {
-    return osql_send_usedb_logic_int(pCur->db->dbname, thd->sqlclntstate,
+    return osql_send_usedb_logic_int(pCur->db->tablename, thd->sqlclntstate,
                                      nettype);
 }
 
@@ -1197,7 +1223,8 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, struct sql_thread *thd,
 
             /* Send length of -2 if this isn't being used in this update. */
             if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
-                idx = get_schema_blob_field_idx(pCur->db->dbname, ".ONDISK", i);
+                idx = get_schema_blob_field_idx(pCur->db->tablename, ".ONDISK",
+                                                i);
                 ncols = updCols[0];
                 if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
 
@@ -1293,7 +1320,8 @@ static int osql_send_updrec_logic(struct BtCursor *pCur, struct sql_thread *thd,
     return rc;
 }
 
-static int osql_send_commit_logic(struct sqlclntstate *clnt, int nettype)
+static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
+                                  int nettype)
 {
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
@@ -1343,7 +1371,7 @@ retry:
     }
 
     restarted = should_restart(clnt, rc);
-    RESTART_SOCKSQL;
+    RESTART_SOCKSQL_KEEP_RQID(is_retry);
 
     if (rc == SQLITE_OK && restarted) {
         /* we need to reset the commit here */
@@ -1517,6 +1545,9 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
 
         rc = osql_send_recordgenid(osql->host, osql->rqid, osql->uuid, genid,
                                    nettype, osql->logsb);
+        if (gbl_master_swing_sock_restart_sleep) {
+            usleep(gbl_master_swing_sock_restart_sleep * 1000);
+        }
         RESTART_SOCKSQL;
     }
 
@@ -1555,14 +1586,13 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(
-            pCur->db->dbenv->bdb_env, NULL, pCur->db->dbname,
+            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
             nodeix(thd->sqlclntstate->origin), &bdberr);
         if (rc <= 0) {
             char msg[1024];
-            snprintf(msg, sizeof(msg),
-                     "Write access denied to %s from %d bdberr=%d",
-                     pCur->db->dbname, nodeix(thd->sqlclntstate->origin),
-                     bdberr);
+            snprintf(
+                msg, sizeof(msg), "Write access denied to %s from %d bdberr=%d",
+                pCur->db->tablename, nodeix(thd->sqlclntstate->origin), bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
             errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
@@ -1575,14 +1605,14 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
     /* Check it only if engine is open already. */
     if (gbl_uses_password &&
         (thd->sqlclntstate->no_transaction == 0)) {
-        rc = bdb_check_user_tbl_access(pCur->db->dbenv->bdb_env,
-                                       thd->sqlclntstate->user,
-                                       pCur->db->dbname, ACCESS_WRITE, &bdberr);
+        rc = bdb_check_user_tbl_access(
+            pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
+            pCur->db->tablename, ACCESS_WRITE, &bdberr);
         if (rc != 0) {
             char msg[1024];
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
-                     pCur->db->dbname, thd->sqlclntstate->user, bdberr);
+                     pCur->db->tablename, thd->sqlclntstate->user, bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
             errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
@@ -1601,14 +1631,13 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
-            pCur->db->dbenv->bdb_env, NULL, pCur->db->dbname,
+            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
             nodeix(thd->sqlclntstate->origin), &bdberr);
         if (rc <= 0) {
             char msg[1024];
-            snprintf(msg, sizeof(msg),
-                     "Read access denied to %s from %d bdberr=%d",
-                     pCur->db->dbname, nodeix(thd->sqlclntstate->origin),
-                     bdberr);
+            snprintf(
+                msg, sizeof(msg), "Read access denied to %s from %d bdberr=%d",
+                pCur->db->tablename, nodeix(thd->sqlclntstate->origin), bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
             errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);
@@ -1621,14 +1650,14 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     /* Check it only if engine is open already. */
     if (gbl_uses_password &&
         (thd->sqlclntstate->no_transaction == 0)) {
-        rc = bdb_check_user_tbl_access(pCur->db->dbenv->bdb_env,
-                                       thd->sqlclntstate->user,
-                                       pCur->db->dbname, ACCESS_READ, &bdberr);
+        rc = bdb_check_user_tbl_access(
+            pCur->db->dbenv->bdb_env, thd->sqlclntstate->user,
+            pCur->db->tablename, ACCESS_READ, &bdberr);
         if (rc != 0) {
             char msg[1024];
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",
-                     pCur->db->dbname, thd->sqlclntstate->user, bdberr);
+                     pCur->db->tablename, thd->sqlclntstate->user, bdberr);
             logmsg(LOGMSG_WARN, "%s\n", msg);
             errstat_set_rc(&thd->sqlclntstate->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->sqlclntstate->osql.xerr, msg);

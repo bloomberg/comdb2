@@ -69,7 +69,6 @@ basicops_nokey:
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
-	@echo "Disabled test: $(sort ${DISABLED_TESTS})"
 
 .PHONY: tools
 

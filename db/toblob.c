@@ -813,11 +813,11 @@ int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
 {
     int cblob;
     memset(b, 0, sizeof(*b));
-    b->numcblobs = get_schema_blob_count(iq->usedb->dbname, tag);
+    b->numcblobs = get_schema_blob_count(iq->usedb->tablename, tag);
     for (cblob = 0; cblob < b->numcblobs; cblob++) {
         int diskblob, blob_idx;
-        diskblob = blob_no_to_blob_no(iq->usedb->dbname, tag, cblob, to_tag);
-        blob_idx = get_schema_blob_field_idx(iq->usedb->dbname, tag, cblob);
+        diskblob = blob_no_to_blob_no(iq->usedb->tablename, tag, cblob, to_tag);
+        blob_idx = get_schema_blob_field_idx(iq->usedb->tablename, tag, cblob);
         if (diskblob < 0 || blob_idx < 0) {
             if (iq->debug)
                 reqprintf(

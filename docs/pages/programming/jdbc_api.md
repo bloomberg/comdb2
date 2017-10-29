@@ -210,9 +210,9 @@ The parameters are as follows:
 
         * REQUIRE
 
-        * VERIFY-CA
+        * VERIFY_CA
 
-        * VERIFY-HOSTNAME
+        * VERIFY_HOSTNAME
       
     * _key_store_=String
 
@@ -238,7 +238,7 @@ The parameters are as follows:
 
       Type of the trusted CA keystore. The default is `"JKS"`.
 
-    *_allow_pmux_route_=Boolean
+    * _allow_pmux_route_=Boolean
 
       Allow connection forwarding via `pmux`. The default is `false`.
         

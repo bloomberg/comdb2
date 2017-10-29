@@ -53,7 +53,7 @@
 #include <assert.h>
 #include <alloca.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>

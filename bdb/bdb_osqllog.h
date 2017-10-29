@@ -27,7 +27,7 @@
 
 #include <list.h>
 
-#include <db.h>
+#include <build/db.h>
 #include "bdb_int.h"
 #include "llog_auto.h"
 

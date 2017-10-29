@@ -134,7 +134,7 @@ void
 btpf_fprintf(FILE *f, btpf * x)
 {
 	int i;
-	fprintf(f, "pf:%d wndw:%d rdr_rec_cnt:%d rdr_pg_cnt:%d\n", x,
+	fprintf(f, "pf:%d wndw:%d rdr_rec_cnt:%d rdr_pg_cnt:%d\n", x->status,
 		x->wndw, x->rdr_rec_cnt,x->rdr_pg_cnt );
 	for (i=0; i < RMBR_LVL; i++)
 		fprintf(f, "%d %d %d %d\n", i, x->curlf[i],

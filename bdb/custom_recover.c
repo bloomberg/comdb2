@@ -35,16 +35,16 @@
 
 #include <str0.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
 
 #ifndef BERKDB_46
-#include "db_int.h"
+#include <build/db_int.h>
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "llog_handlers.h"
 #include "dbinc/db_swap.h"
 #endif

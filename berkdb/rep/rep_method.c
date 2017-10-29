@@ -550,7 +550,7 @@ __rep_client_dbinit(dbenv, startup)
 	if ((ret = __os_malloc(dbenv, strlen(REPDBBASE) + 32, &repdbname)) != 0)
 		goto err;
 
-	sprintf(repdbname, "%s.%d.%d", REPDBBASE, time(NULL),
+	sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
 	    db_rep->repdbcnt++);
 
 	if ((ret = __db_open(dbp, NULL,
@@ -904,16 +904,15 @@ __rep_elect(dbenv, nsites, priority, timeout, eidp)
 	rep = db_rep->region;
 	dblp = dbenv->lg_handle;
 
-	if (use_committed_gen = dbenv->attr.elect_highest_committed_gen) {
+	if (use_committed_gen == dbenv->attr.elect_highest_committed_gen) {
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-        lsn = rep->committed_lsn;
+		lsn = rep->committed_lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-    }
-    else {
-        R_LOCK(dbenv, &dblp->reginfo);
-        lsn = ((LOG *)dblp->reginfo.primary)->lsn; 
-        R_UNLOCK(dbenv, &dblp->reginfo);
-    }
+	} else {
+		R_LOCK(dbenv, &dblp->reginfo);
+		lsn = ((LOG *)dblp->reginfo.primary)->lsn;
+		R_UNLOCK(dbenv, &dblp->reginfo);
+	}
 
 	orig_tally = 0;
 	if ((ret = __rep_elect_init(dbenv,

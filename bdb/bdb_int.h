@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <bb_stdint.h>
 #include <compile_time_assert.h>
 

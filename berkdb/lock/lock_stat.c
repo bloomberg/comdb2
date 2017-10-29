@@ -355,11 +355,9 @@ __dump_lid_latches(dbenv, lid, fp)
 			switch (lnode->lock_mode) {
 			case DB_LOCK_READ:
 				mode = "READ";
-
 				break;
 			case DB_LOCK_WRITE:
 				mode = "WRITE";
-
 				break;
             default:
                 break;

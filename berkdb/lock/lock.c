@@ -922,7 +922,6 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	DB_LOCK_ILOCK *ilock;
 	struct __db_lock_lsn *lsnp;
 	struct __db_lock_lsn *first_lsnp;
-	int rc = 0;
 
 	if ((ret = __find_latch_lockerid(dbenv, lockerid, &lidptr, 0)) != 0)
 		abort();
@@ -938,7 +937,7 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 
 	for (i = 0; i < lidptr->ntrackedlocks; i++) {
 		ilatch = lidptr->tracked_locklist[i];
-		if (rc = __allocate_db_lock_lsn(dbenv, &lsnp))
+		if (__allocate_db_lock_lsn(dbenv, &lsnp))
 			return ENOMEM;
 		lsnp->llsn = lsn;
 		pthread_mutex_lock(&ilatch->lsns_mtx);
@@ -1144,8 +1143,12 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 				timeout.tv_sec = now.tv_sec;
 				timeout.tv_nsec = 1000 * now.tv_usec;
 				ret =
+#ifdef __APPLE__
+				    pthread_mutex_trylock(&latch->lock);
+#else
 				    pthread_mutex_timedlock(&latch->lock,
 				    &timeout);
+#endif
 			} else {
 				int latch_max_poll = dbenv->attr.latch_max_poll;
 				int latch_poll_us = dbenv->attr.latch_poll_us;
@@ -2011,25 +2014,26 @@ rep_return_deadlock(DB_ENV *dbenv, u_int32_t sz)
 	if (IS_REP_CLIENT(dbenv) &&
 	    is_comdb2_rowlock(sz) && rowlocks_bdb_lock_check(dbenv->app_private)
 	    ) {
-		fprintf(stderr, "%s: thread %d returning deadlock\n", __func__,
-		    pthread_self());
+		fprintf(stderr, "%s: thread %p returning deadlock\n", __func__,
+		    (void *)pthread_self());
 		return 1;
 	} else {
 		return 0;
 	}
 }
 
-#define ADD_TO_HOLDARR(x) 	do { 								\
-					if(holdix+1 >= holdsz) {				\
-						int newsz = (holdsz == 0 ? 10 : holdsz << 1);	\
-						if(ret = __os_realloc(dbenv, 			\
-							newsz * sizeof(u_int32_t), &holdarr))	\
-							abort();				\
-						holdsz = newsz; 				\
-					}							\
-					holdarr[holdix++] = x;					\
-				} while (0)
-
+#define ADD_TO_HOLDARR(x)                                                      \
+	do {                                                                   \
+		if (holdix + 1 >= holdsz) {                                    \
+			int newsz = (holdsz == 0 ? 10 : holdsz << 1);          \
+			if ((ret = __os_realloc(dbenv,                         \
+						newsz * sizeof(u_int32_t),     \
+						&holdarr)) != 0)               \
+				abort();                                       \
+			holdsz = newsz;                                        \
+		}                                                              \
+		holdarr[holdix++] = x;                                         \
+	} while (0)
 
 /*
  * __lock_get_internal --
@@ -5467,10 +5471,10 @@ __lock_get_rowlocks_list(dbenv, locker, flags, lock_mode, list, locklist,
 
 
 			if (!gbl_disable_rowlocks) {
-				if (ret =
+				if ((ret =
 				    __lock_get_internal(lt, locker, sh_locker,
 					flags, &obj_dbt, lock_mode, 0,
-					&ret_lock[*lockcnt]) != 0) {
+					&ret_lock[*lockcnt])) != 0) {
 					goto err;
 				}
 				(*lockcnt)++;
@@ -5519,7 +5523,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 	u_int32_t *keycnt;
 	int get_lock;
 	void **ret_dp;
-    FILE *fp;
+	FILE *fp;
 {
 	DBT obj_dbt;
 	DB_LOCK ret_lock;
@@ -5767,9 +5771,9 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			lock->pgno = save_pgno;
 		}
 	} else {
-		ret =
-		    __lock_list_parse_pglogs_int(dbenv, locker, flags,
-		    lock_mode, list, maxlsn, pglogs, keycnt, 1, &dp, NULL);
+		ret = __lock_list_parse_pglogs_int(
+		    dbenv, locker, flags, lock_mode, list, maxlsn, pglogs,
+		    keycnt, 1, &dp, NULL);
 		if (ret)
 			return ret;
 	}
@@ -6082,7 +6086,7 @@ __lock_abort_logical_waiters(dbenv, locker, flags)
 		/* Abort anything blocked on its rowlocks */
 		if (is_comdb2_rowlock(lockobj->lockobj.size)) {
 			/* This releases the lockobj */
-			if (ret = __dd_abort_waiters(dbenv, lockobj)) {
+			if ((ret = __dd_abort_waiters(dbenv, lockobj)) != 0) {
 				__db_err(dbenv, "Error aborting waiters\n");
 				goto err;
 			}

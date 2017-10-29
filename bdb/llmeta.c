@@ -2404,7 +2404,8 @@ retry:
     *p_version_num = version_num.version_num;
 
     if (llmeta_bdb_state) {
-        assert(parent = llmeta_bdb_state->parent);
+        parent = llmeta_bdb_state->parent;
+        assert(parent);
         if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
             parent->gblcontext = version_num.version_num;
         }
