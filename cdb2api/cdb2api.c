@@ -2976,7 +2976,7 @@ static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
     hndl->snapshot_offset = 0;
 }
 
-static int process_set_command(cdb2_hndl_tp *hndl, const char *sql) 
+static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 {
     int i, j, k;
     if (hndl->in_trans) {
@@ -2988,7 +2988,7 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     i = hndl->num_set_commands;
     if (i > 0) {
         int skip_len = 4;
-        char *dup_sql = strdup(sql+skip_len); 
+        char *dup_sql = strdup(sql + skip_len);
         char *rest;
         char *set_tok = strtok_r(dup_sql, " ", &rest);
         /* special case for spversion */
@@ -3004,15 +3004,17 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
 
         for (j = 0; j < i; j++) {
             /* If this matches any of the previous commands. */
-            if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) == 0) &&
-                    (hndl->commands[j][len+skip_len] == ' ')) {
+            if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) ==
+                 0) &&
+                (hndl->commands[j][len + skip_len] == ' ')) {
                 free(dup_sql);
                 if (j == (i - 1)) {
                     if (strcmp(hndl->commands[j], sql) == 0) {
                         /* Do Nothing. */
                     } else {
-                        hndl->commands[i-1] = realloc(hndl->commands[i-1], strlen(sql) + 1);
-                        strcpy(hndl->commands[i-1], sql);
+                        hndl->commands[i - 1] =
+                            realloc(hndl->commands[i - 1], strlen(sql) + 1);
+                        strcpy(hndl->commands[i - 1], sql);
                     }
                 } else {
                     char *cmd = hndl->commands[j];
@@ -3023,8 +3025,8 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
                     if (strcmp(cmd, sql) == 0) {
                         hndl->commands[i - 1] = cmd;
                     } else {
-                        hndl->commands[i-1] = realloc(cmd, strlen(sql) + 1);
-                        strcpy(hndl->commands[i-1], sql);
+                        hndl->commands[i - 1] = realloc(cmd, strlen(sql) + 1);
+                        strcpy(hndl->commands[i - 1], sql);
                     }
                 }
                 if (hndl->num_set_commands_sent)
@@ -3045,8 +3047,6 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
     }
     return 0;
 }
-
-
 
 #define GOTO_RETRY_QUERIES()                                                   \
     do {                                                                       \
