@@ -64,7 +64,7 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 
 	ret = 0;
 err:
-	if (!reinit)
+	if (reinit)
 		pthread_mutex_unlock(&dbenv->lc_cache.lk);
 	return ret;
 }
