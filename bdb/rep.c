@@ -1893,7 +1893,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT) {
-            /* 
+            /*
              * We defer waits, making sure the coherency lease expires for
              * the disconnected replicant;  the node needs to be incoherent,
              * no need to wait for it.
@@ -1919,7 +1919,7 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     if (host == master_host) {
         logmsg(LOGMSG_WARN, "net_hostdown_rtn: HOSTDOWN was the master, calling "
                         "for election\n");
-        
+
         /* this is replicant, we are running election followed by recovery */
 
         call_for_election(bdb_state);
