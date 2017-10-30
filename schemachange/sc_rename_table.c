@@ -56,10 +56,10 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
     char *newname = strdup(s->newtable);
     int rc = 0;
     int bdberr = 0;
-    char *oldname=NULL;
+    char *oldname = NULL;
 
     assert(s->rename);
-    if(!newname) {
+    if (!newname) {
         sc_errf(s, "strdup error\n");
         goto tran_error;
     }
@@ -79,7 +79,8 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
     rc = bdb_rename_table_metadata(db->handle, tran, newname, db->version,
                                    &bdberr);
     if (rc) {
-        sc_errf(s, "Failed to rename metadata structure for %s\n", db->tablename);
+        sc_errf(s, "Failed to rename metadata structure for %s\n",
+                db->tablename);
         goto tran_error;
     }
 
@@ -99,7 +100,8 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
     oldname = db->tablename;
     rc = rename_db(db, newname);
     if (rc) {
-        /* crash the schema change, next master will hopefully have more memory */
+        /* crash the schema change, next master will hopefully have more memory
+         */
         abort();
     }
 
@@ -113,7 +115,7 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
     }
 
     /* set table version for the renamed name */
-    rc = table_version_set(tran, newname, db->tableversion+1);
+    rc = table_version_set(tran, newname, db->tableversion + 1);
     if (rc) {
         sc_errf(s, "Failed to set table version for %s\n", db->tablename);
         goto tran_error;
@@ -130,9 +132,10 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
 
     live_sc_off(db);
 
-    if (gbl_replicate_local) local_replicant_write_clear(db);
+    if (gbl_replicate_local)
+        local_replicant_write_clear(db);
 
-    if(oldname)
+    if (oldname)
         free(oldname);
 
     return rc;
@@ -143,6 +146,7 @@ recover_memory:
     return rc;
 
 tran_error:
-    if(newname) free(newname);
+    if (newname)
+        free(newname);
     return rc;
 }

@@ -55,7 +55,8 @@
 /* bdb routines to support schema change */
 
 static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
-                   const char table[], const char *newtable, int fastinit)
+                          const char table[], const char *newtable,
+                          int fastinit)
 {
     int rc;
     bdb_state_type *bdb_state;
@@ -79,7 +80,7 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
     /* TODO fail gracefully now that inline? */
     /* reload the changed table (if necesary) and update the schemas in memory*/
     if ((rc = bdb_state->callback->scdone_rtn(bdb_state_in, table,
-                                              (char*)newtable, fastinit))) {
+                                              (char *)newtable, fastinit))) {
         if (rc == BDBERR_DEADLOCK)
             rc = DB_LOCK_DEADLOCK;
         logmsg(LOGMSG_ERROR, "bdb_scdone_int: callback failed\n");
@@ -101,11 +102,11 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     memcpy(&type, scdoneop->fastinit.data, sizeof(type));
     scdone_t sctype = ntohl(type);
 
-    if(sctype == rename_table) {
-        assert(strlen(table)+1 < scdoneop->table.size);
-        newtable = &table[strlen(table)+1];
+    if (sctype == rename_table) {
+        assert(strlen(table) + 1 < scdoneop->table.size);
+        newtable = &table[strlen(table) + 1];
     }
- 
+
     switch (op) {
     /* for an UNDO record, berkeley expects us to set prev_lsn */
     case DB_TXN_FORWARD_ROLL:
@@ -228,8 +229,7 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
 }
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, const char *origtable,
-                         int *bdberr)
+                         tran_type *tran, const char *origtable, int *bdberr)
 {
     int rc = 0;
     DBT *dtbl = NULL;
@@ -246,13 +246,13 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         dtbl->size = strlen(bdb_state->name) + 1;
         if (type == rename_table) {
             assert(origtable);
-            int origlen = strlen(origtable)+1;
-            int len = dtbl->size+origlen;
+            int origlen = strlen(origtable) + 1;
+            int len = dtbl->size + origlen;
             char *mashup = alloca(len);
             memcpy(mashup, origtable, origlen);
-            memcpy(mashup+origlen, dtbl->data, dtbl->size);
+            memcpy(mashup + origlen, dtbl->data, dtbl->size);
             dtbl->data = mashup;
-            dtbl->size = len; 
+            dtbl->size = len;
         }
     }
 

@@ -110,7 +110,7 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
         prepare_table_rename(func);
         break;
 
-     default:
+    default:
         logmsg(LOGMSG_ERROR, "Unknown function_id in bplog function\n");
         return -1;
         break;
@@ -458,7 +458,7 @@ static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err)
     bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
     return rc;
 }
- 
+
 static int exec_table_rename(void *tran, bpfunc_t *func, char *err)
 {
 #if 0

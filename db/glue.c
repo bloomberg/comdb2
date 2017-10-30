@@ -6204,37 +6204,47 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname)
 
     /* get existing options */
     rc = get_db_odh_tran(db, &odh, tran);
-    if(rc) return rc;
+    if (rc)
+        return rc;
     rc = get_db_compress_tran(db, &compress, tran);
-    if(rc) return rc;
+    if (rc)
+        return rc;
     rc = get_db_compress_blobs_tran(db, &compress_blobs, tran);
-    if(rc) return rc;
+    if (rc)
+        return rc;
     rc = get_db_inplace_updates_tran(db, &ipu, tran);
-    if(rc) return rc;
+    if (rc)
+        return rc;
     rc = get_db_instant_schema_change_tran(db, &isc, tran);
-    if(rc) return rc;
+    if (rc)
+        return rc;
     rc = get_db_bthash_tran(db, &bthashsz, tran);
-    if(rc) {
-        if(rc == IX_NOTFND) 
+    if (rc) {
+        if (rc == IX_NOTFND)
             skip_bthashsz = 1;
         else
             return rc;
     }
-  
+
     oldname = db->tablename;
-    db->tablename = (char*)newname;
+    db->tablename = (char *)newname;
 
     rc = put_db_odh(db, tran, odh);
-    if(rc) goto done;
+    if (rc)
+        goto done;
     rc = put_db_compress(db, tran, compress);
-    if(rc) goto done;
+    if (rc)
+        goto done;
     rc = put_db_compress_blobs(db, tran, compress_blobs);
-    if(rc) goto done;
+    if (rc)
+        goto done;
     rc = put_db_inplace_updates(db, tran, ipu);
-    if(rc) goto done;
+    if (rc)
+        goto done;
     rc = put_db_instant_schema_change(db, tran, isc);
-    if(rc) goto done;
-    if(!skip_bthashsz)
+    if (rc)
+        goto done;
+    if (!skip_bthashsz)
         rc = put_db_bthash(db, tran, bthashsz);
 
 done:

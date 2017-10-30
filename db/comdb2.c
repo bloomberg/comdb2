@@ -5361,20 +5361,20 @@ int rename_db(struct dbtable *db, const char *newname)
     char *tag_name = strdup(newname);
     char *bdb_name = strdup(newname);
 
-    if(!tag_name || !bdb_name)
+    if (!tag_name || !bdb_name)
         return -1;
 
     pthread_rwlock_wrlock(&thedb_lock);
-    
+
     /* tags */
     rename_schema(db->tablename, tag_name);
 
     /* bdb_state */
-     bdb_state_rename(db->handle, bdb_name);
+    bdb_state_rename(db->handle, bdb_name);
 
     /* db */
     hash_del(thedb->db_hash, db);
-    db->tablename = (char*)newname;
+    db->tablename = (char *)newname;
     db->version = 0; /* reset, new table */
     hash_add(thedb->db_hash, db);
 

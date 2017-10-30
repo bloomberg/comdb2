@@ -31,7 +31,7 @@
 static int reload_rename_table(const char *name, const char *newtable)
 {
     struct dbtable *db = get_dbtable_by_name(name);
-   
+
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
         return -1;
@@ -573,8 +573,8 @@ static int replicant_reload_views(const char *name)
  * their copies of the modified database
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
-int scdone_callback(bdb_state_type *bdb_state, const char table[],
-                    void *arg, scdone_t type)
+int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
+                    scdone_t type)
 {
     switch (type) {
     case luareload:
@@ -596,7 +596,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
-    case rename_table: return reload_rename_table(table, (char*)arg);
+    case rename_table:
+        return reload_rename_table(table, (char *)arg);
     }
 
     int add_new_db = 0;

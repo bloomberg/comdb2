@@ -67,7 +67,7 @@ struct schema_change_type {
                  or DBTYPE_MORESTRIPE */
     size_t table_len;
     char table[MAXTABLELEN]; /* name of table/queue */
-    int rename; /* new table name */
+    int rename;              /* new table name */
     char newtable[MAXTABLELEN]; /* rename table */
     size_t fname_len;
     char fname[256];         /* name of schema file for table schema change

@@ -322,8 +322,8 @@ static int do_finalize(ddl_t func, struct ireq *iq, tran_type *input_tran,
         }
     } else {
         int bdberr = 0;
-        rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran,
-                                  s->table,&bdberr);
+        rc = bdb_llog_scdone_tran(s->db->handle, type, input_tran, s->table,
+                                  &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
@@ -483,7 +483,8 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->addonly)
         rc = do_ddl(do_add_table, finalize_add_table, iq, trans, add);
     else if (s->rename)
-        rc = do_ddl(do_rename_table, finalize_rename_table, iq, trans, rename_table);
+        rc = do_ddl(do_rename_table, finalize_rename_table, iq, trans,
+                    rename_table);
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)

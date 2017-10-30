@@ -485,8 +485,7 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf =
         (uint8_t *)buf_get(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
 
-    p_buf = (uint8_t *)buf_get(&s->rename, sizeof(s->rename), p_buf,
-                               p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_no_net_get(s->newtable, sizeof(s->newtable), p_buf,
                                       p_buf_end);
 

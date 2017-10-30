@@ -1426,9 +1426,8 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
     const unsigned long long *p_dst_blob_genids, size_t num_blob_genids,
     char *outbuf, size_t buflen, int *bdberr);
 
-int bdb_rename_file_versioning_table(bdb_state_type *bdb_state, 
-                                     tran_type *tran, char *newtblname,
-                                     int *bdberr);
+int bdb_rename_file_versioning_table(bdb_state_type *bdb_state, tran_type *tran,
+                                     char *newtblname, int *bdberr);
 void bdb_remove_prefix(bdb_state_type *bdb_state);
 
 void *bdb_del_list_new(int *bdberr);
