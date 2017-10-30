@@ -46,7 +46,7 @@
 #include <sys/select.h>
 #include <sys/types.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 #include <ctrace.h>
 #include <plbitlib.h>

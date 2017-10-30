@@ -85,8 +85,9 @@ static void *prefault_helper_thread(void *arg)
     dbenv = prefault_helper_thread_arg.dbenv;
     i = prefault_helper_thread_arg.instance;
 
-    logmsg(LOGMSG_INFO, "prefault_helper_thread instance %d started as tid %d\n", i,
-            pthread_self());
+    logmsg(LOGMSG_INFO,
+           "prefault_helper_thread instance %d started as tid %lu\n", i,
+           pthread_self());
 
     backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
 
@@ -94,8 +95,8 @@ static void *prefault_helper_thread(void *arg)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %d\n",
-                pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
+               pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;

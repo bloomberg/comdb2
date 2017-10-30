@@ -454,8 +454,8 @@ enum dbt_api_return_codes {
     DB_ERR_DYNTAG_LOAD_FAIL = 118,
     /* GENERAL BLOCK TRN RCODES */
     DB_RC_TRN_OK = 0,
-    DB_ERR_TRN_DUP = 1,             /* dup add 2 , returned with 220 before */
-    DB_ERR_TRN_VERIFY = 2,          /* verify 4, returned with 220 before */
+    DB_ERR_TRN_DUP = 1,    /* dup add 2 , returned with 220 before */
+    DB_ERR_TRN_VERIFY = 2, /* verify 4, returned with 220 before */
     DB_ERR_TRN_FKEY = 3,
     DB_ERR_TRN_NULL_CONSTRAINT = 4, /* 318 */
     DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
@@ -466,6 +466,7 @@ enum dbt_api_return_codes {
     DB_ERR_TRN_DB_CONN = 205,
     DB_ERR_TRN_DB_IO = 206,
     DB_ERR_TRN_NOT_SERIAL = 230,
+    DB_ERR_TRN_SC = 240,
 
     /* INTERNAL DB ERRORS */
     DB_ERR_INTR_NO_MASTER = 300,
@@ -694,7 +695,7 @@ typedef struct timepart_views timepart_views_t;
 struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
-    char *dbname;
+    char *tablename;
 
     int dbnum;
     int lrl; /*dat len in bytes*/
@@ -834,6 +835,7 @@ struct dbtable {
 
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
+    int disableskipscan : 1;
 };
 
 struct log_delete_state {
@@ -915,7 +917,7 @@ struct dbenv {
     int typcnt[MAXTYPCNT + 1];
 
     /* bdb_environment */
-    void *bdb_env;
+    bdb_state_type *bdb_env;
 
     /* tables and queues */
     int num_dbs;
@@ -1703,7 +1705,6 @@ extern int gbl_init_with_compr_blobs;
 extern int gbl_init_with_bthash;
 
 extern int gbl_sqlhistsz;
-extern int gbl_force_bad_directory;
 extern int gbl_replicate_local;
 extern int gbl_replicate_local_concurrent;
 
@@ -1924,11 +1925,6 @@ int getclientdatsize(const struct dbtable *db, char *sname);
 
 struct dbtable *getdbbynum(int num);           /*look up managed db's by number*/
 struct dbtable *get_dbtable_by_name(const char *name); /*look up managed db's by name*/
-struct dbtable *
-getfdbbyname(const char *name); /*look up managed foreign db's by name*/
-struct dbtable *getfdbbynameenv(
-    struct dbenv *dbenv,
-    const char *name); /* look up foreign db by name with given env */
 struct dbtable *
 getqueuebyname(const char *name); /*look up managed queue db's by name*/
 struct dbtable *getfdbbyrmtnameenv(struct dbenv *dbenv, const char *tblname);
@@ -2497,10 +2493,11 @@ int create_sqlmaster_records(void *tran);
 void form_new_style_name(char *namebuf, int len, struct schema *schema,
                          const char *csctag, const char *dbname);
 
-void get_copy_rootpages_nolock(struct sql_thread *thd);
-void get_copy_rootpages(struct sql_thread *thd);
-void free_copy_rootpages(struct sql_thread *thd);
-void create_master_tables(void);
+int get_copy_rootpages_nolock(struct sql_thread *thd);
+int get_copy_rootpages(struct sql_thread *thd);
+int create_sqlite_master(void);
+typedef struct master_entry master_entry_t;
+int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq);
 void handle_isql(struct dbtable *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct dbtable *db);
@@ -2512,10 +2509,9 @@ void sql_dump_running_statements(void);
 char *stradd(char **s1, char *s2, int freeit);
 void dbgtrace(int, char *, ...);
 
-int get_sqlite_entry_size(int n);
-void *get_sqlite_entry(int n);
-void get_sqlite_tblnum_and_ixnum(struct sql_thread *thd, int iTable,
-                                 int *tblnum, int *ixnum);
+int get_sqlite_entry_size(struct sql_thread *thd, int n);
+void *get_sqlite_entry(struct sql_thread *thd, int n);
+struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
 
@@ -2604,8 +2600,8 @@ void purge_old_cached_blobs(void);
 void commit_schemas(const char *tblname);
 struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
-int getdefaultkeysize(const struct dbtable *db, int ixnum);
-int getdefaultdatsize(const struct dbtable *db);
+int getdefaultkeysize(const struct dbtable *tbl, int ixnum);
+int getdefaultdatsize(const struct dbtable *tbl);
 int update_sqlite_stats(struct ireq *iq, void *trans, void *dta);
 void *do_verify(void *);
 void dump_tagged_buf(const char *table, const char *tag,
@@ -2878,7 +2874,7 @@ void reqlog_setflag(struct reqlogger *logger, unsigned flag);
 int reqlog_logl(struct reqlogger *logger, unsigned event_flag, const char *s);
 void reqlog_new_request(struct ireq *iq);
 void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt);
-void reqlog_set_sql(struct reqlogger *logger, char *sqlstmt);
+void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt);
 uint64_t reqlog_current_us(struct reqlogger *logger);
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc, int line);
 void reqlog_diffstat_init(struct reqlogger *logger);
@@ -2896,12 +2892,10 @@ void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
-void reqlog_set_error(struct reqlogger *logger, const char *error);
+void reqlog_set_error(struct reqlogger *logger, const char *error,
+                      int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
-
-void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
-                     struct schema *params, struct sqlclntstate *clnt);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
@@ -2986,17 +2980,6 @@ struct genid_list {
 };
 
 typedef LISTC_T(struct genid_list) genid_list_type;
-
-struct ptrans {
-    tranid_t tid;
-    int dbnum;
-    int start_time;
-    void *parent_trans;
-    genid_list_type modified_genids;
-    int done;
-    int waiting_for_commit;
-    struct ireq *iq; /* request/thread handling this transaction */
-};
 
 extern FILE *twophaselog;
 
@@ -3317,8 +3300,9 @@ extern unsigned long long gbl_addupd_blob_cnt;
 
 struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
                                    struct field *c_fld);
-int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    struct sqlclntstate *clnt, char **err);
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                    struct schema *params, struct sqlclntstate *clnt,
+                    char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 
@@ -3571,6 +3555,12 @@ int table_version_upsert(struct dbtable *db, void *trans, int *bdberr);
 unsigned long long table_version_select(struct dbtable *db, tran_type *tran);
 
 /**
+ *  Set the version to a specific version, required by timepartition
+ *
+ */
+int table_version_set(tran_type *tran, const char *tablename,
+                      unsigned long long version);
+/**
  * Interface between partition roller and schema change */
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *err);
@@ -3645,5 +3635,10 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
+
+/**
+ * check if a tablename is a queue
+ */
+int is_tablename_queue(const char *tablename, int len);
 
 #endif /* !INCLUDED_COMDB2_H */

@@ -34,7 +34,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
         return -1;
     }
 
-    char *table = db->dbname;
+    char *table = db->tablename;
     delete_db(table);
     MEMORY_SYNC;
     delete_schema(table);
@@ -74,11 +74,12 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 
-    if ((rc = mark_schemachange_over_tran(db->dbname, tran))) return rc;
+    if ((rc = mark_schemachange_over_tran(db->tablename, tran)))
+        return rc;
 
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
-    bdberr = bdb_reset_csc2_version(tran, db->dbname, db->version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->version);
     if (bdberr != BDBERR_NOERROR) return -1;
 
     if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
@@ -102,12 +103,12 @@ int finalize_drop_table(struct ireq *iq, tran_type *tran)
         sc_errf(s, "create_sqlmaster_records failed\n");
         return rc;
     }
-    create_master_tables(); /* create sql statements */
+    create_sqlite_master(); /* create sql statements */
 
     live_sc_off(db);
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->dbname,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %d\n", db->tablename,
                db->version);
     }
 

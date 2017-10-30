@@ -1490,7 +1490,8 @@ int bdb_llmeta_get_tables(
 
     /*prepare the out buffer*/
     if (!(p_outbuf = malloc(outbuflen))) {
-        logmsg(LOGMSG_ERROR, "%s: failed to malloc %u bytes\n", __func__, outbuflen);
+        logmsg(LOGMSG_ERROR, "%s: failed to malloc %zu bytes\n", __func__,
+               outbuflen);
         *bdberr = BDBERR_MISC;
         return -1;
     }
@@ -2403,7 +2404,8 @@ retry:
     *p_version_num = version_num.version_num;
 
     if (llmeta_bdb_state) {
-        assert(parent = llmeta_bdb_state->parent);
+        parent = llmeta_bdb_state->parent;
+        assert(parent);
         if (bdb_cmp_genids(version_num.version_num, parent->gblcontext) > 0) {
             parent->gblcontext = version_num.version_num;
         }
@@ -5778,7 +5780,9 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
         buf_no_net_get(&(tblname),
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
-        logmsg(LOGMSG_USER, "LLMETA_TABLE_VERSION table=\"%s\" version=\"%llu\"\n", tblname, flibc_ntohll(version));
+        logmsg(LOGMSG_USER,
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
+               flibc_ntohll(version));
         } break;
 
     default:
@@ -6623,8 +6627,8 @@ static int __llmeta_preop_alias(struct llmeta_tablename_alias_key *key,
     }
 
     if (strlen(tablename_alias) + 1 > sizeof(key->tablename_alias)) {
-        logmsg(LOGMSG_ERROR, "%s: tablename alias too long, limit is %d\n", __func__,
-                sizeof(key->tablename_alias));
+        logmsg(LOGMSG_ERROR, "%s: tablename alias too long, limit is %zu\n",
+               __func__, sizeof(key->tablename_alias));
         if (errstr)
             *errstr = strdup("tablename alias too long");
         return -1;
@@ -6672,8 +6676,8 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
     }
 
     if (strlen(url) + 1 > sizeof(data.url)) {
-        logmsg(LOGMSG_ERROR, "%s: tablename url too long, limit is %d\n", __func__,
-                sizeof(data.url));
+        logmsg(LOGMSG_ERROR, "%s: tablename url too long, limit is %zu\n",
+               __func__, sizeof(data.url));
         if (errstr)
             *errstr = strdup("tablename url too long");
         return -1;
@@ -6964,14 +6968,9 @@ void llmeta_list_tablename_alias(void)
 
 bdb_state_type *bdb_llmeta_bdb_state(void) { return llmeta_bdb_state; }
 
-/**
- *  Increment the TABLE VERSION ENTRY for table "bdb_state->name".
- *  If an entry doesn't exist, an entry with value 1 is created (default 0 means
- * non-existing)
- *
- */
-int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
-                             int *bdberr)
+static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
+                                        tran_type *tran,
+                                        unsigned long long *val, int *bdberr)
 {
     struct llmeta_sane_table_version schema_version;
     char *tblname = bdb_state->name;
@@ -7005,8 +7004,8 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
     /* input validation */
     len = strlen(bdb_state->name) + 1;
     if (unlikely(len > sizeof(schema_version.tblname))) {
-        logmsg(LOGMSG_ERROR, "%s: tablename too long %d\n", __func__,
-                strlen(bdb_state->name));
+        logmsg(LOGMSG_ERROR, "%s: tablename too long %zu\n", __func__,
+               strlen(bdb_state->name));
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -7043,7 +7042,11 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     /* add new entry */
-    version++;
+    if (val) {
+        version = *val;
+    } else {
+        version++;
+    }
 
     version = flibc_htonll(version);
     rc = bdb_lite_add(llmeta_bdb_state, tran, &version, sizeof(version), key,
@@ -7054,6 +7057,29 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+/**
+ *  Increment the TABLE VERSION ENTRY for table "bdb_state->name".
+ *  If an entry doesn't exist, an entry with value 1 is created (default 0 means
+ * non-existing)
+ *
+ */
+int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
+                             int *bdberr)
+{
+    return bdb_table_version_upsert_int(bdb_state, tran, NULL, bdberr);
+}
+
+/**
+ * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"
+ * (It creates or, if existing, updates an entry)
+ *
+ */
+int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long val, int *bdberr)
+{
+    return bdb_table_version_upsert_int(bdb_state, tran, &val, bdberr);
 }
 
 /**
@@ -7095,8 +7121,8 @@ int bdb_table_version_delete(bdb_state_type *bdb_state, tran_type *tran,
     /* input validation */
     len = strlen(bdb_state->name) + 1;
     if (unlikely(len > sizeof(schema_version.tblname))) {
-        logmsg(LOGMSG_ERROR, "%s: tablename too long %d\n", __func__,
-                strlen(bdb_state->name));
+        logmsg(LOGMSG_ERROR, "%s: tablename too long %zu\n", __func__,
+               strlen(bdb_state->name));
         *bdberr = BDBERR_BADARGS;
         return -1;
     }
@@ -7243,8 +7269,8 @@ retry:
  *  1: not found
  * -1: error
  */
-static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
-                           int *len)
+static int llmeta_get_blob(llmetakey_t key, tran_type *tran, const char *table,
+                           char **value, int *len)
 {
 #ifdef DEBUG_LLMETA
     fprintf(stderr, "%s\n", __func__);
@@ -7252,7 +7278,6 @@ static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
     if (llmeta_bdb_state == NULL)
         return -1;
     int rc, bdberr;
-    void *tran;
     char *tmpstr = NULL;
     char llkey[LLMETA_IXLEN] = {0};
     int retry = 0;
@@ -7264,7 +7289,7 @@ static int llmeta_get_blob(llmetakey_t key, const char *table, char **value,
                strnlen(table, LLMETA_IXLEN - sizeof(key)));
 
 rep:
-    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, NULL, llkey,
+    if ((rc = bdb_lite_exact_var_fetch_tran(llmeta_bdb_state, tran, llkey,
                                             (void **)&tmpstr, len, &bdberr)) ==
         0) {
         assert(tmpstr != NULL);
@@ -7402,9 +7427,10 @@ static inline int llmeta_set_blob(void *parent_tran, llmetakey_t key,
 /* return parameters for tbl into value
  * NB: caller needs to free that memory area
  */
-int bdb_get_table_csonparameters(const char *table, char **value, int *len)
+int bdb_get_table_csonparameters(tran_type *tran, const char *table,
+                                 char **value, int *len)
 {
-    return llmeta_get_blob(LLMETA_TABLE_PARAMETERS, table, value, len);
+    return llmeta_get_blob(LLMETA_TABLE_PARAMETERS, tran, table, value, len);
 }
 
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
@@ -7435,7 +7461,7 @@ int bdb_get_table_parameter(const char *table, const char *parameter,
 
     char *blob = NULL;
     int len;
-    int rc = bdb_get_table_csonparameters(table, &blob, &len);
+    int rc = bdb_get_table_csonparameters(NULL, table, &blob, &len);
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     if (blob == NULL)
@@ -7515,7 +7541,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
 #endif
     char *blob = NULL;
     int len;
-    int rc = bdb_get_table_csonparameters(table, &blob, &len);
+    int rc = bdb_get_table_csonparameters(parent_tran, table, &blob, &len);
     assert(rc == 0 || (rc == 1 && blob == NULL));
 
     cson_value *rootV = NULL;
@@ -7559,7 +7585,8 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
         rc = cson_object_unset(rootObj, parameter);
         if (0 != rc) {
             cson_string const *str = cson_value_get_string(param);
-            logmsg(LOGMSG_ERROR, "error unsetting %s=%s", parameter, str);
+            logmsg(LOGMSG_ERROR, "error unsetting %s=%s", parameter,
+                   cson_string_cstr(str));
             cson_value_free(rootV);
             free(blob);
             return 1;
@@ -7778,8 +7805,9 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     }
     rc = bdb_lite_add(llmeta_bdb_state, tran, p_buf, dtalen, key, bdberr);
     if (rc)
-        logmsg(LOGMSG_ERROR, "%s: failed to add llmeta queue entry for %s: %d\n",
-                __func__, queue, bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to add llmeta queue entry for %s: %d\n", __func__,
+               queue, *bdberr);
     free(p_buf);
 
     return rc;

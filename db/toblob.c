@@ -285,8 +285,8 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
     blob = malloc(sizeof(cached_blob_t));
     if (!blob) {
         logmsg(LOGMSG_ERROR, "cache_blob_data: out of memory allocating "
-                        "%u:%s:%d:%llu with %d blobs\n",
-                total_length, table, rrn, genid, numblobs);
+                             "%zu:%s:%d:%llu with %d blobs\n",
+               total_length, table, rrn, genid, numblobs);
         goto err;
     }
 
@@ -328,10 +328,10 @@ void *cache_blob_data_int(struct ireq *iq, int rrn, unsigned long long genid,
     rc = hash_add(blobhash, blob);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "cache_blob_data: error adding blob "
-                        "%u:%s:%s:%d:%llu+%u+%u with %d blobs: hash_add "
-                        "rc=%d\n",
-                total_length, table, tag, rrn, genid, *extra1, *extra2,
-                numblobs, rc);
+                             "%zu:%s:%s:%d:%llu+%u+%u with %d blobs: hash_add "
+                             "rc=%d\n",
+               total_length, table, tag, rrn, genid, *extra1, *extra2, numblobs,
+               rc);
         free(blob);
         goto err;
     } else {
@@ -813,11 +813,11 @@ int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
 {
     int cblob;
     memset(b, 0, sizeof(*b));
-    b->numcblobs = get_schema_blob_count(iq->usedb->dbname, tag);
+    b->numcblobs = get_schema_blob_count(iq->usedb->tablename, tag);
     for (cblob = 0; cblob < b->numcblobs; cblob++) {
         int diskblob, blob_idx;
-        diskblob = blob_no_to_blob_no(iq->usedb->dbname, tag, cblob, to_tag);
-        blob_idx = get_schema_blob_field_idx(iq->usedb->dbname, tag, cblob);
+        diskblob = blob_no_to_blob_no(iq->usedb->tablename, tag, cblob, to_tag);
+        blob_idx = get_schema_blob_field_idx(iq->usedb->tablename, tag, cblob);
         if (diskblob < 0 || blob_idx < 0) {
             if (iq->debug)
                 reqprintf(
@@ -937,8 +937,9 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
             (blob->notnull && b->bloblens[cblob] != ntohl(blob->length));
         if (inconsistent) {
             if ((!blob->notnull && b->blobptrs[cblob] != NULL))
-                logmsg(LOGMSG_ERROR, "cblob=%d blob->notnull = %p b->blobptrs[cblob] = %p\n",
-                        cblob, blob->notnull, b->blobptrs[cblob]);
+                logmsg(LOGMSG_ERROR,
+                       "cblob=%d blob->notnull = %d b->blobptrs[cblob] = %s\n",
+                       cblob, blob->notnull, b->blobptrs[cblob]);
 
             if (blob->notnull && b->blobptrs[cblob] == NULL &&
                 (schema->member[bfldno].type != CLIENT_VUTF8 ||
@@ -950,8 +951,9 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
                         ntohl(blob->length), schema->member[bfldno].len);
 
             if (blob->notnull && b->bloblens[cblob] != ntohl(blob->length))
-                logmsg(LOGMSG_ERROR, 
-                    "b->bloblens[cblob]=%d ntohl(blob->length)=%d diff=%d\n",
+                logmsg(
+                    LOGMSG_ERROR,
+                    "b->bloblens[cblob]=%zu ntohl(blob->length)=%d diff=%zu\n",
                     b->bloblens[cblob], ntohl(blob->length),
                     b->bloblens[cblob] - ntohl(blob->length));
         }

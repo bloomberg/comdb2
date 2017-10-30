@@ -738,7 +738,7 @@ void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable 
 void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
                               struct scinfo *scinfo)
 {
-    return set_schemachange_options_tran(s, db, scinfo, NULL);
+    set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
 int print_status(struct schema_change_type *s)
@@ -873,14 +873,14 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
 
-        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->dbname,
+        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
                bdb_isopen(db->handle));
 
         /* the master doesn't tell the replicants to close the db
          * ahead of time */
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->dbname);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
         }
 
@@ -890,7 +890,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
             newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
             thedb->bdb_env, tran, &bdberr);
-        logmsg(LOGMSG_DEBUG, "reload_schema handle %08x bdberr %d\n",
+        logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
 
@@ -933,7 +933,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     } else {
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->dbname);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
         }
 
@@ -947,7 +947,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
-               "reload_schema (fastinit case) handle %08x bdberr %d\n",
+               "reload_schema (fastinit case) handle %p bdberr %d\n",
                db->handle, bdberr);
         if (!db->handle || bdberr != 0) return 1;
 
@@ -959,7 +959,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     if (bthashsz) {
         logmsg(LOGMSG_INFO,
                "Rebuilding bthash for table %s, size %dkb per stripe\n",
-               db->dbname, bthashsz);
+               db->tablename, bthashsz);
         bdb_handle_dbp_add_hash(db->handle, bthashsz);
     }
 
@@ -976,4 +976,51 @@ void set_sc_flgs(struct schema_change_type *s)
 int schema_change_headers(struct schema_change_type *s)
 {
     return s->header_change;
+}
+
+struct schema_change_type *
+clone_schemachange_type(struct schema_change_type *sc)
+{
+    struct schema_change_type *newsc;
+    size_t sc_len = schemachange_packed_size(sc);
+    uint8_t *p_buf, *p_buf_end, *buf;
+
+    p_buf = buf = calloc(1, sc_len);
+    if (!p_buf)
+        return NULL;
+
+    p_buf_end = p_buf + sc_len;
+
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+    if (!p_buf) {
+        free(buf);
+        return NULL;
+    }
+
+    newsc = new_schemachange_type();
+    if (!newsc) {
+        free(buf);
+        return NULL;
+    }
+
+    p_buf = buf;
+    p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
+
+    newsc->nothrevent = sc->nothrevent;
+    newsc->pagesize = sc->pagesize;
+    newsc->showsp = sc->showsp;
+    newsc->retry_bad_genids = sc->retry_bad_genids;
+    newsc->dryrun = sc->dryrun;
+    newsc->use_new_genids = newsc->use_new_genids;
+    newsc->finalize = sc->finalize;
+    newsc->finalize_only = sc->finalize_only;
+
+    if (!p_buf) {
+        free(newsc);
+        free(buf);
+        return NULL;
+    }
+
+    free(buf);
+    return newsc;
 }

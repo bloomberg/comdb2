@@ -20,9 +20,9 @@
 #include <plhash.h>
 #include <fsnap.h>
 
-#include "net.h"
-#include "bdb_int.h"
-#include "locks.h"
+#include <net.h>
+#include <bdb_int.h>
+#include <locks.h>
 #include <ctrace.h>
 #include <string.h>
 #include <strings.h>
@@ -30,37 +30,30 @@
 #include <errno.h>
 #include <alloca.h>
 
-/* Berkeley wants this defined, or it'll try to include varargs. */
-#undef STDC_HEADERS
-#define STDC_HEADERS
-#include <db_int.h>
-#include <db_page.h>
-#include <db_shash.h>
+#include <build/db.h>
+#include <build/db_int.h>
+#include <dbinc/btree.h>
+#include <dbinc/db_am.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_shash.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/lock.h>
+#include <dbinc/mp.h>
+#include <dbinc/txn.h>
 #include <dbinc_auto/db_auto.h>
 #include <dbinc_auto/txn_auto.h>
-#include <txn.h>
 #include <dbinc_auto/txn_ext.h>
-#include <btree.h>
-#include <lock.h>
-#include <mp.h>
-#include <db.h>
-#undef STDC_HEADERS
 
-#ifndef BERKDB_46
-#include "db_int.h"
-#include "dbinc/db_swap.h"
-#include "llog_auto.h"
-#include "llog_int.h"
-#include "llog_handlers.h"
-#include "db_am.h"
-#endif
+#include <llog_auto.h>
+#include <llog_ext.h>
+#include <llog_handlers.h>
 
-#include "bdb_api.h"
-#include "bdb_osqllog.h"
+#include <bdb_api.h>
+#include <bdb_osqllog.h>
 
-#include "endian_core.h"
-#include "printformats.h"
-#include "logmsg.h"
+#include <endian_core.h>
+#include <printformats.h>
+#include <logmsg.h>
 
 extern int gbl_dispatch_rowlocks_bench;
 
@@ -1747,7 +1740,7 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int is_replicant)
      * log */
     logmsg(LOGMSG_USER, "Active transactions to be aborted:\n");
     for (i = 0; i < ltrancount; i++) {
-        logmsg(LOGMSG_USER, "tranid %016llx, last lsn %u:%u, start lsn %u:%u\n",
+        logmsg(LOGMSG_USER, "tranid %016lx, last lsn %u:%u, start lsn %u:%u\n",
                ltranlist[i].tranid, ltranlist[i].last_lsn.file,
                ltranlist[i].last_lsn.offset, ltranlist[i].begin_lsn.file,
                ltranlist[i].begin_lsn.offset);
@@ -2203,7 +2196,7 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_USER, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                    "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, addop->ltranid, rc);
                 goto done;
             }
@@ -2299,7 +2292,7 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                     "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, addop->ltranid, rc);
                 goto done;
             }
@@ -2402,7 +2395,7 @@ int handle_undo_add_ix(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_USER, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                    "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, addop->ltranid, rc);
                 goto done;
             }
@@ -2490,7 +2483,7 @@ int handle_undo_add_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_USER, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                    "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, addop->ltranid, rc);
                 goto done;
             }
@@ -2593,7 +2586,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
                                              commit_genid, 0);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                     "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, args->ltranid, rc);
                 goto done;
             }
@@ -2614,8 +2607,9 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
                 rc = update_shadows_beforecommit(bdb_state, lprev, commit_genid,
                                                  0);
                 if (rc) {
-                    logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                           "tranid %016llx rc %d\n",
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d update_shadows_beforecommit for "
+                           "tranid %016lx rc %d\n",
                            __FILE__, __LINE__, args->ltranid, rc);
                 }
             }
@@ -3412,9 +3406,10 @@ static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
     if (rc) {
-        logmsg(LOGMSG_FATAL, "Reconstruct for undo upd ix for lsn %u:%u ltranid "
-                        "%016x failed rc %d\n",
-                undolsn->file, undolsn->offset, tran->logical_tran, rc);
+        logmsg(LOGMSG_FATAL,
+               "Reconstruct for undo upd ix for lsn %u:%u ltranid "
+               "%p failed rc %d\n",
+               undolsn->file, undolsn->offset, tran->logical_tran, rc);
         abort();
     }
 
@@ -3667,8 +3662,8 @@ int handle_undo_del_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
         if (bdb_state->attr->shadows_nonblocking) {
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
-               logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
+                                     "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, delop->ltranid, rc);
                 goto done;
             }
@@ -3751,7 +3746,7 @@ int handle_undo_del_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                     "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, delop->ltranid, rc);
                 goto done;
             }
@@ -3834,7 +3829,7 @@ int handle_undo_upd_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                     "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, updop->ltranid, rc);
                 goto done;
             }
@@ -3932,7 +3927,7 @@ int handle_undo_upd_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
             rc = update_shadows_beforecommit(bdb_state, lsn, NULL, 0);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s:%d update_shadows_beforecommit for "
-                       "tranid %016llx rc %d\n",
+                                     "tranid %016lx rc %d\n",
                        __FILE__, __LINE__, updop->ltranid, rc);
                 return rc;
             }

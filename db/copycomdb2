@@ -1,7 +1,7 @@
 #!/bin/bash
 # Uses comdb2ar to serialise and deserialise a database.
 
-PREFIX=
+PREFIX=@CMAKE_INSTALL_PREFIX@
 
 arch=`uname`
 rsh=ssh

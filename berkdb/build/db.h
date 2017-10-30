@@ -57,6 +57,7 @@
 
 #include "dbinc/atomic.h"
 #include "tunables.h"
+#include "dbinc/trigger_subscription.h"
 
 #if defined(__cplusplus)
 extern "C" {
@@ -169,6 +170,7 @@ struct __ltrans_descriptor; typedef struct __ltrans_descriptor LTDESC;
 struct __rowlock_list; typedef struct __rowlock_list RLLIST;
 struct __recovery_processor;
 struct __recovery_list;
+struct __db_trigger_subscription;
 
 #define __DB_DBT_INTERNAL                                       \
 	void	 *data;			/* Key/data */                      \
@@ -1658,6 +1660,7 @@ struct __db {
 	uint8_t temptable;
 	int offset_bias;
 	uint8_t olcompact;
+	struct __db_trigger_subscription *trigger_subscription;
 };
 
 /*
@@ -2473,9 +2476,15 @@ struct __db_env {
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));
 
-    int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
-    int (*check_standalone)(DB_ENV *);
+	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
+	int (*check_standalone)(DB_ENV *);
 
+	/* Trigger/consumer signalling support */
+	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
+				     pthread_mutex_t **, const uint8_t **active));
+	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
+	int(*trigger_open) __P((DB_ENV *, const char *));
+	int(*trigger_close) __P((DB_ENV *, const char *));
 };
 
 #ifndef DB_DBM_HSEARCH

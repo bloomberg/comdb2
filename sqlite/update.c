@@ -310,7 +310,12 @@ void sqlite3Update(
   /*
    * Comdb2 modification: create our updCols array.
    */
-  sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  if(isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
+                       strlen("__hidden__rowid")+1) == 0){
+          sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
+  } else {
+    sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  }
 
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, 1, iDb);

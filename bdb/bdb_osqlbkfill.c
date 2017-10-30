@@ -16,7 +16,7 @@
 
 #include <stdlib.h>
 
-#include <db.h>
+#include <build/db.h>
 #include "bdb_int.h"
 #include "bdb_osqlbkfill.h"
 

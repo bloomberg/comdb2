@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 dbnm=$1
 echo adding table
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table large" &> /dev/null
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table large { `cat 1000defcol.csc2 ` }" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table large" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "create table large { `cat 1000defcol.csc2 ` }" > /dev/null
 
 echo "Inserting 2010 records"
 echo "BEGIN" > in.txt

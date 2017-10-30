@@ -21,7 +21,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <db.h> /* berk db.h */
+#include <build/db.h> /* berk db.h */
 #include <net.h>
 #include <sbuf2.h>
 #include "bdb_int.h"

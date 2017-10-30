@@ -95,7 +95,7 @@ static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
 #include "dbinc_auto/qam_auto.h"
 #include "dbinc_auto/txn_auto.h"
 
-int log_event_counts[10000] = { 0 };
+static int log_event_counts[10000] = { 0 };
 
 void
 dump_log_event_counts(void)
@@ -269,7 +269,10 @@ file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype, DBT *dbt)
 	int off = -1;
 	u_int32_t fileid = UINT32_MAX;
 
-	log_event_counts[rectype]++;
+	/* Skip custom log recs */
+	if (rectype < 10000) {
+		log_event_counts[rectype]++;
+	}
 
 	/*
 	 * Depending on type of record, find the offset in the log
@@ -290,7 +293,7 @@ file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype, DBT *dbt)
 	case DB___bam_root:
 	case DB___bam_curadj:
 	case DB___bam_rcuradj:
-    case DB___bam_pgcompact:
+	case DB___bam_pgcompact:
 	case DB___crdel_metasub:
 	case DB___db_ovref:
 	case DB___db_pg_free:

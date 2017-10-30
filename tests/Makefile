@@ -1,5 +1,4 @@
-all: basicops $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh))
-
+all: basicops all_tests
 
 export TESTSROOTDIR:=$(shell pwd)
 
@@ -10,13 +9,52 @@ endif
 export SRCHOME
 
 export TESTID:=$(shell tools/get_random.sh)
-CURRDIR:=$(shell pwd)
-export TESTDIR:=$(CURRDIR)/test_$(TESTID)
+export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
+# List of disabled tests
+export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+# List of all tests that need to run. This is essentially a list of all
+# non-disabled tests.
+export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
+    $(shell tools/get_tests_inorder.sh)))
+
+TOTAL=$(words $(MAKECMDGOALS))
+ifeq ($(TOTAL),0)
+TOTAL=$(words $(ALL_TESTS))
+endif
+
+# Run all non-disabled tests.
+all_tests: $(ALL_TESTS)
+
 # get md5sum of executable use check when running every test in a series
-export COMDB2MD5SUM:=$(shell md5sum ${SRCHOME}/comdb2 | cut -d ' ' -f1)
+export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
+export COMDB2_EXE:=$(SRCHOME)/comdb2
+export CDB2SQL_EXE:=$(SRCHOME)/cdb2sql
+export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
+export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
+export PMUX_EXE:=$(SRCHOME)/pmux
 
+ifeq ($(wildcard $(COMDB2_EXE)),)
+  $(error $(COMDB2_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(COMDB2AR_EXE)),)
+  $(error $(COMDB2AR_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(CDB2SQL_EXE)),)
+  $(error $(CDB2SQL_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(CDB2_SQLREPLAY_EXE)),)
+  $(error $(CDB2_SQLREPLAY_EXE) missing, please run make in $(SRCHOME))
+endif
+ifeq ($(wildcard $(COPYCOMDB2_EXE)),)
+  $(error $(COPYCOMDB2_EXE) missing, please ensure it exists)
+endif
+ifeq ($(wildcard $(PMUX_EXE)),)
+  $(error $(PMUX_EXE) missing, please run make in $(SRCHOME))
+endif
 
-basicops_nokey: executables
+export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
+
+basicops_nokey:
 	$(shell mkdir -p ${TESTDIR})
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
 	$(shell which git > /dev/null 2>&1 && git rev-parse --short HEAD | xargs echo "SHA " >> ${TESTDIR}/test.log)
@@ -25,25 +63,12 @@ basicops_nokey: executables
 	$(shell echo "SRCHOME=${SRCHOME} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
+	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
-executables: execomdb2 exesqlreplay execdb2sql execomdb2ar exepmux
-execomdb2: ; @command -v ${SRCHOME}/comdb2 &> /dev/null
-exesqlreplay: ; @command -v ${SRCHOME}/cdb2_sqlreplay &> /dev/null
-execdb2sql: ; @command -v ${SRCHOME}/cdb2sql &> /dev/null
-execomdb2ar: ; @command -v ${SRCHOME}/comdb2ar &> /dev/null
-exepmux: ; @command -v ${SRCHOME}/pmux &> /dev/null
-
-
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
-
-TOTAL=$(words $(MAKECMDGOALS))
-ifeq ($(TOTAL),0)
-TOTAL=$(shell ls -1d *.test | wc -l)
-endif
-
 
 .PHONY: tools
 
@@ -90,7 +115,6 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 	rm -fr dbs
 	rm -f $(TMPDIR)/cdb2test*
 	$(MAKE) -C tools clean
-
 
 clean: testclean
 

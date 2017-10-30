@@ -491,34 +491,42 @@ set all_graphs {
       }
   }
 
+
+
   constraint-section {
       loop
       {stack
-          {line /keyname -> < /ref-table-name : /ref-keyname > }
-          {line
-              {opt on update cascade}
-              {opt on delete cascade}
+          {line /keyname -> 
+               {or 
+                    {line /ref-table-name : /ref-keyname }
+                    {line {loop {line < /ref-table-name : /ref-keyname > } } }
+               }
+          }
+          {opt 
+            {loop 
+               {line on {or update delete} {or cascade restrict }}
+            }
           }
       }
   }
 
   table-event {
-      line
-          ( TABLE /table-name FOR 
-            {loop
-               {or {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
-                   {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
-                   {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
-                   }
-            }
-          ) 
-
-          {opt {loop {line
-              ,
-              more-table-events
+      stack
+      {line ( TABLE /table-name FOR }
+      {loop
+          {or
+              {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
+              {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
+              {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
           }
+      }
+      {line )
+          {opt
+              {loop
+                  {line , more-table-events }
+              }
           }
-          }
+      }
   }
 
   create-table-ddl {
@@ -544,7 +552,7 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
-      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line foreign-key-def }
       {line WITH DBPAD = signed-number }
   }
 
@@ -552,9 +560,25 @@ set all_graphs {
       or
       {line PRIMARY KEY ( column-list ) }
       {line UNIQUE ( column-list ) }
-      {stack
-          {line FOREIGN KEY ( column-list ) }
-          {line REFERENCES ref-table-name ( ref-column-list ) }
+      {line FOREIGN KEY ( column-list ) foreign-key-def}
+  }
+
+  foreign-key-def {
+      stack
+      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {opt
+          {loop
+              {line ON
+                  {or
+                      {line UPDATE}
+                      {line DELETE}
+                  }
+                  {or
+                      {line NO ACTION}
+                      {line CASCADE}
+                  }
+              }
+          }
       }
   }
 

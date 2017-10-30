@@ -307,8 +307,7 @@ __lock_dump_region_int(dbenv, area, fp, just_active_locks)
 	FILE *fp;
 	int just_active_locks;
 {
-	return __lock_dump_region_int_int(dbenv, area, fp, just_active_locks,
-	    0);
+	return __lock_dump_region_int_int(dbenv, area, fp, just_active_locks, 0);
 }
 
 int
@@ -356,11 +355,9 @@ __dump_lid_latches(dbenv, lid, fp)
 			switch (lnode->lock_mode) {
 			case DB_LOCK_READ:
 				mode = "READ";
-
 				break;
 			case DB_LOCK_WRITE:
 				mode = "WRITE";
-
 				break;
 			}
 
@@ -369,7 +366,7 @@ __dump_lid_latches(dbenv, lid, fp)
 			 * if type isn't db_page_lock, then we are looking at 
 			 * the freelist */
 			if (mode &&namep &&type == DB_PAGE_LOCK)
-				logmsgf(LOGMSG_USER, fp, "%8lx %11lu %5u %-6s %8u %s\n",
+				logmsgf(LOGMSG_USER, fp, "%8x %11u %5u %-6s %8u %s\n",
 				    lid->lockerid, latchidx, lnode->count,
 				    mode, pgno, namep);
 		}
@@ -621,13 +618,13 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 		}
 	}
 	if (!just_active_locks)
-		logmsg(LOGMSG_USER, "%8lx havelocks %d\n", lip->id, have_interesting_locks);
+		logmsg(LOGMSG_USER, "%8x havelocks %d\n", lip->id, have_interesting_locks);
 
 	if (just_active_locks &&!have_interesting_locks)
 		return;
 
 	if (!just_active_locks)
-		logmsgf(LOGMSG_USER, fp, "%8lx dd=%2ld locks held %-4d write locks %-4d waiters %s thread %u (0x%x)",
+		logmsgf(LOGMSG_USER, fp, "%8lx dd=%2ld locks held %-4d write locks %-4d waiters %s thread %lu (0x%lx)",
 		    (u_long)lip->id, (long)lip->dd_id, lip->nlocks,
 		    lip->nwrites, have_waiters ? "Y" : "N", lip->tid, lip->tid);
 

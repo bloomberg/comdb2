@@ -984,29 +984,32 @@ __db_r_attach(dbenv, infop, size)
 	if ((ret = __db_appname(dbenv,
 	    DB_APP_NONE, buf, 0, NULL, &infop->name)) != 0)
 		goto err;
-	if ((ret = __os_r_attach(dbenv, infop, rp)) != 0)
-		goto err;
 
-	/*
-	 * Fault the pages into memory.  Note, do this BEFORE we initialize
-	 * anything because we're writing pages in created regions, not just
-	 * reading them.
-	 */
-	(void)__db_faultmem(dbenv,
-	    infop->addr, rp->size, F_ISSET(infop, REGION_CREATE));
+    if ((ret = __os_r_attach(dbenv, infop, rp)) != 0)
+        goto err;
 
-	/*
-	 * !!!
-	 * The underlying layer may have just decided that we are going
-	 * to create the region.  There are various system issues that
-	 * can result in a useless region that requires re-initialization.
-	 *
-	 * If we created the region, initialize it for allocation.
-	 */
-	if (F_ISSET(infop, REGION_CREATE))
-		(void)__db_shalloc_init(dbenv,
-		    __dbenv_regiontype((int)infop->type), infop->addr, rp->size,
-		    &rp->mutex);
+    if (rp->size) {
+        /*
+         * Fault the pages into memory.  Note, do this BEFORE we initialize
+         * anything because we're writing pages in created regions, not just
+         * reading them.
+         */
+        (void)__db_faultmem(dbenv,
+                infop->addr, rp->size, F_ISSET(infop, REGION_CREATE));
+
+        /*
+         * !!!
+         * The underlying layer may have just decided that we are going
+         * to create the region.  There are various system issues that
+         * can result in a useless region that requires re-initialization.
+         *
+         * If we created the region, initialize it for allocation.
+         */
+        if (F_ISSET(infop, REGION_CREATE))
+            (void)__db_shalloc_init(dbenv,
+                    __dbenv_regiontype((int)infop->type), infop->addr, rp->size,
+                    &rp->mutex);
+    }
 
 	/*
 	 * If the underlying REGION isn't the environment, acquire a lock
@@ -1073,7 +1076,8 @@ __db_r_detach(dbenv, infop, destroy)
 		__db_region_destroy(dbenv, infop);
 
 	/* Destroy heap structure. */
-	__db_heap_destroy(dbenv, infop->addr);
+    if (infop->addr)
+        __db_heap_destroy(dbenv, infop->addr);
 
 	/* Detach from the underlying OS region. */
 	ret = __os_r_detach(dbenv, infop, destroy);

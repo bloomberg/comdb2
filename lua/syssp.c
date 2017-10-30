@@ -95,7 +95,7 @@ static int db_comdbg_tables(Lua L) {
                 lua_createtable(L, 8, 0); 
 
                 lua_pushstring(L, "tablename");
-                lua_pushstring(L, db->dbname);
+                lua_pushstring(L, db->tablename);
                 lua_settable(L, -3);
 
                 lua_pushstring(L, "dbnum");
@@ -228,7 +228,7 @@ static int db_comdb_verify(Lua L) {
     int found = 0;
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
         struct dbtable *t = thedb->dbs[dbn];
-        if (strcmp(tbl, t->dbname) == 0) {
+        if (strcmp(tbl, t->tablename) == 0) {
             found = 1;
             break;
         }

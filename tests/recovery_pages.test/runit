@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -x
@@ -37,7 +37,7 @@ echo "Working with node $node"
 echo "Inserting records"
 
 while [[ $j -lt 100 ]]; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
     let j=j+1
 done
 
@@ -54,7 +54,7 @@ fi
 while [[ $? == 0 ]]; do
     let j=j+1 
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1 &
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1 &
     cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
 done
 
@@ -87,17 +87,17 @@ restart_node()
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
         sleep $delay
         if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         else
-            $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
         fi
     else
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
         sleep $delay
         echo "$DBNAME: starting single node"
-        echo "$comdb2task $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $comdb2task $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
     fi
 
     popd
@@ -117,7 +117,7 @@ restart_node $node 0
 
 echo "We are up!  Insert a few records as a final sanity check."
 while [[ $j -lt 100 ]]; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
 
     if [[ $? != 0 ]]; then
         echo "Error inserting into database!"

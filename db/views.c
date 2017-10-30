@@ -115,6 +115,7 @@ static void _handle_view_event_error(timepart_view_t *view, uuid_t source_id,
                                      struct errstat *err);
 static void print_dbg_verbose(const char *name, uuid_t *source_id, const char *prefix, 
                               const char *fmt, ...);
+static int _view_update_table_version(timepart_view_t *view, tran_type *tran);
 
 enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
@@ -1166,11 +1167,11 @@ void *_view_cron_phase1(uuid_t source_id, void *arg1, void *arg2, void *arg3,
             goto done;
         }
 
-        print_dbg_verbose(view->name, &view->source_id, "TTT", 
-                          "Running phase1 arg1=%p arg2=%p arg3=%p\n",
-                          time_epoch(), arg1, arg2, arg3);
+        print_dbg_verbose(view->name, &view->source_id, "TTT",
+                          "Running phase1 at %u arg1=%p (name=\"%s\") arg2=%p "
+                          "arg3=%p\n",
+                          time_epoch(), arg1, (char *)arg1, arg2, arg3);
 
-        
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
         if(unlikely(_validate_view_id(view, source_id, "phase 1", err))) {
@@ -1323,9 +1324,10 @@ void *_view_cron_phase2(uuid_t source_id, void *arg1, void *arg2, void *arg3,
         }
 
         print_dbg_verbose(view->name, &view->source_id, "TTT",
-                          "Running phase2 at %u arg1=%p arg2=%p arg3=%p\n",
-                          time_epoch(), arg1, arg2, arg3);
-
+                          "Running phase2 at %u arg1=%p (name=\"%s\") arg2=%p "
+                          "(shard=\"%s\") arg3=%p\n",
+                          time_epoch(), arg1, (arg1) ? (char *)arg1 : "NULL",
+                          arg2, (arg2) ? (char *)arg2 : "NULL", arg3);
 
         /* this is a safeguard! we take effort to schedule cleanup of 
         a dropped partition ahead of everything, but jic ! */
@@ -1752,6 +1754,8 @@ static int _views_rollout_phase2(timepart_view_t *view,
                                  const char *newShardName, int *timeNextRollout,
                                  char **removeShardName, struct errstat *err)
 {
+    tran_type *tran;
+    int bdberr = 0;
     int rc;
 
     /* are we at stable regime (full retention)? */
@@ -1795,10 +1799,27 @@ static int _views_rollout_phase2(timepart_view_t *view,
     }
     view->roll_time = *timeNextRollout;
 
-    /* time to make this known to the world */
-    rc = _view_rollout_publish(NULL, view, err);
+    tran = bdb_tran_begin_set_retries(thedb->bdb_env, NULL, 0, &bdberr);
+    if (!tran || bdberr) {
+        goto oom;
+    }
+    /* update the version of the table */
+    rc = _view_update_table_version(view, tran);
     if (rc != VIEW_NOERR) {
+        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+        return err->errval = rc;
+    }
+
+    /* time to make this known to the world */
+    rc = _view_rollout_publish(tran, view, err);
+    if (rc != VIEW_NOERR) {
+        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         return err->errval;
+    }
+
+    rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr);
+    if (rc || bdberr) {
+        return err->errval = VIEW_ERR_LLMETA;
     }
 
     return err->errval = VIEW_NOERR;
@@ -2307,52 +2328,47 @@ done:
 }
 
 /**
- * Alter a timepart 
+ * Run "func" for each shard, starting with "first_shard".
+ * Callback receives the name of the shard and argument struct
  *
  */
-int timepart_alter_timepart(struct ireq *iq, void *tran,
-                            int alter(struct ireq *iq, int indx, int maxindx,
-                                      void *tran))
+int timepart_foreach_shard(const char *view_name,
+                           int func(const char *, timepart_sc_arg_t *),
+                           timepart_sc_arg_t *arg, int first_shard)
 {
-    struct schema_change_type *s = iq->sc;
+    struct schema_change_type *s = arg->s;
     const char *original_name = s->table;
-    timepart_views_t *views = thedb->timepart_views;
+    timepart_views_t *views;
     timepart_view_t *view;
     int rc;
     int i;
-    int start;
-    char *name;
 
     pthread_mutex_lock(&views_mtx);
 
-    if (unlikely(s->resume)) {
-        /* s->table is the last table touched, go from there */
-        view = _check_shard_collision(views, original_name, &start,
-                                      _CHECK_ONLY_CURRENT_SHARDS);
-   } else {
-      start = 0;
+    views = thedb->timepart_views;
 
-      view = _get_view(views, original_name);
-   }
-   if(!view) {
-      rc = VIEW_ERR_EXIST;
-      goto done;
-   }
-   name = view->name;
-
-   for(i=start;i<view->nshards; i++) {
-      strncpy0(s->table, view->shards[i].tblname, sizeof(s->table));
-      rc = alter(iq, i, view->nshards, tran);
-      if(rc) {
-         rc = VIEW_ERR_SC;
-         break;
-      }
-   }
+    view = _get_view(views, view_name);
+    if (!view) {
+        rc = VIEW_ERR_EXIST;
+        goto done;
+    }
+    if (arg) {
+        arg->view_name = view_name;
+        arg->nshards = view->nshards;
+    }
+    for (i = first_shard; i < view->nshards; i++) {
+        if (arg)
+            arg->indx = i;
+        rc = func(view->shards[i].tblname, arg);
+        if (rc) {
+            break;
+        }
+    }
 
 done:
-   pthread_mutex_unlock(&views_mtx);
+    pthread_mutex_unlock(&views_mtx);
 
-   return (rc == VIEW_NOERR)?SC_COMMIT_PENDING:-1;
+    return rc;
 }
 
 /**
@@ -2490,6 +2506,144 @@ done:
    return rc; 
 }
 
+/**
+ * Locking the views subsystem, needed for ordering locks with schema
+ *
+ */
+void views_lock(void)
+{
+    pthread_mutex_lock(&views_mtx);
+}
+void views_unlock(void)
+{
+    pthread_mutex_unlock(&views_mtx);
+}
+
+/**
+ * Get the name of the newest shard
+ *
+ */
+char *timepart_newest_shard(const char *view_name, unsigned long long *version)
+{
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    char *ret = NULL;
+
+    pthread_mutex_lock(&views_mtx);
+
+    view = _get_view(views, view_name);
+    if (view) {
+        struct dbtable *db;
+
+        ret = strdup(view->shards[0].tblname);
+
+        if (version && (db = get_dbtable_by_name(ret)))
+            *version = db->tableversion;
+    }
+
+    pthread_mutex_unlock(&views_mtx);
+
+    return ret;
+}
+
+/**
+ * Time partition schema change resume
+ *
+ */
+int timepart_resume_schemachange(int check_llmeta(const char *))
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int i;
+    int rc = 0;
+
+    pthread_mutex_lock(&views_mtx);
+
+    views = thedb->timepart_views;
+    for (i = 0; i < views->nviews; i++) {
+        view = views->views[i];
+        rc = check_llmeta(view->name);
+        if (rc)
+            break;
+    }
+
+    pthread_mutex_unlock(&views_mtx);
+
+    return rc;
+}
+
+/**
+ * During resume, we need to check at if the interrupted alter made any
+ * progress, and continue with that shard
+ *
+ */
+int timepart_schemachange_get_shard_in_progress(const char *view_name,
+                                                int check_llmeta(const char *))
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int rc;
+    int i;
+
+    pthread_mutex_lock(&views_mtx);
+
+    views = thedb->timepart_views;
+
+    view = _get_view(views, view_name);
+    if (view) {
+        for (i = 0; i < view->nshards; i++) {
+            rc = check_llmeta(view->shards[i].tblname);
+            if (rc)
+                break;
+        }
+    }
+    if (rc == 1)
+        rc = i;
+
+    pthread_mutex_unlock(&views_mtx);
+
+    return rc;
+}
+
+static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
+{
+    struct dbtable *db;
+    unsigned long long version;
+    int rc = VIEW_NOERR;
+
+    /* get existing versioning, if any */
+    if (strcmp(view->shards[0].tblname, view->shard0name)) {
+        assert(view->nshards > 1);
+
+        version = comdb2_table_version(view->shards[1].tblname);
+
+        rc = table_version_set(tran, view->shards[0].tblname, version);
+        if (rc)
+            rc = VIEW_ERR_LLMETA;
+    }
+
+    return rc;
+}
+
+#if 0
+static int bdb_lock_table_write_pp(const char *tblname, timepart_sc_arg_t *arg)
+{
+    struct dbtable *db = get_dbtable_by_name(tblname);
+
+    bdb_lock_table_write(db->handle, arg->tran); 
+
+    return 0;
+}
+
+int timepart_write_lock(char *view_name, tran_type*tran)
+{
+    timepart_sc_arg_t arg = {0};
+    arg.tran = tran;
+    timepart_foreach_shard(view_name, bdb_lock_table_write_pp, &arg, 0);
+
+    return 0;
+}
+#endif
 #include "views_serial.c"
 
 #include "views_sqlite.c"

@@ -43,12 +43,7 @@ TYPEDEF(Vdbe)
 /* Modern transaction modes, more or less */
 enum transaction_level {
     TRANLEVEL_INVALID = -1,
-
-    /* TRANLEVEL_OSQL = 7, */
-
-    /* block sql over socket */
     TRANLEVEL_SOSQL = 9,
-
     /* SQL MODE, so-called read-commited:
        - server-side parsing
        - transaction-internal updates are visible only inside transaction thread
@@ -68,6 +63,9 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
+
+/* Static rootpages numbers. */
+enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
@@ -175,6 +173,11 @@ typedef struct osqlstate {
     struct temp_table
         *sc_tbl; /* storage for schemachange, common for all transaction */
     struct temp_cursor *sc_cur; /* schemachange cursor */
+
+    struct temp_table
+        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
+    int bpfunc_seq;
 
     struct errstat xerr; /* extended error */
 
@@ -518,8 +521,8 @@ struct sqlclntstate {
 
 /* Query stats. */
 struct query_path_component {
-    struct fdb_tbl_ent *fdb; /* null: local_tbl_name */
     char lcl_tbl_name[MAXTABLELEN];
+    char rmt_db[MAX_DBNAME_LENGTH];
     int ix;
     int nfind;
     int nnext;
@@ -732,7 +735,7 @@ struct sql_thread {
     struct sqlclntstate *sqlclntstate; /* pointer to originating sqlclnt */
     /* custom error message to send to client */
     char *error;
-    struct rootpage *rootpages;
+    struct master_entry *rootpages;
     int rootpage_nentries;
     unsigned char had_temptables;
     unsigned char had_tablescans;
@@ -740,6 +743,8 @@ struct sql_thread {
 
 /* makes master swing verbose */
 extern int gbl_master_swing_osql_verbose;
+/* for testing: sleep in osql_sock_restart when master swings */
+extern int gbl_master_swing_sock_restart_sleep;
 
 /* takes care of both stat1 and stat2 */
 #define is_sqlite_stat(x)                                                      \
@@ -764,6 +769,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 int handle_sql_commitrollback(struct sqlthdstate *thd,
                               struct sqlclntstate *clnt, int sendresponse);
 
+int replicant_can_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
 void sql_dlmalloc_init(void);
@@ -813,13 +819,37 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      int rootpg); //, pthread_mutex_t *lk);
-void sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *);
-int check_thd_gen(struct sqlthdstate *, struct sqlclntstate *);
+                      int rootpg);
+int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
+                             int recreate);
 int sqlserver2sqlclient_error(int rc);
 uint16_t stmt_num_tbls(sqlite3_stmt *);
 int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl);
 void init_cursor(BtCursor *, Vdbe *, Btree *);
 void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
+int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
+                         struct dbtable *db, int ixnum, void *trans);
 
+#define HINT_LEN 127
+enum cache_status {
+    CACHE_DISABLED = 0,
+    CACHE_HAS_HINT = 1,
+    CACHE_FOUND_STMT = 2,
+    CACHE_FOUND_STR = 4,
+};
+struct sql_state {
+    enum cache_status status;          /* populated by get_prepared_stmt */
+    sqlite3_stmt *stmt;                /* cached engine, if any */
+    char cache_hint[HINT_LEN];         /* hint copy, if any */
+    const char *sql;                   /* the actual string used */
+    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    struct schema *parameters_to_bind; /* fast pointer to parameters */
+};
+int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
+                               struct sql_state *, struct errstat *,
+                               int initial);
+void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
+                       struct sql_state *, int outrc);
+void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
+void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
 #endif

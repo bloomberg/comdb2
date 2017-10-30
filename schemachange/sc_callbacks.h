@@ -23,17 +23,17 @@ int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
                                      unsigned long long genid,
                                      unsigned long long stripe_ptr);
 
-int live_sc_post_delete_int(struct ireq *iq, void *trans,
+int live_sc_post_del_record(struct ireq *iq, void *trans,
                             unsigned long long genid, const void *old_dta,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs);
 
-int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
-                         const uint8_t *od_dta, unsigned long long ins_keys,
-                         blob_buffer_t *blobs, size_t maxblobs, int origflags,
-                         int *rrn);
+int live_sc_post_add_record(struct ireq *iq, void *trans,
+                            unsigned long long genid, const uint8_t *od_dta,
+                            unsigned long long ins_keys, blob_buffer_t *blobs,
+                            size_t maxblobs, int origflags, int *rrn);
 
-int live_sc_post_update_int(struct ireq *iq, void *trans,
+int live_sc_post_upd_record(struct ireq *iq, void *trans,
                             unsigned long long oldgenid, const void *old_dta,
                             unsigned long long newgenid, const void *new_dta,
                             unsigned long long ins_keys,

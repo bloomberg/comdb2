@@ -1,4 +1,4 @@
-tag ondisk {
+schema {
     longlong seqno
     int      blkpos
     int      optype

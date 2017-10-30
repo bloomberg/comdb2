@@ -26,7 +26,7 @@
 #include <assert.h>
 #include <openssl/rand.h>
 
-#include <db.h> /* berk db.h */
+#include <build/db.h> /* berk db.h */
 #include <net.h>
 #include <sbuf2.h>
 #include "bdb_int.h"
@@ -45,6 +45,14 @@
 
 #include "locks.h"
 #include "bdb_int.h"
+
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols_fd(A, B, C)
+#endif
 
 extern char *gbl_crypto;
 
