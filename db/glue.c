@@ -6200,6 +6200,7 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname)
     int ipu;
     int isc;
     int bthashsz;
+    int skip_bthashsz = 0;
 
     /* get existing options */
     rc = get_db_odh_tran(db, &odh, tran);
@@ -6213,7 +6214,12 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname)
     rc = get_db_instant_schema_change_tran(db, &isc, tran);
     if(rc) return rc;
     rc = get_db_bthash_tran(db, &bthashsz, tran);
-    if(rc) return rc;
+    if(rc) {
+        if(rc == IX_NOTFND) 
+            skip_bthashsz = 1;
+        else
+            return rc;
+    }
   
     oldname = db->tablename;
     db->tablename = (char*)newname;
@@ -6228,7 +6234,8 @@ int rename_table_options(void *tran, struct dbtable *db, const char *newname)
     if(rc) goto done;
     rc = put_db_instant_schema_change(db, tran, isc);
     if(rc) goto done;
-    rc = put_db_bthash(db, tran, bthashsz);
+    if(!skip_bthashsz)
+        rc = put_db_bthash(db, tran, bthashsz);
 
 done:
     db->tablename = oldname;

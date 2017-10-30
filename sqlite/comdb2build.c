@@ -1740,7 +1740,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     sc->rename = 1;
     strncpy(sc->newtable, newtable, sizeof(sc->newtable));
 
-    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange, (vdbeFuncArgFree) &free_schema_change_type);
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb, (vdbeFuncArgFree) &free_schema_change_type);
     return;
 
 out:

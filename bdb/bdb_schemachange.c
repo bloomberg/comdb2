@@ -228,7 +228,7 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
 }
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, const char *newtable,
+                         tran_type *tran, const char *origtable,
                          int *bdberr)
 {
     int rc = 0;
@@ -245,11 +245,12 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         dtbl->data = bdb_state->name;
         dtbl->size = strlen(bdb_state->name) + 1;
         if (type == rename_table) {
-            assert(newtable);
-            int len = dtbl->size+strlen(newtable)+1;
+            assert(origtable);
+            int origlen = strlen(origtable)+1;
+            int len = dtbl->size+origlen;
             char *mashup = alloca(len);
-            memcpy(mashup, dtbl->data, dtbl->size);
-            memcpy(mashup+dtbl->size, newtable, strlen(newtable)+1);
+            memcpy(mashup, origtable, origlen);
+            memcpy(mashup+origlen, dtbl->data, dtbl->size);
             dtbl->data = mashup;
             dtbl->size = len; 
         }

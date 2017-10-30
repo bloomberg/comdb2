@@ -112,6 +112,13 @@ int finalize_rename_table(struct ireq *iq, tran_type *tran)
         goto recover_memory;
     }
 
+    /* set table version for the renamed name */
+    rc = table_version_set(tran, newname, db->tableversion+1);
+    if (rc) {
+        sc_errf(s, "Failed to set table version for %s\n", db->tablename);
+        goto tran_error;
+    }
+
     rc = create_sqlmaster_records(tran);
     if (rc) {
         sc_errf(s, "create_sqlmaster_records failed\n");

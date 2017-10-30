@@ -48,7 +48,7 @@ typedef enum scdone {
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, const char *newtable,
+                         tran_type *tran, const char *origtable,
                          int *bdberr);
 int bdb_llog_scdone(bdb_state_type *, scdone_t, int wait, int *bdberr);
 int bdb_llog_luareload(bdb_state_type *, int wait, int *bdberr);
