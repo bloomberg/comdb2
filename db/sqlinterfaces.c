@@ -890,16 +890,20 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
     sb = clnt->sb;
 
     if (gbl_dump_fsql_response) {
+        char cnonce[256] = {0};
         int file = -1, offset = -1, response_type = -1;
         if (sql_response && sql_response->snapshot_info) {
             file = sql_response->snapshot_info->file;
             offset = sql_response->snapshot_info->offset;
             response_type = sql_response->response_type;
         }
+        if (clnt->sql_query) {
+            snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
+        }
         logmsg(LOGMSG_USER, 
-                "td=%u %s line %d Sending response=%d sqlresponse_type=%d "
+                "td=%u %s line %d cnonce='%s' Sending response=%d sqlresponse_type=%d "
                 "lsn[%d][%d] dta length %d to %s for sql %s from %s line %d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, type, file,
+                (uint32_t)pthread_self(), __func__, __LINE__, cnonce, type, file,
                 offset, response_type, len, clnt->origin, clnt->sql, func,
                 line);
     }
@@ -1162,10 +1166,10 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
         char cnonce[256] = {0};
         snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
         logmsg(LOGMSG_USER,
-               "%u: %s line %d cnonce='%s' [%d][%d] sending last_row, "
+               "%u: %s line %d cnonce='%s' [%d][%d] sql='%s' sending last_row, "
                "selected=%u updated=%u deleted=%u inserted=%u\n",
                pthread_self(), func, line, cnonce, clnt->snapshot_file,
-               clnt->snapshot_offset, sql_response.effects->num_selected,
+               clnt->snapshot_offset, clnt->sql, sql_response.effects->num_selected,
                sql_response.effects->num_updated,
                sql_response.effects->num_deleted,
                sql_response.effects->num_inserted);
@@ -2178,6 +2182,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         rcline = __LINE__;
     } else {
         bzero(clnt->dirty, sizeof(clnt->dirty));
+
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%p %s called\n", 
+                    pthread_self(), __func__);
+        }
 
         switch (clnt->dbtran.mode) {
         case TRANLEVEL_RECOM: {
@@ -5531,6 +5540,10 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
 
         /* run the engine */
         fast_error = 0;
+
+        if (clnt->statement_query_effects)
+            reset_query_effects(clnt);
+
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err, comm);
         if (rc) {
             int irc = errstat_get_rc(&err);
@@ -6453,6 +6466,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     free(clnt->context);
     clnt->context = NULL;
     clnt->ncontext = 0;
+    clnt->statement_query_effects = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -7693,6 +7707,15 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     clnt->verifyretry_off = 0;
                 } else {
                     clnt->verifyretry_off = 1;
+                }
+            } else if (strncasecmp(sqlstr, "queryeffects", 6) == 0) {
+                sqlstr += 12;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "statement", 9) == 0) {
+                    clnt->statement_query_effects = 1;
+                }
+                if (strncasecmp(sqlstr, "transaction", 9) == 0) {
+                    clnt->statement_query_effects = 0;
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
                 sqlstr += 6;

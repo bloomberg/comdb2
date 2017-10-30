@@ -167,6 +167,7 @@
   "Set up hasql for a transaction."
   [c]
   (query c ["set hasql on"])
+  (query c ["set queryeffects statement"])
   (query c ["set max_retries 100000"]))
 
 ;; Error handling

@@ -670,6 +670,7 @@ public class Comdb2Handle extends AbstractConnection {
 
     /* shortcut for reading a sql response */
     private Cdb2SqlResponse readRecord() {
+        System.out.println("[td=" + Thread.currentThread().getId() + "] calling readRecord");
         tdlog(Level.FINEST, "readRecord starting");
         NewSqlHeader nsh = readNsh();
         if (nsh != null) {
@@ -690,6 +691,7 @@ public class Comdb2Handle extends AbstractConnection {
     }
 
     private void clearResp() {
+        System.out.println("[td=" + Thread.currentThread().getId() + "] calling clearResp");
         lastResp = null;
         firstResp = null;
     }
@@ -770,6 +772,8 @@ public class Comdb2Handle extends AbstractConnection {
 
         sql = sql.trim();
         String lowerSql = sql.toLowerCase();
+
+        System.out.println("[td=" + Thread.currentThread().getId() + " running sql] " + sql);
 
         while (next_int() == Errors.CDB2_OK)
             ;
@@ -1419,19 +1423,22 @@ readloop:
             tdlog(Level.FINEST, "Enter readloop with skip_to_open=%b", skip_to_open);
             if (!skip_to_open) {
                 if (firstResp == null) {
-                    tdlog(Level.FINEST, "next_int: returning OK_DONE for null firstResp");
+                    //tdlog(Level.FINEST, "next_int: returning OK_DONE for null firstResp");
+                    System.out.println("[td=" + Thread.currentThread().getId() + "] next_int: firstResp is null");
                     return Errors.CDB2_OK_DONE;
                 }
 
                 if (firstResp.errCode != 0) {
                     last_non_logical_err = null;
                     tdlog(Level.FINEST, "next_int: returning firstResp.errCode %d", firstResp.errCode);
+                    System.out.println("[td=" + Thread.currentThread().getId() + "] next_int: errCode=" + firstResp.errCode);
                     return firstResp.errCode;
                 }
                 if (lastResp != null) {
                     last_non_logical_err = null;
                     if (lastResp.respType == 3) {
                         tdlog(Level.FINEST, "next_int: returning OK_DONE for lastResp.respType = 3");
+                        System.out.println("[td=" + Thread.currentThread().getId() + "] next_int: returning OK_DONE");
                         return Errors.CDB2_OK_DONE;
                     }
                     if (lastResp.respType == 2 && lastResp.errCode != 0) {
@@ -1439,6 +1446,7 @@ readloop:
                         if (inTxn)
                             errorInTxn = rc;
                         tdlog(Level.FINEST, "next_int: returning %d for lastResp.respType=2(1) inTxn=%b", rc, inTxn);
+                        System.out.println("[td=" + Thread.currentThread().getId() + "] next_int: returning " + rc + " for respType=2");
                         return rc;
                     }
                 }
@@ -1564,6 +1572,7 @@ readloop:
                   "next_int: lastResp.respType is 3, nSetsSent=%d lastResp.errCode=%d",
                   nSetsSent, lastResp.errCode);
 
+            System.out.println("[td=" + Thread.currentThread().getId() + "] next_int: returning OK_DONE at end of function");
             return Errors.CDB2_OK_DONE;
         }
 
@@ -1893,9 +1902,12 @@ readloop:
     public int rowsAffected() {
         while (next_int() == Errors.CDB2_OK)
             ;
-        if (lastResp == null || lastResp.effects == null)
+        if (lastResp == null || lastResp.effects == null) {
+            System.out.println("[td=" + Thread.currentThread().getId() + "] rowsAffected returning -1");
             return -1;
+        }
 
+        System.out.println("[td=" + Thread.currentThread().getId() + "] rowsAffected returning " + lastResp.effects.numAffected);
         return lastResp.effects.numAffected;
     }
 
@@ -1903,9 +1915,12 @@ readloop:
     public int rowsInserted() {
         while (next_int() == Errors.CDB2_OK)
             ;
-        if (lastResp == null || lastResp.effects == null)
+        if (lastResp == null || lastResp.effects == null) {
+            System.out.println("[td=" + Thread.currentThread().getId() + "] rowsInserted returning -1");
             return -1;
+        }
 
+        System.out.println("[td=" + Thread.currentThread().getId() + "] rowsAffected returning " + lastResp.effects.numInserted);
         return lastResp.effects.numInserted;
     }
 
@@ -1913,9 +1928,12 @@ readloop:
     public int rowsUpdated() {
         while (next_int() == Errors.CDB2_OK)
             ;
-        if (lastResp == null || lastResp.effects == null)
+        if (lastResp == null || lastResp.effects == null) {
+            System.out.println("[td=" + Thread.currentThread().getId() + "] rowsUpdated returning -1");
             return -1;
+        }
 
+        System.out.println("[td=" + Thread.currentThread().getId() + "] rowsAffected returning " + lastResp.effects.numUpdated);
         return lastResp.effects.numUpdated;
     }
 
@@ -1923,9 +1941,12 @@ readloop:
     public int rowsDeleted() {
         while (next_int() == Errors.CDB2_OK)
             ;
-        if (lastResp == null || lastResp.effects == null)
+        if (lastResp == null || lastResp.effects == null) {
+            System.out.println("[td=" + Thread.currentThread().getId() + "] rowsDeleted returning -1");
             return -1;
+        }
 
+        System.out.println("[td=" + Thread.currentThread().getId() + "] rowsAffected returning " + lastResp.effects.numDeleted);
         return lastResp.effects.numDeleted;
     }
 
@@ -1936,6 +1957,7 @@ readloop:
         if (lastResp == null || lastResp.effects == null)
             return -1;
 
+        System.out.println("[td=" + Thread.currentThread().getId() + "] rowsAffected returning " + lastResp.effects.numSelected);
         return lastResp.effects.numSelected;
     }
 

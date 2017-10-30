@@ -405,7 +405,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called\n", __func__);
+        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
     }
     out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
@@ -424,6 +424,10 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
     int bdberr = 0;
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
+    if (gbl_extended_sql_debug_trace) {
+        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+    }
+
     out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_readcommitted done";
 
@@ -445,8 +449,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     iq->gluewhere = "bdb_tran_begin_snapisol";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with epoch=%d file=%d offset=%d\n", __func__,
-                epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n", 
+                pthread_self(), __func__, epoch, file, offset);
     }
     out_trans =
         bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
@@ -470,8 +474,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
     iq->gluewhere = "bdb_tran_begin";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with epoch=%d file=%d offset=%d\n", __func__,
-                epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n", 
+                pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
             file, offset);
