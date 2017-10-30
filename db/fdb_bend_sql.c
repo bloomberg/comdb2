@@ -567,9 +567,9 @@ int fdb_svc_trans_join_uuid(char *tid, struct sqlclntstate **clnt)
 }
 
 static struct sql_thread *
-_fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
-                      unsigned long long genid, int need_bdbcursor,
-                      int *standalone)
+_fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
+                      int rootpage, unsigned long long genid,
+                      int need_bdbcursor, int *standalone)
 {
     struct sql_thread *thd;
     int rc = 0;
@@ -623,7 +623,12 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
     pCur->genid = genid;
 
     /* retrieve the table involved */
-    pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
+    if (tblname) {
+        pCur->db = get_dbtable_by_name(tblname);
+        pCur->ixnum = -1;
+    } else {
+        pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
+    }
     pCur->numblobs = get_schema_blob_count(pCur->db->tablename, ".ONDISK");
 
     if (need_bdbcursor) {
@@ -757,9 +762,9 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *
  * Insert a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
-                          unsigned long long genid, char *data, int datalen,
-                          int seq)
+int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version, unsigned long long genid,
+                          char *data, int datalen, int seq)
 {
     BtCursor bCur;
     struct sql_thread *thd;
@@ -771,7 +776,8 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
     int rc2 = 0;
     int standalone = 0;
 
-    thd = _fdb_svc_cursor_start(&bCur, clnt, rootpage, genid, 0, &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 0,
+                                &standalone);
     if (!thd) {
         return -1;
     }
@@ -837,8 +843,9 @@ done:
  * Delete a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_delete(struct sqlclntstate *clnt, int rootpage, int version,
-                          unsigned long long genid, int seq)
+int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version, unsigned long long genid,
+                          int seq)
 {
     BtCursor bCur;
     struct sql_thread *thd;
@@ -846,7 +853,8 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, int rootpage, int version,
     int rc2 = 0;
     int standalone = 0;
 
-    thd = _fdb_svc_cursor_start(&bCur, clnt, rootpage, genid, 1, &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 1,
+                                &standalone);
     if (!thd) {
         return -1;
     }
@@ -883,7 +891,8 @@ done:
  * Update a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
+int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version,
                           unsigned long long oldgenid, unsigned long long genid,
                           char *data, int datalen, int seq)
 {
@@ -897,8 +906,8 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
     int rc2 = 0;
     int standalone = 0;
 
-    thd =
-        _fdb_svc_cursor_start(&bCur, clnt, rootpage, oldgenid, 1, &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, oldgenid, 1,
+                                &standalone);
     if (!thd) {
         return -1;
     }

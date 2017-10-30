@@ -1,0 +1,2 @@
+testname: writes_remsql_names
+version: r000004
