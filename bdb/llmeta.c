@@ -2657,7 +2657,7 @@ int bdb_add_dummy_llmeta(void)
 retry:
     if (bdb_lock_desired(llmeta_bdb_state->parent)) {
         logmsg(LOGMSG_ERROR, "%s short-circuiting because bdb_lock_desired\n",
-                __func__);
+               __func__);
         return -1;
     }
     tran = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr);
@@ -2686,7 +2686,8 @@ retry:
 
     if (rc == 0) {
         int timeoutms;
-        rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(llmeta_bdb_state, &ss, 0, &timeoutms);
+        rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(llmeta_bdb_state, &ss,
+                                                          0, &timeoutms);
     }
     // rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr);
     if (rc && bdberr != BDBERR_NOERROR) {

@@ -3183,8 +3183,7 @@ done2:
       */
 
 again:
-    buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf,
-            p_buf_end);
+    buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
 
     if (bdb_state->repinfo->master_host != myhost) {
 
@@ -4725,7 +4724,7 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
     retries = 0;
     if (!bdb_state->repinfo->upgrade_allowed) {
         logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
-                "completed yet)\n");
+                             "completed yet)\n");
         return 0;
     }
 
