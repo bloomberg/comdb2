@@ -180,29 +180,29 @@ static void register_thdpool_tunables(char *name, struct thdpool *pool)
                      NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, mint, "Minimum number of threads in the pool.", TUNABLE_INTEGER,
-        &pool->minnthd, NOZERO, NULL, NULL, NULL, NULL);
+        &pool->minnthd, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, maxt, "Maximum number of threads in the pool.", TUNABLE_INTEGER,
-        &pool->maxnthd, NOZERO, NULL, NULL, NULL, NULL);
+        &pool->maxnthd, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, maxq, "Maximum size of queue.",
-                             TUNABLE_INTEGER, &pool->maxqueue, NOZERO, NULL,
+                             TUNABLE_INTEGER, &pool->maxqueue, SIGNED, NULL,
                              NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, longwait, "Long wait alarm threshold (in milliseconds).",
-        TUNABLE_INTEGER, &pool->longwaitms, NOZERO, NULL, NULL, NULL, NULL);
+        TUNABLE_INTEGER, &pool->longwaitms, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, linger, "Thread linger time (in seconds).",
-                             TUNABLE_INTEGER, &pool->lingersecs, NOZERO, NULL,
+                             TUNABLE_INTEGER, &pool->lingersecs, SIGNED, NULL,
                              NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, stacksz, "Thread stack size.",
-                             TUNABLE_INTEGER, &pool->stack_sz, NOZERO, NULL,
+                             TUNABLE_INTEGER, &pool->stack_sz, SIGNED, NULL,
                              NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, maxqover,
                              "Maximum client forced queued items above maxq.",
-                             TUNABLE_INTEGER, &pool->maxqueueoverride, NOZERO,
+                             TUNABLE_INTEGER, &pool->maxqueueoverride, SIGNED,
                              NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(
         name, maxagems, "Maximum age for in-queue time (in milliseconds).",
-        TUNABLE_INTEGER, &pool->maxqueueagems, NOZERO, NULL, NULL, NULL, NULL);
+        TUNABLE_INTEGER, &pool->maxqueueagems, SIGNED, NULL, NULL, NULL, NULL);
     REGISTER_THDPOOL_TUNABLE(name, exit_on_error, "Exit on pthread error.",
                              TUNABLE_BOOLEAN, &pool->exit_on_create_fail, NOARG,
                              NULL, NULL, NULL, NULL);
@@ -376,7 +376,8 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Long wait alarm threshold : %u ms\n", pool->longwaitms);
         logmsgf(LOGMSG_USER, fh, "  Thread linger time        : %u seconds\n",
                 pool->lingersecs);
-        logmsgf(LOGMSG_USER, fh, "  Thread stack size         : %u bytes\n", pool->stack_sz);
+        logmsgf(LOGMSG_USER, fh, "  Thread stack size         : %zu bytes\n",
+                pool->stack_sz);
         logmsgf(LOGMSG_USER, fh, "  Maximum queue overload    : %u\n",
                 pool->maxqueueoverride);
         logmsgf(LOGMSG_USER, fh, "  Maximum queue age         : %u ms\n",
@@ -474,8 +475,8 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
         if (ltok > 0) {
             thdpool_set_stack_size(pool, toknum(tok, ltok));
         }
-        logmsg(LOGMSG_USER, "Pool [%s] thread stack size set to %u bytes\n", pool->name,
-               pool->stack_sz);
+        logmsg(LOGMSG_USER, "Pool [%s] thread stack size set to %zu bytes\n",
+               pool->name, pool->stack_sz);
     } else if (tokcmp(tok, ltok, "maxqover") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
@@ -816,7 +817,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         exit(1);
                 }
 
-                logmsg(LOGMSG_DEBUG, "CREATED %d\n", thd->tid);
+                logmsg(LOGMSG_DEBUG, "CREATED %lu\n", thd->tid);
 
                 listc_rfl(&pool->thdlist, thd);
                 pool->num_failed_dispatches++;

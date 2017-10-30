@@ -3,10 +3,10 @@ runtime=180
 xpid=-1
 ypid=-1
 
-cdb2sql ${CDB2_OPTIONS} $dbname default - <<EOF > /dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $dbname default - <<EOF > /dev/null 2>&1
 drop table if exists t3
 create table t3 {
-    tag ondisk {
+    schema {
         int x
         int y
     }

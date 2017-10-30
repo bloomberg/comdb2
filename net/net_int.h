@@ -318,6 +318,7 @@ struct netinfo_struct {
     int portmux_register_time;
 
     int use_getservbyname;
+    int hellofd;
 };
 
 typedef struct ack_state_struct {

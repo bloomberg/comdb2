@@ -50,7 +50,6 @@ typedef struct {
 #define DIFF_LSN 2
 
 typedef struct {
-
 	btpf_status  status; 
 	btpf_direction direction;
 	u_int32_t   rdr_rec_cnt; // records read in the same direction

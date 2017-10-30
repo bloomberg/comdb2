@@ -272,7 +272,7 @@ static void compr_stat(CompStruct *comp)
 {
     char buf[128];
     snprintf(buf, sizeof(buf) - 1, "Percentage of original size for: %s\n",
-             comp->db->dbname);
+             comp->db->tablename);
     logmsg(LOGMSG_USER, "%s", buf);
     sbuf2printf(comp->sb, ">%s", buf);
 
@@ -324,15 +324,15 @@ static void *handle_comptest_thd(void *_arg)
         if (strcmp(arg->table, "cdb2justcrle") == 0) {
             comp.just_crle = 1;
         } else if (strcmp(arg->table, "-all") != 0) {
-            if (strcmp(arg->table, db->dbname) != 0) {
+            if (strcmp(arg->table, db->tablename) != 0) {
                 continue;
             }
         }
-        if (is_sqlite_stat(db->dbname)) {
+        if (is_sqlite_stat(db->tablename)) {
             continue;
         }
 
-        logmsg(LOGMSG_DEBUG, "Processing table: %s\n", db->dbname);
+        logmsg(LOGMSG_DEBUG, "Processing table: %s\n", db->tablename);
 
         comp.db = db;
         bzero(&comp.uncompressed, sizeof(comp.uncompressed));
@@ -353,14 +353,15 @@ static void *handle_comptest_thd(void *_arg)
 
         while (rc == IX_FND || rc == IX_FNDMORE) {
             if (gbl_sc_abort) {
-                logmsg(LOGMSG_ERROR, "Abort compression testing %s\n", db->dbname);
+                logmsg(LOGMSG_ERROR, "Abort compression testing %s\n",
+                       db->tablename);
                 ++arg->rc;
                 break;
             }
             rc = test_compress(&comp);
             if (rc) {
-               logmsg(LOGMSG_ERROR, "Failed compressing %s, rc:%d (%s:%d)\n", db->dbname, rc,
-                       __FILE__, __LINE__);
+                logmsg(LOGMSG_ERROR, "Failed compressing %s, rc:%d (%s:%d)\n",
+                       db->tablename, rc, __FILE__, __LINE__);
                 ++arg->rc;
                 break;
             }

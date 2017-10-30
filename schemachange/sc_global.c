@@ -161,7 +161,7 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
             if (seed == sc_seed)
                 return 0;
             else {
-                logmsg(LOGMSG_ERROR, "schema change already in progress\n");
+                logmsg(LOGMSG_INFO, "schema change already in progress\n");
                 return -1;
             }
         } else if (!running && seed != sc_seed && seed) {
@@ -200,7 +200,7 @@ void sc_status(struct dbenv *dbenv)
         localtime_r(&timet, &tm);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
-        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%llx\n",
+        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%lx\n",
                sc_seed);
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",

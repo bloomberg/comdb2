@@ -1647,6 +1647,7 @@ tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
                                       int retries, int *bdberr);
 void bdb_lockspeed(bdb_state_type *bdb_state);
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
+int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
 int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
 unsigned long long get_id(bdb_state_type *bdb_state);
@@ -1797,7 +1798,8 @@ int bdb_set_rowlocks_state(tran_type *input_trans, int rlstate, int *bdberr);
 int bdb_get_genid_format(uint64_t *genid_format, int *bdberr);
 int bdb_set_genid_format(uint64_t genid_format, int *bdberr);
 
-int bdb_get_table_csonparameters(const char *table, char **value, int *len);
+int bdb_get_table_csonparameters(tran_type *tran, const char *table,
+                                 char **value, int *len);
 int bdb_set_table_csonparameters(void *parent_tran, const char *table,
                                  const char *value, int len);
 int bdb_del_table_csonparameters(void *parent_tran, const char *table);
@@ -1864,6 +1866,15 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset);
  */
 int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
                              int *bdberr);
+
+/**
+ * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"
+ * (It creates or, if existing, updates an entry)
+ *
+ */
+int bdb_table_version_update(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long val, int *bdberr);
+
 /**
  *  Delete the TABLE VERSION ENTRY for table "bdb_state->name"
  *

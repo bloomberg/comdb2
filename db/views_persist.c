@@ -78,11 +78,9 @@ int views_write_view(void *tran, const char *viewname, const char *str)
            fix this to be differentiated from other errors */
         rc = bdb_clear_table_parameter(tran, LLMETA_TABLE_NAME, viewname);
     }
+    rc = (rc) ? VIEW_ERR_LLMETA : VIEW_NOERR;
 
-    if (rc)
-        return VIEW_ERR_LLMETA;
-
-    return VIEW_NOERR;
+    return rc;
 }
 
 /**
@@ -115,7 +113,8 @@ char *views_read_all_views(void)
     int blob_len = 0;
     int rc;
 
-    rc = bdb_get_table_csonparameters(LLMETA_TABLE_NAME, &blob, &blob_len);
+    rc =
+        bdb_get_table_csonparameters(NULL, LLMETA_TABLE_NAME, &blob, &blob_len);
     if (rc) {
         return NULL;
     }

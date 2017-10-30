@@ -1,5 +1,5 @@
-table schedule schedule.csc2
-table jobinstance jobinstance.csc2
-table dbgopts dbgopts.csc2
+table jobs t.csc2
+table schedule t.csc2
+maxosqltransfer 200000
 enable_snapshot_isolation
 enable_selectv_range_check

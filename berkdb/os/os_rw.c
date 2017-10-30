@@ -169,7 +169,7 @@ __berkdb_direct_read(int fd, void *buf, size_t bufsz)
 
 	/* short read? */
 	if (rc < extra_fluff) {
-		logmsg(LOGMSG_ERROR, "pread rc %d asize %d bufsz %d\n", rc, asize, bufsz);
+		logmsg(LOGMSG_ERROR, "pread rc %d asize %zu bufsz %zu\n", rc, asize, bufsz);
 		return 0;
 	}
 
@@ -198,7 +198,11 @@ __berkdb_direct_read(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		flags = fcntl(nfd, F_GETFL);
+#ifdef __APPLE__
+		flags &= ~F_NOCACHE;
+#else
 		flags &= ~O_DIRECT;
+#endif
 		rc = fcntl(nfd, F_SETFL, flags);
 		if (rc) {
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
@@ -288,7 +292,7 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 	if (bytes_written == -1)
 		return -1;
 	if (bytes_written != asize) {
-		logmsg(LOGMSG_ERROR, "write %d bytes, needed to write %d\n",
+		logmsg(LOGMSG_ERROR, "write %d bytes, needed to write %zu\n",
 		    bytes_written, asize);
 		return -1;
 	}
@@ -318,7 +322,11 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		flags = fcntl(nfd, F_GETFL);
+#ifdef __APPLE__
+		flags &= ~F_NOCACHE;
+#else
 		flags &= ~O_DIRECT;
+#endif
 		rc = fcntl(nfd, F_SETFL, flags);
 		if (rc) {
 			logmsg(LOGMSG_ERROR, "fcntl(F_SETFL) rc %d\n", rc);
@@ -331,7 +339,7 @@ __berkdb_direct_write(int fd, void *buf, size_t bufsz)
 			goto done_verify;
 		}
 		if (rc != bufsz) {
-			logmsg(LOGMSG_ERROR, "unexpected read, wanted %d read %d\n", bufsz,
+			logmsg(LOGMSG_ERROR, "unexpected read, wanted %zu read %d\n", bufsz,
 			    rc);
 			goto done_verify;
 		}
@@ -401,8 +409,8 @@ again:
 		}
 		if (nretries > 0) {
 			logmsg(LOGMSG_ERROR, 
-                    "pwrite fd %d sz %d off %lld retry %d\n", fd,
-			    (int)bufsz, offset, nretries);
+                    "pwrite fd %d sz %zu off %ld retry %d\n", fd,
+			    bufsz, offset, nretries);
 			poll(NULL, 0, 10);
 		}
 		if (rc == bufsz && dbenv->attr.check_pwrites) {
@@ -415,7 +423,7 @@ again:
 			crc = pread(fd, abuf, bufsz, offset);
 			if (crc != bufsz) {
 				logmsg(LOGMSG_ERROR, 
-                    "trying to verify pwrite fd %d sz %d off %lld (pgno %u) but got rc %d errno %d\n",
+                    "trying to verify pwrite fd %d sz %d off %ld (pgno %u) but got rc %d errno %d\n",
 				    fd, (int)bufsz, offset,
 				    (uint32_t) (offset / bufsz), crc, errno);
 				if (++nretries < dbenv->attr.num_write_retries) {
@@ -428,7 +436,7 @@ again:
 				    (dbenv->attr.check_pwrites_debug &&
 					((rand() % 100) <
 					    dbenv->attr.check_pwrites_debug))) {
-					logmsg(LOGMSG_ERROR, "trying to verify pwrite fd %d sz %d off %lld (pgno %u) lsn before "
+					logmsg(LOGMSG_ERROR, "trying to verify pwrite fd %d sz %zu off %ld (pgno %u) lsn before "
 					    PR_LSN ", lsn after " PR_LSN
 					    ", retry %d\n", fd, bufsz, offset,
 					    (uint32_t) (offset / bufsz),
@@ -1033,7 +1041,7 @@ __berkdb_direct_pwritev(DB_ENV *dbenv,
 			}
 		}
 		if (nretries > 0) {
-			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %lld retry %d\n",
+			logmsg(LOGMSG_ERROR, "pwrite fd %d sz %d off %ld retry %d\n",
 			    fd, (int)(nobufs * pagesize), offset, nretries);
 			poll(NULL, 0, 10);
 		}
@@ -1391,7 +1399,7 @@ bb_berkdb_fasttime(void)
 
 	return hr_ustime;
 
-#elif defined(__linux)
+#elif defined(__linux__) || defined(__APPLE__)
 	struct timeval tp;
 	long long absolute_time;
 	gettimeofday(&tp, NULL);
@@ -1411,9 +1419,7 @@ bb_berkdb_fasttime(void)
 	return hr_ustime;
 
 #else
-
-	logmsg(LOGMSG_FATAL, "need a way to get fast time here!\n");
-	*abort();
+	#error "need a way to get fast time!"
 #endif
 }
 

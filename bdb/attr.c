@@ -34,7 +34,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 // #include <peutil.h> /* for time_epoch() */
 
 #include <ctrace.h>
@@ -45,14 +45,6 @@
 
 #include <plbitlib.h> /* for bset/btst */
 #include <logmsg.h>
-
-static int log_region_sz_update(void *context, void *value)
-{
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
-    /* Log region size is specified in KBs. */
-    *(int *)tunable->var = *(int *)value * 1024;
-    return 0;
-}
 
 static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
                              int attr, int value)

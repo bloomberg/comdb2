@@ -252,7 +252,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
     struct temp_table *tmptbl = NULL;
 
     /* cache the tablename for sqlglue */
-    strncpy(s_ix->name, tbl->dbname, sizeof(s_ix->name));
+    strncpy(s_ix->name, tbl->tablename, sizeof(s_ix->name));
 
     /* ask bdb to put a summary of this into a temp-table */
     rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &tmptbl,
@@ -260,8 +260,8 @@ static int sample_index_int(index_descriptor_t *ix_des)
 
     /* failed */
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to sample table '%s' idx %d\n", __func__,
-                tbl->dbname, ix);
+        logmsg(LOGMSG_ERROR, "%s: failed to sample table '%s' idx %d\n",
+               __func__, tbl->tablename, ix);
         return -1;
     }
 
@@ -363,7 +363,7 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
     index_descriptor_t *ix_des;
 
     /* find table to backout */
-    table = tbl->dbname;
+    table = tbl->tablename;
 
     /* allocate cmp_idx */
     client->sampled_idx_tbl = calloc(tbl->nix, sizeof(sampled_idx_t));
@@ -466,7 +466,7 @@ int analyze_get_nrecs(int iTable)
     assert(db);
 
     /* grab sampled table descriptor */
-    s_ix = find_sampled_index(client, db->dbname, ixnum);
+    s_ix = find_sampled_index(client, db->tablename, ixnum);
 
     /* return -1 if not sampled.  Sqlite will use the value it calculated. */
     if (!s_ix) {
@@ -1063,7 +1063,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
     /* start analyzing each table */
     for (i = 0; i < thedb->num_dbs; i++) {
         /* skip sqlite_stat */
-        if (is_sqlite_stat(thedb->dbs[i]->dbname)) {
+        if (is_sqlite_stat(thedb->dbs[i]->tablename)) {
             continue;
         }
 
@@ -1072,7 +1072,7 @@ int analyze_database(SBUF2 *sb, int scale, int override_llmeta)
         td[idx].sb = sb;
         td[idx].scale = scale;
         td[idx].override_llmeta = override_llmeta;
-        strncpy(td[idx].table, thedb->dbs[i]->dbname, sizeof(td[idx].table));
+        strncpy(td[idx].table, thedb->dbs[i]->tablename, sizeof(td[idx].table));
 
         /* dispatch analyze table thread */
         rc = dispatch_table_thread(&td[idx]);
@@ -1269,7 +1269,7 @@ void handle_backout(SBUF2 *sb, char *table)
     } else {
         int i = 0;
         while (i < thedb->num_dbs && rc == 0) {
-            rc = analyze_backout_table(&clnt, thedb->dbs[i]->dbname);
+            rc = analyze_backout_table(&clnt, thedb->dbs[i]->tablename);
             i++;
         }
     }

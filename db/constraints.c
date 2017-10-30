@@ -346,7 +346,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             char rnkey[MAXKEYLEN];
             int nornrefs = 0;
 
-            if (strcasecmp(cnstrt->table[j], iq->usedb->dbname)) {
+            if (strcasecmp(cnstrt->table[j], iq->usedb->tablename)) {
                 continue;
             }
             rc = getidxnumbyname(cnstrt->table[j], cnstrt->keynm[j], &ixnum);
@@ -367,7 +367,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             ixlen = getkeysize(iq->usedb, ixnum);
             snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", ixnum);
             /*
-            rc=stag_to_stag_buf(iq->usedb->dbname, ".ONDISK",rec_dta,
+            rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",rec_dta,
                ondisk_tag, lkey, NULL);
              */
             if (iq->idxDelete)
@@ -381,11 +381,11 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 if (iq->debug)
                     reqprintf(iq,
                               "RTNKYCNSTRT CANT FORM DST TBL %s INDEX %d (%s)",
-                              iq->usedb->dbname, ixnum, cnstrt->keynm[j]);
+                              iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_IDX,
                           "key constraint cannot form destination table '%s' "
                           "index %d (%s)",
-                          iq->usedb->dbname, ixnum, cnstrt->keynm[j]);
+                          iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 return ERR_CONVERT_IX;
             }
@@ -393,7 +393,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             /* this part is for update */
             if (newrec_dta != NULL) {
                 /*
-                rc=stag_to_stag_buf(iq->usedb->dbname, ".ONDISK",newrec_dta,
+                rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",newrec_dta,
                    ondisk_tag, nkey, NULL);
                  */
                 if (iq->idxInsert)
@@ -410,11 +410,11 @@ int check_update_constraints(struct ireq *iq, void *trans,
                         reqprintf(
                             iq,
                             "RTNKYCNSTRT NEWDTA CANT FORM TBL %s INDEX %d (%s)",
-                            iq->usedb->dbname, ixnum, cnstrt->keynm[j]);
+                            iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                     reqerrstr(iq, COMDB2_CSTRT_RC_INVL_IDX,
                               "key constraint: new data cannot form table '%s' "
                               "index %d (%s)",
-                              iq->usedb->dbname, ixnum, cnstrt->keynm[j]);
+                              iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                     *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                     return ERR_CONVERT_IX;
                 }
@@ -427,20 +427,21 @@ int check_update_constraints(struct ireq *iq, void *trans,
                     if (iq->debug)
                         reqprintf(iq, "RTNKYCNSTRT SKIP CNSTRT CHECK DUE TO "
                                       "SAME KEY DATA. TBL %s INDEX %d (%s)",
-                                  iq->usedb->dbname, ixnum, cnstrt->keynm[j]);
+                                  iq->usedb->tablename, ixnum,
+                                  cnstrt->keynm[j]);
                     continue;
                 }
             }
             /* here we convert the key into return db format */
-            rc = getidxnumbyname(cnstrt->lcltable->dbname, cnstrt->lclkeyname,
-                                 &rixnum);
+            rc = getidxnumbyname(cnstrt->lcltable->tablename,
+                                 cnstrt->lclkeyname, &rixnum);
             if (rc) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT: UNKNOWN TABLE %s KEYTAG %s",
-                              cnstrt->lcltable->dbname, cnstrt->lclkeyname);
+                              cnstrt->lcltable->tablename, cnstrt->lclkeyname);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_KEY,
                           "key constraint: unknown table '%s' keytag '%s'",
-                          cnstrt->lcltable->dbname, cnstrt->lclkeyname);
+                          cnstrt->lcltable->tablename, cnstrt->lclkeyname);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 return ERR_CONVERT_IX;
             }
@@ -450,15 +451,15 @@ int check_update_constraints(struct ireq *iq, void *trans,
             int nulls = 0;
 
             rixlen = rc = stag_to_stag_buf_ckey(
-                iq->usedb->dbname, ondisk_tag, lkey, cnstrt->lcltable->dbname,
-                rondisk_tag, rkey, &nulls, PK2FK);
+                iq->usedb->tablename, ondisk_tag, lkey,
+                cnstrt->lcltable->tablename, rondisk_tag, rkey, &nulls, PK2FK);
             if (rc == -1) {
 
 #if 0
             if (iq->debug)
                reqprintf(iq,
                   "RTNKYCNSTRT CANT FORM SRC TBL %s INDEX %d (%s)",
-                  cnstrt->lcltable->dbname, rixnum,cnstrt->lclkeyname);
+                  cnstrt->lcltable->tablename, rixnum,cnstrt->lclkeyname);
             *errout=OP_FAILED_INTERNAL + ERR_FORM_KEY;
             return ERR_CONVERT_IX;
 #endif
@@ -469,7 +470,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT SRC TBL %s INDEX %d (%s). "
                                   "SKIPPING RULE CHECK.",
-                              cnstrt->lcltable->dbname, rixnum,
+                              cnstrt->lcltable->tablename, rixnum,
                               cnstrt->lclkeyname);
                 continue; /* just move on, there should be nothing to check */
             }
@@ -478,7 +479,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
-                              cnstrt->lcltable->dbname, rixnum,
+                              cnstrt->lcltable->tablename, rixnum,
                               cnstrt->lclkeyname);
                 continue; /* just move on, there should be nothing to check */
             }
@@ -500,9 +501,10 @@ int check_update_constraints(struct ireq *iq, void *trans,
                    source of
                    new data for everyone else.
                 */
-                rixlen = rc = stag_to_stag_buf_ckey(
-                    iq->usedb->dbname, ondisk_tag, nkey,
-                    cnstrt->lcltable->dbname, rondisk_tag, rnkey, NULL, PK2FK);
+                rixlen = rc =
+                    stag_to_stag_buf_ckey(iq->usedb->tablename, ondisk_tag,
+                                          nkey, cnstrt->lcltable->tablename,
+                                          rondisk_tag, rnkey, NULL, PK2FK);
                 if (rc == -1) {
 /* same thing as for delete.  If the key cannot be formed,
    it is not a failure, no one's referencing us..so,
@@ -515,7 +517,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                     if (iq->debug)
                         reqprintf(iq, "RTNKYCNSTRT CANT FORM NEW SRC TBL %s "
                                       "INDEX %d (%s). PENDING RULE CHECK.",
-                                  cnstrt->lcltable->dbname, rixnum,
+                                  cnstrt->lcltable->tablename, rixnum,
                                   cnstrt->lclkeyname);
                     memcpy(rnkey, nkey, ixlen);
                     rixlen = ixlen;
@@ -524,7 +526,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                if (iq->debug)
                   reqprintf(iq,
                      "RTNKYCNSTRT CANT FORM NEW SRC TBL %s INDEX %d (%s)",
-                     cnstrt->lcltable->dbname, rixnum,cnstrt->lclkeyname);
+                     cnstrt->lcltable->tablename, rixnum,cnstrt->lclkeyname);
                *errout=OP_FAILED_INTERNAL + ERR_FORM_KEY;
                return ERR_CONVERT_IX;
 #endif
@@ -661,7 +663,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 reqprintf(
                     iq,
                     "VERBKYCNSTRT VERIFIED TBL %s IX %d AGAINST TBL %s IX %d ",
-                    bct->dstdb->dbname, bct->dixnum, bct->srcdb->dbname,
+                    bct->dstdb->tablename, bct->dixnum, bct->srcdb->tablename,
                     bct->sixnum);
                 reqdumphex(iq, bct->key, bct->sixlen);
                 reqmoref(iq, " RC %d", rc);
@@ -680,14 +682,14 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "VERBKYCNSTRT CANT FORM NEW DATA TBL %s "
                                   "INDEX %d FROM %s INDEX %d ",
-                              bct->dstdb->dbname, bct->dixnum,
-                              bct->srcdb->dbname, bct->sixnum);
+                              bct->dstdb->tablename, bct->dixnum,
+                              bct->srcdb->tablename, bct->sixnum);
                 reqmoref(iq, " RC %d", rc);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
                           "verify key constraint cannot form new data table "
                           "'%s' index %d from %s index %d ",
-                          bct->dstdb->dbname, bct->dixnum, bct->srcdb->dbname,
-                          bct->sixnum);
+                          bct->dstdb->tablename, bct->dixnum,
+                          bct->srcdb->tablename, bct->sixnum);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 close_constraint_table_cursor(cur);
                 return ERR_CONVERT_IX;
@@ -700,19 +702,19 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
             int nullck = 0;
 
             keylen = rc = stag_to_stag_buf_ckey(
-                bct->srcdb->dbname, ondisk_tag, skey, bct->dstdb->dbname,
+                bct->srcdb->tablename, ondisk_tag, skey, bct->dstdb->tablename,
                 dondisk_tag, dkey, &nullck, FK2PK);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq, "VERBKYCNSTRT CANT FORM TBL %s INDEX %d FROM "
                                   "%s INDEX %d KEY ",
-                              bct->dstdb->dbname, bct->dixnum,
-                              bct->srcdb->dbname, bct->sixnum);
+                              bct->dstdb->tablename, bct->dixnum,
+                              bct->srcdb->tablename, bct->sixnum);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
                           "verify key constraint cannot form table '%s' index "
                           "%d from %s index %d key '%s",
-                          bct->dstdb->dbname, bct->dixnum, bct->srcdb->dbname,
-                          bct->sixnum,
+                          bct->dstdb->tablename, bct->dixnum,
+                          bct->srcdb->tablename, bct->sixnum,
                           get_keynm_from_db_idx(bct->srcdb, bct->sixnum));
                 reqdumphex(iq, skey, bct->sixlen);
                 reqmoref(iq, " RC %d", rc);
@@ -726,7 +728,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d.",
-                              bct->srcdb->dbname, bct->sixnum);
+                              bct->srcdb->tablename, bct->sixnum);
                 }
                 continue;
             }
@@ -744,7 +746,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d.",
-                              bct->srcdb->dbname, bct->sixnum);
+                              bct->srcdb->tablename, bct->sixnum);
                 }
                 continue;
             }
@@ -764,8 +766,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT CANT RESOLVE CONSTRAINT TBL %s "
                                   "IDX '%d' KEY -> TBL %s IDX '%d' ",
-                              bct->dstdb->dbname, bct->dixnum,
-                              bct->srcdb->dbname, bct->sixnum);
+                              bct->dstdb->tablename, bct->dixnum,
+                              bct->srcdb->tablename, bct->sixnum);
                     reqdumphex(iq, bct->key, bct->sixlen);
                     reqmoref(iq, " RC %d", rc);
                 }
@@ -773,9 +775,9 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                           "verify key constraint cannot resolve constraint "
                           "table '%s' index '%d' key '%s' -> table '%s' index "
                           "'%d' ",
-                          bct->dstdb->dbname, bct->dixnum,
+                          bct->dstdb->tablename, bct->dixnum,
                           get_keynm_from_db_idx(bct->dstdb, bct->dixnum),
-                          bct->srcdb->dbname, bct->sixnum);
+                          bct->srcdb->tablename, bct->sixnum);
                 *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                 close_constraint_table_cursor(cur);
                 return ERR_BADREQ;
@@ -783,8 +785,8 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug) {
                     reqprintf(iq, "VERBKYCNSTRT VERIFIED TBL %s IX %d AGAINST "
                                   "TBL %s IX %d ",
-                              bct->dstdb->dbname, bct->dixnum,
-                              bct->srcdb->dbname, bct->sixnum);
+                              bct->dstdb->tablename, bct->dixnum,
+                              bct->srcdb->tablename, bct->sixnum);
                     reqdumphex(iq, bct->key, bct->sixlen);
                     reqmoref(iq, " RC %d", rc);
                 }
@@ -797,7 +799,7 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug) {
                         reqprintf(iq,
                                   "VERBKYCNSTRT CASCADE DELETE TBL %s RRN %d ",
-                                  bct->srcdb->dbname, rrn);
+                                  bct->srcdb->tablename, rrn);
                     }
                     iq->usedb = bct->srcdb;
                     if (iq->debug)
@@ -814,12 +816,12 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         if (iq->debug) {
                             reqprintf(iq, "VERBKYCNSTRT CANT CASCADE DELETE "
                                           "TBL %s RRN %d RC %d ",
-                                      bct->srcdb->dbname, rrn, rc);
+                                      bct->srcdb->tablename, rrn, rc);
                         }
                         reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
                                   "verify key constraint cannot cascade delete "
                                   "table '%s' rrn %d",
-                                  bct->srcdb->dbname, rrn);
+                                  bct->srcdb->tablename, rrn);
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         close_constraint_table_cursor(cur);
                         if (rc == RC_INTERNAL_RETRY)
@@ -873,12 +875,12 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         if (iq->debug) {
                             reqprintf(iq, "VERBKYCNSTRT CANT CASCADE UPDATE "
                                           "TBL %s RRN %d RC %d ",
-                                      bct->srcdb->dbname, rrn, rc);
+                                      bct->srcdb->tablename, rrn, rc);
                         }
                         reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
                                   "verify key constraint cannot cascade update "
                                   "table '%s' rrn %d",
-                                  bct->srcdb->dbname, rrn);
+                                  bct->srcdb->tablename, rrn);
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         close_constraint_table_cursor(cur);
                         if (rc == RC_INTERNAL_RETRY)
@@ -1064,9 +1066,10 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
         if (ondisk_size == -1) {
             if (iq->debug)
                 reqprintf(iq, "%p:ADDKYCNSTRT BAD TABLE %s\n", trans,
-                          iq->usedb->dbname);
+                          iq->usedb->tablename);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
-                      "add key constraint bad table '%s'", iq->usedb->dbname);
+                      "add key constraint bad table '%s'",
+                      iq->usedb->tablename);
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
             free_cached_delayed_indexes(iq);
@@ -1140,7 +1143,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 return ERR_BADREQ;
             }
             /*
-            rc=stag_to_stag_buf(iq->usedb->dbname, ".ONDISK",od_dta,
+            rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",od_dta,
                ondisk_tag, key, NULL);
              */
             if (iq->idxInsert)
@@ -1175,7 +1178,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
 
             if (iq->debug) {
                 reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
-                          iq->usedb->dbname, doidx, addrrn);
+                          iq->usedb->tablename, doidx, addrrn);
                 reqdumphex(iq, key, ixkeylen);
                 reqmoref(iq, " RC %d", rc);
             }
@@ -1185,7 +1188,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                                                    "duplicate key '%s' on "
                                                    "table '%s' index %d",
                           get_keynm_from_db_idx(iq->usedb, doidx),
-                          iq->usedb->dbname, doidx);
+                          iq->usedb->tablename, doidx);
 
                 *blkpos = curop->blkpos;
                 *errout = OP_FAILED_UNIQ;
@@ -1327,7 +1330,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
             return ERR_INTERNAL;
         }
         /*    fprintf(stderr, "%d %d %s\n", ctrq->ct_type,
-         * ctrq->ctop.fwdct.optype,ctrq->ctop.fwdct.usedb->dbname);*/
+         * ctrq->ctop.fwdct.optype,ctrq->ctop.fwdct.usedb->tablename);*/
         curop = &ctrq->ctop.fwdct;
 
         iq->usedb = curop->usedb;
@@ -1360,10 +1363,10 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
             if (ondisk_size == -1) {
                 if (iq->debug)
                     reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
-                              iq->usedb->dbname);
+                              iq->usedb->tablename);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                           "verify key constraint bad table '%s'",
-                          iq->usedb->dbname);
+                          iq->usedb->tablename);
                 *errout = OP_FAILED_BAD_REQUEST;
                 rc = ERR_BADREQ;
                 close_constraint_table_cursor(cur);
@@ -1406,8 +1409,8 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                 int ridx = 0, lixnum = -1;
                 char lkey[MAXKEYLEN];
 
-                rc =
-                    getidxnumbyname(iq->usedb->dbname, ct->lclkeyname, &lixnum);
+                rc = getidxnumbyname(iq->usedb->tablename, ct->lclkeyname,
+                                     &lixnum);
                 if (rc) {
                     if (iq->debug)
                         reqprintf(iq, "VERKYCNSTRT: UNKNOWN LCL KEYTAG %s",
@@ -1429,7 +1432,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
 
                 snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", lixnum);
                 /*
-                rc=stag_to_stag_buf(iq->usedb->dbname, ".ONDISK",od_dta,
+                rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",od_dta,
                    ondisk_tag, lkey, NULL);
                  */
                 if (iq->idxInsert) {
@@ -1444,11 +1447,11 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     if (iq->debug)
                         reqprintf(iq,
                                   "VERKYCNSTRT CANT FORM TBL %s INDEX %d (%s)",
-                                  iq->usedb->dbname, lixnum, ct->lclkeyname);
+                                  iq->usedb->tablename, lixnum, ct->lclkeyname);
                     reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                               "verify key constraint cannot form table '%s' "
                               "index %d ('%s')",
-                              iq->usedb->dbname, lixnum, ct->lclkeyname);
+                              iq->usedb->tablename, lixnum, ct->lclkeyname);
                     *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                     free_cached_delayed_indexes(iq);
                     close_constraint_table_cursor(cur);
@@ -1467,17 +1470,17 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
-                                      ftable->dbname);
+                                      ftable->tablename);
                         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                                   "verify key constraint bad table '%s'",
-                                  ftable->dbname);
+                                  ftable->tablename);
                         *errout = OP_FAILED_BAD_REQUEST;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
                         return ERR_BADREQ;
                     }
                     ftblsz = getdatsize(ftable);
-                    rc = getidxnumbyname(ftable->dbname, ct->keynm[ridx],
+                    rc = getidxnumbyname(ftable->tablename, ct->keynm[ridx],
                                          &fixnum);
                     if (rc) {
                         if (iq->debug)
@@ -1494,23 +1497,24 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                     fixlen = getkeysize(ftable, fixnum);
 
                     /*snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", fixnum);
-                      rc=stag_to_stag_bufx(iq->usedb->dbname, ".ONDISK",od_dta,
-                      ftable->dbname, ondisk_tag, fkey);*/
+                      rc=stag_to_stag_bufx(iq->usedb->tablename,
+                      ".ONDISK",od_dta,
+                      ftable->tablename, ondisk_tag, fkey);*/
 
                     snprintf(fondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", fixnum);
                     fixlen = rc = stag_to_stag_buf_ckey(
-                        iq->usedb->dbname, ondisk_tag, lkey, ftable->dbname,
-                        fondisk_tag, fkey, &nulls, FK2PK);
+                        iq->usedb->tablename, ondisk_tag, lkey,
+                        ftable->tablename, fondisk_tag, fkey, &nulls, FK2PK);
                     if (rc == -1) {
                         if (iq->debug)
                             reqprintf(
                                 iq,
                                 "VERKYCNSTRT CANT FORM TBL %s INDEX %d (%s)",
-                                ftable->dbname, fixnum, ct->keynm[ridx]);
+                                ftable->tablename, fixnum, ct->keynm[ridx]);
                         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                                   "verify key constraint cannot form table "
                                   "'%s' index %d (%s)",
-                                  ftable->dbname, fixnum, ct->keynm[ridx]);
+                                  ftable->tablename, fixnum, ct->keynm[ridx]);
                         *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
@@ -1526,7 +1530,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         }
                     }
 
-                    /*     fprintf(stderr, "%s;%d-%s;%d\n",ftable->dbname,
+                    /*     fprintf(stderr, "%s;%d-%s;%d\n",ftable->tablename,
                            ftblsz, ct->keynm[ridx], fixlen);*/
 
                     /* we'll do the find on created index to make sure
@@ -1554,14 +1558,14 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         if (iq->debug) {
                             reqprintf(iq, "VERKYCNSTRT CANT RESOLVE CONSTRAINT "
                                           "TBL %s IDX '%s' KEY ",
-                                      ftable->dbname, ct->keynm[ridx]);
+                                      ftable->tablename, ct->keynm[ridx]);
                             reqdumphex(iq, fkey, fixlen);
                             reqmoref(iq, " RC %d", rc);
                         }
                         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                                   "verify key constraint cannot resolve "
                                   "constraint table '%s' index '%s'",
-                                  ftable->dbname, ct->keynm[ridx]);
+                                  ftable->tablename, ct->keynm[ridx]);
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
@@ -1571,7 +1575,7 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
                         reqprintf(
                             iq,
                             "VERKYCNSTRT VERIFIED RC=%d %s:%s AGAINST %s:%s",
-                            rc, iq->usedb->dbname, ct->lclkeyname,
+                            rc, iq->usedb->tablename, ct->lclkeyname,
                             ct->table[ridx], ct->keynm[ridx]);
                     }
                 }
@@ -1619,17 +1623,17 @@ void dump_all_constraints(struct dbenv *env)
 void dump_rev_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n", table->dbname,
-            table->n_rev_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n",
+           table->tablename, table->n_rev_constraints);
     for (i = 0; i < table->n_rev_constraints; i++) {
         constraint_t *ct = table->rev_constraints[i];
         int j = 0;
         logmsg(LOGMSG_USER, "(%d)REV CONSTRAINT TBL: '%s' KEY '%s'  CSCUPD: %c "
-                        "CSCDEL: %c #RULES %d:\n",
-                i + 1, ct->lcltable->dbname, ct->lclkeyname,
-                ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
-                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
-                ct->nrules);
+                            "CSCDEL: %c #RULES %d:\n",
+               i + 1, ct->lcltable->tablename, ct->lclkeyname,
+               ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
+               ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
+               ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
             logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j],
                     ct->keynm[j]);
@@ -1641,8 +1645,8 @@ void dump_rev_constraints(struct dbtable *table)
 void dump_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->dbname,
-            table->n_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->tablename,
+           table->n_constraints);
     for (i = 0; i < table->n_constraints; i++) {
         constraint_t *ct = &table->constraints[i];
         int j = 0;
@@ -1897,7 +1901,7 @@ static inline int constraint_key_check(struct schema *fky, struct schema *bky)
 
 static struct dbtable *get_newer_db(struct dbtable *db, struct dbtable *new_db)
 {
-    if (new_db && strcasecmp(db->dbname, new_db->dbname) == 0) {
+    if (new_db && strcasecmp(db->tablename, new_db->tablename) == 0) {
         return new_db;
     } else {
         return db;
@@ -1914,15 +1918,16 @@ static void constraint_err(void *s, struct dbtable *db, constraint_t *ct, int ru
        if(s)
           sc_errf(s, "constraint error for table \"%s\" key \"%s\" ->
        <\"%s\":\"%s\">: %s\n",
-             db->dbname,
+             db->tablename,
              ct->lclkeyname,
              ct->table[rule],
              ct->keynm[rule],
              err);
        else */
-    logmsg(LOGMSG_ERROR, 
-            "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s\n",
-            db->dbname, ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
+    logmsg(
+        LOGMSG_ERROR,
+        "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s\n",
+        db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
 }
 
 static inline int key_has_expressions_members(struct schema *key)
@@ -1962,7 +1967,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
         } else {
             snprintf(keytag, sizeof(keytag), "%s", ct->lclkeyname);
         }
-        if (!(fky = find_tag_schema(from_db->dbname, keytag))) {
+        if (!(fky = find_tag_schema(from_db->tablename, keytag))) {
             /* Referencing a nonexistent key */
             constraint_err(s, from_db, ct, 0, "local key not found");
             n_errors++;
@@ -1978,7 +1983,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
 
             /* If we have a target table (to_db) only look at rules pointing
              * to that table. */
-            if (to_db && strcasecmp(ct->table[jj], to_db->dbname) != 0)
+            if (to_db && strcasecmp(ct->table[jj], to_db->tablename) != 0)
                 continue;
 
             rdb = get_dbtable_by_name(ct->table[jj]);
@@ -2028,11 +2033,12 @@ int populate_reverse_constraints(struct dbtable *db)
         struct dbtable *ftable = NULL;
         int keyszs = 0, keyszd = 0, keyix = 0;
 
-        sc = find_tag_schema(db->dbname, cnstrt->lclkeyname);
+        sc = find_tag_schema(db->tablename, cnstrt->lclkeyname);
         if (sc == NULL) {
             ++n_errors;
-            logmsg(LOGMSG_ERROR, "constraint error: key %s is not found in table %s\n",
-                   cnstrt->lclkeyname, db->dbname);
+            logmsg(LOGMSG_ERROR,
+                   "constraint error: key %s is not found in table %s\n",
+                   cnstrt->lclkeyname, db->tablename);
         }
 
         for (jj = 0; jj < cnstrt->nrules; jj++) {

@@ -5,7 +5,7 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "db_config.h"
+#include "build/db_config.h"
 
 #ifndef lint
 static const char copyright[] =
@@ -23,7 +23,7 @@ static const char revid[] =
 #include <unistd.h>
 #endif
 
-#include "db_int.h"
+#include "build/db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
 

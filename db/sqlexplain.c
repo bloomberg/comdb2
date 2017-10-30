@@ -144,7 +144,7 @@ static void print_field(Vdbe *v, struct cursor_info *cinfo, int num, char *buf)
             sc = db->ixschema[cinfo->ix];
         } else {
             snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
-            sc = find_tag_schema(db->dbname, scname);
+            sc = find_tag_schema(db->tablename, scname);
         }
     } else {
         sc = db->schema;
@@ -201,7 +201,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
                 sc = db->ixschema[cinfo->ix];
             } else {
                 snprintf(scname, sizeof(scname), ".ONDISK_ix_%d", cinfo->ix);
-                sc = find_tag_schema(db->dbname, scname);
+                sc = find_tag_schema(db->tablename, scname);
             }
             strbuf_appendf(out, "index \"%s\" of ",
                            sc ? (sc->csctag ? sc->csctag : sc->tag) : "???");
@@ -221,7 +221,7 @@ static int print_cursor_description(strbuf *out, struct cursor_info *cinfo)
             }
             */
         }
-        strbuf_appendf(out, "table \"%s\"", db->dbname);
+        strbuf_appendf(out, "table \"%s\"", db->tablename);
     }
     strbuf_appendf(out, " ");
     return is_index;
@@ -1429,7 +1429,7 @@ void handle_explain(SBUF2 *sb, int trace, int all)
         struct errstat xerr = {0};
 
         /* how about we are gonna add the views ? */
-        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr);
+        rc = views_sqlite_update(thedb->timepart_views, hndl, &xerr, 1);
 
         if (put_curtran(thedb->bdb_env, &client)) {
             logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",

@@ -38,7 +38,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 #include <plbitlib.h> /* for bset/btst */
 #include <lockmacro.h>
@@ -53,7 +53,7 @@
 #include "bdb_osqlcur.h"
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "missing.h"
 #include <alloca.h>
 
@@ -1268,9 +1268,9 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
             tran->tranclass == TRANCLASS_SERIALIZABLE) {
             rc = bdb_osql_cache_table_versions(bdb_state, tran, trak, bdberr);
             if (rc) {
-                logmsg(LOGMSG_ERROR, 
-                        "%s failed to cache table versions rc=%d bdberr=%d\n",
-                        __func__, rc, bdberr);
+                logmsg(LOGMSG_ERROR,
+                       "%s failed to cache table versions rc=%d bdberr=%d\n",
+                       __func__, rc, *bdberr);
             }
 
             /* register transaction so we start receiving log undos */
@@ -2473,8 +2473,8 @@ cursor_tran_t *bdb_get_cursortran(bdb_state_type *bdb_state, int lowpri,
         }
         curtran->id = curtran_counter++;
     } else {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
-                sizeof(cursor_tran_t));
+        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
+               sizeof(cursor_tran_t));
         *bdberr = BDBERR_MALLOC;
         BDB_RELLOCK();
     }

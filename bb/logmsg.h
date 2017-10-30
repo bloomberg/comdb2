@@ -13,9 +13,11 @@ typedef enum {
     LOGMSG_USER = 6,
 } loglvl;
 
-int logmsg(loglvl lvl, const char *fmt, ...);
+int logmsg(loglvl lvl, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
 int logmsgv(loglvl lvl, const char *fmt, va_list args);
-int logmsgf(loglvl lvl, FILE *f, const char *fmt, ...);
+int logmsgf(loglvl lvl, FILE *f, const char *fmt, ...)
+    __attribute__((format(printf, 3, 4)));
 int logmsgvf(loglvl lvl, FILE *f, const char *fmt, va_list args);
 int logmsgperror(const char *s);
 

@@ -71,7 +71,6 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
-    uint8_t disableskipscan;
     LINKC_T(struct schema) lnk;
 };
 

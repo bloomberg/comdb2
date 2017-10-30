@@ -26,7 +26,7 @@
 
 #include <sbuf2.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_int.h"
 #include "locks.h"

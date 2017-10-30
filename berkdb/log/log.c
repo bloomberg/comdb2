@@ -58,8 +58,12 @@ __log_open(dbenv)
 	dblp->reginfo.flags = REGION_JOIN_OK;
 	if (F_ISSET(dbenv, DB_ENV_CREATE))
 		F_SET(&dblp->reginfo, REGION_CREATE_OK);
+
+    /* We are still going to treat dblp->reginfo as a region, but we
+       are not going to allocate memory for it - we'll malloc as 
+       needed instead */
 	if ((ret = __db_r_attach(
-	    dbenv, &dblp->reginfo, __log_region_size(dbenv))) != 0)
+	    dbenv, &dblp->reginfo, 0)) != 0)
 		goto err;
 
 	/* If we created the region, initialize it. */
@@ -176,8 +180,8 @@ __log_init(dbenv, dblp)
 	u_int8_t *addr;
 #endif
 
-	if ((ret = __db_shalloc(dblp->reginfo.addr,
-	    sizeof(*region), 0, &dblp->reginfo.primary)) != 0)
+	if ((ret = __os_malloc(dbenv,
+	    sizeof(*region), &dblp->reginfo.primary)) != 0)
 		goto mem_err;
 	dblp->reginfo.rp->primary =
 	    R_OFFSET(&dblp->reginfo, dblp->reginfo.primary);
@@ -209,8 +213,8 @@ __log_init(dbenv, dblp)
 
 #ifdef  HAVE_MUTEX_SYSTEM_RESOURCES
 	/* Allocate room for the log maintenance info and initialize it. */
-	if ((ret = __db_shalloc(dblp->reginfo.addr,
-	    sizeof(REGMAINT) + LG_MAINT_SIZE, 0, &addr)) != 0)
+	if ((ret = __os_malloc(dbenv,
+	    sizeof(REGMAINT) + LG_MAINT_SIZE, &addr)) != 0)
 		goto mem_err;
 	__db_maintinit(&dblp->reginfo, addr, LG_MAINT_SIZE);
 	region->maint_off = R_OFFSET(&dblp->reginfo, addr);
@@ -225,8 +229,8 @@ __log_init(dbenv, dblp)
 	 * to be aligned to MUTEX_ALIGN, and the only way to guarantee that is
 	 * to make sure they're at the beginning of a shalloc'ed chunk.
 	 */
-	if ((ret = __db_shalloc(dblp->reginfo.addr,
-	    sizeof(DB_MUTEX), MUTEX_ALIGN, &flush_mutexp)) != 0)
+	if ((ret = __os_malloc(dbenv,
+	    sizeof(DB_MUTEX), &flush_mutexp)) != 0)
 		goto mem_err;
 	if ((ret = __db_mutex_setup(dbenv, &dblp->reginfo, flush_mutexp,
 	    MUTEX_NO_RLOCK)) != 0)
@@ -235,7 +239,7 @@ __log_init(dbenv, dblp)
 
 	/* Initialize the buffer. */
 	if ((ret =
-	    __db_shalloc(dblp->reginfo.addr, dbenv->lg_bsize, 0, &p)) != 0) {
+	    __os_malloc(dbenv, dbenv->lg_bsize, &p)) != 0) {
 		goto mem_err;
 	}
 	region->num_segments = dbenv->lg_nsegs;
@@ -246,8 +250,8 @@ __log_init(dbenv, dblp)
 
 	/* Initialize an array of segment lsns. */
 	if ((ret =
-	    __db_shalloc(dblp->reginfo.addr,
-	    sizeof(DB_LSN) * region->num_segments, 0, &p)) != 0) {
+	    __os_malloc(dbenv,
+	    sizeof(DB_LSN) * region->num_segments, &p)) != 0) {
 		goto mem_err;
 	}
 
@@ -258,8 +262,8 @@ __log_init(dbenv, dblp)
 
 	/* Initialize an array of start-segment lsns. */
 	if ((ret =
-		__db_shalloc(dblp->reginfo.addr,
-		    sizeof(DB_LSN) * region->num_segments, 0, &p)) != 0) {
+		__os_malloc(dbenv,
+		    sizeof(DB_LSN) * region->num_segments, &p)) != 0) {
 mem_err:	__db_err(dbenv,
 		    "Unable to allocate memory for the log buffer");
 		return (ret);

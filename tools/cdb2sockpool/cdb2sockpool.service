@@ -2,7 +2,7 @@
 Description=Socket pooler for Comdb2 connections
 
 [Service]
-ExecStart=/opt/bb/bin/cdb2sockpool
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/cdb2sockpool
 Type=forking
 User=comdb2
 

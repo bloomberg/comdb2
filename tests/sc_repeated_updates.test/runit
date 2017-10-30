@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Debug variable
@@ -309,9 +309,9 @@ rm -f failexit
 g=100
 while [[ $g -le 400 ]] ; do 
 	echo "run_test $g"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl on')" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl on')" >/dev/null 2>&1
 	run_test $g
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl off')" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('setipu $tbl off')" >/dev/null 2>&1
 	run_test $g
     let g=g+g
 done

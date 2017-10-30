@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Test functionality for incremental backups with concurrent writeload
 export debug=1
 export sleeptime=30
@@ -36,7 +36,7 @@ function failexit
 function checkload
 {
     [[ $debug == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $dbname default "select count(*) from load" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbname default "select count(*) from load" &> /dev/null
     r=$?
     if [[ $r != 0 ]]; then
         killwriters
@@ -202,6 +202,11 @@ cdb2sql ${CDB2_OPTIONS} -f t1-3_insert.stmt $dbname default
 make_backup push_next_inserts
 test_restoredb t2.req 2
 killwriters
+
+# cleanup since this was a successful run
+if [ $CLEANUPDBDIR != 0 ] ; then
+    rm -rf ${LOCTMPDIR}/backups ${LOCTMPDIR}/restore ${LOCTMPDIR}/increment
+fi
 
 echo "Test Successful"
 exit 0

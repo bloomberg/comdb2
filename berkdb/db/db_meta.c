@@ -378,7 +378,7 @@ __db_new(dbc, type, pagepp)
 	/* If there's pages on the freelist, call the original code.  Otherwise, extend the file. */
 	if (extend) {
 		/* linux requires buffers aligned on 512-boundary for direct IO */
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 		pagebuf = memalign(512, meta->pagesize * page_extent_size);
 #else
 		pagebuf = malloc(meta->pagesize * page_extent_size);

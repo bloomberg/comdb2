@@ -3416,7 +3416,7 @@ static void* sys_alloc(mstate m, size_t nb, int zeroout) {
   if (m == NULL && allocfunc) {
       void *mem;
       mem = allocfunc(nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
-      logmsg(LOGMSG_DEBUG, "+ INITIAL MALLOC %d\n", nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
+      logmsg(LOGMSG_DEBUG, "+ INITIAL MALLOC %zu\n", nb + SIX_SIZE_T_SIZES + CHUNK_ALIGN_MASK);
       if (mem != NULL)
           return mem;
   }

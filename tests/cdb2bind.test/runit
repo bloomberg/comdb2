@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -e
@@ -16,7 +16,7 @@ if [[ -z "$dbnm" ]]; then
 fi
 
 # Driver 
-driver=client
+driver=cdb2bind
 
 # Run tasks
 $driver $dbnm

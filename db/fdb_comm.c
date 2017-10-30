@@ -699,7 +699,7 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
 
     if (gbl_fdb_track_times) {
         now = gettimeofday_ms();
-        logmsg(LOGMSG_USER, "RRRRRR start now=%lld\n", now);
+        logmsg(LOGMSG_USER, "RRRRRR start now=%lu\n", now);
     }
 
     while (1) {
@@ -709,17 +709,17 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
 
         rc = handle_remsql_session(sb, dbenv);
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%p: %s: executed session rc=%d\n", pthread_self(),
-                    __func__, rc);
+            logmsg(LOGMSG_USER, "%lu: %s: executed session rc=%d\n",
+                   pthread_self(), __func__, rc);
 
         if (gbl_fdb_track_times) {
             then = gettimeofday_ms();
 
             if (old == 0ULL) {
-                logmsg(LOGMSG_USER, "RRRRRR now=%lld 0 %lld\n", now, then - now);
+                logmsg(LOGMSG_USER, "RRRRRR now=%lu 0 %lu\n", now, then - now);
             } else {
-                logmsg(LOGMSG_USER, "RRRRRR now=%lld delta=%lld %lld\n", now,
-                        now - old, then - now);
+                logmsg(LOGMSG_USER, "RRRRRR now=%lu delta=%lu %lu\n", now,
+                       now - old, then - now);
             }
             old = now;
         }
@@ -741,7 +741,8 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
         }
     }
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p: %s: done processing\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "%lu: %s: done processing\n", pthread_self(),
+               __func__);
 
     return rc;
 }
@@ -2070,8 +2071,8 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         break;
 
     default:
-        logmsg(LOGMSG_USER, "%s: %s unknown msg %d\n", __func__, __func__, prefix,
-                msg->hd.type);
+        logmsg(LOGMSG_USER, "%s: %s unknown msg %d\n", __func__, prefix,
+               msg->hd.type);
     }
 }
 
@@ -2248,15 +2249,15 @@ static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         break;
 
     case FDB_MSG_HBEAT:
-        logmsg(LOGMSG_USER, 
-                "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%u\n", t,
-                prefix, sb, *(unsigned long long *)msg->hb.tid,
-                msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n", t,
+               prefix, sb, *(unsigned long long *)msg->hb.tid,
+               msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
         break;
 
     default:
-        logmsg(LOGMSG_ERROR, "%s: %s unknown msg %d\n", __func__, __func__, prefix,
-                msg->hd.type);
+        logmsg(LOGMSG_ERROR, "%s: %s unknown msg %d\n", __func__, prefix,
+               msg->hd.type);
     }
 }
 
@@ -2959,7 +2960,7 @@ static enum svc_move_types move_type(int type)
     case FDB_MSG_CURSOR_LAST:
         return SVC_MOVE_LAST;
     }
-    logmsg(LOGMSG_FATAL, "%s: unknown move\n", __func__, type);
+    logmsg(LOGMSG_FATAL, "%s: unknown move %d\n", __func__, type);
     abort();
     return -1;
 }
@@ -3423,8 +3424,8 @@ int fdb_remcur_index(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
         clnt->idxInsert[ixnum] = pIdx = malloc(sizeof(int) + ixlen);
     }
     if (pIdx == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d malloc %d failed\n", __func__, __LINE__,
-                sizeof(int) + ixlen);
+        logmsg(LOGMSG_ERROR, "%s:%d malloc %zu failed\n", __func__, __LINE__,
+               sizeof(int) + ixlen);
         return -1;
     }
     *((int *)pIdx) = ixlen;

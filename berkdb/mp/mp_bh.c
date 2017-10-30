@@ -515,7 +515,7 @@ __memp_pgread(dbmfp, hp, bhp, can_create, is_recovery_page)
 
 	if (0) {
 recover_page:
-		if (ret = __memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
+		if (__memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
 			/* This is a catastrophic error: panic the database. */
 			__db_err(dbenv,
 			    "checksum error: page %lu: catastrophic "
