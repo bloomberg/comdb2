@@ -1,0 +1,2 @@
+Run multiple queries at once on the db, causing server 
+to put queries on sql queue.

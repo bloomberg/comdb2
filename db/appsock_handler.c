@@ -90,7 +90,7 @@ struct appsock_thd_state {
 struct thdpool *gbl_appsock_thdpool = NULL;
 
 char appsock_unknown_old[] = "-1 #unknown command\n";
-char appsock_unknown[] = "Error: -1 #unknown command\n";
+char appsock_unknown[] = "Error: -1 #unknown command";
 char appsock_supported[] = "supported\n";
 
 static unsigned long long total_appsock_conns = 0;
@@ -265,6 +265,7 @@ struct loadrrn_cmd {
     int parm;
 };
 
+/* TODO: obsolete */
 enum { LOAD_ADD_RECORD, LOAD_GET_STATUS };
 static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
 {
@@ -277,7 +278,7 @@ static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
     char *dta;
     unsigned char nullbits[MAXNULLBITS] = {0};
 
-    len = get_size_of_schema_by_name(tbl->dbname, tag);
+    len = get_size_of_schema_by_name(tbl->tablename, tag);
     if (len == 0)
         return -1;
     buf = malloc(len);
@@ -298,7 +299,7 @@ static int loadrrns(struct dbtable *tbl, SBUF2 *sb, char *tag)
                 break;
             }
 
-            rc = ctag_to_stag_buf(tbl->dbname, tag, buf, len, nullbits,
+            rc = ctag_to_stag_buf(tbl->tablename, tag, buf, len, nullbits,
                                   ".ONDISK", dta, 0, NULL);
             if (rc != -1) {
                 rc = load_record(tbl, buf);
@@ -335,9 +336,9 @@ static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
             rec = newrec;
         }
         vtag_to_ondisk(tbl, rec, &len, ver, 0);
-        rc =
-            stag_to_ctag_buf_tz(tbl->dbname, ".ONDISK", rec, len, tag, clientrec,
-                                nulls, conv_flags, NULL, NULL, tzname);
+        rc = stag_to_ctag_buf_tz(tbl->tablename, ".ONDISK", rec, len, tag,
+                                 clientrec, nulls, conv_flags, NULL, NULL,
+                                 tzname);
     } else {
         memcpy(clientrec, rec, clientreclen);
     }
@@ -350,9 +351,6 @@ static int fstdump_callback(void *rec, size_t reclen, void *clientrec,
         return 0;
     }
 }
-
-extern void verify_table(char *table, SBUF2 *sb, int progress_report_seconds,
-                    int attempt_fix);
 
 struct fstdmp_t {
     int rc;
@@ -758,7 +756,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
             handle_partition(sb);
             return 0;
         } else {
-            sbuf2printf(sb, appsock_unknown);
+            sbuf2printf(sb, "%s: %.*s\n", appsock_unknown, 100, line);
             sbuf2flush(sb);
             continue;
         }

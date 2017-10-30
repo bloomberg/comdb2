@@ -42,7 +42,7 @@ extern "C" {
 
 #if defined(_AIX)
 #define DO_DIRECT O_DIRECT
-#elif defined (__linux)
+#elif defined (__linux__)
 #define DO_DIRECT O_DIRECT
 #else
 #define DO_DIRECT 0
@@ -134,7 +134,10 @@ static void serialise_file(const FileInfo& file, volatile iomap *iomap=NULL, con
     // Ensure large file support
     assert(sizeof(off_t) == 8);
 
-    flags = O_RDONLY | O_LARGEFILE;
+    flags = O_RDONLY;
+#   ifndef __APPLE__
+    flags |= O_LARGEFILE;
+#   endif
 
     if (file.get_type() == FileInfo::BERKDB_FILE && file.get_direct_io())
         flags |= DO_DIRECT;
@@ -791,7 +794,7 @@ void serialise_database(
     std::vector<FileInfo> new_files;
 
     // Vector of pages index aligned with each file to serialise
-    std::vector<std::vector<uint32_t>> page_number_vec;
+    std::vector<std::vector<uint32_t> > page_number_vec;
 
     // Total size of backed up pages
     ssize_t total_data_size = 0;
@@ -1200,7 +1203,7 @@ void serialise_database(
 
         // Iterate through the files, index-aligning with the list of changed pages
         std::vector<FileInfo>::const_iterator data_it = incr_data_files.begin();
-        std::vector<std::vector<uint32_t>>::const_iterator
+        std::vector<std::vector<uint32_t> >::const_iterator
             page_it = page_number_vec.begin();
 
         ssize_t data_written = 0;

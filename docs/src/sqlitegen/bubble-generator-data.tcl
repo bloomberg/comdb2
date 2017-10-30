@@ -491,34 +491,42 @@ set all_graphs {
       }
   }
 
+
+
   constraint-section {
       loop
       {stack
-          {line /keyname -> < /ref-table-name : /ref-keyname > }
-          {line
-              {opt on update cascade}
-              {opt on delete cascade}
+          {line /keyname -> 
+               {or 
+                    {line /ref-table-name : /ref-keyname }
+                    {line {loop {line < /ref-table-name : /ref-keyname > } } }
+               }
+          }
+          {opt 
+            {loop 
+               {line on {or update delete} {or cascade restrict }}
+            }
           }
       }
   }
 
   table-event {
-      line
-          ( TABLE /table-name FOR 
-            {loop
-               {or {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
-                   {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
-                   {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
-                   }
-            }
-          ) 
-
-          {opt {loop {line
-              ,
-              more-table-events
+      stack
+      {line ( TABLE /table-name FOR }
+      {loop
+          {or
+              {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
+              {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
+              {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
           }
+      }
+      {line )
+          {opt
+              {loop
+                  {line , more-table-events }
+              }
           }
-          }
+      }
   }
 
   create-table-ddl {

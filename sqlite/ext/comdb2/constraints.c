@@ -145,7 +145,7 @@ static int systblConstraintsColumn(
 
   switch( i ){
     case STCON_TABLE: {
-      sqlite3_result_text(ctx, pDb->dbname, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
     }
     case STCON_KEY: {

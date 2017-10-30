@@ -16,7 +16,7 @@
 
 #define NODELAY
 #define NOLINGER
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 #define TCPBUFSZ
 #endif
 
@@ -223,9 +223,11 @@ static int net_reads(SBUF2 *sb, char *buf, int nbytes);
 static watchlist_node_type *get_watchlist_node(SBUF2 *, const char *funcname);
 
 int sbuf2ungetc(char c, SBUF2 *sb);
+
+static int net_portmux_hello(void *);
+
 /* We can't change the on-wire protocol easily.  So it
  * retains node numbers, but they're unused for now */
-
 /* type 0 is internal connect message.
    type >0 is for applications */
 typedef struct {
@@ -775,7 +777,7 @@ fprintf(stderr, "[%s] using malloc for %d bytes\n",
     }
 
     if (host_node_ptr->netinfo_ptr->trace && debug_switch_net_verbose())
-        logmsg(LOGMSG_USER, "Queing %d bytes %llu\n", insert->len, gettmms());
+        logmsg(LOGMSG_USER, "Queing %zu bytes %llu\n", insert->len, gettmms());
     host_node_ptr->enque_count++;
     if (host_node_ptr->enque_count > host_node_ptr->peak_enque_count) {
         host_node_ptr->peak_enque_count = host_node_ptr->enque_count;
@@ -1653,11 +1655,11 @@ static void net_throttle_wait_loop(netinfo_type *netinfo_ptr,
         add_millisecs_to_timespec(&waittime, 1000);
 
         if (loops > 0) {
-            logmsg(LOGMSG_ERROR, "%s thread %d waiting for net count to drop"
-                            " to %u enqueued buffers or %llu bytes (%d "
-                            "loops)\n",
-                    __func__, pthread_self(), queue_threshold, byte_threshold,
-                    loops);
+            logmsg(LOGMSG_ERROR, "%s thread %lu waiting for net count to drop"
+                                 " to %u enqueued buffers or %lu bytes (%d "
+                                 "loops)\n",
+                   __func__, pthread_self(), queue_threshold, byte_threshold,
+                   loops);
         }
 
         host_ptr->stats.throttle_waits++;
@@ -2407,11 +2409,11 @@ void print_all_udp_stat(netinfo_type *netinfo_ptr)
         char buf1[256];
 #ifdef UDP_DEBUG
         uint64_t recv = ptr->udp_info.recv;
-        printf("node:%s port:%5d recv:%7llu sent:%7llu %s\n", ptr->host, port,
+        printf("node:%s port:%5d recv:%7llu sent:%7lu %s\n", ptr->host, port,
                recv, sent, print_addr(&sin, buf1));
 #else
-        logmsg(LOGMSG_USER, "node:%s port:%5d sent:%7llu %s\n", ptr->host, port, sent,
-               print_addr(&sin, buf1));
+        logmsg(LOGMSG_USER, "node:%s port:%5d sent:%7lu %s\n", ptr->host, port,
+               sent, print_addr(&sin, buf1));
 #endif
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
@@ -2440,8 +2442,8 @@ void print_node_udp_stat(char *prefix, netinfo_type *netinfo_ptr,
     struct in_addr addr = host_node_ptr->addr;
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
-    logmsg(LOGMSG_USER, "%snode:%s port:%5d recv:%7llu sent:%7llu [%s]\n", prefix, host,
-           port, recv, sent, inet_ntoa(addr));
+    logmsg(LOGMSG_USER, "%snode:%s port:%5d recv:%7lu sent:%7lu [%s]\n", prefix,
+           host, port, recv, sent, inet_ntoa(addr));
 }
 
 ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
@@ -3224,6 +3226,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
         listc_atl(&nets_list, netinfo_node);
         Pthread_mutex_unlock(&nets_list_lk);
     }
+    netinfo_ptr->hellofd = -1;
 
     return netinfo_ptr;
 
@@ -3951,8 +3954,9 @@ int net_send_decom_all(netinfo_type *netinfo_ptr, const char *decom_host)
         rc = net_send_decom(netinfo_ptr, decom_host, nodes[i]);
         if (rc != 0) {
             outrc++;
-            logmsg(LOGMSG_ERROR, "error rc=%d sending decom message to node %d\n",
-                    rc, nodes[i]);
+            logmsg(LOGMSG_ERROR,
+                   "error rc=%d sending decom message to node %s\n", rc,
+                   nodes[i]);
         }
     }
 
@@ -4736,21 +4740,10 @@ static struct hostent *get_dedicated_conhost(host_node_type *host_node_ptr)
 
 int net_get_port_by_service(const char *dbname)
 {
-    int rc;
-    struct servent servval, *serv = NULL;
-    char namebuf[1024];
-#ifdef _LINUX_SOURCE
-    rc = getservbyname_r(dbname, "tcp", &servval, namebuf, sizeof(namebuf),
-                         &serv);
-    if (rc || serv == NULL)
+    struct servent *serv = bb_getservbyname(dbname, "tcp");
+    if (serv == NULL)
         return 0;
     return ntohs(serv->s_port);
-#elif _IBM_SOURCE
-    rc = getservbyname_r(dbname, "tcp", &servval, namebuf);
-    if (rc)
-        return 0;
-    return ntohs(serv->s_port);
-#endif
 }
 
 
@@ -5403,9 +5396,9 @@ static void *connect_and_accept(void *arg)
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
         if (netnum < 0 || netnum >= netinfo_ptr->num_child_nets ||
             netinfo_ptr->child_nets[netnum] == NULL) {
-            logmsg(LOGMSG_ERROR, 
-                    "connect message for netnum %d, not not registered\n",
-                    netnum, netinfo_ptr->num_child_nets);
+            logmsg(LOGMSG_ERROR, "connect message for netnum %d, "
+                                 "num_child_nets %d, not not registered\n",
+                   netnum, netinfo_ptr->num_child_nets);
             Pthread_rwlock_unlock(&(netinfo_ptr->lock));
             return NULL;
         }
@@ -6221,6 +6214,9 @@ int net_init(netinfo_type *netinfo_ptr)
     }
 
     if (netinfo_ptr->accept_on_child || !netinfo_ptr->ischild) {
+        portmux_register_reconnect_callback(net_portmux_hello, netinfo_ptr);
+        net_portmux_hello(netinfo_ptr);
+
         /* create accept thread */
         rc = pthread_create(&(netinfo_ptr->accept_thread_id),
                             &(netinfo_ptr->pthread_attr_detach), accept_thread,
@@ -6251,6 +6247,19 @@ int net_init(netinfo_type *netinfo_ptr)
     usleep(10000);
 
     return 0;
+}
+
+static int net_portmux_hello(void *p)
+{
+    netinfo_type *netinfo_ptr = (netinfo_type *)p;
+    if (netinfo_ptr->hellofd != -1) {
+        close(netinfo_ptr->hellofd);
+        netinfo_ptr->hellofd = -1;
+    }
+    char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];
+    snprintf(register_name, sizeof(register_name), "%s/%s/%s", netinfo_ptr->app,
+             netinfo_ptr->service, netinfo_ptr->instance);
+    return portmux_hello("localhost", register_name, &netinfo_ptr->hellofd);
 }
 
 /* TODO - this looks scary - should lock when traversing list at least?

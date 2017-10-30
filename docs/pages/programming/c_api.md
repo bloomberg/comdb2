@@ -37,8 +37,6 @@ failure before freeing the handle object with [cdb2_close](#cdb2close).
 
 Parameters:
 
-Parameters:
-
 |Name|Type|Description|Notes|
 |-|-|-|-|
 |*hndl*| input/output | pointer to a cdb2 handle | A handle is allocated and a pointer to it is written into *hndl*
@@ -48,11 +46,11 @@ Parameters:
 
 |Flag Value|Description|
 |---|---|
-|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2geteffects)|
+|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2_get_effects)|
 |```CDB2_ROOM``` |  Queries are sent to one of the nodes in the same data center (see section on [comdb2db](clients.html#comdb2db) to see how this is configured) |
 |```CDB2_RANDOMROOM``` |  Queries are sent to one of the randomly selected node of the same data center |
 |```CDB2_RANDOM``` |  Queries are sent to one of the randomly selected node of the same or different data center |
-|```CDB2_DIRECTCPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
+|```CDB2_DIRECT_CPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
 
 
 ### cdb2_close
@@ -365,7 +363,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
 
 Description:
 
-This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). 
+This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). This routine initialize the data members of the ```cdb2_effects_tp``` structure (see below), the address of which is supplied as an argument. Number of rows affected is a sum of number of rows updated, deleted and inserted.
 These values only make sense after COMMIT, since the transaction may get replayed and the values for each individual statements may change.  The replay can be turned off by running ```"SET VERIFYRETRY OFF"```, after which you can call ```cdb2_get_effects``` in the middle of a transaction. 
 For rationale, see the [Comdb2 transaction model](transaction_model.html)
 section.
@@ -376,6 +374,16 @@ Parameters:
 |---|---|---|---|
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
 |*effects*| input | The pointer to effects structure | | 
+
+```c
+typedef struct cdb2_effects_type {
+    int num_affected;
+    int num_selected;
+    int num_updated;
+    int num_deleted;
+    int num_inserted;
+} cdb2_effects_tp;
+```
 
 ### cdb2_clearbindings
 ```

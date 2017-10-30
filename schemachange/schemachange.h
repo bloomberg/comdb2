@@ -330,4 +330,6 @@ void sc_printf(struct schema_change_type *s, const char *fmt, ...);
 void sc_errf(struct schema_change_type *s, const char *fmt, ...);
 int do_dryrun(struct schema_change_type *);
 
+extern int gbl_test_scindex_deadlock;
+
 #endif

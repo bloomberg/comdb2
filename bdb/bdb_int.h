@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <bb_stdint.h>
 #include <compile_time_assert.h>
 
@@ -1009,6 +1009,8 @@ struct bdb_state_tag {
 
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
+
+    int hellofd;
 };
 
 /* define our net user types */

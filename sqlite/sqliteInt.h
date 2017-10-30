@@ -1056,9 +1056,11 @@ typedef struct VtabCtx VtabCtx;
 typedef struct Walker Walker;
 typedef struct WhereInfo WhereInfo;
 typedef struct With With;
+/* COMDB2 MODIFICATION */
 typedef struct Cdb2TrigEvent Cdb2TrigEvent;
 typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
+typedef struct comdb2_ddl_context Cdb2DDL;
 
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and
@@ -1403,7 +1405,6 @@ struct sqlite3 {
   /* COMDB2 MODIFICATION */
   u8 should_fingerprint;
   char fingerprint[16];              /* Figerprint of the last query that was prepared */
-  int force_sqlite_impl;
 };
 
 /*
@@ -3061,7 +3062,7 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)];  /* register which cursors are recording and which not */
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
-  void *comdb2_ddl_ctx;     /* Context for DDL commands */
+  Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
 };
 
 /* COMDB2 MODIFICATION */

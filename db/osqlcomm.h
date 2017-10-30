@@ -72,12 +72,6 @@ int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen);
 int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
                                  int buflen, int rc);
 
-/* Check snap uid request */
-int check_snap_uid_req(char *host, snap_uid_t *snap_info);
-
-/* Check snap uid reply */
-int check_snap_uid_reply(snap_uid_t *snap_info);
-
 /**
  * If "rpl" is a done packet, set xerr to error if any and return 1
  * If "rpl" is a recognizable packet, returns the length of the data type is

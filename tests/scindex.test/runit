@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Grab my database name.
@@ -478,7 +478,7 @@ sleep 2
 echo "Add int index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -498,7 +498,7 @@ sleep 2
 echo "Change int index to <DESCEND>"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -518,7 +518,7 @@ sleep 2
 echo "Change int index back to <ASCEND>"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -538,7 +538,7 @@ sleep 2
 echo "Add partial index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -559,7 +559,7 @@ sleep 2
 echo "Change partial index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -580,7 +580,7 @@ sleep 2
 echo "Change partial index (blob)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -601,7 +601,7 @@ sleep 2
 echo "Drop partial index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -621,7 +621,7 @@ sleep 2
 echo "Add expression index (sum)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -642,7 +642,7 @@ sleep 2
 echo "Add expression index (blob)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -664,7 +664,7 @@ sleep 2
 echo "Add compound expression index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -687,7 +687,7 @@ sleep 2
 echo "Add condition to expression index"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -710,7 +710,7 @@ sleep 2
 echo "Change expression index to <DESCEND>"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -736,7 +736,7 @@ trap "errquit \"Cancelling test on INT EXIT\"" INT EXIT
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
 drop table if exists t1
 create table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes
@@ -759,7 +759,7 @@ gent1insert $maxt1 insert_t1.cfg
 
 # Insert records into t1.k
 echo "Inserting records into t1."
-cdb2sql ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
 
 # Select t1 back.
 echo "Selecting t1."
@@ -793,7 +793,7 @@ do_schemachange
 echo "Drop all indexes"
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
-tag ondisk
+schema
 {
    int  id
    blob b1 null=yes

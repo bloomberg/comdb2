@@ -111,13 +111,13 @@ __dbreg_setup(dbp, name, create_txnid)
 	/* Allocate an FNAME and, if necessary, a buffer for the name itself. */
 	R_LOCK(dbenv, &dblp->reginfo);
 	if ((ret =
-	    __db_shalloc(dblp->reginfo.addr, sizeof(FNAME), 0, &fnp)) != 0)
+	    __os_malloc(dbenv, sizeof(FNAME), &fnp)) != 0)
 		goto err;
 	memset(fnp, 0, sizeof(FNAME));
 	if (name != NULL) {
 		len = strlen(name) + 1;
 		if ((ret =
-		    __db_shalloc(dblp->reginfo.addr, len, 0, &namep)) != 0)
+		    __os_malloc(dbenv, len, &namep)) != 0)
 			goto err;
 		fnp->name_off = R_OFFSET(&dblp->reginfo, namep);
 		memcpy(namep, name, len);
@@ -177,9 +177,9 @@ __dbreg_teardown(dbp)
 
 	R_LOCK(dbenv, &dblp->reginfo);
 	if (fnp->name_off != INVALID_ROFF)
-		__db_shalloc_free(dblp->reginfo.addr,
+		__os_free(dbenv,
 		    R_ADDR(&dblp->reginfo, fnp->name_off));
-	__db_shalloc_free(dblp->reginfo.addr, fnp);
+	__os_free(dbenv, fnp);
 	R_UNLOCK(dbenv, &dblp->reginfo);
 
 	dbp->log_filename = NULL;

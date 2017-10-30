@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Debug variable
@@ -60,7 +60,7 @@ function update_all_records
 
     while :; do 
 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
         let iter=iter+1
 
         if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
@@ -78,7 +78,7 @@ echo "Inserting records."
 
 while [[ $j -lt $nrecs ]]; do 
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c) values ($j,'test1',x'1234')" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c) values ($j,'test1',x'1234')" >/dev/null 2>&1
     let j=j+1
 
 done

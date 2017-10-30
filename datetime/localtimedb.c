@@ -1803,7 +1803,7 @@ static long leapcorr(timep) time_t *timep;
     }
     return 0;
 }
-
+#ifndef __APPLE__
 static time_t time2posix(t) time_t t;
 {
     tz_tzset();
@@ -1839,6 +1839,7 @@ static time_t posix2time(t) time_t t;
     }
     return x;
 }
+#endif
 
 #endif /* defined STD_INSPIRED */
 

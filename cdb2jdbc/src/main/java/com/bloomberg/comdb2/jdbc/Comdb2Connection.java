@@ -203,9 +203,9 @@ public class Comdb2Connection implements Connection {
         SSL_MODE sslmode;
         if ("REQUIRE".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.REQUIRE;
-        else if ("VERIFY-CA".equalsIgnoreCase(mode))
+        else if ("VERIFY_CA".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.VERIFY_CA;
-        else if ("VERIFY-HOSTNAME".equalsIgnoreCase(mode))
+        else if ("VERIFY_HOSTNAME".equalsIgnoreCase(mode))
             sslmode = SSL_MODE.VERIFY_HOSTNAME;
         else
             sslmode = SSL_MODE.ALLOW;

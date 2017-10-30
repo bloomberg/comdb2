@@ -1,0 +1,10 @@
+schema
+{
+    short       i
+    int         j
+}
+
+keys 
+{
+    "PK"=i+j
+}

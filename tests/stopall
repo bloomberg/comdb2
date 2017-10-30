@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 export TESTID=$1
 if [ -z $TESTID ] ; then
     echo "Need testid to kill all tests with this testid"

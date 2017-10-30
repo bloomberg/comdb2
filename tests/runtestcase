@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 

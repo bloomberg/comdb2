@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Dbname
@@ -86,7 +86,7 @@ pidx=0
 j=0
 while [[ $j -lt $adders ]] ; do
 
-    yes "insert into t1(a,b,c) values (1, '2', x'03')" 2>/dev/null | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> insert.out 2>&1 &
+    yes "insert into t1(a,b,c) values (1, '2', x'03')" 2>/dev/null | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >> insert.out 2>&1 &
     bkpid[$pidx]=$!
     let pidx=pidx+1
     let j=j+1
@@ -99,7 +99,7 @@ flushall
 j=0
 while [[ $j -lt $updfor ]] ; do
 
-    yes "update t1 set a = 2 where a = 1 limit 1000" 2>/dev/null | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> update1.out 2>&1 &
+    yes "update t1 set a = 2 where a = 1 limit 1000" 2>/dev/null | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >> update1.out 2>&1 &
     bkpid[$pidx]=$!
     let pidx=pidx+1
     let j=j+1
@@ -112,7 +112,7 @@ flushall
 j=0
 while [[ $j -lt $updbwk ]] ; do
 
-    yes "update t1 set a = 1 where a = 2 limit 1000" 2>/dev/null | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> update2.out 2>&1 &
+    yes "update t1 set a = 1 where a = 2 limit 1000" 2>/dev/null | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - >> update2.out 2>&1 &
     bkpid[$pidx]=$!
     let pidx=pidx+1
     let j=j+1

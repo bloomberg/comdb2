@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 function echo_color()
@@ -68,5 +68,11 @@ do
         #exit $RC
     fi
 done
+
+# cleanup since this was a successful run
+if [[ $RC -eq 0 ]] && [[ $CLEANUPDBDIR != 0 ]] ; then
+    rm -rf $FILEPATH
+fi
+
 
 exit $RC

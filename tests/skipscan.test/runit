@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 bash -n "$0" | exit 1
 
@@ -33,7 +33,7 @@ for i in `seq 1 25` ; do
     for j in `seq 1 200` ; do
         echo "insert into $table (a,b,c) values($i, $j, now())"
     done
-done | cdb2sql ${CDB2_OPTIONS} $dbnm default - > /dev/null
+done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default - > /dev/null
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "analyze $table"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "explain query plan select a from $table where b < 34"

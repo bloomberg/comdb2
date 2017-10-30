@@ -791,11 +791,12 @@ alloc:		/*
 			    is_recovery_page)) != 0)
 			 goto err;
 
-		if (state == SECOND_MISS)
+		if (state == SECOND_MISS) {
 			if (ISINTERNAL(bhp->buf))
 				++mfp->stat.st_cache_imiss;
 			else if (ISLEAF(bhp->buf))
 				++mfp->stat.st_cache_lmiss;
+		}
 	}
 
 	/*

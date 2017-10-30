@@ -53,7 +53,7 @@
 #include <assert.h>
 #include <alloca.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -794,32 +794,6 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
     return ll_key_upd_rowlocks(bdb_state, tran, table_name, oldgenid, genid,
                                key, ixnum, keylen, dta, dtalen);
 }
-
-
-static char hex(unsigned char a)
-{
-    if (a < 10)
-        return '0' + a;
-    return 'a' + (a - 10);
-}
-/* Return a hex string */
-static char *tohex(char *output, char *key, int keylen)
-{
-    int i = 0;
-    char byte[3];
-
-    output[0] = '\0';
-    byte[2] = '\0';
-
-    for (i = 0; i < keylen; i++) {
-        snprintf(byte, sizeof(byte), "%c%c", hex(((unsigned char)key[i]) / 16),
-                 hex(((unsigned char)key[i]) % 16));
-        strcat(output, byte);
-    }
-
-    return output;
-}
-
 
 
 int ll_key_add(bdb_state_type *bdb_state, unsigned long long ingenid,

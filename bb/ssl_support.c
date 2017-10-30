@@ -64,7 +64,7 @@ static pthread_mutex_t *ssl_locks = NULL;
 
 static void ssl_threadid(CRYPTO_THREADID *thd)
 {
-    CRYPTO_THREADID_set_numeric(thd, pthread_self());
+    CRYPTO_THREADID_set_numeric(thd, (intptr_t)pthread_self());
 }
 
 /* For OpenSSL < 1.0.0. */

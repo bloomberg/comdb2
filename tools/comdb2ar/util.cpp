@@ -80,7 +80,7 @@ void listdir_internal(std::list<std::string>& output_list,
     RIIA_DIR dh_guard(dh);
 
     errno = 0;
-    while(ent = readdir(dh)) {
+    while((ent = readdir(dh)) != 0) {
 
         if(std::strcmp(ent->d_name, ".") != 0 &&
                 std::strcmp(ent->d_name, "..") != 0) {
@@ -310,7 +310,7 @@ std::unique_ptr<fdostream> output_file(
 
     int flags = O_WRONLY | O_CREAT | O_TRUNC;
 
-#ifdef __sun
+#if defined(__sun) || defined(__APPLE__)
     int fd = open(filename.c_str(), flags, 0666);
     if(fd == -1) throw Error("Error opening '" + filename + "' for writing");
 #else
@@ -328,6 +328,7 @@ reopen:
             throw Error("Error opening '" + filename + "' for writing");
         }
     }
+#endif
 
     return std::unique_ptr<fdostream>(new fdostream(fd));
 }
@@ -353,4 +354,3 @@ void remove_all_old_files(std::string &datadir) {
     }
 }
 
-#endif

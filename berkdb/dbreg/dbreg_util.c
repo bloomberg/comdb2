@@ -932,8 +932,8 @@ __dbreg_push_id(dbenv, id)
 	/* Check if we have room on the stack. */
 	if (lp->free_fids_alloced <= lp->free_fids + 1) {
 		R_LOCK(dbenv, &dblp->reginfo);
-		if ((ret = __db_shalloc(dblp->reginfo.addr,
-		    (lp->free_fids_alloced + 20) * sizeof(u_int32_t), 0,
+		if ((ret = __os_malloc(dbenv,
+		    (lp->free_fids_alloced + 20) * sizeof(u_int32_t),
 		    &newstack)) != 0) {
 			R_UNLOCK(dbenv, &dblp->reginfo);
 			return (ret);
@@ -945,7 +945,7 @@ __dbreg_push_id(dbenv, id)
 		lp->free_fids_alloced += 20;
 
 		if (stack != NULL)
-			__db_shalloc_free(dblp->reginfo.addr, stack);
+			__os_free(dbenv, stack);
 
 		stack = newstack;
 		R_UNLOCK(dbenv, &dblp->reginfo);

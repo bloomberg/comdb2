@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -e
@@ -109,7 +109,7 @@ update_all_records()
 
     while :; do 
 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" &>/dev/null
         let iter=iter+1
 
         if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
@@ -144,7 +144,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))0000000000000000' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))00000000$j ,$((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -232,15 +232,14 @@ for node in $cluster ; do
     echo "connect with wrong db name"
     set +e
     cdb2sql --tabs ${CDB2_OPTIONS} badname @$node:port=$port "select comdb2_dbname()" &> out.txt
-    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch" > out.exp
+    echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch query:badname actual:$dbnm" > out.exp
     rc=$?
     set -e
 #    TODO: this returns rc=0 even though error and can't run query!!
 #    if [ $rc -eq 0 ]; then
 #        failexit "Expected bad rc when connecting with the wrong db name"
 #    fi
-    egrep "DB name mismatch" out.txt
-    if [ $? -ne 0 ]; then
+    if ! diff out.txt out.exp ; then
         failexit "Expected failure when connecting with the wrong db name"
     fi
 done
@@ -251,6 +250,34 @@ echo "create, alter, drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t2  { `cat alltypes.csc2 ` }"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t2 "
+
+set +e
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2 " &> badsel.txt
+echo "[select * from t2] failed with rc -3 no such table: t2" > badsel.exp
+if ! diff badsel.txt badsel.exp ; then
+    failexit "Expected failure when selecting nonexistent table"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 (i int primary key)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(1)" &> dupins.txt
+echo "[insert into t2 values(1)] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupins.exp
+if ! diff  dupins.txt dupins.exp; then
+    failexit "Expected failure when executing bad procedure"
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values(2)" &> dupins.txt
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set i=1 where i=2" &> dupupd.txt
+echo "[update t2 set i=1 where i=2] failed with rc 299 add key constraint duplicate key 'COMDB2_PK' on table 't2' index 0" > dupupd.exp
+if ! diff  dupupd.txt dupupd.exp; then
+    failexit "Expected failure when executing bad procedure"
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
+echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
+if ! diff badproc.txt badproc.exp ; then
+    failexit "Expected failure when executing bad procedure"
+fi
+set -e
 
 INITNUMREC=100
 
@@ -269,7 +296,11 @@ assertcnt $INITNUMREC
 
 
 echo "Now call task that uses cdb2api to ins/upd/del"
-./cdb2api_caller $dbnm > cdb2api_caller.out
+${TESTSROOTDIR}/tools/cdb2api_caller $dbnm > cdb2api_caller.out
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > select_all.out
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1

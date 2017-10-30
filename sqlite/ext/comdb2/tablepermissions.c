@@ -88,7 +88,7 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   pCur->ppTables = sqlite3_malloc(sizeof(char*) * thedb->num_dbs);
   for(int i=0;i<thedb->num_dbs;++i) {
     // skip sqlite_stat* ?
-    char *tbl = thedb->dbs[i]->dbname;
+    char *tbl = thedb->dbs[i]->tablename;
     int err;
     if( bdb_check_user_tbl_access(NULL, usr, tbl, ACCESS_READ, &err)!=0 ){
       continue;

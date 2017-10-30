@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 #get list of tests in order from longest to shortest test to run
 DEFAULT_TIMEOUT=5

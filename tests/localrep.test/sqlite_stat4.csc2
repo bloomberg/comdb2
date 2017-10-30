@@ -1,4 +1,4 @@
-tag ondisk
+schema
 {
     cstring tbl[64]
     cstring idx[64]
