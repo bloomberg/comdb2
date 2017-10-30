@@ -1,5 +1,5 @@
 /*- * See the file LICENSE for redistribution information.
-    
+
  *
  * Copyright (c) 2001-2003
  *	Sleepycat Software.  All rights reserved.
@@ -71,8 +71,6 @@ extern int gbl_rep_collect_txn_time;
 extern int gbl_rep_process_txn_time;
 int gbl_rep_badgen_trace;
 
-
-
 void hexdump(unsigned char *key, int keylen);
 extern void fsnapf(FILE *, void *, int);
 static int reset_recovery_processor(struct __recovery_processor *rp);
@@ -112,117 +110,117 @@ static inline int wait_for_running_transactions(DB_ENV *dbenv);
 
 int gbl_rep_process_msg_print_rc;
 
-#define PRINT_RETURN(retrc, fromline)  \
-do {                            \
-    static uint32_t lastpr = 0; \
-    static uint32_t count = 0;  \
-    uint32_t now;               \
-    count++;                    \
-    if (gbl_rep_process_msg_print_rc && ((now = time(NULL)) - lastpr)) {         \
-        logmsg(LOGMSG_ERROR, "td %u %s line %d from line %d returning %d, count=%u\n", \
-                (uint32_t)pthread_self(), __func__, __LINE__, fromline, retrc, count);  \
-    }                           \
-    return retrc;               \
-} while(0);
+#define PRINT_RETURN(retrc, fromline)										\
+	do {																	\
+		static uint32_t lastpr = 0;											\
+		static uint32_t count = 0;											\
+		uint32_t now;														\
+		count++;															\
+		if (gbl_rep_process_msg_print_rc && ((now = time(NULL)) - lastpr)) {\
+			logmsg(LOGMSG_ERROR,											\
+				"td %u %s line %d from line %d returning %d, count=%u\n",	\
+				(uint32_t)pthread_self(), __func__, __LINE__, fromline,		\
+				retrc, count);												\
+		}																	\
+		return retrc;														\
+	} while (0);
 
 /* Used to consistently designate which messages ought to be received where. */
 
 #ifdef DIAGNOSTIC
-#define	MASTER_ONLY(rep, rp) do {					\
-	if (!F_ISSET(rep, REP_F_MASTER)) {				\
-		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) \
-        {	\
-			__db_err(dbenv, "Master record received on client"); \
-			__rep_print_message(dbenv,			\
-			    *eidp, rp, "rep_process_message");		\
-		}							\
-		ret = DB_REP_STALEMASTER;						\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-} while (0)
+#define MASTER_ONLY(rep, rp)											 	\
+	do {																 	\
+		if (!F_ISSET(rep, REP_F_MASTER)) {									\
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
+				__db_err(dbenv, "Master record received on client");		\
+				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
+			}															 	\
+			ret = DB_REP_STALEMASTER;										\
+			fromline = __LINE__;										 	\
+			goto errlock;												 	\
+		}																	\
+	} while (0)
 
-#define	CLIENT_ONLY(rep, rp) do {					\
-	if (!F_ISSET(rep, REP_ISCLIENT)) {				\
-		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) \
-        { \
-			__db_err(dbenv, "Client record received on master"); \
-			__rep_print_message(dbenv,			\
-			    *eidp, rp, "rep_process_message");		\
-		}							\
-		(void)__rep_send_message(dbenv,				\
-         db_eid_broadcast, REP_DUPMASTER, NULL, NULL, 0, NULL);	\
-		ret = DB_REP_DUPMASTER;					\
-        fromline = __LINE__;                        \
-		goto errlock;						\ }								\
-} while (0)
+#define CLIENT_ONLY(rep, rp)												\
+	do {																	\
+		if (!F_ISSET(rep, REP_ISCLIENT)) {									\
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {			\
+				__db_err(dbenv, "Client record received on master");		\
+				__rep_print_message(dbenv, *eidp, rp, "rep_process_message");\
+			}																\
+			(void)__rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,\
+									 NULL, NULL, 0, NULL);					\
+			ret = DB_REP_DUPMASTER;											\
+			fromline = __LINE__;											\
+			goto errlock;													\
+																			\
+		}																	\
+	} while (0)
 
-#define	MASTER_CHECK(dbenv, eid, rep)					\
-do {									\
-	if (rep->master_id == db_eid_invalid) {				\
-		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))	\
-			__db_err(dbenv,					\
-			    "Received record from %s, master is INVALID",\
-			    eid);					\
-		ret = 0;						\
-		(void)__rep_send_message(dbenv,				\
-         db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);	\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-	if (eid != rep->master_id) {					\
-        char ip1[16], ip2[16];    \
-		__db_err(dbenv,						\
-		   "Received master record from %d (%s), master is %d (%s)",	\
-                eid \
-                inet_ntoa_r(eid, ip1),  \
-                rep->master_id,      \
-                inet_ntoa_r(rep->master_id, ip2));				\
-		ret = DB_REP_STALEMASTER;						\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-} while (0)
+#define MASTER_CHECK(dbenv, eid, rep)										\
+	do {																	\
+		if (rep->master_id == db_eid_invalid) {								\
+			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))				\
+				__db_err(dbenv, "Received record from %s, master is INVALID",\
+						 eid);												\
+			ret = 0;														\
+			(void)__rep_send_message(dbenv, db_eid_broadcast, REP_MASTER_REQ,\
+									 NULL, NULL, 0, NULL);					\
+			fromline = __LINE__;											\
+			goto errlock;													\
+		}																	\
+		if (eid != rep->master_id) {										\
+			char ip1[16], ip2[16];											\
+			__db_err(dbenv,													\
+					 "Received master record from %d (%s), master is %d (%s)",\
+					 eid inet_ntoa_r(eid, ip1), rep->master_id,				\
+					 inet_ntoa_r(rep->master_id, ip2));						\
+			ret = DB_REP_STALEMASTER;										\
+			fromline = __LINE__;											\
+			goto errlock;													\
+		}																	\
+	} while (0)
 #else
-#define	MASTER_ONLY(rep, rp) do {					\
-	if (!F_ISSET(rep, REP_F_MASTER)) {				\
-        __db_err(dbenv,                 \
-            "Received master-only request on client, master is %s", \
-            rep->master_id);     \
-		ret = DB_REP_STALEMASTER;						\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-} while (0)
+#define MASTER_ONLY(rep, rp)												\
+	do {																	\
+		if (!F_ISSET(rep, REP_F_MASTER)) {									\
+			__db_err(dbenv,													\
+					 "Received master-only request on client, master is %s",\
+					 rep->master_id);										\
+			ret = DB_REP_STALEMASTER;										\
+			fromline = __LINE__;											\
+			goto errlock;													\
+		}																	\
+	} while (0)
 
-#define	CLIENT_ONLY(rep, rp) do {					\
-	if (!F_ISSET(rep, REP_ISCLIENT)) {				\
-		(void)__rep_send_message(dbenv,				\
-         db_eid_broadcast, REP_DUPMASTER, NULL, NULL, 0, NULL);	\
-		ret = DB_REP_DUPMASTER;					\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-} while (0)
+#define CLIENT_ONLY(rep, rp)												\
+	do {																	\
+		if (!F_ISSET(rep, REP_ISCLIENT)) {									\
+			(void)__rep_send_message(dbenv, db_eid_broadcast, REP_DUPMASTER,\
+									 NULL, NULL, 0, NULL);					\
+			ret = DB_REP_DUPMASTER;											\
+			fromline = __LINE__;											\
+			goto errlock;													\
+		}																	\
+	} while (0)
 
-#define	MASTER_CHECK(dbenv, eid, rep)					\
-do {									\
-	if (rep->master_id == db_eid_invalid) {				\
-		ret = 0;						\
-		(void)__rep_send_message(dbenv,				\
-         db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);	\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-	if (eid != rep->master_id) {					\
-		__db_err(dbenv,						\
-		   "Received master record from %s, master is %s",	\
-		   eid, rep->master_id);				\
-		ret = DB_REP_STALEMASTER;						\
-        fromline = __LINE__;                        \
-		goto errlock;						\
-	}								\
-} while (0)
+#define MASTER_CHECK(dbenv, eid, rep)										\
+	do {																	\
+		if (rep->master_id == db_eid_invalid) {								\
+			ret = 0;														\
+			(void)__rep_send_message(dbenv, db_eid_broadcast, REP_MASTER_REQ,\
+									 NULL, NULL, 0, NULL);					\
+			fromline = __LINE__;											\
+			goto errlock;													\
+		}																	\
+		if (eid != rep->master_id) {										\
+			__db_err(dbenv, "Received master record from %s, master is %s",	\
+					 eid, rep->master_id);									\
+			ret = DB_REP_STALEMASTER;										\
+			fromline = __LINE__;											\
+			goto errlock;													\
+		}																	\
+	} while (0)
 #endif
 
 #define	ANYSITE(rep)
@@ -424,21 +422,19 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 
     extern int gbl_verbose_master_req;
 
-    if (gbl_verbose_master_req) {
-        switch (rp->rectype) {
-            case REP_MASTER_REQ:
-                logmsg(LOGMSG_ERROR, "%s processing REP_MASTER_REQ\n", 
-                        __func__);
-                break;
-            case REP_NEWMASTER:
-                logmsg(LOGMSG_ERROR, "%s processing REP_NEWMASTER\n", 
-                        __func__);
-                break;
-            default:
-                break;
-        }
-    }
-
+	if (gbl_verbose_master_req) {
+		switch (rp->rectype) {
+			case REP_MASTER_REQ:
+				logmsg(LOGMSG_ERROR, "%s processing REP_MASTER_REQ\n",
+					__func__);
+				break;
+			case REP_NEWMASTER:
+				logmsg(LOGMSG_ERROR, "%s processing REP_NEWMASTER\n", __func__);
+				break;
+				default: 
+					break;
+		}
+	}
 
 #if defined INSTRUMENT_REP_APPLY
 	rpm_count++;
@@ -496,7 +492,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		    "unexpected replication message version %lu, expected %d",
 		    (u_long)rp->rep_version, DB_REPVERSION);
 		ret = EINVAL;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	}
 	if (rp->log_version != DB_LOGVERSION) {
@@ -504,7 +500,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		    "unexpected log record version %lu, expected %d",
 		    (u_long)rp->log_version, DB_LOGVERSION);
 		ret = EINVAL;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	}
 
@@ -514,21 +510,22 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	 * to get in sync.
 	 */
 	if (rp->gen < gen && rp->rectype != REP_ALIVE_REQ &&
-	    rp->rectype != REP_NEWCLIENT && rp->rectype != REP_MASTER_REQ) {
+		rp->rectype != REP_NEWCLIENT && rp->rectype != REP_MASTER_REQ) {
 		/*
 		 * We don't hold the rep mutex, and could miscount if we race.
 		 */
 		rep->stat.st_msgs_badgen++;
 
-        static u_int32_t lastpr = 0;
-        u_int32_t now;
-        if (gbl_rep_badgen_trace && ((now = time(NULL)) - lastpr)) {
-            logmsg(LOGMSG_ERROR, "Ignoring rp->gen %u from %s mygen is %u, rectype=%u cnt %u\n",
-                    rp->gen, *eidp, gen, rp->rectype, rep->stat.st_msgs_badgen);
-            lastpr = now;
-        }
+		static u_int32_t lastpr = 0;
+		u_int32_t now;
+		if (gbl_rep_badgen_trace && ((now = time(NULL)) - lastpr)) {
+			logmsg(LOGMSG_ERROR, "Ignoring rp->gen %u from %s mygen is %u, "
+				"rectype=%u cnt %u\n", rp->gen, *eidp, gen, rp->rectype, 
+				rep->stat.st_msgs_badgen);
+			lastpr = now;
+		}
 
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	}
 
@@ -537,22 +534,22 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 		 * If I am a master and am out of date with a lower generation
 		 * number, I am in bad shape and should downgrade.
 		 */
-        static u_int32_t lastpr = 0;
-        u_int32_t now;
-        if (gbl_rep_badgen_trace && ((now = time(NULL)) - lastpr)) {
-            logmsg(LOGMSG_ERROR, "rp->gen %u from %s is larger than mygen %u, rectype=%u\n",
-                    rp->gen, *eidp, gen, rp->rectype);
-            lastpr = now;
-        }
+			static u_int32_t lastpr = 0;
+			u_int32_t now;
+			if (gbl_rep_badgen_trace && ((now = time(NULL)) - lastpr)) {
+				logmsg(LOGMSG_ERROR, "rp->gen %u from %s is larger than "
+					"mygen %u, rectype=%u\n", rp->gen, *eidp, gen, rp->rectype);
+				lastpr = now;
+			}
 
 		if (F_ISSET(rep, REP_F_MASTER)) {
 			rep->stat.st_dupmasters++;
 			ret = DB_REP_DUPMASTER;
 			if (rp->rectype != REP_DUPMASTER)
 				(void)__rep_send_message(dbenv,
-				    db_eid_broadcast, REP_DUPMASTER,
-				    NULL, NULL, 0, NULL);
-            fromline = __LINE__;
+					db_eid_broadcast, REP_DUPMASTER,
+					NULL, NULL, 0, NULL);
+			fromline = __LINE__;
 			goto errlock;
 		}
 
@@ -587,7 +584,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 			(void)__rep_send_message(dbenv,
 			    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0,
 			    NULL);
-            fromline = __LINE__;
+			fromline = __LINE__;
 			goto errlock;
 		}
 
@@ -694,7 +691,7 @@ skip:				/*
 					    &lsn, NULL, 0, NULL);
 				}
 			}
-            fromline = __LINE__;
+			fromline = __LINE__;
 			goto errlock;
 		}
 	}
@@ -730,12 +727,12 @@ skip:				/*
 		data_dbt.size = sizeof(egen);
 		(void)__rep_send_message(dbenv,
 		    *eidp, REP_ALIVE, &lsn, &data_dbt, 0, NULL);
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_DUPMASTER:
 		if (F_ISSET(rep, REP_F_MASTER))
 			ret = DB_REP_DUPMASTER;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_ALL_REQ:
 		MASTER_ONLY(rep, rp);
@@ -745,7 +742,7 @@ skip:				/*
 		bytes = rep->bytes;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 		check_limit = gbytes != 0 || bytes != 0;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		/* A confused replicant can send a request
@@ -812,7 +809,7 @@ send:			if (__rep_send_message(dbenv,
 			ret = 0;
 		if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 			ret = t_ret;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 #ifdef NOTYET
 	case REP_FILE:		/* TODO */
@@ -822,7 +819,7 @@ send:			if (__rep_send_message(dbenv,
 	case REP_FILE_REQ:
 		MASTER_ONLY(rep, rp);
 		ret = __rep_send_file(dbenv, rec, *eidp);
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 #endif
 	case REP_LOG:
@@ -830,16 +827,16 @@ send:			if (__rep_send_message(dbenv,
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
 		if (!IN_ELECTION_TALLY(rep)) {
-            fromline = __LINE__;
+			fromline = __LINE__;
 			if ((ret = __rep_apply(dbenv, rp, rec, ret_lsnp,
 								   commit_gen)) != 0)
 				goto errlock;
 		} else {
-            (void)__rep_send_message(dbenv,
-                    db_eid_broadcast, REP_MASTER_REQ, NULL, NULL, 0, NULL);
-                fromline = __LINE__;
-                goto errlock;
-        }
+			(void)__rep_send_message(dbenv, db_eid_broadcast,
+				 	REP_MASTER_REQ, NULL, NULL, 0, NULL);
+			fromline = __LINE__;
+			goto errlock;
+		}
 
 		if (rp->rectype == REP_LOG_MORE) {
 			MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
@@ -864,7 +861,7 @@ send:			if (__rep_send_message(dbenv,
 				master, REP_ALL_REQ, &lsn, NULL, 0, NULL) != 0)
 				break;
 		}
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_LOG_REQ:
 		/* endianize the rec->data lsn */
@@ -897,7 +894,7 @@ send:			if (__rep_send_message(dbenv,
 		 * data dbt.
 		 */
 		lsn = rp->lsn;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		F_SET(logc, DB_LOG_NO_PANIC);
@@ -983,7 +980,7 @@ send:			if (__rep_send_message(dbenv,
 
 		if ((t_ret = __log_c_close(logc)) != 0 && ret == 0)
 			ret = t_ret;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWSITE:
 		/* We don't hold the rep mutex, and may miscount. */
@@ -1002,7 +999,7 @@ send:			if (__rep_send_message(dbenv,
 			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 		}
 		ret = DB_REP_NEWSITE;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWCLIENT:
 		/*
@@ -1031,7 +1028,7 @@ send:			if (__rep_send_message(dbenv,
 
 			(void)__rep_send_message(dbenv,
 			    *eidp, REP_ALIVE, &rp->lsn, &data_dbt, 0, NULL);
-            fromline = __LINE__;
+			fromline = __LINE__;
 			goto errlock;
 		}
 		/* FALLTHROUGH */
@@ -1050,13 +1047,13 @@ send:			if (__rep_send_message(dbenv,
                 /*
 		 * Otherwise, clients just ignore it.
 		 */
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWFILE:
 		CLIENT_ONLY(rep, rp);
 		MASTER_CHECK(dbenv, *eidp, rep);
 		ret = __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen);
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_NEWMASTER:
 		ANYSITE(rep);
@@ -1067,12 +1064,12 @@ send:			if (__rep_send_message(dbenv,
 			(void)__rep_send_message(dbenv,
 			    db_eid_broadcast, REP_DUPMASTER, NULL, NULL, 0,
 			    NULL);
-            fromline = __LINE__;
-			goto errlock;
+				fromline = __LINE__;
+				goto errlock;
 		}
         logmsg(LOGMSG_USER, "Received NEW MASTER from %s\n", *eidp);
 		ret = __rep_new_master(dbenv, rp, *eidp);
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_PAGE:		/* TODO */
 		CLIENT_ONLY(rep, rp);
@@ -1095,7 +1092,7 @@ send:			if (__rep_send_message(dbenv,
 			!IS_ZERO_LSN(lp->verify_lsn)) ||
 		    (!F_ISSET(rep, REP_F_RECOVER) &&
 			IS_ZERO_LSN(lp->verify_lsn)));
-        fromline = __LINE__;
+		fromline = __LINE__;
 		if (IS_ZERO_LSN(lp->verify_lsn))
 			goto errlock;
 
@@ -1103,7 +1100,7 @@ send:			if (__rep_send_message(dbenv,
 		 * fprintf(stderr, "Client got rep_verify response for lsn %d:%d.\n", 
 		 * rp->lsn.file, rp->lsn.offset);
 		 */
-        fromline = __LINE__;
+		fromline = __LINE__;
 		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		memset(&mylog, 0, sizeof(mylog));
@@ -1291,12 +1288,12 @@ verify:
 rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		    ret == 0)
 			ret = t_ret;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_VERIFY_FAIL:
 		rep->stat.st_outdated++;
 		ret = DB_REP_OUTDATED;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_VERIFY_REQ:
 		MASTER_ONLY(rep, rp);
@@ -1307,7 +1304,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 * rp->lsn.file, rp->lsn.offset);
 		 */
 
-        fromline = __LINE__;
+		fromline = __LINE__;
 		if ((ret = __log_cursor(dbenv, &logc)) != 0)
 			goto errlock;
 		d = &data_dbt;
@@ -1342,7 +1339,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		(void)__rep_send_message(dbenv, *eidp, type, &rp->lsn, d, 0,
 		    NULL);
 		ret = __log_c_close(logc);
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	case REP_VOTE1:
 	case REP_GEN_VOTE1:
@@ -1358,7 +1355,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
                     __func__, __LINE__);
 			(void)__rep_send_message(dbenv,
 			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
-            fromline = __LINE__;
+			fromline = __LINE__;
 			goto errlock;
 		}
 
@@ -1549,7 +1546,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
                     __func__, __LINE__);
 			(void)__rep_send_message(dbenv,
 			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
-            fromline = __LINE__;
+			fromline = __LINE__;
 			goto errlock;
 		}
 
@@ -1652,7 +1649,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		    "DB_ENV->rep_process_message: unknown replication message: type %lu",
 		    (u_long)rp->rectype);
 		ret = EINVAL;
-        fromline = __LINE__;
+		fromline = __LINE__;
 		goto errlock;
 	}
 
@@ -1666,7 +1663,7 @@ errlock:
 errunlock:
 	rep->msg_th--;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-	PRINT_RETURN (ret, fromline);
+	PRINT_RETURN(ret, fromline);
 }
 
 /* Disabled by default, can enable in lrl */

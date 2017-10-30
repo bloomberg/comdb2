@@ -1816,8 +1816,7 @@ void *hostdown_thread(void *arg)
     print(bdb_state, "master is %s we are %s\n", master_host,
           bdb_state->repinfo->myhost);
 
-    if (gbl_reset_on_unelectable_cluster)
-    {
+    if (gbl_reset_on_unelectable_cluster) {
         int num_up, num_connected, electable;
 
         print(bdb_state, "xxx master is %d we are %d\n", master_host,
@@ -3085,8 +3084,9 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                                                    nodelist[i], 1000, __LINE__);
 
             if (bdb_lock_desired(bdb_state)) {
-                logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n",
-                        __func__, __LINE__);
+                logmsg(LOGMSG_ERROR,
+                       "%s line %d early exit because lock-is-desired\n",
+                       __func__, __LINE__);
                 return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
             }
 
@@ -3160,8 +3160,9 @@ got_ack:
                                                waitms, __LINE__);
 
         if (bdb_lock_desired(bdb_state)) {
-            logmsg(LOGMSG_ERROR, "%s line %d early exit because lock-is-desired\n",
-                    __func__, __LINE__);
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d early exit because lock-is-desired\n", __func__,
+                   __LINE__);
 
             return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
         }
@@ -3774,8 +3775,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
             bdb_setmaster(bdb_state, host);
 
         if (gbl_dump_zero_coherency_timestamp) {
-            logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n", 
-                    __func__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n",
+                   __func__, __LINE__);
         }
         coherency_timestamp = 0;
         break;
@@ -3976,7 +3977,8 @@ uint8_t *colease_type_put(const colease_t *p_colease_type, uint8_t *p_buf,
     return p_buf;
 }
 
-uint64_t get_coherency_timestamp(void) { 
+uint64_t get_coherency_timestamp(void)
+{
     uint64_t x = coherency_timestamp;
     if (x == 0) {
         static uint32_t lastpr;
@@ -3984,13 +3986,15 @@ uint64_t get_coherency_timestamp(void) {
         uint32_t now;
 
         zero_ts_count++;
-        if (gbl_dump_zero_coherency_timestamp && ((now = time(NULL)) - lastpr)) {
-            logmsg(LOGMSG_ERROR, "%s returning 0 coherency_timestamp, count=%u\n", 
-                    __func__, zero_ts_count);
+        if (gbl_dump_zero_coherency_timestamp &&
+            ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s returning 0 coherency_timestamp, count=%u\n", __func__,
+                   zero_ts_count);
             lastpr = now;
         }
     }
-    return x; 
+    return x;
 }
 
 typedef struct start_lsn_response {
