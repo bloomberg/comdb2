@@ -904,7 +904,8 @@ __rep_elect(dbenv, nsites, priority, timeout, eidp)
 	rep = db_rep->region;
 	dblp = dbenv->lg_handle;
 
-	if (use_committed_gen == dbenv->attr.elect_highest_committed_gen) {
+	/* This sets 'use_committed_gen' and feature-tests simultaneously */
+	if ((use_committed_gen = dbenv->attr.elect_highest_committed_gen)) {
 		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 		lsn = rep->committed_lsn;
 		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
@@ -991,12 +992,17 @@ restart:
 	committed_gen = rep->committed_gen;
 	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
-	if (use_committed_gen)
+	if (use_committed_gen) {
+		logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE1 from %s with committed-gen=%d\n",
+			__func__, __LINE__, *eidp, committed_gen);
 		__rep_send_gen_vote(dbenv, &lsn, nsites, priority, tiebreaker,
-		    egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
-	else
+			egen, committed_gen, db_eid_broadcast, REP_GEN_VOTE1);
+	} else {
+		logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE1 from %s (committed-gen=0)\n",
+			__func__, __LINE__, *eidp);
 		__rep_send_vote(dbenv, &lsn, nsites, priority, tiebreaker, egen,
-		    db_eid_broadcast, REP_VOTE1);
+			db_eid_broadcast, REP_VOTE1);
+	}
 
 	ret = __rep_wait(dbenv, timeout, eidp, REP_F_EPHASE1);
 	switch (ret) {
@@ -1081,14 +1087,18 @@ restart:
 			    send_vote != rep->eid)
 				__db_err(dbenv, "Sending vote");
 #endif
-			if (use_committed_gen)
+			if (use_committed_gen) {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 from %s "
+						"with committed-gen=%d\n", __func__, __LINE__, *eidp,
+						committed_gen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
-				    committed_gen, send_vote, REP_GEN_VOTE2);
-
-			else
+					committed_gen, send_vote, REP_GEN_VOTE2);
+			} else {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 from %s "
+						"(committed-gen=0)\n", __func__, __LINE__, *eidp);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
-				    send_vote, REP_VOTE2);
-
+					send_vote, REP_VOTE2);
+			}
 		}
 phase2:
 		ret = __rep_wait(dbenv, timeout, eidp, REP_F_EPHASE2);

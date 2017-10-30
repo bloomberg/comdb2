@@ -1368,6 +1368,9 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vi->nsites;
 			vi_priority = vi->priority;
 			vi_tiebreaker = vi->tiebreaker;
+			logmsg(LOGMSG_USER, "%s line %d processed REP_VOTE1 from %s "
+					"(Setting write-gen to 0)\n", 
+					__func__, __LINE__, *eidp);
 		} else {
 			vig = (REP_GEN_VOTE_INFO *) rec->data;
 			if (LOG_SWAPPED())
@@ -1377,6 +1380,9 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			vi_nsites = vig->nsites;
 			vi_priority = vig->priority;
 			vi_tiebreaker = vig->tiebreaker;
+			logmsg(LOGMSG_USER, "%s line %d processed REP_GEN_VOTE1 from %s "
+					"(Setting write-gen to %d)\n",
+					__func__, __LINE__, *eidp, vig->last_write_gen);
 		}
 
 
@@ -1391,8 +1397,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv,
-				    "Received old vote %lu, egen %lu, ignoring vote1",
-				    (u_long) vi_egen, (u_long) rep->egen);
+					"Received old vote %lu, egen %lu, ignoring vote1",
+					(u_long) vi_egen, (u_long) rep->egen);
 #endif
 			goto errunlock;
 		}
@@ -1400,8 +1406,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv,
-				    "Received VOTE1 from egen %lu, my egen %lu; reset",
-				    (u_long) vi_egen, (u_long) rep->egen);
+					"Received VOTE1 from egen %lu, my egen %lu; reset",
+					(u_long) vi_egen, (u_long) rep->egen);
 #endif
 			__rep_elect_done(dbenv, rep);
 			rep->egen = vi_egen;
@@ -1420,11 +1426,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		if (rep->sites + 1 > rep->nsites)
 			rep->nsites = rep->sites + 1;
 		if (rep->nsites > rep->asites &&
-		    (ret = __rep_grow_sites(dbenv, rep->nsites)) != 0) {
+			(ret = __rep_grow_sites(dbenv, rep->nsites)) != 0) {
 #ifdef DIAGNOSTIC
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 				__db_err(dbenv,
-				    "Grow sites returned error %d", ret);
+					"Grow sites returned error %d", ret);
 #endif
 			goto errunlock;
 		}
@@ -1504,7 +1510,7 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION)) {
 				__db_err(dbenv, "Phase1 election done");
 				__db_err(dbenv, "Voting for %s%s",
-				    master, master == rep->eid ? "(self)" : "");
+					master, master == rep->eid ? "(self)" : "");
 			}
 #endif
 			egen = rep->egen;
@@ -1513,18 +1519,25 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 			F_CLR(rep, REP_F_EPHASE1);
 			if (master == rep->eid) {
 				(void)__rep_tally(dbenv, rep, rep->eid,
-				    &rep->votes, egen, rep->v2tally_off);
+					&rep->votes, egen, rep->v2tally_off);
 				goto errunlock;
 			}
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
 			/* Vote for someone else. */
-			if (dbenv->attr.elect_highest_committed_gen)
+			if (dbenv->attr.elect_highest_committed_gen) {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_GEN_VOTE2 from %s "
+						"with committed-gen=%d\n",
+						__func__, __LINE__, *eidp, committed_gen);
 				__rep_send_gen_vote(dbenv, NULL, 0, 0, 0, egen,
-				    committed_gen, master, REP_VOTE2);
-			else
+					committed_gen, master, REP_VOTE2);
+			} else {
+				logmsg(LOGMSG_USER, "%s line %d sending REP_VOTE2 from %s "
+						"(committed-gen=0)\n",
+						__func__, __LINE__, *eidp);
 				__rep_send_vote(dbenv, NULL, 0, 0, 0, egen,
-				    master, REP_VOTE2);
+					master, REP_VOTE2);
+			}
 		} else
 			MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
 
@@ -1535,17 +1548,17 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 #ifdef DIAGNOSTIC
 		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
 			__db_err(dbenv, "We received a vote%s",
-			    F_ISSET(rep, REP_F_MASTER) ? " (master)" : "");
+			F_ISSET(rep, REP_F_MASTER) ? " (master)" : "");
 #endif
 		if (F_ISSET(rep, REP_F_MASTER)) {
 			R_LOCK(dbenv, &dblp->reginfo);
 			lsn = lp->lsn;
 			R_UNLOCK(dbenv, &dblp->reginfo);
 			rep->stat.st_elections_won++;
-            logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
-                    __func__, __LINE__);
+			logmsg(LOGMSG_USER, "%s line %d sending REP_NEWMASTER\n", 
+					__func__, __LINE__);
 			(void)__rep_send_message(dbenv,
-			    *eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
+				*eidp, REP_NEWMASTER, &lsn, NULL, 0, NULL);
 			fromline = __LINE__;
 			goto errlock;
 		}
@@ -1646,8 +1659,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 
 	default:
 		__db_err(dbenv,
-		    "DB_ENV->rep_process_message: unknown replication message: type %lu",
-		    (u_long)rp->rectype);
+			"DB_ENV->rep_process_message: unknown replication message: type %lu",
+			(u_long)rp->rectype);
 		ret = EINVAL;
 		fromline = __LINE__;
 		goto errlock;
