@@ -7,8 +7,7 @@ email="mhannum72@gmail.com"
 #tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
 #tests="jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
 #tests="jepsen_atomic_writes"
-tests="jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets"
-#tests="jepsen_atomic_writes"
+tests="jepsen_atomic_writes jepsen_a6_nemesis jepsen_a6 jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_g2 jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets"
 
 # mailperiod=86400
 mailperiod=7200
@@ -25,7 +24,7 @@ export nomemory=0
 export noconn=0
 export sshfail=0
 export goodtests=0
-export test_linger=$(( 60 * 12 ))
+export test_linger=$(( 60 * 2 ))
 
 function print_status
 {
@@ -51,6 +50,10 @@ while :; do
 
         export out=test_$x_$(date '+%Y%m%d%H%M%S')
         make $x > $out ; r=$? 
+
+        for m in $CLUSTER; do ssh $m 'sudo iptables -F -w; sudo iptables -X -w';  done
+        for m in $CLUSTER; do ssh $m 'killall -s 9 comdb2';  done
+
         looktest=1
         cat $out 
         egrep "setup failed" $out 
