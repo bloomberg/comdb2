@@ -2905,7 +2905,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     /* fudge around my lockless access to gbl_master_changes */
     MEMORY_SYNC;
 
-    osql_checkboard_check_master_changed(dbenv->master);
+    osql_checkboard_for_each(dbenv->master, osql_checkboard_master_changed);
 
     /* inform watcher that we have a new master !*/
     if(trigger_timepart)

@@ -4140,24 +4140,34 @@ static int create_reader_writer_threads(host_node_type *host_node_ptr,
     return 0;
 }
 
-
-static void shutdown_other_hostnodes(host_node_type *host_node_ptr)
+void kill_subnet(char *subnet)
 {
-    char *hostname = host_node_ptr->host;
     host_node_type *ptr;
+    int len = strlen(subnet) + 1;
     netinfo_node_t *curpos, *tmppos;
+
     Pthread_mutex_lock(&nets_list_lk);
     LISTC_FOR_EACH_SAFE(&nets_list, curpos, tmppos, lnk)
     {
-        ptr = get_host_node_by_name_ll(curpos->netinfo_ptr, hostname);
-        if (ptr && (ptr != host_node_ptr) && !ptr->closed) {
-            logmsg(LOGMSG_INFO, "Shutting down socket for %s\n", ptr->host);
-            shutdown_hostnode_socket(ptr);
+        netinfo_type *netinfo_ptr = curpos->netinfo_ptr;
+        ptr = netinfo_ptr->head;
+
+        while (ptr != NULL) {
+            if (!strncmp(ptr->subnet, subnet, len)) {
+                if (!ptr->closed) {
+                    logmsg(LOGMSG_INFO, "Shutting down socket for %s %s\n",
+                           ptr->host, ptr->netinfo_ptr->service);
+                    shutdown_hostnode_socket(ptr);
+                } else {
+                    logmsg(LOGMSG_INFO, "Already closed socket for %s %s\n",
+                           ptr->host, ptr->netinfo_ptr->service);
+                }
+            }
+            ptr = ptr->next;
         }
     }
     Pthread_mutex_unlock(&nets_list_lk);
 }
-
 
 static void *writer_thread(void *args)
 {
@@ -4341,12 +4351,6 @@ done:
     host_node_ptr->have_writer_thread = 0;
     if (gbl_verbose_net)
         host_node_printf(LOGMSG_DEBUG, host_node_ptr, "%s exiting\n", __func__);
-    /* Check if failure is not during connection setup. */
-    if (((time_epoch() - th_start_time) > netinfo_ptr->heartbeat_check_time) &&
-        !host_node_ptr->closed) {
-        /* Close other sockets related to this hostname */
-        shutdown_other_hostnodes(host_node_ptr);
-    }
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
@@ -4627,12 +4631,6 @@ done:
     host_node_ptr->have_reader_thread = 0;
     if (gbl_verbose_net)
         host_node_printf(LOGMSG_INFO, host_node_ptr, "%s exiting\n", __func__);
-    /* Check if failure is not during connection setup. */
-    if (((time_epoch() - th_start_time) > netinfo_ptr->heartbeat_check_time) &&
-        !host_node_ptr->closed) {
-        /* Close other sockets related to this hostname */
-        shutdown_other_hostnodes(host_node_ptr);
-    }
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
@@ -5204,6 +5202,32 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
     return 0;
 }
 
+static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
+{
+    struct sockaddr_in lcl_addr_inet;
+    int lcl_len = sizeof(lcl_addr_inet);
+    struct hostent *he;
+    int hlen;
+    char *subnet;
+
+    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet, &lcl_len)) {
+        he = gethostbyaddr(&lcl_addr_inet.sin_addr,
+                           sizeof lcl_addr_inet.sin_addr, AF_INET);
+        /*if (gbl_verbose_net)*/
+        fprintf(stderr, "Incoming connection from name: %s (%s:%u)\n",
+                (he && he->h_name) ? he->h_name : "unknown",
+                inet_ntoa(lcl_addr_inet.sin_addr),
+                (unsigned)ntohs(lcl_addr_inet.sin_port));
+    }
+
+    hlen = strlen(host_node_ptr->netinfo_ptr->myhostname);
+    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, he->h_name, hlen) ==
+        0) {
+        subnet = &he->h_name[hlen];
+        if (subnet[0])
+            strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
+    }
+}
 
 static void accept_handle_new_host(netinfo_type *netinfo_ptr,
                                    const char *hostname, int portnum,
@@ -5352,6 +5376,8 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     host_node_ptr->fd = new_fd;
     host_node_ptr->sb = sb;
     Pthread_mutex_unlock(&(host_node_ptr->write_lock));
+
+    get_subnet_incomming_syn(host_node_ptr);
 
     if (gbl_verbose_net)
         host_node_errf(LOGMSG_USER, host_node_ptr, "%s: accepting connection on new_fd %d\n",
