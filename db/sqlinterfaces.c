@@ -7656,13 +7656,13 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->verifyretry_off = 1;
                 }
-            } else if (strncasecmp(sqlstr, "queryeffects", 6) == 0) {
+            } else if (strncasecmp(sqlstr, "queryeffects", 12) == 0) {
                 sqlstr += 12;
                 sqlstr = cdb2_skipws(sqlstr);
                 if (strncasecmp(sqlstr, "statement", 9) == 0) {
                     clnt->statement_query_effects = 1;
                 }
-                if (strncasecmp(sqlstr, "transaction", 9) == 0) {
+                if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                     clnt->statement_query_effects = 0;
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
