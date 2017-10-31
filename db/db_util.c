@@ -596,7 +596,8 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
 
 static inline char hex(unsigned char a)
 {
-    if (a < 10) return '0' + a;
+    if (a < 10)
+        return '0' + a;
     return 'a' + (a - 10);
 }
 

@@ -316,7 +316,8 @@ int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
 #ifdef _LINUX_SOURCE
     struct dirent *rv;
     *dent = rv = readdir(d);
-    if (rv == NULL) return errno;
+    if (rv == NULL)
+        return errno;
     /* rv->d_reclen is the actual size of rv.
        It may not match sizeof(struct dirent). */
     memcpy(buf, rv, rv->d_reclen);
