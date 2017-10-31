@@ -497,6 +497,14 @@ static int convert_record(struct convert_record_data *data)
                 data->s->retry_bad_genids = 1;
                 return -1;
             }
+            if (gbl_rowlocks) {
+                rc = bdb_trylock_row_write(data->from->handle, data->trans,
+                                           genid);
+                if (rc) {
+                    rc = RC_INTERNAL_RETRY;
+                    goto err;
+                }
+            }
         } else if (rc == 1) {
             /* we have finished all the records in our stripe
              * set pointer to -1 so all insert/update/deletes will be

@@ -742,6 +742,24 @@ int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
                                      key, dblk, lkname);
 }
 
+int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
+                       unsigned long long genid)
+{
+    DB_LOCK dblk;
+
+    return bdb_lock_row_fromlid_int(bdb_state, resolve_locker_id(tran), -1,
+                                    genid, BDB_LOCK_WRITE, &dblk, NULL, 0, 0);
+}
+
+int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
+                          unsigned long long genid)
+{
+    DB_LOCK dblk;
+
+    return bdb_lock_row_fromlid_int(bdb_state, resolve_locker_id(tran), -1,
+                                    genid, BDB_LOCK_WRITE, &dblk, NULL, 1, 0);
+}
+
 int bdb_lock_row_write_getlock(bdb_state_type *bdb_state, tran_type *tran,
                                int idx, unsigned long long genid, DB_LOCK *dblk,
                                DBT *lkname)

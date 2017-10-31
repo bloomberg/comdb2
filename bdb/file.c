@@ -6246,7 +6246,7 @@ int bdb_reinit(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     return rc;
 }
 
-int bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
+void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid);
 
 /* Pass in mangled file name, this will delete it. */
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,

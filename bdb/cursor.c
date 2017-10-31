@@ -3329,8 +3329,11 @@ static int bdb_remove_logfile_fileid_pglogs(bdb_state_type *bdb_state,
     return 0;
 }
 
-int bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid)
+void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid)
 {
+    if (!gbl_new_snapisol)
+        return;
+
     bdb_remove_fileid_pglogs_queue(bdb_state, fileid);
     bdb_remove_logfile_fileid_pglogs(bdb_state, fileid);
 }

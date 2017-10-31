@@ -255,10 +255,31 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *logical_tran,
     int max_poll = bdb_state->attr->pagedeadlock_maxpoll;
     tran_type *physical_tran = NULL;
 
+    DBT *addlkptr = NULL;
+    DB_LOCK *addrowlk = NULL;
+
     /* Start transaction */
     rc = get_physical_transaction(bdb_state, logical_tran, &physical_tran);
     if (rc)
         goto done;
+
+    if (dtafile == 0) {
+        rc = tran_allocate_rlptr(logical_tran, &addlkptr, &addrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
+
+        rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, genid,
+                                        addrowlk, addlkptr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row write genid %llx rc %d\n", __func__,
+                   genid, rc);
+            goto done;
+        }
+    }
 
     micro_retry = micro_retry_check(bdb_state, logical_tran);
 
@@ -331,13 +352,21 @@ int phys_dta_del(bdb_state_type *bdb_state, tran_type *logical_tran, int rrn,
         goto done;
 
     if (dtafile == 0) {
-    reallocate:
         rc = tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
 
         rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, genid,
                                         delrowlk, dellkptr);
-        if (rc)
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row write genid %llx rc %d\n", __func__,
+                   genid, rc);
             goto done;
+        }
     }
 
     micro_retry = micro_retry_check(bdb_state, logical_tran);
@@ -419,14 +448,22 @@ int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
         goto done;
 
     if (dtafile == 0) {
-    reallocate:
         rc = tran_allocate_rlptr(logical_tran, &oldlkptr, &oldrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
 
         /* Get old-rowlock */
         rc = bdb_lock_row_write_getlock(bdb_state, logical_tran, -1, oldgenid,
                                         oldrowlk, oldlkptr);
-        if (rc)
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s failed to lock row write genid %llx rc %d\n", __func__,
+                   oldgenid, rc);
             goto done;
+        }
     }
 
     /*
@@ -519,6 +556,11 @@ int phys_key_add(bdb_state_type *bdb_state, tran_type *logical_tran,
      * delete */
     if (!bdb_state->ixdups[ixnum]) {
         tran_allocate_rlptr(logical_tran, &newlkptr, &newrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
         rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, dbt_key,
                                      newrowlk, newlkptr);
         if (rc) {
@@ -612,7 +654,12 @@ int phys_key_del(bdb_state_type *bdb_state, tran_type *logical_tran,
     /* Master-only locks unique ix values to prevent colliding inserts from
      * making this delete un-abortable */
     if (!bdb_state->ixdups[ixnum]) {
-        tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+        rc = tran_allocate_rlptr(logical_tran, &dellkptr, &delrowlk);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to allocate rlptr rc %d\n",
+                   __func__, rc);
+            goto done;
+        }
         rc = bdb_lock_ix_value_write(bdb_state, logical_tran, ixnum, key,
                                      delrowlk, dellkptr);
         if (rc)
