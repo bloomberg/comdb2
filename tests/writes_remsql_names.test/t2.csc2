@@ -1,0 +1,10 @@
+tag ondisk
+{
+   int a
+   int b
+   int c
+}
+keys
+{
+   "a"  = a
+}
