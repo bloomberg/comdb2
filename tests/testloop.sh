@@ -3,7 +3,8 @@
 debug=1
 [[ "$debug" == "1" ]] && set -x
 
-export CORE_ON_TIMEOUT=1
+#export CORE_ON_TIMEOUT=1
+export NOKILL_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
 #tests="cinsert_linearizable jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
 #tests="jdbc_insert_linearizable jepsen_bank_nemesis jepsen_bank jepsen_dirty_reads jepsen_register_nemesis jepsen_register jepsen_sets_nemesis jepsen_sets register_linearizable"
