@@ -70,6 +70,7 @@ if [[ $rc -eq 0 ]]; then
 elif [[ $rc -eq 124 ]]; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
+    successful=-1
 else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log

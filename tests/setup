@@ -281,7 +281,7 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl 2>&1 | tee $TESTDIR/${DBNAME}.db"
+    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally

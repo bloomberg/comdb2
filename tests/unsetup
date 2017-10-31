@@ -9,6 +9,7 @@ echo "!$TESTCASE: stopping"
 [ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
 
 successful=$1
+create_core=0
 
 function kill_by_pidfile() {
     pidfile=$1
@@ -45,6 +46,16 @@ function build_pidfilelist() {
     fi
 }
 
+function core_cluster {
+    for node in $CLUSTER; do
+        if [ $node != `hostname` ] ; then
+            ssh -o StrictHostKeyChecking=no $node "kill -6 \$(cat ${TMPDIR}/${DBNAME}.pid)" </dev/null
+        else
+            kill -6 $(cat ${TMPDIR}/${DBNAME}.$node.pid)
+        fi
+    done
+}
+
 function cleanup_cluster {    
     for node in $CLUSTER; do
         if [ $node != `hostname` ] ; then
@@ -58,7 +69,6 @@ function cleanup_cluster {
     done
 }
 
-
 pmux_port=5105
 if [ -n "$PMUXPORT" ] ; then
     pmux_port=$PMUXPORT
@@ -71,10 +81,19 @@ if [[ -z "$CLUSTER" ]]; then
     cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
     sleep 1
     
+    if [[ "$CORE_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
+        kill -6 $(cat ${TMPDIR}/${DBNAME}.pid)
+    fi
+
     kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
 
 else
     pidfilelist=""
+
+    if [[ "$CORE_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
+        core_cluster
+    fi
+
     for node in $CLUSTER; do
         cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
         sleep 1
