@@ -58,7 +58,7 @@ struct shad_tbl {
 
     unsigned long long seq; /* used to generate uniq row ids */
     struct dbenv *env;
-    char *tablename;
+    char tablename[MAXTABLELEN];
     int tableversion;
     int nix;
     int ix_expr;

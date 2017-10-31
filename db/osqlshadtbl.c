@@ -418,7 +418,7 @@ static shad_tbl_t *create_shadtbl(struct BtCursor *pCur,
 
     tbl->seq = 0;
     tbl->env = env;
-    tbl->tablename = strdup(db->tablename);
+    strncpy(tbl->tablename, db->tablename, sizeof(tbl->tablename));
     tbl->tableversion = db->tableversion;
     tbl->nix = db->nix;
     tbl->ix_expr = db->ix_expr;
