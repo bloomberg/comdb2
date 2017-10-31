@@ -351,7 +351,8 @@ static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     if (!logger->path || logger->path->n_components == 0) return;
 
@@ -378,7 +379,8 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 
 static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
     bool isSqlErr = logger->error && logger->stmt;
@@ -469,7 +471,8 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) return;
+    if (eventlog == NULL || !eventlog_enabled)
+        return;
 
     int sz = 0;
     char *fname;

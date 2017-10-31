@@ -5353,17 +5353,17 @@ static char* sqlite3ExprDescribe_inner(
     case TK_BEFORE:
     case TK_BY:
     case TK_CASCADE: {
-        break;
+      break;
     }
     case TK_CAST: {
-        char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
-        if (!left) return NULL;
+      char *left = sqlite3ExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+      if (!left) return NULL;
 
-        char *ret = sqlite3_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
+      char *ret = sqlite3_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
+        
+      sqlite3DbFree(v->db, left);
 
-        sqlite3DbFree(v->db, left);
-
-        return ret;
+      return ret;
     }
     case TK_COLUMNKW:
     case TK_CONFLICT:
@@ -5395,7 +5395,7 @@ static char* sqlite3ExprDescribe_inner(
     case TK_RENAME:
     case TK_CTIME_KW:
     case TK_ANY: {
-        break;
+      break;
     }
     case TK_OR:
     case TK_AND:

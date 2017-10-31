@@ -669,7 +669,8 @@ static inline int verify_sqlresponse_error_code(int error_code,
     case CDB2__ERROR_CODE__DUPLICATE:
     case CDB2__ERROR_CODE__TZNAME_FAIL:
     case CDB2__ERROR_CODE__CHANGENODE:
-    case CDB2__ERROR_CODE__UNKNOWN: break;
+    case CDB2__ERROR_CODE__UNKNOWN: 
+        break;
 
     default:
         logmsg(LOGMSG_ERROR, "%s line %d returning non-standard "

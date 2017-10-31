@@ -2357,7 +2357,8 @@ int timepart_foreach_shard(const char *view_name,
         arg->nshards = view->nshards;
     }
     for (i = first_shard; i < view->nshards; i++) {
-        if (arg) arg->indx = i;
+        if (arg)
+            arg->indx = i;
         rc = func(view->shards[i].tblname, arg);
         if (rc) {
             break;
@@ -2562,7 +2563,8 @@ int timepart_resume_schemachange(int check_llmeta(const char *))
     for (i = 0; i < views->nviews; i++) {
         view = views->views[i];
         rc = check_llmeta(view->name);
-        if (rc) break;
+        if (rc)
+            break;
     }
 
     pthread_mutex_unlock(&views_mtx);
@@ -2591,10 +2593,12 @@ int timepart_schemachange_get_shard_in_progress(const char *view_name,
     if (view) {
         for (i = 0; i < view->nshards; i++) {
             rc = check_llmeta(view->shards[i].tblname);
-            if (rc) break;
+            if (rc)
+                break;
         }
     }
-    if (rc == 1) rc = i;
+    if (rc == 1)
+        rc = i;
 
     pthread_mutex_unlock(&views_mtx);
 
@@ -2614,7 +2618,8 @@ static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
         version = comdb2_table_version(view->shards[1].tblname);
 
         rc = table_version_set(tran, view->shards[0].tblname, version);
-        if (rc) rc = VIEW_ERR_LLMETA;
+        if (rc)
+            rc = VIEW_ERR_LLMETA;
     }
 
     return rc;

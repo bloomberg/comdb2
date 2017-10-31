@@ -986,7 +986,8 @@ clone_schemachange_type(struct schema_change_type *sc)
     uint8_t *p_buf, *p_buf_end, *buf;
 
     p_buf = buf = calloc(1, sc_len);
-    if (!p_buf) return NULL;
+    if (!p_buf)
+        return NULL;
 
     p_buf_end = p_buf + sc_len;
 

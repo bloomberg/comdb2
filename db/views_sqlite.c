@@ -37,7 +37,8 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
     int rc;
     int i;
 
-    if (lock) pthread_mutex_lock(&views_mtx);
+    if (lock)
+        pthread_mutex_lock(&views_mtx);
 
     /* look at the in-memory views and check sqlite views */
     for (i = 0; i < views->nviews; i++) {
@@ -85,7 +86,8 @@ int views_sqlite_update(timepart_views_t *views, sqlite3 *db,
     rc = VIEW_NOERR;
 
 done:
-    if (lock) pthread_mutex_unlock(&views_mtx);
+    if (lock)
+        pthread_mutex_unlock(&views_mtx);
 
     return rc;
 }
