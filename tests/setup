@@ -47,6 +47,18 @@ if [[ -n ${DEBUGGER} ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
+    drd)
+        DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
+    helgrind)
+        DEBUG_PREFIX="valgrind --tool=helgrind "
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
     perf)
         DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
         INTERACTIVE_DEBUG=0
