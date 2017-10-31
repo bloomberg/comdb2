@@ -2463,4 +2463,11 @@ REGISTER_TUNABLE("noleader_retry_poll_ms",
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("cdb2api_policy_override", "Use this policy override with cdb2api. (Default: none)",
                 TUNABLE_STRING, &gbl_cdb2api_policy_override, 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("oldest_transaction_alarm_threshold", "Complain if a transaction older than this is still alive (Default: 120 seconds).",
+                 TUNABLE_INTEGER, &gbl_oldest_transaction_alarm_threshold,
+                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("oldest_transaction_alarm_freq", "Complain if an old transaction exists, at most this often " "(Default: 600 seconds).",
+                 TUNABLE_INTEGER, &gbl_oldest_transaction_alarm_freq, 0, NULL,
+                 NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

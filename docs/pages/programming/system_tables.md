@@ -7,6 +7,16 @@ permalink: system_tables.html
 
 ## comdb2_active_osqls
 
+Lists active transactions.  Mostly only meaningful on the master.
+
+    comdb2_active_transactions(tid, age, lsn)
+
+* `tid` - Transaction id. Can join against `comdb2_locks.lockerid` to get additional useful information like locks acquired and thread
+* `age` - Transaction age in seconds.  Comdb2 transactions are usually short-lived - they start executing on client `COMMIT`.
+* `lsn` - Transaction's start LSN.
+
+## comdb2_active_osqls
+
 Information about OSQL requests in the database.
 
     comdb2_active_osqls(type, origin, argv0, where, cnonce, request_id, nops,

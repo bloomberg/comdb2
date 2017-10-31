@@ -222,6 +222,7 @@
 (candidate='ZLIB')
 (candidate='main')
 (candidate='comdb2_active_osqls')
+(candidate='comdb2_active_transactions')
 (candidate='comdb2_appsock_handlers')
 (candidate='comdb2_blkseq')
 (candidate='comdb2_clientstats')

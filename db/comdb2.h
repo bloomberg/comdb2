@@ -3660,4 +3660,7 @@ void csc2_allow_bools(void);
 void csc2_disallow_bools(void);
 int csc2_used_bools(void);
 
+extern int gbl_oldest_transaction_alarm_threshold;
+extern int gbl_oldest_transaction_alarm_freq;
+
 #endif /* !INCLUDED_COMDB2_H */

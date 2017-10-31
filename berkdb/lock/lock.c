@@ -34,6 +34,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <thread_util.h>
 #include <cheapstack.h>
 #include <sys/types.h>
+#include <sys/syscall.h>
 #endif
 
 #include <stackutil.h>
@@ -116,6 +117,33 @@ static pthread_mutex_t lblk = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 pthread_key_t lockmgr_key;
+
+static pthread_key_t thread_id_key;
+static pthread_once_t thread_id_once = PTHREAD_ONCE_INIT;
+static int have_thread_id_key = 0;
+
+static void init_thread_id(void) {
+	int rc = pthread_key_create(&thread_id_key, free);
+	if (rc == 0)
+		have_thread_id_key = 1;
+}
+
+static int64_t get_thread_id(void) {
+#ifdef __linux
+	int64_t *id;
+	pthread_once(&thread_id_once, init_thread_id);
+	if (have_thread_id_key) {
+		id = pthread_getspecific(thread_id_key);
+		if (id == NULL) {
+			id = malloc(sizeof(int64_t));
+			*id = syscall(__NR_gettid);
+			pthread_setspecific(thread_id_key, id);
+		}
+	}
+	return *id;
+#endif
+	return (int64_t) pthread_self();
+}
 
 static int __lock_getlocker_with_prop( DB_LOCKTAB *lt, u_int32_t locker,
     u_int32_t indx, struct txn_properties *prop, u_int32_t flags, DB_LOCKER **retp);
@@ -1072,7 +1100,7 @@ __put_page_latch(dbenv, lock)
 		uint32_t count = __count_latches(dbenv, lid);
 		printf
 		    ("locker %u tid %u put page lock %p at latch %p line %d count %u\n",
-		    latch->lockerid, pthread_self(), lnode, latch, __LINE__,
+		    latch->lockerid, get_thread_id(), lnode, latch, __LINE__,
 		    count);
 	}
 #endif
@@ -1175,12 +1203,12 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 	if (!latch->lockerid) {
 		new_latch = 1;
 		latch->lockerid = locker;
-		latch->tid = pthread_self();
+		latch->tid = get_thread_id();
 	} else {
 		assert(latch->locker);
 		assert(latch->lockerid == locker);
 		assert(latch->locker->lockerid == latch->lockerid);
-		assert(latch->tid == pthread_self());
+		assert(latch->tid == get_thread_id());
 	}
 
 	lnode = latch->listhead;
@@ -1289,7 +1317,7 @@ __get_page_latch(lt, locker, flags, obj, lock_mode, lock)
 		uint32_t count = __count_latches(lt->dbenv, lid);
 		printf
 		    ("locker %u tid %u got page lock %p at latch %p count %u\n",
-		    locker, pthread_self(), lnode, latch, count);
+		    locker, get_thread_id(), lnode, latch, count);
 	} else {
 		printf("locker %u failed to get latch, rc=%d\n", locker, ret);
 	}
@@ -1586,7 +1614,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 						printf
 						    ("locker %d tid %u putting page lock %p at latch %p line %d\n",
 						    latch->lockerid,
-						    pthread_self(), lnode,
+						    get_thread_id(), lnode,
 						    latch, __LINE__);
 #endif
 						latch->count--;
@@ -2023,8 +2051,8 @@ rep_return_deadlock(DB_ENV *dbenv, u_int32_t sz)
 	if (IS_REP_CLIENT(dbenv) &&
 	    is_comdb2_rowlock(sz) && rowlocks_bdb_lock_check(dbenv->app_private)
 	    ) {
-		fprintf(stderr, "%s: thread %p returning deadlock\n", __func__,
-		    (void *)pthread_self());
+		fprintf(stderr, "%s: thread %"PRId64" returning deadlock\n", __func__,
+		    (int64_t) get_thread_id());
 		return 1;
 	} else {
 		return 0;
@@ -2208,7 +2236,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 #ifdef DEBUG_LOCKS
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Get (%c) locker lock %x (m %x)\n",
-			(void *)pthread_self(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			(void *)get_thread_id(), lock_mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
 			mlockerp->id);
 	cheap_stack_trace();
 
@@ -2229,11 +2257,11 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	lbcounter = (lbcounter + 1) % LKBUFMAX;
 	Pthread_mutex_unlock(&lblk);
 
-	threadid[idx] = pthread_self();
+	threadid[idx] = get_thread_id();
 	snprintf(lkbuffer[idx], LKBUFSZ, " %p get lid %x %s size=%d ",
-			(void *)pthread_self(), locker, desc, size);
+			(void *)get_thread_id(), locker, desc, size);
 	logmsg(LOGMSG_ERROR, "%p __lock_get_internal_int: get lid %x %s size=%d\n",
-	       (void *)pthread_self(), locker, desc, size);
+	       (void *)get_thread_id(), locker, desc, size);
 #endif
 
 	if (obj == NULL) {
@@ -3401,7 +3429,7 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 #ifdef DEBUG_LOCKS
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
-			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
+			(void *)get_thread_id(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
 			mlockerp->id);
 	cheap_stack_trace();
 
@@ -3419,11 +3447,11 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	lbcounter = (lbcounter + 1) % LKBUFMAX;
 	Pthread_mutex_unlock(&lblk);
 
-	threadid[idx] = pthread_self();
+	threadid[idx] = get_thread_id();
 	snprintf(lkbuffer[idx], LKBUFSZ, "%p put lid %x %s size=%d",
-			(void *)pthread_self(), sh_locker->id, desc, sh_obj->lockobj.size);
+			(void *)get_thread_id(), sh_locker->id, desc, sh_obj->lockobj.size);
 	logmsg(LOGMSG_ERROR, "%p __lock_put_internal: put lid %x %s size=%d\n",
-			(void *)pthread_self(), sh_locker->id, desc, sh_obj->lockobj.size);
+			(void *)get_thread_id(), sh_locker->id, desc, sh_obj->lockobj.size);
 #endif
 
 
@@ -3502,7 +3530,7 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 	if (LF_ISSET(DB_LOCK_UNLINK)) {
 #ifdef LOCKMGRDBG
 		if (region->locker_tab_mtx[sh_locker->partition].lock.thd !=
-		    pthread_self()) {
+		    get_thread_id()) {
 			//Fail fast for now - want to catch it doing this
 			puts("UNLINKING WITHOUT LOCKING LOCKER");
 			abort();
@@ -3525,7 +3553,7 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 	if (LF_ISSET(DB_LOCK_FREE)) {
 #ifdef LOCKMGRDBG
 		if (region->obj_tab_mtx[lockp->lpartition].lock.thd !=
-		    pthread_self()) {
+		    get_thread_id()) {
 			//Fail fast for now - want to catch it doing this
 			puts("FREEING WITHOUT LOCKING OBJ");
 			abort();
@@ -3608,7 +3636,7 @@ __lock_addfamilylocker_int(dbenv, pid, id, prop)
 
 #ifdef TEST_DEADLOCKS
 	printf("%d %s:%d lockerid %x(%x) has parent %x(%x) and master %x\n",
-	    pthread_self(), __FILE__, __LINE__,
+	    get_thread_id(), __FILE__, __LINE__,
 	    lockerp->id, id,
 	    ((DB_LOCKER *)R_ADDR(&lt->reginfo, lockerp->parent_locker))->id,
 	    pid,
@@ -4085,7 +4113,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 			F_SET(sh_locker, DB_LOCKER_KILLME);
 #if TEST_DEADLOCKS
 		printf("%p %s:%d lockerid %x setting priority to %d\n",
-		    (void*)pthread_self(), __FILE__, __LINE__, sh_locker->id, sh_locker->priority);
+		    (void*)get_thread_id(), __FILE__, __LINE__, sh_locker->id, sh_locker->priority);
 #endif
 		sh_locker->lk_timeout = 0;
 		sh_locker->partition = partition;
@@ -4114,7 +4142,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
 
 	/* heuristic: use create as hint that I will OWN this */
 	if (sh_locker && create) {
-		sh_locker->tid = pthread_self();
+		sh_locker->tid = get_thread_id();
 
 		sh_locker->snap_info = NULL;
 		if (gbl_print_deadlock_cycles) {
@@ -4342,7 +4370,7 @@ __inherit_latches(DB_ENV *dbenv, u_int32_t locker, u_int32_t plocker,
 	for (pvlatch = latch = lid->head; latch; latch = latch->next) {
 		latch->lockerid = plocker;
 		latch->locker = plid;
-		assert(latch->tid == pthread_self());
+		assert(latch->tid == get_thread_id());
 		pvlatch = latch;
 	}
 
@@ -4355,7 +4383,7 @@ __inherit_latches(DB_ENV *dbenv, u_int32_t locker, u_int32_t plocker,
 #ifdef VERBOSE_LATCH
 	u_int32_t total_latches = __count_latches(dbenv, plid);
 	printf("plocker %u tid %u inherits locks from child-locker %u\n",
-	    plocker, pthread_self(), locker);
+	    plocker, get_thread_id(), locker);
 	printf
 	    ("parent-write-locks(orig) %u child-write-locks %u new-total %u\n",
 	    parent_latches, child_latches, total_latches);
@@ -5957,7 +5985,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 		/* special case, no locks, only context
 		 * dp points to context */
 
-		logmsg(LOGMSG_ERROR, "%p size is 0, no nocks\n", (void *)pthread_self());
+		logmsg(LOGMSG_ERROR, "%"PRIx64" size is 0, no nocks\n", (int64_t) get_thread_id());
 
 		LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 		locked_region = 1;
@@ -6495,7 +6523,7 @@ __nlocks_for_thread(DB_ENV *dbenv, int *locks, int *lockers)
 			DB_LOCKER *lip;
 			for (lip = SH_TAILQ_FIRST(&region->locker_tab[i][j], __db_locker);
 					lip != NULL; lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
-				if (lip->tid == pthread_self()) {
+				if (lip->tid == get_thread_id()) {
 					nlockers++;
 					// Don't count handle locks toward total
 					nlocks += (lip->nlocks - lip->nhandlelocks);

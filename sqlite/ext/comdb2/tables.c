@@ -233,6 +233,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)  
     rc = systblPreparedInit(db);
 #endif
+  if (rc == SQLITE_OK)
+    rc = systblActiveTransactionsInit(db);
   return rc;
 }
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

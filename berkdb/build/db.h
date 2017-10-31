@@ -30,6 +30,7 @@
 #include <dlmalloc.h>
 #include <thdpool.h>
 #include <mem_berkdb.h>
+#include <time.h>
 #include <sys/time.h>
 #include <sbuf2.h>
 #include <locks_wrap.h>
@@ -1170,6 +1171,7 @@ struct __db_txn_active {
 	DB_LSN	  lsn;			/* LSN when transaction began */
 	u_int32_t xa_status;		/* XA status */
 	u_int8_t  xid[DB_XIDDATASIZE];	/* XA global transaction ID */
+	time_t start_time;
 };
 
 struct __db_txn_stat {
@@ -2258,7 +2260,7 @@ struct __ufid_to_db_t {
 	DB *dbp;
 };
 
-typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
+typedef int (*collect_locks_f)(void *args, int64_t threadid, uint32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype, int stackid);
 

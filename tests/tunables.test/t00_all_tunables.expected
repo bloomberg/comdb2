@@ -601,6 +601,8 @@
 (name='numberkdbcaches', description='Split the cache into this many segments.', type='INTEGER', value='0', read_only='N')
 (name='numtimesbehind', description='', type='INTEGER', value='1000000000', read_only='N')
 (name='offload_check_hostname', description='offload_check_hostname', type='BOOLEAN', value='OFF', read_only='N')
+(name='oldest_transaction_alarm_freq', description='Complain if an old transaction exists, at most this often (Default: 600 seconds).', type='INTEGER', value='600', read_only='N')
+(name='oldest_transaction_alarm_threshold', description='Complain if a transaction older than this is still alive (Default: 120 seconds).', type='INTEGER', value='120', read_only='N')
 (name='oldrangexlim', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='on_del_set_null_feature', description='Enables support for ON DELETE SET NULL foreign key constraint action (Default: ON)', type='BOOLEAN', value='ON', read_only='N')
 (name='on_pthread_create_error', description='on_pthread_create_error', type='BOOLEAN', value='ON', read_only='N')

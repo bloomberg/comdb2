@@ -28,7 +28,7 @@
 
 typedef struct systable_activelocks {
     int64_t                 threadid;
-    uint32_t                lockerid;
+    int64_t                 lockerid;
     const char              *mode;
     const char              *status;
     char                    *object;
@@ -45,7 +45,7 @@ typedef struct getactivelocks {
     systable_activelocks_t *records;
 } getactivelocks_t;
 
-static int collect(void *args, int64_t threadid, int32_t lockerid,
+static int collect(void *args, int64_t threadid, uint32_t lockerid,
         const char *mode, const char *status, const char *object,
         int64_t page, const char *rectype, int stackid)
 {
