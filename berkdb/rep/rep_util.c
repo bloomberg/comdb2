@@ -721,31 +721,6 @@ void
 __env_rep_enter(dbenv)
 	DB_ENV *dbenv;
 {
-#ifndef STUB_REP_ENTER
-	DB_REP *db_rep;
-	REP *rep;
-	int cnt;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return;
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	for (cnt = 0; rep->in_recovery;) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		(void)__os_sleep(dbenv, 1, 0);
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		if (++cnt % 60 == 0)
-			__db_err(dbenv,
-    "DB_ENV handle waiting %d minutes for replication recovery to complete",
-			    cnt / 60);
-	}
-	rep->handle_cnt++;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 }
 
 /*
@@ -759,21 +734,6 @@ void
 __env_rep_exit(dbenv)
 	DB_ENV *dbenv;
 {
-#ifndef STUB_REP_ENTER
-	DB_REP *db_rep;
-	REP *rep;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return;
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	rep->handle_cnt--;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 }
 
 /*
@@ -791,50 +751,6 @@ __db_rep_enter(dbp, checkgen, return_now)
 	DB *dbp;
 	int checkgen, return_now;
 {
-#ifndef STUB_REP_ENTER
-	DB_ENV *dbenv;
-	DB_REP *db_rep;
-	REP *rep;
-	void *bdb_state;
-	static time_t last = 0;
-	time_t now;
-
-	dbenv = dbp->dbenv;
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return (0);
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-	bdb_state = dbenv->app_private;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	if (F_ISSET(rep, REP_F_READY)) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		if (!return_now)
-			(void)__os_sleep(dbenv, 5, 0);
-		return (DB_LOCK_DEADLOCK);
-	}
-
-	if (checkgen && dbp->timestamp != rep->timestamp) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-
-		now = time(NULL);
-
-		if (last != now) {
-			__db_err(dbenv, 
-		"replication recovery unrolled committed transactions;"
-		"open DB and DBcursor handles must be closed");
-			last = now;
-		}
-
-		bdb_set_rep_handle_dead(bdb_state);
-
-		return (DB_REP_HANDLE_DEAD);
-	}
-	rep->handle_cnt++;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 	return (0);
 }
 
@@ -848,21 +764,6 @@ void
 __db_rep_exit(dbenv)
 	DB_ENV *dbenv;
 {
-#ifndef STUB_REP_ENTER
-	DB_REP *db_rep;
-	REP *rep;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return;
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	rep->handle_cnt--;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 }
 
 /*
