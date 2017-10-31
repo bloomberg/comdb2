@@ -9,7 +9,6 @@ echo "!$TESTCASE: stopping"
 [ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
 
 successful=$1
-create_core=0
 
 function kill_by_pidfile() {
     pidfile=$1
