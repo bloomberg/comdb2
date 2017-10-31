@@ -941,7 +941,7 @@ retry:
 
         /*update version*/
         bdb_state->name = newtblname;
-        if (bdb_new_file_version_index(bdb_state, tran, ixnum, version_num,
+        if (bdb_new_file_version_index(bdb_state, tran, ixnum, new_version_num,
                                        bdberr) ||
             *bdberr != BDBERR_NOERROR) {
             bdb_state->name = orig_name;
