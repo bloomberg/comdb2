@@ -15,8 +15,8 @@
 #include <ctype.h>
 #include <signal.h>
 #include <assert.h>
-#include <testutil.h>
-#include <nemesis.h>
+#include "testutil.h"
+#include "nemesis.h"
 #include <cdb2api.h>
 
 enum eventtypes {
