@@ -3247,18 +3247,6 @@ netinfo_type *create_netinfo_fake(void)
                               instance, 1, 0, 0, 0);
 }
 
-netinfo_type *create_netinfo_fake_signal(void)
-{
-    char myhostname[HOSTNAME_LEN] = "fakehostsignal";
-    int myportnum = -1;
-    char app[HOSTNAME_LEN] = "fakeappsignal";
-    char service[HOSTNAME_LEN] = "fakesvcsignal";
-    char instance[HOSTNAME_LEN] = "fakeinstsignal";
-
-    return create_netinfo_int(intern(myhostname), myportnum, -1, app, service,
-                              instance, 1, 0, 0, 0);
-}
-
 netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
                              char app[], char service[], char instance[],
                              int ischild, int use_getservbyname)

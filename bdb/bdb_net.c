@@ -856,7 +856,7 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
                 udp_send(bdb_state, info, hostlist[i]);
             } else {
-                net_send_message(bdb_state->repinfo->netinfo_signal,
+                net_send_message(bdb_state->repinfo->netinfo,
                         hostlist[i], USER_TYPE_COHERENCY_LEASE,
                         buf, COLEASE_TYPE_LEN, 0, 0);
             }
