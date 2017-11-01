@@ -16,8 +16,6 @@
 
 extern int __berkdb_write_alarm_ms;
 extern int __berkdb_read_alarm_ms;
-extern int __berkdb_seek_alarm_ms;
-extern int __berkdb_fsync_alarm_ms;
 
 #include <pthread.h>
 
@@ -65,7 +63,6 @@ extern int __berkdb_fsync_alarm_ms;
 #include "analyze.h"
 #include "dbdest.h"
 #include "intern_strings.h"
-#include "comdb2util.h"
 #include <stdbool.h>
 #include "utilmisc.h"
 #include "sqllog.h"
@@ -89,7 +86,6 @@ extern int gbl_disable_rowlocks;
 extern int gbl_disable_rowlocks_sleepns;
 extern int gbl_dispatch_rowlocks_bench;
 extern int gbl_rowlocks_bench_logical_rectype;
-extern int n_fstrap;
 extern unsigned long long gbl_sql_deadlock_reconstructions;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern int gbl_dump_sql_dispatched;
@@ -101,14 +97,11 @@ extern int gbl_enable_cache_internal_nodes;
 extern int gbl_test_badwrite_intvl;
 extern int gbl_skip_ratio_trace;
 extern int gbl_test_blob_race;
-extern int gbl_test_badwrite_zerop_intvl;
-extern unsigned long long gbl_verify_retry;
 extern int gbl_early;
 extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_notimeouts;
 
 void debug_bulktraverse_data(char *tbl);
 
@@ -119,7 +112,6 @@ extern void reinit_sql_hint_table();
 
 static void dump_table_sizes(struct dbenv *dbenv);
 static void request_stats(struct dbenv *dbenv);
-void loadrawfile(char *fname, char *table);
 void berk_memp_sync_alarm_ms(int x);
 int berkdb_get_max_rep_retries();
 
@@ -140,7 +132,6 @@ void rowlocks_bench(void *, int, int);
 void rowlocks_lock1_bench(void *, int, int);
 void rowlocks_lock2_bench(void *, int, int);
 void commit_bench(void *, int, int);
-void set_cursor_rowlocks(int cr);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
@@ -382,7 +373,7 @@ void print_dbs(struct dbenv *dbenv)
     for (i = 0; i < dbenv->num_dbs; i++) {
         if (dbenv->dbs[i]->dbnum > 0)
             logmsg(LOGMSG_USER, "managing db %-5d '%s'\n", dbenv->dbs[i]->dbnum,
-                   dbenv->dbs[i]->dbname);
+                   dbenv->dbs[i]->tablename);
     }
 }
 
@@ -402,13 +393,14 @@ void replication_stats(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "Replication statistics:-\n");
     logmsg(LOGMSG_USER, "   Num commits      %d\n", dbenv->num_txns);
     if (dbenv->num_txns > 0) {
-        logmsg(LOGMSG_USER, "   Avg txn sz           %llu\n",
+        logmsg(LOGMSG_USER, "   Avg txn sz           %lu\n",
                dbenv->total_txn_sz / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep timeout  %d\n",
                dbenv->total_timeouts_ms / dbenv->num_txns);
         logmsg(LOGMSG_USER, "   Avg txn rep time     %d\n",
                dbenv->total_reptime_ms / dbenv->num_txns);
-        logmsg(LOGMSG_USER, "   Max txn sz           %llu\n", dbenv->biggest_txn);
+        logmsg(LOGMSG_USER, "   Max txn sz           %lu\n",
+               dbenv->biggest_txn);
         logmsg(LOGMSG_USER, "   Max rep timeout      %d\n", dbenv->max_timeout_ms);
         logmsg(LOGMSG_USER, "   Max rep time         %d\n", dbenv->max_reptime_ms);
     }
@@ -745,6 +737,16 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
 
         comdb2_partition_info_all(opt);
+    } else if (tokcmp(tok, ltok, "killnet") == 0) {
+        char subnet[100];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected name for killnet\n");
+            return -1;
+        }
+        tokcpy0(tok, ltok, subnet, sizeof(subnet));
+        logmsg(LOGMSG_INFO, "Killling subnet %s\n", subnet);
+        kill_subnet(subnet);
     } else if (tokcmp(tok, ltok, "fdbdebg") == 0) {
         extern int gbl_fdb_track;
 
@@ -1349,7 +1351,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                     logmsg(LOGMSG_ERROR, "no queue named '%s'\n", name);
                 else {
                     dbqueue_goose(db, 1);
-                    logmsg(LOGMSG_USER, "goosed queue %s\n", db->dbname);
+                    logmsg(LOGMSG_USER, "goosed queue %s\n", db->tablename);
                 }
                 free(name);
             }
@@ -1904,9 +1906,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             for (ii = 0; ii < thedb->num_dbs; ii++) {
                 if (thedb->dbs[ii]->dbtype == DBTYPE_TAGGED_TABLE) {
                     int version;
-                    version = get_csc2_version(thedb->dbs[ii]->dbname);
+                    version = get_csc2_version(thedb->dbs[ii]->tablename);
                     logmsg(LOGMSG_USER, "table %s is at csc2 version %d\n",
-                            thedb->dbs[ii]->dbname, version);
+                           thedb->dbs[ii]->tablename, version);
                 }
             }
         } else if (tokcmp(tok, ltok, "dumpcsc2") == 0) {
@@ -1937,9 +1939,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             } else {
                 char *csc2 = NULL;
                 int rc, len;
-                rc = get_csc2_file(db->dbname, version, &csc2, &len);
-                logmsg(LOGMSG_ERROR, "Table '%s' get schema returned rcode %d\n", db->dbname,
-                       rc);
+                rc = get_csc2_file(db->tablename, version, &csc2, &len);
+                logmsg(LOGMSG_ERROR,
+                       "Table '%s' get schema returned rcode %d\n",
+                       db->tablename, rc);
                 if (csc2) {
                     logmsg(LOGMSG_USER, "%s\n", csc2);
                     free(csc2);
@@ -2001,7 +2004,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
 
-            logmsg(LOGMSG_USER, "commit %lu abort %lu repcommit %llu retry %lu "
+            logmsg(LOGMSG_USER,
+                   "commit %u abort %u repcommit %llu retry %lu "
                    "verify retry %lld rep retry %llu max retry %d\n",
                    dbenv->txns_committed, dbenv->txns_aborted, txns_applied,
                    n_retries, gbl_verify_tran_replays, rep_retry, max_retries);
@@ -2209,7 +2213,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             gbl_who = 0;
             gbl_debug = 0;
-            logmsg(LOGMSG_USER, "Debugging requests disabled\n", gbl_who);
+            logmsg(LOGMSG_USER, "Debugging requests disabled\n");
         }
     } else if (tokcmp(tok, ltok, "inflatelog") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -2233,7 +2237,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         } else {
             gbl_who = 0;
             gbl_sdebug = 0;
-            logmsg(LOGMSG_USER, "Debugging sql requests disabled\n", gbl_who);
+            logmsg(LOGMSG_USER, "Debugging sql requests disabled\n");
         }
     } else if (tokcmp(tok, ltok, "who") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -2326,7 +2330,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             return -1;
         }
         if (ltok >= sizeof(fname) - 1) {
-            logmsg(LOGMSG_ERROR, "Invalid file name: too long (max %d)\n", sizeof(fname) - 1);
+            logmsg(LOGMSG_ERROR, "Invalid file name: too long (max %zu)\n",
+                   sizeof(fname) - 1);
             return -1;
         }
         tokcpy(tok, ltok, fname);
@@ -2470,7 +2475,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         /* All tables */
         for (idb = 0; idb < dbenv->num_dbs; idb++) {
             db = dbenv->dbs[idb];
-            if (bt_hash_table(db->dbname, szkb) != 0)
+            if (bt_hash_table(db->tablename, szkb) != 0)
                 return -1;
         }
 
@@ -2508,7 +2513,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         /* All tables */
         for (idb = 0; idb < dbenv->num_dbs; idb++) {
             db = dbenv->dbs[idb];
-            if (del_bt_hash_table(db->dbname) != 0)
+            if (del_bt_hash_table(db->tablename) != 0)
                 return -1;
         }
 
@@ -2594,7 +2599,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     else if (tokcmp(tok, ltok, "dumptags") == 0) {
         int i;
         for (i = 0; i < thedb->num_dbs; i++)
-            debug_dump_tags(thedb->dbs[i]->dbname);
+            debug_dump_tags(thedb->dbs[i]->tablename);
     } else if (tokcmp(tok, ltok, "screportfreq") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok != 0) {
@@ -3371,7 +3376,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         }
         tid = toknum(tok, ltok);
         rc = pthread_kill(tid, 0);
-        logmsg(LOGMSG_USER, "kill tid %d rc %d\n", tid, rc);
+        logmsg(LOGMSG_USER, "kill tid %lu rc %d\n", tid, rc);
     } else if (tokcmp(tok, ltok, "chkpoint_alarm_time") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
@@ -3474,7 +3479,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
                 rc = bdb_find_oldest_genid(iq.usedb->handle, NULL, stripe, buf,
                                            &reclen, 64 * 1024, &genid, &ver,
                                            &bdberr);
-               logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->dbname, stripe);
+                logmsg(LOGMSG_USER, "%s stripe %d ", iq.usedb->tablename,
+                       stripe);
                 if (rc == 0)
                    logmsg(LOGMSG_USER, "%016llx %d", genid, bdb_genid_timestamp(genid));
                 else if (rc == 1)
@@ -3999,8 +4005,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         struct dbtable *db = get_dbtable_by_name(dbname);
         if (db) {
             logmsg(LOGMSG_USER, "table:%s  odh:%s  instant_schema_change:%s  "
-                   "inplace_updates:%s  version:%d\n",
-                   db->dbname, YESNO(db->instant_schema_change),
+                                "inplace_updates:%s  version:%d\n",
+                   db->tablename, YESNO(db->instant_schema_change),
                    YESNO(db->inplace_updates), YESNO(db->odh), db->version);
         } else {
             logmsg(LOGMSG_ERROR, "no such table: %s\n", dbname);
@@ -4234,7 +4240,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             /* All tables */
             for (ii = 0; ii < dbenv->num_dbs; ii++) {
                 db = dbenv->dbs[ii];
-                table = db->dbname;
+                table = db->tablename;
                 int pgscan = bdb_get_page_scan_for_table(db->handle);
                 logmsg(LOGMSG_USER, "Page-order tablescan for table '%s' is %s\n", table,
                        pgscan ? "enabled" : "disabled");
@@ -4629,7 +4635,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         logmsg(LOGMSG_USER, "%-30s %10s\n", "table", "localrep?");
         for (i = 0; i < thedb->num_dbs; i++) {
             db = thedb->dbs[i];
-            logmsg(LOGMSG_USER, "%-30s %10s\n", db->dbname,
+            logmsg(LOGMSG_USER, "%-30s %10s\n", db->tablename,
                    db->do_local_replication ? "YES" : "NO");
         }
     } else if (tokcmp(tok, ltok, "transtat") == 0) {
@@ -5184,7 +5190,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         case TUNABLE_ERR_INVALID_TUNABLE:
             logmsg(LOGMSG_ERROR, "Unknown command <%.*s>\n", ltok, tok);
             break;
-        default: logmsg(LOGMSG_ERROR, tunable_error(rc));
+        default:
+            logmsg(LOGMSG_ERROR, "%s", tunable_error(rc));
         }
         return rc;
     }
@@ -5237,14 +5244,14 @@ static void dump_table_sizes(struct dbenv *dbenv)
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
         total += calc_table_size(db);
-        len = strlen(db->dbname);
+        len = strlen(db->tablename);
         if (len > maxtblname)
             maxtblname = len;
     }
     for (ndb = 0; ndb < dbenv->num_qdbs; ndb++) {
         db = dbenv->qdbs[ndb];
         total += calc_table_size(db);
-        len = strlen(db->dbname);
+        len = strlen(db->tablename);
         if (len > maxtblname)
             maxtblname = len;
     }
@@ -5258,9 +5265,10 @@ static void dump_table_sizes(struct dbenv *dbenv)
             percent = (db->totalsize * 100ULL) / total;
         else
             percent = 0;
-       logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname, db->dbname,
-               fmt_size(b, sizeof(b), db->totalsize), (int)percent);
-       logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
+        logmsg(LOGMSG_USER, "table %*s sz %12s %3d%% ", maxtblname,
+               db->tablename, fmt_size(b, sizeof(b), db->totalsize),
+               (int)percent);
+        logmsg(LOGMSG_USER, "(dta %s", fmt_size(b, sizeof(b), db->dtasize));
         for (ii = 0; ii < db->nix; ii++) {
            logmsg(LOGMSG_USER, ", ix%d %s", ii, fmt_size(b, sizeof(b), db->ixsizes[ii]));
         }
@@ -5277,9 +5285,9 @@ static void dump_table_sizes(struct dbenv *dbenv)
             percent = (db->totalsize * 100ULL) / total;
         else
             percent = 0;
-        logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n", maxtblname, db->dbname,
-               fmt_size(b, sizeof(b), db->totalsize), (int)percent,
-               db->numextents);
+        logmsg(LOGMSG_USER, "queue %*s sz %12s %3d%% (%u extents)\n",
+               maxtblname, db->tablename, fmt_size(b, sizeof(b), db->totalsize),
+               (int)percent, db->numextents);
     }
     if (total > 0)
         percent = (logsize * 100ULL) / total;
@@ -5311,7 +5319,7 @@ void ixstats(struct dbenv *dbenv)
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];
-        logmsg(LOGMSG_USER, "table '%s'\n", db->dbname);
+        logmsg(LOGMSG_USER, "table '%s'\n", db->tablename);
         for (ix = 0; ix < db->nix; ix++) {
             logmsg(LOGMSG_USER, "  ix %2d:   %lld steps  %lld sql steps\n", ix,
                    db->ixuse[ix], db->sqlixuse[ix]);
@@ -5326,8 +5334,8 @@ void curstats(struct dbenv *dbenv)
 
     for (dbn = 0; dbn < dbenv->num_dbs; dbn++) {
         db = dbenv->dbs[dbn];
-        logmsg(LOGMSG_USER, "table '%s' : ix = %u cur = %u\n", db->dbname, db->sqlcur_ix,
-               db->sqlcur_cur);
+        logmsg(LOGMSG_USER, "table '%s' : ix = %u cur = %u\n", db->tablename,
+               db->sqlcur_ix, db->sqlcur_cur);
     }
 }
 

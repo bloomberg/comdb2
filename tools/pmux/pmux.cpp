@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
+#include <strings.h>
 
 #include <algorithm>
 #include <iostream>
@@ -53,8 +54,9 @@
 #include <signal.h>
 #include <syslog.h>
 #include <netdb.h>
-
+#ifdef VERBOSE
 #include <fsnapf.h>
+#endif
 #include <passfd.h>
 
 #include "pmux_store.h"
@@ -185,11 +187,13 @@ int client_func(int fd)
             syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
                    cmd);
             close(fd);
+            active_services_mutex.unlock();
             return -1;
         }
         active_services_mutex.unlock();
         connect_instance(listenfd, cmd);
     }
+    return 0;
 }
 
 static void unwatchfd(struct pollfd &fd)
@@ -211,7 +215,8 @@ static void unwatchfd(struct pollfd &fd)
             fd_map.erase(svc);
             int rc = close(ufd->second);
             if (rc) {
-                syslog(LOG_WARN, "%s close fd %d rc %d\n", svc.c_str(), ufd->second, rc);
+                syslog(LOG_WARNING, "%s close fd %d rc %d\n", svc.c_str(),
+                       ufd->second, rc);
             }
         }
         fdmap_mutex.unlock();
@@ -974,7 +979,7 @@ int main(int argc, char **argv)
         else
             pmux_store.reset(new comdb2_store(host, dbname, cluster));
     } catch (std::exception &e) {
-        syslog(LOG_ERR, "%s\n", e.what().c_str());
+        syslog(LOG_ERR, "%s\n", e.what());
         return EXIT_FAILURE;
     }
 

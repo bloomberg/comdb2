@@ -1,0 +1,38 @@
+add_executable(comdb2ar
+  appsock.cpp
+  chksum.cpp
+  comdb2ar.cpp
+  db_wrap.cpp
+  deserialise.cpp
+  error.cpp
+  fdostream.cpp
+  file_info.cpp
+  incr_deserialise.cpp
+  incr_manifest.cpp
+  increment.cpp
+  logholder.cpp
+  lrlerror.cpp
+  repopnewlrl.cpp
+  riia.cpp
+  serialise.cpp
+  serialiseerror.cpp
+  tar_header.cpp
+  util.cpp
+  ${PROJECT_SOURCE_DIR}/bb/sbuf2.c
+)
+include_directories(
+  ${PROJECT_SOURCE_DIR}/bb
+  ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_SOURCE_DIR}/crc32c
+  ${PROJECT_SOURCE_DIR}/sockpool
+  ${OPENSSL_INCLUDE_DIR}
+)
+target_link_libraries(comdb2ar
+  ${OPENSSL_LIBRARIES}
+  Threads::Threads
+)
+add_definitions(
+  -DSBUF2_SERVER=0
+  -DBUILDING_TOOLS
+)
+install(TARGETS comdb2ar RUNTIME DESTINATION bin)

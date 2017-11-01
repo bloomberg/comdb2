@@ -78,6 +78,7 @@ extern int gbl_loghist;
 extern int gbl_loghist_verbose;
 extern int gbl_master_retry_poll_ms;
 extern int gbl_master_swing_osql_verbose;
+extern int gbl_master_swing_sock_restart_sleep;
 extern int gbl_max_lua_instructions;
 extern int gbl_max_sqlcache;
 extern int __gbl_max_mpalloc_sleeptime;
@@ -108,6 +109,7 @@ extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
 extern int gbl_survive_n_master_swings;
 extern int gbl_test_blob_race;
+extern int gbl_test_scindex_deadlock;
 extern int gbl_berkdb_track_locks;
 extern int gbl_udp;
 extern int gbl_update_delete_limit;
@@ -129,6 +131,13 @@ extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
+extern int gbl_rep_badgen_trace;
+extern int gbl_dump_zero_coherency_timestamp;
+extern int gbl_allow_incoherent_sql;
+extern int gbl_rep_process_msg_print_rc;
+extern int gbl_verbose_master_req;
+extern int gbl_verbose_send_coherency_lease;
+extern int gbl_reset_on_unelectable_cluster;
 
 extern long long sampling_threshold;
 
@@ -186,15 +195,6 @@ static int ctrace_gzip;
   special treatment.
   =========================================================
 */
-
-static int dir_verify(void *context, void *basedir)
-{
-    if (!gooddir((char *)basedir)) {
-        logmsg(LOGMSG_ERROR, "bad directory %s in lrl\n", (char *)basedir);
-        return 1;
-    }
-    return 0;
-}
 
 static void *init_with_compr_value(void *context)
 {

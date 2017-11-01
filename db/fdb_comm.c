@@ -191,6 +191,7 @@ struct fdb_msg_insert {
     int seq;                     /* transaction sequencing */
     uuid_t ciduuid;
     char *data; /* sqlite generated row from MakeRecord, serialized */
+    char *tblname; /* tblname matching rootpage */
 };
 typedef struct fdb_msg_insert fdb_msg_insert_t;
 
@@ -218,6 +219,7 @@ struct fdb_msg_delete {
     unsigned long long del_keys; /* indexes to delete */
     uuid_t ciduuid;
     int seq; /* transaction sequencing */
+    char *tblname; /* tblname matching rootpage */
 };
 typedef struct fdb_msg_delete fdb_msg_delete_t;
 
@@ -234,6 +236,7 @@ struct fdb_msg_update {
     int seq;                     /* transaction sequencing */
     uuid_t ciduuid;
     char *data; /* sqlite generated row from MakeRecord, serialized */
+    char *tblname; /* tblname matching rootpage */
 };
 typedef struct fdb_msg_update fdb_msg_update_t;
 
@@ -262,7 +265,8 @@ union fdb_msg {
     fdb_msg_hbeat_t hb;
 };
 
-static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg);
+static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg,
+                                enum recv_flags flags);
 static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush);
 static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
 static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix);
@@ -271,6 +275,7 @@ typedef struct {
     struct sqlclntstate *clnt;
     struct sql_thread *thd;
     int isuuid;
+    int flags;
 } svc_callback_arg_t;
 
 typedef int (*fdb_svc_callback_t)(SBUF2 *sb, fdb_msg_t *msg,
@@ -607,7 +612,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 
     bzero(&msg, sizeof(msg));
 
-    rc = fdb_msg_read_message(sb, &msg);
+    rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
                 __func__, rc);
@@ -664,7 +669,7 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
 
         /*fprintf(stderr, "XYXY %llu calling recv message\n",
          * osql_log_time());*/
-        rc = fdb_msg_read_message(sb, &msg);
+        rc = fdb_msg_read_message(sb, &msg, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed to handle remote cursor request rc=%d\n",
@@ -694,7 +699,7 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
 
     if (gbl_fdb_track_times) {
         now = gettimeofday_ms();
-        logmsg(LOGMSG_USER, "RRRRRR start now=%lld\n", now);
+        logmsg(LOGMSG_USER, "RRRRRR start now=%lu\n", now);
     }
 
     while (1) {
@@ -704,17 +709,17 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
 
         rc = handle_remsql_session(sb, dbenv);
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%p: %s: executed session rc=%d\n", pthread_self(),
-                    __func__, rc);
+            logmsg(LOGMSG_USER, "%lu: %s: executed session rc=%d\n",
+                   pthread_self(), __func__, rc);
 
         if (gbl_fdb_track_times) {
             then = gettimeofday_ms();
 
             if (old == 0ULL) {
-                logmsg(LOGMSG_USER, "RRRRRR now=%lld 0 %lld\n", now, then - now);
+                logmsg(LOGMSG_USER, "RRRRRR now=%lu 0 %lu\n", now, then - now);
             } else {
-                logmsg(LOGMSG_USER, "RRRRRR now=%lld delta=%lld %lld\n", now,
-                        now - old, then - now);
+                logmsg(LOGMSG_USER, "RRRRRR now=%lu delta=%lu %lu\n", now,
+                       now - old, then - now);
             }
             old = now;
         }
@@ -736,7 +741,8 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
         }
     }
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p: %s: done processing\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "%lu: %s: done processing\n", pthread_self(),
+               __func__);
 
     return rc;
 }
@@ -753,7 +759,7 @@ int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
     arg.thd = start_sql_thread(); /* this does inserts on behalf of an sql
                                      transaction */
 
-    rc = fdb_msg_read_message(sb, &msg);
+    rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
                 __func__, rc);
@@ -814,7 +820,7 @@ int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
 
         /*fprintf(stderr, "XYXY %llu calling recv message\n",
          * osql_log_time());*/
-        rc = fdb_msg_read_message(sb, &msg);
+        rc = fdb_msg_read_message(sb, &msg, arg.flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed to handle remote cursor request rc=%d\n",
@@ -856,7 +862,7 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
 
     logmsg(LOGMSG_DEBUG, "Received remcu request\n");
 
-    rc = fdb_msg_read_message(sb, &msg);
+    rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
                 __func__, rc);
@@ -893,7 +899,7 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
             break;
         }
 
-        rc = fdb_msg_read_message(sb, &msg);
+        rc = fdb_msg_read_message(sb, &msg, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: failed to handle remote cursor request rc=%d\n",
@@ -908,19 +914,25 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
     return rc;
 }
 
-int fdb_recv_row(fdb_msg_t *msg, char *cid, int isuuid, SBUF2 *sb)
+int fdb_recv_row(fdb_msg_t *msg, char *cid, SBUF2 *sb)
 {
-    int rc = 0;
-    int flags;
+    int rc;
 
-    rc = fdb_msg_read_message(sb, msg);
+    rc = fdb_msg_read_message(sb, msg, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
                __func__, rc);
-        /* maybe this should return FDB_ERR_READ_IO instead */
-        return -1;
+        /* synthetic row containing the error */
+        msg->hd.type = FDB_MSG_DATA_ROW;
+        msg->dr.rc = FDB_ERR_READ_IO;
+        msg->dr.data = strdup("failed to read row from socket");
+        msg->dr.datalen = strlen(msg->rc.errstr) + 1;
+        msg->dr.datacopylen = 0;
+        msg->dr.datacopy = NULL;
+        msg->dr.genid = -1LL;
+
+        return FDB_ERR_READ_IO;
     }
-    flags = msg->hd.type & ~FD_MSG_TYPE;
 
     if (gbl_fdb_track) {
         fdb_msg_print_message(sb, msg, "received message");
@@ -928,42 +940,36 @@ int fdb_recv_row(fdb_msg_t *msg, char *cid, int isuuid, SBUF2 *sb)
 
     msg->hd.type &= FD_MSG_TYPE;
 
-    switch (msg->hd.type) {
-    case FDB_MSG_DATA_ROW:
-#if 0
-         /* check for my rows */
-         if(memcmp(msg->dr.cid, cid, sizeof(msg->dr.cid)) == 0)
-         {
-            /* TODO: grab more than one row from socket? */
-#endif
-        rc = msg->dr.rc;
-        goto ret_row;
-#if 0
-         }
-         else
-         {
-            /* TODO : clone and cache for other receivers */
-            abort ();
-         }
-#endif
-        break;
-
-    case FDB_MSG_TRAN_RC:
-
-        rc = msg->rc.rc;
-        goto ret_row;
-
-    default:
+    if (msg->hd.type != FDB_MSG_DATA_ROW)
         abort();
-    }
 
-ret_row:
-    return rc;
+    return msg->dr.rc;
 }
 
 int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
 {
-    trans->rc = fdb_recv_row(msg, trans->tid, trans->isuuid, trans->sb);
+    int rc;
+
+    rc = fdb_msg_read_message(trans->sb, msg, 0);
+    if (rc != FDB_NOERR) {
+        logmsg(LOGMSG_ERROR, "%s: failed to receive remote row rc=%d\n",
+               __func__, rc);
+        trans->rc = FDB_ERR_READ_IO;
+        trans->errstr = strdup("failed to read rc from socket");
+        trans->errstrlen = strlen(trans->errstr) + 1;
+        return trans->rc;
+    }
+
+    if (gbl_fdb_track) {
+        fdb_msg_print_message(trans->sb, msg, "received message");
+    }
+
+    msg->hd.type &= FD_MSG_TYPE;
+
+    if (msg->hd.type != FDB_MSG_TRAN_RC)
+        abort();
+
+    trans->rc = msg->rc.rc;
 
     if (trans->isuuid) {
         if ((trans->rc == 0) && (comdb2uuidcmp(msg->rc.tid, trans->tid) != 0)) {
@@ -1081,10 +1087,18 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
             msg->in.data = NULL;
             msg->in.datalen = 0;
         }
+        if (msg->in.tblname) {
+            free(msg->in.tblname);
+            msg->in.tblname = NULL;
+        }
         break;
 
     case FDB_MSG_DELETE:
     case FDB_MSG_DELETE_PI:
+        if (msg->de.tblname) {
+            free(msg->de.tblname);
+            msg->de.tblname = NULL;
+        }
         break;
 
     case FDB_MSG_UPDATE:
@@ -1093,6 +1107,10 @@ void fdb_msg_clean_message(fdb_msg_t *msg)
             free(msg->up.data);
             msg->up.data = NULL;
             msg->up.datalen = 0;
+        }
+        if (msg->up.tblname) {
+            free(msg->up.tblname);
+            msg->up.tblname = NULL;
         }
         break;
 
@@ -1185,7 +1203,8 @@ static void fdb_msg_prepare_message(fdb_msg_t *msg)
 }
 
 /* stuff comes in network endian fomat */
-static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg)
+static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg,
+                                enum recv_flags flags)
 {
     int rc;
     unsigned long long lltmp;
@@ -1620,6 +1639,19 @@ static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg)
             msg->in.data = NULL;
         }
 
+        if (flags & FDB_MSG_TRAN_TBLNAME) {
+            rc = sbuf2fread((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return -1;
+            tmp = ntohl(tmp);
+            msg->in.tblname = malloc(tmp);
+            if (!msg->in.tblname)
+                return -1;
+            rc = sbuf2fread(msg->in.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return -1;
+        }
+
         break;
 
     case FDB_MSG_DELETE_PI:
@@ -1662,6 +1694,19 @@ static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg)
         if (rc != sizeof(msg->de.seq))
             return -1;
         msg->de.seq = ntohl(msg->de.seq);
+
+        if (flags & FDB_MSG_TRAN_TBLNAME) {
+            rc = sbuf2fread((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return -1;
+            tmp = ntohl(tmp);
+            msg->de.tblname = malloc(tmp);
+            if (!msg->de.tblname)
+                return -1;
+            rc = sbuf2fread(msg->de.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return -1;
+        }
 
         break;
 
@@ -1735,6 +1780,19 @@ static int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg)
                 return -1;
         } else {
             msg->up.data = NULL;
+        }
+
+        if (flags & FDB_MSG_TRAN_TBLNAME) {
+            rc = sbuf2fread((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return -1;
+            tmp = ntohl(tmp);
+            msg->up.tblname = malloc(tmp);
+            if (!msg->up.tblname)
+                return -1;
+            rc = sbuf2fread(msg->up.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return -1;
         }
 
         break;
@@ -1968,31 +2026,36 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
-
-        logmsg(LOGMSG_USER, "XXXX: %llu %s INSERT cid=%s rootp=%d version=%d "
-                        "genid=%llx datalen=%d\n",
-                t, prefix, comdb2uuidstr(msg->in.cid, cus), msg->in.rootpage,
-                msg->in.version, msg->in.genid, msg->in.datalen);
+        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%llx rootp=%d "
+                            "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
+               t, prefix, sb, comdb2uuidstr(msg->in.cid, cus), msg->in.rootpage,
+               msg->in.version, msg->in.genid, msg->in.datalen, msg->in.seq,
+               (msg->in.tblname) ? " tblname=" : "",
+               (msg->in.tblname) ? msg->in.tblname : "");
         break;
 
     case FDB_MSG_DELETE_PI:
     case FDB_MSG_DELETE:
 
-        logmsg(LOGMSG_USER, 
-                "XXXX: %llu %s DELETE cid=%s rootp=%d version=%d genid=%llx\n",
-                t, prefix, comdb2uuidstr(msg->de.cid, cus), msg->de.rootpage,
-                msg->de.version, msg->de.genid);
-
+        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p DELETE cid=%s rootp=%d "
+                            "version=%d genid=%llx seq=%d%s%s\n",
+               t, prefix, sb, comdb2uuidstr(msg->de.cid, cus), msg->de.rootpage,
+               msg->de.version, msg->de.genid, msg->de.seq,
+               (msg->de.tblname) ? " tblname=" : "",
+               (msg->de.tblname) ? msg->de.tblname : "");
         break;
 
     case FDB_MSG_UPDATE_PI:
     case FDB_MSG_UPDATE:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s UPDATE cid=%s rootp=%d version=%d "
-                        "oldgenid=%llx genid=%llx datalen=%d seq %d\n",
-                t, prefix, comdb2uuidstr(msg->up.cid, cus), msg->up.rootpage,
-                msg->up.version, msg->up.oldgenid, msg->up.genid,
-                msg->up.datalen, msg->up.seq);
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s sb=%p UPDATE cid=%s rootp=%d "
+               "version=%d oldgenid=%llx genid=%llx datalen=%d seq %d\n",
+               t, prefix, sb, comdb2uuidstr(msg->up.cid, cus), msg->up.rootpage,
+               msg->up.version, msg->up.oldgenid, msg->up.genid,
+               msg->up.datalen, msg->up.seq,
+               (msg->up.tblname) ? " tblname=" : "",
+               (msg->up.tblname) ? msg->up.tblname : "");
         break;
 
     case FDB_MSG_INDEX:
@@ -2008,8 +2071,8 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         break;
 
     default:
-        logmsg(LOGMSG_USER, "%s: %s unknown msg %d\n", __func__, __func__, prefix,
-                msg->hd.type);
+        logmsg(LOGMSG_USER, "%s: %s unknown msg %d\n", __func__, prefix,
+               msg->hd.type);
     }
 }
 
@@ -2142,31 +2205,37 @@ static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s INSERT cid=%llx rootp=%d version=%d "
-                        "genid=%llx datalen=%d\n",
-                t, prefix, *(unsigned long long *)msg->in.cid, msg->in.rootpage,
-                msg->in.version, msg->in.genid, msg->in.datalen);
+        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%llx rootp=%d "
+                            "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
+               t, prefix, sb, *(unsigned long long *)msg->in.cid,
+               msg->in.rootpage, msg->in.version, msg->in.genid,
+               msg->in.datalen, msg->in.seq,
+               (msg->in.tblname) ? " tblname=" : "",
+               (msg->in.tblname) ? msg->in.tblname : "");
         break;
 
     case FDB_MSG_DELETE_PI:
     case FDB_MSG_DELETE:
 
-        logmsg(LOGMSG_USER, 
-                "XXXX: %llu %s DELETE cid=%llx rootp=%d version=%d genid=%llx\n", t,
-                prefix, *(unsigned long long *)msg->de.cid, msg->de.rootpage,
-                msg->de.version, msg->de.genid);
-
+        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p DELETE cid=%llx rootp=%d "
+                            "version=%d genid=%llx seq=%d%s%s\n",
+               t, prefix, sb, *(unsigned long long *)msg->up.cid,
+               msg->de.rootpage, msg->de.version, msg->de.genid, msg->de.seq,
+               (msg->de.tblname) ? " tblname=" : "",
+               (msg->de.tblname) ? msg->de.tblname : "");
         break;
 
     case FDB_MSG_UPDATE_PI:
     case FDB_MSG_UPDATE:
 
-        logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p UPDATE cid=%llx rootp=%d "
-                        "version=%d oldgenid=%llx genid=%llx datalen=%d "
-                        "seq=%d\n",
-                t, prefix, sb, *(unsigned long long *)msg->up.cid,
-                msg->up.rootpage, msg->up.version, msg->up.oldgenid,
-                msg->up.genid, msg->up.datalen, msg->up.seq);
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s sb=%p UPDATE cid=%s rootp=%d "
+               "version=%d oldgenid=%llx genid=%llx datalen=%d seq %d\n",
+               t, prefix, sb, *(unsigned long long *)msg->up.cid,
+               msg->up.rootpage, msg->up.version, msg->up.oldgenid,
+               msg->up.genid, msg->up.datalen, msg->up.seq,
+               (msg->up.tblname) ? " tblname=" : "",
+               (msg->up.tblname) ? msg->up.tblname : "");
         break;
 
     case FDB_MSG_INDEX:
@@ -2180,15 +2249,15 @@ static void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         break;
 
     case FDB_MSG_HBEAT:
-        logmsg(LOGMSG_USER, 
-                "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%u\n", t,
-                prefix, sb, *(unsigned long long *)msg->hb.tid,
-                msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
+        logmsg(LOGMSG_USER,
+               "XXXX: %llu %s sb=%p HBEAT tid=%llx tv_sec=%lu tv_nsec=%ld\n", t,
+               prefix, sb, *(unsigned long long *)msg->hb.tid,
+               msg->hb.timespec.tv_sec, msg->hb.timespec.tv_nsec);
         break;
 
     default:
-        logmsg(LOGMSG_ERROR, "%s: %s unknown msg %d\n", __func__, __func__, prefix,
-                msg->hd.type);
+        logmsg(LOGMSG_ERROR, "%s: %s unknown msg %d\n", __func__, prefix,
+               msg->hd.type);
     }
 }
 
@@ -2557,6 +2626,18 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
                 return FDB_ERR_WRITE_IO;
         }
 
+        if (msg->in.tblname) {
+            tmp = strlen(msg->in.tblname) + 1;
+            tmp = htonl(tmp);
+            rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            tmp = ntohl(tmp);
+            rc = sbuf2fwrite(msg->in.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return FDB_ERR_WRITE_IO;
+        }
+
         break;
 
     case FDB_MSG_DELETE_PI:
@@ -2594,6 +2675,18 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
         if (rc != sizeof(tmp))
             return FDB_ERR_WRITE_IO;
+
+        if (msg->de.tblname) {
+            tmp = strlen(msg->de.tblname) + 1;
+            tmp = htonl(tmp);
+            rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            tmp = ntohl(tmp);
+            rc = sbuf2fwrite(msg->de.tblname, 1, tmp, sb);
+            if (rc != tmp)
+                return FDB_ERR_WRITE_IO;
+        }
 
         break;
 
@@ -2656,6 +2749,18 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
         if (msg->up.data && msg->up.datalen > 0) {
             rc = sbuf2fwrite(msg->up.data, 1, msg->up.datalen, sb);
             if (rc != msg->up.datalen)
+                return FDB_ERR_WRITE_IO;
+        }
+
+        if (msg->up.tblname) {
+            tmp = strlen(msg->up.tblname) + 1;
+            tmp = htonl(tmp);
+            rc = sbuf2fwrite((char *)&tmp, 1, sizeof(tmp), sb);
+            if (rc != sizeof(tmp))
+                return FDB_ERR_WRITE_IO;
+            tmp = ntohl(tmp);
+            rc = sbuf2fwrite(msg->up.tblname, 1, tmp, sb);
+            if (rc != tmp)
                 return FDB_ERR_WRITE_IO;
         }
 
@@ -2855,7 +2960,7 @@ static enum svc_move_types move_type(int type)
     case FDB_MSG_CURSOR_LAST:
         return SVC_MOVE_LAST;
     }
-    logmsg(LOGMSG_FATAL, "%s: unknown move\n", __func__, type);
+    logmsg(LOGMSG_FATAL, "%s: unknown move %d\n", __func__, type);
     abort();
     return -1;
 }
@@ -3044,8 +3149,9 @@ int fdb_remcur_run_sql(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 extern int gbl_partial_indexes;
 
 int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long genid, unsigned long long ins_keys,
-                    int datalen, char *data, int seq, int isuuid, SBUF2 *sb)
+                    char *tblname, unsigned long long genid,
+                    unsigned long long ins_keys, int datalen, char *data,
+                    int seq, int isuuid, SBUF2 *sb)
 {
     int rc = 0;
     int send_dk = 0;
@@ -3068,12 +3174,17 @@ int fdb_send_insert(fdb_msg_t *msg, char *cid, int version, int rootpage,
     msg->in.datalen = datalen;
     msg->in.data = data;
     msg->in.seq = seq;
+    msg->in.tblname = tblname;
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_insert message rc=%d\n",
                 __func__, rc);
         goto done;
+    }
+
+    if (gbl_fdb_track) {
+        fdb_msg_print_message(sb, msg, "sending msg");
     }
 
 done:
@@ -3084,8 +3195,8 @@ done:
 }
 
 int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long genid, unsigned long long del_keys,
-                    int seq, int isuuid, SBUF2 *sb)
+                    char *tblname, unsigned long long genid,
+                    unsigned long long del_keys, int seq, int isuuid, SBUF2 *sb)
 {
     int rc = 0;
     int send_dk = 0;
@@ -3106,6 +3217,7 @@ int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
     msg->de.genid = genid;
     msg->de.del_keys = del_keys;
     msg->de.seq = seq;
+    msg->de.tblname = tblname;
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
@@ -3114,14 +3226,19 @@ int fdb_send_delete(fdb_msg_t *msg, char *cid, int version, int rootpage,
         goto done;
     }
 
+    if (gbl_fdb_track) {
+        fdb_msg_print_message(sb, msg, "sending msg");
+    }
+
 done:
     return rc;
 }
 
 int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
-                    unsigned long long oldgenid, unsigned long long genid,
-                    unsigned long long ins_keys, unsigned long long del_keys,
-                    int datalen, char *data, int seq, int isuuid, SBUF2 *sb)
+                    char *tblname, unsigned long long oldgenid,
+                    unsigned long long genid, unsigned long long ins_keys,
+                    unsigned long long del_keys, int datalen, char *data,
+                    int seq, int isuuid, SBUF2 *sb)
 {
     int rc = 0;
     int send_dk = 0;
@@ -3146,12 +3263,17 @@ int fdb_send_update(fdb_msg_t *msg, char *cid, int version, int rootpage,
     msg->up.datalen = datalen;
     msg->up.data = data;
     msg->up.seq = seq;
+    msg->up.tblname = tblname;
 
     rc = fdb_msg_write_message(sb, msg, 1);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: failed sending fdbc cursor_update message rc=%d\n",
                 __func__, rc);
         goto done;
+    }
+
+    if (gbl_fdb_track) {
+        fdb_msg_print_message(sb, msg, "sending msg");
     }
 
 done:
@@ -3216,8 +3338,8 @@ int fdb_remcur_insert(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     clnt->ins_keys = ins_keys;
     clnt->del_keys = 0ULL;
 
-    rc = fdb_svc_cursor_insert(clnt, rootpage, version, genid, data, datalen,
-                               seq);
+    rc = fdb_svc_cursor_insert(clnt, msg->in.tblname, rootpage, version, genid,
+                               data, datalen, seq);
 
     if (gbl_expressions_indexes) {
         free_cached_idx(clnt->idxInsert);
@@ -3240,7 +3362,8 @@ int fdb_remcur_delete(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     clnt->ins_keys = 0ULL;
     clnt->del_keys = del_keys;
 
-    rc = fdb_svc_cursor_delete(clnt, rootpage, version, genid, seq);
+    rc = fdb_svc_cursor_delete(clnt, msg->de.tblname, rootpage, version, genid,
+                               seq);
 
     if (gbl_expressions_indexes) {
         free_cached_idx(clnt->idxInsert);
@@ -3267,8 +3390,8 @@ int fdb_remcur_update(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
     clnt->ins_keys = ins_keys;
     clnt->del_keys = del_keys;
 
-    rc = fdb_svc_cursor_update(clnt, rootpage, version, oldgenid, genid, data,
-                               datalen, seq);
+    rc = fdb_svc_cursor_update(clnt, msg->up.tblname, rootpage, version,
+                               oldgenid, genid, data, datalen, seq);
 
     if (gbl_expressions_indexes) {
         free_cached_idx(clnt->idxInsert);
@@ -3301,8 +3424,8 @@ int fdb_remcur_index(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
         clnt->idxInsert[ixnum] = pIdx = malloc(sizeof(int) + ixlen);
     }
     if (pIdx == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d malloc %d failed\n", __func__, __LINE__,
-                sizeof(int) + ixlen);
+        logmsg(LOGMSG_ERROR, "%s:%d malloc %zu failed\n", __func__, __LINE__,
+               sizeof(int) + ixlen);
         return -1;
     }
     *((int *)pIdx) = ixlen;
@@ -3490,6 +3613,7 @@ int fdb_remcur_trans_begin(SBUF2 *sb, fdb_msg_t *msg, svc_callback_arg_t *arg)
 
     if (!rc) {
         arg->clnt = clnt;
+        arg->flags = flags;
         if (gbl_expressions_indexes) {
             if (clnt->idxInsert || clnt->idxDelete) {
                 free_cached_idx(clnt->idxInsert);

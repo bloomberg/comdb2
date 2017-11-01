@@ -35,16 +35,16 @@
 
 #include <str0.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include <net.h>
 #include "bdb_int.h"
 #include "locks.h"
 
 #ifndef BERKDB_46
-#include "db_int.h"
+#include <build/db_int.h>
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "llog_handlers.h"
 #include "dbinc/db_swap.h"
 #endif
@@ -289,7 +289,7 @@ int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op)
 
 err:
     if (rc && rc != DB_LOCK_DEADLOCK)
-        logmsg(LOGMSG_ERROR, "at %lu:%lu rc %d\n", lsn->file, lsn->offset, rc);
+        logmsg(LOGMSG_ERROR, "at %u:%u rc %d\n", lsn->file, lsn->offset, rc);
 
     if (logp)
         free(logp);

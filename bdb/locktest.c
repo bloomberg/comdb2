@@ -30,7 +30,7 @@ typedef unsigned int u_int;
 #define BDB5RET 0
 #endif
 
-#include <db.h>
+#include <build/db.h>
 #include <unistd.h>
 #include <string.h>
 #include <strings.h>

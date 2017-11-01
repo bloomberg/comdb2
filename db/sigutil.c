@@ -44,8 +44,10 @@ const struct signal_name unix_signals[] = {
     defsig(ALRM),   defsig(TERM),    defsig(URG),      defsig(STOP),
     defsig(TSTP),   defsig(CONT),    defsig(CHLD),     defsig(TTIN),
     defsig(TTOU),   defsig(IO),      defsig(XCPU),     defsig(XFSZ),
-    defsig(VTALRM), defsig(PWR),     defsig(USR1),     defsig(USR2),
-    defsig(WINCH),
+    defsig(VTALRM), defsig(USR1),    defsig(USR2),     defsig(WINCH),
+#if !defined(__APPLE__)
+    defsig(PWR),
+#endif
 #if defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
     defsig(EMT),    defsig(WAITING),
 #endif /* _IBM_SOURCE || _SUN_SOURCE */
@@ -58,15 +60,19 @@ const struct signal_name unix_signals[] = {
     defsig(GRANT),  defsig(RETRACT), defsig(SOUND),    defsig(SAK),
 #endif /*_IBM_SOURCE*/
 #if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
+#   if !defined(__APPLE__)
     defsig(CLD),
+#   endif
 #endif /* _SUN_SOURCE || _LINUX_SOURCE */
 #ifdef _SUN_SOURCE
     defsig(LWP),    defsig(FREEZE),  defsig(THAW),     defsig(CANCEL),
     defsig(LOST),   defsig(XRES),
 #endif /*_SUN_SOURCE*/
 #ifdef _LINUX_SOURCE
-    defsig(ABRT),   defsig(ALRM),    defsig(IOT),      defsig(POLL),
-    defsig(STKFLT),
+    defsig(ABRT),   defsig(ALRM),    defsig(IOT),
+#   if !defined(__APPLE__)
+    defsig(POLL),   defsig(STKFLT),
+#   endif
 #endif /*_LINUX_SOURCE*/
 };
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # use bash file locking ability to atomically get and increment
 # test counter used by Makefile to print counter of current running test
 

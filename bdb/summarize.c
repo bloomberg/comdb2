@@ -53,10 +53,10 @@
 #include "locks.h"
 
 /* need access to berkeley innards here */
-#include "db.h"
-#include "db_int.h"
-#include "db_page.h"
-#include "btree.h"
+#include <build/db.h>
+#include <build/db_int.h>
+#include <dbinc/db_page.h>
+#include <dbinc/btree.h>
 #include "dbinc/db_swap.h"
 #include "dbinc/hmac.h"
 #include <plbitlib.h> /* for bset/btst */
@@ -79,7 +79,9 @@ static double analyze_headroom = 6;
 void analyze_set_headroom(uint64_t headroom)
 {
     if (headroom < 1 || 100 < headroom) {
-        logmsg(LOGMSG_ERROR, "Invalid headroom %llu. Needs to be between 0 and 100%%\n", headroom);
+        logmsg(LOGMSG_ERROR,
+               "Invalid headroom %lu. Needs to be between 0 and 100%%\n",
+               headroom);
         return;
     }
     analyze_headroom = headroom;
@@ -212,7 +214,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         goto done;
     }
 
-#if defined(_IBM_SOURCE) || defined(_LINUX_SOURCE)
+#if defined(_IBM_SOURCE) || defined(__linux__)
     // inform kernel that we will be accessing file sequentially
     // and that we won't need the file to be cached
     fdatasync(fd);

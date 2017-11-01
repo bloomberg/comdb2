@@ -13581,16 +13581,18 @@ int get_int_field(struct field *f, const uint8_t *buf, int64_t *out)
     switch (f->datalen) {
     case sizeof(short):
         *out = (short)htons(*(short *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "short: %lld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "short: %ld\n", *out);
         break;
     case sizeof(int):
         *out = (int)htonl(*(int *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "int: %lld\n", *out);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "int: %ld\n", *out);
         break;
     case sizeof(long long):
         *out = (long long)flibc_htonll(*(long long *)(buf + f->offset));
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "long long: %lld\n", *out);
+            logmsg(LOGMSG_USER, "long long: %ld\n", *out);
         break;
     default:
         rc = -1;
@@ -13608,12 +13610,12 @@ int get_uint_field(struct field *f, const uint8_t *buf, uint64_t *out)
     case sizeof(unsigned short):
         ival = (long long)(unsigned short)htons(*(short *)(buf + f->offset));
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned short: %lld\n", ival);
+            logmsg(LOGMSG_USER, "unsigned short: %ld\n", ival);
         break;
     case sizeof(unsigned int):
         ival = (long long)(unsigned int)htonl(*(int *)(buf + f->offset));
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned int: %lld\n", ival);
+            logmsg(LOGMSG_USER, "unsigned int: %ld\n", ival);
         break;
     case sizeof(unsigned long long):
         uival = (uint64_t)flibc_htonll(*(uint64_t *)(buf + f->offset));
@@ -13623,7 +13625,7 @@ int get_uint_field(struct field *f, const uint8_t *buf, uint64_t *out)
         }
         ival = uival;
         if (gbl_dump_sql_dispatched)
-            logmsg(LOGMSG_USER, "unsigned long long: %lld\n", ival);
+            logmsg(LOGMSG_USER, "unsigned long long: %ld\n", ival);
         break;
     default:
         rc = -1;
@@ -13640,7 +13642,8 @@ int get_real_field(struct field *f, const uint8_t *buf, double *out)
     switch (f->datalen) {
     case sizeof(float):
         dval = (double)flibc_htonf(*(float *)(buf + f->offset));
-        if (gbl_dump_sql_dispatched) logmsg(LOGMSG_USER, "float: %hf\n", dval);
+        if (gbl_dump_sql_dispatched)
+            logmsg(LOGMSG_USER, "float: %f\n", dval);
         break;
     case sizeof(double):
         dval = (double)flibc_htond(*(double *)(buf + f->offset));

@@ -38,7 +38,7 @@
 #include <alloca.h>
 #include "osqlcomm.h"
 
-#include <socket_pool.h>
+#include <sockpool.h>
 
 #include "flibc.h"
 #include <cdb2_constants.h>
@@ -469,7 +469,7 @@ void dbglog_dump_write_stats(struct ireq *iq)
         if (iq->nwrites[i]) {
             st->path_stats[ix].nwrite = iq->nwrites[i];
             st->path_stats[ix].ix = -1;
-            strcpy(st->path_stats[ix].table, thedb->dbs[i]->dbname);
+            strcpy(st->path_stats[ix].table, thedb->dbs[i]->tablename);
             ix++;
             st->n_rows += iq->nwrites[i];
         }

@@ -454,8 +454,8 @@ enum dbt_api_return_codes {
     DB_ERR_DYNTAG_LOAD_FAIL = 118,
     /* GENERAL BLOCK TRN RCODES */
     DB_RC_TRN_OK = 0,
-    DB_ERR_TRN_DUP = 1,             /* dup add 2 , returned with 220 before */
-    DB_ERR_TRN_VERIFY = 2,          /* verify 4, returned with 220 before */
+    DB_ERR_TRN_DUP = 1,    /* dup add 2 , returned with 220 before */
+    DB_ERR_TRN_VERIFY = 2, /* verify 4, returned with 220 before */
     DB_ERR_TRN_FKEY = 3,
     DB_ERR_TRN_NULL_CONSTRAINT = 4, /* 318 */
     DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
@@ -466,6 +466,7 @@ enum dbt_api_return_codes {
     DB_ERR_TRN_DB_CONN = 205,
     DB_ERR_TRN_DB_IO = 206,
     DB_ERR_TRN_NOT_SERIAL = 230,
+    DB_ERR_TRN_SC = 240,
 
     /* INTERNAL DB ERRORS */
     DB_ERR_INTR_NO_MASTER = 300,
@@ -694,7 +695,7 @@ typedef struct timepart_views timepart_views_t;
 struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
-    char *dbname;
+    char *tablename;
 
     int dbnum;
     int lrl; /*dat len in bytes*/
@@ -1704,7 +1705,6 @@ extern int gbl_init_with_compr_blobs;
 extern int gbl_init_with_bthash;
 
 extern int gbl_sqlhistsz;
-extern int gbl_force_bad_directory;
 extern int gbl_replicate_local;
 extern int gbl_replicate_local_concurrent;
 
@@ -2600,8 +2600,8 @@ void purge_old_cached_blobs(void);
 void commit_schemas(const char *tblname);
 struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
-int getdefaultkeysize(const struct dbtable *db, int ixnum);
-int getdefaultdatsize(const struct dbtable *db);
+int getdefaultkeysize(const struct dbtable *tbl, int ixnum);
+int getdefaultdatsize(const struct dbtable *tbl);
 int update_sqlite_stats(struct ireq *iq, void *trans, void *dta);
 void *do_verify(void *);
 void dump_tagged_buf(const char *table, const char *tag,
@@ -2892,12 +2892,10 @@ void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
-void reqlog_set_error(struct reqlogger *logger, const char *error);
+void reqlog_set_error(struct reqlogger *logger, const char *error,
+                      int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
-
-void eventlog_params(struct reqlogger *logger, sqlite3_stmt *stmt,
-                     struct schema *params, struct sqlclntstate *clnt);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
@@ -3302,8 +3300,9 @@ extern unsigned long long gbl_addupd_blob_cnt;
 
 struct field *convert_client_field(CDB2SQLQUERY__Bindvalue *bindvalue,
                                    struct field *c_fld);
-int bind_parameters(sqlite3_stmt *stmt, struct schema *params,
-                    struct sqlclntstate *clnt, char **err);
+int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
+                    struct schema *params, struct sqlclntstate *clnt,
+                    char **err);
 void bind_verify_indexes_query(sqlite3_stmt *stmt, void *sm);
 int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm);
 

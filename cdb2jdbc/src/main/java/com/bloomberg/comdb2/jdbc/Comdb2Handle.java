@@ -164,6 +164,7 @@ public class Comdb2Handle extends AbstractConnection {
     public Comdb2Handle(String dbname, String cluster) {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
+        sets.add("set queryeffects statement");
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
@@ -769,6 +770,13 @@ public class Comdb2Handle extends AbstractConnection {
         sql = sql.trim();
         String lowerSql = sql.toLowerCase();
 
+        while (next_int() == Errors.CDB2_OK)
+            ;
+
+        clearResp();
+
+        rowsRead = 0;
+
         tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
@@ -803,12 +811,6 @@ public class Comdb2Handle extends AbstractConnection {
             return 0;
         }
 
-        while (next_int() == Errors.CDB2_OK)
-            ;
-
-        clearResp();
-
-        rowsRead = 0;
         boolean is_begin = false, is_commit = false, is_rollback = false;
 
         if (lowerSql.equals("begin"))
@@ -1726,7 +1728,7 @@ readloop:
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
-        int start_req = dbHostIdx++;
+        int start_req = ++dbHostIdx;
 
         for (; dbHostIdx < myDbHosts.size(); ++dbHostIdx) {
             if (dbHostIdx == masterIndexInMyDbHosts

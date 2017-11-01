@@ -76,7 +76,7 @@ as long as there was a successful move in the past
 #include <poll.h>
 #include <netinet/in.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <fsnap.h>
 #include <ctrace.h>
 
@@ -485,10 +485,11 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
                 cur->state->name);
     }
 
-    logmsg(LOGMSG_USER, "Table scan for table '%s' skipcount = %llu nextcount = %llu "
-            "ratio = %llu (threshold = %d)\n",
-            cur->state->name, skipcount, nextcount, ratio,
-            cur->state->attr->disable_pgorder_threshold);
+    logmsg(LOGMSG_USER,
+           "Table scan for table '%s' skipcount = %lu nextcount = %lu "
+           "ratio = %lu (threshold = %d)\n",
+           cur->state->name, skipcount, nextcount, ratio,
+           cur->state->attr->disable_pgorder_threshold);
 
     return 0;
 }
@@ -536,10 +537,11 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
 
     /* Ratio of skips to nexts */
     if (ratio > cur->state->attr->disable_pgorder_threshold) {
-        logmsg(LOGMSG_WARN, "Disable page-order tablescan for table %s skipcount = "
-                "%llu nextcount = %llu ratio = %llu%% threshold = %d%%\n",
-                cur->state->name, skipcount, nextcount, ratio,
-                cur->state->attr->disable_pgorder_threshold);
+        logmsg(LOGMSG_WARN,
+               "Disable page-order tablescan for table %s skipcount = "
+               "%lu nextcount = %lu ratio = %lu%% threshold = %d%%\n",
+               cur->state->name, skipcount, nextcount, ratio,
+               cur->state->attr->disable_pgorder_threshold);
 
         /* Disable pageorder tablescan */
         cur->state->disable_page_order_tablescan = 1;
@@ -600,7 +602,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
 
     pcur_ifn = calloc(1, sizeof(bdb_cursor_ifn_t) + sizeof(bdb_cursor_impl_t));
     if (!pcur_ifn) {
-        logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__, sizeof(bdb_cursor_impl_t));
+        logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+               sizeof(bdb_cursor_impl_t));
         *bdberr = BDBERR_MALLOC;
         return NULL;
     }
@@ -639,8 +642,8 @@ bdb_cursor_ifn_t *bdb_cursor_open(
             cur->datacopy =
                 malloc(bdb_state->lrl + 2 * sizeof(unsigned long long));
             if (!cur->datacopy) {
-                logmsg(LOGMSG_ERROR, "%s: malloc %d\n", __func__,
-                        bdb_state->lrl + 2 * sizeof(unsigned long long));
+                logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
+                       bdb_state->lrl + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
                 return NULL;
             }
@@ -7683,6 +7686,12 @@ int bdb_osql_trak(char *sql, unsigned int *status)
         *status |= SQL_DBG_SHADOW;
         return 0;
     }
+
+    if (strncasecmp(sql, "OFF", 3) == 0) {
+        *status = 0;
+        return 0;
+    }
+
     return -1;
 }
 

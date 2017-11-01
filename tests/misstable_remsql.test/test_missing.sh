@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################

@@ -66,14 +66,14 @@
 #include <procinfo.h>
 #elif defined(_HP_SOURCE)
 #include <sys/pstat.h>
-#elif defined(_LINUX_SOURCE)
+#elif defined(__linux__)
 #include <sys/time.h>
 #include <asm/param.h> /* HZ */
 #endif
 
 #if defined(_SUN_SOURCE)
 #include <ucred.h>
-#elif defined(_LINUX_SOURCE)
+#elif defined(__linux__)
 #include <linux/socket.h>
 #endif
 
@@ -149,9 +149,6 @@ static void __compat_allocate_gethoststar_key()
 static struct hostent *__compat_gethostbyname(const char *name)
 {
     struct __compat_gethoststar_buffer *buf;
-#if defined(_LINUX_SOURCE)
-    struct hostent *result;
-#endif
 
     buf = __compat_allocate_thread_buffer(
         &gethoststar_once, __compat_allocate_gethoststar_key, &gethoststar_key,
@@ -159,10 +156,14 @@ static struct hostent *__compat_gethostbyname(const char *name)
     if (buf == NULL)
         return NULL;
 
-#if defined(_SUN_SOURCE)
+#if defined(__APPLE__)
+        // todo use getaddrinfo instead
+        return gethostbyname(name);
+#elif defined(_SUN_SOURCE)
     return gethostbyname_r(name, &buf->hostent, buf->data, sizeof(buf->data),
                            &h_errno);
 #elif defined(_LINUX_SOURCE)
+    struct hostent *result;
     gethostbyname_r(name, &buf->hostent, buf->data, sizeof(buf->data), &result,
                     &h_errno);
     return result;
@@ -185,9 +186,9 @@ struct hostent *bb_gethostbyname(const char *name)
 }
 
 
-/* GETSERVBYNAME: NATIVELY USES THREAD STORAGE ON IBM/HP */
+/* GETSERVBYNAME: NATIVELY USES THREAD STORAGE ON IBM/HP/macOS */
 
-#if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
+#if defined(_SUN_SOURCE) || defined(__linux__)
 
 struct __compat_getservbyname_buffer {
     struct servent servent;
@@ -219,10 +220,6 @@ static struct servent *__compat_getservbyname(const char *name,
                                               const char *proto)
 {
     struct __compat_getservbyname_buffer *buf;
-#if defined(_LINUX_SOURCE)
-    struct servent *result;
-#endif
-
     buf = __compat_allocate_thread_buffer(
         &getservbyname_once, __compat_allocate_getservbyname_key,
         &getservbyname_key, sizeof(struct __compat_getservbyname_buffer));
@@ -232,20 +229,21 @@ static struct servent *__compat_getservbyname(const char *name,
 #if defined(_SUN_SOURCE)
     return getservbyname_r(name, proto, &buf->servent, buf->data,
                            sizeof(buf->data));
-#elif defined(_LINUX_SOURCE)
+#elif defined(__linux__)
+    struct servent *result;
     getservbyname_r(name, proto, &buf->servent, buf->data, sizeof(buf->data),
                     &result);
     return result;
 #endif
 }
 
-#endif /* defined(_SUN_SOURCE) || defined(_LINUX_SOURCE) */
+#endif /* defined(_SUN_SOURCE) || defined(__linux__) */
 
 struct servent *bb_getservbyname(const char *name, const char *proto)
 {
-#if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
+#if defined(_SUN_SOURCE) || defined(__linux__)
     return __compat_getservbyname(name, proto);
-#elif defined(_IBM_SOURCE) || defined(_HP_SOURCE)
+#elif defined(_IBM_SOURCE) || defined(_HP_SOURCE) || defined(__APPLE__)
     /* IBM/HP's getservbyname() is already thread-safe */
     return getservbyname(name, proto);
 #else

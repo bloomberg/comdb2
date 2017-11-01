@@ -119,7 +119,10 @@ bool compare_checksum(
     struct stat sb;
     bool ret = false;
 
-    int flags = O_RDONLY | O_LARGEFILE;
+    int flags = O_RDONLY;
+#   ifndef __APPLE__
+    flags |= O_LARGEFILE;
+#   endif
     int new_fd = open(file.get_filepath().c_str(), flags);
     int old_fd = open(incr_file_name.c_str(), O_RDWR);
 
@@ -368,7 +371,7 @@ void incr_deserialise_database(
     bool done_with_incr = true;
 
     std::map<std::string, FileInfo> new_files;
-    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t>>> updated_files;
+    std::map<std::string, std::pair<FileInfo, std::vector<uint32_t> > > updated_files;
     std::set<std::string> deleted_files;
     std::vector<std::string> file_order;
 

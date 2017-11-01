@@ -47,7 +47,7 @@
 #include <stddef.h>
 #include <pthread.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -1918,7 +1918,7 @@ before_first_lookup:
             int ii;
             logmsg(LOGMSG_ERROR, "bdb_fetch_int ix %d key '", ixnum);
             for (ii = 0; ii < ixlen; ii++)
-                logmsg(LOGMSG_ERROR, "%02x", (((unsigned char *)ix) + ii));
+                logmsg(LOGMSG_ERROR, "%02x", *(((unsigned char *)ix) + ii));
             logmsg(LOGMSG_ERROR, "' ixlen %d direction %d lastrrn %d rc %d %s\n",
                     ixlen, direction, lastrrn, initial_rc, db_strerror(rc));
 

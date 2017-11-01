@@ -54,7 +54,7 @@
 #include <bdb_api.h>
 #include <sbuf2.h>
 #include <quantize.h>
-#include <socket_pool.h>
+#include <sockpool.h>
 
 #include "comdb2.h"
 #include <comdb2_shm.h>

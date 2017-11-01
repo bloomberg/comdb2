@@ -185,7 +185,7 @@ int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation)
     if (unlikely(bdb_state->rep_trace)) {
         char str[80];
         lsn_to_str(str, &seqnum.lsn);
-        fprintf(stderr, "sending NEWSEQ to %d <%s>\n", master, str);
+        fprintf(stderr, "sending NEWSEQ to %s <%s>\n", master, str);
     }
 
     if (gbl_udp) {
@@ -228,14 +228,16 @@ char *print_addr(struct sockaddr_in *addr, char *buf)
     int rc = getnameinfo((struct sockaddr *)addr, len, name, sizeof(name),
                          service, sizeof(service), 0);
     if (rc) {
-        sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, strerror_r(rc, errbuf, sizeof(errbuf)));
+        strerror_r(rc, errbuf, sizeof(errbuf));
+        sprintf(buf, "%s:getnameinfo errbuf=%s", __func__, errbuf);
         return buf;
     }
 
     if (inet_ntop(addr->sin_family, &addr->sin_addr.s_addr, ip, sizeof(ip))) {
         sprintf(buf, "[%s %s:%s] ", name, ip, service);
     } else {
-        sprintf(buf, "%s:inet_ntop:%s", __func__, strerror_r(errno, errbuf, sizeof(errbuf)));
+        strerror_r(errno, errbuf, sizeof(errbuf));
+        sprintf(buf, "%s:inet_ntop:%s", __func__, errbuf);
     }
     return buf;
 }
@@ -253,7 +255,7 @@ static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
         if (nsent != -999) {
             logmsgperror("udp_send:sendto");
             ack_info_to_cpu(info);
-            printf("sz:%d, hdr:%d payload:%d type:%d from:me to:%s\n", len,
+            printf("sz:%u, hdr:%d payload:%d type:%d from:me to:%s\n", len,
                    info->hdrsz, info->len, info->type, to);
         }
         ++fail_udp;
@@ -359,7 +361,7 @@ void udp_ping_ip(bdb_state_type *bdb_state, char *ip)
     if (nsent != len) {
         logmsgperror("udp_ping_ip:sendto");
         ack_info_to_cpu(info);
-        printf("total len:%d, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
+        printf("total len:%u, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
                info->hdrsz, info->type, info->len, info->from, info->to,
                print_addr(&addr, straddr));
         return;
@@ -628,7 +630,7 @@ static void *udp_reader(void *arg)
 
 
         default:
-            printf("%s: recd unknown packet type:%d from:%d\n", __func__, type,
+            printf("%s: recd unknown packet type:%d from:%s\n", __func__, type,
                    from);
             break;
         }
@@ -746,6 +748,8 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
     return rc;
 }
 
+int gbl_verbose_send_coherency_lease;
+
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *inc_wait)
 {
@@ -764,8 +768,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         static time_t lastpr = 0;
         time_t now;
         if ((now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_INFO, "%s: lease base time is %llu\n", __func__,
-                    colease.issue_time);
+            logmsg(LOGMSG_INFO, "%s: lease base time is %lu\n", __func__,
+                   colease.issue_time);
             lastpr = now;
         }
     }
@@ -791,7 +795,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         /* Assume disconnected node(s) are incoherent */
         *inc_wait = 1;
 
-        if (last_count != count || (now = time(NULL)) - lastpr) {
+        if (gbl_verbose_send_coherency_lease &&
+            (last_count != count || (now = time(NULL)) - lastpr)) {
             char *machs = (char *)malloc(1);
             int machs_len = 0;
             machs[0] = '\0';
@@ -803,14 +808,14 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                 strcat(machs, " ");
             }
             logmsg(LOGMSG_INFO,
-                    "%s: only %d of %d nodes are connected: %s epoch=%u\n",
-                    __func__, count, comcount, machs, time(NULL));
+                   "%s: only %d of %d nodes are connected: %s epoch=%ld\n",
+                   __func__, count, comcount, machs, time(NULL));
             free(machs);
             lastpr = now;
         }
     } else if (last_count != comcount) {
-        logmsg(LOGMSG_INFO, "%s: sending leases to all nodes, epoch=%u\n", __func__,
-                time(NULL));
+        logmsg(LOGMSG_INFO, "%s: sending leases to all nodes, epoch=%ld\n",
+               __func__, time(NULL));
     }
 
     last_count = count;
@@ -861,9 +866,10 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         } else {
             static time_t lastpr = 0;
             time_t now;
-            if ((now = time(NULL)) - lastpr) {
-                logmsg(LOGMSG_INFO, "%s: not sending to %s\n", __func__,
-                        hostlist[i]);
+            if (gbl_verbose_send_coherency_lease &&
+                (now = time(NULL)) - lastpr) {
+                logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
+                       hostlist[i]);
                 lastpr = now;
             }
         }

@@ -44,7 +44,7 @@ rcache_init(size_t count, size_t pgsz)
 	    + sizeof(CacheSlot) * count + pgsz * count;
 
 	if ((hndl = malloc(bytes)) == NULL) {
-		logmsg(LOGMSG_ERROR, "%s malloc failed:%u bytes\n", __func__, bytes);
+		logmsg(LOGMSG_ERROR, "%s malloc failed:%zu bytes\n", __func__, bytes);
 		return;
 	}
 	hndl->count = count;

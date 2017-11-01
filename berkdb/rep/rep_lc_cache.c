@@ -39,9 +39,10 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 
 	if (!reinit) {
 		if ((ret = pthread_mutex_init(&dbenv->lc_cache.lk, NULL)) != 0)
-			 goto err;
-	} else
-		pthread_mutex_lock(&dbenv->lc_cache.lk);
+			 return ret;
+	} 
+
+	pthread_mutex_lock(&dbenv->lc_cache.lk);
 
 	LC_CACHE *lcc;
 
@@ -64,8 +65,7 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 
 	ret = 0;
 err:
-	if (!reinit)
-		pthread_mutex_unlock(&dbenv->lc_cache.lk);
+	pthread_mutex_unlock(&dbenv->lc_cache.lk);
 	return ret;
 }
 
@@ -161,9 +161,9 @@ lsn_collection_add(DB_ENV *dbenv, LSN_COLLECTION * lc, DB_LSN lsn, DBT *dbt)
 
 	if (lc->nlsns >= lc->nalloc) {
 		nalloc = lc->nalloc == 0 ? 20 : lc->nalloc * 2;
-		if (ret =
+		if ((ret =
 		    __os_realloc(dbenv, nalloc * sizeof(struct logrecord),
-			&lc->array) != 0)
+			&lc->array)) != 0)
 			goto err;
 		lc->nalloc = nalloc;
 		for (int i = lc->nlsns; i < lc->nalloc; i++)
@@ -200,7 +200,7 @@ lc_dump_cache(DB_ENV *dbenv, int needlock)
 			logmsg(LOGMSG_USER, "%x ", e->txnid);
 			logmsg(LOGMSG_USER, "mem %d ", e->lc.memused);
 			for (int i = 0; i < e->lc.nlsns; i++) {
-				logmsg(LOGMSG_USER, " (%d) ",
+				logmsg(LOGMSG_USER, PR_LSN " (%d) ",
 				    PARM_LSN(e->lc.array[i].lsn),
 				    e->lc.array[i].rec.size);
 			}

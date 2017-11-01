@@ -174,6 +174,11 @@ typedef struct osqlstate {
         *sc_tbl; /* storage for schemachange, common for all transaction */
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
+    struct temp_table
+        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
+    int bpfunc_seq;
+
     struct errstat xerr; /* extended error */
 
     /* performance */
@@ -512,6 +517,9 @@ struct sqlclntstate {
 
     hash_t *ddl_tables;
     hash_t *dml_tables;
+
+    int ignore_coherency;
+    int statement_query_effects;
 };
 
 /* Query stats. */
@@ -738,6 +746,8 @@ struct sql_thread {
 
 /* makes master swing verbose */
 extern int gbl_master_swing_osql_verbose;
+/* for testing: sleep in osql_sock_restart when master swings */
+extern int gbl_master_swing_sock_restart_sleep;
 
 /* takes care of both stat1 and stat2 */
 #define is_sqlite_stat(x)                                                      \

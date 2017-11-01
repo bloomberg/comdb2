@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Runs the register linearizability test
+#debug=1
+#debug_trace="-D"
+
+[[ "$debug" == 1 ]] && set -x
+needcluster=0
+testargs="--workload g2 --concurrency 2n"
+db=$1
+
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED installation."
+    exit 0
+fi
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table g2_a {schema{int id int key int value null=yes} keys{ \"id\" = id}}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table g2_b {schema{int id int key int value null=yes} keys{ \"id\" = id}}" >/dev/null 2>&1
+}
+
+function checkforerrors
+{
+    [[ "$debug" == 1 ]] && set -x
+    outfile=$1
+
+    egrep "Analysis invalid!" $outfile >/dev/null 2>&1 
+    if [[ $? == 0 ]]; then
+        echo "JEPSEN ANALYSIS INVALID !!!" 
+        exit 1
+    fi
+
+    egrep "XXX JEPSEN ERROR Lein test returns $r" $outfile >/dev/null 2>&1
+    if [[ $? == 0 ]]; then
+        echo "JEPSEN ANALYSIS INVALID: LEIN TEST ERROR!!!" 
+        exit 1
+    fi
+
+    return 0
+}
+
+function heal
+{
+    [[ "$debug" == 1 ]] && set -x
+    machs=$(cdb2sql -showports $db $stage "select 1" 2>&1 >/dev/null | while read mach xxx ; do echo $mach ; done)
+    ports=$(cdb2sql -showports $db $stage "select 1" 2>&1 >/dev/null)
+    for mach in $machs ; do 
+        echo "$ports" | while read m p ; do 
+	        ssh $mach "sudo iptables -D INPUT -s $m -p tcp --destination-port $p -j DROP -w" < /dev/null >/dev/null 2>&1
+	        ssh $mach "sudo iptables -D INPUT -s $m -p udp --destination-port $p -j DROP -w" < /dev/null >/dev/null 2>&1
+	        ssh $mach "sudo kill -CONT \$(cat /tmp/$db.pid)" < /dev/null >/dev/null 2>&1
+        done
+    done
+}
+
+function waitforcoherency
+{
+    [[ "$debug" == 1 ]] && set -x
+    heal
+    ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+    m=${ma%%:*}
+    c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+    echo "$c"
+    echo "$c" | egrep COHERENT
+    r=$?
+    while [[ $r == 0 ]] ; do
+        echo "$(date) waiting for $db cluster to become coherent"
+        heal
+        sleep 1
+        ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+        m=${ma%%:*}
+        c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+        echo "$c"
+        echo "$c" | egrep COHERENT
+        r=$?
+    done
+}
+
+function runtestwithoptions
+{
+    [[ "$debug" == 1 ]] && set -x
+    dt=$(date +%Y%m%d%H%M%S)
+    outfile=$(pwd)/jepsen.$db.$dt.out
+    export COMDB2_DBNAME=$db
+    export COMDB2_DBSTAGE=$stage
+    export COMDB2_DEBUG=1
+    export CDB2_CONFIG_FILE=${CDB2_CONFIG}
+    (
+        cd ${TESTSROOTDIR}/linearizable/jepsen
+        lein run test $testargs > $outfile 2>&1 < /dev/null
+        r=$? ; [[ $r != 0 ]] && echo "XXX JEPSEN ERROR Lein test returns $r" >> $outfile
+    )
+    cat $outfile
+    checkforerrors $outfile
+    rm $outfile
+}
+
+function longtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+function normaltest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    if [[ -z "$CONTINUOUS" ]]; then
+        normaltest
+    else
+        longtest
+    fi
+}
+
+createtables
+runtest
+
+echo "Success"
+exit 0

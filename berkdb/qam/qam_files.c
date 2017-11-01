@@ -225,7 +225,7 @@ alloc:			if ((ret = __os_realloc(dbenv,
 		if (array->mpfarray[offset].pinref) {
 			if (debug_switch_verbose_fix_pinref()) {
 				logmsg(LOGMSG_WARN, 
-                    "*** %d *** fixing pinref %d %d %d %p  %s [%d-%d]\n",
+                    "*** %lu *** fixing pinref %d %d %d %p  %s [%d-%d]\n",
 				    pthread_self(),
 				    array->mpfarray[offset].pinref,
 				    offset + array->low_extent, offset,

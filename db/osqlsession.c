@@ -19,13 +19,11 @@
 #include <util.h>
 #include <ctrace.h>
 #include <netinet/in.h>
-/*#include "sqloffload.h"*/
 #include "osqlsession.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
 #include "osqlrepository.h"
 #include "osqlcheckboard.h"
-#include "comdb2util.h"
 #include "comdb2uuid.h"
 #include <net_types.h>
 

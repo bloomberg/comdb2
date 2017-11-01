@@ -19,7 +19,7 @@
 
 #include "bdb_cursor.h"
 
-#include <db.h>
+#include <build/db.h>
 
 enum berkdb_t {
     BERKDB_UNK = 0,
