@@ -137,7 +137,7 @@ enum AUXDB_TYPES {
     AUXDB_FSTBLK = 3
 };
 
-enum NET_NAMES { NET_REPLICATION, NET_SQL};
+enum NET_NAMES { NET_REPLICATION, NET_SQL };
 /* This is thenumber of bytes taken up by the null bitmap in the wire protocol,
  * which traditionally is fixed at 32 bytes (enough for 256 columns). */
 enum { NULLBMPWIRELENGTH = 32 };

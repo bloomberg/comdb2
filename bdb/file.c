@@ -2557,11 +2557,11 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ANALYZED_TBL,
                          berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_COHERENCY_LEASE, receive_coherency_lease);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COHERENCY_LEASE,
+                         receive_coherency_lease);
 
-    net_register_handler(bdb_state->repinfo->netinfo,
-                         USER_TYPE_REQ_START_LSN, receive_start_lsn_request);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REQ_START_LSN,
+                         receive_start_lsn_request);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_PAGE_COMPACT,
                          berkdb_receive_msg);

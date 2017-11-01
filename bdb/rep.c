@@ -5482,9 +5482,10 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
     }
 
     start_time = gettimeofday_ms();
-    if ((rc = net_send_message_payload_ack(bdb_state->repinfo->netinfo,
-            bdb_state->repinfo->master_host, USER_TYPE_REQ_START_LSN,
-            (void *)&data, sizeof(data), (uint8_t **)&buf, &buflen, 1, waitms)) != 0) {
+    if ((rc = net_send_message_payload_ack(
+             bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
+             USER_TYPE_REQ_START_LSN, (void *)&data, sizeof(data),
+             (uint8_t **)&buf, &buflen, 1, waitms)) != 0) {
         end_time = gettimeofday_ms();
         if (rc == NET_SEND_FAIL_TIMEOUT) {
             logmsg(LOGMSG_WARN,
