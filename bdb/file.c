@@ -129,6 +129,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                     int create, DB_TXN *tid);
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
+static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
 
 void berkdb_set_recovery(DB_ENV *dbenv);
@@ -810,8 +811,7 @@ int bdb_rename_file_versioning_table(bdb_state_type *bdb_state,
 
 retry:
     if (++retries >= 500 /*gbl_maxretries*/) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: giving up after %d "
-                        "retries\n",
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
                 retries);
         return -1;
     }
@@ -823,8 +823,7 @@ retry:
             if (*bdberr == BDBERR_DEADLOCK)
                 goto retry;
 
-            logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: failed to get "
-                            "transaction\n");
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
         }
     } else
@@ -885,8 +884,7 @@ retry:
             bdb_state->name = orig_name;
 
             /*rename the file*/
-            logmsg(LOGMSG_INFO,
-                   "bdb_start_file_versioning: renaming %s to %s\n", oldname,
+            logmsg(LOGMSG_INFO, "%s: renaming %s to %s\n", __func__, oldname,
                    newname);
             if (bdb_rename_file(bdb_state, tran->tid, oldname, newname,
                                 bdberr) ||
@@ -930,8 +928,8 @@ retry:
         bdb_state->name = orig_name;
 
         /*rename*/
-        logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n",
-               oldname, newname);
+        logmsg(LOGMSG_INFO, "%s: renaming %s to %s\n", __func__,oldname,
+               newname);
         if (bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr) ||
             *bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "%s: ERROR converting %s to %s. Check FILE PERMISSIONS\n",
@@ -968,9 +966,8 @@ backout:
         /*kill the transaction*/
 
         if (bdb_tran_abort(bdb_state, tran, bdberr) && !BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: trans abort "
-                            "failed with bdberr %d\n",
-                    *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
+                   __func__, *bdberr);
             return -1;
         }
 
@@ -978,9 +975,7 @@ backout:
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
 
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: failed with bdberr "
-                        "%d\n",
-                *bdberr);
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
     return -1;
 }
@@ -992,12 +987,12 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
     char *orig_name;
     int rc;
 
-    rc = close_dbs(bdb_state, tid);
+    rc = close_dbs_flush(bdb_state, tid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
     }
-
+    
     rc = bdb_rename_file_versioning_table(bdb_state, tran, newname, bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
@@ -1471,13 +1466,12 @@ static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
  * Hence this function will now never fail - although it may spit out errors.
  * After this is called, the db is closed.
  */
-static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
+static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
 {
     int rc;
     int i;
     int dtanum, strnum;
-    int flags = DB_NOSYNC;
 
     print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
@@ -1525,6 +1519,16 @@ static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
     bdb_state->isopen = 0;
 
     return 0;
+}
+
+static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
+{
+    return close_dbs_int(bdb_state, tid, DB_NOSYNC);
+}
+
+static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid)
+{
+    return close_dbs_int(bdb_state, tid, 0);
 }
 
 int bdb_isopen(bdb_state_type *bdb_handle) { return bdb_handle->isopen; }
