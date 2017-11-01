@@ -530,7 +530,7 @@ REGISTER_TUNABLE("init_with_compr_blobs", NULL, TUNABLE_ENUM,
                  &gbl_init_with_compr_blobs, READONLY, init_with_compr_value,
                  NULL, init_with_compr_blobs_update, NULL);
 REGISTER_TUNABLE("init_with_genid48",
-                 "Enables Genid48 for the database. (Default: off)",
+                 "Enables Genid48 for the database. (Default: on)",
                  TUNABLE_INTEGER, &gbl_init_with_genid48, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_inplace_updates",
