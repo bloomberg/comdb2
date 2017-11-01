@@ -363,7 +363,7 @@ __rep_process_message(dbenv, control, rec, eidp, ret_lsnp, commit_gen)
 	DB_LSN *ret_lsnp;
 	uint32_t *commit_gen;
 {
-    int fromline;
+	int fromline;
 	DB_LOG *dblp;
 	DB_LOGC *logc;
 	DB_LSN endlsn, lsn, oldfilelsn, tmplsn;
