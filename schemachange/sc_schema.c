@@ -1305,6 +1305,22 @@ int remove_constraint_pointers(struct dbtable *db)
     return 0;
 }
 
+int rename_constraint_pointers(struct dbtable *db, const char *newname)
+{
+    for (int i = 0; i < thedb->num_dbs; i++) {
+        struct dbtable *rdb = thedb->dbs[i];
+        int j = 0;
+        for (j = 0; j < rdb->n_rev_constraints; j++) {
+            constraint_t *ct = NULL;
+            ct = rdb->rev_constraints[j];
+            if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
+                strcpy(ct->lcltable->tablename, newname);
+            }
+        }
+    }
+    return 0;
+}
+
 void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
 {
     /* This is a kludge.  Newdb is going away.  Go through all

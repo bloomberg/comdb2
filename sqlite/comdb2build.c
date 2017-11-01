@@ -1706,6 +1706,47 @@ clean_arg:
 }
 
 
+void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
+        int dryrun)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+    struct schema_change_type *sc;
+
+    TokenStr(table, pSrcName);
+    TokenStr(newtable, pName);
+
+    if(get_dbtable_by_name(newtable)) {
+        setError(pParse, SQLITE_ERROR, "New table name exists");
+        return;
+    }
+
+    sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (chkAndCopyTableTokens(v, pParse, sc->table, pSrcName, NULL, 1))
+        goto out;
+
+    if (authenticateSC(sc->table, pParse))
+        goto out;
+
+
+    comdb2WriteTransaction(pParse);
+    sc->nothrevent = 1;
+    sc->live = 1;
+    sc->rename = 1;
+    strncpy(sc->newtable, newtable, sizeof(sc->newtable));
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb, (vdbeFuncArgFree) &free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
+
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
     gbl_commit_sleep = num;

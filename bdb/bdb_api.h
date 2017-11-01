@@ -1045,13 +1045,16 @@ int bdb_close_only(bdb_state_type *bdb_handle, int *bdberr);
 */
 int bdb_rename(bdb_state_type *bdb_handle, tran_type *tran, char newtablename[],
                int *bdberr);
+int bdb_rename_table(bdb_state_type *bdb_handle, tran_type *tran, char *newname,
+                     int *bdberr);
+int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
+                              const char *newname, int version, int *bdberr);
 int bdb_rename_data(bdb_state_type *bdb_state, tran_type *tran,
                     char newtablename[], int fromdtanum, int todtanum,
                     int *bdberr);
 int bdb_rename_ix(bdb_state_type *bdb_state, tran_type *tran,
                   char newtablename[], int fromixnum, int toixnum, int *bdberr);
-int bdb_rename_name(bdb_state_type *bdb_state, char newtablename[],
-                    int *bdberr);
+void bdb_state_rename(bdb_state_type *bdb_state, char *newname);
 
 /* rename all the blob files for dynamic upgrade to blobstripe */
 int bdb_rename_blob1(bdb_state_type *bdb_state, tran_type *tran,
@@ -1390,6 +1393,8 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);
+int bdb_chg_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
+                          const char *new_tbl_name, int *bdberr);
 
 int bdb_new_csc2(tran_type *input_trans, const char *db_name, int csc2_vers,
                  char *schema, int *bdberr);
@@ -1421,8 +1426,8 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
     const unsigned long long *p_dst_blob_genids, size_t num_blob_genids,
     char *outbuf, size_t buflen, int *bdberr);
 
-int bdb_start_file_versioning_table(bdb_state_type *bdb_state, tran_type *tran,
-                                    int *bdberr);
+int bdb_rename_file_versioning_table(bdb_state_type *bdb_state, tran_type *tran,
+                                     char *newtblname, int *bdberr);
 void bdb_remove_prefix(bdb_state_type *bdb_state);
 
 void *bdb_del_list_new(int *bdberr);
@@ -1647,6 +1652,8 @@ tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
                                       int retries, int *bdberr);
 void bdb_lockspeed(bdb_state_type *bdb_state);
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
+int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
+                             tran_type *tran);
 int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
 int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
@@ -1973,5 +1980,6 @@ struct bias_info {
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
 #endif

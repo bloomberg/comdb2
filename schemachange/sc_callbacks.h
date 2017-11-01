@@ -47,7 +47,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
                                              unsigned long long ins_keys,
                                              int od_len);
 
-int scdone_callback(bdb_state_type *bdb_state, const char table[],
+int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type);
 
 int schema_change_abort_callback(void);

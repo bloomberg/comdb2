@@ -21,7 +21,7 @@ enum {
     BPFUNC_TIMEPART_RETENTION = 9,
     BPFUNC_ROWLOCKS_ENABLE = 10,
     BPFUNC_GENID48_ENABLE = 11,
-    BPFUNC_SET_SKIPSCAN = 12
+    BPFUNC_SET_SKIPSCAN = 12,
 };
 
 typedef struct bpfunc bpfunc_t;
