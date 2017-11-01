@@ -669,7 +669,7 @@ static inline int verify_sqlresponse_error_code(int error_code,
     case CDB2__ERROR_CODE__DUPLICATE:
     case CDB2__ERROR_CODE__TZNAME_FAIL:
     case CDB2__ERROR_CODE__CHANGENODE:
-    case CDB2__ERROR_CODE__UNKNOWN: 
+    case CDB2__ERROR_CODE__UNKNOWN:
         break;
 
     default:
@@ -5542,7 +5542,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
         /* run the engine */
         fast_error = 0;
 
-        if (clnt->statement_query_effects) reset_query_effects(clnt);
+        if (clnt->statement_query_effects)
+            reset_query_effects(clnt);
 
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err, comm);
         if (rc) {

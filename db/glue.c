@@ -6207,7 +6207,8 @@ int table_version_set(tran_type *tran, const char *tablename,
     int rc;
     int bdberr = 0;
 
-    if (is_tablename_queue(tablename, strlen(tablename))) return 0;
+    if (is_tablename_queue(tablename, strlen(tablename)))
+        return 0;
 
     db = get_dbtable_by_name(tablename);
     if (!db) {
@@ -6216,7 +6217,8 @@ int table_version_set(tran_type *tran, const char *tablename,
     }
 
     rc = bdb_table_version_update(db->handle, tran, version, &bdberr);
-    if (!rc && bdberr) rc = -1;
+    if (!rc && bdberr)
+        rc = -1;
 
     db->tableversion = version;
 
