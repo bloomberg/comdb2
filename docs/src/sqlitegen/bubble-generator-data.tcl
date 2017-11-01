@@ -591,17 +591,20 @@ set all_graphs {
   alter-table-ddl {
       stack
       {line ALTER TABLE {opt db-name .} table-name }
-      {opt
-          {loop
-              {or
-                  {line ADD column-name column-type
-                      {opt {loop {line column-constraint } { , } } }
+      {opt 
+          {or
+              {loop
+                  {or
+                      {line ADD column-name column-type
+                          {opt {loop {line column-constraint } { , } } }
+                      }
+                      {line DROP {opt COLUMN} column-name }
                   }
-                  {line DROP {opt COLUMN} column-name }
+                  { , }
               }
-              { , }
-          }
-      }
+              {line RENAME TO new-table-name}
+           }
+       }
   }
 
   create-index {
