@@ -1897,8 +1897,16 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT) {
+            /*
+             * We defer waits, making sure the coherency lease expires for
+             * the disconnected replicant;  the node needs to be incoherent,
+             * no need to wait for it.
+             * Once the node reconnects, master will switch the state
+             * to STATE_INCOHERENT_WAIT, and master will wait for it again;
+             * replicant will run recovery to catch up
+             */
             defer_commits(bdb_state, host, __func__);
-            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT_WAIT;
+            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
         }
 
         /* hostdown can defer commits */
@@ -1915,6 +1923,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     if (host == master_host) {
         logmsg(LOGMSG_WARN, "net_hostdown_rtn: HOSTDOWN was the master, calling "
                         "for election\n");
+
+        /* this is replicant, we are running election followed by recovery */
 
         call_for_election(bdb_state);
     }
@@ -2998,6 +3008,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     uint32_t nodegen;
     int num_successfully_acked = 0;
     int total_connected;
+    int lock_desired = 0;
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -3113,7 +3124,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 goto got_ack;
             }
         }
-    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms);
+    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
+             !(lock_desired = bdb_lock_desired(bdb_state)));
 
     /* if we get here then we timed out without finding even one good node.
      * allow a waitms of ZERO for the remaining nodes - we've run out of
@@ -3126,8 +3138,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         bdb_state->attr->rep_timeout_minms - bdb_state->attr->rep_timeout_maxms;
     if (waitms < 0)
         waitms = 0;
-    logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
-            lsn_to_str(str, &(seqnum->lsn)));
+    if(!lock_desired)
+        logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
+               lsn_to_str(str, &(seqnum->lsn)));
+    else
+        logmsg(LOGMSG_WARN,
+               "lock desired, not waiting for initial replication of <%s>\n",
+               lsn_to_str(str, &(seqnum->lsn)));
 
 got_ack:
 

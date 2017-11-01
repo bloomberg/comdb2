@@ -187,6 +187,7 @@ int client_func(int fd)
             syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
                    cmd);
             close(fd);
+            active_services_mutex.unlock();
             return -1;
         }
         active_services_mutex.unlock();
