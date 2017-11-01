@@ -748,6 +748,8 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
     return rc;
 }
 
+int gbl_verbose_send_coherency_lease;
+
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *inc_wait)
 {
@@ -793,7 +795,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         /* Assume disconnected node(s) are incoherent */
         *inc_wait = 1;
 
-        if (last_count != count || (now = time(NULL)) - lastpr) {
+        if (gbl_verbose_send_coherency_lease &&
+            (last_count != count || (now = time(NULL)) - lastpr)) {
             char *machs = (char *)malloc(1);
             int machs_len = 0;
             machs[0] = '\0';
@@ -863,9 +866,10 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         } else {
             static time_t lastpr = 0;
             time_t now;
-            if ((now = time(NULL)) - lastpr) {
-                logmsg(LOGMSG_INFO, "%s: not sending to %s\n", __func__,
-                        hostlist[i]);
+            if (gbl_verbose_send_coherency_lease &&
+                (now = time(NULL)) - lastpr) {
+                logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
+                       hostlist[i]);
                 lastpr = now;
             }
         }

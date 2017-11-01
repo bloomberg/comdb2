@@ -1724,6 +1724,8 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
 
 /* Timestamp of when our coherency lease expires on replicant */
 uint64_t coherency_timestamp = 0;
+int gbl_dump_zero_coherency_timestamp;
+
 char coherency_master[128] = {0};
 
 /* Don't let anything commit on the master until after this */
@@ -1772,6 +1774,8 @@ typedef struct {
     char *host;
 } hostdown_type;
 
+int gbl_reset_on_unelectable_cluster = 1;
+
 void *hostdown_thread(void *arg)
 {
     bdb_state_type *bdb_state;
@@ -1812,7 +1816,7 @@ void *hostdown_thread(void *arg)
     print(bdb_state, "master is %s we are %s\n", master_host,
           bdb_state->repinfo->myhost);
 
-    {
+    if (gbl_reset_on_unelectable_cluster) {
         int num_up, num_connected, electable;
 
         print(bdb_state, "xxx master is %d we are %d\n", master_host,
@@ -3090,6 +3094,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                                                    nodelist[i], 1000, __LINE__);
 
+            if (bdb_lock_desired(bdb_state)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s line %d early exit because lock-is-desired\n",
+                       __func__, __LINE__);
+                return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+            }
+
             if (rc == 0) {
                 base_node = nodelist[i];
                 num_successfully_acked++;
@@ -3164,6 +3175,14 @@ got_ack:
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
                                                waitms, __LINE__);
+
+        if (bdb_lock_desired(bdb_state)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d early exit because lock-is-desired\n", __func__,
+                   __LINE__);
+
+            return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+        }
 
         if (rc == -999) {
             logmsg(LOGMSG_WARN, "replication timeout to node %s (%d ms), base node "
@@ -3321,8 +3340,11 @@ done_wait:
              * seqnums can race against each other.  If we got a majority of 
              * these during the commit we are okay */
             if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
-                logmsg(LOGMSG_ERROR, "ERROR: calculate_durable_lsn trails seqnum, "
-                                "but this is durable?\n");
+                logmsg(LOGMSG_ERROR,
+                       "ERROR: calculate_durable_lsn trails seqnum, "
+                       "but this is durable (%d:%d vs %d:%d)?\n",
+                       calc_lsn.file, calc_lsn.offset, seqnum->lsn.file,
+                       seqnum->lsn.offset);
             }
             logmsg(LOGMSG_USER, 
                 "Last txn was %s, tot_connected=%d tot_acked=%d, "
@@ -3769,6 +3791,10 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         } else
             bdb_setmaster(bdb_state, host);
 
+        if (gbl_dump_zero_coherency_timestamp) {
+            logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n",
+                   __func__, __LINE__);
+        }
         coherency_timestamp = 0;
         break;
 
@@ -3968,7 +3994,25 @@ uint8_t *colease_type_put(const colease_t *p_colease_type, uint8_t *p_buf,
     return p_buf;
 }
 
-uint64_t get_coherency_timestamp(void) { return coherency_timestamp; }
+uint64_t get_coherency_timestamp(void)
+{
+    uint64_t x = coherency_timestamp;
+    if (x == 0) {
+        static uint32_t lastpr;
+        static uint32_t zero_ts_count = 0;
+        uint32_t now;
+
+        zero_ts_count++;
+        if (gbl_dump_zero_coherency_timestamp &&
+            ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s returning 0 coherency_timestamp, count=%u\n", __func__,
+                   zero_ts_count);
+            lastpr = now;
+        }
+    }
+    return x;
+}
 
 typedef struct start_lsn_response {
     uint32_t gen;
@@ -5445,6 +5489,20 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset)
 
     return 0;
 }
+
+// Piggy-backing durable LSN requests doesn't work: each thread must make a
+// SEPARATE request for a durable LSN.  Here's the counter-example:
+//
+// 1. Thread A makes a request for a durable LSN from the master - it goes to
+//    the master and is stalled on it's way back to the replicant
+// 2. Thread B writes a record durably
+// 3. Thread C make a request for a durable LSN- instead of going to the master
+//    directly, it gloms onto the already outstanding durable LSN request, and
+//    retrieves the previous durable LSN
+//
+// .. Because Thread C started AFTER Thread B, it should see a durable LSN
+//    corresponding to B's writes
+//
 
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
         uint32_t *durable_file, uint32_t *durable_offset, 

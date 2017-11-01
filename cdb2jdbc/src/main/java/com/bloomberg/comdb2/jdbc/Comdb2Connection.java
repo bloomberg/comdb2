@@ -735,6 +735,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_RECORD_OUT_OF_RANGE:
             case Constants.Errors.CDB2ERR_INVALID_ID:
             case Constants.Errors.CDB2ERR_NOMASTER:
+            case Constants.Errors.CDB2ERR_NOTSERIAL:
             case Constants.Errors.CDB2ERR_CHANGENODE:
             case Constants.Errors.CDB2ERR_FASTSEED:
             case Constants.Errors.CDB2ERR_UNTAGGED_DATABASE:

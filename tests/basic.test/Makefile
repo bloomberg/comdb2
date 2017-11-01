@@ -3,7 +3,9 @@ ifeq ($(TESTSROOTDIR),)
 else
   include $(TESTSROOTDIR)/testcase.mk
 endif
-export TEST_TIMEOUT=1m
+ifeq ($(TEST_TIMEOUT),)
+	export TEST_TIMEOUT=1m
+endif
 
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller
