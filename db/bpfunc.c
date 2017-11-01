@@ -17,7 +17,6 @@ extern int gbl_check_access_controls;
 static int prepare_create_timepart(bpfunc_t *tp);
 static int prepare_drop_timepart(bpfunc_t *tp);
 static int prepare_timepart_retention(bpfunc_t *tp);
-static int prepare_table_rename(bpfunc_t *tp);
 static int exec_grant(void *tran, bpfunc_t *func, char *err);
 static int exec_authentication(void *tran, bpfunc_t *func, char *err);
 static int exec_password(void *tran, bpfunc_t *func, char *err);
@@ -104,10 +103,6 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
 
     case BPFUNC_SET_SKIPSCAN:
         func->exec = exec_set_skipscan;
-        break;
-
-    case BPFUNC_TABLE_RENAME:
-        prepare_table_rename(func);
         break;
 
     default:
@@ -457,69 +452,6 @@ static int exec_set_skipscan(void *tran, bpfunc_t *func, char *err)
     }
     bdb_llog_analyze(thedb->bdb_env, 1, &bdberr);
     return rc;
-}
-
-static int exec_table_rename(void *tran, bpfunc_t *func, char *err)
-{
-#if 0
-    char *src = func->arg->table_rename->src_tablename;
-    char *dst = func->arg->table_rename->dst_tablename;
-    struct db *db;
-    int rc;
-    int bdberr = 0;
-
-    logmsg(LOGMSG_ERROR, "RENAMING %s to %s\n", src, dst);
-
-    db = getdbbyname(src);
-    if (!db) {
-        logmsg(LOGMSG_WARN, "renaming unexisting table %s\n", src);
-        return -1;
-    }
-
-    /* write lock */
-    rc = bdb_lock_table_write(db->handle, tran);
-    if (rc) {
-        logmsg(LOGMSG_WARN, "failed to write lock table %s\n", src);
-        return -1;
-    }
-
-    /* update file */
-    rc = bdb_rename(db->handle, tran, dst, &bdberr);
-    if (rc || bdberr) {
-        logmsg(LOGMSG_WARN, "failed renaming table %s rc %d bdberr %d\n",
-               src, rc, bdberr);
-        return -1;
-    }
-
-    /* update llmeta */
-
-    /* update the db */
-    rc = bdb_rename_name(db->handle, dst, &bdberr);
-    if (rc || bdberr) {
-        logmsg(LOGMSG_WARN, "failed renaming table name %s rc %d bdberr %d\n",
-               src, rc, bdberr);
-        return -1;
-    }
-#endif
-    return 0;
-}
-
-int success_table_rename(void *tran, bpfunc_t *func, char *err)
-{
-    char *src = func->arg->table_rename->src_tablename;
-    char *dst = func->arg->table_rename->dst_tablename;
-
-    logmsg(LOGMSG_ERROR, "DONE RENAMING %s to %s\n", src, dst);
-
-    return 0;
-}
-
-static int prepare_table_rename(bpfunc_t *tp)
-{
-    tp->exec = exec_table_rename;
-    tp->success = success_table_rename;
-
-    return 0;
 }
 
 static int exec_genid48_enable(void *tran, bpfunc_t *func, char *err)

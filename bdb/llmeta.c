@@ -7094,8 +7094,8 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     if (rc || *bdberr != BDBERR_NOERROR) {
         return rc;
     } else {
-        fprintf(stderr, "Saved version %lld for table %s\n",
-                flibc_htonll(version), bdb_state->name);
+        logmsg(LOGMSG_INFO, "Saved version %lld for table %s\n",
+               flibc_htonll(version), bdb_state->name);
     }
 
     *bdberr = BDBERR_NOERROR;
@@ -7303,7 +7303,7 @@ retry:
     *version = *((unsigned long long *)fnddata);
     *version = flibc_ntohll(*version);
 
-    fprintf(stderr, "Retrieved %lld version for %s\n", *version, tblname);
+    logmsg(LOGMSG_INFO, "Retrieved %lld version for %s\n", *version, tblname);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
