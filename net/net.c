@@ -2487,10 +2487,8 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
     return nsent;
 }
 
-
-static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr, 
-                                  const char hostname[],
-                                  int portnum)
+static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
+                                         const char hostname[], int portnum)
 {
     host_node_type *ptr;
     /* check to see if the node already exists */
@@ -2508,7 +2506,8 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 
     ptr = mymalloc(sizeof(host_node_type));
-    if(!ptr) abort();
+    if (!ptr)
+        abort();
 
     memset(ptr, 0, sizeof(host_node_type));
 
@@ -2631,7 +2630,6 @@ err:
     return NULL;
 }
 
-
 host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
                                int portnum)
 {
@@ -2664,8 +2662,6 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
     return ptr;
 }
-
-
 
 /* for debugging only */
 void netinfo_lock(netinfo_type *netinfo_ptr, int seconds)
