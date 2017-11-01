@@ -101,39 +101,34 @@ static int get_fd(const char *svc)
 {
     int fd_ret = -1;
     std::string key(svc);
-    fdmap_mutex.lock();
+    std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &fd = fd_map.find(key);
     if (fd == fd_map.end()) {
-        fdmap_mutex.unlock();
         return fd_ret;
     }
     fd_ret = fd->second;
-    fdmap_mutex.unlock();
     return fd_ret;
 }
 
 static int dealloc_fd(const char *svc)
 {
     std::string key(svc);
-    fdmap_mutex.lock();
+    std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &i = fd_map.find(key);
     if (i == fd_map.end()) {
-        fdmap_mutex.unlock();
         return 0;
     }
     if (i->second > 0)
         close(i->second);
     fd_map.erase(i);
-    fdmap_mutex.unlock();
     return 0;
 }
 
 static int alloc_fd(const char *svc, int fd)
 {
-    fdmap_mutex.lock();
+    std::lock_guard<std::mutex> l(fdmap_mutex);
     std::pair<std::string, int> kv(svc, fd);
     fd_map.insert(kv);
-    fdmap_mutex.unlock();
     return 0;
 }
 
@@ -182,15 +177,15 @@ int client_func(int fd)
     char *sav;
     char *cmd = strtok_r(service + 4, " \n", &sav);
     if (strncasecmp(service, "reg", 3) == 0) {
-        active_services_mutex.lock();
-        if (active_services.find(cmd) == active_services.end()) {
-            syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
-                   cmd);
-            close(fd);
-            active_services_mutex.unlock();
-            return -1;
+        {
+            std::lock_guard<std::mutex> l(active_services_mutex);
+            if (active_services.find(cmd) == active_services.end()) {
+                syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
+                        cmd);
+                close(fd);
+                return -1;
+            }
         }
-        active_services_mutex.unlock();
         connect_instance(listenfd, cmd);
     }
     return 0;
@@ -200,26 +195,28 @@ static void unwatchfd(struct pollfd &fd)
 {
     connections[fd.fd].inoff = 0;
     if (connections[fd.fd].is_hello) {
-        active_services_mutex.lock();
-        active_services.erase(connections[fd.fd].service);
-        active_services_mutex.unlock();
+        {
+            std::lock_guard<std::mutex> l(active_services_mutex);
+            active_services.erase(connections[fd.fd].service);
+        }
         std::string svc(connections[fd.fd].service);
 
 #ifdef VERBOSE
         std::cout << "bye from " << svc << std::endl;
 #endif
 
-        fdmap_mutex.lock();
-        auto ufd = fd_map.find(svc);
-        if (ufd != fd_map.end()) {
-            fd_map.erase(svc);
-            int rc = close(ufd->second);
-            if (rc) {
-                syslog(LOG_WARNING, "%s close fd %d rc %d\n", svc.c_str(),
-                       ufd->second, rc);
+        {
+            std::lock_guard<std::mutex> l(fdmap_mutex);
+            auto ufd = fd_map.find(svc);
+            if (ufd != fd_map.end()) {
+                fd_map.erase(svc);
+                int rc = close(ufd->second);
+                if (rc) {
+                    syslog(LOG_WARNING, "%s close fd %d rc %d\n", svc.c_str(),
+                            ufd->second, rc);
+                }
             }
         }
-        fdmap_mutex.unlock();
     }
 
     // Throw away any buffers we may have
@@ -640,9 +637,10 @@ again:
         if (c.writable && svc != nullptr) {
             if (svc != nullptr) {
                 c.is_hello = true;
-                active_services_mutex.lock();
-                active_services.insert(std::string(svc));
-                active_services_mutex.unlock();
+                {
+                    std::lock_guard<std::mutex> l(active_services_mutex);
+                    active_services.insert(std::string(svc));
+                }
                 c.service = std::string(svc);
                 conn_printf(c, "ok\n");
 #ifdef VERBOSE
@@ -653,12 +651,11 @@ again:
             disallowed_write(c, cmd);
         }
     } else if (strcmp(cmd, "active") == 0) {
-        active_services_mutex.lock();
+        std::lock_guard<std::mutex> l(active_services_mutex);
         conn_printf(c, "%d\n", active_services.size());
         for (auto it : active_services) {
             conn_printf(c, "%s\n", it.c_str());
         }
-        active_services_mutex.unlock();
     } else if (strcmp(cmd, "exit") == 0) {
         if (c.writable) {
             return 1;
