@@ -933,6 +933,7 @@ static int idxCreateFromCons(
       if( zName==0 ){ 
         rc = SQLITE_NOMEM;
       }else{
+        /* COMDB2 MODIFICATION */
         if( idxIdentifierRequiresQuotes(zTable) ){
           zFmt = "CREATE TEMP INDEX '%q' ON %Q(%s)";
           zFmt_p = "CREATE INDEX '%q' ON %Q(%s)";
@@ -1634,6 +1635,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   sqlite3_stmt *pIndexXInfo = 0;
   sqlite3_stmt *pWrite = 0;
 
+  /* COMDB2 MODIFICATION */
   const char *zAllIndex =
     "SELECT s.rowid, s.name, l.name FROM "
     "  sqlite_temp_master AS s, "
@@ -1649,6 +1651,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   rc = idxLargestIndex(p->dbm, &nMax, pzErr);
   if( nMax<=0 || rc!=SQLITE_OK ) return rc;
 
+  /* COMDB2 MODIFICATION */
   rc = sqlite3_exec(p->dbm, "ANALYZEEXPERT; PRAGMA writable_schema=1", 0, 0, 0);
 
   if( rc==SQLITE_OK ){
@@ -1704,6 +1707,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   idxFinalize(&rc, pIndexXInfo);
   idxFinalize(&rc, pWrite);
 
+  /* COMDB2 MODIFICATION */
   if (pCtx) {
     for(i=0; i<pCtx->nSlot; i++){
       sqlite3_free(pCtx->aSlot[i].z);
@@ -1712,6 +1716,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   sqlite3_free(pCtx);
 
   if( rc==SQLITE_OK ){
+    /* COMDB2 MODIFICATION */
     rc = sqlite3_exec(p->dbm, "ANALYZEEXPERT sqlite_master", 0, 0, 0);
   }
 
@@ -1737,9 +1742,11 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
   if( rc==SQLITE_OK ){
     pNew->db = db;
     pNew->iSample = 100;
+    /* COMDB2 MODIFICATION */
     rc = sqlite3_open(":memory:", &pNew->dbv, NULL);
   }
   if( rc==SQLITE_OK ){
+    /* COMDB2 MODIFICATION */
     rc = sqlite3_open(":memory:", &pNew->dbm, NULL);
     if( rc==SQLITE_OK ){
       sqlite3_db_config(pNew->dbm, SQLITE_DBCONFIG_FULL_EQP, 1, (int*)0);
@@ -1756,6 +1763,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
     while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
       const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
       char NewSql[1024];
+      /* COMDB2 MODIFICATION */
       snprintf(NewSql,1024, "create temp %s", zSql+7);
       rc = sqlite3_exec(pNew->dbm, NewSql, 0, 0, pzErrmsg);
     }
@@ -1767,6 +1775,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
     rc = idxCreateVtabSchema(pNew, pzErrmsg);
   }
 
+/* COMDB2 MODIFICATION */
 #if 0
   /* Register the auth callback with dbv */
   if( rc==SQLITE_OK ){

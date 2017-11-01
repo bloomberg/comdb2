@@ -101,6 +101,8 @@ static void disableLookaside(Parse *pParse){
   pParse->db->lookaside.bDisable++;
 }
 
+/* COMDB2 MODIFICATION
+   Add flag for ANALYZE EXPERT */
 static void setExpert(Parse *pParse){
   pParse->db->isExpert = 1;
 }
@@ -1596,6 +1598,7 @@ cmd ::= REINDEX nm(X) dbnm(Y).  {sqlite3Reindex(pParse, &X, &Y);}
 %ifndef SQLITE_OMIT_ANALYZE
 cmd ::= ANALYZESQLITE.                {sqlite3Analyze(pParse, 0, 0);}
 cmd ::= ANALYZESQLITE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
+/* COMDB2 MODIFICATION */
 cmd ::= ANALYZEEXPERT.                {setExpert(pParse); sqlite3Analyze(pParse, 0, 0);}
 cmd ::= ANALYZEEXPERT nm(X) dbnm(Y).  {setExpert(pParse); sqlite3Analyze(pParse, &X, &Y);}
 %endif

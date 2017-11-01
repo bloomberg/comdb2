@@ -240,6 +240,7 @@ static int openStatTable(
   assert( sqlite3VdbeDb(v)==db );
   pDb = &db->aDb[iDb];
 
+  /* COMDB2 MODIFICATION */
   if (pParse->db->isExpert == 0) {
       /* Create new statistic tables if they do not exist, or clear them
       ** if they do already exist.
