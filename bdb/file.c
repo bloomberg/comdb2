@@ -812,7 +812,7 @@ int bdb_rename_file_versioning_table(bdb_state_type *bdb_state,
 retry:
     if (++retries >= 500 /*gbl_maxretries*/) {
         logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
-                retries);
+               retries);
         return -1;
     }
 
@@ -928,7 +928,7 @@ retry:
         bdb_state->name = orig_name;
 
         /*rename*/
-        logmsg(LOGMSG_INFO, "%s: renaming %s to %s\n", __func__,oldname,
+        logmsg(LOGMSG_INFO, "%s: renaming %s to %s\n", __func__, oldname,
                newname);
         if (bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr) ||
             *bdberr != BDBERR_NOERROR) {
@@ -992,7 +992,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
     }
-    
+
     rc = bdb_rename_file_versioning_table(bdb_state, tran, newname, bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
