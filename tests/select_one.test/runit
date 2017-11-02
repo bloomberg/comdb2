@@ -35,9 +35,18 @@ fi
 # using timeout is not good because it will cause the 'select 1' string to be cut for the last command (when yes gets killed)
 #timeout $((TEST_TIMEOUT-5)) yes 'select 1' | $DEBUG_PREFIX cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> output1.txt
 
+cnt=0
+MAX=10000
+time while [ $cnt -lt $MAX ] ; do
+   echo 'select 1' 
+   let cnt=cnt+1
+done | $DEBUG_PREFIX cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> output1.txt
+
+echo "see above for time it took for doing $MAX queries"
+
 while [ $SECONDS -lt $((TEST_TIMEOUT-5)) ] ; do
    echo 'select 1' 
-done | $DEBUG_PREFIX cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> output1.txt
+done | $DEBUG_PREFIX cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> output2.txt
 
 
 echo "Success"

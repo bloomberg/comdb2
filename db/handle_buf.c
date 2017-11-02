@@ -445,7 +445,7 @@ static void *thd_req(void *vthd)
     thread_started("request");
 
 #ifdef PER_THREAD_MALLOC
-    pthread_setspecific(thread_type_key, (void *)"tag");
+    thread_type_key = "tag";
 #endif
     thr_self = thrman_register(THRTYPE_REQ);
     logger = thrman_get_reqlogger(thr_self);
@@ -1274,7 +1274,7 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         struct thread_info thdinfo = {0};
         ++handled_inline;
 #ifdef PER_THREAD_MALLOC
-        pthread_setspecific(thread_type_key, (void *)"tag");
+        thread_type_key = "tag";
 #endif
         set_thdinfo(&thdinfo, iq);
         handle_ireq(iq);
