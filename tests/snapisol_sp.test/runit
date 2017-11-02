@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+a_dbn=$1
+
+cp -r ${TESTSROOTDIR}/sp.test ./
+
+cd sp.test
+
+./runit $a_dbn
+
+if [[ $? != 0 ]]; then
+    echo "Testcase failed."
+    exit 1
+fi
+
+echo "Testcase passed."
+exit 0

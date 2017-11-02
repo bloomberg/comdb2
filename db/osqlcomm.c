@@ -4177,7 +4177,7 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
     size_t sz;
     if (rqid == OSQL_RQID_USE_UUID) {
-        rpl.uuid.hd.type = htonl(OSQL_DBQ_CONSUME);
+        rpl.uuid.hd.type = htonl(OSQL_DBQ_CONSUME_UUID);
         comdb2uuidcpy(rpl.uuid.hd.uuid, uuid);
         rpl.uuid.genid = genid;
         sz = sizeof(rpl.uuid);

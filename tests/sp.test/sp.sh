@@ -969,6 +969,7 @@ exec procedure tmptbls()
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
+set transaction blocksql
 create procedure reset_test version 'sptest' {
 local total = 100
 local function setup()

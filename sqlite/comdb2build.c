@@ -428,10 +428,26 @@ static int comdb2SqlSchemaChange(OpFunc *f)
 int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    osql_sock_start(thd->sqlclntstate, OSQL_SOCK_REQ ,0);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &clnt->osql;
+    int rc = 0;
+    int sentops = 0;
+    int bdberr = 0;
+    osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
     comdb2SqlSchemaChange(f);
-    int rst = osql_sock_commit(thd->sqlclntstate, OSQL_SOCK_REQ);
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
+        rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to process shadow table, rc %d, bdberr %d\n",
+                   __func__, __LINE__, rc, bdberr);
+            osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            f->rc = osql->xerr.errval = ERR_INTERNAL;
+            f->errorMsg = "Failed to process shadow table";
+            return ERR_INTERNAL;
+        }
+    }
+    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
     if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
         osql->xerr.errval = 0;
     }

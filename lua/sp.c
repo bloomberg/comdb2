@@ -6412,14 +6412,9 @@ static int lua_final_int(char *spname, char **err, struct sqlthdstate *thd,
     Lua L = clnt->sp->lua;
     get_func_by_name(L, "final", err);
 
-    if ((rc = begin_sp(clnt, err)) != 0) return rc;
-
     if ((rc = run_sp(clnt, 0, err)) != 0) return rc;
 
-    if ((rc = emit_sqlite_result(L, context)) != 0) return rc;
-
-    if ((rc = commit_sp(L, err)) != 0) return rc;
-    return rc;
+    return emit_sqlite_result(L, context);
 }
 
 static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
@@ -6433,6 +6428,7 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
 
     if (new_vm) {
         if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+        remove_tran_funcs(L);
     }
 
     get_func_by_name(L, "step", err);
@@ -6441,17 +6437,9 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
         return rc;
     }
 
-    if ((rc = begin_sp(clnt, err)) != 0) {
-        return rc;
-    }
-
     sp->num_instructions = 0;
 
-    if ((rc = run_sp(clnt, argc, err)) != 0) {
-        return rc;
-    }
-
-    return commit_sp(L, err);
+    return run_sp(clnt, argc, err);
 }
 
 static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
@@ -6463,20 +6451,17 @@ static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
     if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+    remove_tran_funcs(L);
 
     get_func_by_name(L, spname, err);
 
     if ((rc = sqlite_to_lua(L, clnt->tzname, argc, argv)) != 0) return rc;
 
-    if ((rc = begin_sp(clnt, err)) != 0) return rc;
-
     sp->num_instructions = 0;
 
     if ((rc = run_sp(clnt, argc, err)) != 0) return rc;
 
-    if ((rc = emit_sqlite_result(L, context)) != 0) return rc;
-
-    return commit_sp(L, err);
+    return emit_sqlite_result(L, context);
 }
 
 static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)

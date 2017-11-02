@@ -295,17 +295,31 @@ static const void *buf_get_dests(struct schema_change_type *s,
     p_buf = (uint8_t *)buf_get(&count, sizeof(count), p_buf, p_buf_end);
 
     for (int i = 0; i < count; i++) {
-        int w_len;
+        int w_len, len, no_pfx;
         p_buf = (uint8_t *)buf_get(&w_len, sizeof(w_len), p_buf, p_buf_end);
-        char pfx[] = "dest"; // dest:method:xyz -- drop 'dest:' pfx
-        if (w_len > sizeof(pfx)) {
-            p_buf = (void *)buf_no_net_get(pfx, sizeof(pfx), p_buf, p_buf_end);
-
-            int len = w_len - sizeof(pfx);
+        char pfx[] = "dest:"; // dest:method:xyz -- drop 'dest:' pfx
+        len = w_len;
+        if (w_len > strlen(pfx)) {
+            p_buf = (void *)buf_no_net_get(pfx, strlen(pfx), p_buf, p_buf_end);
+            if (strncmp(pfx, "dest:", 5) != 0) {
+                /* "dest:" was dropped already */
+                no_pfx = 1;
+            }
+            len = w_len - strlen(pfx);
+        }
+        if (len > 0) {
             struct dest *d = malloc(sizeof(struct dest));
-            d->dest = malloc(len + 1);
-            p_buf = (void *)buf_no_net_get(d->dest, len, p_buf, p_buf_end);
-            d->dest[len] = '\0';
+            char *pdest;
+            if (no_pfx) {
+                d->dest = malloc(w_len + 1);
+                strncpy(d->dest, pfx, strlen(pfx));
+                pdest = d->dest + strlen(pfx);
+                d->dest[w_len] = '\0';
+            } else {
+                pdest = d->dest = malloc(len + 1);
+                d->dest[len] = '\0';
+            }
+            p_buf = (void *)buf_no_net_get(pdest, len, p_buf, p_buf_end);
             listc_abl(&s->dests, d);
         } else {
             free_dests(s);

@@ -1,0 +1,4 @@
+dtastripe 1
+enable_snapshot_isolation
+enable_sql_stmt_caching
+sql_tranlevel_default snapisol
