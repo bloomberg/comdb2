@@ -3253,6 +3253,7 @@ static int init(int argc, char **argv)
     if (thedb == 0)
         return -1;
 
+#if WITH_SSL
     /* Initialize SSL backend before creating any net.
        If we're in creat mode, don't bother. */
     if (!gbl_create_mode && ssl_bend_init(thedb->basedir) != 0) {
@@ -3260,6 +3261,7 @@ static int init(int argc, char **argv)
         return -1;
     }
     logmsg(LOGMSG_INFO, "SSL backend initialized.\n");
+#endif
 
     if (init_blob_cache() != 0) return -1;
 

@@ -2096,8 +2096,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             fdb_stat_alias();
         } else if (tokcmp(tok, ltok, "uprecs") == 0) {
             upgrade_records_stats();
+#if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
+#endif
         } else {
             logmsg(LOGMSG_ERROR, "bad stat command\n");
             print_help_page(HELP_STAT);
