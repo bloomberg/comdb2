@@ -783,7 +783,6 @@ int gbl_bbenv;
 int gbl_oldest_transaction_alarm_threshold = 120;
 int gbl_oldest_transaction_alarm_freq = 600;
 
-
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
@@ -1191,9 +1190,11 @@ static void *purge_old_blkseq_thread(void *arg)
         time_t oldest_tran_age = bdb_oldest_tran_age(dbenv->bdb_env);
         time_t now = time(NULL);
         if (oldest_tran_age > gbl_oldest_transaction_alarm_threshold) {
-            if (now - last_time_complained_about_old_transaction > gbl_oldest_transaction_alarm_freq) {
+            if (now - last_time_complained_about_old_transaction >
+                gbl_oldest_transaction_alarm_freq) {
                 last_time_complained_about_old_transaction = now;
-                logmsg(LOGMSG_WARN, "Suspiciously old transactions in the system:\n");
+                logmsg(LOGMSG_WARN,
+                       "Suspiciously old transactions in the system:\n");
                 bdb_txn_stats(stderr, dbenv->bdb_env);
             }
         }

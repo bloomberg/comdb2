@@ -1316,12 +1316,16 @@ REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("oldest_transaction_alarm_threshold", "Complain if a transaction older than this is still alive (Default: 120 seconds).",
-                 TUNABLE_INTEGER, &gbl_oldest_transaction_alarm_threshold,
-                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("oldest_transaction_alarm_threshold",
+                 "Complain if a transaction older than this is still alive "
+                 "(Default: 120 seconds).",
+                 TUNABLE_INTEGER, &gbl_oldest_transaction_alarm_threshold, 0,
+                 NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("oldest_transaction_alarm_freq", "Complain if an old transaction exists, at most this often (Default: 600 seconds).",
-                 TUNABLE_INTEGER, &gbl_oldest_transaction_alarm_freq,
-                 0, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("oldest_transaction_alarm_freq",
+                 "Complain if an old transaction exists, at most this often "
+                 "(Default: 600 seconds).",
+                 TUNABLE_INTEGER, &gbl_oldest_transaction_alarm_freq, 0, NULL,
+                 NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

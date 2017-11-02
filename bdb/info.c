@@ -103,7 +103,7 @@ void bdb_txn_stats(FILE *out, bdb_state_type *bdb_state)
     DB_TXN_ACTIVE *active;
     int i;
     char str[100];
-    time_t now = time(NULL); 
+    time_t now = time(NULL);
 
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
 
@@ -123,10 +123,10 @@ void bdb_txn_stats(FILE *out, bdb_state_type *bdb_state)
 
     active = stats->st_txnarray;
     for (i = 0; i < stats->st_nactive; i++) {
-        if (i == 0)
-            logmsgf(LOGMSG_USER, out, "active transactions:\n");
-        logmsgf(LOGMSG_USER, out, " %d %d %s [%d sec old]\n", active->txnid, active->parentid,
-                lsn_to_str(str, &(active->lsn)), now - active->start_time);
+        if (i == 0) logmsgf(LOGMSG_USER, out, "active transactions:\n");
+        logmsgf(LOGMSG_USER, out, " %d %d %s [%d sec old]\n", active->txnid,
+                active->parentid, lsn_to_str(str, &(active->lsn)),
+                now - active->start_time);
         active++;
     }
 
@@ -906,11 +906,11 @@ static void test_send(bdb_state_type *bdb_state)
     }
 }
 
-static void leak_tran(bdb_state_type *bdb_state) {
+static void leak_tran(bdb_state_type *bdb_state)
+{
     int bdberr;
     bdb_tran_begin(bdb_state, NULL, &bdberr);
 }
-
 
 static void process_add(bdb_state_type *bdb_state, char *host)
 {
@@ -2094,11 +2094,12 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table)
              USER_TYPE_ANALYZED_TBL, table, strlen(table), 0);
 }
 
-time_t bdb_oldest_tran_age(bdb_state_type *bdb_state) {
+time_t bdb_oldest_tran_age(bdb_state_type *bdb_state)
+{
     DB_TXN_STAT *stats;
     DB_TXN_ACTIVE *active;
     int i;
-    time_t now = time(NULL); 
+    time_t now = time(NULL);
     int maxage = 0;
 
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
@@ -2106,8 +2107,7 @@ time_t bdb_oldest_tran_age(bdb_state_type *bdb_state) {
     active = stats->st_txnarray;
     for (i = 0; i < stats->st_nactive; i++) {
         time_t age = now - active->start_time;
-        if (age > maxage)
-            maxage = age;
+        if (age > maxage) maxage = age;
         active++;
     }
 
