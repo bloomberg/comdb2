@@ -4,13 +4,15 @@ set(src
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
 )
+if(WITH_SSL)
+  list(APPEND src ${PROJECT_SOURCE_DIR}/bb/ssl_support.c)
+endif()
 set_source_files_properties(
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
   PROPERTIES GENERATED TRUE
 )
 include_directories(
-  ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROTOBUF_C_INCLUDE_DIR}

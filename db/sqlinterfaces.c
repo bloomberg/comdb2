@@ -7305,6 +7305,7 @@ retry_read:
     hdr.length = ntohl(hdr.length);
 
     if (hdr.type == FSQL_SSLCONN) {
+#if WITH_SSL
         /* If client requires SSL and we haven't done that,
            do SSL_accept() now. handle_newsql_requests()
            will close the sb if SSL_accept() fails. */
@@ -7315,7 +7316,6 @@ retry_read:
             logmsg(LOGMSG_WARN, "The connection is already SSL encrypted.\n");
             return NULL;
         }
-
         /* Flush the SSL ability byte. We need to do this because:
            1) The `require_ssl` field in dbinfo may not reflect the
               actual status of this node;
@@ -7339,7 +7339,11 @@ retry_read:
                                      __func__, __LINE__);
             return NULL;
         }
-
+#else
+        /* Not compiled with SSL. Send back `N' to client and retry read. */
+        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
+            return NULL;
+#endif
         goto retry_read;
     } else if (hdr.type == FSQL_RESET) { /* Reset from sockpool.*/
 
@@ -7483,6 +7487,7 @@ retry_read:
         goto retry_read;
     }
 
+#if WITH_SSL
     /* Do security check before we return. We do it only after
        the query has been unpacked so that we know whether
        it is a new client (new clients have SSL feature).
@@ -7521,7 +7526,7 @@ retry_read:
         cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
-
+#endif
     return query;
 }
 

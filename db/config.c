@@ -1257,10 +1257,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return 0;
         }
         DTTZ_TEXT_TO_PREC(tok, gbl_datetime_precision, 0, return 0);
+#if WITH_SSL
     } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
         /* Let's have a separate function for ssl directives. */
         rc = ssl_process_lrl(line, len);
         if (rc != 0) return -1;
+#endif
     } else {
         logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
                options->lrlname);
