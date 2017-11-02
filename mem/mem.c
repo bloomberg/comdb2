@@ -228,7 +228,7 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
 static int comdb2ma_destroy_int(comdb2ma cm);
 
 #ifdef PER_THREAD_MALLOC
-__thread char *thread_type_key;
+__thread const char *thread_type_key;
 static comdb2ma get_area(int indx);
 static void destroy_zone(void *);
 #else
