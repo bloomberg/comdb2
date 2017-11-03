@@ -508,7 +508,7 @@ __rep_client_dbinit(dbenv, startup)
 			goto err;
 
 		for (i = 0; i < dircnt; i++) {
-			if (p = strrchr(namesp[i], '/'))
+			if ((p = strrchr(namesp[i], '/')))
 				p++;
 			else
 				p = &namesp[i][0];

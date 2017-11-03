@@ -34,7 +34,7 @@ int main(void)
     for (ii = 0; ii < 10; ii++) {
         int *z = malloc(sizeof(int));
         *z = ii;
-        if (rc = queue_add(q, z)) {
+        if ((rc = queue_add(q, z))) {
             printf("error queue_add, ii %d rc %d\n", ii, rc);
             abort();
         }
@@ -54,7 +54,7 @@ int main(void)
     for (ii = 0; ii < 10; ii++) {
         int *z = (int *)malloc(sizeof(int));
         *z = ii;
-        if (rc = queue_insert(q, z)) {
+        if ((rc = queue_insert(q, z))) {
             printf("error queue_ins, ii %d rc %d\n", ii, rc);
             abort();
         }
@@ -75,13 +75,13 @@ int main(void)
         int *z = (int *)malloc(sizeof(int));
         *z = ii;
         if (ii & 1) {
-            if (rc = queue_insert(q, z)) {
+            if ((rc = queue_insert(q, z))) {
                 printf("error queue_ins, ii %d rc %d\n", ii, rc);
                 abort();
             }
             printf("inserted %d\n", ii);
         } else {
-            if (rc = queue_add(q, z)) {
+            if ((rc = queue_add(q, z))) {
                 printf("error queue_add, ii %d rc %d\n", ii, rc);
                 abort();
             }

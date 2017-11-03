@@ -171,7 +171,7 @@ lsn_collection_add(DB_ENV *dbenv, LSN_COLLECTION * lc, DB_LSN lsn, DBT *dbt)
 	}
 	lc->array[lc->nlsns].lsn = lsn;
 	lc->array[lc->nlsns].rec.size = dbt->size;
-	if (ret = __os_malloc(dbenv, dbt->size, &lc->array[lc->nlsns].rec.data))
+	if ((ret = __os_malloc(dbenv, dbt->size, &lc->array[lc->nlsns].rec.data)))
 		goto err;
 	memcpy(lc->array[lc->nlsns].rec.data, dbt->data,
 	    lc->array[lc->nlsns].rec.size);
@@ -300,7 +300,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	}
 
 	/* find matching transaction */
-	if (e = hash_find(dbenv->lc_cache.txnid_hash, &txnid)) {
+	if ((e = hash_find(dbenv->lc_cache.txnid_hash, &txnid))) {
 		if (dbenv->attr.cache_lc_debug)
 			logmsg(LOGMSG_USER, ">> txnid %x matched, txn prevlsn " PR_LSN
 			    " cache prevlsn " PR_LSN "\n", txnid,
