@@ -1030,7 +1030,6 @@ struct __db_txn {
 	u_int32_t	flags;
 
 	void     *app_private;		/* pointer to bdb transaction object */
-	/* int      (*snapshot) __P((DB_TXN *)); */
 	DB_LSN   we_start_at_this_lsn;	/* hard to pinpoint the
 					 * existing startlsn usage, so
 					 * this is a new one */

@@ -2525,8 +2525,7 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     ptr->wait_list = NULL;
     ptr->distress = 0;
 
-    int rc;
-    rc = pthread_mutex_init(&(ptr->lock), NULL);
+    int rc = pthread_mutex_init(&(ptr->lock), NULL);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: couldn't init lock for node %s\n", __func__,
                 ptr->host);
@@ -2633,7 +2632,6 @@ err:
 host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
                                int portnum)
 {
-    int rc;
     host_node_type *ptr;
 
 #ifdef DEBUGNET
