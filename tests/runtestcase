@@ -49,8 +49,8 @@ function call_setup {
     fi
     sleep 0.1
     if [[ $rc -ne 0 ]]; then
-        echo "!$TESTCASE: setup failed" >> ${TESTDIR}/test.log
-        echo "!$TESTCASE: setup failed see ${TESTDIR}/logs/${DBNAME}.setup"
+        echo "!$TESTCASE: setup failed (rc=$rc)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed (rc=$rc) see ${TESTDIR}/logs/${DBNAME}.setup"
         call_unsetup
         sleep 0.1
         exit 1
