@@ -17,10 +17,11 @@ add_custom_command(
   DEPENDS maccparse.y
   COMMAND yacc -d -o maccparse.c ${CMAKE_CURRENT_SOURCE_DIR}/maccparse.y
 )
+find_program(lex NAMES flex lex)
 add_custom_command(
   OUTPUT macclex.c
   DEPENDS macclex.l
-  COMMAND lex -o macclex.c ${CMAKE_CURRENT_SOURCE_DIR}/macclex.l
+  COMMAND ${lex} -o macclex.c ${CMAKE_CURRENT_SOURCE_DIR}/macclex.l
 )
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}

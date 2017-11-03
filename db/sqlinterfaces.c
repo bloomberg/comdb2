@@ -6250,12 +6250,12 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 
 static void thdpool_sqlengine_start(struct thdpool *pool, void *thd)
 {
-    return sqlengine_thd_start(pool, (struct sqlthdstate *) thd, THRTYPE_SQLENGINEPOOL);
+    sqlengine_thd_start(pool, (struct sqlthdstate *) thd, THRTYPE_SQLENGINEPOOL);
 }
 
 static void thdpool_sqlengine_end(struct thdpool *pool, void *thd)
 {
-    return sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
+    sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
 }
 
 

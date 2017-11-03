@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <cstring>
+#include <strings.h>
 
 #include <sbuf2.h>
 
