@@ -4643,8 +4643,17 @@ int sqlite3BtreeCommit(Btree *pBt)
     case TRANLEVEL_SNAPISOL:
         if (clnt->dbtran.shadow_tran) {
             rc = snapisol_commit(clnt, thd, clnt->tzname);
-
-            rc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            if (!rc) {
+                irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            } else {
+                irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
+                                         &bdberr);
+            }
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s:%d %s shadow failed rc=%d bdberr=%d\n",
+                       __func__, __LINE__, rc ? "abort" : "commit", irc,
+                       bdberr);
+            }
             clnt->dbtran.shadow_tran = NULL;
         }
         break;
@@ -4659,8 +4668,17 @@ int sqlite3BtreeCommit(Btree *pBt)
          */
         if (clnt->dbtran.shadow_tran) {
             rc = serial_commit(clnt, thd, clnt->tzname);
-
-            rc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            if (!rc) {
+                irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
+            } else {
+                irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
+                                         &bdberr);
+            }
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s:%d %s shadow failed rc=%d bdberr=%d\n",
+                       __func__, __LINE__, rc ? "abort" : "commit", irc,
+                       bdberr);
+            }
             clnt->dbtran.shadow_tran = NULL;
         }
         break;
