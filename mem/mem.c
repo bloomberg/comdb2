@@ -228,7 +228,7 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
 static int comdb2ma_destroy_int(comdb2ma cm);
 
 #ifdef PER_THREAD_MALLOC
-pthread_key_t thread_type_key;
+__thread const char *thread_type_key;
 static comdb2ma get_area(int indx);
 static void destroy_zone(void *);
 #else
@@ -388,14 +388,6 @@ int comdb2ma_init(size_t init_sz, size_t max_cap)
 
 #ifdef PER_THREAD_MALLOC
             /* create freelists for threaded allocators */
-            rc = pthread_key_create(&thread_type_key, NULL);
-            if (rc) {
-                COMDB2MA_UNLOCK(&root);
-                destroy_mspace(root.m);
-                root.m = NULL;
-                return rc;
-            }
-
             for (i = 0; i != COMDB2MA_COUNT; ++i) {
                 listc_init(&root.freelist[i],
                            offsetof(struct comdb2mspace, freelnk));
@@ -1062,8 +1054,8 @@ static comdb2ma comdb2ma_create_int(void *base, size_t init_sz, size_t max_cap,
         out->thr_type = scope;
     else if (pthread_equal(root.main_thr_id, pthread_self()))
         out->thr_type = "main";
-    else if (pthread_getspecific(thread_type_key) != NULL)
-        out->thr_type = pthread_getspecific(thread_type_key);
+    else if (thread_type_key != NULL)
+        out->thr_type = thread_type_key;
     else
         out->thr_type = COMDB2MA_THR_UNKNOWN;
 #else
@@ -1121,7 +1113,7 @@ static comdb2ma get_area(int indx)
         return COMDB2_STATIC_MAS[indx];
 
 #ifndef THREAD_DIAGNOSIS
-    if (pthread_getspecific(thread_type_key) == NULL)
+    if (thread_type_key == NULL)
         return COMDB2_STATIC_MAS[indx];
 #endif /* !THREAD_DIAGNOSIS */
 
@@ -1172,8 +1164,8 @@ static comdb2ma get_area(int indx)
                    if MALLOC_ARENA_MAX is present as multiple threads
                    will be sharing the mspace. */
                 zone[indx]->pid = pthread_self();
-                if (pthread_getspecific(thread_type_key) != NULL)
-                    zone[indx]->thr_type = pthread_getspecific(thread_type_key);
+                if (thread_type_key != NULL)
+                    zone[indx]->thr_type = thread_type_key;
                 else
                     zone[indx]->thr_type = COMDB2MA_THR_UNKNOWN;
                 COMDB2MA_UNLOCK(zone[indx]);
@@ -2297,7 +2289,7 @@ static void *comdb2_bmalloc_int(comdb2bma ma, size_t n, int block, int lk,
         return ret;
 
 #ifdef PER_THREAD_MALLOC
-    if (pthread_getspecific(thread_type_key) == NULL)
+    if (thread_type_key == NULL)
         ret = comdb2_malloc(ma->alloc, n);
     else
 #endif
@@ -2404,7 +2396,7 @@ static void *comdb2_bcalloc_int(comdb2bma ma, size_t n, size_t size, int block,
         return ret;
 
 #ifdef PER_THREAD_MALLOC
-    if (pthread_getspecific(thread_type_key) == NULL)
+    if (thread_type_key == NULL)
         ret = comdb2_calloc(ma->alloc, n, size);
     else
 #endif
@@ -2520,7 +2512,7 @@ static void *comdb2_brealloc_int(comdb2bma ma, void *ptr, size_t n, int block,
         return ret;
 
 #ifdef PER_THREAD_MALLOC
-    if (pthread_getspecific(thread_type_key) == NULL)
+    if (thread_type_key == NULL)
         ret = comdb2_realloc_int(ma->alloc, ptr, n);
     else
 #endif

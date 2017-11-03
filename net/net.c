@@ -5585,7 +5585,7 @@ static void *accept_thread(void *arg)
     thread_started("net accept");
 
 #ifdef PER_THREAD_MALLOC
-    pthread_setspecific(thread_type_key, (void *)"net_accept_thr");
+    thread_type_key = "net_accept_thr";
 #endif
 
     netinfo_ptr = (netinfo_type *)arg;
