@@ -249,7 +249,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_name_from_fdb(fdb_t *fdb,
                                                        const char *name);
 
 static int __free_fdb_tbl(void *obj, void *arg);
-static int __lock_wrlock_exclusive(fdb_t *fdb, int retry);
+static int __lock_wrlock_exclusive(char *dbname);
 
 /* Node affinity functions: a clnt tries to stick to one node, unless error in
    which
@@ -710,16 +710,17 @@ retry_find_table:
      * well
      */
     if (!in_analysis_load) {
+        /* since we removed ourselves, it is possible that the fdb object will go away
+           in this case, we need to get an exclusive lock while syncronizing with the
+           destroy_fdb process; we need to use a copy of fdb->dbname instead of volative fdb object */
+        char *tmpname = strdup(fdb->dbname);
+
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
         __fdb_rem_user(fdb);
 
-        rc = __lock_wrlock_exclusive(fdb, 0);
+        rc = __lock_wrlock_exclusive(tmpname);
+        free(tmpname);
         if (rc) {
-            if (rc == FDB_ERR_FDB_TBL_NOTFOUND) {
-                __fdb_add_user(fdb); /* puts us back */
-                /* try to find the table, maybe someone adds it already */
-                goto retry_find_table;
-            }
             logmsg(LOGMSG_ERROR, "%s: fail to lock rc=%d!\n", __func__, rc);
             return rc;
         }
@@ -1324,54 +1325,74 @@ static int __lock_wrlock_shared(fdb_t *fdb)
     return rc;
 }
 
-static int __lock_wrlock_exclusive(fdb_t *fdb, int retry)
+static int __lock_wrlock_exclusive(char *dbname)
 {
-    struct sql_thread *thd;
-    int rc = FDB_NOERR;
+   fdb_t *fdb;
+   struct sql_thread *thd;
+   int rc = FDB_NOERR;
+   int idx = -1;
+   int len = strlen(dbname)+1;
 
-    if (_test_trap_dlock1 == 2) {
-        _test_trap_dlock1++;
-    }
+   if( _test_trap_dlock1 == 2)
+   {
+      _test_trap_dlock1++;
+   }
 
-    do {
-        /* get the lock*/
-        rc = pthread_rwlock_wrlock(&fdb->h_rwlock);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s pthread_rwlock_wrlock error %d\n", __func__,
-                    rc);
-            return FDB_ERR_PTHR_LOCK;
-        }
+   do
+   {
+      pthread_rwlock_rdlock(&fdbs.arr_lock);
+      if (!(idx>=0 && idx<fdbs.nused && fdbs.arr[idx] == fdb &&
+               strncasecmp(dbname, fdbs.arr[idx]->dbname, len) == 0))
+      {
+         fdb = __cache_fnd_fdb(dbname, &idx);
+      }
 
-        /* we got the lock, are there any lockless users ? */
-        if (fdb->users > 1) {
-            pthread_rwlock_unlock(&fdb->h_rwlock);
+      if(!fdb)
+      {
+         pthread_rwlock_unlock(&fdbs.arr_lock);
+         rc = FDB_ERR_FDB_NOTFOUND;
+         goto done;
+      }
 
-            /* if we loop, make sure this is not a live lock
-               deadlocking with another sqlite engine that waits
-               for a bdb write lock to be processed */
-            if(unlikely(bdb_lock_desired(thedb->bdb_env))) {
-                thd = pthread_getspecific(query_info_key);
-                if(likely(thd)) {
-                     rc = recover_deadlock(thedb->bdb_env, thd, NULL, 
-                            100*thd->sqlclntstate->deadlock_recovered++);
-                     if(rc) {
-                         fprintf(stderr, 
-                                 "%s:%d recover_deadlock returned %d\n", 
-                                 __func__, __LINE__, rc);
-                         return FDB_ERR_GENERIC;
-                     }
-                } 
-            }
+      pthread_rwlock_wrlock(&fdb->h_rwlock);
 
-            if(!retry)
-                return FDB_ERR_FDB_TBL_NOTFOUND;
-            continue;
-        } else {
-            break; /* own fdb */
-        }
-    } while (1); /* 1 is the creator */
 
-    return FDB_NOERR;
+      /* we got the lock, are there any lockless users ? */
+      if (fdb->users > 1)
+      {
+         pthread_rwlock_unlock(&fdb->h_rwlock);
+         pthread_rwlock_unlock(&fdbs.arr_lock);
+
+         /* if we loop, make sure this is not a live lock
+            deadlocking with another sqlite engine that waits
+            for a bdb write lock to be processed */
+         if(bdb_lock_desired(thedb->bdb_env)) {
+            thd = pthread_getspecific(query_info_key);
+            if(thd) {
+               rc = recover_deadlock(thedb->bdb_env, thd, NULL, 
+                     100* thd->sqlclntstate->deadlock_recovered++);
+               if(rc) {
+                  fprintf(stderr, "%s:%d recover_deadlock returned %d\n", 
+                        __func__, __LINE__, rc);
+                  rc = FDB_ERR_GENERIC;
+                  goto done;
+               }
+            } 
+         }
+
+         continue;
+      }
+      else
+      {
+         rc = FDB_NOERR;
+         break;   /* own fdb */
+      }
+   } while (1);  /* 1 is the creator */
+
+done:
+   pthread_rwlock_unlock(&fdbs.arr_lock);
+
+   return rc;
 }
 
 static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage_from_fdb(fdb_t *fdb,
@@ -4169,7 +4190,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
    return;
 #endif
 
-    if (__lock_wrlock_exclusive(fdb, 1)) {
+    if (__lock_wrlock_exclusive(fdb->dbname)) {
         return;
     }
 
