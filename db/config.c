@@ -118,7 +118,7 @@ static int write_pidfile(const char *pidfile)
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
-    char c;
+    int c;
     int options_idx;
 
     while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=

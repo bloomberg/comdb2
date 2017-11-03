@@ -780,19 +780,6 @@ int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-/* 040407dh: sys_nerr and sys_errlist are deprecated but still
-   in use in util.c and ../berkdb/4.2.52/clib/strerror.c
-   Not available in SUN 64 bits, add them here
-   TODO:revise this hack
-*/
-#ifdef _IBM_SOURCE
-#ifdef BB64BIT
-
-int sys_nerr = -1; /* this will prevent accessing the sys_errlist */
-char *sys_errlist[1] = {0};
-#endif
-#endif
-
 int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)

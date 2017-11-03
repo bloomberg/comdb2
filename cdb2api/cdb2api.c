@@ -725,7 +725,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
                 (void *)pthread_self(), cfg_info);
 }
 
-static inline char get_char(FILE *fp, char *buf, int *chrno)
+static inline int get_char(FILE *fp, char *buf, int *chrno)
 {
     int ch;
     if (fp) {
