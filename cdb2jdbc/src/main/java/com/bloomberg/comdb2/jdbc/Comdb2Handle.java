@@ -164,7 +164,10 @@ public class Comdb2Handle extends AbstractConnection {
     public Comdb2Handle(String dbname, String cluster) {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
-        sets.add("set queryeffects statement");
+        String statement_caching;
+        statement_caching = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
+        if (statement_caching != null)
+            sets.add("set queryeffects statement");
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
