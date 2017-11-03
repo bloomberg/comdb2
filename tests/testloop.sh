@@ -59,6 +59,17 @@ while :; do
             looktest=0
         fi
 
+        # Kyle's tests sometime crash & leave the network partitioned.  This 
+        # looks like a timeout.  Detect and continue
+        if [[ "$x" == "jepsen"* ]] ; then
+            egrep "timeout \(logs in" $out
+                if [[ $? == 0 ]] ; then
+                echo "TEST TIMED OUT"
+                let timeout=timeout+1
+                looktest=0
+            fi
+        fi
+
         if [[ $looktest == 1 && $r == 0 ]]; then
             let goodtests=goodtests+1
         fi
