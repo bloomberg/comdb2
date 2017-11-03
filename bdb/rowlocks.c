@@ -2145,17 +2145,17 @@ static char *opstr(db_recops op)
     }
 }
 
-unsigned char *printmemarg1(void)
+static char *printmemarg1(void)
 {
-    static unsigned char *u = NULL;
+    static char *u = NULL;
     if (!u)
         u = malloc(MAXBLOBLENGTH + 7);
     return u;
 }
 
-unsigned char *printmemarg2(void)
+static unsigned char *printmemarg2(void)
 {
-    static unsigned char *u = NULL;
+    static char *u = NULL;
     if (!u)
         u = malloc(MAXBLOBLENGTH + 7);
     return u;

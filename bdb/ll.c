@@ -1369,6 +1369,8 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
         rc = phys_dta_upd(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, verify_dta, dta);
         break;
+    default:
+        break;
     }
 
 done:

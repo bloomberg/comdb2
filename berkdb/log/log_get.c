@@ -1001,7 +1001,7 @@ __log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
 			buf_offset %= lp->buffer_size;
 
 			/* Copy from the segmented buffer. */
-			segmented_copy(dblp, lp, hdr, buf_offset, hdr->size);
+			segmented_copy(dblp, lp, (u_int8_t *)hdr, buf_offset, hdr->size);
 
 			/* Calculate the total size of the in-memory buffer. */
 			if (buf_offset > lp->b_off) {
@@ -1093,7 +1093,7 @@ __log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
 			/* Walk backwards. */
 			while (1) {
 				/* Copy from circular buffer. */
-				segmented_copy(dblp, lp, hdr, buf_offset,
+				segmented_copy(dblp, lp, (u_int8_t *)hdr, buf_offset,
 				    hdr->size);
 
 				/* Swap the header. */

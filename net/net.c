@@ -2502,33 +2502,10 @@ ssize_t net_udp_send(int udp_fd, netinfo_type *netinfo_ptr, const char *host,
     return nsent;
 }
 
-host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
-                               int portnum)
+static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
+                                         const char hostname[], int portnum)
 {
-    int rc;
     host_node_type *ptr;
-
-#ifdef DEBUGNET
-    fprintf(stderr, "%s: adding %s\n", __func__, hostname);
-#endif
-
-    if (!isinterned(hostname))
-        abort();
-
-    /*override with smaller timeout*/
-    portmux_set_default_timeout(100);
-
-    /* don't add disallowed nodes */
-    if (netinfo_ptr->allow_rtn &&
-        !netinfo_ptr->allow_rtn(netinfo_ptr, hostname)) {
-        logmsg(LOGMSG_ERROR, "%s: not allowed to add %s\n", __func__, hostname);
-        return NULL;
-    }
-
-    /* we need to lock the netinfo to prevent creating too many connect threads
-     */
-    Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
-
     /* check to see if the node already exists */
     ptr = netinfo_ptr->head;
     if (debug_switch_offload_check_hostname() &&
@@ -2540,11 +2517,13 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
             ptr = ptr->next;
     }
     if (ptr != NULL) {
-        Pthread_rwlock_unlock(&(netinfo_ptr->lock));
         return ptr;
     }
 
     ptr = mymalloc(sizeof(host_node_type));
+    if (!ptr)
+        abort();
+
     memset(ptr, 0, sizeof(host_node_type));
 
     ptr->netinfo_ptr = netinfo_ptr;
@@ -2555,13 +2534,13 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
     ptr->next = netinfo_ptr->head;
     ptr->host = intern(hostname);
     ptr->hostname_len = strlen(ptr->host) + 1;
-    // ptr->addr will be set by connect_thread()
+    /* ptr->addr will be set by connect_thread() */
     ptr->port = portnum;
     ptr->timestamp = time(NULL);
     ptr->wait_list = NULL;
     ptr->distress = 0;
 
-    rc = pthread_mutex_init(&(ptr->lock), NULL);
+    int rc = pthread_mutex_init(&(ptr->lock), NULL);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: couldn't init lock for node %s\n", __func__,
                 ptr->host);
@@ -2658,14 +2637,43 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
     ptr->stats.bytes_written = ptr->stats.bytes_read = 0;
     ptr->stats.throttle_waits = ptr->stats.reorders = 0;
 
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
-
     return ptr;
 
 err:
     free(ptr);
-    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
     return NULL;
+}
+
+host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
+                               int portnum)
+{
+    host_node_type *ptr;
+
+#ifdef DEBUGNET
+    fprintf(stderr, "%s: adding %s\n", __func__, hostname);
+#endif
+
+    if (!isinterned(hostname))
+        abort();
+
+    /*override with smaller timeout*/
+    portmux_set_default_timeout(100);
+
+    /* don't add disallowed nodes */
+    if (netinfo_ptr->allow_rtn &&
+        !netinfo_ptr->allow_rtn(netinfo_ptr, hostname)) {
+        logmsg(LOGMSG_ERROR, "%s: not allowed to add %s\n", __func__, hostname);
+        return NULL;
+    }
+
+    /* we need to lock the netinfo to prevent creating too many connect threads
+     */
+    Pthread_rwlock_wrlock(&(netinfo_ptr->lock));
+
+    ptr = add_to_netinfo_ll(netinfo_ptr, hostname, portnum);
+
+    Pthread_rwlock_unlock(&(netinfo_ptr->lock));
+    return ptr;
 }
 
 /* for debugging only */

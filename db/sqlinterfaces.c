@@ -1012,7 +1012,8 @@ int get_high_availability(struct sqlclntstate *clnt)
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
-static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
+static int fill_snapinfo(struct sqlclntstate *clnt, unsigned int *file,
+                         int *offset)
 {
     char cnonce[256];
     int rcode = 0;
