@@ -2574,9 +2574,9 @@ static void *pack_recgenid_key(recgenid_key_t *key, int *outlen)
     return ret;
 }
 
-static int unpack_recgenid_key(recgenid_key_t *key, uint8_t *buf, int len)
+static int unpack_recgenid_key(recgenid_key_t *key, const uint8_t *buf, int len)
 {
-    uint8_t *buf_end = buf + len;
+    const uint8_t *buf_end = buf + len;
 
     bzero(key, sizeof(recgenid_key_t));
 

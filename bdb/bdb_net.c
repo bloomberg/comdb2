@@ -984,7 +984,7 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
     int count = net_get_all_nodes(repinfo->netinfo, hosts);
 
     for (int i = 0; i < count; i++) {
-        if(crc32c(hosts[i], strlen(hosts[i])) == hash) 
+        if(crc32c((const uint8_t*)hosts[i], strlen(hosts[i])) == hash) 
             return hosts[i];
     }
     return NULL;

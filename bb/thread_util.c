@@ -80,7 +80,7 @@ void thread_started(char *name)
         hash_init_o(offsetof(struct thread_resource, resource), sizeof(void *));
     info->name = strdup(name);
     if (thread_debug)
-        printf("thd: started %s tid %u archtid %u 0x%p\n", name, info->tid,
+        printf("thd: started %s tid %llu archtid %u 0x%p\n", name, info->tid,
                info->archtid, info);
 }
 
@@ -120,7 +120,7 @@ void thread_remove_resource(void *resource, void (*freefunc)(void *))
     }
     r = hash_find(info->resource_hash, &resource);
     if (r == NULL) {
-        printf("resource 0x%p not found, thread %u archtid %u\n", resource,
+        printf("resource 0x%p not found, thread %llu archtid %u\n", resource,
                info->tid, info->archtid);
         return;
     }
@@ -137,7 +137,7 @@ static void thread_ended(void *p)
     struct thread_resource *r;
 
     if (thread_debug)
-        printf("thd: ended %s tid %u archtid %u 0x%p listsz %d hashsz %d\n",
+        printf("thd: ended %s tid %llu archtid %u 0x%p listsz %d hashsz %d\n",
                info->name, info->tid, info->archtid, p,
                listc_size(&info->resource_list),
                hash_get_num_entries(info->resource_hash));
@@ -202,15 +202,15 @@ static void thread_util_donework_int(struct thread_info *info)
         LISTC_FOR_EACH(&info->resource_list, r, lnk)
         {
             if (r->type < 0 || r->type >= MAX_RESOURCE_TYPE) {
-                printf("thread %u archtid %u resource 0x%p unknown type %d\n",
+                printf("thread %llu archtid %u resource 0x%p unknown type %d\n",
                        info->tid, info->archtid, r->resource, r->type);
                 continue;
             }
             if (describe_func[r->type]) {
-                printf("thread %u archtid %u:\n", info->tid, info->archtid);
+                printf("thread %llu archtid %u:\n", info->tid, info->archtid);
                 describe_func[r->type](r->resource);
             } else {
-                printf("thread %u archtid %u still holds a type %d resource "
+                printf("thread %llu archtid %u still holds a type %d resource "
                        "0x%p at exit\n",
                        info->tid, info->archtid, r->type, r->resource);
             }
