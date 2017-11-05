@@ -166,7 +166,12 @@ public class Comdb2Handle extends AbstractConnection {
         sets = new ArrayList<String>();
         String statement_caching;
         statement_caching = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
-        if (statement_caching != null)
+
+        /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
+         */
+        if (statement_caching != null && !statement_caching.equals("0"))
             sets.add("set queryeffects statement");
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
