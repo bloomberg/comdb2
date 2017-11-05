@@ -727,7 +727,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (i=98)
 (i=99)
 (i=100)
-[exec procedure reset_test()] failed with rc -3 [row = s1:fetch()...]:53: no active stmt
+[exec procedure reset_test()] failed with rc -3 [row = s1:fetch()...]:54: no active stmt
 (expected=100, actual=100)
 (version='sptest')
 (count=50000, first=0, last=49999)

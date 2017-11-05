@@ -969,7 +969,6 @@ exec procedure tmptbls()
 EOF
 
 cdb2sql $SP_OPTIONS - <<'EOF'
-set transaction blocksql
 create procedure reset_test version 'sptest' {
 local total = 100
 local function setup()
@@ -997,12 +996,13 @@ local function main()
     local s1 = db:exec("select i from t order by i")
     local s2 = db:exec("select i from tmp")
     local s3 = db:exec("select i from tmp")
-    local s4 = db:exec("delete from t where 1")
 
     for i = 1, total/2 do
         db:emit(s1:fetch())
         db:emit(s2:fetch())
     end
+
+    local s4 = db:exec("delete from t where 1")
 
     local row = s3:fetch()
     while row do

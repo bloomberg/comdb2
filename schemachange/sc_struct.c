@@ -295,7 +295,8 @@ static const void *buf_get_dests(struct schema_change_type *s,
     p_buf = (uint8_t *)buf_get(&count, sizeof(count), p_buf, p_buf_end);
 
     for (int i = 0; i < count; i++) {
-        int w_len, len, no_pfx;
+        int w_len, len;
+        int no_pfx = 0;
         p_buf = (uint8_t *)buf_get(&w_len, sizeof(w_len), p_buf, p_buf_end);
         char pfx[] = "dest:"; // dest:method:xyz -- drop 'dest:' pfx
         len = w_len;
