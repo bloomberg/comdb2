@@ -581,7 +581,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
                     dbenv->sibling_port[ii][NET_REPLICATION] = port;
                     dbenv->sibling_port[ii][NET_SQL] = port;
-                    dbenv->sibling_port[ii][NET_SIGNAL] = port;
                     break;
                 }
             }
@@ -596,7 +595,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             /* nsiblings == 1 means there's no other nodes in the cluster */
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
-            dbenv->sibling_port[0][NET_SIGNAL] = port;
         }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/

@@ -1623,8 +1623,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     if (is_real_netinfo(bdb_state->repinfo->netinfo)) {
         net_exiting(bdb_state->repinfo->netinfo);
 
-        net_exiting(bdb_state->repinfo->netinfo_signal);
-
         sleep(1);
 
         /* shutdown network */
@@ -2615,11 +2613,11 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ANALYZED_TBL,
                          berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo_signal,
-                         USER_TYPE_COHERENCY_LEASE, receive_coherency_lease);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COHERENCY_LEASE,
+                         receive_coherency_lease);
 
-    net_register_handler(bdb_state->repinfo->netinfo_signal,
-                         USER_TYPE_REQ_START_LSN, receive_start_lsn_request);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REQ_START_LSN,
+                         receive_start_lsn_request);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_PAGE_COMPACT,
                          berkdb_receive_msg);
@@ -2844,14 +2842,6 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
         memcpy(&starting_lsn, &our_lsn, sizeof(DB_LSN));
         starting_time = time(NULL);
-    }
-
-    /* start the signalling network up */
-    print(bdb_state, "starting signal network\n");
-    rc = net_init(bdb_state->repinfo->netinfo_signal);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "failed to initialize signalling net\n");
-        exit(1);
     }
 
     /* start the network up */
@@ -5213,10 +5203,9 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
              const signed char ixcollattr[], const signed char ixnulls[],
              int numdtafiles, bdb_attr_type *bdb_attr,
              bdb_callback_type *bdb_callback, void *usr_ptr,
-             netinfo_type *netinfo, netinfo_type *netinfo_signal, int upgrade,
-             int create, int *bdberr, bdb_state_type *parent_bdb_state,
-             int pagesize_override, bdbtype_t bdbtype, DB_TXN *tid, int temp,
-             char *recoverylsn)
+             netinfo_type *netinfo, int upgrade, int create, int *bdberr,
+             bdb_state_type *parent_bdb_state, int pagesize_override,
+             bdbtype_t bdbtype, DB_TXN *tid, int temp, char *recoverylsn)
 {
     bdb_state_type *bdb_state;
     int rc;
@@ -5587,11 +5576,9 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         /* save our netinfo pointer */
         bdb_state->repinfo->netinfo = netinfo;
-        bdb_state->repinfo->netinfo_signal = netinfo_signal;
 
         /* chain back a pointer to our bdb_state for later */
         net_set_usrptr(bdb_state->repinfo->netinfo, bdb_state);
-        net_set_usrptr(bdb_state->repinfo->netinfo_signal, bdb_state);
 
         rc = pthread_mutex_init(&(bdb_state->repinfo->elect_mutex), NULL);
         if (rc != 0) {
@@ -5897,15 +5884,13 @@ static void init_eid_strings(void)
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
                              bdb_callback_type *bdb_callback, void *usr_ptr,
-                             netinfo_type *netinfo,
-                             netinfo_type *netinfo_signal, char *recoverlsn,
+                             netinfo_type *netinfo, char *recoverlsn,
                              int *bdberr)
 {
     *bdberr = BDBERR_NOERROR;
 
     if (netinfo == NULL) {
         netinfo = create_netinfo_fake();
-        netinfo_signal = create_netinfo_fake_signal();
     }
 
     pthread_once(&once_init_master_strings, init_eid_strings);
@@ -5926,7 +5911,6 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
         bdb_callback,   /* bdb_callback */
         usr_ptr,        /* usr_ptr */
         netinfo,        /* netinfo */
-        netinfo_signal, /* netinfo_signal */
         0,              /* upgrade */
         bdb_attr->createdbs, /* create */
         bdberr, NULL,        /* parent_bdb_handle */
@@ -5958,7 +5942,6 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
-                         NULL, /* netinfo_signal */
                          0,    /* upgrade */
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, tid, 0,
@@ -5974,7 +5957,6 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
-                         NULL, /* netinfo_signal */
                          0,    /* upgrade */
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, NULL, 1,
@@ -6005,7 +5987,6 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
@@ -6049,7 +6030,6 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
@@ -6083,7 +6063,6 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
 
@@ -6113,7 +6092,6 @@ bdb_state_type *bdb_open_more_tran_int(
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
 
@@ -6165,7 +6143,6 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL,
@@ -6203,7 +6180,6 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
         NULL,                              /* bdb_callback */
         NULL,                              /* usr_ptr */
         NULL,                              /* netinfo */
-        NULL,                              /* netinfo_signal */
         0,                                 /* upgrade */
         parent_bdb_state->attr->createdbs, /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
@@ -6241,7 +6217,6 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
         NULL,                 /* bdb_callback */
         NULL,                 /* usr_ptr */
         NULL,                 /* netinfo */
-        NULL,                 /* netinfo_signal */
         0,                    /* upgrade */
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
@@ -6286,7 +6261,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
             NULL,                       /* bdb_callback */
             NULL,                       /* usr_ptr */
             NULL,                       /* netinfo */
-            NULL,                       /* netinfo_signal */
             0,                          /* upgrade */
             1,                          /* create */
             bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL, 0, NULL);

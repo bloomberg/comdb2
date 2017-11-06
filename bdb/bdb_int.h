@@ -720,7 +720,6 @@ typedef struct {
 struct sockaddr_in;
 typedef struct {
     netinfo_type *netinfo;
-    netinfo_type *netinfo_signal;
 
     char *master_host;
     char *myhost;

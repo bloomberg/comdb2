@@ -3865,30 +3865,12 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         }
 
-        dbenv->handle_sibling_signal = (void *)create_netinfo(
-            dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SIGNAL],
-            dbenv->listen_fds[NET_SIGNAL], "comdb2", "signal", dbenv->envname,
-            1, 0);
-        if (dbenv->handle_sibling_signal == 0) {
-            logmsg(LOGMSG_ERROR, 
-                "open_bdb_env:failed create_netinfo signal host %s port %d\n",
-                dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SIGNAL]);
-            return -1;
-        }
-
         net_set_pool_size(dbenv->handle_sibling, gbl_maxreclen + 300);
-        net_set_pool_size(dbenv->handle_sibling_signal, gbl_maxreclen + 300);
         net_set_pool_size(dbenv->handle_sibling_offload, gbl_maxreclen + 300);
 
         net_register_child_net(dbenv->handle_sibling,
-                               dbenv->handle_sibling_signal, NET_SIGNAL,
-                               gbl_accept_on_child_nets);
-        net_register_child_net(dbenv->handle_sibling,
                                dbenv->handle_sibling_offload, NET_SQL,
                                gbl_accept_on_child_nets);
-
-        if (!gbl_accept_on_child_nets)
-            net_set_portmux_register_interval(dbenv->handle_sibling_signal, 0);
 
         /* get the max rec len, or a sane default */
         gbl_maxreclen = get_max_reclen(dbenv);
@@ -3909,17 +3891,6 @@ int open_bdb_env(struct dbenv *dbenv)
                         "open_bdb_env:failed add_to_netinfo host %s port %d\n",
                         dbenv->sibling_hostname[ii],
                         dbenv->sibling_port[ii][NET_REPLICATION]);
-                return -1;
-            }
-
-            rcv = (void *)add_to_netinfo(dbenv->handle_sibling_signal,
-                                         intern(dbenv->sibling_hostname[ii]),
-                                         dbenv->sibling_port[ii][NET_SIGNAL]);
-            if (rcv == 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "open_bdb_env:failed add_to_netinfo host %s port %d\n",
-                        dbenv->sibling_hostname[ii],
-                        dbenv->sibling_port[ii][NET_SIGNAL]);
                 return -1;
             }
         }
@@ -3982,15 +3953,12 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         if (net_register_allow(dbenv->handle_sibling, net_allow_node))
             return -1;
-        if (net_register_allow(dbenv->handle_sibling_signal, net_allow_node))
-            return -1;
     }
 
     /* open environment */
     dbenv->bdb_env = bdb_open_env(
         dbenv->envname, dbenv->basedir, dbenv->bdb_attr, dbenv->bdb_callback,
-        dbenv /* db */, dbenv->handle_sibling, dbenv->handle_sibling_signal,
-        gbl_recovery_options, &bdberr);
+        dbenv /* db */, dbenv->handle_sibling, gbl_recovery_options, &bdberr);
 
     if (dbenv->bdb_env == NULL) {
         logmsg(LOGMSG_ERROR, "open_bdb_env failed bdb_open_env bdberr %d\n", bdberr);
@@ -6117,15 +6085,6 @@ use:        portmux_use("comdb2", "replication", dbenv->envname, port);
                 return -1;
             }
         }
-        if (dbenv->sibling_port[0][NET_SIGNAL] == 0) {
-            dbenv->sibling_port[0][NET_SIGNAL] =
-                portmux_register("comdb2", "signal", dbenv->envname);
-            if (dbenv->sibling_port[0][NET_SIGNAL] == -1) {
-                logmsg(LOGMSG_ERROR, 
-                        "couldn't get port for signal net from portmux\n");
-                return -1;
-            }
-        }
     }
 
     logmsg(LOGMSG_INFO, "listen on %d for replication\n",
@@ -6140,11 +6099,6 @@ use:        portmux_use("comdb2", "replication", dbenv->envname, port);
         dbenv->listen_fds[NET_SQL] =
             net_listen(dbenv->sibling_port[0][NET_SQL]);
         if (dbenv->listen_fds[NET_SQL] == -1)
-            return -1;
-        logmsg(LOGMSG_INFO, "listen on %d for signal\n", dbenv->sibling_port[0][NET_SIGNAL]);
-        dbenv->listen_fds[NET_SIGNAL] =
-            net_listen(dbenv->sibling_port[0][NET_SIGNAL]);
-        if (dbenv->listen_fds[NET_SIGNAL] == -1)
             return -1;
     }
 

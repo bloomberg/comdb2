@@ -192,7 +192,6 @@ pthread_key_t comdb2_open_key;
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = "R7.0pre";
 int gbl_enque_flush_interval;
-int gbl_enque_flush_interval_signal;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
 int gbl_return_long_column_names = 1;
@@ -228,13 +227,11 @@ int gbl_osql_bkoff_netsend_lmt = 5 * 60 * 1000; /* 5 mins */
 int gbl_osql_bkoff_netsend = 100;               /* wait 100 msec */
 int gbl_net_max_queue = 25000;
 int gbl_net_max_mem = 0;
-int gbl_net_max_queue_signal = 100;
 int gbl_net_poll = 100;
 int gbl_net_throttle_percent = 50;
 int gbl_osql_net_poll = 100;
 int gbl_osql_max_queue = 10000;
 int gbl_osql_net_portmux_register_interval = 600;
-int gbl_signal_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
 
 int gbl_max_sqlcache = 10;
@@ -330,9 +327,7 @@ int gbl_maxblobretries =
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
 char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
-int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
-int gbl_netbufsz_signal = 64 * 1024;
 int gbl_loghist = 0;
 int gbl_loghist_verbose = 0;
 int gbl_repdebug = -1;
@@ -3931,11 +3926,6 @@ static int init(int argc, char **argv)
         net_set_max_bytes(thedb->handle_sibling, bytes);
     }
 
-    if (gbl_net_max_queue_signal) {
-        net_set_max_queue(thedb->handle_sibling_signal,
-                          gbl_net_max_queue_signal);
-    }
-
     if (gbl_net_throttle_percent) {
         net_set_throttle_percent(thedb->handle_sibling,
                                  gbl_net_throttle_percent);
@@ -3946,22 +3936,9 @@ static int init(int argc, char **argv)
                                           gbl_net_portmux_register_interval);
     }
 
-    if (gbl_signal_net_portmux_register_interval) {
-        net_set_portmux_register_interval(
-            thedb->handle_sibling_signal,
-            gbl_signal_net_portmux_register_interval);
-    }
-    if (!gbl_accept_on_child_nets)
-        net_set_portmux_register_interval(thedb->handle_sibling_signal, 0);
-
     if (gbl_enque_flush_interval) {
         net_set_enque_flush_interval(thedb->handle_sibling,
                                      gbl_enque_flush_interval);
-    }
-
-    if (gbl_enque_flush_interval_signal) {
-        net_set_enque_flush_interval(thedb->handle_sibling_signal,
-                                     gbl_enque_flush_interval_signal);
     }
 
     if (gbl_enque_reorder_lookahead) {
@@ -3980,17 +3957,8 @@ static int init(int argc, char **argv)
         net_set_heartbeat_check_time(thedb->handle_sibling,
                                      gbl_heartbeat_check);
     }
-    if (gbl_heartbeat_send_signal) {
-        net_set_heartbeat_send_time(thedb->handle_sibling_signal,
-                                    gbl_heartbeat_send_signal);
-    }
-    if (gbl_heartbeat_check_signal) {
-        net_set_heartbeat_check_time(thedb->handle_sibling_signal,
-                                     gbl_heartbeat_check_signal);
-    }
 
     net_setbufsz(thedb->handle_sibling, gbl_netbufsz);
-    net_setbufsz(thedb->handle_sibling_signal, gbl_netbufsz_signal);
 
     if (javasp_init_procedures() != 0) {
         logmsg(LOGMSG_FATAL, "*ERROR* cannot initialise Java stored procedures\n");
@@ -4969,7 +4937,7 @@ static void register_all_int_switches()
     register_int_switch("rep_printlock", "Print locks in rep commit",
                         &gbl_rep_printlock);
     register_int_switch("accept_on_child_nets",
-                        "listen on separate port for osql/signal nets",
+                        "listen on separate port for osql net",
                         &gbl_accept_on_child_nets);
     register_int_switch("disable_etc_services_lookup",
                         "When on, disables using /etc/services first to "

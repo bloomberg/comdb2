@@ -137,7 +137,7 @@ enum AUXDB_TYPES {
     AUXDB_FSTBLK = 3
 };
 
-enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_SIGNAL };
+enum NET_NAMES { NET_REPLICATION, NET_SQL };
 /* This is thenumber of bytes taken up by the null bitmap in the wire protocol,
  * which traditionally is fixed at 32 bytes (enough for 256 columns). */
 enum { NULLBMPWIRELENGTH = 32 };
@@ -886,7 +886,6 @@ struct dbenv {
     /* banckend db engine handle for replication */
     void *handle_sibling;
     void *handle_sibling_offload;
-    void *handle_sibling_signal;
 
     /*replication sync mode */
     int rep_sync;
@@ -1557,7 +1556,6 @@ extern int gbl_osql_max_queue;
 extern int gbl_net_poll;
 extern int gbl_osql_net_poll;
 extern int gbl_osql_net_portmux_register_interval;
-extern int gbl_signal_net_portmux_register_interval;
 extern int gbl_net_portmux_register_interval;
 extern int gbl_net_max_queue;
 extern int gbl_nullfkey;
