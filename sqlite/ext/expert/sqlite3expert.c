@@ -1762,10 +1762,12 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
     );
     while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
       const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
-      char NewSql[1024];
+      int newLen = strlen(zSql) + 6;
+      char *newSql = sqlite3_malloc(newLen);
       /* COMDB2 MODIFICATION */
-      snprintf(NewSql,1024, "create temp %s", zSql+7);
-      rc = sqlite3_exec(pNew->dbm, NewSql, 0, 0, pzErrmsg);
+      snprintf(newSql,newLen, "create temp %s", zSql+7);
+      rc = sqlite3_exec(pNew->dbm, newSql, 0, 0, pzErrmsg);
+      sqlite3_free(newSql);
     }
     idxFinalize(&rc, pSql);
   }
