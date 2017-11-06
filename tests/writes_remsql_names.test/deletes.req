@@ -1,0 +1,5 @@
+delete from t where id > 100
+delete from t where id =2
+delete from t where b1=x'55'
+delete from t where 1
+

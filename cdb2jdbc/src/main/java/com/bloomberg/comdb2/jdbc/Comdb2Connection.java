@@ -246,6 +246,16 @@ public class Comdb2Connection implements Connection {
             hndl.setAllowPmuxRoute(false);
     }
 
+    public void setStatementQueryEffects(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setStatementQueryEffects(true);
+        else
+            hndl.setStatementQueryEffects(false);
+    }
+
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
         return hndl.getDbHosts();
     }
@@ -735,6 +745,7 @@ public class Comdb2Connection implements Connection {
             case Constants.Errors.CDB2ERR_RECORD_OUT_OF_RANGE:
             case Constants.Errors.CDB2ERR_INVALID_ID:
             case Constants.Errors.CDB2ERR_NOMASTER:
+            case Constants.Errors.CDB2ERR_NOTSERIAL:
             case Constants.Errors.CDB2ERR_CHANGENODE:
             case Constants.Errors.CDB2ERR_FASTSEED:
             case Constants.Errors.CDB2ERR_UNTAGGED_DATABASE:

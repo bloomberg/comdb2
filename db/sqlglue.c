@@ -3061,12 +3061,6 @@ void sqlite3AlterFunctions(void)
     exit(1);
 }
 
-void sqlite3AlterRenameTable(Parse *pParse, SrcList *pSrc, Token *pName)
-{
-    logmsg(LOGMSG_FATAL, "STUB sqlite3AlterRenameTable called\n");
-    exit(1);
-}
-
 /*
  ** This call is a no-op if no write-transaction is currently active on pBt.
  **
@@ -5823,7 +5817,7 @@ done:
     if (verify && !pCur->bt->is_temporary &&
         pCur->rootpage != RTPAGE_SQLITE_MASTER && *pRes != 0 &&
         pCur->vdbe->readOnly == 0 && pCur->ixnum == -1) {
-        int irc = is_genid_recorded(thd, pCur->tblnum, genid);
+        int irc = is_genid_recorded(thd, pCur, genid);
         if (irc < 0)
             logmsg(LOGMSG_ERROR, "%s: failed to check early verify genid\n",
                    __func__);

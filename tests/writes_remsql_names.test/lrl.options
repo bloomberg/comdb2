@@ -1,0 +1,9 @@
+table tt tt.csc2
+table t1 t1.csc2
+table t2 t2.csc2
+
+dtastripe 4
+blobstripe
+round_robin_stripes
+
+ssl_allow_remsql 1

@@ -95,7 +95,7 @@ typedef void (*stats_fn)(const struct mallinfo *mallinfo, int verbose,
 /*
 ** Thread type string.
 */
-extern pthread_key_t thread_type_key;
+extern __thread const char *thread_type_key;
 #endif
 
 /*

@@ -625,6 +625,63 @@ char *tranlevel_tostr(int lvl)
     };
 }
 
+static inline int verify_sqlresponse_error_code(int error_code,
+                                                const char *func, int line)
+{
+    switch (error_code) {
+    case CDB2__ERROR_CODE__OK:
+    case CDB2__ERROR_CODE__DUP_OLD:
+    case CDB2__ERROR_CODE__CONNECT_ERROR:
+    case CDB2__ERROR_CODE__NOTCONNECTED:
+    case CDB2__ERROR_CODE__PREPARE_ERROR:
+    case CDB2__ERROR_CODE__PREPARE_ERROR_OLD:
+    case CDB2__ERROR_CODE__IO_ERROR:
+    case CDB2__ERROR_CODE__INTERNAL:
+    case CDB2__ERROR_CODE__NOSTATEMENT:
+    case CDB2__ERROR_CODE__BADCOLUMN:
+    case CDB2__ERROR_CODE__BADSTATE:
+    case CDB2__ERROR_CODE__ASYNCERR:
+    case CDB2__ERROR_CODE__OK_ASYNC:
+    case CDB2__ERROR_CODE__INVALID_ID:
+    case CDB2__ERROR_CODE__RECORD_OUT_OF_RANGE:
+    case CDB2__ERROR_CODE__REJECTED:
+    case CDB2__ERROR_CODE__STOPPED:
+    case CDB2__ERROR_CODE__BADREQ:
+    case CDB2__ERROR_CODE__DBCREATE_FAILED:
+    case CDB2__ERROR_CODE__THREADPOOL_INTERNAL:
+    case CDB2__ERROR_CODE__READONLY:
+    case CDB2__ERROR_CODE__NOMASTER:
+    case CDB2__ERROR_CODE__UNTAGGED_DATABASE:
+    case CDB2__ERROR_CODE__CONSTRAINTS:
+    case CDB2__ERROR_CODE__DEADLOCK:
+    case CDB2__ERROR_CODE__TRAN_IO_ERROR:
+    case CDB2__ERROR_CODE__ACCESS:
+    case CDB2__ERROR_CODE__TRAN_MODE_UNSUPPORTED:
+    case CDB2__ERROR_CODE__MASTER_TIMEOUT:
+    case CDB2__ERROR_CODE__WRONG_DB:
+    case CDB2__ERROR_CODE__VERIFY_ERROR:
+    case CDB2__ERROR_CODE__FKEY_VIOLATION:
+    case CDB2__ERROR_CODE__NULL_CONSTRAINT:
+    case CDB2__ERROR_CODE__CONV_FAIL:
+    case CDB2__ERROR_CODE__NONKLESS:
+    case CDB2__ERROR_CODE__MALLOC:
+    case CDB2__ERROR_CODE__NOTSUPPORTED:
+    case CDB2__ERROR_CODE__DUPLICATE:
+    case CDB2__ERROR_CODE__TZNAME_FAIL:
+    case CDB2__ERROR_CODE__CHANGENODE:
+    case CDB2__ERROR_CODE__UNKNOWN:
+        break;
+
+    default:
+        logmsg(LOGMSG_ERROR, "%s line %d returning non-standard "
+                             "sqlresponse.error_code %d\n",
+               func, line, error_code);
+        cheap_stack_trace();
+        break;
+    }
+    return error_code;
+}
+
 extern int gbl_catch_response_on_retry;
 int fsql_write_response(struct sqlclntstate *clnt, struct fsqlresp *resp,
                         void *dta, int len, int flush, const char *func,
@@ -676,7 +733,8 @@ int fsql_write_response(struct sqlclntstate *clnt, struct fsqlresp *resp,
 
             sql_response.n_value = 0;
             sql_response.value = NULL;
-            sql_response.error_code = resp->rcode;
+            sql_response.error_code =
+                verify_sqlresponse_error_code(resp->rcode, __func__, __LINE__);
             if (resp->rcode) {
                 sql_response.error_string = (char *)dta;
             } else {
@@ -834,18 +892,22 @@ int newsql_write_response(struct sqlclntstate *clnt, int type,
     sb = clnt->sb;
 
     if (gbl_dump_fsql_response) {
+        char cnonce[256] = {0};
         int file = -1, offset = -1, response_type = -1;
         if (sql_response && sql_response->snapshot_info) {
             file = sql_response->snapshot_info->file;
             offset = sql_response->snapshot_info->offset;
             response_type = sql_response->response_type;
         }
-        logmsg(LOGMSG_USER, 
-                "td=%u %s line %d Sending response=%d sqlresponse_type=%d "
-                "lsn[%d][%d] dta length %d to %s for sql %s from %s line %d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, type, file,
-                offset, response_type, len, clnt->origin, clnt->sql, func,
-                line);
+        if (clnt->sql_query) {
+            snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
+        }
+        logmsg(LOGMSG_USER,
+               "td=%u %s line %d cnonce='%s' Sending response=%d "
+               "sqlresponse_type=%d "
+               "lsn[%d][%d] dta length %d to %s for sql %s from %s line %d\n",
+               (uint32_t)pthread_self(), __func__, __LINE__, cnonce, type, file,
+               offset, response_type, len, clnt->origin, clnt->sql, func, line);
     }
 
     if (clnt->in_client_trans && clnt->sql_query &&
@@ -950,7 +1012,8 @@ int get_high_availability(struct sqlclntstate *clnt)
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
-static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
+static int fill_snapinfo(struct sqlclntstate *clnt, unsigned int *file,
+                         int *offset)
 {
     char cnonce[256];
     int rcode = 0;
@@ -1079,10 +1142,11 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     CDB2SQLRESPONSE__Snapshotinfo snapshotinfo =                               \
         CDB2__SQLRESPONSE__SNAPSHOTINFO__INIT;                                 \
                                                                                \
-    if (get_high_availability(clnt)) {                                             \
+    if (get_high_availability(clnt)) {                                         \
         int file = 0, offset = 0, rc;                                          \
         if (fill_snapinfo(clnt, &file, &offset)) {                             \
-            sql_response.error_code = CDB2ERR_CHANGENODE;                      \
+            sql_response.error_code = verify_sqlresponse_error_code(           \
+                CDB2ERR_CHANGENODE, __func__, __LINE__);                       \
         }                                                                      \
         if (file) {                                                            \
             snapshotinfo.file = file;                                          \
@@ -1104,14 +1168,16 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
     if (gbl_extended_sql_debug_trace) {
         char cnonce[256] = {0};
         snprintf(cnonce, 256, "%s", clnt->sql_query->cnonce.data);
-        logmsg(LOGMSG_USER,
-               "%lu: %s line %d cnonce='%s' [%d][%d] sending last_row, "
-               "selected=%u updated=%u deleted=%u inserted=%u\n",
-               pthread_self(), func, line, cnonce, clnt->snapshot_file,
-               clnt->snapshot_offset, sql_response.effects->num_selected,
-               sql_response.effects->num_updated,
-               sql_response.effects->num_deleted,
-               sql_response.effects->num_inserted);
+        logmsg(
+            LOGMSG_USER,
+            "%lu: %s line %d cnonce='%s' [%d][%d] sql='%s' sending last_row, "
+            "selected=%u updated=%u deleted=%u inserted=%u\n",
+            pthread_self(), func, line, cnonce, clnt->snapshot_file,
+            clnt->snapshot_offset, clnt->sql ? clnt->sql : "",
+            sql_response.effects->num_selected,
+            sql_response.effects->num_updated,
+            sql_response.effects->num_deleted,
+            sql_response.effects->num_inserted);
     }
 
     return _push_row_new(clnt, RESPONSE_TYPE__LAST_ROW, &sql_response, NULL, 0,
@@ -2112,6 +2178,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         rcline = __LINE__;
     } else {
         bzero(clnt->dirty, sizeof(clnt->dirty));
+
+        if (gbl_extended_sql_debug_trace) {
+            logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+        }
 
         switch (clnt->dbtran.mode) {
         case TRANLEVEL_RECOM: {
@@ -3541,10 +3611,16 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
     info_nvreplays[0] = '\0';
 
     if (clnt->verify_retries)
-        snprintf(info_nvreplays, sizeof(info_nvreplays), "vreplays=%d ",
+        snprintf(info_nvreplays, sizeof(info_nvreplays), "vreplays=%d",
                  clnt->verify_retries);
 
-    thrman_wheref(thd->thr_self, "%ssql: %s", info_nvreplays, clnt->sql);
+    if (clnt->sql_query && clnt->sql_query->client_info) {
+        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d sql: %s",
+                      info_nvreplays, clnt->sql_query->client_info->pid,
+                      clnt->sql_query->client_info->host_id, clnt->sql);
+    } else {
+        thrman_wheref(thd->thr_self, "%s sql: %s", info_nvreplays, clnt->sql);
+    }
 
     reqlog_new_sql_request(thd->logger, NULL);
     log_client_context(thd->logger, clnt);
@@ -4389,7 +4465,8 @@ static int send_err_but_msg_new(struct sqlclntstate *clnt, const char *errstr,
             sql_response.response_type = RESPONSE_TYPE__COLUMN_NAMES;
         }
         sql_response.n_value = 0;
-        sql_response.error_code = irc;
+        sql_response.error_code =
+            verify_sqlresponse_error_code(irc, __func__, __LINE__);
         sql_response.error_string = (char*)errstr;
 
         rc = newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE,
@@ -5465,6 +5542,10 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
 
         /* run the engine */
         fast_error = 0;
+
+        if (clnt->statement_query_effects)
+            reset_query_effects(clnt);
+
         rc = run_stmt(thd, clnt, &rec, &fast_error, &err, comm);
         if (rc) {
             int irc = errstat_get_rc(&err);
@@ -6327,6 +6408,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     free(clnt->context);
     clnt->context = NULL;
     clnt->ncontext = 0;
+    clnt->statement_query_effects = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -7319,9 +7401,11 @@ retry_read:
                 effects.num_deleted = clnt->effects.num_deleted;
                 effects.num_inserted = clnt->effects.num_inserted;
                 sql_response.effects = &effects;
-                sql_response.error_code = 0;
+                sql_response.error_code =
+                    verify_sqlresponse_error_code(0, __func__, __LINE__);
             } else {
-                sql_response.error_code = -1;
+                sql_response.error_code =
+                    verify_sqlresponse_error_code(-1, __func__, __LINE__);
                 sql_response.error_string = "Get effects not supported in "
                                             "transaction with verifyretry on";
             }
@@ -7528,6 +7612,10 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->want_stored_procedure_trace = 1;
                 }
+            } else if (strncasecmp(sqlstr, "cursordebug", 11) == 0) {
+                sqlstr += 11;
+                sqlstr = cdb2_skipws(sqlstr);
+                bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
             } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = cdb2_skipws(sqlstr);
@@ -7569,6 +7657,15 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     clnt->verifyretry_off = 0;
                 } else {
                     clnt->verifyretry_off = 1;
+                }
+            } else if (strncasecmp(sqlstr, "queryeffects", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "statement", 9) == 0) {
+                    clnt->statement_query_effects = 1;
+                }
+                if (strncasecmp(sqlstr, "transaction", 11) == 0) {
+                    clnt->statement_query_effects = 0;
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
                 sqlstr += 6;
@@ -7619,6 +7716,14 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 printf("setting clnt->planner_effort to %d\n",
                        clnt->planner_effort);
 #endif
+            } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
+                sqlstr += 15;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "on", 2) == 0) {
+                    clnt->ignore_coherency = 1;
+                } else {
+                    clnt->ignore_coherency = 0;
+                }
             } else {
                 rc = ii + 1;
             }
@@ -7779,7 +7884,8 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         goto done;
     }
 
-    if (!bdb_am_i_coherent(thedb->bdb_env)) {
+    extern int gbl_allow_incoherent_sql;
+    if (!gbl_allow_incoherent_sql && !bdb_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
@@ -7906,7 +8012,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (!bdb_am_i_coherent(thedb->bdb_env) &&
+        if (clnt.ignore_coherency == 0 && !bdb_am_i_coherent(thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR, "%s line %d td %u new query on incoherent node, "
                             "dropping socket\n",

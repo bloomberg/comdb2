@@ -405,7 +405,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called\n", __func__);
+        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
     }
     out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
@@ -424,6 +424,10 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
     int bdberr = 0;
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
+    if (gbl_extended_sql_debug_trace) {
+        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+    }
+
     out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_readcommitted done";
 
@@ -445,8 +449,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     iq->gluewhere = "bdb_tran_begin_snapisol";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with epoch=%d file=%d offset=%d\n", __func__,
-                epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n",
+               pthread_self(), __func__, epoch, file, offset);
     }
     out_trans =
         bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
@@ -470,8 +474,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
     iq->gluewhere = "bdb_tran_begin";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with epoch=%d file=%d offset=%d\n", __func__,
-                epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n",
+               pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
             file, offset);
@@ -2905,7 +2909,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     /* fudge around my lockless access to gbl_master_changes */
     MEMORY_SYNC;
 
-    osql_checkboard_check_master_changed(dbenv->master);
+    osql_checkboard_for_each(dbenv->master, osql_checkboard_master_changed);
 
     /* inform watcher that we have a new master !*/
     if(trigger_timepart)
@@ -6188,6 +6192,69 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     }
 
     return version;
+}
+
+int rename_table_options(void *tran, struct dbtable *db, const char *newname)
+{
+    char *oldname;
+    int rc;
+    int odh;
+    int compress;
+    int compress_blobs;
+    int ipu;
+    int isc;
+    int bthashsz;
+    int skip_bthashsz = 0;
+
+    /* get existing options */
+    rc = get_db_odh_tran(db, &odh, tran);
+    if (rc)
+        return rc;
+    rc = get_db_compress_tran(db, &compress, tran);
+    if (rc)
+        return rc;
+    rc = get_db_compress_blobs_tran(db, &compress_blobs, tran);
+    if (rc)
+        return rc;
+    rc = get_db_inplace_updates_tran(db, &ipu, tran);
+    if (rc)
+        return rc;
+    rc = get_db_instant_schema_change_tran(db, &isc, tran);
+    if (rc)
+        return rc;
+    rc = get_db_bthash_tran(db, &bthashsz, tran);
+    if (rc) {
+        if (rc == IX_NOTFND)
+            skip_bthashsz = 1;
+        else
+            return rc;
+    }
+
+    oldname = db->tablename;
+    db->tablename = (char *)newname;
+
+    rc = put_db_odh(db, tran, odh);
+    if (rc)
+        goto done;
+    rc = put_db_compress(db, tran, compress);
+    if (rc)
+        goto done;
+    rc = put_db_compress_blobs(db, tran, compress_blobs);
+    if (rc)
+        goto done;
+    rc = put_db_inplace_updates(db, tran, ipu);
+    if (rc)
+        goto done;
+    rc = put_db_instant_schema_change(db, tran, isc);
+    if (rc)
+        goto done;
+    if (!skip_bthashsz)
+        rc = put_db_bthash(db, tran, bthashsz);
+
+done:
+    db->tablename = oldname;
+
+    return rc;
 }
 
 /**

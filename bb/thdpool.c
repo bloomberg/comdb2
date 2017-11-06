@@ -610,7 +610,7 @@ static void *thdpool_thd(void *voidarg)
     thread_started("thdpool");
 
 #ifdef PER_THREAD_MALLOC
-    pthread_setspecific(thread_type_key, (void *)pool->name);
+    thread_type_key = pool->name;
 #endif
     thd->archtid = getarchtid();
 

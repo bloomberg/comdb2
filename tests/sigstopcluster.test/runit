@@ -1,0 +1,163 @@
+#!/bin/bash
+
+# Makes sure we behave correctly if entire cluster is SIGSTOPPED
+# debug_trace="-D"
+# We use instest to load the database
+
+#debug=1
+[[ "$debug" == 1 ]] && set -x
+loadcount=1000000
+instest=${TESTSROOTDIR}/tools/insert
+needcluster=0
+maxsleep=20
+db=$1
+
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED installation."
+    exit 0
+fi
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function loadtable
+{
+    echo "Loading table t1:"
+    echo "$instest -d $db -c ${CDB2_CONFIG} -t $stage -S $loadcount -Y"
+    $instest -d $db -c ${CDB2_CONFIG} -t $stage -S $loadcount -Y
+}
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table t1 {schema{int a} keys{ \"a\" = a }}" >/dev/null 2>&1
+}
+
+function checkforerrors
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    dbout=$1
+    dbnrm=$2
+    dbcrt=$3
+
+    egrep -v comdb2_host $dbout > $dbnrm
+    python ./generate_correct_out.py $loadcount > $dbcrt
+
+    diff $dbnrm $dbcrt
+    if [[ $? != 0 ]]; then
+        echo "Error in test!  See diff $dbnrm $dbcrt"
+        exit 1
+    fi
+
+    echo "Success!"
+}
+
+function pausecluster
+{
+    [[ "$debug" == 1 ]] && set -x
+    for node in $CLUSTER ; do
+        sleeptime=$(( (RANDOM % maxsleep) + 1 ))
+        pid=$(cat ${TMPDIR}/${db}.${node}.pid)
+        if [ $node == $(hostname) ] ; then
+            ( kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid ) &
+        else
+            ssh $node "kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid" < /dev/null &
+        fi
+    done
+}
+
+function pauselocal
+{
+    [[ "$debug" == 1 ]] && set -x
+    sleeptime=$(( (RANDOM % maxsleep) + 1 ))
+    pid=$(cat ${TMPDIR}/${db}.pid)
+    ( kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid ) &
+}
+
+function pausedatabase
+{
+    [[ "$debug" == 1 ]] && set -x
+    if [[ -n "$CLUSTER" ]]; then
+        pausecluster
+    else
+        pauselocal
+    fi
+}
+
+function blockonclient
+{
+    [[ "$debug" == 1 ]] && set -x
+    sqlpid=$1
+    kill -0 $sqlpid 
+    while [[ $? == 0 ]]; do
+        sleep 1
+        kill -0 $sqlpid
+    done
+}
+
+function runtestwithoptions
+{
+    [[ "$debug" == 1 ]] && set -x
+    dt=$(date +%Y%m%d%H%M%S)
+
+    # Session output
+    dbout=$(pwd)/killcluster.$db.$dt.out
+
+    # Normalized session output
+    dbnrm=$(pwd)/killcluster.$db.$dt.nrm
+
+    # Session error
+    dberr=$(pwd)/killcluster.$db.$dt.err
+
+    # Correct output
+    dbcrt=$(pwd)/killcluster.$db.$dt.crt
+
+    # The sql begins a transaction then does a large select
+    cdb2sql ${CDB2_OPTIONS} -maxretries 1000000 -debugtrace $db $stage < ./sql > $dbout 2>$dberr &
+    sqlpid=$!
+
+    # Make sure we get part-way through reading
+    sleep 7
+
+    # Bounce cluster during test
+    pausedatabase
+
+    # Wait for client to complete
+    blockonclient $sqlpid
+
+    checkforerrors $dbout $dbnrm $dbcrt
+    rm $dbout $dberr $dbnrm $dbcrt
+}
+
+function longtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+function normaltest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    if [[ -z "$CONTINUOUS" ]]; then
+        normaltest
+    else
+        longtest
+    fi
+}
+
+createtables
+loadtable
+runtest
+
+echo "Success"
+exit 0
