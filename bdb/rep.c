@@ -1683,10 +1683,10 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn) != 0))
+    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn)) != 0)
         abort();
 
-    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn) != 0))
+    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);

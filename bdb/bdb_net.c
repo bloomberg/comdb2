@@ -740,7 +740,7 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 
         count++;
         if ((now = time(NULL)) > lastpr) {
-            fprintf(stderr, "%s: get_myseqnum returned non-0, count=%lu\n",
+            fprintf(stderr, "%s: get_myseqnum returned non-0, count=%"PRIu64"\n",
                     __func__, count);
             lastpr = now;
         }

@@ -174,7 +174,7 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
                " prevlsn[" PR_LSN "]\n",
                lsn->file, lsn->offset, rectype, args->txnid->txnid,
                PARM_LSN(args->prev_lsn));
-        printf("\ttime:     %ld\n", args->time);
+        printf("\ttime:     %"PRId64"\n", args->time);
         printf("\tkey:      ");
         hexdumpdbt(&args->key);
         printf("\n");
