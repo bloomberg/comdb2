@@ -68,6 +68,7 @@ public class Comdb2Handle extends AbstractConnection {
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
     boolean pmuxrte = false;
+    boolean statement_caching = false;
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
@@ -164,15 +165,16 @@ public class Comdb2Handle extends AbstractConnection {
     public Comdb2Handle(String dbname, String cluster) {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
-        String statement_caching;
-        statement_caching = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
 
         /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
          */
-        if (statement_caching != null && !statement_caching.equals("0"))
+        String envvar = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
+        statement_caching = (envvar != null && !envvar.equals("0"));
+        if (statement_caching)
             sets.add("set queryeffects statement");
+
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
@@ -230,6 +232,18 @@ public class Comdb2Handle extends AbstractConnection {
         pmuxrte = val;
         if (val)
             overriddenPort = portMuxPort;
+    }
+
+    public void setStatementQueryEffects(boolean val) {
+        if (val == statement_caching)
+            return;
+
+        if (val)
+            sets.add("set queryeffects statement");
+        else
+            sets.clear();
+
+        statement_caching = val;
     }
 
     void addHosts(List<String> hosts) {

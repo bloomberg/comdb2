@@ -246,6 +246,16 @@ public class Comdb2Connection implements Connection {
             hndl.setAllowPmuxRoute(false);
     }
 
+    public void setStatementQueryEffects(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setStatementQueryEffects(true);
+        else
+            hndl.setStatementQueryEffects(false);
+    }
+
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
         return hndl.getDbHosts();
     }
