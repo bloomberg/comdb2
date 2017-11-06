@@ -28,8 +28,10 @@
 #include "plhash.h"
 #include "sysutil_membar.h"
 #include "compile_time_assert.h"
+#ifndef BUILDING_TOOLS
 #include "mem_bb.h"
 #include "mem_override.h"
+#endif
 #include "logmsg.h"
 
 typedef void *hash_kfnd_t(hash_t *const h, const void *const restrict vkey);

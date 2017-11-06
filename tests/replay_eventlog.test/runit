@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
@@ -138,7 +138,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))00000000$j ,$((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -376,7 +376,6 @@ force_delay_master()
 echo "Test with insert, SC should not fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events detailed on")'
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat alltypes.csc2 ` }"
 
@@ -402,8 +401,9 @@ assertcnt $NEWNUMREC
 #update_records_with_bind $NEWSTRT $NEWNUMREC
 #assertcnt $NEWNUMREC
 
+set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
-#${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
+${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by alltypes_u_short" > orig.txt
 
@@ -417,6 +417,8 @@ cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.se
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")'
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events roll")'
+
+set +e
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("exit")'
 sleep 10

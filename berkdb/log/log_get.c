@@ -858,7 +858,7 @@ __log_c_inregion(logc, lsn, rlockp, last_lsn, hdr, pp)
 	int32_t buf_offset;
 	u_int32_t curseg, oldseg;
 	int ret;
-	u_int8_t *p, *to_p;
+	u_int8_t *p;
 
 	dbenv = logc->dbenv;
 	dblp = dbenv->lg_handle;

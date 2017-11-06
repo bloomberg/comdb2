@@ -8,8 +8,8 @@
  *
  */
 
-#include <sqlite3.h>
 #include "comdb2.h"
+#include <sqlite3.h>
 #include "errstat.h"
 #include "views_cron.h"
 

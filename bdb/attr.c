@@ -34,7 +34,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 // #include <peutil.h> /* for time_epoch() */
 
 #include <ctrace.h>

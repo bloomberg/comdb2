@@ -55,7 +55,7 @@
 #include <assert.h>
 #include <strings.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_cursor.h"
 #include "bdb_int.h"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Grab my database name.
@@ -28,7 +28,7 @@ function addrecord
     typeset iter=$2
     typeset str="iter$iter"
 
-    cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(a,b,c,d,e) values($iter, \"$str\", now() - cast($iter as days), cast(\"$iter\" as days), cast($iter as years))" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $db default "insert into t1(a,b,c,d,e) values($iter, \"$str\", now() - cast($iter as days), cast(\"$iter\" as days), cast($iter as years))" &> /dev/null
 }
 
 echo "Adding records"

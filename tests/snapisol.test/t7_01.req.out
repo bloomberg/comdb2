@@ -38,3 +38,8 @@ done
 done
 (csc2='schema {int a int b null=yes}')
 done
+done
+done
+done
+[select * from t7] failed with rc -3 no such table: t7
+done

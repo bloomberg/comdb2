@@ -17,12 +17,12 @@
 #include "bdb_api.h"
 #include "bdb_int.h"
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "printformats.h"
 
-#include <db_swap.h>
+#include <dbinc/db_swap.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>

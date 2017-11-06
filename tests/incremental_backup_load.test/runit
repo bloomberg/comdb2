@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Test functionality for incremental backups with concurrent writeload
 export debug=1
 export sleeptime=30
@@ -36,7 +36,7 @@ function failexit
 function checkload
 {
     [[ $debug == 1 ]] && set -x
-    cdb2sql ${CDB2_OPTIONS} $dbname default "select count(*) from load" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbname default "select count(*) from load" &> /dev/null
     r=$?
     if [[ $r != 0 ]]; then
         killwriters

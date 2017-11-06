@@ -46,7 +46,7 @@
 #include "fdb_access.h"
 #include "fdb_bend.h"
 #include "osqlsession.h"
-#include "comdb2util.h"
+#include "util.h"
 #include "logmsg.h"
 
 extern int gbl_fdb_resolve_local;
@@ -3183,7 +3183,15 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
        We need to allow bdb lock to recover if we keep waiting
      */
     do {
+#       ifdef __APPLE__
+        rc = pthread_mutex_trylock(&fdb->sqlstats_mtx);
+        if (rc == EBUSY) {
+            poll(NULL, 0, 10);
+            rc = ETIMEDOUT;
+        }
+#       else
         rc = pthread_mutex_timedlock(&fdb->sqlstats_mtx, &ts);
+#       endif
         if (rc) {
             if (rc == ETIMEDOUT) {
                 if (thd && bdb_lock_desired(thedb->bdb_env)) {
@@ -3856,9 +3864,9 @@ static int _is_tablename_unique(const char *name)
     int llen = strlen(name);
 
     for (i = 0; i < thedb->num_dbs; i++) {
-        if (llen != strlen(thedb->dbs[i]->dbname))
+        if (llen != strlen(thedb->dbs[i]->tablename))
             continue;
-        if (strncasecmp(thedb->dbs[i]->dbname, name, llen) == 0)
+        if (strncasecmp(thedb->dbs[i]->tablename, name, llen) == 0)
             return -1;
     }
 

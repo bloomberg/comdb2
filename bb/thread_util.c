@@ -244,7 +244,7 @@ void thread_util_donework(void)
     thread_util_donework_int(info);
 }
 
-#if defined(_LINUX_SOURCE)
+#if defined(__linux__)
 
 #include <unistd.h>
 #include <sys/syscall.h>

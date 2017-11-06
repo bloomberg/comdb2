@@ -457,7 +457,7 @@ int SBUF2_FUNC(sbuf2fread_timeout)(char *ptr, int size, int nitems, SBUF2 *sb,
     return sbuf2fread_int(ptr, size, nitems, sb, was_timeout);
 }
 
-int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, char *fmt, ...)
+int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...)
 {
     /*just do sprintf to local buf (limited to 1k),
       and then emit through sbuf2*/

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Test rootpages when db array changes during sql processing
 ##############################################################################

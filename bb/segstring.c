@@ -21,8 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef BUILDING_TOOLS
 #include "mem_bb.h"
 #include "mem_override.h"
+#endif
 
 /*EXTRACT A LINE FROM DATA. HANDLES CRLF OR LF*/
 /* RETURNS PTR TO LINE AND LENGTH. KEEPS NEXT POS IN OFFP.

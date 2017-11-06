@@ -1,5 +1,5 @@
 #baseline result without keys (comparisons done in SQLite)
-cdb2sql ${CDB2_OPTIONS} $db $where - > /dev/null 2>&1 <<'EOF'
+cdb2sql -s ${CDB2_OPTIONS} $db $where - > /dev/null 2>&1 <<'EOF'
 drop table if exists t
 create table t {schema {
     short s null=yes
@@ -34,7 +34,7 @@ cdb2sql ${CDB2_OPTIONS} --exponent --precision 10 -s -f sqls $db $where >expecte
 
 
 #results with asc keys
-cdb2sql ${CDB2_OPTIONS} $db $where - >/dev/null 2>&1 <<'EOF'
+cdb2sql -s ${CDB2_OPTIONS} $db $where - >/dev/null 2>&1 <<'EOF'
 alter table t {schema {
     short s null=yes
     int   i null=yes
@@ -64,7 +64,7 @@ cdb2sql ${CDB2_OPTIONS} --exponent --precision 10 -s -f sqls $db $where >output1
 
 
 #results with desc keys
-cdb2sql ${CDB2_OPTIONS} $db $where - >/dev/null 2>&1 <<'EOF'
+cdb2sql -s ${CDB2_OPTIONS} $db $where - >/dev/null 2>&1 <<'EOF'
 alter table t {schema {
     short s null=yes
     int   i null=yes
