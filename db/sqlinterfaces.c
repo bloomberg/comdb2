@@ -4247,8 +4247,10 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         *outrc = newsql_dump_query_plan(clnt, thd->sqldb);
         unlock_schema_lk();
         return 1;
-    }
-    if (clnt->is_expert) {
+    } else if (clnt->is_expert) {
+        rdlock_schema_lk();
+        sqlengine_prepare_engine(thd, clnt, 1);
+        unlock_schema_lk();
         char *zErr = 0;
         sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
         if (!p) {
