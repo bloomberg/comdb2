@@ -1715,12 +1715,12 @@ int osql_schemachange_logic(struct schema_change_type *sc,
                 } else
                     usedb = 0;
             } else {
-                version = comdb2_table_version(tblname);
+                version = comdb2_table_version(sc->table);
             }
 
             if (usedb) {
                 rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid,
-                                     tblname, NET_OSQL_BLOCK_RPL_UUID,
+                                     sc->table, NET_OSQL_BLOCK_RPL_UUID,
                                      osql->logsb, version);
                 RESTART_SOCKSQL;
             }

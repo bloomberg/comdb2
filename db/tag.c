@@ -6846,6 +6846,18 @@ void delete_schema(const char *dbname)
     free(dbt);
 }
 
+void rename_schema(const char *oldname, char *newname)
+{
+    struct dbtag *dbt;
+    lock_taglock();
+    dbt = hash_find(tags, &oldname);
+    hash_del(tags, dbt);
+    free(dbt->tblname);
+    dbt->tblname = newname;
+    hash_add(tags, dbt);
+    unlock_taglock();
+}
+
 void freeschema_internals(struct schema *schema)
 {
     int i;

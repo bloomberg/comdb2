@@ -47,6 +47,18 @@ if [[ -n ${DEBUGGER} ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
+    drd)
+        DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
+    helgrind)
+        DEBUG_PREFIX="valgrind --tool=helgrind "
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
     perf)
         DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
         INTERACTIVE_DEBUG=0
@@ -147,7 +159,7 @@ if [ -n "$PMUXPORT" ] ; then
     echo "portmux_port $PMUXPORT" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 )"
+stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) && sleep 2 && killall pmux || echo PMUX DOWN"
 
 COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
 export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
@@ -161,18 +173,19 @@ copy_files_to_cluster()
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}"
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2"
-        scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:${SRCHOME} 
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "killall pmux || echo PMUX DOWN" < /dev/null
+        scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:${SRCHOME}
         scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:${SRCHOME}
         # stop pmux on nodes first before copying and starting it
         if [ -n "$PMUXPORT" ] ; then
-            ssh -o StrictHostKeyChecking=no $node "$stop_pmux"
+            ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
         fi
         set +e
         scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
         echo start pmux on $node if not running 
-        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd"
+        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
         set -e
     done
 }
@@ -268,7 +281,7 @@ else
             compare_md5_sum $loc_comdb2md5sum
             continue        # no copying to self
         else 
-            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $COMDB2_EXE" | cut -d ' ' -f1`
+            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $COMDB2_EXE" < /dev/null | cut -d ' ' -f1`
             compare_md5_sum $loc_comdb2md5sum
         fi
         $COPYCOMDB2_EXE $DBDIR/${DBNAME}.lrl ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
@@ -280,7 +293,7 @@ else
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl 2>&1 | tee $TESTDIR/${DBNAME}.db"
+    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally

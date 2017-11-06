@@ -157,9 +157,9 @@ target_link_libraries(comdb2
   cson
   db
   dfpal
-  dlmalloc
   lua
   mem
+  dlmalloc
   net
   sockpool
   sqlite
@@ -172,7 +172,6 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
-  Threads::Threads
 )
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(

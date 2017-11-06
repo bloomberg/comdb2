@@ -118,7 +118,7 @@ static int write_pidfile(const char *pidfile)
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
-    char c;
+    int c;
     int options_idx;
 
     while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
@@ -581,7 +581,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
                     dbenv->sibling_port[ii][NET_REPLICATION] = port;
                     dbenv->sibling_port[ii][NET_SQL] = port;
-                    dbenv->sibling_port[ii][NET_SIGNAL] = port;
                     break;
                 }
             }
@@ -596,7 +595,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             /* nsiblings == 1 means there's no other nodes in the cluster */
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
-            dbenv->sibling_port[0][NET_SIGNAL] = port;
         }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
@@ -1313,8 +1311,35 @@ done:
     return rc;
 }
 
+static int global_is_local(const char *lrlfile, const char *pwd,
+                           const char *cfgfile)
+{
+    int pwdlen;
+
+    if (!pwd || !lrlfile)
+        return 0;
+
+    pwdlen = strlen(pwd) + 1 /* / */;
+
+    if (strlen(lrlfile) <= pwdlen)
+        return 0;
+
+    if (strncasecmp(lrlfile, pwd, strlen(pwd)))
+        return 0;
+
+    if (strncasecmp(&lrlfile[pwdlen], cfgfile, strlen(cfgfile) + 1))
+        return 0;
+
+    /* identical */
+    return 1;
+}
+
 int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 {
+    int loaded_comdb2 = 0;
+    int loaded_comdb2_local = 0;
+    const char *crtdir = getenv("PWD");
+
     init_deferred_options(dbenv);
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
 
@@ -1326,7 +1351,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
         /* firm wide defaults */
         lrlfile = comdb2_location("config", "comdb2.lrl");
-
+        loaded_comdb2 = global_is_local(lrlfile, crtdir, "comdb2.lrl");
         if (!read_lrl_file(dbenv, lrlfile, 0 /*not required*/)) {
             free(lrlfile);
             return 0;
@@ -1335,6 +1360,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
         /* local defaults */
         lrlfile = comdb2_location("config", "comdb2_local.lrl");
+        loaded_comdb2 = global_is_local(lrlfile, crtdir, "comdb2_local.lrl");
         if (!read_lrl_file(dbenv, lrlfile, 0)) {
             free(lrlfile);
             return 0;
@@ -1361,12 +1387,14 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     }
 
     /* look for overriding lrl's in the local directory */
-    if (!read_lrl_file(dbenv, "comdb2.lrl", 0 /*not required*/)) {
+    if (!loaded_comdb2 &&
+        !read_lrl_file(dbenv, "comdb2.lrl", 0 /*not required*/)) {
         return 0;
     }
 
     /* local defaults */
-    if (!read_lrl_file(dbenv, "comdb2_local.lrl", 0 /*not required*/)) {
+    if (!loaded_comdb2_local &&
+        !read_lrl_file(dbenv, "comdb2_local.lrl", 0 /*not required*/)) {
         return 0;
     }
 

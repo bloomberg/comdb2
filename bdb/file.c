@@ -128,6 +128,8 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                     int create, DB_TXN *tid);
+static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
+static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
 
 void berkdb_set_recovery(DB_ENV *dbenv);
@@ -794,41 +796,23 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
 }
 
 /*moves an entire table over to the new versioning database*/
-int bdb_start_file_versioning_table(bdb_state_type *bdb_state,
-                                    tran_type *input_trans, int *bdberr)
+int bdb_rename_file_versioning_table(bdb_state_type *bdb_state,
+                                     tran_type *input_trans, char *newtblname,
+                                     int *bdberr)
 {
     int dtanum, ixnum, retries = 0;
     unsigned long long version_num;
+    unsigned long long new_version_num;
     char oldname[80], newname[80];
     tran_type *tran;
+    char *orig_name;
 
-    /*fail if the db isn't open*/
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: low level meta table"
-                        " not yet open, you must run bdb_llmeta_open\n");
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
-
-    /*find out if this table has been versioned*/
-    if (!bdb_get_file_version_table(bdb_state, input_trans, &version_num,
-                                    bdberr) &&
-        *bdberr == BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: table already using "
-                        "version numbers\n");
-        *bdberr = BDBERR_NOERROR;
-        return 0;
-    } else if (*bdberr != BDBERR_FETCH_DTA) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: failed to look up "
-                        "table version number\n");
-        return -1;
-    }
+    orig_name = bdb_state->name;
 
 retry:
     if (++retries >= 500 /*gbl_maxretries*/) {
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: giving up after %d "
-                        "retries\n",
-                retries);
+        logmsg(LOGMSG_ERROR, "%s: giving up after %d retries\n", __func__,
+               retries);
         return -1;
     }
 
@@ -839,8 +823,7 @@ retry:
             if (*bdberr == BDBERR_DEADLOCK)
                 goto retry;
 
-            logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: failed to get "
-                            "transaction\n");
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
             return -1;
         }
     } else
@@ -848,17 +831,36 @@ retry:
 
     /* set table version num, this is used to test if the table is using file
      * versions */
-    version_num = bdb_get_cmp_context(bdb_state);
-    if (bdb_new_file_version_table(bdb_state, tran, version_num, bdberr) ||
+    bdb_state->name = newtblname;
+    new_version_num = bdb_get_cmp_context(bdb_state);
+    if (bdb_new_file_version_table(bdb_state, tran, new_version_num, bdberr) ||
         *bdberr != BDBERR_NOERROR)
         goto backout;
+
+    /* get existing name version */
+    bdb_state->name = orig_name;
+    if (bdb_get_file_version_table(bdb_state, tran, &version_num, bdberr) &&
+        *bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "failed to retrieve existing table version\n");
+        *bdberr = BDBERR_MISC;
+        goto backout;
+    }
 
     /* update data files */
     for (dtanum = 0; dtanum < bdb_state->numdtafiles; dtanum++) {
         int strnum, num_stripes = bdb_get_datafile_num_files(bdb_state, dtanum),
                     isstriped = 0;
 
-        version_num = bdb_get_cmp_context(bdb_state);
+        new_version_num = bdb_get_cmp_context(bdb_state);
+
+        /* get data versioning existing table */
+        if (bdb_get_file_version_data(bdb_state, tran, dtanum, &version_num,
+                                      bdberr) &&
+            *bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "failed to retrieve existing index version\n");
+            *bdberr = BDBERR_MISC;
+            goto backout;
+        }
 
         /*find out if this datafile is striped*/
         if (dtanum > 0) {
@@ -871,15 +873,18 @@ retry:
         /*save all of the stripe's names*/
         for (strnum = 0; strnum < num_stripes; ++strnum) {
             /*get the old filename*/
-            form_datafile_name(bdb_state, tran->tid, dtanum, strnum, oldname,
-                               sizeof(oldname));
-            /*get the new filename*/
             form_file_name_ex(bdb_state, 1 /*is_data_file*/, dtanum,
                               1 /*add_prefix*/, isstriped, strnum, version_num,
-                              newname, sizeof(newname));
+                              oldname, sizeof(oldname));
+            /*get the new filename*/
+            bdb_state->name = newtblname;
+            form_file_name_ex(bdb_state, 1 /*is_data_file*/, dtanum,
+                              1 /*add_prefix*/, isstriped, strnum,
+                              new_version_num, newname, sizeof(newname));
+            bdb_state->name = orig_name;
 
             /*rename the file*/
-           logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n", oldname,
+            logmsg(LOGMSG_INFO, "%s: renaming %s to %s\n", __func__, oldname,
                    newname);
             if (bdb_rename_file(bdb_state, tran->tid, oldname, newname,
                                 bdberr) ||
@@ -888,26 +893,42 @@ retry:
         }
 
         /*update the file's version*/
-        if (bdb_new_file_version_data(bdb_state, tran, dtanum, version_num,
+        bdb_state->name = newtblname;
+        if (bdb_new_file_version_data(bdb_state, tran, dtanum, new_version_num,
                                       bdberr) ||
-            *bdberr != BDBERR_NOERROR)
+            *bdberr != BDBERR_NOERROR) {
+            bdb_state->name = orig_name;
             goto backout;
+        }
+        bdb_state->name = orig_name;
     }
 
     /* update the index files */
     for (ixnum = 0; ixnum < bdb_state->numix; ixnum++) {
-        version_num = bdb_get_cmp_context(bdb_state);
+        new_version_num = bdb_get_cmp_context(bdb_state);
+
+        /* get index versioning existing table */
+        if (bdb_get_file_version_index(bdb_state, tran, ixnum, &version_num,
+                                       bdberr) &&
+            *bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "failed to retrieve existing index version\n");
+            *bdberr = BDBERR_MISC;
+            goto backout;
+        }
 
         /*get old name*/
-        form_indexfile_name(bdb_state, tran->tid, ixnum, oldname,
-                            sizeof(oldname));
-        /*get new name*/
         form_file_name_ex(bdb_state, 0 /*is_data_file*/, ixnum,
                           1 /*add_prefix*/, 0 /*isstriped*/, 0 /*strnum*/,
-                          version_num, newname, sizeof(newname));
+                          version_num, oldname, sizeof(oldname));
+        /*get new name*/
+        bdb_state->name = newtblname;
+        form_file_name_ex(bdb_state, 0 /*is_data_file*/, ixnum,
+                          1 /*add_prefix*/, 0 /*isstriped*/, 0 /*strnum*/,
+                          new_version_num, newname, sizeof(newname));
+        bdb_state->name = orig_name;
 
         /*rename*/
-       logmsg(LOGMSG_INFO, "bdb_start_file_versioning: renaming %s to %s\n", oldname,
+        logmsg(LOGMSG_INFO, "%s: renaming %s to %s\n", __func__, oldname,
                newname);
         if (bdb_rename_file(bdb_state, tran->tid, oldname, newname, bdberr) ||
             *bdberr != BDBERR_NOERROR) {
@@ -917,10 +938,14 @@ retry:
         }
 
         /*update version*/
-        if (bdb_new_file_version_index(bdb_state, tran, ixnum, version_num,
+        bdb_state->name = newtblname;
+        if (bdb_new_file_version_index(bdb_state, tran, ixnum, new_version_num,
                                        bdberr) ||
-            *bdberr != BDBERR_NOERROR)
+            *bdberr != BDBERR_NOERROR) {
+            bdb_state->name = orig_name;
             goto backout;
+        }
+        bdb_state->name = orig_name;
     }
 
     /*commit if we created our own transaction*/
@@ -941,9 +966,8 @@ backout:
         /*kill the transaction*/
 
         if (bdb_tran_abort(bdb_state, tran, bdberr) && !BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: trans abort "
-                            "failed with bdberr %d\n",
-                    *bdberr);
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with bdberr %d\n",
+                   __func__, *bdberr);
             return -1;
         }
 
@@ -951,11 +975,42 @@ backout:
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
 
-        logmsg(LOGMSG_ERROR, "bdb_start_file_versioning_table: failed with bdberr "
-                        "%d\n",
-                *bdberr);
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
     return -1;
+}
+
+int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
+                     int *bdberr)
+{
+    DB_TXN *tid = tran ? tran->tid : NULL;
+    char *orig_name;
+    int rc;
+
+    rc = close_dbs_flush(bdb_state, tid);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        return -1;
+    }
+
+    rc = bdb_rename_file_versioning_table(bdb_state, tran, newname, bdberr);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        return -1;
+    }
+
+    orig_name = bdb_state->name;
+    bdb_state->name = newname;
+    rc = open_dbs(bdb_state, 1, 1, 0, tid);
+    if (rc != 0) {
+        bdb_state->name = orig_name;
+        logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        return -1;
+    }
+    bdb_state->name = orig_name;
+    bdb_state->isopen = 1;
+
+    return 0;
 }
 
 struct del_list_item {
@@ -1411,17 +1466,14 @@ static void send_decom_all(bdb_state_type *bdb_state, char *decom_node)
  * Hence this function will now never fail - although it may spit out errors.
  * After this is called, the db is closed.
  */
-static int closedbs_int(bdb_state_type *bdb_state, int nosync)
+static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
 {
     int rc;
     int i;
     int dtanum, strnum;
 
-    int flags = 0;
-    if (nosync) flags = DB_NOSYNC;
-
-    print(bdb_state, "in closedbs(name=%s)\n", bdb_state->name);
+    print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
     if (!bdb_state->isopen) {
         print(bdb_state, "%s not open, not closing\n", bdb_state->name);
@@ -1439,7 +1491,7 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
                     bdb_state->dbp_data[dtanum][strnum], NULL, flags);
                 if (0 != rc) {
                     logmsg(LOGMSG_ERROR,
-                           "closedbs: error closing %s[%d][%d]: %d %s\n",
+                           "%s: error closing %s[%d][%d]: %d %s\n", __func__,
                            bdb_state->name, dtanum, strnum, rc,
                            db_strerror(rc));
                 }
@@ -1452,9 +1504,8 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
             /*fprintf(stderr, "closing ix %d\n", i);*/
             rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], NULL, flags);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "closedbs: error closing %s->dbp_ix[%d] %d %s\n",
-                       bdb_state->name, i, rc, db_strerror(rc));
+                logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
+                       __func__, bdb_state->name, i, rc, db_strerror(rc));
             }
         }
     }
@@ -1470,9 +1521,14 @@ static int closedbs_int(bdb_state_type *bdb_state, int nosync)
     return 0;
 }
 
-static int closedbs(bdb_state_type *bdb_state)
+static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
 {
-    return closedbs_int(bdb_state, 1);
+    return close_dbs_int(bdb_state, tid, DB_NOSYNC);
+}
+
+static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid)
+{
+    return close_dbs_int(bdb_state, tid, 0);
 }
 
 int bdb_isopen(bdb_state_type *bdb_handle) { return bdb_handle->isopen; }
@@ -1567,8 +1623,6 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     if (is_real_netinfo(bdb_state->repinfo->netinfo)) {
         net_exiting(bdb_state->repinfo->netinfo);
 
-        net_exiting(bdb_state->repinfo->netinfo_signal);
-
         sleep(1);
 
         /* shutdown network */
@@ -1596,7 +1650,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     /* close all database files.   doesn't fail. */
     if (!envonly) {
-        rc = closedbs(bdb_state);
+        rc = close_dbs(bdb_state, NULL);
     }
 
     /* now do it for all of our children */
@@ -1606,7 +1660,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         /* close all of our databases.  doesn't fail. */
         if (child) {
-            rc = closedbs(child);
+            rc = close_dbs(child, NULL);
             bdb_access_destroy(child);
         }
     }
@@ -1661,7 +1715,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = closedbs(bdb_state);
+    int rc = close_dbs(bdb_state, NULL);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -2559,11 +2613,11 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_ANALYZED_TBL,
                          berkdb_receive_msg);
 
-    net_register_handler(bdb_state->repinfo->netinfo_signal,
-                         USER_TYPE_COHERENCY_LEASE, receive_coherency_lease);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_COHERENCY_LEASE,
+                         receive_coherency_lease);
 
-    net_register_handler(bdb_state->repinfo->netinfo_signal,
-                         USER_TYPE_REQ_START_LSN, receive_start_lsn_request);
+    net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_REQ_START_LSN,
+                         receive_start_lsn_request);
 
     net_register_handler(bdb_state->repinfo->netinfo, USER_TYPE_PAGE_COMPACT,
                          berkdb_receive_msg);
@@ -2788,14 +2842,6 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
 
         memcpy(&starting_lsn, &our_lsn, sizeof(DB_LSN));
         starting_time = time(NULL);
-    }
-
-    /* start the signalling network up */
-    print(bdb_state, "starting signal network\n");
-    rc = net_init(bdb_state->repinfo->netinfo_signal);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "failed to initialize signalling net\n");
-        exit(1);
     }
 
     /* start the network up */
@@ -3169,6 +3215,11 @@ done2:
         }
     }
 
+    int tmpnode;
+    int attempts = bdb_state->attr->startup_sync_attempts;
+    uint8_t *p_buf = (uint8_t *)&tmpnode;
+    uint8_t *p_buf_end = ((uint8_t *)&tmpnode + sizeof(int));
+
     /*
       PHASE 4:
       finally now that we believe we are caught up and are no longer lying
@@ -3176,14 +3227,12 @@ done2:
       forward and wait for us to reach the same LSN.  when we pass this
       phase, we are truly cache coherent.
       */
-    if (bdb_state->repinfo->master_host != myhost) {
-        int tmpnode, attempts = bdb_state->attr->startup_sync_attempts;
-        uint8_t *p_buf = (uint8_t *)&tmpnode;
-        uint8_t *p_buf_end = ((uint8_t *)&tmpnode + sizeof(int));
 
-    again:
-        buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf,
-                p_buf_end);
+again:
+    buf_put(&(bdb_state->repinfo->master_host), sizeof(int), p_buf, p_buf_end);
+
+    if (bdb_state->repinfo->master_host != myhost) {
+
         /* now we have the master checkpoint and WAIT for us to ack the seqnum,
            thus making sure we are actually LIVE */
         rc = net_send_message(
@@ -4626,9 +4675,9 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
 
     if (!bdb_state->envonly) {
         /* close all of our databases.  doesn't fail */
-        rc = closedbs(bdb_state);
+        rc = close_dbs(bdb_state, NULL);
 
-        /* fprintf(stderr, "back from closedbs\n"); */
+        /* fprintf(stderr, "back from close_dbs\n"); */
 
         /* now reopen them as a client */
         rc = open_dbs(bdb_state, 0, 1, 0, tid);
@@ -4649,9 +4698,9 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             child->read_write = 0;
 
             /* close all of our databases.  doesn't fail */
-            rc = closedbs(child);
+            rc = close_dbs(child, NULL);
 
-            /* fprintf(stderr, "back from closedbs\n"); */
+            /* fprintf(stderr, "back from close_dbs\n"); */
 
             /* now reopen them as a client */
             rc = open_dbs(child, 0, 1, 0, tid);
@@ -4719,13 +4768,10 @@ static int bdb_downgrade_int(bdb_state_type *bdb_state, int noelect,
         *downgraded = 0;
 
     retries = 0;
-    while (!bdb_state->repinfo->upgrade_allowed) {
-        if (++retries > 100) {
-            logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
-                            "completed yet)\n");
-            return 0;
-        }
-        poll(NULL, 0, 100);
+    if (!bdb_state->repinfo->upgrade_allowed) {
+        logmsg(LOGMSG_DEBUG, "bdb_downgrade: not allowed (bdb_open has not "
+                             "completed yet)\n");
+        return 0;
     }
 
     /* if we were passed a child, find his parent */
@@ -5157,10 +5203,9 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
              const signed char ixcollattr[], const signed char ixnulls[],
              int numdtafiles, bdb_attr_type *bdb_attr,
              bdb_callback_type *bdb_callback, void *usr_ptr,
-             netinfo_type *netinfo, netinfo_type *netinfo_signal, int upgrade,
-             int create, int *bdberr, bdb_state_type *parent_bdb_state,
-             int pagesize_override, bdbtype_t bdbtype, DB_TXN *tid, int temp,
-             char *recoverylsn)
+             netinfo_type *netinfo, int upgrade, int create, int *bdberr,
+             bdb_state_type *parent_bdb_state, int pagesize_override,
+             bdbtype_t bdbtype, DB_TXN *tid, int temp, char *recoverylsn)
 {
     bdb_state_type *bdb_state;
     int rc;
@@ -5531,11 +5576,9 @@ bdb_open_int(int envonly, const char name[], const char dir[], int lrl,
 
         /* save our netinfo pointer */
         bdb_state->repinfo->netinfo = netinfo;
-        bdb_state->repinfo->netinfo_signal = netinfo_signal;
 
         /* chain back a pointer to our bdb_state for later */
         net_set_usrptr(bdb_state->repinfo->netinfo, bdb_state);
-        net_set_usrptr(bdb_state->repinfo->netinfo_signal, bdb_state);
 
         rc = pthread_mutex_init(&(bdb_state->repinfo->elect_mutex), NULL);
         if (rc != 0) {
@@ -5841,15 +5884,13 @@ static void init_eid_strings(void)
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
                              bdb_callback_type *bdb_callback, void *usr_ptr,
-                             netinfo_type *netinfo,
-                             netinfo_type *netinfo_signal, char *recoverlsn,
+                             netinfo_type *netinfo, char *recoverlsn,
                              int *bdberr)
 {
     *bdberr = BDBERR_NOERROR;
 
     if (netinfo == NULL) {
         netinfo = create_netinfo_fake();
-        netinfo_signal = create_netinfo_fake_signal();
     }
 
     pthread_once(&once_init_master_strings, init_eid_strings);
@@ -5870,7 +5911,6 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
         bdb_callback,   /* bdb_callback */
         usr_ptr,        /* usr_ptr */
         netinfo,        /* netinfo */
-        netinfo_signal, /* netinfo_signal */
         0,              /* upgrade */
         bdb_attr->createdbs, /* create */
         bdberr, NULL,        /* parent_bdb_handle */
@@ -5902,7 +5942,6 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
-                         NULL, /* netinfo_signal */
                          0,    /* upgrade */
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, tid, 0,
@@ -5918,7 +5957,6 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
                          NULL, /* bdb_callback */
                          NULL, /* usr_ptr */
                          NULL, /* netinfo */
-                         NULL, /* netinfo_signal */
                          0,    /* upgrade */
                          1,    /* create */
                          bdberr, parent_bdb_handle, 0, BDBTYPE_TABLE, NULL, 1,
@@ -5949,7 +5987,6 @@ bdb_open_more_int(const char name[], const char dir[], int lrl, short numix,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
@@ -5993,7 +6030,6 @@ bdb_open_more(const char name[], const char dir[], int lrl, short numix,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, 0, /* pagesize override */
@@ -6027,7 +6063,6 @@ bdb_open_more_tran(const char name[], const char dir[], int lrl, short numix,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
 
@@ -6057,7 +6092,6 @@ bdb_state_type *bdb_open_more_tran_int(
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
 
@@ -6109,7 +6143,6 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
                        NULL,                               /* bdb_callback */
                        NULL,                               /* usr_ptr */
                        NULL,                               /* netinfo */
-                       NULL,                               /* netinfo_signal */
                        0,                                  /* upgrade */
                        parent_bdb_handle->attr->createdbs, /* create */
                        bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL,
@@ -6147,7 +6180,6 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
         NULL,                              /* bdb_callback */
         NULL,                              /* usr_ptr */
         NULL,                              /* netinfo */
-        NULL,                              /* netinfo_signal */
         0,                                 /* upgrade */
         parent_bdb_state->attr->createdbs, /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
@@ -6185,7 +6217,6 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
         NULL,                 /* bdb_callback */
         NULL,                 /* usr_ptr */
         NULL,                 /* netinfo */
-        NULL,                 /* netinfo_signal */
         0,                    /* upgrade */
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
@@ -6230,7 +6261,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
             NULL,                       /* bdb_callback */
             NULL,                       /* usr_ptr */
             NULL,                       /* netinfo */
-            NULL,                       /* netinfo_signal */
             0,                          /* upgrade */
             1,                          /* create */
             bdberr, parent_bdb_handle, pagesize, BDBTYPE_LITE, NULL, 0, NULL);
@@ -6665,22 +6695,11 @@ int bdb_rename_ix(bdb_state_type *bdb_state, tran_type *tran,
     return rc;
 }
 
-int bdb_rename_name(bdb_state_type *bdb_state, char newtablename[], int *bdberr)
+void bdb_state_rename(bdb_state_type *bdb_state, char *newname)
 {
-    int rc = 0;
-    char *p = strdup(newtablename);
-    if (!p) {
-        logmsg(LOGMSG_ERROR, "bdb_rename_name: strdup failed for '%s'\n",
-                newtablename);
-        *bdberr = BDBERR_MALLOC;
-        return -1;
-    }
-    *bdberr = BDBERR_NOERROR;
-    BDB_READLOCK("bdb_rename_name");
-    free(bdb_state->name);
-    bdb_state->name = p;
-    BDB_RELLOCK();
-    return rc;
+    char *old = bdb_state->name;
+    bdb_state->name = newname;
+    free(old);
 }
 
 static int bdb_rename_blob1_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -6751,7 +6770,7 @@ int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    rc = closedbs(bdb_state);
+    rc = close_dbs(bdb_state, NULL);
 
     return rc;
 }
@@ -6794,7 +6813,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    closedbs(bdb_state);
+    close_dbs(bdb_state, NULL);
 
     /* now remove myself from my parents list of children */
 
@@ -8349,4 +8368,11 @@ done:
     if (prev_fs) free_file_set(prev_fs);
 
     logc->close(logc, 0);
+}
+
+void rename_bdb_state(bdb_state_type *bdb_state, const char *newname)
+{
+    if (bdb_state->name)
+        free(bdb_state->name);
+    bdb_state->name = strdup(newname);
 }

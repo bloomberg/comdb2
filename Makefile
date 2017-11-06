@@ -3,7 +3,7 @@
 #######################################################
 .PHONY: test_tools
 test_tools: compat_install
-	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8
+	@cd build && $(MAKE) -s -j blob bound cdb2_client cdb2api_caller cdb2bind comdb2_blobtest comdb2_sqltest crle hatest insert_lots_mt leakcheck localrep overflow_blobtest ptrantest recom selectv serial sicountbug sirace simple_ssl stepper utf8 insert register breakloop
 	@ln -f build/tests/tools/blob tests/bloballoc.test/blob
 	@ln -f build/tests/tools/bound tests/tools/bound
 	@ln -f build/tests/tools/cdb2_client tests/cdb2api_so.test/cdb2_client
@@ -13,7 +13,7 @@ test_tools: compat_install
 	@ln -f build/tests/tools/comdb2_sqltest tests/sqlite.test/comdb2_sqltest
 	@ln -f build/tests/tools/crle tests/tools/crle
 	@ln -f build/tests/tools/hatest tests/tools/hatest
-	@ln -f build/tests/tools/insert_lots_mt  tests/insert_lots.test/insert_lots_mt
+	@ln -f build/tests/tools/insert_lots_mt tests/insert_lots.test/insert_lots_mt
 	@ln -f build/tests/tools/leakcheck tests/leakcheck.test/leakcheck
 	@ln -f build/tests/tools/localrep tests/tools/localrep
 	@ln -f build/tests/tools/overflow_blobtest tests/tools/overflow_blobtest
@@ -26,6 +26,9 @@ test_tools: compat_install
 	@ln -f build/tests/tools/simple_ssl tests/simple_ssl.test/simple_ssl
 	@ln -f build/tests/tools/stepper tests/tools/stepper
 	@ln -f build/tests/tools/utf8 tests/tools/utf8
+	@ln -f build/tests/tools/insert tests/tools/insert
+	@ln -f build/tests/tools/register tests/tools/register
+	@ln -f build/tests/tools/breakloop tests/tools/breakloop
 
 .PHONY: compat_install
 compat_install: all
@@ -46,15 +49,47 @@ all: build
 
 CMAKE3 := $(shell command -v cmake3 2> /dev/null)
 build:
-ifndef CMAKE3
-	@mkdir build && cd build && cmake ..
-else
+ifdef CMAKE3
 	@mkdir build && cd build && cmake3 ..
+else
+	@mkdir build && cd build && cmake ..
 endif
 
 .PHONY: clean
-clean: build
-	@cd build && $(MAKE) -s -j clean
+clean:
+	@rm -rf build
+	@rm -f cdb2_dump
+	@rm -f cdb2_printlog
+	@rm -f cdb2_stat
+	@rm -f cdb2_verify
+	@rm -f comdb2
+	@rm -f cdb2_sqlreplay
+	@rm -f cdb2sockpool
+	@rm -f cdb2sql
+	@rm -f comdb2ar
+	@rm -f pmux
+	@rm -f tests/bloballoc.test/blob
+	@rm -f tests/tools/bound
+	@rm -f tests/cdb2api_so.test/cdb2_client
+	@rm -f tests/tools/cdb2api_caller
+	@rm -f tests/cdb2bind.test/cdb2bind
+	@rm -f tests/blob_size_limit.test/comdb2_blobtest
+	@rm -f tests/sqlite.test/comdb2_sqltest
+	@rm -f tests/tools/crle
+	@rm -f tests/tools/hatest
+	@rm -f tests/insert_lots.test/insert_lots_mt
+	@rm -f tests/leakcheck.test/leakcheck
+	@rm -f tests/tools/localrep
+	@rm -f tests/tools/overflow_blobtest
+	@rm -f tests/tools/ptrantest
+	@rm -f tests/tools/recom
+	@rm -f tests/tools/selectv
+	@rm -f tests/tools/serial
+	@rm -f tests/sicountbug.test/sicountbug
+	@rm -f tests/sirace.test/sirace
+	@rm -f tests/simple_ssl.test/simple_ssl
+	@rm -f tests/tools/stepper
+	@rm -f tests/tools/utf8
 
 .PHONY: deb-current
 deb-current: package

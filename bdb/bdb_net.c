@@ -748,6 +748,8 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
     return rc;
 }
 
+int gbl_verbose_send_coherency_lease;
+
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *inc_wait)
 {
@@ -793,7 +795,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         /* Assume disconnected node(s) are incoherent */
         *inc_wait = 1;
 
-        if (last_count != count || (now = time(NULL)) - lastpr) {
+        if (gbl_verbose_send_coherency_lease &&
+            (last_count != count || (now = time(NULL)) - lastpr)) {
             char *machs = (char *)malloc(1);
             int machs_len = 0;
             machs[0] = '\0';
@@ -856,16 +859,17 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
                 udp_send(bdb_state, info, hostlist[i]);
             } else {
-                net_send_message(bdb_state->repinfo->netinfo_signal,
-                        hostlist[i], USER_TYPE_COHERENCY_LEASE,
-                        buf, COLEASE_TYPE_LEN, 0, 0);
+                net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
+                                 USER_TYPE_COHERENCY_LEASE, buf,
+                                 COLEASE_TYPE_LEN, 0, 0);
             }
         } else {
             static time_t lastpr = 0;
             time_t now;
-            if ((now = time(NULL)) - lastpr) {
-                logmsg(LOGMSG_INFO, "%s: not sending to %s\n", __func__,
-                        hostlist[i]);
+            if (gbl_verbose_send_coherency_lease &&
+                (now = time(NULL)) - lastpr) {
+                logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
+                       hostlist[i]);
                 lastpr = now;
             }
         }
@@ -980,7 +984,7 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
     int count = net_get_all_nodes(repinfo->netinfo, hosts);
 
     for (int i = 0; i < count; i++) {
-        if(crc32c(hosts[i], strlen(hosts[i])) == hash) 
+        if(crc32c((const uint8_t*)hosts[i], strlen(hosts[i])) == hash) 
             return hosts[i];
     }
     return NULL;

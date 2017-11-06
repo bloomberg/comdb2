@@ -85,7 +85,7 @@
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
 (RESERVED_KW=108)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=77)
+(NONRESERVED_KW=76)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ABORT', reserved='Y')
 (name='ALL', reserved='Y')
@@ -171,6 +171,7 @@
 (name='REGEXP', reserved='Y')
 (name='REINDEX', reserved='Y')
 (name='RELEASE', reserved='Y')
+(name='RENAME', reserved='Y')
 (name='REPLACE', reserved='Y')
 (name='RIGHT', reserved='Y')
 (name='ROLLBACK', reserved='Y')
@@ -249,7 +250,6 @@
 (name='REBUILD', reserved='N')
 (name='REC', reserved='N')
 (name='REFERENCES', reserved='N')
-(name='RENAME', reserved='N')
 (name='RESERVED', reserved='N')
 (name='RESTRICT', reserved='N')
 (name='RETENTION', reserved='N')

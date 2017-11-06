@@ -43,3 +43,17 @@ done
 done
 [select * from t7] failed with rc -3 no such table: t7
 done
+done
+done
+done
+done
+[commit] failed with rc 2 unable to add record rc = 4
+done
+done
+done
+done
+done
+done
+[commit] failed with rc 110 stale table version in shadow table
+done
+done

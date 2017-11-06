@@ -405,7 +405,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called\n", __func__);
+        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
     }
     out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
@@ -424,6 +424,10 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
     int bdberr = 0;
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
+    if (gbl_extended_sql_debug_trace) {
+        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+    }
+
     out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_readcommitted done";
 
@@ -445,8 +449,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     iq->gluewhere = "bdb_tran_begin_snapisol";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with epoch=%d file=%d offset=%d\n", __func__,
-                epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n",
+               pthread_self(), __func__, epoch, file, offset);
     }
     out_trans =
         bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
@@ -470,8 +474,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
     iq->gluewhere = "bdb_tran_begin";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "%s called with epoch=%d file=%d offset=%d\n", __func__,
-                epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n",
+               pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
             file, offset);
@@ -2905,7 +2909,7 @@ static int new_master_callback(void *bdb_handle, char *host)
     /* fudge around my lockless access to gbl_master_changes */
     MEMORY_SYNC;
 
-    osql_checkboard_check_master_changed(dbenv->master);
+    osql_checkboard_for_each(dbenv->master, osql_checkboard_master_changed);
 
     /* inform watcher that we have a new master !*/
     if(trigger_timepart)
@@ -3861,30 +3865,12 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         }
 
-        dbenv->handle_sibling_signal = (void *)create_netinfo(
-            dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SIGNAL],
-            dbenv->listen_fds[NET_SIGNAL], "comdb2", "signal", dbenv->envname,
-            1, 0);
-        if (dbenv->handle_sibling_signal == 0) {
-            logmsg(LOGMSG_ERROR, 
-                "open_bdb_env:failed create_netinfo signal host %s port %d\n",
-                dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SIGNAL]);
-            return -1;
-        }
-
         net_set_pool_size(dbenv->handle_sibling, gbl_maxreclen + 300);
-        net_set_pool_size(dbenv->handle_sibling_signal, gbl_maxreclen + 300);
         net_set_pool_size(dbenv->handle_sibling_offload, gbl_maxreclen + 300);
 
         net_register_child_net(dbenv->handle_sibling,
-                               dbenv->handle_sibling_signal, NET_SIGNAL,
-                               gbl_accept_on_child_nets);
-        net_register_child_net(dbenv->handle_sibling,
                                dbenv->handle_sibling_offload, NET_SQL,
                                gbl_accept_on_child_nets);
-
-        if (!gbl_accept_on_child_nets)
-            net_set_portmux_register_interval(dbenv->handle_sibling_signal, 0);
 
         /* get the max rec len, or a sane default */
         gbl_maxreclen = get_max_reclen(dbenv);
@@ -3905,17 +3891,6 @@ int open_bdb_env(struct dbenv *dbenv)
                         "open_bdb_env:failed add_to_netinfo host %s port %d\n",
                         dbenv->sibling_hostname[ii],
                         dbenv->sibling_port[ii][NET_REPLICATION]);
-                return -1;
-            }
-
-            rcv = (void *)add_to_netinfo(dbenv->handle_sibling_signal,
-                                         intern(dbenv->sibling_hostname[ii]),
-                                         dbenv->sibling_port[ii][NET_SIGNAL]);
-            if (rcv == 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "open_bdb_env:failed add_to_netinfo host %s port %d\n",
-                        dbenv->sibling_hostname[ii],
-                        dbenv->sibling_port[ii][NET_SIGNAL]);
                 return -1;
             }
         }
@@ -3978,15 +3953,12 @@ int open_bdb_env(struct dbenv *dbenv)
             return -1;
         if (net_register_allow(dbenv->handle_sibling, net_allow_node))
             return -1;
-        if (net_register_allow(dbenv->handle_sibling_signal, net_allow_node))
-            return -1;
     }
 
     /* open environment */
     dbenv->bdb_env = bdb_open_env(
         dbenv->envname, dbenv->basedir, dbenv->bdb_attr, dbenv->bdb_callback,
-        dbenv /* db */, dbenv->handle_sibling, dbenv->handle_sibling_signal,
-        gbl_recovery_options, &bdberr);
+        dbenv /* db */, dbenv->handle_sibling, gbl_recovery_options, &bdberr);
 
     if (dbenv->bdb_env == NULL) {
         logmsg(LOGMSG_ERROR, "open_bdb_env failed bdb_open_env bdberr %d\n", bdberr);
@@ -6113,15 +6085,6 @@ use:        portmux_use("comdb2", "replication", dbenv->envname, port);
                 return -1;
             }
         }
-        if (dbenv->sibling_port[0][NET_SIGNAL] == 0) {
-            dbenv->sibling_port[0][NET_SIGNAL] =
-                portmux_register("comdb2", "signal", dbenv->envname);
-            if (dbenv->sibling_port[0][NET_SIGNAL] == -1) {
-                logmsg(LOGMSG_ERROR, 
-                        "couldn't get port for signal net from portmux\n");
-                return -1;
-            }
-        }
     }
 
     logmsg(LOGMSG_INFO, "listen on %d for replication\n",
@@ -6136,11 +6099,6 @@ use:        portmux_use("comdb2", "replication", dbenv->envname, port);
         dbenv->listen_fds[NET_SQL] =
             net_listen(dbenv->sibling_port[0][NET_SQL]);
         if (dbenv->listen_fds[NET_SQL] == -1)
-            return -1;
-        logmsg(LOGMSG_INFO, "listen on %d for signal\n", dbenv->sibling_port[0][NET_SIGNAL]);
-        dbenv->listen_fds[NET_SIGNAL] =
-            net_listen(dbenv->sibling_port[0][NET_SIGNAL]);
-        if (dbenv->listen_fds[NET_SIGNAL] == -1)
             return -1;
     }
 
@@ -6188,6 +6146,69 @@ unsigned long long table_version_select(struct dbtable *db, tran_type *tran)
     }
 
     return version;
+}
+
+int rename_table_options(void *tran, struct dbtable *db, const char *newname)
+{
+    char *oldname;
+    int rc;
+    int odh;
+    int compress;
+    int compress_blobs;
+    int ipu;
+    int isc;
+    int bthashsz;
+    int skip_bthashsz = 0;
+
+    /* get existing options */
+    rc = get_db_odh_tran(db, &odh, tran);
+    if (rc)
+        return rc;
+    rc = get_db_compress_tran(db, &compress, tran);
+    if (rc)
+        return rc;
+    rc = get_db_compress_blobs_tran(db, &compress_blobs, tran);
+    if (rc)
+        return rc;
+    rc = get_db_inplace_updates_tran(db, &ipu, tran);
+    if (rc)
+        return rc;
+    rc = get_db_instant_schema_change_tran(db, &isc, tran);
+    if (rc)
+        return rc;
+    rc = get_db_bthash_tran(db, &bthashsz, tran);
+    if (rc) {
+        if (rc == IX_NOTFND)
+            skip_bthashsz = 1;
+        else
+            return rc;
+    }
+
+    oldname = db->tablename;
+    db->tablename = (char *)newname;
+
+    rc = put_db_odh(db, tran, odh);
+    if (rc)
+        goto done;
+    rc = put_db_compress(db, tran, compress);
+    if (rc)
+        goto done;
+    rc = put_db_compress_blobs(db, tran, compress_blobs);
+    if (rc)
+        goto done;
+    rc = put_db_inplace_updates(db, tran, ipu);
+    if (rc)
+        goto done;
+    rc = put_db_instant_schema_change(db, tran, isc);
+    if (rc)
+        goto done;
+    if (!skip_bthashsz)
+        rc = put_db_bthash(db, tran, bthashsz);
+
+done:
+    db->tablename = oldname;
+
+    return rc;
 }
 
 /**

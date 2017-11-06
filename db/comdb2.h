@@ -137,7 +137,7 @@ enum AUXDB_TYPES {
     AUXDB_FSTBLK = 3
 };
 
-enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_SIGNAL };
+enum NET_NAMES { NET_REPLICATION, NET_SQL };
 /* This is thenumber of bytes taken up by the null bitmap in the wire protocol,
  * which traditionally is fixed at 32 bytes (enough for 256 columns). */
 enum { NULLBMPWIRELENGTH = 32 };
@@ -886,7 +886,6 @@ struct dbenv {
     /* banckend db engine handle for replication */
     void *handle_sibling;
     void *handle_sibling_offload;
-    void *handle_sibling_signal;
 
     /*replication sync mode */
     int rep_sync;
@@ -1557,7 +1556,6 @@ extern int gbl_osql_max_queue;
 extern int gbl_net_poll;
 extern int gbl_osql_net_poll;
 extern int gbl_osql_net_portmux_register_interval;
-extern int gbl_signal_net_portmux_register_interval;
 extern int gbl_net_portmux_register_interval;
 extern int gbl_net_max_queue;
 extern int gbl_nullfkey;
@@ -2333,6 +2331,7 @@ void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
+int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
                            void *fnddta, int *fndlen, int *recnum, int maxlen);
@@ -2384,8 +2383,6 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
                                const char *table, const char *csc2_text);
 int load_new_table_schema(struct dbenv *dbenv, const char *table,
                           const char *csc2_text);
-int load_new_table_schema_trans(void *tran, struct dbenv *dbenv,
-                                const char *table, const char *csc2_text);
 int dump_all_csc2_to_disk();
 int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname);
 int dump_table_csc2_to_disk(const char *table);
@@ -3640,5 +3637,7 @@ int db_is_stopped(void);
  * check if a tablename is a queue
  */
 int is_tablename_queue(const char *tablename, int len);
+
+int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
 #endif /* !INCLUDED_COMDB2_H */

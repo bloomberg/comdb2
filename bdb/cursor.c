@@ -7686,6 +7686,12 @@ int bdb_osql_trak(char *sql, unsigned int *status)
         *status |= SQL_DBG_SHADOW;
         return 0;
     }
+
+    if (strncasecmp(sql, "OFF", 3) == 0) {
+        *status = 0;
+        return 0;
+    }
+
     return -1;
 }
 

@@ -1637,8 +1637,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         free(host);
 
         net_send_decom_all(bdb_state->repinfo->netinfo, intern(realhost));
-        net_send_decom_all(bdb_state->repinfo->netinfo_signal,
-                           intern(realhost));
         osql_process_message_decom(intern(realhost));
     }
 
