@@ -3,6 +3,7 @@
 # Runs the register linearizability test
 #debug=1
 #debug_trace="-D"
+export CDB2JDBC_STATEMENT_QUERYEFFECTS=1
 
 [[ "$debug" == 1 ]] && set -x
 needcluster=0

@@ -47,6 +47,7 @@ public class Driver implements java.sql.Driver {
     public static final String PROPERTY_SSL_CAPASS = "trust_store_password";
     public static final String PROPERTY_SSL_CATYPE = "trust_store_type";
     public static final String PROPERTY_PMUX_RTE = "allow_pmux_route";
+    public static final String PROPERTY_STMT_EFFECTS = "statement_query_effects";
 
     /**
      * Register our driver statically.
@@ -98,6 +99,7 @@ public class Driver implements java.sql.Driver {
         String sslcapass = null;
         String sslcatype = null;
         String pmuxrte = null;
+        String stmteffects = null;
         String attributes = null;
 
         String policy = null;
@@ -202,6 +204,8 @@ public class Driver implements java.sql.Driver {
                         sslcatype = keyval[1];
                     else if (PROPERTY_PMUX_RTE.equalsIgnoreCase(keyval[0]))
                         pmuxrte = keyval[1];
+                    else if (PROPERTY_STMT_EFFECTS.equalsIgnoreCase(keyval[0]))
+                        stmteffects = keyval[1];
                 }
             }
         }
@@ -258,6 +262,8 @@ public class Driver implements java.sql.Driver {
             sslcatype = info.getProperty(PROPERTY_SSL_CATYPE);
         if (pmuxrte == null)
             pmuxrte = info.getProperty(PROPERTY_PMUX_RTE);
+        if (stmteffects == null)
+            stmteffects = info.getProperty(PROPERTY_STMT_EFFECTS);
 
         try {
             if (port != null) {
@@ -383,6 +389,11 @@ public class Driver implements java.sql.Driver {
             if (pmuxrte != null) {
                 logger.log(Level.FINE, String.format("Setting pmux passthrouth to %s\n", pmuxrte));
                 ret.setAllowPmuxRoute(pmuxrte);
+            }
+
+            if (stmteffects != null) {
+                logger.log(Level.FINE, String.format("Setting statement query effects to %s\n", stmteffects));
+                ret.setStatementQueryEffects(stmteffects);
             }
         } catch (NumberFormatException e1) {
             logger.log(Level.WARNING, "Incorrect configuration in: " + url, e1);
