@@ -58,6 +58,7 @@ endif
 .PHONY: clean
 clean:
 	@rm -rf build
+	@rm -rf build-*
 	@rm -f cdb2_dump
 	@rm -f cdb2_printlog
 	@rm -f cdb2_stat
