@@ -44,7 +44,6 @@
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 
-static void txn_stats(FILE *out, bdb_state_type *bdb_state);
 static void log_stats(FILE *out, bdb_state_type *bdb_state);
 static void lock_stats(FILE *out, bdb_state_type *bdb_state);
 static void rep_stats(FILE *out, bdb_state_type *bdb_state);
@@ -98,12 +97,13 @@ static void ltran_stats(FILE *out, bdb_state_type *bdb_state)
     bdb_state->dbenv->txn_dump_ltrans(bdb_state->dbenv, out, 0);
 }
 
-static void txn_stats(FILE *out, bdb_state_type *bdb_state)
+void bdb_txn_stats(FILE *out, bdb_state_type *bdb_state)
 {
     DB_TXN_STAT *stats;
     DB_TXN_ACTIVE *active;
     int i;
     char str[100];
+    time_t now = time(NULL);
 
     bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
 
@@ -123,9 +123,10 @@ static void txn_stats(FILE *out, bdb_state_type *bdb_state)
 
     active = stats->st_txnarray;
     for (i = 0; i < stats->st_nactive; i++) {
-        logmsgf(LOGMSG_USER, out, "active transactions:\n");
-        logmsgf(LOGMSG_USER, out, " %d %d %s\n", active->txnid, active->parentid,
-                lsn_to_str(str, &(active->lsn)));
+        if (i == 0) logmsgf(LOGMSG_USER, out, "active transactions:\n");
+        logmsgf(LOGMSG_USER, out, " %d %d %s [%d sec old]\n", active->txnid,
+                active->parentid, lsn_to_str(str, &(active->lsn)),
+                now - active->start_time);
         active++;
     }
 
@@ -905,6 +906,12 @@ static void test_send(bdb_state_type *bdb_state)
     }
 }
 
+static void leak_tran(bdb_state_type *bdb_state)
+{
+    int bdberr;
+    bdb_tran_begin(bdb_state, NULL, &bdberr);
+}
+
 static void process_add(bdb_state_type *bdb_state, char *host)
 {
     int count;
@@ -1403,13 +1410,15 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "truncrepdb") == 0)
         bdb_truncate_repdb(bdb_state, out);
     else if (tokcmp(tok, ltok, "txnstat") == 0)
-        txn_stats(out, bdb_state);
+        bdb_txn_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "ltranstat") == 0)
         ltran_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "sanc") == 0)
         sanc_dump(out, bdb_state);
     else if (tokcmp(tok, ltok, "test") == 0)
         test_send(bdb_state);
+    else if (tokcmp(tok, ltok, "leaktran") == 0)
+        leak_tran(bdb_state);
     else if (tokcmp(tok, ltok, "temptable") == 0) {
         if (gbl_temptable_pool_capacity == 0) {
             logmsg(LOGMSG_USER, "Temptable pool not enabled.\n");
@@ -1501,7 +1510,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         logmsgf(LOGMSG_USER, out, "==========[lock_stats]==========\n");
         lock_stats(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[txn_stats]==========\n");
-        txn_stats(out, bdb_state);
+        bdb_txn_stats(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[sanc_dump]==========\n");
         sanc_dump(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[lock conflicts]==========\n");
@@ -2083,4 +2092,26 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table)
 
     net_send(bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
              USER_TYPE_ANALYZED_TBL, table, strlen(table), 0);
+}
+
+time_t bdb_oldest_tran_age(bdb_state_type *bdb_state)
+{
+    DB_TXN_STAT *stats;
+    DB_TXN_ACTIVE *active;
+    int i;
+    time_t now = time(NULL);
+    int maxage = 0;
+
+    bdb_state->dbenv->txn_stat(bdb_state->dbenv, &stats, 0);
+
+    active = stats->st_txnarray;
+    for (i = 0; i < stats->st_nactive; i++) {
+        time_t age = now - active->start_time;
+        if (age > maxage) maxage = age;
+        active++;
+    }
+
+    free(stats);
+
+    return maxage;
 }

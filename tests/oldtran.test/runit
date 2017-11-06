@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+set -e
+
+dbname=$1
+if [[ -z $dbname ]] ; then
+    echo dbname missing
+    exit 1
+fi
+
+cdb2sql $dbname "exec procedure sys.cmd.send('oldest_transaction_alarm_threshold 10')"
+cdb2sql $dbname "exec procedure sys.cmd.send('bdb leaktran')"
+
+sleep 20
+
+grep 'Suspiciously old transactions' ${TESTDIR}/logs/oldtran${TESTID}.db  
+
+exit 0

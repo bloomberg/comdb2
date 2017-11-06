@@ -1983,4 +1983,7 @@ struct bias_info {
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
+time_t bdb_oldest_tran_age(bdb_state_type *bdb_state);
+void bdb_txn_stats(FILE *out, bdb_state_type *bdb_state);
+
 #endif

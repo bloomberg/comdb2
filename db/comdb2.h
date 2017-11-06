@@ -3642,4 +3642,7 @@ int is_tablename_queue(const char *tablename, int len);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
+extern int gbl_oldest_transaction_alarm_threshold;
+extern int gbl_oldest_transaction_alarm_freq;
+
 #endif /* !INCLUDED_COMDB2_H */

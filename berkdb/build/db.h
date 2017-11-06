@@ -30,6 +30,7 @@
 #include <dlmalloc.h>
 #include <thdpool.h>
 #include <mem_berkdb.h>
+#include <time.h>
 #include <sys/time.h>
 
 #ifndef COMDB2AR
@@ -1059,6 +1060,7 @@ struct __db_txn_active {
 	DB_LSN	  lsn;			/* LSN when transaction began */
 	u_int32_t xa_status;		/* XA status */
 	u_int8_t  xid[DB_XIDDATASIZE];	/* XA global transaction ID */
+	time_t start_time;
 };
 
 struct __db_txn_stat {
