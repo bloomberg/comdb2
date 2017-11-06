@@ -237,7 +237,7 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (lease_time = bdb_state->attr->master_lease) {
+    while ((lease_time = bdb_state->attr->master_lease)) {
         if (repinfo->master_host != repinfo->myhost) {
             int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);

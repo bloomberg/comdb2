@@ -255,7 +255,7 @@ static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
         if (nsent != -999) {
             logmsgperror("udp_send:sendto");
             ack_info_to_cpu(info);
-            printf("sz:%u, hdr:%d payload:%d type:%d from:me to:%s\n", len,
+            printf("sz:%zu, hdr:%d payload:%d type:%d from:me to:%s\n", len,
                    info->hdrsz, info->len, info->type, to);
         }
         ++fail_udp;
@@ -361,7 +361,7 @@ void udp_ping_ip(bdb_state_type *bdb_state, char *ip)
     if (nsent != len) {
         logmsgperror("udp_ping_ip:sendto");
         ack_info_to_cpu(info);
-        printf("total len:%u, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
+        printf("total len:%zu, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
                info->hdrsz, info->type, info->len, info->from, info->to,
                print_addr(&addr, straddr));
         return;
@@ -525,7 +525,7 @@ static void *udp_reader(void *arg)
         ack_info_to_cpu(info);
 
         if (ack_info_size(info) != nrecv) {
-            fprintf(stderr, "%s:invalid read of %d (header suggests: %u)\n",
+            fprintf(stderr, "%s:invalid read of %zd (header suggests: %u)\n",
                     __func__, nrecv, ack_info_size(info));
             ++recl_udp;
             continue;
@@ -740,7 +740,7 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 
         count++;
         if ((now = time(NULL)) > lastpr) {
-            fprintf(stderr, "%s: get_myseqnum returned non-0, count=%llu\n",
+            fprintf(stderr, "%s: get_myseqnum returned non-0, count=%lu\n",
                     __func__, count);
             lastpr = now;
         }
@@ -977,7 +977,8 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
-    if(crc32c(repinfo->myhost, strlen(repinfo->myhost)) == hash)
+    const uint8_t * host = (const uint8_t *) repinfo->myhost;
+    if(crc32c(host, strlen(repinfo->myhost)) == hash)
         return repinfo->myhost;
 
     const char *hosts[REPMAX];

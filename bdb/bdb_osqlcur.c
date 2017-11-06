@@ -193,6 +193,7 @@ int bdb_osql_shadow_is_bkfilled(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
         if (shadow->tables[cur->dbnum].ix_shadows)
             return shadow->tables[cur->dbnum].ix_shadows[cur->idx].bkfill;
         break;
+    default: break;
     }
     return 0;
 
@@ -221,6 +222,7 @@ int bdb_osql_shadow_set_bkfilled(bdb_cursor_ifn_t *pcur_ifn, int *bdberr)
         if (shadow->tables[cur->dbnum].ix_shadows)
             shadow->tables[cur->dbnum].ix_shadows[cur->idx].bkfill = 1;
         break;
+    default: break;
     }
     return 0;
 }
@@ -254,6 +256,7 @@ bdb_osql_log_t *bdb_osql_shadow_get_lastlog(bdb_cursor_ifn_t *pcur_ifn,
         if (shadow->tables[cur->dbnum].ix_shadows)
             return shadow->tables[cur->dbnum].ix_shadows[cur->idx].lastlog;
         break;
+    default: break;
     }
 
     return NULL;
@@ -304,6 +307,7 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
             cheap_stack_trace();
         }
         break;
+    default: break;
     }
     return 0;
 }

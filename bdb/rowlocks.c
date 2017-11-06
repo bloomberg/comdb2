@@ -967,8 +967,8 @@ int undo_add_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
     genid = add_dta_lk->genid;
 
     if (bdb_state->in_recovery) {
-        print(bdb_state, "UNDO lsn %d:%d %s for transaction %016llx deleting "
-                         "genid %016llx\n",
+        print(bdb_state, "UNDO lsn %d:%d %s for transaction %016"PRIx64" deleting "
+                         "genid %016"PRIx64"\n",
               undolsn->file, undolsn->offset, __func__, tranid, genid);
     }
 
@@ -1711,8 +1711,8 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int is_replicant)
 
     bdb_state->in_recovery = 1;
 
-    if (rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                              &ltrancount))
+    if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
+                                              &ltrancount)))
         abort();
 
     cancel_all_logical_transactions(bdb_state);
@@ -2153,7 +2153,7 @@ static char *printmemarg1(void)
     return u;
 }
 
-static unsigned char *printmemarg2(void)
+static char *printmemarg2(void)
 {
     static char *u = NULL;
     if (!u)
@@ -2210,7 +2210,7 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
         /* keep format similar to berkeley - except for the raw data -
            dump that in more readable format */
         printf("[%lu][%lu] CUSTOM: add_dta: rec: %lu txnid %lx"
-               " prevlsn[%lu][%lu]  prevllsn[%lu][%lu] tranid %016llx",
+               " prevlsn[%lu][%lu]  prevllsn[%lu][%lu] tranid %016"PRIx64,
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
                (u_long)addop->prev_lsn.offset, (u_long)lprev->file,
@@ -2219,7 +2219,7 @@ int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
                (char *)addop->table.data);
         printf("\tdtafile:   %d\n", addop->dtafile);
         printf("\tstripe:    %d\n", addop->dtastripe);
-        printf("\tgenid:     %016llx\n", addop->genid);
+        printf("\tgenid:     %016"PRIx64"\n", addop->genid);
         printf("\tlock:      ");
         hexdumpdbt(&addop->lock);
         printf("\n");
@@ -2306,7 +2306,7 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
         /* keep format similar to berkeley - except for the raw data -
            dump that in more readable format */
         printf("[%lu][%lu] CUSTOM: add_dta_lk: rec: %lu txnid %lx"
-               " prevlsn[%lu][%lu]  prevllsn[%lu][%lu] tranid %016llx",
+               " prevlsn[%lu][%lu]  prevllsn[%lu][%lu] tranid %016"PRIx64,
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
                (u_long)addop->prev_lsn.offset, (u_long)lprev->file,
@@ -2315,7 +2315,7 @@ int handle_undo_add_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
                (char *)addop->table.data);
         printf("\tdtafile:   %d\n", addop->dtafile);
         printf("\tstripe:    %d\n", addop->dtastripe);
-        printf("\tgenid:     %016llx\n", addop->genid);
+        printf("\tgenid:     %016"PRIx64"\n", addop->genid);
         /*printf("\tlock:      "); hexdumpdbt(&addop->lock);*/
         printf("\n");
         printf("\n");
@@ -2409,14 +2409,14 @@ int handle_undo_add_ix(DB_ENV *dbenv, u_int32_t rectype,
         /* keep format similar to berkeley - except for the raw data -
            dump that in more readable format */
         printf("[%lu][%lu] CUSTOM: add_ix: %lu txnid %lx prevlsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu] tranid %016llx\n",
+               "prevllsn[%lu][%lu] tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
                (u_long)addop->prev_lsn.offset, (u_long)lprev->file,
                (u_long)lprev->offset, addop->ltranid);
         printf("\ttable:  %.*s\n", addop->table.size,
                (char *)addop->table.data);
-        printf("\tgenid:  %016llx\n", addop->genid);
+        printf("\tgenid:  %016"PRIx64"\n", addop->genid);
         printf("\tix:     %d\n", addop->ix);
         printf("\tkey:    ");
         printf("\n");
@@ -2497,14 +2497,14 @@ int handle_undo_add_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
         /* keep format similar to berkeley - except for the raw data -
            dump that in more readable format */
         printf("[%lu][%lu] CUSTOM: add_ix_lk: %lu txnid %lx prevlsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu] tranid %016llx\n",
+               "prevllsn[%lu][%lu] tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)addop->txnid->txnid, (u_long)addop->prev_lsn.file,
                (u_long)addop->prev_lsn.offset, (u_long)lprev->file,
                (u_long)lprev->offset, addop->ltranid);
         printf("\ttable:    %.*s\n", addop->table.size,
                (char *)addop->table.data);
-        printf("\tgenid:    %016llx\n", addop->genid);
+        printf("\tgenid:    %016"PRIx64"\n", addop->genid);
         /*printf("\tlock:     "); hexdumpdbt(&addop->lock);*/
         printf("\tix:       %d\n", addop->ix);
         printf("\tkey:      ");
@@ -2621,7 +2621,7 @@ int handle_commit(DB_ENV *dbenv, u_int32_t rectype,
         /* keep format similar to berkeley - except for the raw data -
            dump that in more readable format */
         printf("[%lu][%lu] CUSTOM: %s: %lu txnid %lx prevlsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu] tranid %016llx\n",
+               "prevllsn[%lu][%lu] tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset,
                args->isabort ? "abort" : "commit", (u_long)rectype,
                (u_long)args->txnid->txnid, (u_long)args->prev_lsn.file,
@@ -3218,7 +3218,7 @@ int handle_undo_upd_dta(DB_ENV *dbenv, u_int32_t rectype,
             else {
                 printf("--dta   ");
                 for (iii = 0; iii < updop->old_dta_len; iii++) {
-                    printf("02x", (unsigned char)llldta[iii]);
+                    printf("%02x", (unsigned char)llldta[iii]);
                 }
                 printf("\n");
             }
@@ -3293,7 +3293,7 @@ int handle_undo_upd_ix(DB_ENV *dbenv, u_int32_t rectype,
 
             printf("--dta [%d:%d]  ", llloffset, llllen);
             for (iii = 0; iii < llllen; iii++) {
-                printf("02x", (unsigned char)llldta[iii]);
+                printf("%02x", (unsigned char)llldta[iii]);
             }
             printf("\n");
             free(llldta);
@@ -3438,8 +3438,8 @@ int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    if (rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                              &ltrancount))
+    if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
+                                              &ltrancount)))
         abort();
 
     if (ltrancount == 0) {
@@ -3474,8 +3474,8 @@ int bdb_prepare_newsi_bkfill(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    if (rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                              &ltrancount))
+    if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
+                                              &ltrancount)))
         abort();
 
     if (ltrancount == 0) {
@@ -3619,8 +3619,8 @@ int handle_repblob(DB_ENV *dbenv, u_int32_t rectype, llog_repblob_args *repblob,
 {
 
     if (op == DB_TXN_PRINT || op == DB_TXN_SNAPISOL) {
-        printf("[%lu][%lu] CUSTOM: repblob: rec: %lu txnid %lx"
-               " prevlsn[%lu][%lu] sessionid %d seqno %d dtasz %d\n\n",
+        printf("[%u][%u] CUSTOM: repblob: rec: %u txnid %x"
+               " prevlsn[%u][%u] sessionid %d seqno %d dtasz %d\n\n",
                lsn->file, lsn->offset, rectype, repblob->txnid->txnid,
                repblob->prev_lsn.file, repblob->prev_lsn.offset,
                repblob->sessionid, repblob->seqno, repblob->data.size);
@@ -3675,14 +3675,14 @@ int handle_undo_del_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
     case DB_TXN_PRINT:
         lprev = &delop->prevllsn;
         printf("[%lu][%lu] CUSTOM: del_dta_lk %lu txnid %lx prelsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu]  tranid %016llx\n",
+               "prevllsn[%lu][%lu]  tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)delop->txnid->txnid, (u_long)delop->prev_lsn.file,
                (u_long)delop->prev_lsn.offset, (u_long)lprev->file,
                (u_long)lprev->offset, delop->ltranid);
         printf("\ttable:       %.*s\n", delop->table.size,
                (char *)delop->table.data);
-        printf("\tgenid:       %016llx\n", delop->genid);
+        printf("\tgenid:       %016"PRIx64"\n", delop->genid);
         printf("\n");
         printf("\tdtafile:     %d\n", delop->dtafile);
         printf("\tdtastripe:   %d\n", delop->dtastripe);
@@ -3758,14 +3758,14 @@ int handle_undo_del_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
     case DB_TXN_PRINT:
         lprev = &delop->prevllsn;
         printf("[%lu][%lu] CUSTOM: del_ix_lk %lu txnid %lx prelsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu]  tranid %016llx\n",
+               "prevllsn[%lu][%lu]  tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)delop->txnid->txnid, (u_long)delop->prev_lsn.file,
                (u_long)delop->prev_lsn.offset, (u_long)lprev->file,
                (u_long)lprev->offset, delop->ltranid);
         printf("\ttable:        %.*s\n", delop->table.size,
                (char *)delop->table.data);
-        printf("\tgenid:        %016llx\n", delop->genid);
+        printf("\tgenid:        %016"PRIx64"\n", delop->genid);
         printf("\tixnum:        %hd\n", delop->ix);
         printf("\n");
         {
@@ -3841,15 +3841,15 @@ int handle_undo_upd_dta_lk(DB_ENV *dbenv, u_int32_t rectype,
     case DB_TXN_PRINT:
         lprev = &updop->prevllsn;
         printf("[%lu][%lu] CUSTOM: upd_dta_lk %lu txnid %lx prelsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu]  tranid %016llx\n",
+               "prevllsn[%lu][%lu]  tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)updop->txnid->txnid, (u_long)updop->prev_lsn.file,
                (u_long)updop->prev_lsn.offset, (u_long)lprev->file,
                (u_long)lprev->offset, updop->ltranid);
         printf("\ttable:       %.*s\n", updop->table.size,
                (char *)updop->table.data);
-        printf("\toldgenid:    %016llx\n", updop->oldgenid);
-        printf("\tnewenid:     %016llx\n", updop->newgenid);
+        printf("\toldgenid:    %016"PRIx64"\n", updop->oldgenid);
+        printf("\tnewenid:     %016"PRIx64"\n", updop->newgenid);
         printf("\tdtafile:     %d\n", updop->dtafile);
         printf("\tdtastripe:   %d\n", updop->dtastripe);
         printf("\tolddtalen:   %d\n", updop->old_dta_len);
@@ -3939,15 +3939,15 @@ int handle_undo_upd_ix_lk(DB_ENV *dbenv, u_int32_t rectype,
     case DB_TXN_PRINT:
         lprev = &updop->prevllsn;
         printf("[%lu][%lu] CUSTOM: upd_ix_lk %lu txnid %lx prelsn[%lu][%lu]  "
-               "prevllsn[%lu][%lu]  tranid %016llx\n",
+               "prevllsn[%lu][%lu]  tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)updop->txnid->txnid, (u_long)updop->prev_lsn.file,
                (u_long)updop->prev_lsn.offset, (u_long)lprev->file,
                (u_long)lprev->offset, updop->ltranid);
         printf("\ttable:       %.*s\n", updop->table.size,
                (char *)updop->table.data);
-        printf("\toldgenid:    %016llx\n", updop->oldgenid);
-        printf("\tnewenid:     %016llx\n", updop->newgenid);
+        printf("\toldgenid:    %016"PRIx64"\n", updop->oldgenid);
+        printf("\tnewenid:     %016"PRIx64"\n", updop->newgenid);
         printf("\tdtalen:      %016u\n", updop->dtalen);
         printf("\tix:          %hd\n", updop->ix);
         /*printf("\tlockold:     "); hexdumpdbt(&updop->lockold);
@@ -4022,7 +4022,7 @@ int handle_rowlocks_log_bench(DB_ENV *dbenv, u_int32_t rectype,
     case DB_TXN_SNAPISOL:
     case DB_TXN_PRINT:
         printf("[%lu][%lu] CUSTOM: rowlocks_log_bench %lu txnid %lx "
-               "prelsn[%lu][%lu]  prevllsn[%lu][%lu]  tranid %016llx\n",
+               "prelsn[%lu][%lu]  prevllsn[%lu][%lu]  tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)rl_log_bench->txnid->txnid,
                (u_long)rl_log_bench->prev_lsn.file,
@@ -4076,7 +4076,7 @@ int handle_commit_log_bench(DB_ENV *dbenv, u_int32_t rectype,
     case DB_TXN_SNAPISOL:
     case DB_TXN_PRINT:
         printf("[%lu][%lu] CUSTOM: commit_log_bench %lu txnid %lx "
-               "prelsn[%lu][%lu]  prevllsn[%lu][%lu]  tranid %016llx\n",
+               "prelsn[%lu][%lu]  prevllsn[%lu][%lu]  tranid %016"PRIx64"\n",
                (u_long)lsn->file, (u_long)lsn->offset, (u_long)rectype,
                (u_long)c_log_bench->txnid->txnid,
                (u_long)c_log_bench->prev_lsn.file,

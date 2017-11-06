@@ -216,7 +216,7 @@ int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
     return 0;
 }
 
-const char *deadlock_policy_str(int policy)
+const char *deadlock_policy_str(u_int32_t policy)
 {
     switch (policy) {
     case DB_LOCK_NORUN: return "DB_LOCK_NORUN";
@@ -255,7 +255,8 @@ int deadlock_policy_max()
 
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)
 {
-    int rc, policy;
+    int rc;
+    u_int32_t policy;
     extern int gbl_locks_check_waiters;
     extern unsigned long long check_waiters_skip_count;
     extern unsigned long long check_waiters_commit_count;

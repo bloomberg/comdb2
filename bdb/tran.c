@@ -808,7 +808,7 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
         {
             // If we are not in a transaction, return nothing
             if (tran) {
-                bdb_get_current_lsn(bdb_state, file, offset);
+                bdb_get_current_lsn(bdb_state, (unsigned int *)file, (unsigned int *)offset);
                 if (gbl_extended_sql_debug_trace) {
                     logmsg(LOGMSG_USER, "%s line %d using current lsn[%d][%d], tran is %p\n", 
                             __func__, __LINE__, *file, *offset, tran);

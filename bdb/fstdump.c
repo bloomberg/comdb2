@@ -417,7 +417,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         if (need_advance || !common->close_cursor)
             flags = flags | DB_NEXT;
 
-        if (rc = get_retry(dbcp, common, &key, &data, flags)) {
+        if ((rc = get_retry(dbcp, common, &key, &data, flags))) {
             if (rc == DB_NOTFOUND)
                 break;
             return NULL;
@@ -471,7 +471,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                changed. The reason we use this and not DB_SET is that records
                may be deleted while our cursor is closed. */
 
-            if (rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE)) {
+            if ((rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE))) {
                 if (rc == DB_NOTFOUND)
                     break;
                 return NULL;
@@ -971,7 +971,7 @@ struct dtadump *bdb_dtadump_start(bdb_state_type *bdb_state, int *bdberr,
     int i;
     int dtanum;
 
-    if ((bdb_state->parent == NULL)) {
+    if (bdb_state->parent == NULL) {
         *bdberr = BDBERR_BADARGS;
         return NULL;
     }
