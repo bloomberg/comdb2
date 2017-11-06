@@ -4193,7 +4193,8 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
 static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
 
 static void handle_expert_query(struct sqlthdstate *thd,
-                               struct sqlclntstate *clnt) {
+                                struct sqlclntstate *clnt)
+{
     rdlock_schema_lk();
     sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
@@ -4250,7 +4251,6 @@ static void handle_expert_query(struct sqlthdstate *thd,
     clnt->no_transaction = 0;
     return; /* Don't process anything else */
 }
-
 
 /* return 0 continue, 1 return *outrc */
 static int handle_non_sqlite_requests(struct sqlthdstate *thd,
