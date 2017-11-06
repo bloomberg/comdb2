@@ -92,6 +92,7 @@ static pthread_mutex_t rules_mutex;
 static LISTC_T(struct logrule) rules;
 static LISTC_T(struct output) outputs;
 
+static int reqlog_init_off = 0;
 static int long_request_count = 0;
 static int last_long_request_epoch = 0;
 static int longest_long_request_ms = 0;
@@ -630,6 +631,7 @@ int reqlog_init(const char *dbname)
 
 static const char *help_text[] = {
     "Request logging framework commands",
+    "reql off                     - request logging turn off for performance",
     "reql longrequest #           - set long request threshold in msec",
     "reql longsqlrequest #        - set long SQL request threshold in msec",
     "reql longreqfile <filename>  - set file to log long requests in",
@@ -786,7 +788,10 @@ void reqlog_process_message(char *line, int st, int lline)
     char *tok;
     int ltok;
     tok = segtok(line, lline, &st, &ltok);
-    if (tokcmp(tok, ltok, "longrequest") == 0) {
+    if (tokcmp(tok, ltok, "off") == 0) {
+        logmsg(LOGMSG_USER, "Turn off Request logging\n");
+        reqlog_init_off = 1;
+    } else if (tokcmp(tok, ltok, "longrequest") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         long_request_ms = toknum(tok, ltok);
         logmsg(LOGMSG_USER, "Long request threshold now %d msec\n",
@@ -1361,8 +1366,9 @@ static void reqlog_start_request(struct reqlogger *logger)
         logger->dump_mask = REQL_TRACE;
     }
 
-    /* always gather info */
-    //logger->event_mask |= REQL_INFO;
+    /* always gather info if global not set */
+    if(!reqlog_init_off)
+        logger->event_mask |= REQL_INFO;
 
     /* try to filter out this request based on opcode */
     gather = 0;
@@ -1459,8 +1465,10 @@ void reqlog_diffstat_init(struct reqlogger *logger)
     reqlog_reset_logger(logger);
     logger->request_type = "stat dump";
     logger->opcode = OP_DEBUG;
-    logger->mask = REQL_INFO;
-    //logger->event_mask = REQL_INFO;
+    if(!reqlog_init_off) {
+        logger->mask = REQL_INFO;
+        logger->event_mask = REQL_INFO;
+    }
 }
 
 /* Get the origin string for the request */
