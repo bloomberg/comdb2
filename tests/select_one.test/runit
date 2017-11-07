@@ -20,7 +20,6 @@ failexit()
 
 echo "create t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (a int) "
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('reql off') "
 MAX=100000
 
 if [[ ${DEBUGGER} == callgrind ]]; then 

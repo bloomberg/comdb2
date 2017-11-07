@@ -1012,12 +1012,16 @@ static void reqlog_free_all(struct reqlogger *logger)
     struct print_event *pevent;
     struct tablelist *table;
 
+    if (logger->error) {
+        free(logger->error);
+        logger->error = NULL;
+    }
     if (logger->stmt) {
         free(logger->stmt);
         logger->stmt = NULL;
     }
 
-    while (event = logger->events) {
+    while ((event = logger->events) != NULL) {
         logger->events = event->next;
         if (event->type == EVENT_PRINT) {
             pevent = (struct print_event *)event;
@@ -1027,7 +1031,7 @@ static void reqlog_free_all(struct reqlogger *logger)
     }
     assert(logger->events == NULL);
 
-    while (table = logger->tables) {
+    while ((table = logger->tables) != NULL) {
         logger->tables = table->next;
         free(table);
     }
@@ -1367,7 +1371,7 @@ static void reqlog_start_request(struct reqlogger *logger)
     }
 
     /* always gather info if global not set */
-    if(!reqlog_init_off)
+    if (!reqlog_init_off)
         logger->event_mask |= REQL_INFO;
 
     /* try to filter out this request based on opcode */
@@ -1420,7 +1424,6 @@ void reqlog_new_request(struct ireq *iq)
         return;
     }
 
-    reqlog_reset_logger(logger);
     logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
@@ -1446,14 +1449,14 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     if (!logger) {
         return;
     }
-    reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = time_epochus();
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD(gbl_nnewsql);
-    reqlog_set_sql(logger, sqlstmt);
+    if (sqlstmt)
+        reqlog_set_sql(logger, sqlstmt);
 }
 
 void reqlog_diffstat_init(struct reqlogger *logger)
@@ -1465,7 +1468,7 @@ void reqlog_diffstat_init(struct reqlogger *logger)
     reqlog_reset_logger(logger);
     logger->request_type = "stat dump";
     logger->opcode = OP_DEBUG;
-    if(!reqlog_init_off) {
+    if (!reqlog_init_off) {
         logger->mask = REQL_INFO;
         logger->event_mask = REQL_INFO;
     }
@@ -1929,6 +1932,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->have_id = 0;
     logger->have_fingerprint = 0;
     logger->error_code = 0;
+    reqlog_reset_logger(logger);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
