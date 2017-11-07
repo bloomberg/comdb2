@@ -79,6 +79,7 @@
 #include "osqlshadtbl.h"
 
 #include <sqlresponse.pb-c.h>
+#include <ext/expert/sqlite3expert.h>
 
 #include <alloca.h>
 #include <fsnap.h>
@@ -4250,6 +4251,66 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
 
 static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
 
+static void handle_expert_query(struct sqlthdstate *thd,
+                                struct sqlclntstate *clnt)
+{
+    rdlock_schema_lk();
+    sqlengine_prepare_engine(thd, clnt, 1);
+    unlock_schema_lk();
+    int rc = -1;
+    char *zErr = 0;
+    sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
+
+    if (p) {
+        rc = sqlite3_expert_sql(p, clnt->sql, &zErr);
+    }
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_expert_analyze(p, &zErr);
+    }
+
+    CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
+    sql_response.response_type = RESPONSE_TYPE__SP_TRACE;
+    sql_response.n_value = 0;
+    sql_response.value = NULL;
+    sql_response.error_code = 0;
+
+    if (rc == SQLITE_OK) {
+        int nQuery = sqlite3_expert_count(p);
+        const char *zCand =
+            sqlite3_expert_report(p, 0, EXPERT_REPORT_CANDIDATES);
+        fprintf(stdout, "-- Candidates -------------------------------\n");
+        fprintf(stdout, "%s\n", zCand);
+        sql_response.info_string =
+            "---------- Recommended Indexes --------------\n";
+        newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                              &sql_response, 1 /*flush*/, malloc, __func__,
+                              __LINE__);
+        sql_response.info_string = (char *)zCand;
+        newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                              &sql_response, 1 /*flush*/, malloc, __func__,
+                              __LINE__);
+        sql_response.info_string =
+            "---------------------------------------------\n";
+        /* This will be flushed at end */
+
+    } else {
+        sql_response.info_string = zErr;
+        fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
+    }
+    newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                          &sql_response, 1 /*flush*/, malloc, __func__,
+                          __LINE__);
+
+    newsql_send_dummy_resp(clnt, __func__, __LINE__);
+    newsql_send_last_row(clnt, 1, __func__, __LINE__);
+
+    sqlite3_expert_destroy(p);
+    sqlite3_free(zErr);
+    clnt->no_transaction = 0;
+    return; /* Don't process anything else */
+}
+
 /* return 0 continue, 1 return *outrc */
 static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
@@ -4305,8 +4366,10 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         *outrc = newsql_dump_query_plan(clnt, thd->sqldb);
         unlock_schema_lk();
         return 1;
+    } else if (clnt->is_expert) {
+        handle_expert_query(thd, clnt);
+        return 1;
     }
-
     /* 0, this is an sqlite request, use an engine */
     return 0;
 }
@@ -7603,6 +7666,14 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     clnt->is_readonly = 0;
                 } else {
                     clnt->is_readonly = 1;
+                }
+            } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
+                sqlstr += 6;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->is_expert = 0;
+                } else {
+                    clnt->is_expert = 1;
                 }
             } else if (strncasecmp(sqlstr, "sptrace", 7) == 0) {
                 sqlstr += 7;
