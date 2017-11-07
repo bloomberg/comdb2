@@ -414,7 +414,7 @@ int free_bigbuf(uint8_t *p_buf, struct buf_lock_t *p_slock)
 {
     if (p_slock == NULL)
         return 0;
-    p_slock->reply_done = 1;
+    p_slock->reply_state = REPLY_STATE_DONE;
     LOCK(&buf_lock) { pool_relablk(p_bufs, p_buf); }
     UNLOCK(&buf_lock);
     pthread_cond_signal(&(p_slock->wait_cond));
@@ -423,7 +423,7 @@ int free_bigbuf(uint8_t *p_buf, struct buf_lock_t *p_slock)
 
 int signal_buflock(struct buf_lock_t *p_slock)
 {
-    p_slock->reply_done = 1;
+    p_slock->reply_state = REPLY_STATE_DONE;
     pthread_cond_signal(&(p_slock->wait_cond));
     return 0;
 }
@@ -832,6 +832,7 @@ struct fstsnd_req {
     } u;
 };
 
+#define TAG_MAX_WAITS 1000
 int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
 {
     struct fstsnd_req fsnd_req;
@@ -840,7 +841,6 @@ int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
     int rc = 0, debug = 0, frompid = 0;
 
     const uint8_t *p_buf = NULL;
-    int got_bigbuf = 0;
     struct buf_lock_t *p_slock = NULL;
     char line[20];
     const uint8_t *p_buf_end = NULL;
@@ -863,6 +863,7 @@ int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
 
     pthread_mutex_init(&(p_slock->req_lock), 0);
     pthread_cond_init(&(p_slock->wait_cond), NULL);
+    p_slock->bigbuf = NULL;
 
     if (wrongdb) {
         sndbak_open_socket(sb, NULL, 0, ERR_REJECTED);
@@ -928,9 +929,7 @@ int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
                 break;
             }
 
-            p_buf = get_bigbuf();
-            /* get the ownership of big buf */
-            got_bigbuf = 1;
+            p_buf = p_slock->bigbuf = get_bigbuf();
 
             if (p_buf == NULL) {
                 rc = -1;
@@ -947,7 +946,7 @@ int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
                 break;
             }
 
-            p_slock->reply_done = 0;
+            p_slock->reply_state = REPLY_STATE_NA;
 
             pthread_mutex_lock(&gbl_sockreq_lock);
             n_fstrap++;
@@ -991,12 +990,23 @@ int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
             /* This part is to avoid deadlock. */
             /* If the reply was given before the control reached here,
              * check every 1 seconds if reply was given.
-             * If the worker thread has already given signal, reply_done will be
-             * 1 and we won't go inside loop again.
-             * If the worker thread give signal, after we check for reply_done
-             * the condition will timeout after 1 secs and variable will be
+             * If the worker thread has already given signal, reply_state will
+             * be DONE and we won't go inside loop again.
+             * If the worker thread give signal, after we check for reply_state
+             * the condition will timeout after 1 sec and variable will be
              * checked again. */
-            while (p_slock->reply_done == 0) {
+            while (p_slock->reply_state != REPLY_STATE_DONE) {
+                /* Assuming here that a tag request can't be 1000 second long.
+                   We have to exit in cases of error scenarios of
+                   offloading block requests. */
+                if (num_sec > TAG_MAX_WAITS) {
+                    /* I'm holding the mutex at this point. */
+                    p_slock->reply_state = REPLY_STATE_DISCARD;
+                    logmsg(LOGMSG_ERROR, "Timeout waiting for the tag request "
+                                         "from `%s' to complete.\n",
+                           frommach);
+                    break;
+                }
                 struct timespec ts;
                 clock_gettime(CLOCK_REALTIME, &ts);
                 ts.tv_sec += 1;
@@ -1005,36 +1015,43 @@ int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
                 pthread_cond_timedwait(&(p_slock->wait_cond),
                                        &(p_slock->req_lock), &ts);
                 num_sec++;
-                /* Assuming here that a tag request can't be 1000 second long.
-                   We have to free the memory in cases of error scenarios of
-                   offloading
-                   block requests. */
-                if (num_sec > 1000)
-                    break;
             }
 
-            /* Release the ownership of bigbuf. */
-            got_bigbuf = 0;
+            p_slock->bigbuf = NULL;
         }
     }
     UNLOCK(&(p_slock->req_lock));
 
 done:
-    pthread_cond_destroy(&(p_slock->wait_cond));
-    pthread_mutex_destroy(&(p_slock->req_lock));
-
-    /* Release the resources. */
-    LOCK(&buf_lock)
-    {
-        /* If this thread has ownership of bigbuf, release the buffer back. */
-        if (got_bigbuf)
-            pool_relablk(p_bufs, (void *)p_buf);
-        /* Release the lock buffers. */
-        pool_relablk(p_slocks, p_slock);
+    if (num_sec > TAG_MAX_WAITS) {
+        /* If timeout, simply orphan the tag thread and return an error.
+           The mutex, wait condition and bigbuf can't be freed yet as they
+           will be used and freed later in the tag thread. */
+        return -1;
     }
-    UNLOCK(&buf_lock);
+
+    cleanup_lock_buffer(p_slock);
 
     return rc;
+}
+
+void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
+{
+    if (lock_buffer == NULL)
+        return;
+
+    /* sbuf2 is owned by the appsock. Don't close it here. */
+
+    pthread_cond_destroy(&lock_buffer->wait_cond);
+    pthread_mutex_destroy(&lock_buffer->req_lock);
+
+    LOCK(&buf_lock)
+    {
+        if (lock_buffer->bigbuf != NULL)
+            pool_relablk(p_bufs, lock_buffer->bigbuf);
+        pool_relablk(p_slocks, lock_buffer);
+    }
+    UNLOCK(&buf_lock);
 }
 
 /* handle a buffer from waitft */

@@ -1879,11 +1879,18 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql);
 void ixstats(struct dbenv *dbenv);
 void curstats(struct dbenv *dbenv);
 
+/* Not available - this is the initial state. */
+#define REPLY_STATE_NA 0
+/* Sent - set by a tag thread. */
+#define REPLY_STATE_DONE 1
+/* Discard - set by an appsock thread if the child tag thread has timed out. */
+#define REPLY_STATE_DISCARD 2
 struct buf_lock_t {
     pthread_mutex_t req_lock;
     pthread_cond_t wait_cond;
     int rc;
-    int reply_done;
+    int reply_state; /* See REPLY_STATE_* macros above */
+    uint8_t *bigbuf;
     SBUF2 *sb;
 };
 
