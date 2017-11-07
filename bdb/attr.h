@@ -521,7 +521,7 @@ DEF_ATTR(DEADLK_PRIORITY_BUMP_ON_FSTBLK, deadlk_priority_bump_on_fstblk,
          QUANTITY, 5, NULL)
 DEF_ATTR(FSTBLK_MINQ, fstblk_minq, QUANTITY, 262144, NULL)
 DEF_ATTR(
-    DISABLE_CACHING_STMT_WITH_FDB, disable_caching_stmt_with_fdb, BOOLEAN, 1,
+    DISABLE_CACHING_STMT_WITH_FDB, disable_caching_stmt_with_fdb, BOOLEAN, 0,
     "Don't cache query plans for statements with foreign table references.")
 DEF_ATTR(FDB_SQLSTATS_CACHE_LOCK_WAITTIME_NSEC,
          fdb_sqlstats_cache_waittime_nsec, QUANTITY, 1000, NULL)

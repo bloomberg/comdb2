@@ -2663,7 +2663,7 @@ static void init_stmt_table(hash_t **stmt_table)
                        (cmpfunc_t *)strcmpfunc_stmt, 0, MAX_HASH_SQL_LENGTH);
 }
 
-void touch_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
+void requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
     stmt_hash_entry_type **tail = NULL;
     stmt_hash_entry_type **head = NULL;
@@ -3851,24 +3851,21 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (outrc) {
         return 1;
     }
-    if (rec->stmt_entry == NULL) {
-        touch_stmt_entry(thd, rec->stmt_entry);
+    if (rec->stmt_entry != NULL) {
+        requeue_stmt_entry(thd, rec->stmt_entry);
     }
+    const char *sqlptr = clnt->sql;
     if (rec->status & CACHE_HAS_HINT) {
-        if (add_stmt_table(thd, rec->cache_hint,
-                           (char *)(gbl_debug_temptables ? rec->sql : NULL),
-                           stmt, rec->parameters_to_bind) == 0) {
-            rec->parameters_to_bind = NULL;
-        }
+        sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
             add_sql_hint_table(rec->cache_hint, clnt->sql, clnt->tag);
         }
-    } else {
-        if (add_stmt_table(thd, clnt->sql,
-                           (char *)(gbl_debug_temptables ? rec->sql : NULL),
-                           stmt, rec->parameters_to_bind) == 0) {
-            rec->parameters_to_bind = NULL;
-        }
+    } 
+    int rc = add_stmt_table(
+            thd, sqlptr, (char *)(gbl_debug_temptables ? rec->sql : NULL),
+            stmt, rec->parameters_to_bind);
+    if (rc == 0) {
+        rec->parameters_to_bind = NULL;
     }
     return 0;
 }

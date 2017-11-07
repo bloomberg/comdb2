@@ -1,2 +1,4 @@
 do reql events off
-#fingerprint_queries off
+fingerprint_queries off
+enable_sql_stmt_caching all
+#setattr DISABLE_CACHING_STMT_WITH_FDB 0
