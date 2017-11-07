@@ -91,6 +91,9 @@ clean:
 	@rm -f tests/simple_ssl.test/simple_ssl
 	@rm -f tests/tools/stepper
 	@rm -f tests/tools/utf8
+	@rm -f tests/tools/insert
+	@rm -f tests/tools/register
+	@rm -f tests/tools/breakloop
 
 .PHONY: deb-current
 deb-current: package
