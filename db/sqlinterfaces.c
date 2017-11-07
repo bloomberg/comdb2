@@ -7940,6 +7940,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     clnt.tzname[0] = '\0';
     clnt.is_newsql = 1;
 
+    pthread_mutex_init(&clnt.wait_mutex, NULL);
+    pthread_cond_init(&clnt.wait_cond, NULL);
+    pthread_mutex_init(&clnt.write_lock, NULL);
+    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
         logmsg(LOGMSG_WARN,
@@ -7976,11 +7981,6 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
 #ifdef DEBUGQUERY
     printf("\n Query '%s'\n", sql_query->sql_query);
 #endif
-
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
