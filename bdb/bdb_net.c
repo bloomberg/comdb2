@@ -740,7 +740,8 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 
         count++;
         if ((now = time(NULL)) > lastpr) {
-            fprintf(stderr, "%s: get_myseqnum returned non-0, count=%"PRIu64"\n",
+            fprintf(stderr,
+                    "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
                     __func__, count);
             lastpr = now;
         }
@@ -977,8 +978,8 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
-    const uint8_t * host = (const uint8_t *) repinfo->myhost;
-    if(crc32c(host, strlen(repinfo->myhost)) == hash)
+    int tmp = crc32c((const uint8_t *)repinfo->myhost, strlen(repinfo->myhost));
+    if (tmp == hash)
         return repinfo->myhost;
 
     const char *hosts[REPMAX];

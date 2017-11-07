@@ -464,7 +464,7 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
     }
 
     /* Irrelavant skip-stats */
-    if ((rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount))) {
+    if ((rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount)) != 0) {
         logmsg(LOGMSG_USER, "%s: get_skip_stat returned %d\n", __func__, rc);
         return 0;
     }
@@ -518,7 +518,7 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
         return 0;
 
     /* Irrelavant skip-stats */
-    if ((rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount)))
+    if ((rc = cur->rl->get_skip_stat(cur->rl, &nextcount, &skipcount)) != 0)
         return 0;
 
     /* Skip to next ratio */
@@ -1540,7 +1540,7 @@ void bdb_delete_logfile_pglogs(bdb_state_type *bdb_state, int filenum)
     pthread_mutex_lock(&logfile_pglogs_repo_mutex);
     for (i = last_logfile; i <= filenum; i++) {
         struct logfile_pglogs_entry *e;
-        if ((e = hash_find(logfile_pglogs_repo, &i))) {
+        if ((e = hash_find(logfile_pglogs_repo, &i)) != NULL) {
             hash_del(logfile_pglogs_repo, e);
             pthread_mutex_lock(&e->pglogs_mutex);
             bdb_return_logical_pglogs_hashtbl(e->pglogs_hashtbl);
@@ -2584,7 +2584,7 @@ static int bdb_update_pglogs_fileid_queues(
         }
 
         // Sanity
-        if ((chk = fileid_queue->queue_keys.bot))
+        if ((chk = fileid_queue->queue_keys.bot) != 0)
             assert(log_compare(&qearray[j]->commit_lsn, &chk->commit_lsn) >= 0);
 
         listc_abl(&fileid_queue->queue_keys, qearray[j]);
@@ -2822,7 +2822,7 @@ static int transfer_txn_relinks_to_queues(void *bdb_state,
             qe->commit_lsn = commit_lsn;
 
             // Sanity
-            if ((chk = fileid_queue->queue_keys.top))
+            if ((chk = fileid_queue->queue_keys.top) != 0)
                 assert(log_compare(&qe->commit_lsn, &chk->commit_lsn) >= 0);
 
             listc_abl(&fileid_queue->queue_keys, qe);
@@ -2869,7 +2869,7 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
             qe->lsn = lsnent->lsn;
             qe->commit_lsn = commit_lsn;
 
-            if ((chk = fileid_queue->queue_keys.top))
+            if ((chk = fileid_queue->queue_keys.top) != 0)
                 assert(log_compare(&qe->commit_lsn, &chk->commit_lsn) >= 0);
             listc_abl(&fileid_queue->queue_keys, qe);
         }
@@ -3256,11 +3256,11 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
     }
 
     if ((rc = transfer_txn_pglogs_to_queues(bdb_state, logical_tranid,
-                                           pglogs_hashtbl, commit_lsn)))
+                                            pglogs_hashtbl, commit_lsn)) != 0)
         abort();
 
     if ((rc = transfer_txn_relinks_to_queues(bdb_state, logical_tranid,
-                                            relinks_hashtbl, commit_lsn)))
+                                             relinks_hashtbl, commit_lsn)) != 0)
         abort();
 
     return 0;
@@ -7477,7 +7477,7 @@ static int update_pglogs_from_global_queues(bdb_cursor_impl_t *cur,
         abort();
 
     // Update pagelogs for this fileid
-    if ((ret = update_pglogs_from_global_queues_int(cur, qcur, bdberr)))
+    if ((ret = update_pglogs_from_global_queues_int(cur, qcur, bdberr)) != 0)
         abort();
 
     // Cache cursor

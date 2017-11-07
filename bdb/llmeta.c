@@ -6684,7 +6684,9 @@ static int __llmeta_preop_alias(struct llmeta_tablename_alias_key *key,
     strncpy(key->tablename_alias, tablename_alias,
             sizeof(key->tablename_alias));
 
-    if (llmeta_tablename_alias_key_put(key, (uint8_t *)key_buf, (uint8_t *)(key_buf + key_buf_len)) == NULL) {
+    if (llmeta_tablename_alias_key_put(key, (uint8_t *)key_buf,
+                                       (uint8_t *)(key_buf + key_buf_len)) ==
+        NULL) {
         logmsg(LOGMSG_ERROR, "%s: tablename alias serializing error\n", __func__);
         if (errstr)
             *errstr = strdup("tablename alias serializing error");
@@ -6730,7 +6732,9 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
 
     strncpy(data.url, url, sizeof(data.url));
 
-    if (llmeta_tablename_alias_data_put(&data, (uint8_t *)data_buf, (uint8_t *)(data_buf + sizeof(data_buf))) == NULL) {
+    if (llmeta_tablename_alias_data_put(
+            &data, (uint8_t *)data_buf,
+            (uint8_t *)(data_buf + sizeof(data_buf))) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: tablename url serializing error\n", __func__);
         if (errstr)
             *errstr = strdup("tablename url serializing error");
@@ -6974,13 +6978,13 @@ int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
     bzero(&akey, sizeof(akey));
     bzero(&adata, sizeof(adata));
 
-    if (llmeta_tablename_alias_key_get(&akey, key, ((const uint8_t *)key) + keylen) ==
-        NULL) {
+    if (llmeta_tablename_alias_key_get(&akey, key, ((const uint8_t *)key) +
+                                                       keylen) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: wrong format tablename alias key\n", __func__);
         return -1;
     }
-    if (llmeta_tablename_alias_data_get(&adata, data,
-                                        ((const uint8_t *)data) + datalen) == NULL) {
+    if (llmeta_tablename_alias_data_get(&adata, data, ((const uint8_t *)data) +
+                                                          datalen) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: wrong format tablename alias key\n", __func__);
         return -1;
     }

@@ -903,7 +903,7 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     repokeyptr = r->key;
 
     /* Bulk test */
-    if ((bulksz = switch_bulk_test(berkdb, dir))) {
+    if ((bulksz = switch_bulk_test(berkdb, dir)) != 0) {
         /* Switching to bulk mode */
         r->use_bulk = 1;
 
@@ -2059,7 +2059,8 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = (char *)util_tohex(srcmemp, (uint8_t *)srckey, keylen);
+                srckeyp =
+                    (char *)util_tohex(srcmemp, (uint8_t *)srckey, keylen);
             }
 
             /* Print */
@@ -2120,7 +2121,7 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
 
     if (r->paused) {
         if ((rc = (r->pagelock_cursor->c_unpause(r->pagelock_cursor,
-                                                &r->pagelock_pause)))) {
+                                                 &r->pagelock_pause))) != 0) {
             /* Error on unpause trace */
             if (debug_trace(berkdb)) {
                 logmsg(LOGMSG_USER, 
@@ -2206,13 +2207,15 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = (char *)util_tohex(srcmemp, (uint8_t *)srckey, keylen);
+                srckeyp =
+                    (char *)util_tohex(srcmemp, (uint8_t *)srckey, keylen);
             }
 
             /* Found key to hex */
             if (fndkey) {
                 fndmemp = alloca((2 * keylen) + 2);
-                fndkeyp = (char *)util_tohex(fndmemp, (uint8_t *)fndkey, keylen);
+                fndkeyp =
+                    (char *)util_tohex(fndmemp, (uint8_t *)fndkey, keylen);
             }
 
             /* Print */

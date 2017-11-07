@@ -417,7 +417,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         if (need_advance || !common->close_cursor)
             flags = flags | DB_NEXT;
 
-        if ((rc = get_retry(dbcp, common, &key, &data, flags))) {
+        if ((rc = get_retry(dbcp, common, &key, &data, flags)) != 0) {
             if (rc == DB_NOTFOUND)
                 break;
             return NULL;
@@ -471,7 +471,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                changed. The reason we use this and not DB_SET is that records
                may be deleted while our cursor is closed. */
 
-            if ((rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE))) {
+            if ((rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE)) != 0) {
                 if (rc == DB_NOTFOUND)
                     break;
                 return NULL;
