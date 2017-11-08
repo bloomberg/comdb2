@@ -1713,7 +1713,7 @@ int bdb_run_logical_recovery(bdb_state_type *bdb_state, int is_replicant)
     bdb_state->in_recovery = 1;
 
     if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                               &ltrancount)))
+                                               &ltrancount)) != 0)
         abort();
 
     cancel_all_logical_transactions(bdb_state);
@@ -3440,7 +3440,7 @@ int bdb_oldest_outstanding_ltran(bdb_state_type *bdb_state, int *ltran_count,
         bdb_state = bdb_state->parent;
 
     if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                               &ltrancount)))
+                                               &ltrancount)) != 0)
         abort();
 
     if (ltrancount == 0) {
@@ -3476,7 +3476,7 @@ int bdb_prepare_newsi_bkfill(bdb_state_type *bdb_state,
         bdb_state = bdb_state->parent;
 
     if ((rc = bdb_state->dbenv->get_ltran_list(bdb_state->dbenv, &ltranlist,
-                                               &ltrancount)))
+                                               &ltrancount)) != 0)
         abort();
 
     if (ltrancount == 0) {

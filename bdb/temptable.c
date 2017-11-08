@@ -1203,7 +1203,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     LISTC_FOR_EACH_SAFE(&tbl->cursors, cur, temp, lnk)
     {
-        if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)))
+        if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) != 0)
             return rc;
     }
 

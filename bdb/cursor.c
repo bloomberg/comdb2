@@ -2635,7 +2635,7 @@ int bdb_remove_fileid_pglogs_queue(bdb_state_type *bdb_state,
     pthread_mutex_unlock(&del_queue_lk);
 
     if (fileid_queue) {
-        while ((qe = listc_rtl(&fileid_queue->queue_keys)))
+        while ((qe = listc_rtl(&fileid_queue->queue_keys)) != NULL)
             return_pglogs_queue_key(qe);
         return_shadows_fileid_pglogs_queue(fileid_queue);
     }

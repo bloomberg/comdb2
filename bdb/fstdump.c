@@ -471,7 +471,8 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                changed. The reason we use this and not DB_SET is that records
                may be deleted while our cursor is closed. */
 
-            if ((rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE)) != 0) {
+            if ((rc = get_retry(dbcp, common, &key, &data, DB_SET_RANGE)) !=
+                0) {
                 if (rc == DB_NOTFOUND)
                     break;
                 return NULL;
