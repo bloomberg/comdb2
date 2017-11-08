@@ -7689,7 +7689,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     assert(tran);
 
-    munged_name = oldfile_list_rem(&lognum);
+    munged_name = oldfile_list_rem((int *)&lognum);
 
     /* wait some more */
     if (!munged_name) return 1;
@@ -7834,7 +7834,7 @@ int getpgsize(void *handle_)
     bdb_state_type *handle = handle_;
     DB *dbp = handle->dbp_data[0][0];
     int x = 0;
-    dbp->get_pagesize(dbp, &x);
+    dbp->get_pagesize(dbp, (u_int32_t *)&x);
     return x;
 }
 
@@ -8207,7 +8207,7 @@ done:
     return rc;
 }
 
-static int print_fnames_hash(file_set_t *fs, const char *prefix);
+static void print_fnames_hash(file_set_t *fs, const char *prefix);
 
 file_set_t *construct_file_set(DB_ENV *dbenv, DB_LOGC *logc, DB_LSN *lsn)
 {
@@ -8251,7 +8251,7 @@ static int fnames_print(void *obj, void *arg)
     return 0;
 }
 
-static int print_fnames_hash(file_set_t *fs, const char *prefix)
+static void print_fnames_hash(file_set_t *fs, const char *prefix)
 {
     logmsg(LOGMSG_INFO, "%s: START\n", prefix);
     hash_for(fs->fnames, fnames_print, NULL);

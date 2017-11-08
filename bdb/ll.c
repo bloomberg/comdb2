@@ -1472,6 +1472,8 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
         rc = phys_rowlocks_log_bench_lk(bdb_state, tran, op, arg1, arg2,
                                         payload, paylen);
         break;
+    default:
+        break;
     }
     return rc;
 }
