@@ -1424,6 +1424,7 @@ void reqlog_new_request(struct ireq *iq)
         return;
     }
 
+    reqlog_reset_logger(logger);
     logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
@@ -1449,6 +1450,7 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     if (!logger) {
         return;
     }
+    reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = time_epochus();
@@ -1932,7 +1934,6 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     logger->have_id = 0;
     logger->have_fingerprint = 0;
     logger->error_code = 0;
-    reqlog_reset_logger(logger);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
