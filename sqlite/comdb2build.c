@@ -866,6 +866,7 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     } else {
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
+        sc->newcsc2[ver->n] = '\0';
     }
     sc->defaultsp = 1;
 
@@ -898,6 +899,7 @@ void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     } else {
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
+        sc->newcsc2[ver->n] = '\0';
     }
     sc->delsp = 1;
   
