@@ -47,15 +47,13 @@ tests/tools/selectv
 tests/tools/serial
 tests/tools/stepper
 tests/tools/utf8
+tests/tools/breakloop
+tests/tools/insert
+tests/tools/register
+
 
 tests/test_*
 tests/pmux.sqlite
-
-# jepsen c test
-linearizable/ctest/test*
-linearizable/ctest/*.o
-linearizable/ctest/insert
-linearizable/ctest/register
 
 # generated images
 docs/site/images/*.gif
@@ -68,3 +66,6 @@ contrib/docker/volumes
 # editor files
 *.swp
 /tags
+
+#cscope files
+cscope.*
