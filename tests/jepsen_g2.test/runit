@@ -95,7 +95,7 @@ function runtestwithoptions
     export COMDB2_DEBUG=1
     export CDB2_CONFIG_FILE=${CDB2_CONFIG}
     (
-        cd ${TESTSROOTDIR}/linearizable/jepsen
+        cd ${TESTSROOTDIR}/tools/linearizable/jepsen
         lein run test $testargs > $outfile 2>&1 < /dev/null
         r=$? ; [[ $r != 0 ]] && echo "XXX JEPSEN ERROR Lein test returns $r" >> $outfile
     )
