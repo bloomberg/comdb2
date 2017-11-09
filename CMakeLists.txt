@@ -21,6 +21,13 @@ if(${CMAKE_BUILD_TYPE} STREQUAL Debug)
   add_definitions(-DSQLITE_DEBUG)
 endif()
 
+option(WITH_SSL "Turn OFF to compile without SSL" ON)
+if(WITH_SSL)
+  add_definitions(-DWITH_SSL=1)
+else()
+  add_definitions(-DWITH_SSL=0)
+endif()
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   # Homebrew will install here by default
   list(APPEND CMAKE_PREFIX_PATH
@@ -33,6 +40,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
 set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
 find_package(LZ4 REQUIRED)
+# Comdb2 uses libcrpyto. Hence OpenSSL is required even if WITH_SSL is off.
 find_package(OpenSSL REQUIRED)
 find_package(Protobuf_C REQUIRED)
 find_package(Readline REQUIRED)
