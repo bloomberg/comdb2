@@ -7695,7 +7695,9 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     if (!munged_name) return 1;
 
     /* skip already deleted files */
-    if (stat(munged_name, &sb)) return 0;
+    char path[PATH_MAX];
+    bdb_trans(munged_name, path);
+    if (stat(path, &sb)) return 0;
 
     if (lognum && lowfilenum && lognum >= lowfilenum) {
         oldfile_list_add(munged_name, lognum);
