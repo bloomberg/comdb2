@@ -7,11 +7,9 @@ set(libs
   cdb2api
   cson
   ${PROTOBUF_C_LIBRARY}
-  ${ZLIB_LIBRARIES}
-  ${CMAKE_DL_LIBS}
 )
 if(WITH_SSL)
-  list(APPEND libs ${OPENSSL_LIBRARIES})
+  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endif()
 target_link_libraries(cdb2_sqlreplay ${libs})
 if(COMDB2_BUILD_STATIC)
