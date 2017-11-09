@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=897)
+(TUNABLES_COUNT=898)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -430,6 +430,7 @@
 (name='max_sqlcache_hints', description='Maximum number of "hinted" query plans to keep (global). (Default: 100)', type='INTEGER', value='100', read_only='Y')
 (name='max_sqlcache_per_thread', description='Maximum number of plans to cache per sql thread (statement cache is per-thread). (Default: 10)', type='INTEGER', value='10', read_only='Y')
 (name='max_vlog_lsns', description='Apply up to this many replication record trying to maintain a snapshot transaction.', type='INTEGER', value='10000000', read_only='N')
+(name='max_wr_rows_per_txn', description='Set the max written rows per transaction.', type='INTEGER', value='0', read_only='N')
 (name='maxappsockslimit', description='Start dropping new connections on this many connections to the database.', type='INTEGER', value='1400', read_only='N')
 (name='maxblobretries', description='', type='INTEGER', value='0', read_only='Y')
 (name='maxblockops', description='', type='INTEGER', value='25000', read_only='Y')
