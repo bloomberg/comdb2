@@ -12,6 +12,12 @@ if [[ -z "$stage" ]]; then
     stage="default"
 fi
 
+if [[ -n "$CLUSTER" ]]; then
+    echo "This test only works in NON-CLUSTERED mode."
+    exit 1
+fi
+
+
 function createtables
 {
     [[ "$debug" == 1 ]] && set -x
