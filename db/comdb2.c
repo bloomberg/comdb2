@@ -76,8 +76,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-/* temporarily pull in a local copy of comdb2_shm.h until it's in the libraries
- */
 #include "comdb2_shm.h"
 #include "sql.h"
 

@@ -473,11 +473,7 @@ static int form_file_name_ex(
 
     /* start building the file name */
     if (add_prefix) {
-#ifdef NAME_MANGLE
         offset = snprintf(outbuf, buflen, "XXX.");
-#else
-        offset = snprintf(outbuf, buflen, "%s/", bdb_state->dir);
-#endif
         outbuf += offset;
         buflen -= offset;
     }
@@ -1389,11 +1385,6 @@ char *bdb_trans(const char infile[], char outfile[])
 
     /*bdb_state = pthread_getspecific(bdb_key);*/
     bdb_state = gbl_bdb_state;
-
-#ifndef NAME_MANGLE
-    strcpy(outfile, infile);
-    return outfile;
-#endif
 
     if (bdb_state == NULL) {
         strcpy(outfile, infile);
@@ -2666,17 +2657,12 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     set_dbenv_stuff(dbenv, bdb_state);
 
-/* now open the environment */
-#ifdef NAME_MANGLE
+    /* now open the environment */
 
     if (bdb_state->attr->nonames)
         sprintf(txndir, "XXX.logs");
     else
         sprintf(txndir, "XXX.%s.txn", bdb_state->name);
-
-#else
-    strcpy(txndir, bdb_state->txndir);
-#endif
 
     /* these things need to be set up for logical recovery which will
        happen as soon as we call dbenv->open */
@@ -4101,20 +4087,11 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                     }
                 }
 
-                /*fprintf(stderr, "calling set_pagesize %d for %s\n", pagesize,
-                  bdb_state->name);*/
-
                 rc = dbp->set_pagesize(dbp, pagesize);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "unable to set pagesize on %s to %d\n",
                             tmpname, pagesize);
                 }
-
-#if defined(BERKDB_46)
-/*            db_flags |= DB_MULTIVERSION; */
-#endif
-
-                /*fprintf(stderr, "opening %s\n", tmpname);*/
 
                 print(bdb_state, "opening %s\n", tmpname);
                 // dbp is datafile
@@ -4181,15 +4158,8 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
             ext = "queuedb";
         else
             ext = "dta";
-
-/* HERE:DBQUEUE */
-#ifdef NAME_MANGLE
         snprintf(tmpname, sizeof(tmpname), "XXX.%s.%s",
                            bdb_state->name, ext);
-#else
-        snprintf(tmpname, sizeof(tmpname), "%s/%s.%s", bdb_state->dir,
-                           bdb_state->name, ext);
-#endif
         if (create) {
             char new[100];
 
@@ -7083,14 +7053,8 @@ uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
 
-#ifdef NAME_MANGLE
-
     form_indexfile_name(bdb_state, NULL, ixnum, bdbname, sizeof(bdbname));
     bdb_trans(bdbname, physname);
-#else
-    form_indexfile_name(bdb_state, NULL, bdb_state->name, ixnum, bdbname,
-                        sizeof(bdbname));
-#endif
 
     return mystat(physname);
 }
