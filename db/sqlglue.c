@@ -10874,7 +10874,7 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
     case BTREE_HINT_FLAGS: {
         unsigned int mask = va_arg(ap, unsigned int);
 
-        assert(mask == BTREE_SEEK_EQ || mask == BTREE_BULKLOAD || mask == 0);
+        assert(mask == BTREE_SEEK_EQ || mask == BTREE_BULKLOAD || mask == BTREE_SEEK_EQ|BTREE_BULKLOAD || mask == 0);
 
         sqlite3BtreeCursorHint_Flags(pCur, mask);
 

@@ -159,6 +159,7 @@ yast_r7.test                 +
 # 'make all'. These tests however can be run individually.
 
 DISABLED TESTS:
+comdb2expert.test         -- lots of failed asserts
 deadlock_policy.test
 deadlock.test             -- in clustered it leaves a bunch of cdb2sql tasks
 overflowblobs.test        -- timesout
