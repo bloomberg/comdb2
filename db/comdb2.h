@@ -2414,7 +2414,6 @@ int bulk_import(const char *tablename, const bulk_import_data_t *p_foreign_data,
 
 void debug_trap(char *line, int lline);
 int reinit_db(struct dbtable *db);
-int truncate_db(struct dbtable *db);
 int count_db(struct dbtable *db);
 int compact_db(struct dbtable *db, int timeout, int freefs);
 int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,

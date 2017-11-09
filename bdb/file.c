@@ -6245,69 +6245,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     return ret;
 }
 
-int bdb_truncate_int(bdb_state_type *bdb_state, int *bdberr)
-{
-    int rc;
-    DB_TXN *tid;
-    bdb_state_type *new_bdb_state;
-
-    BDB_READLOCK("bdb_truncate_int");
-
-    rc = bdb_close_only_int(bdb_state, bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error closing file rc=%d\n", rc);
-        return rc;
-    }
-
-    rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error begining tran\n");
-        return -1;
-    }
-
-    rc = bdb_del_int(bdb_state, tid, bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error deleting file rc=%d\n", rc);
-        tid->abort(tid);
-        return rc;
-    }
-
-    new_bdb_state = bdb_open_more_tran_int(
-        bdb_state->name, bdb_state->dir, bdb_state->lrl, bdb_state->numix,
-        bdb_state->ixlen, bdb_state->ixdups, bdb_state->ixrecnum,
-        bdb_state->ixdta, bdb_state->ixcollattr, bdb_state->ixnulls,
-        bdb_state->numdtafiles, bdb_state->parent, tid, bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error opening file rc=%d\n", rc);
-        tid->abort(tid);
-        return rc;
-    }
-
-    bdb_free_int(bdb_state, NULL, bdberr);
-
-    rc = tid->commit(tid, 0);
-
-    rc = bdb_flush_int(new_bdb_state, bdberr, 1);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error flushing log\n");
-    }
-
-    return 0;
-}
-
-int bdb_truncate(bdb_state_type *bdb_state, int *bdberr)
-{
-    int rc;
-
-    BDB_READLOCK("bdb_truncate");
-
-    rc = bdb_truncate_int(bdb_state, bdberr);
-
-    BDB_RELLOCK();
-
-    return rc;
-}
-
 static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
                           int *bdberr)
 {

@@ -1228,11 +1228,7 @@ int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, SBUF2 *sb,
  * length, and it doesn't help if we have the right data length but wrong
  * schema, but it catches a lot of problems easily. */
 int bdb_get_first_data_length(bdb_state_type *bdb_state, int *bdberr);
-int bdb_get_first_index_length(bdb_state_type *bdb_state, int ixnum,
-                               int *bdberr);
-
-int bdb_truncate(bdb_state_type *bdb_state, int *bdberr);
-
+int bdb_get_first_index_length(bdb_state_type *, int ixnum, int *bdberr);
 void bdb_start_request(bdb_state_type *bdb_state);
 void bdb_end_request(bdb_state_type *bdb_state);
 void bdb_start_exclusive_request(bdb_state_type *bdb_state);

@@ -5543,23 +5543,6 @@ done:
     return rc;
 }
 
-int truncate_db(struct dbtable *db)
-{
-    int rc, bdberr;
-    void *bdb_handle;
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-
-    stop_threads(db->dbenv);
-
-    rc = bdb_truncate(bdb_handle, &bdberr);
-
-    resume_threads(db->dbenv);
-    return rc;
-}
-
 int count_db(struct dbtable *db)
 {
     int bdberr;
