@@ -163,7 +163,7 @@ inline static int serialize_mems(Mem *m, int nmems, char **out, int *outlen)
             hdrbuf,
             sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &sz));
         hdrbuf += sz;
-        assert(hdrbuf <= (*out + hdrsz));
+        assert(((char *) hdrbuf) <= (*out + hdrsz));
     }
 
     return 0;
