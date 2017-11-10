@@ -1196,7 +1196,31 @@ end
 }$$
 put default procedure json_annotate 'sptest'
 exec procedure json_annotate()
+
+create procedure nested_json version 'sptest' {
+local function main()
+    db:num_columns(2)
+    db:column_name("val0", 1)
+    db:column_type("text", 1)
+    db:column_name("val1", 2)
+    db:column_type("text", 2)
+
+    local black = {r = 0, g = 0, b = 0}
+    local gray = {r = 128, g = 128, b = 128}
+    local white = {r = 255, g = 255, b = 255}
+    local t0 = {
+        colors = {black, gray, white},
+        black = black,
+        gray = gray,
+        white = white
+    }
+    local j = db:table_to_json(t0, {type_annotate = true})
+    local t1 = db:json_to_table(j, {type_annotate = true})
+    db:emit(t0.black.r, t1.black.r)
+    db:emit(t0.colors[3].r, t1.colors[3].r)
+end}$$
+put default procedure nested_json 'sptest'
+exec procedure nested_json()
 EOF
 
 wait
-

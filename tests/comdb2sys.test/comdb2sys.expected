@@ -81,9 +81,9 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=184)
+(KEYWORDS_COUNT=185)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=108)
+(RESERVED_KW=109)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
 (NONRESERVED_KW=76)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
@@ -91,6 +91,7 @@
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
 (name='ANALYZE', reserved='Y')
+(name='ANALYZEEXPERT', reserved='Y')
 (name='ANALYZESQLITE', reserved='Y')
 (name='AND', reserved='Y')
 (name='AS', reserved='Y')

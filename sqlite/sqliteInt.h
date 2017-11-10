@@ -1369,6 +1369,7 @@ struct sqlite3 {
   VtabCtx *pVtabCtx;            /* Context for active vtab connect/create */
   VTable **aVTrans;             /* Virtual tables with open transactions */
   VTable *pDisconnect;    /* Disconnect these in next sqlite3_prepare() */
+  void *pBestIndexCtx;          /* For sqlite3_vtab_collation() */
 #endif
   Hash aFunc;                   /* Hash table of connection functions */
   Hash aCollSeq;                /* All collating sequences */
@@ -1403,6 +1404,7 @@ struct sqlite3 {
 #endif
 
   /* COMDB2 MODIFICATION */
+  u8 isExpert;              /* If analyze is done using sqlite expert */
   u8 should_fingerprint;
   char fingerprint[16];              /* Figerprint of the last query that was prepared */
 };
@@ -3673,6 +3675,9 @@ u32 sqlite3ExprListFlags(const ExprList*);
 int sqlite3Init(sqlite3*, char**);
 int sqlite3InitCallback(void*, int, char**, char**);
 void sqlite3Pragma(Parse*,Token*,Token*,Token*,int);
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+Module *sqlite3PragmaVtabRegister(sqlite3*,const char *zName);
+#endif
 void sqlite3ResetAllSchemasOfConnection(sqlite3*);
 void sqlite3ResetOneSchema(sqlite3*,int);
 void sqlite3ResetOneSchemaByName(sqlite3*,const char*,const char*);
@@ -4198,6 +4203,13 @@ void sqlite3AutoLoadExtensions(sqlite3*);
    int sqlite3VtabSavepoint(sqlite3 *, int, int);
    void sqlite3VtabImportErrmsg(Vdbe*, sqlite3_vtab*);
    VTable *sqlite3GetVTable(sqlite3*, Table*);
+   Module *sqlite3VtabCreateModule(
+     sqlite3*,
+     const char*,
+     const sqlite3_module*,
+     void*,
+     void(*)(void*)
+   );
 #  define sqlite3VtabInSync(db) ((db)->nVTrans>0 && (db)->aVTrans==0)
 #endif
 int sqlite3VtabEponymousTableInit(Parse*,Module*);

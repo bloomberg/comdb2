@@ -190,7 +190,7 @@ int sqlite3_stmt_has_remotes(sqlite3_stmt *pStmt)
       if( v->btreeMask[0] >= 4){
         rc = 1;
       }else{
-        rc = sqlite3DbMaskAllZero(v->btreeMask, 1);
+        rc = !sqlite3DbMaskAllZero(v->btreeMask, 1);
       }
 #else
       rc = (v->btreeMask >= 4);

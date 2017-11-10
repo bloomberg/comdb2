@@ -551,8 +551,10 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
     }
 
     sb = host_node_ptr->sb;
+#if WITH_SSL
     if (sb && sslio_has_ssl(sb))
         sslio_close(sb, 1);
+#endif
 
     /* If we have an fd or sbuf, and no reader or writer thread, then
      * close the socket properly */
@@ -999,8 +1001,10 @@ static ssize_t write_stream(netinfo_type *netinfo_ptr,
     return nwrite;
 }
 
+#if WITH_SSL
 extern ssl_mode gbl_rep_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
+#endif
 static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                                 int *portnum, netinfo_type *netinfo_ptr)
 {
@@ -1087,6 +1091,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     strncpy(hostname, my_hostname, hostnamel);
     *portnum = connect_message.my_portnum;
 
+#if WITH_SSL
     if (connect_message.ssl) {
         if (gbl_rep_ssl_mode < SSL_ALLOW) {
             /* Reject if mis-configured. */
@@ -1105,6 +1110,13 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                "Replicant SSL connections are required.\n");
         return -1;
     }
+#else
+    if (connect_message.ssl) {
+        logmsg(LOGMSG_ERROR, "Misconfiguration: Peer requested SSL, "
+                             "but I am not built with SSL.\n");
+        return -1;
+    }
+#endif
 
     return 0;
 }
@@ -1173,7 +1185,11 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
     }
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
+#if WITH_SSL
     connect_message.ssl = (gbl_rep_ssl_mode >= SSL_REQUIRE);
+#else
+    connect_message.ssl = 0;
+#endif
 
     if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
         snprintf(connect_message.my_hostname,
@@ -1226,12 +1242,14 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
         }
     }
 
+#if WITH_SSL
     if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
         sbuf2flush(sb);
         if (sslio_connect(sb, gbl_ssl_ctx,
                           gbl_rep_ssl_mode, NULL, 0) != 1)
             return 1;
     }
+#endif
 
     return 0;
 }

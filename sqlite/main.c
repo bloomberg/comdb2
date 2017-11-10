@@ -3621,6 +3621,8 @@ int sqlite3_file_control(sqlite3 *db, const char *zDbName, int op, void *pArg){
       }else{
         rc = SQLITE_NOTFOUND;
       }
+    } else {
+      rc = SQLITE_NOTFOUND;
     }
     sqlite3BtreeLeave(pBtree);
   }

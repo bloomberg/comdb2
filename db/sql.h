@@ -446,6 +446,7 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
+    int is_expert;
     int is_newsql;
     CDB2SQLQUERY *sql_query; /* Needed to fetch the bind variables. */
     CDB2QUERY *query;

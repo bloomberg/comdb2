@@ -1683,10 +1683,10 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if (rc = net_get_lsn(bdb_state, x, xlen, &xlsn) != 0)
+    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn)) != 0)
         abort();
 
-    if (rc = net_get_lsn(bdb_state, y, ylen, &ylsn) != 0)
+    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);
@@ -2621,7 +2621,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     bdb_state->coherent_state[nodeix(host)] =
                         STATE_INCOHERENT_SLOW;
                     bdb_state->last_downgrade_time[nodeix(host)] =
-                        gettimeofday_ms(NULL);
+                        gettimeofday_ms();
 #ifdef INCOHERENT_CTRACE
                     ctrace("%s:%d setting host %s to COHERENT\n", __FILE__,
                            __LINE__, worst_node);
@@ -2749,7 +2749,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                 if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT)
                     defer_commits(bdb_state, host, __func__);
                 bdb_state->last_downgrade_time[nodeix(host)] =
-                    gettimeofday_ms(NULL);
+                    gettimeofday_ms();
                 bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
 #ifdef INCOHERENT_CTRACE
                 ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
@@ -3242,7 +3242,7 @@ got_ack:
 
                 /* Record the downgrade time */
                 bdb_state->last_downgrade_time[nodeix(nodelist[i])] =
-                    gettimeofday_ms(NULL);
+                    gettimeofday_ms();
 
 #ifdef INCOHERENT_CTRACE
                 ctrace("%s %d setting node %s to INCOHERENT\n", __FILE__,
@@ -3548,7 +3548,7 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
                     &p, p_net_seqnum,
                     (const uint8_t *)((seqnum_type *)p_net_seqnum + 1));
 
-                fprintf(stderr, "%s:%d %s sending %d:%d to %d\n", __FILE__,
+                fprintf(stderr, "%s:%d %s sending %d:%d to %s\n", __FILE__,
                         __LINE__, __func__, p.lsn.file, p.lsn.offset,
                         hostlist[i]);
             }

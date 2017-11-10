@@ -81,4 +81,7 @@ int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
 
 int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb);
 
+/* Free all resources allocated in the lock buffer. */
+void cleanup_lock_buffer(struct buf_lock_t *);
+
 #endif /* #ifndef __SOCKET_INTERFACES_H__ */

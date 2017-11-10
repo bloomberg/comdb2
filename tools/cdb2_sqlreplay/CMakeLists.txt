@@ -3,14 +3,15 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/cson
 )
-target_link_libraries(cdb2_sqlreplay
+set(libs
   cdb2api
   cson
-  ${OPENSSL_LIBRARIES}
   ${PROTOBUF_C_LIBRARY}
-  ${ZLIB_LIBRARIES}
-  ${CMAKE_DL_LIBS}
 )
+if(WITH_SSL)
+  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
+endif()
+target_link_libraries(cdb2_sqlreplay ${libs})
 if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
