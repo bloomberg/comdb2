@@ -3750,10 +3750,11 @@ void sqlite3CreateIndex(
     */
     sqlite3NestedParse(pParse, 
         /* COMDB2 MODIFICATION */
-        "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#0,%Q,NULL);",
+        "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#%d,%Q,NULL);",
         db->aDb[iDb].zDbSName, SCHEMA_TABLE(iDb),
         pIndex->zName,
         pTab->zName,
+        iMem,
         zStmt
     );
     sqlite3DbFree(db, zStmt);
