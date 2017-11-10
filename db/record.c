@@ -154,7 +154,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) {
-        if (gbl_max_wr_rows_per_txn && 
+        if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows");
@@ -817,7 +817,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     *ixfailnum = -1;
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) {
-        if (gbl_max_wr_rows_per_txn && 
+        if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows");
@@ -1813,7 +1813,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (!(flags & RECFLAGS_NEW_SCHEMA)) {
-        if (gbl_max_wr_rows_per_txn && 
+        if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows");
