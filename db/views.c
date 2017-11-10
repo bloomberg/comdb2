@@ -132,8 +132,8 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 {
     int rc;
 
-     pthread_rwlock_init(&views_lk, NULL);
-    
+    pthread_rwlock_init(&views_lk, NULL);
+
     /* hack for now to force natural types */
     if (_start_views_cron())
         return NULL;
@@ -172,7 +172,7 @@ int timepart_is_shard(const char *name, int lock)
    rc = 0;
 
    if(lock)
-      pthread_rwlock_rdlock(&views_lk);
+       pthread_rwlock_rdlock(&views_lk);
 
    view = _check_shard_collision(views, name, &indx, _CHECK_ALL_SHARDS);
 
@@ -182,7 +182,7 @@ int timepart_is_shard(const char *name, int lock)
    }
 
    if(lock)
-      pthread_rwlock_unlock(&views_lk);
+       pthread_rwlock_unlock(&views_lk);
 
    return rc;
 }
@@ -200,7 +200,7 @@ int timepart_is_timepart(const char *name, int lock)
    rc = 0;
 
    if(lock)
-      pthread_rwlock_rdlock(&views_lk);
+       pthread_rwlock_rdlock(&views_lk);
 
    for(i=0; i<views->nviews; i++)
    {
@@ -212,7 +212,7 @@ int timepart_is_timepart(const char *name, int lock)
    }
 
    if(lock)
-      pthread_rwlock_unlock(&views_lk);
+       pthread_rwlock_unlock(&views_lk);
 
    return rc;
 }
@@ -2386,7 +2386,7 @@ int timepart_for_each_shard(const char *name,
    int               i;
 
    pthread_rwlock_rdlock(&views_lk);
-   
+
    view = _get_view(views, name);
    if(!view)
    {
@@ -2405,9 +2405,9 @@ int timepart_for_each_shard(const char *name,
    }
 
 done:
-   pthread_rwlock_unlock(&views_lk);
-  
-   return rc;
+    pthread_rwlock_unlock(&views_lk);
+
+    return rc;
 }
 
 static int _validate_view_id(timepart_view_t *view, uuid_t source_id, 
@@ -2504,8 +2504,8 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
    }
 
 done:
-   pthread_rwlock_unlock(&views_lk);
-   return rc; 
+    pthread_rwlock_unlock(&views_lk);
+    return rc; 
 }
 
 /**
