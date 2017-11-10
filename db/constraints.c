@@ -820,13 +820,14 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         }
                         if (rc == ERR_TRAN_TOO_BIG) {
                             reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                                    "cascaded delete exceeds max writes");
+                                      "cascaded delete exceeds max writes");
                             *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                         } else {
-                            reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                                    "verify key constraint cannot cascade delete "
-                                    "table '%s' rrn %d",
-                                    bct->srcdb->tablename, rrn);
+                            reqerrstr(
+                                iq, COMDB2_CSTRT_RC_CASCADE,
+                                "verify key constraint cannot cascade delete "
+                                "table '%s' rrn %d",
+                                bct->srcdb->tablename, rrn);
                             *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         }
                         close_constraint_table_cursor(cur);
@@ -885,13 +886,14 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                         }
                         if (rc == ERR_TRAN_TOO_BIG) {
                             reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                                    "cascaded update exceeds max writes");
+                                      "cascaded update exceeds max writes");
                             *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                         } else {
-                            reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                                    "verify key constraint cannot cascade update "
-                                    "table '%s' rrn %d",
-                                    bct->srcdb->tablename, rrn);
+                            reqerrstr(
+                                iq, COMDB2_CSTRT_RC_CASCADE,
+                                "verify key constraint cannot cascade update "
+                                "table '%s' rrn %d",
+                                bct->srcdb->tablename, rrn);
                             *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         }
                         close_constraint_table_cursor(cur);
