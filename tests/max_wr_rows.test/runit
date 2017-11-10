@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Runs the register linearizability test
+# Tests max_wr_rows_per_txn tunable
 debug=1
-#debug_trace="-D"
 
 [[ "$debug" == 1 ]] && set -x
 db=$1
