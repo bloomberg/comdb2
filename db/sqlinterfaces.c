@@ -6393,6 +6393,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->have_extended_tm = 0;
     clnt->extended_tm = 0;
 
+    clnt->is_readonly = 0;
+    clnt->ignore_coherency = 0;
+
     /* reset page-order. */
     clnt->pageordertablescan =
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN);
