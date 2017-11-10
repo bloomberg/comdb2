@@ -297,8 +297,8 @@ static int openStatTable(
       }
 
       /* Open the sqlite_stat[134] tables for writing. */
-      for(i=0; aTable[i].zCols; i++){
-        assert( i<ArraySize(aTable) );
+      /* COMDB2 MODIFICATION */
+      for(i=0; i < ArraySize(aTable); i++){
         sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
         sqlite3VdbeChangeP5(v, aCreateTbl[i]);
       }
