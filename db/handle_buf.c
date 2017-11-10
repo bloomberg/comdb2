@@ -53,9 +53,6 @@
 #include "comdb2_pthread_create.h"
 #endif
 
-pthread_mutex_t gbl_sockreq_lock = PTHREAD_MUTEX_INITIALIZER;
-extern long n_fstrap;
-
 enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
 
 /* request pool & queue */
@@ -69,8 +66,9 @@ struct dbq_entry_t {
 };
 
 static pool_t *pq_reqs;  /* queue entry pool */
-static pool_t *p_bufs;   /* buffer pool for socket requests */
-static pool_t *p_slocks; /* pool of socket locks*/
+
+pool_t *p_bufs;          /* buffer pool for socket requests */
+pool_t *p_slocks;        /* pool of socket locks*/
 
 static LISTC_T(struct dbq_entry_t) q_reqs;  /* all queued requests */
 static LISTC_T(struct dbq_entry_t) rq_reqs; /* queue of read requests */
@@ -93,7 +91,7 @@ static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
 
-static int handle_buf_main(
+int handle_buf_main(
     struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
     const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
     char *fromtask, sorese_info_t *sorese, int qtype,
@@ -102,7 +100,7 @@ static int handle_buf_main(
     int do_inline, int luxref, unsigned long long rqid);
 
 static pthread_mutex_t lock;
-static pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_attr_t attr;
 
 #ifdef MONITOR_STACK
@@ -395,7 +393,7 @@ void thd_dump(void)
         logmsg(LOGMSG_USER, "no active threads\n");
 }
 
-static uint8_t *get_bigbuf()
+uint8_t *get_bigbuf()
 {
     uint8_t *p_buf = NULL;
     LOCK(&buf_lock) { p_buf = pool_getablk(p_bufs); }
@@ -818,223 +816,6 @@ int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
                            frompid, fromtask, NULL, REQ_SOCKET, NULL, 0, 0, 0);
 }
 
-enum {
-    FSTSND_EXECUTE = 100,
-    FSTSND_EXECUTE_LUXREF = 101,
-    FSTSND_SET_INFO = 120
-};
-
-struct fstsnd_req {
-    int request;
-    union {
-        int followlen;
-        int param;
-    } u;
-};
-
-#define TAG_MAX_WAITS 1000
-int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb)
-{
-    struct fstsnd_req fsnd_req;
-    int luxref = 0, luxref_wire;
-    char fromtask[9] = "Remote";
-    int rc = 0, debug = 0, frompid = 0;
-
-    const uint8_t *p_buf = NULL;
-    struct buf_lock_t *p_slock = NULL;
-    char line[20];
-    const uint8_t *p_buf_end = NULL;
-    char *frommach;
-    int num_sec = 0;
-
-    if (keepsocket)
-        *keepsocket = 0;
-    /* exit after 30 seconds of inactivity. */
-    sbuf2settimeout(sb, 30000, 30000);
-
-    LOCK(&buf_lock) { p_slock = pool_getablk(p_slocks); }
-    UNLOCK(&buf_lock);
-
-    if (p_slock == NULL) {
-        return -1;
-    }
-
-    frommach = intern(get_origin_mach_by_buf(sb));
-
-    pthread_mutex_init(&(p_slock->req_lock), 0);
-    pthread_cond_init(&(p_slock->wait_cond), NULL);
-    p_slock->bigbuf = NULL;
-
-    if (wrongdb) {
-        sndbak_open_socket(sb, NULL, 0, ERR_REJECTED);
-        rc = -1;
-        goto done;
-    }
-
-    LOCK(&(p_slock->req_lock))
-    {
-        while (1) {
-            rc = sbuf2fread((char *)&fsnd_req, 1, sizeof(fsnd_req), sb);
-
-            if (rc <= 0) {
-                /* The socket timedout or got closed. */
-                rc = -1;
-                break;
-            }
-
-            buf_get(&(fsnd_req.request), sizeof(fsnd_req.request),
-                    (uint8_t *)&(fsnd_req.request),
-                    (uint8_t *)(&fsnd_req + sizeof(fsnd_req)));
-            buf_get(&(fsnd_req.u.followlen), sizeof(fsnd_req.u.followlen),
-                    (uint8_t *)&(fsnd_req.u.followlen),
-                    (uint8_t *)(&fsnd_req + sizeof(fsnd_req)));
-
-            if (fsnd_req.request == FSTSND_SET_INFO) {
-                frompid = fsnd_req.u.param;
-                /* no response required. */
-                continue;
-            }
-
-            if (fsnd_req.request != FSTSND_EXECUTE &&
-                fsnd_req.request != FSTSND_EXECUTE_LUXREF) {
-                /* Once in the loop we should just receive FSTSND_EXECUTE. */
-                continue;
-            }
-
-            if (fsnd_req.request == FSTSND_EXECUTE_LUXREF) {
-                rc = sbuf2fread((char *)&luxref_wire, 1, sizeof(int), sb);
-                if (rc <= 0) {
-                    rc = -1;
-                    break;
-                }
-
-                p_buf = (uint8_t *)&luxref_wire;
-                p_buf = buf_get(&luxref, sizeof(int), (uint8_t *)&luxref_wire,
-                                ((uint8_t *)&luxref_wire) + sizeof(int));
-                if (p_buf == NULL) {
-                    rc = -1;
-                    break;
-                }
-            } else
-                luxref = 0;
-
-            int len = fsnd_req.u.followlen;
-
-            /* we can get len 65535 requests from old comdbg APIs that don't set
-             * a length */
-            if (len > (MAX_BUFFER_SIZE)) {
-                logmsg(LOGMSG_ERROR, "Large message length:%d Can't process.\n",
-                        len);
-                rc = -1;
-                break;
-            }
-
-            p_buf = p_slock->bigbuf = get_bigbuf();
-
-            if (p_buf == NULL) {
-                rc = -1;
-                break;
-            }
-
-            p_buf_end = p_buf + MAX_BUFFER_SIZE - 4;
-
-            rc = sbuf2fread((char *)p_buf, 1, len, sb);
-
-            if (rc != len) {
-                logmsg(LOGMSG_ERROR, "Corrupted read  from socket.");
-                rc = -1;
-                break;
-            }
-
-            p_slock->reply_state = REPLY_STATE_NA;
-
-            pthread_mutex_lock(&gbl_sockreq_lock);
-            n_fstrap++;
-            pthread_mutex_unlock(&gbl_sockreq_lock);
-
-            if (gbl_who > 0) {
-                gbl_who--;
-                debug = 1;
-            }
-
-            /* avoid new accepting new queries/transaction on opened connections
-               if we are incoherent */
-            if (!bdb_am_i_coherent(thedb->bdb_env)) {
-                static int last_msg_time = 0;
-                int now = time_epoch();
-                if (now != last_msg_time) {
-                    logmsg(LOGMSG_WARN, 
-                           "new request on incoherent node, dropping socket\n");
-                    last_msg_time = now;
-                }
-                /* Send a reply at this point. */
-                sndbak_open_socket(sb, NULL, 0, ERR_INCOHERENT);
-                rc = -1;
-                break;
-            }
-
-            p_slock->sb = sb;
-
-            rc = handle_buf_main(thedb, NULL, sb, p_buf, p_buf_end, debug,
-                                 frommach, frompid, fromtask, NULL,
-                                 REQ_SOCKREQUEST, p_slock, 0, luxref, 0);
-            /* We are not successful in putting request in queue*/
-            if (rc != 0) {
-                rc = -1;
-                break;
-            }
-
-            frompid = 0;
-
-            num_sec = 0;
-            /* This part is to avoid deadlock. */
-            /* If the reply was given before the control reached here,
-             * check every 1 seconds if reply was given.
-             * If the worker thread has already given signal, reply_state will
-             * be DONE and we won't go inside loop again.
-             * If the worker thread give signal, after we check for reply_state
-             * the condition will timeout after 1 sec and variable will be
-             * checked again. */
-            while (p_slock->reply_state != REPLY_STATE_DONE) {
-                /* Assuming here that a tag request can't be 1000 second long.
-                   We have to exit in cases of error scenarios of
-                   offloading block requests. */
-                if (num_sec > TAG_MAX_WAITS) {
-                    /* I'm holding the mutex at this point. */
-                    p_slock->reply_state = REPLY_STATE_DISCARD;
-                    logmsg(LOGMSG_ERROR, "Timeout waiting for the tag request "
-                                         "from `%s' to complete.\n",
-                           frommach);
-                    break;
-                }
-                struct timespec ts;
-                clock_gettime(CLOCK_REALTIME, &ts);
-                ts.tv_sec += 1;
-                /* For 99.99% of cases,  control will reach here before worker
-                 * thread gives reply.*/
-                pthread_cond_timedwait(&(p_slock->wait_cond),
-                                       &(p_slock->req_lock), &ts);
-                num_sec++;
-            }
-
-            p_slock->bigbuf = NULL;
-        }
-    }
-    UNLOCK(&(p_slock->req_lock));
-
-done:
-    if (num_sec > TAG_MAX_WAITS) {
-        /* If timeout, simply orphan the tag thread and return an error.
-           The mutex, wait condition and bigbuf can't be freed yet as they
-           will be used and freed later in the tag thread. */
-        return -1;
-    }
-
-    cleanup_lock_buffer(p_slock);
-
-    return rc;
-}
-
 void cleanup_lock_buffer(struct buf_lock_t *lock_buffer)
 {
     if (lock_buffer == NULL)
@@ -1213,8 +994,8 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     if (luxref < 0 || luxref >= dbenv->num_dbs) {
         if (!do_inline)
             errUNLOCK(&lock);
-        logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n", luxref,
-                dbenv->num_dbs);
+        logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
+               luxref, dbenv->num_dbs);
         return reterr(/*thd*/ 0, iq, do_inline, ERR_REJECTED);
     }
 
@@ -1234,12 +1015,11 @@ int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
     return 0;
 }
 
-static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
-                           const uint8_t *p_buf, const uint8_t *p_buf_end,
-                           int debug, char *frommach, int frompid,
-                           char *fromtask, sorese_info_t *sorese, int qtype,
-                           void *data_hndl, int do_inline, int luxref,
-                           unsigned long long rqid)
+int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                    const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                    char *frommach, int frompid, char *fromtask,
+                    sorese_info_t *sorese, int qtype, void *data_hndl,
+                    int do_inline, int luxref, unsigned long long rqid)
 {
     int rc, nowms, num, ndispatch, iamwriter = 0;
     struct thd *thd;

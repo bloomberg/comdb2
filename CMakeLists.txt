@@ -121,6 +121,7 @@ add_subdirectory(schemachange)
 add_subdirectory(sockpool)
 add_subdirectory(sqlite)
 add_subdirectory(tools)
+add_subdirectory(plugin)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 

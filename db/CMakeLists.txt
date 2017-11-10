@@ -43,7 +43,7 @@ set(src
   osqlshadtbl.c
   osqlsqlthr.c
   plink_timestamp.c
-  plugin.c
+  plugin_handler.c
   prefault.c
   prefault_helper.c
   prefault_net.c
@@ -134,6 +134,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
+  ${PROJECT_BINARY_DIR}/plugin
   ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
@@ -149,6 +150,7 @@ add_definitions(
   ${SQLITE_FLAGS}
 )
 add_dependencies(comdb2 mem protobuf sqlite db bdb)
+
 target_link_libraries(comdb2
   schemachange
   bdb
@@ -175,6 +177,7 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
+  ${PLUGIN_LIBRARIES}
 )
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(

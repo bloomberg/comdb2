@@ -686,15 +686,20 @@ static int handle_remsql_session(SBUF2 *sb, struct dbenv *dbenv)
     return rc;
 }
 
-int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
+int handle_remsql(comdb2_appsock_arg_t *arg)
 {
+    struct dbenv *dbenv;
+    struct sbuf2 *sb;
     char line[128];
     int rc = FDB_NOERR;
     static uint64_t old = 0ULL;
-    uint64_t now, then;
+    uint64_t now;
+    uint64_t then;
 
-    /* we will rely of socket drop to determine the end of
-       connection */
+    dbenv = arg->dbenv;
+    sb = arg->sb;
+
+    /* We will rely on socket drop to determine the end of connection. */
     sbuf2settimeout(sb, 0, 0);
 
     if (gbl_fdb_track_times) {
@@ -729,8 +734,9 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
             rc = sbuf2gets(line, sizeof(line), sb);
             if (rc != strlen("remsql\n")) {
                 if (rc != -1)
-                    logmsg(LOGMSG_ERROR, "%s: received wrong request! rc=%d: %s\n",
-                            __func__, rc, line);
+                    logmsg(LOGMSG_ERROR,
+                           "%s: received wrong request! rc=%d: %s\n", __func__,
+                           rc, line);
                 rc = FDB_NOERR;
                 break;
             }
@@ -747,29 +753,33 @@ int handle_remsql(SBUF2 *sb, struct dbenv *dbenv)
     return rc;
 }
 
-int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
+int handle_remtran(comdb2_appsock_arg_t *arg)
 {
+    struct sbuf2 *sb;
     fdb_msg_tran_t open_msg;
     fdb_msg_t msg;
     int rc = 0;
-    svc_callback_arg_t arg = {0};
+    svc_callback_arg_t svc_cb_arg = {0};
+
+    sb = arg->sb;
 
     bzero(&msg, sizeof(msg));
 
-    arg.thd = start_sql_thread(); /* this does inserts on behalf of an sql
-                                     transaction */
+    /* This does insert on behalf of an sql transaction */
+    svc_cb_arg.thd = start_sql_thread();
 
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to handle remote cursor request rc=%d\n", __func__,
+               rc);
         return rc;
     }
 
     if ((msg.hd.type & FD_MSG_TYPE) != FDB_MSG_TRAN_BEGIN) {
-        logmsg(LOGMSG_ERROR, 
-                "%s: received wrong packet type=%d, expecting tran begin\n",
-                __func__, msg.hd.type);
+        logmsg(LOGMSG_ERROR,
+               "%s: received wrong packet type=%d, expecting tran begin\n",
+               __func__, msg.hd.type);
         return -1;
     }
 
@@ -789,9 +799,9 @@ int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
             fdb_msg_print_message(sb, &msg, "received msg");
         }
 
-        arg.isuuid = (msg.hd.type & FD_MSG_FLAGS_ISUUID);
+        svc_cb_arg.isuuid = (msg.hd.type & FD_MSG_FLAGS_ISUUID);
 
-        rc = callbacks[msg.hd.type & FD_MSG_TYPE](sb, &msg, &arg);
+        rc = callbacks[msg.hd.type & FD_MSG_TYPE](sb, &msg, &svc_cb_arg);
 
         if ((msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_COMMIT ||
             (msg.hd.type & FD_MSG_TYPE) == FDB_MSG_TRAN_ROLLBACK ||
@@ -809,54 +819,58 @@ int handle_remtran(SBUF2 *sb, struct dbenv *dbenv)
             int rc2;
         clear:
             rc2 = fdb_svc_trans_rollback(
-                open_msg.tid, open_msg.lvl, arg.clnt,
-                arg.clnt->dbtran.dtran->fdb_trans.top->seq);
+                open_msg.tid, open_msg.lvl, svc_cb_arg.clnt,
+                svc_cb_arg.clnt->dbtran.dtran->fdb_trans.top->seq);
             if (rc2) {
-                logmsg(LOGMSG_ERROR, "%s: fdb_svc_trans_rollback failed rc=%d\n",
-                        __func__, rc2);
+                logmsg(LOGMSG_ERROR,
+                       "%s: fdb_svc_trans_rollback failed rc=%d\n", __func__,
+                       rc2);
             }
             break;
         }
 
         /*fprintf(stderr, "XYXY %llu calling recv message\n",
          * osql_log_time());*/
-        rc = fdb_msg_read_message(sb, &msg, arg.flags);
+        rc = fdb_msg_read_message(sb, &msg, svc_cb_arg.flags);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: failed to handle remote cursor request rc=%d\n",
-                    __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to handle remote cursor request rc=%d\n",
+                   __func__, rc);
             goto clear;
         }
     }
 
     if (gbl_expressions_indexes) {
-        free(arg.clnt->idxInsert);
-        free(arg.clnt->idxDelete);
-        arg.clnt->idxInsert = arg.clnt->idxDelete = NULL;
+        free(svc_cb_arg.clnt->idxInsert);
+        free(svc_cb_arg.clnt->idxDelete);
+        svc_cb_arg.clnt->idxInsert = svc_cb_arg.clnt->idxDelete = NULL;
     }
 
-    reset_clnt(arg.clnt, NULL, 0);
+    reset_clnt(svc_cb_arg.clnt, NULL, 0);
 
     done_sql_thread();
 
-    pthread_mutex_destroy(&arg.clnt->wait_mutex);
-    pthread_cond_destroy(&arg.clnt->wait_cond);
-    pthread_mutex_destroy(&arg.clnt->write_lock);
-    pthread_mutex_destroy(&arg.clnt->dtran_mtx);
+    pthread_mutex_destroy(&svc_cb_arg.clnt->wait_mutex);
+    pthread_cond_destroy(&svc_cb_arg.clnt->wait_cond);
+    pthread_mutex_destroy(&svc_cb_arg.clnt->write_lock);
+    pthread_mutex_destroy(&svc_cb_arg.clnt->dtran_mtx);
 
-    free(arg.clnt);
-    arg.clnt = NULL;
+    free(svc_cb_arg.clnt);
+    svc_cb_arg.clnt = NULL;
 
     return rc;
 }
 
-int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
+int handle_remcur(comdb2_appsock_arg_t *arg)
 {
+    struct sbuf2 *sb;
     fdb_msg_cursor_open_t open_msg;
     fdb_msg_t msg;
     int rc = 0;
-    svc_callback_arg_t arg = {0};
+    svc_callback_arg_t svc_cb_arg = {0};
     int flags;
+
+    sb = arg->sb;
 
     bzero(&msg, sizeof(msg));
 
@@ -864,8 +878,9 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
 
     rc = fdb_msg_read_message(sb, &msg, 0);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to handle remote cursor request rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to handle remote cursor request rc=%d\n", __func__,
+               rc);
         return rc;
     }
 
@@ -873,9 +888,9 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
     msg.hd.type &= FD_MSG_TYPE;
 
     if (msg.hd.type != FDB_MSG_CURSOR_OPEN) {
-        logmsg(LOGMSG_ERROR, 
-                "%s: received wrong packet type=%d, expecting cursor open\n",
-                __func__, msg.hd.type);
+        logmsg(LOGMSG_ERROR,
+               "%s: received wrong packet type=%d, expecting cursor open\n",
+               __func__, msg.hd.type);
         return -1;
     }
 
@@ -886,7 +901,7 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
             fdb_msg_print_message(sb, &msg, "received msg");
         }
 
-        rc = callbacks[msg.hd.type](sb, &msg, &arg);
+        rc = callbacks[msg.hd.type](sb, &msg, &svc_cb_arg);
         if (msg.hd.type == FDB_MSG_CURSOR_CLOSE) {
             break;
         }
@@ -901,9 +916,9 @@ int handle_remcur(SBUF2 *sb, struct dbenv *dbenv)
 
         rc = fdb_msg_read_message(sb, &msg, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: failed to handle remote cursor request rc=%d\n",
-                    __func__, rc);
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to handle remote cursor request rc=%d\n",
+                   __func__, rc);
             break;
         }
 

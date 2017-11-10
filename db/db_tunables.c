@@ -847,10 +847,12 @@ int register_tunable(comdb2_tunable tunable)
         goto err;
     }
     t->type = tunable.type;
-
-    if (!tunable.var && !tunable.value && (tunable.type != TUNABLE_COMPOSITE)) {
-        logmsg(LOGMSG_ERROR, "%s: A non-composite Tunable with no var pointer "
-                             "set, must have its value function defined.\n",
+    if (!tunable.var && !tunable.value &&
+        !(tunable.type == TUNABLE_COMPOSITE) &&
+        ((tunable.flags & INTERNAL) == 0)) {
+        logmsg(LOGMSG_ERROR,
+               "%s: A non-composite/non-internal tunable with no var pointer "
+               "set, must have its value function defined.\n",
                __func__);
         goto err;
     }
