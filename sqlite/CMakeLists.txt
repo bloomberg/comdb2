@@ -16,12 +16,15 @@ add_library(sqlite
   delete.c
   dttz.c
   expr.c
+  ext/comdb2/appsock_handlers.c
   ext/comdb2/columns.c
   ext/comdb2/constraints.c
   ext/comdb2/keycomponents.c
   ext/comdb2/keys.c
   ext/comdb2/keywords.c
   ext/comdb2/limits.c
+  ext/comdb2/opcode_handlers.c
+  ext/comdb2/plugins.c
   ext/comdb2/procedures.c
   ext/comdb2/tablepermissions.c
   ext/comdb2/tables.c
