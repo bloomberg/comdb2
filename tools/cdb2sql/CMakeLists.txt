@@ -15,9 +15,8 @@ target_link_libraries(cdb2sql
   ${OPENSSL_LIBRARIES}
   ${PROTOBUF_C_LIBRARY}
   ${READLINE_LIBRARY}
-  Threads::Threads
+  ${CURSES_LIBRARIES}
+  ${ZLIB_LIBRARIES}
+  ${CMAKE_DL_LIBS}
 )
-if(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
-  target_link_libraries(cdb2sql -lsocket -lnsl)
-endif()
 install(TARGETS cdb2sql RUNTIME DESTINATION bin)

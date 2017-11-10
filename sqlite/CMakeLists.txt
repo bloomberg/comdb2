@@ -33,6 +33,7 @@ add_library(sqlite
   ext/comdb2/users.c
   ext/misc/completion.c
   ext/misc/json1.c
+  ext/expert/sqlite3expert.c
   ext/misc/series.c
   fault.c
   func.c
@@ -145,6 +146,7 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/comdb2
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/misc
+  ${CMAKE_CURRENT_SOURCE_DIR}/ext/expert
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc

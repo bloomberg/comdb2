@@ -1,3 +1,5 @@
 add_library(crc32c crc32c.c)
 include_directories(${PROJECT_SOURCE_DIR}/bb)
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-msse4.2 -mpclmul")
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse4.2 -mpclmul")
+endif()

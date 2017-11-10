@@ -725,7 +725,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
                 (void *)pthread_self(), cfg_info);
 }
 
-static inline char get_char(FILE *fp, char *buf, int *chrno)
+static inline int get_char(FILE *fp, char *buf, int *chrno)
 {
     int ch;
     if (fp) {
@@ -2509,7 +2509,7 @@ static void make_random_str(char *str, int *len)
         rand_state[2] = hash >> 32;
     }
     int randval = nrand48(rand_state);
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), _PID, tv.tv_usec, randval);
+    sprintf(str, "%d-%d-%u-%d", cdb2_hostid(), _PID, tv.tv_usec, randval);
     *len = strlen(str);
     return;
 }

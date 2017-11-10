@@ -58,7 +58,7 @@ void comdb2AddPrimaryKey(Parse *, ExprList *, int, int, int);
 void comdb2AddIndex(Parse *, ExprList *, int, u8);
 void comdb2AddDbpad(Parse *, int);
 void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
-                       Token *, ExprSpan *, int, int, u8, int);
+                       Token *, ExprSpan *, int, int, u8, int, int);
 void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
 void comdb2DeferForeignKey(Parse *, int);
 void comdb2DropColumn(Parse *, Token *);

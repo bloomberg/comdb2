@@ -508,7 +508,7 @@ __rep_client_dbinit(dbenv, startup)
 			goto err;
 
 		for (i = 0; i < dircnt; i++) {
-			if (p = strrchr(namesp[i], '/'))
+			if ((p = strrchr(namesp[i], '/')) != NULL)
 				p++;
 			else
 				p = &namesp[i][0];
@@ -542,7 +542,7 @@ __rep_client_dbinit(dbenv, startup)
 
 	/* Set the pagesize. */
 	if (dbenv->rep_db_pagesize > 0) {
-		if ((ret = dbp->set_pagesize(dbp, dbenv->rep_db_pagesize)))
+		if ((ret = dbp->set_pagesize(dbp, dbenv->rep_db_pagesize)) != 0)
 			goto err;
 	}
 

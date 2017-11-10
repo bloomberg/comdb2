@@ -10,6 +10,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/sockpool
+  ${SQLITE3_INCLUDE_DIR}
 )
 target_link_libraries(pmux
   cdb2api
@@ -17,10 +18,11 @@ target_link_libraries(pmux
   ${OPENSSL_LIBRARIES}
   ${PROTOBUF_C_LIBRARY}
   ${SQLITE3_LIBRARY}
-  Threads::Threads
+  ${ZLIB_LIBRARIES}
+  ${CMAKE_DL_LIBS}
 )
-if(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
-  target_link_libraries(pmux -lsocket -lnsl)
+if(COMDB2_BUILD_STATIC)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 configure_file(pmux.service pmux.service @ONLY)
 install(TARGETS pmux RUNTIME DESTINATION bin)

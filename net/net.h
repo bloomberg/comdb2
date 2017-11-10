@@ -187,7 +187,6 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
    like a regular netinfo, but will short circuit on
    sending/recieving data.  it will fail the "is_real_netinfo" test */
 netinfo_type *create_netinfo_fake(void);
-netinfo_type *create_netinfo_fake_signal(void);
 int is_real_netinfo(netinfo_type *netinfo);
 netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
                                      char app[], char service[],

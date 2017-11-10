@@ -352,7 +352,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         // generate random password for temp tables
         char passwd[64]; passwd[0] = 0;
         while (passwd[0] == 0) {
-            RAND_bytes(passwd, 63);
+            RAND_bytes((unsigned char *)passwd, 63);
         }
         passwd[63] = 0;
         if ((rc = dbenv_temp->set_encrypt(dbenv_temp, passwd,
@@ -1203,7 +1203,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     LISTC_FOR_EACH_SAFE(&tbl->cursors, cur, temp, lnk)
     {
-        if (rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr))
+        if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) != 0)
             return rc;
     }
 

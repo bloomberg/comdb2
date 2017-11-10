@@ -446,9 +446,6 @@ REGISTER_TUNABLE("enable_upgrade_ahead",
                  NULL, NULL, enable_upgrade_ahead_update, NULL);
 REGISTER_TUNABLE("enque_flush_interval", NULL, TUNABLE_INTEGER,
                  &gbl_enque_flush_interval, READONLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("enque_flush_interval_signal", NULL, TUNABLE_INTEGER,
-                 &gbl_enque_flush_interval_signal, READONLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("enque_reorder_lookahead", NULL, TUNABLE_INTEGER,
                  &gbl_enque_reorder_lookahead, READONLY, NULL, NULL, NULL,
                  NULL);
@@ -712,11 +709,6 @@ REGISTER_TUNABLE("netbufsz", "Size of the network buffer (per "
                              "(Default: 1MB)",
                  TUNABLE_INTEGER, &gbl_netbufsz, READONLY | NOZERO, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("netbufsz_signal", "Size of the network buffer "
-                                    "(per node) for the signal "
-                                    "network. (Default: 65536)",
-                 TUNABLE_INTEGER, &gbl_netbufsz_signal, READONLY | NOZERO, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE(
     "net_explicit_flush_trace",
     "Produce a stack dump for long network flushes. (Default: off)",
@@ -734,11 +726,6 @@ REGISTER_TUNABLE("net_max_queue",
                  "before dropping (per replicant). (Default: 25000)",
                  TUNABLE_INTEGER, &gbl_net_max_queue, READONLY, NULL, NULL,
                  NULL, NULL);
-REGISTER_TUNABLE("net_max_queue_signal",
-                 "Maximum number of items to keep on the signal network queue "
-                 "before dropping (per replicant). (Default: 100)",
-                 TUNABLE_INTEGER, &gbl_net_max_queue_signal, READONLY, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("net_poll",
                  "Allow a connection to linger for this many milliseconds "
                  "before identifying itself. Connections that take longer are "
@@ -1049,9 +1036,6 @@ REGISTER_TUNABLE("sbuftimeout", NULL, TUNABLE_INTEGER, &gbl_sbuftimeout,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sc_del_unused_files_threshold", NULL, TUNABLE_INTEGER,
                  &gbl_sc_del_unused_files_threshold_ms, READONLY | NOZERO, NULL,
-                 NULL, NULL, NULL);
-REGISTER_TUNABLE("signal_net_portmux_register_interval", NULL, TUNABLE_INTEGER,
-                 &gbl_signal_net_portmux_register_interval, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("simulate_rowlock_deadlock", NULL, TUNABLE_INTEGER,
                  &gbl_simulate_rowlock_deadlock_interval, 0, NULL, NULL,

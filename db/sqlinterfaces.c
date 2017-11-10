@@ -79,6 +79,7 @@
 #include "osqlshadtbl.h"
 
 #include <sqlresponse.pb-c.h>
+#include <ext/expert/sqlite3expert.h>
 
 #include <alloca.h>
 #include <fsnap.h>
@@ -1012,7 +1013,8 @@ int get_high_availability(struct sqlclntstate *clnt)
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
-static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
+static int fill_snapinfo(struct sqlclntstate *clnt, unsigned int *file,
+                         int *offset)
 {
     char cnonce[256];
     int rcode = 0;
@@ -4249,6 +4251,66 @@ static int get_prepared_bound_stmt(struct sqlthdstate *thd,
 
 static void handle_stored_proc(struct sqlthdstate *, struct sqlclntstate *);
 
+static void handle_expert_query(struct sqlthdstate *thd,
+                                struct sqlclntstate *clnt)
+{
+    rdlock_schema_lk();
+    sqlengine_prepare_engine(thd, clnt, 1);
+    unlock_schema_lk();
+    int rc = -1;
+    char *zErr = 0;
+    sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
+
+    if (p) {
+        rc = sqlite3_expert_sql(p, clnt->sql, &zErr);
+    }
+
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_expert_analyze(p, &zErr);
+    }
+
+    CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
+    sql_response.response_type = RESPONSE_TYPE__SP_TRACE;
+    sql_response.n_value = 0;
+    sql_response.value = NULL;
+    sql_response.error_code = 0;
+
+    if (rc == SQLITE_OK) {
+        int nQuery = sqlite3_expert_count(p);
+        const char *zCand =
+            sqlite3_expert_report(p, 0, EXPERT_REPORT_CANDIDATES);
+        fprintf(stdout, "-- Candidates -------------------------------\n");
+        fprintf(stdout, "%s\n", zCand);
+        sql_response.info_string =
+            "---------- Recommended Indexes --------------\n";
+        newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                              &sql_response, 1 /*flush*/, malloc, __func__,
+                              __LINE__);
+        sql_response.info_string = (char *)zCand;
+        newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                              &sql_response, 1 /*flush*/, malloc, __func__,
+                              __LINE__);
+        sql_response.info_string =
+            "---------------------------------------------\n";
+        /* This will be flushed at end */
+
+    } else {
+        sql_response.info_string = zErr;
+        fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
+    }
+    newsql_write_response(clnt, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
+                          &sql_response, 1 /*flush*/, malloc, __func__,
+                          __LINE__);
+
+    newsql_send_dummy_resp(clnt, __func__, __LINE__);
+    newsql_send_last_row(clnt, 1, __func__, __LINE__);
+
+    sqlite3_expert_destroy(p);
+    sqlite3_free(zErr);
+    clnt->no_transaction = 0;
+    return; /* Don't process anything else */
+}
+
 /* return 0 continue, 1 return *outrc */
 static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
@@ -4304,8 +4366,10 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         *outrc = newsql_dump_query_plan(clnt, thd->sqldb);
         unlock_schema_lk();
         return 1;
+    } else if (clnt->is_expert) {
+        handle_expert_query(thd, clnt);
+        return 1;
     }
-
     /* 0, this is an sqlite request, use an engine */
     return 0;
 }
@@ -6249,12 +6313,12 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 
 static void thdpool_sqlengine_start(struct thdpool *pool, void *thd)
 {
-    return sqlengine_thd_start(pool, (struct sqlthdstate *) thd, THRTYPE_SQLENGINEPOOL);
+    sqlengine_thd_start(pool, (struct sqlthdstate *) thd, THRTYPE_SQLENGINEPOOL);
 }
 
 static void thdpool_sqlengine_end(struct thdpool *pool, void *thd)
 {
-    return sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
+    sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
 }
 
 
@@ -7603,6 +7667,14 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->is_readonly = 1;
                 }
+            } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
+                sqlstr += 6;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "off", 3) == 0) {
+                    clnt->is_expert = 0;
+                } else {
+                    clnt->is_expert = 1;
+                }
             } else if (strncasecmp(sqlstr, "sptrace", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = cdb2_skipws(sqlstr);
@@ -7868,6 +7940,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     clnt.tzname[0] = '\0';
     clnt.is_newsql = 1;
 
+    pthread_mutex_init(&clnt.wait_mutex, NULL);
+    pthread_cond_init(&clnt.wait_cond, NULL);
+    pthread_mutex_init(&clnt.write_lock, NULL);
+    pthread_mutex_init(&clnt.dtran_mtx, NULL);
+
     if (active_appsock_conns >
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
         logmsg(LOGMSG_WARN,
@@ -7904,11 +7981,6 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
 #ifdef DEBUGQUERY
     printf("\n Query '%s'\n", sql_query->sql_query);
 #endif
-
-    pthread_mutex_init(&clnt.wait_mutex, NULL);
-    pthread_cond_init(&clnt.wait_cond, NULL);
-    pthread_mutex_init(&clnt.write_lock, NULL);
-    pthread_mutex_init(&clnt.dtran_mtx, NULL);
 
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);

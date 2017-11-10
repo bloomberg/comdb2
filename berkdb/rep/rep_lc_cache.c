@@ -50,7 +50,7 @@ __lc_cache_init(DB_ENV *dbenv, int reinit)
 	lcc->nent = 0;
 	if ((ret =
 		__os_calloc(dbenv, dbenv->attr.cache_lc_max,
-		    sizeof(LC_CACHE_ENTRY), &lcc->ent)))
+		    sizeof(LC_CACHE_ENTRY), &lcc->ent)) != 0)
 		goto err;
 	listc_init(&lcc->lru, offsetof(LC_CACHE_ENTRY, lnk));
 	listc_init(&lcc->avail, offsetof(LC_CACHE_ENTRY, lnk));
@@ -171,7 +171,7 @@ lsn_collection_add(DB_ENV *dbenv, LSN_COLLECTION * lc, DB_LSN lsn, DBT *dbt)
 	}
 	lc->array[lc->nlsns].lsn = lsn;
 	lc->array[lc->nlsns].rec.size = dbt->size;
-	if (ret = __os_malloc(dbenv, dbt->size, &lc->array[lc->nlsns].rec.data))
+	if ((ret = __os_malloc(dbenv, dbt->size, &lc->array[lc->nlsns].rec.data)) != 0)
 		goto err;
 	memcpy(lc->array[lc->nlsns].rec.data, dbt->data,
 	    lc->array[lc->nlsns].rec.size);
@@ -300,7 +300,7 @@ __lc_cache_feed(DB_ENV *dbenv, DB_LSN lsn, DBT dbt)
 	}
 
 	/* find matching transaction */
-	if (e = hash_find(dbenv->lc_cache.txnid_hash, &txnid)) {
+	if ((e = hash_find(dbenv->lc_cache.txnid_hash, &txnid)) != NULL) {
 		if (dbenv->attr.cache_lc_debug)
 			logmsg(LOGMSG_USER, ">> txnid %x matched, txn prevlsn " PR_LSN
 			    " cache prevlsn " PR_LSN "\n", txnid,
@@ -575,7 +575,7 @@ __lc_cache_get(DB_ENV *dbenv, DB_LSN *lsnp, LSN_COLLECTION * lcout,
 		logmsg(LOGMSG_USER, "looking for " PR_LSN "\n", PARM_LSNP(lsnp));
 	// lc_dump_cache(dbenv);
 	// XXX Use hash find here */
-	if (txnid && (e = hash_find(dbenv->lc_cache.txnid_hash, &txnid))) {
+	if (txnid && (e = hash_find(dbenv->lc_cache.txnid_hash, &txnid)) != NULL) {
 		if (log_compare(&e->last_seen_lsn, lsnp) == 0) {
 			if (dbenv->attr.cache_lc_debug)
 				logmsg(LOGMSG_USER, "matched " PR_LSN " txn %x\n",

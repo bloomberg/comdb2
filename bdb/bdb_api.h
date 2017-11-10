@@ -525,8 +525,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
                              bdb_callback_type *bdb_callback, void *usr_ptr,
-                             netinfo_type *netinfo,
-                             netinfo_type *netinfo_signal, char *recoverlsn,
+                             netinfo_type *netinfo, char *recoverlsn,
                              int *bdberr);
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
@@ -655,7 +654,8 @@ int bdb_tran_commit_logical_with_seqnum_size(bdb_state_type *bdb_state,
                                              uint64_t *out_txnsize,
                                              int *bdberr);
 
-int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran, int *file, int *offset);
+int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
+                                   int *file, int *offset);
 
 /* commit the transaction referenced by the tran handle.  return a
    seqnum that is guaranteed to be greater or equal to the seqnum

@@ -29,7 +29,7 @@ function checkforerrors
     clojout=$1
     knosout=$2
     (
-        cd ${TESTSROOTDIR}/linearizable/filetest
+        cd ${TESTSROOTDIR}/tools/linearizable/filetest
         lein run $clojout > $knosout 2>&1 < /dev/null
     )
 

@@ -1,70 +1,42 @@
 cmake_minimum_required (VERSION 3.1)
 project (Comdb2)
 
-if(NOT CMAKE_BUILD_TYPE)
-  get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
-  set(CMAKE_BUILD_TYPE Debug CACHE STRING ${helpstring} FORCE)
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
-endif()
-#if(${CMAKE_BUILD_TYPE} STREQUAL Release)
-#-g
-#endif()
-
-# Find required libraries
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
-if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
-  # Homebrew will install here by default
-  set(COMDB2_FIND_PKG_ROOT_DIR /usr/local)
-  # Homebrew will not shadow macOS native libs; however, we need them
-  set(OPENSSL_ROOT_DIR /usr/local/opt/openssl)
-  set(READLINE_ROOT_DIR /usr/local/opt/readline)
-endif()
-set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-find_package(LZ4 REQUIRED)
-find_package(OpenSSL REQUIRED)
-find_package(Protobuf_C REQUIRED)
-find_package(Readline REQUIRED)
-find_package(SQLite3 REQUIRED)
-find_package(Threads REQUIRED)
-find_package(UUID REQUIRED)
-find_package(Unwind REQUIRED)
-find_package(ZLIB REQUIRED)
-
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED TRUE)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
-  # This is mostly misused as little-endian
-  add_definitions(-D_LINUX_SOURCE)
+if(NOT CMAKE_BUILD_TYPE)
+  get_property(helpstring CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING)
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING ${helpstring} FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "RelWithDebInfo" "Release")
 endif()
 
-if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
-  #-Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-label
-  #-Werror -Wno-parentheses
-  # probably don't need this after logmsg
-  #-fno-builtin
-  # Make this conditional if Release (O3)
-  #-fno-strict-aliasing
-  add_definitions(-D_GNU_SOURCE)
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
-  add_definitions(-D_DARWIN_C_SOURCE)
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
-  #CFLAGS_DEFS=-D__VACPP_MULTI__ -DMAXHOSTNAMELEN=64 -D_H_SYSMACROS
-  #CFLAGS_MISC=-qlanglvl=extc99 -qtls -qcpluscmt -qthreaded  -qdfp -qthreaded -qchars=signed -qro -qroconst -qkeyword=inline -qhalt=e -qxflag=dircache:71,256 -qxflag=new_pragma_comment_user -qxflag=NoKeepDebugMetaTemplateType -qfuncsect
-  #CFLAGS_DEBUGGING=-g
-  #CFLAGS_64+=-q64
-  #LDFLAGS+=-q64 -bmaxdata:0xb0000000/dsa -bbigtoc  -brtl -qtwolink
-  add_definitions(-D_IBM_SOURCE)
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
-  #OPT_CFLAGS=-xO3 -xprefetch=auto,explicit
-  #CFLAGS_MISC=-xtarget=generic -fma=fused -xinline=%auto -xmemalign=8s
-  #CFLAGS=-mt -xtarget=generic -xc99=all -errfmt=error -K PIC
-  #add_definitions(-D__EXTENSIONS__)
-  add_definitions(-D_SUN_SOURCE)
+if(COMDB2_BUILD_STATIC)
+  SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+endif()
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+  # Homebrew will install here by default
+  list(APPEND CMAKE_PREFIX_PATH
+    ${CMAKE_PREFIX_PATH}
+    "/usr/local"
+    "/usr/local/opt/openssl"
+    "/usr/local/opt/readline")
+endif()
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+set(CURSES_NEED_NCURSES TRUE)
+find_package(Curses REQUIRED)
+find_package(LZ4 REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(Protobuf_C REQUIRED)
+find_package(Readline REQUIRED)
+find_package(SQLite3 REQUIRED)
+find_package(UUID REQUIRED)
+find_package(ZLIB REQUIRED)
+if(${CMAKE_SYSTEM_NAME} STREQUAL Linux OR ${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+  find_package(Unwind REQUIRED)
 endif()
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -78,20 +50,40 @@ endif()
 
 add_definitions(
   -DCOMDB2_ROOT=${CMAKE_INSTALL_PREFIX}
-  -DBB64BIT
-  -DBB_THREADED
   -DCOMDB2_VERSION="2"
   -DMONITOR_STACK
-  -D_REENTRANT
-  -D_THREAD_SAFE
-  -D_XOPEN_SOURCE=600
 )
-
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
 else()
   add_definitions(-DUSE_SYS_ALLOC)
+endif()
+
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
+  # This is mostly misused as little-endian
+  add_definitions(-D_LINUX_SOURCE)
+endif()
+
+if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
+  add_definitions(-D_GNU_SOURCE)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-strict-aliasing")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
+  add_definitions(-D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=600)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL AIX)
+  add_definitions(-D_IBM_SOURCE)
+  #-qxflag=dircache:71,256 ??  #-bmaxdata:0xb0000000/dsa ??
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -qlanglvl=extc99 -qcpluscmt -qtls -qdfp")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lthread -lpthread")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
+  add_definitions(-D_SUN_SOURCE -D_POSIX_PTHREAD_SEMANTICS)
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -errfmt=error -mt=yes -fma=fused -xmemalign=8i -xc99=all")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lsocket -lnsl -lresolv -lpthread")
 endif()
 
 add_subdirectory(bb)
