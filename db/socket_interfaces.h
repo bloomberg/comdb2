@@ -79,8 +79,6 @@ int handle_socket_txbuf(struct thr_handle *thr_self, SBUF2 *sb, struct dbtable *
 int sndbak_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
 int sndbak_open_socket(SBUF2 *sb, u_char *buf, int buflen, int rc);
 
-int handle_socketrequest(SBUF2 *sb, int *keepsocket, int wrongdb);
-
 /* Free all resources allocated in the lock buffer. */
 void cleanup_lock_buffer(struct buf_lock_t *);
 

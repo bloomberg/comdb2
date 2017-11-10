@@ -31,10 +31,16 @@
 #include "osqlblockproc.h"
 #include "osqlblkseq.h"
 #include "logmsg.h"
+#include "plhash.h"
+#include "comdb2_plugin.h"
+#include "comdb2_opcode.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
 extern int sorese_send_commitrc(struct ireq *iq, int rc);
+
+/* HASH of all registered opcode handlers (one handler per opcode) */
+hash_t *gbl_opcode_hash;
 
 /* this is dumb, but it doesn't need to be clever for now */
 int a2req(const char *s)
@@ -52,138 +58,11 @@ int a2req(const char *s)
 
 const char *req2a(int opcode)
 {
-    switch (opcode) {
-    case OP_DBINFO:
-        return "dbinfo";
-    case OP_FWD_BLOCK:
-        return "fwdblockop";
-    case OP_BLOCK:
-        return "blockop";
-    case OP_LONGBLOCK:
-        return "longblockop";
-    case OP_FWD_LBLOCK:
-        return "fwdlblockop";
-    case OP_FIND:
-        return "find";
-    case OP_NEXT:
-        return "next";
-    case OP_JSTNX:
-        return "jstnx";
-    case OP_JSTFND:
-        return "jstfnd";
-    case OP_PREV:
-        return "prev";
-    case OP_JSTPREV:
-        return "jstprev";
-    case OP_NUMRRN:
-        return "numrrn";
-    case OP_HIGHRRN:
-        return "highrrn";
-    case OP_MSG_TRAP:
-        return "msgtrap";
-    case OP_STORED:
-        return "rngext"; /* WE ONLY do rngext here */
-    case OP_FIND2:
-        return "find2"; /*new find*/
-    case OP_NEXT2:
-        return "next2"; /*new next*/
-    case OP_PREV2:
-        return "prev2"; /*new prev*/
-    case OP_JFND2:
-        return "jfnd2"; /*new just find*/
-    case OP_JNXT2:
-        return "jnxt2"; /*new just next*/
-    case OP_JPRV2:
-        return "jprv2"; /*new just prev*/
-    case OP_RNGEXT2:
-        return "rngext2"; /*new just prev*/
-    case OP_RNGEXTP2:
-        return "rngextp2"; /*new just prev*/
-    case OP_FNDKLESS:
-        return "findkl";
-    case OP_FNDRRN:
-        return "fndrrn";
-    case OP_FNDRRNX:
-        return "fndrrnx";
-    case OP_JFNDKLESS:
-        return "jfindkl";
-    case OP_FORMKEY:
-        return "formkey";
-    case OP_FNDNXTKLESS:
-        return "nextkl";
-    case OP_FNDPRVKLESS:
-        return "prevkl";
-    case OP_JFNDNXTKLESS:
-        return "jnextkl";
-    case OP_JFNDPRVKLESS:
-        return "jprevkl";
-    case OP_RNGEXTTAG:
-        return "rngexttag";
-    case OP_RNGEXTTAGP:
-        return "rngexttagp";
-    case OP_RNGEXTTAGTZ:
-        return "rngexttagtz";
-    case OP_RNGEXTTAGPTZ:
-        return "rngexttagptz";
-    case OP_DBINFO2:
-        return "dbinfo2";
-    case OP_DESCRIBE:
-        return "describe";
-    case OP_DESCRIBEKEYS:
-        return "describeky";
-    case OP_GETKEYNAMES:
-        return "getkeynames";
-    case OP_REBUILD:
-        return "rebuild";
-    case OP_DEBUG:
-        return "debug";
-    case OP_BLOBASK:
-        return "blobask";
-    case OP_CLEARTABLE:
-        return "cleartable";
-    case OP_COUNTTABLE:
-        return "counttable";
-    case OP_RMTFIND:
-        return "rmtfind";
-    case OP_RMTFINDLASTDUP:
-        return "rmtfindlastdup";
-    case OP_RMTFINDNEXT:
-        return "rmtfindnext";
-    case OP_RMTFINDPREV:
-        return "rmtfindprev";
-    case OP_RMTFINDRRN:
-        return "rmtfindrrn";
-    case OP_SQL:
-        return "sql";
-    case OP_CHECK_TRANS:
-        return "checktrans";
-    case OP_TRAN_COMMIT:
-        return "tran_commit";
-    case OP_TRAN_ABORT:
-        return "tran_abort";
-    case OP_TRAN_FINALIZE:
-        return "tran_finalize";
-    case OP_PROX_CONFIG:
-        return "prox_config";
-    case OP_CLIENT_STATS:
-        return "client_stats";
-/* depricated stuff follows */
-
-#if 0
-        case OP_NEWRNGEX:       return "rngxt3";
-#endif
-
-#if 0
-        case OP_OLD_RNGEXT:     return "oldrngex";
-#endif
-
-#if 0
-        case OP_STAT:   return "stat";
-#endif
-
-    default:
-        return "??";
-    }
+    comdb2_opcode_t *op = hash_find_readonly(gbl_opcode_hash, &opcode);
+    if (op)
+        return op->name;
+    else
+        return "????";
 }
 
 void req_stats(struct dbtable *db)
@@ -229,93 +108,164 @@ extern pthread_mutex_t delay_lock;
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_print_deadlock_cycles;
 
-int offload_net_send(int tonode, int usertype, void *data, int datalen,
-                     int nodelay);
-
-static inline int opcode_supported(int opcode)
+static int handle_op_block(struct ireq *iq)
 {
-    static int last_rej = 0;
-    static unsigned long long rejcnt = 0;
-    int now;
+    int rc;
+    int retries;
+    int totpen;
+    int penaltyinc;
+    int irc;
+    double gbl_penaltyincpercent_d;
 
-    if (!gbl_rowlocks && !gbl_disable_tagged_api)
-        return 1;
-
-    switch (opcode) {
-    case OP_FNDRRN:
-    case OP_FORMKEY:
-    case OP_FNDRRNX:
-    case OP_JSTFND:
-    case OP_FIND:
-    case OP_JSTPREV:
-    case OP_JSTNX:
-    case OP_PREV:
-    case OP_NEXT:
-    case OP_FNDKLESS:
-    case OP_JFNDKLESS:
-    case OP_FIND2:
-    case OP_JFND2:
-    case OP_FNDNXTKLESS:
-    case OP_FNDPRVKLESS:
-    case OP_JFNDNXTKLESS:
-    case OP_JFNDPRVKLESS:
-    case OP_NEXT2:
-    case OP_PREV2:
-    case OP_JNXT2:
-    case OP_JPRV2:
-    case OP_BLOBASK:
-    case OP_RNGEXT2:
-    case OP_RNGEXTP2:
-    case OP_RNGEXTTAG:
-    case OP_RNGEXTTAGP:
-    case OP_RNGEXTTAGTZ:
-    case OP_RNGEXTTAGPTZ:
-    case OP_NUMRRN:
-    case OP_HIGHRRN:
-    case OP_STORED:
-    case OP_COUNTTABLE:
-    case OP_RMTFIND:
-    case OP_RMTFINDLASTDUP:
-    case OP_RMTFINDNEXT:
-    case OP_RMTFINDPREV:
-    case OP_RMTFINDRRN:
-        rejcnt++;
-        if (((now = time_epoch()) - last_rej) > 0) {
-            logmsg(LOGMSG_WARN, "Rejecting tagged api request (%llu)\n", rejcnt);
-            last_rej = now;
-        }
-        return 0;
-        break;
-
-    case OP_DBINFO:
-    case OP_DBINFO2:
-    case OP_FWD_LBLOCK:
-    case OP_LONGBLOCK:
-    case OP_FWD_BLOCK:
-    case OP_BLOCK:
-    case OP_MSG_TRAP:
-    case OP_DESCRIBE:
-    case OP_DESCRIBEKEYS:
-    case OP_GETKEYNAMES:
-    case OP_CLEARTABLE:
-    case OP_FASTINIT:
-    case OP_MAKE_NODE_INCOHERENT:
-    case OP_CLIENT_STATS:
-    default:
-        return 1;
-        break;
+    if (gbl_readonly) {
+        /* ERR_REJECTED will force a proxy retry. This is essential to make live
+         * schema change work reliably. */
+        if (gbl_schema_change_in_progress)
+            rc = ERR_REJECTED;
+        else
+            rc = ERR_READONLY;
+        return rc;
     }
+    if (iq->frommach && !allow_write_from_remote(iq->frommach)) {
+        rc = ERR_READONLY;
+        return rc;
+    }
+
+    iq->where = "toblock";
+
+    retries = 0;
+    totpen = 0;
+
+    gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
+
+retry:
+    rc = toblock(iq);
+
+    extern int gbl_test_blkseq_replay_code;
+    if (gbl_test_blkseq_replay_code &&
+        (rc != RC_INTERNAL_RETRY && rc != ERR_NOT_DURABLE) &&
+        (rand() % 10) == 0) {
+        logmsg(LOGMSG_USER, "Test blkseq replay: returning "
+                            "ERR_NOT_DURABLE to test replay:\n");
+        logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n", rc,
+               iq->errstat.errval, iq->errstat.errstr, iq->sorese.rcout);
+        rc = ERR_NOT_DURABLE;
+    }
+
+    if (rc == RC_INTERNAL_RETRY) {
+        iq->retries++;
+        if (++retries < gbl_maxretries) {
+            if (!bdb_attr_get(thedb->bdb_attr,
+                              BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
+                irc = pthread_mutex_lock(&delay_lock);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n",
+                           irc);
+                    exit(1);
+                }
+
+                penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
+                             (gbl_penaltyincpercent_d / iq->retries);
+
+                if (penaltyinc <= 0) {
+                    /* at least one less writer */
+                    penaltyinc = 1;
+                }
+
+                if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
+                    penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
+
+                gbl_maxwthreadpenalty += penaltyinc;
+                totpen += penaltyinc;
+
+                irc = pthread_mutex_unlock(&delay_lock);
+                if (irc != 0) {
+                    logmsg(LOGMSG_FATAL,
+                           "pthread_mutex_unlock(&delay_lock) %d\n", irc);
+                    exit(1);
+                }
+            }
+
+            iq->usedb = iq->origdb;
+
+            n_retries++;
+            poll(0, 0, (rand() % 25 + 1));
+            goto retry;
+        }
+
+        logmsg(LOGMSG_WARN, "*ERROR* toblock too much contention count %d\n",
+               retries);
+        thd_dump();
+    }
+
+    /* we need this in rare case when the request is retried
+       500 times; this is happening due to other bugs usually
+       this ensures no requests replays will be left stuck
+       papers around other short returns in toblock jic
+       */
+    osql_blkseq_unregister(iq);
+
+    irc = pthread_mutex_lock(&delay_lock);
+    if (irc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
+        exit(1);
+    }
+
+    gbl_maxwthreadpenalty -= totpen;
+
+    irc = pthread_mutex_unlock(&delay_lock);
+    if (irc != 0) {
+        logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
+        exit(1);
+    }
+
+    /* return codes we think the proxy understands.  all other cases
+       return proxy retry */
+    if (rc != 0 && rc != ERR_BLOCK_FAILED && rc != ERR_READONLY &&
+        rc != ERR_SQL_PREP && rc != ERR_NO_AUXDB && rc != ERR_INCOHERENT &&
+        rc != ERR_SC_COMMIT && rc != ERR_CONSTR && rc != ERR_TRAN_FAILED &&
+        rc != ERR_CONVERT_DTA && rc != ERR_NULL_CONSTRAINT &&
+        rc != ERR_CONVERT_IX && rc != ERR_BADREQ && rc != ERR_RMTDB_NESTED &&
+        rc != ERR_NESTED && rc != ERR_NOMASTER && rc != ERR_READONLY &&
+        rc != ERR_VERIFY && rc != RC_TRAN_CLIENT_RETRY &&
+        rc != RC_INTERNAL_FORWARD && rc != RC_INTERNAL_RETRY &&
+        rc != ERR_TRAN_TOO_BIG && /* THIS IS SENT BY BLOCKSQL WHEN TOOBIG */
+        rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITABLE_TXN &&
+        (rc != ERR_NOT_DURABLE || !iq->sorese.type)) {
+        /* XXX CLIENT_RETRY DOESNT ACTUALLY CAUSE A RETRY USUALLY, just
+           a bad rc to the client! */
+        /*rc = RC_TRAN_CLIENT_RETRY;*/
+
+        rc = ERR_NOMASTER;
+    }
+
+    iq->where = "toblock complete";
+    return rc;
+}
+
+extern comdb2_plugin_t *gbl_plugins;
+
+/* Builtin opcode handlers */
+static comdb2_opcode_t block_op_handler = {OP_BLOCK, "blockop",
+                                           handle_op_block};
+static comdb2_opcode_t fwd_block_op_handler = {OP_FWD_BLOCK, "fwdblockop",
+                                               handle_op_block};
+int init_opcode_handlers()
+{
+    /* Initialize the opcode handler hash. */
+    gbl_opcode_hash = hash_init_i4(offsetof(comdb2_opcode_t, opcode));
+    logmsg(LOGMSG_DEBUG, "opcode handler hash initialized\n");
+
+    /* Also register the builtin opcode handlers. */
+    hash_add(gbl_opcode_hash, &block_op_handler);
+    hash_add(gbl_opcode_hash, &fwd_block_op_handler);
+
+    return 0;
 }
 
 int handle_ireq(struct ireq *iq)
 {
-    int diffms, rc, mstr, len, retries;
-    int irc;
-
-    int penalty = 0;
-    int totpen = 0;
-    int penaltyinc;
-    double gbl_penaltyincpercent_d;
+    int rc;
 
     bdb_reset_thread_stats();
 
@@ -339,163 +289,32 @@ int handle_ireq(struct ireq *iq)
     if (gbl_print_deadlock_cycles)
         osql_snap_info = &iq->snap_info;
 
-    if (opcode_supported(iq->opcode)) {
-        switch (iq->opcode) {
-        default:
-            logmsg(LOGMSG_ERROR, "bad request %d from %s\n", iq->opcode, getorigin(iq));
-            /* starting write, no more reads */
+    if (gbl_rowlocks || gbl_disable_tagged_api) {
+        rc = ERR_BADREQ;
+        iq->where = "opcode execution skipped";
+    } else {
+        comdb2_opcode_t *opcode =
+            hash_find_readonly(gbl_opcode_hash, &iq->opcode);
+        if (!opcode) {
+            logmsg(LOGMSG_ERROR, "bad request %d from %s\n", iq->opcode,
+                   getorigin(iq));
+            /* Starting write, no more reads */
             iq->p_buf_in_end = iq->p_buf_in = NULL;
             rc = ERR_BADREQ;
-            break;
+        } else {
+            rc = opcode->opcode_handler(iq);
 
-
-        case OP_FWD_BLOCK: /*forwarded block op*/
-        case OP_BLOCK:
-            if (gbl_readonly) {
-                /* ERR_REJECTED will force a proxy retry.  This is essential to
-                 * make live schema change work reliably. */
-                if (gbl_schema_change_in_progress)
-                    rc = ERR_REJECTED;
-                else
-                    rc = ERR_READONLY;
-                break;
+            /* Record the tablename (aka table) for this op */
+            if (iq->usedb && iq->usedb->tablename) {
+                reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
             }
-            if (iq->frommach && !allow_write_from_remote(iq->frommach)) {
-                rc = ERR_READONLY;
-                break;
-            }
-
-            iq->where = "toblock";
-            retries = 0;
-
-            totpen = 0;
-
-            gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
-
-        retry:
-            rc = toblock(iq);
-
-            extern int gbl_test_blkseq_replay_code;
-            if (gbl_test_blkseq_replay_code &&
-                (rc != RC_INTERNAL_RETRY && rc != ERR_NOT_DURABLE) &&
-                (rand() % 10) == 0) {
-                logmsg(LOGMSG_USER, "Test blkseq replay: returning "
-                                    "ERR_NOT_DURABLE to test replay:\n");
-                logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n",
-                       rc, iq->errstat.errval, iq->errstat.errstr,
-                       iq->sorese.rcout);
-                rc = ERR_NOT_DURABLE;
-            }
-
-            if (rc == RC_INTERNAL_RETRY) {
-                iq->retries++;
-                if (++retries < gbl_maxretries) {
-                    if (!bdb_attr_get(
-                            thedb->bdb_attr,
-                            BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                        irc = pthread_mutex_lock(&delay_lock);
-                        if (irc != 0) {
-                            logmsg(LOGMSG_FATAL, 
-                                    "pthread_mutex_lock(&delay_lock) %d\n",
-                                    irc);
-                            exit(1);
-                        }
-
-                        penaltyinc =
-                            (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
-                            (gbl_penaltyincpercent_d / iq->retries);
-
-                        if (penaltyinc <= 0) {
-                            /* at least one less writer */
-                            penaltyinc = 1;
-                        }
-
-                        if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
-                            penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
-
-                        gbl_maxwthreadpenalty += penaltyinc;
-                        totpen += penaltyinc;
-
-                        irc = pthread_mutex_unlock(&delay_lock);
-                        if (irc != 0) {
-                            logmsg(LOGMSG_FATAL, 
-                                    "pthread_mutex_unlock(&delay_lock) %d\n",
-                                    irc);
-                            exit(1);
-                        }
-                    }
-
-                    iq->usedb = iq->origdb;
-
-                    n_retries++;
-                    poll(0, 0, (rand() % 25 + 1));
-                    goto retry;
-                }
-
-                logmsg(LOGMSG_WARN, "*ERROR* toblock too much contention count %d\n",
-                       retries);
-                thd_dump();
-            }
-
-            /* we need this in rare case when the request is retried
-               500 times; this is happening due to other bugs usually
-               this ensures no requests replays will be left stuck
-               papers around other short returns in toblock jic
-               */
-            osql_blkseq_unregister(iq);
-
-            irc = pthread_mutex_lock(&delay_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_mutex_lock(&delay_lock) %d\n", irc);
-                exit(1);
-            }
-
-            gbl_maxwthreadpenalty -= totpen;
-
-            irc = pthread_mutex_unlock(&delay_lock);
-            if (irc != 0) {
-                logmsg(LOGMSG_FATAL, "pthread_mutex_unlock(&delay_lock) %d\n", irc);
-                exit(1);
-            }
-
-            /* return codes we think the proxy understands.  all other cases
-               return proxy retry */
-            if (rc != 0 && rc != ERR_BLOCK_FAILED && rc != ERR_READONLY &&
-                rc != ERR_SQL_PREP && rc != ERR_NO_AUXDB &&
-                rc != ERR_INCOHERENT && rc != ERR_SC_COMMIT &&
-                rc != ERR_CONSTR && rc != ERR_TRAN_FAILED &&
-                rc != ERR_CONVERT_DTA && rc != ERR_NULL_CONSTRAINT &&
-                rc != ERR_CONVERT_IX && rc != ERR_BADREQ &&
-                rc != ERR_RMTDB_NESTED && rc != ERR_NESTED &&
-                rc != ERR_NOMASTER && rc != ERR_READONLY && rc != ERR_VERIFY &&
-                rc != RC_TRAN_CLIENT_RETRY && rc != RC_INTERNAL_FORWARD &&
-                rc != RC_INTERNAL_RETRY &&
-                rc != ERR_TRAN_TOO_BIG && /* THIS IS SENT BY BLOCKSQL WHEN TOOBIG */
-                rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITABLE_TXN &&
-                (rc != ERR_NOT_DURABLE || !iq->sorese.type)) {
-                /* XXX CLIENT_RETRY DOESNT ACTUALLY CAUSE A RETRY USUALLY, just
-                   a bad rc to the client! */
-                /*rc = RC_TRAN_CLIENT_RETRY;*/
-
-                rc = ERR_NOMASTER;
-            }
-
-            iq->where = "toblock complete";
-            break;
         }
-
-        /* Record the dbname (aka table) for this op */
-        if (iq->usedb && iq->usedb->tablename)
-            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
-    } else {
-        rc = ERR_BADREQ;
-        iq->where = "opcode not supported";
     }
 
     if (rc == RC_INTERNAL_FORWARD) {
         rc = 0;
     } else {
-        /*SNDBAK RESPONSE*/
+        /* SNDBAK RESPONSE */
         if (iq->debug) {
             reqprintf(iq, "iq->reply_len=%d RC %d\n",
                       iq->p_buf_out - iq->p_buf_out_start, rc);
@@ -503,6 +322,7 @@ int handle_ireq(struct ireq *iq)
 
         /* pack data at tail of reply */
         pack_tail(iq);
+
         if (iq->sorese.type) {
             /* we don't have a socket or a buffer for that matter,
              * instead, we need to send back the result of transaction from rc
@@ -543,11 +363,12 @@ int handle_ireq(struct ireq *iq)
 
 #if 0
             /*
-            I don't wanna do this here, reloq_end_request() needs sql 
-            details that are in the buffer; I am not gonna remalloc and copy
-            just to preserve code symmetry */
-            /* free the buffer, that was created by sorese_rcvreq() */
-            if(iq->p_buf_out_start) 
+                I don't wanna do this here, reloq_end_request() needs sql
+                details that are in the buffer; I am not gonna remalloc and copy
+                just to preserve code symmetry.
+                free the buffer, that was created by sorese_rcvreq()
+            */
+            if(iq->p_buf_out_start)
             {
                 free(iq->p_buf_out_start);
                 iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
@@ -557,8 +378,8 @@ int handle_ireq(struct ireq *iq)
         } else if (iq->is_dumpresponse) {
             signal_buflock(iq->request_data);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "\n Unexpected error %d in block operation",
-                        rc);
+                logmsg(LOGMSG_ERROR,
+                       "\n Unexpected error %d in block operation", rc);
             }
         } else if (iq->is_fromsocket) {
             net_delay(iq->frommach);

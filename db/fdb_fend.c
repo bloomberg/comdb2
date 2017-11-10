@@ -3971,21 +3971,43 @@ static int _is_tablename_unique(const char *name)
     return 0;
 }
 
-int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
+int fdb_alias_command(comdb2_appsock_arg_t *arg)
 {
+    struct dbenv *dbenv;
+    struct sbuf2 *sb;
+    char *op = NULL;
+    char *aliasname = NULL;
+    char *url = NULL;
+    char *errstr = NULL;
     char *tok;
-    int llen = strlen(line);
+    char *line;
+    int llen;
     int ltok = 0;
     int st = 0;
     int rc = -1;
 
-    char *op = NULL, *aliasname = NULL, *url = NULL;
+    dbenv = arg->dbenv;
+    sb = arg->sb;
+    line = arg->cmdline;
+    llen = strlen(line);
+
+    if (dbenv->master != gbl_mynode) {
+        sbuf2printf(sb, "!master swinged, now on %s, please rerun\n",
+                    thedb->master);
+        sbuf2printf(sb, "FAILED\n");
+        return 1;
+    }
+
+    tok = segtok(line, llen, &st, &ltok);
+    assert((strncmp(tok, "alias", ltok) == 0));
 
     tok = segtok(line, llen, &st, &ltok);
     if (ltok == 0) {
     usage:
-        *errstr = "Usage: [alias set ALIASNAME URL|alias get ALIASNAME| alias "
-                  "rem ALIASNAME]";
+        sbuf2printf(sb, "!Usage: [alias set ALIASNAME URL|alias get ALIASNAME| "
+                        "alias rem ALIASNAME]\n");
+        sbuf2printf(sb, "FAILED\n");
+
         if (op)
             free(op);
         if (aliasname)
@@ -3995,6 +4017,7 @@ int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
 
         return FDB_ERR_GENERIC;
     }
+
     op = tokdup(tok, ltok);
     if (!op) {
         return FDB_ERR_MALLOC;
@@ -4011,7 +4034,8 @@ int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
         snprintf(msg, sizeof(msg),
                  "alias \"%s\" exists as table name, must be unique",
                  aliasname);
-        *errstr = strdup(msg);
+        sbuf2printf(sb, "!%s\n", msg);
+        sbuf2printf(sb, "FAILED\n");
         return FDB_ERR_GENERIC;
     }
 
@@ -4021,16 +4045,16 @@ int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
             goto usage;
         url = tokdup(tok, ltok);
 
-        rc = llmeta_set_tablename_alias(NULL, aliasname, url, errstr);
+        rc = llmeta_set_tablename_alias(NULL, aliasname, url, &errstr);
     } else if (strncasecmp(op, "get", 3) == 0) {
-        url = llmeta_get_tablename_alias(aliasname, errstr);
+        url = llmeta_get_tablename_alias(aliasname, &errstr);
         rc = (url == 0);
 
         if (rc == 0) {
             sbuf2printf(sb, ">%s\n", url);
         }
     } else if (strncasecmp(op, "rem", 3) == 0) {
-        rc = llmeta_rem_tablename_alias(aliasname, errstr);
+        rc = llmeta_rem_tablename_alias(aliasname, &errstr);
     } else {
         goto usage;
     }
@@ -4041,6 +4065,17 @@ int fdb_alias_command(char *line, char **errstr, SBUF2 *sb)
         free(aliasname);
     if (url)
         free(url);
+
+    if (rc) {
+        sbuf2printf(sb, "!%s\n", (errstr) ? errstr : "no string");
+        sbuf2printf(sb, "FAILED\n");
+
+        if (errstr) {
+            free(errstr);
+        }
+    } else {
+        sbuf2printf(sb, "SUCCESS\n");
+    }
 
     return rc;
 }

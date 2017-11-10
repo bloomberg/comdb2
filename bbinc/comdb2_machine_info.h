@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -12,15 +12,16 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
-#ifndef INCLUDED_RTCPU_H
-#define INCLUDED_RTCPU_H
+#ifndef __INCLUDED_MACH_CLASS_PLUGIN_H
+#define __INCLUDED_MACH_CLASS_PLUGIN_H
 
-void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
-                              int (*c)(const char *), int (*d)(const char *));
-int machine_is_up(const char *host);
-int machine_class(const char *host);
-int machine_dc(const char *host);
-
-#endif
+struct comdb2_machine_info {
+    int (*machine_is_up)(const char *host);
+    int (*machine_status_init)(void);
+    int (*machine_class)(const char *host);
+    int (*machine_dc)(const char *host);
+};
+typedef struct comdb2_machine_info comdb2_machine_info_t;
+#endif /* !__INCLUDED_MACH_CLASS_PLUGIN_H */

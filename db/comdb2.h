@@ -1830,6 +1830,7 @@ void sqlnet_init(void);
 int sqlpool_init(void);
 int schema_init(void);
 int osqlpfthdpool_init(void);
+int init_opcode_handlers();
 void toblock_init(void);
 
 /* comdb2 modules */
@@ -2413,13 +2414,7 @@ int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int populate_reverse_constraints(struct dbtable *db);
 int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
                       FILE *out, int accept_type_change);
-int appsock_schema_change(SBUF2 *sb, int *keepsocket);
-int appsock_repopnewlrl(SBUF2 *sb, int *keepsocket);
-int appsock_bulk_import(SBUF2 *sb, int *keepsocket);
-int appsock_bulk_import_foreign(SBUF2 *sb, int *keepsocket, int version);
 int resume_schema_change(void);
-int bulk_import(const char *tablename, const bulk_import_data_t *p_foreign_data,
-                const char *p_foreign_dbmach, SBUF2 *foreign_sb);
 
 void debug_trap(char *line, int lline);
 int reinit_db(struct dbtable *db);
@@ -2514,8 +2509,6 @@ int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq);
 void handle_isql(struct dbtable *db, SBUF2 *sb);
 void handle_timesql(SBUF2 *sb, struct dbtable *db);
-int handle_fastsql(struct thr_handle *thr_self, SBUF2 *sb, struct dbtable *db,
-                   int usepool, int *keepsock);
 int handle_sql(SBUF2 *sb);
 int handle_llops(SBUF2 *sb, struct dbenv *dbenv);
 void sql_dump_running_statements(void);
@@ -2527,52 +2520,10 @@ void *get_sqlite_entry(struct sql_thread *thd, int n);
 struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
-
-/* request handlers */
 int handle_ireq(struct ireq *iq);
-int toblock(struct ireq *iq);
-int todbinfo(struct ireq *iq);
-int todbinfo2(struct ireq *iq);
-int todescribe(struct ireq *iq);
-int tofind(struct ireq *iq);
-int tofind2(struct ireq *iq);
-int tofind2kl(struct ireq *iq);
-int toformkey(struct ireq *iq);
-int tolongblock(struct ireq *iq);
-int tonext(struct ireq *iq);
-int tonext2(struct ireq *iq);
-int tonext2kl(struct ireq *iq);
-int torngext2(struct ireq *iq);
-int torngextp2(struct ireq *iq);
-int torngexttag(struct ireq *iq);
-int torngexttagp(struct ireq *iq);
-int torngexttagtz(struct ireq *iq);
-int torngexttagptz(struct ireq *iq);
-int tooldfindrrn(struct ireq *iq);
-int tofindrrn(struct ireq *iq);
-int tonumrrn(struct ireq *iq);
-int tohighrrn(struct ireq *iq);
-int tocount(struct ireq *iq);
-int tostored(struct ireq *iq);
-int tomsgtrap(struct ireq *iq);
-int todescribekeys(struct ireq *iq);
-int togetkeynames(struct ireq *iq);
-int toclear(struct ireq *iq);
-int tofastinit(struct ireq *iq);
-int torngextx(struct ireq *iq);
 void count_table_in_thread(const char *table);
-void handle_explain(SBUF2 *sb, int trace, int all);
-void handle_rrsql(SBUF2 *sb);
-void handle_reinit(SBUF2 *sb, struct dbenv *dbenv);
-int totran(struct ireq *iq, int op);
-int tolockget(struct ireq *iq);
-int toproxconfig(struct ireq *iq);
-int tocoherentchange(struct ireq *iq);
-int tomakeincoherent(struct ireq *iq);
 int findkl_enable_blob_verify(void);
-
 void sltdbt_get_stats(int *n_reqs, int *l_reqs);
-
 void dbghexdump(int flag, void *memp, size_t len);
 void hash_set_hashfunc(hash_t *h, hashfunc_t hashfunc);
 void hash_set_cmpfunc(hash_t *h, cmpfunc_t cmpfunc);
@@ -2606,7 +2557,6 @@ int cache_blob_data(struct ireq *iq, int rrn, unsigned long long genid,
                     unsigned *extra2, int numblobs, size_t *bloblens,
                     size_t *bloboffs, void **blobptrs, size_t total_length);
 int init_blob_cache(void);
-int toblobask(struct ireq *iq);
 void blob_print_stats(void);
 void purge_old_cached_blobs(void);
 
@@ -3406,8 +3356,6 @@ uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
 
 extern int gbl_log_fstsnd_triggers;
 
-void clear_bulk_import_data(bulk_import_data_t *p_data);
-
 int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, uint8_t *p_buf,
               const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
               char *fromtask, int qtype, void *data_hndl, int do_inline,
@@ -3452,9 +3400,12 @@ extern int __slow_write_ns;
 
 #include "dbglog.h"
 
+#include "comdb2_appsock.h"
+int appsock_repopnewlrl(comdb2_appsock_arg_t *arg);
+int handle_partition(comdb2_appsock_arg_t *arg);
+
 void handle_testcompr(SBUF2 *sb, const char *table);
 void handle_setcompr(SBUF2 *);
-void handle_partition(SBUF2 *);
 void handle_rowlocks_enable(SBUF2 *);
 void handle_rowlocks_enable_master_only(SBUF2 *);
 void handle_rowlocks_disable(SBUF2 *);

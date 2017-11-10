@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -12,12 +12,19 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
-#ifndef INCLUDED_PLUGIN_H
-#define INCLUDED_PLUGIN_H
+#ifndef __INCLUDED_COMDB2_PLUGIN_OPCODE_H
+#define __INCLUDED_COMDB2_PLUGIN_OPCODE_H
 
-int process_plugin_command(struct dbenv *dbenv, char *line, int llen, int st,
-                           int ltok);
+struct comdb2_opcode {
+    /* Used to lookup the opcode handler */
+    int opcode;
+    /* Name of the opcode */
+    const char *name;
+    /* The handler function */
+    int (*opcode_handler)(struct ireq *);
+};
+typedef struct comdb2_opcode comdb2_opcode_t;
 
-#endif /* INCLUDED_PLUGIN_H */
+#endif /* ! __INCLUDED_COMDB2_PLUGIN_OPCODE_H */

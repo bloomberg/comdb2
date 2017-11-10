@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2017, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -46,9 +46,9 @@ enum run_sql_flags {
 union fdb_msg;
 typedef union fdb_msg fdb_msg_t;
 
-int handle_remcur(SBUF2 *sb, struct dbenv *dbenv);
-int handle_remsql(SBUF2 *sb, struct dbenv *dbenv);
-int handle_remtran(SBUF2 *sb, struct dbenv *dbenv);
+int handle_remcur(comdb2_appsock_arg_t *arg);
+int handle_remsql(comdb2_appsock_arg_t *arg);
+int handle_remtran(comdb2_appsock_arg_t *arg);
 
 int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
                   int flags, int version, int isuuid, SBUF2 *sb);
