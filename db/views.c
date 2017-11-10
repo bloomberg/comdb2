@@ -2505,7 +2505,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
 
 done:
     pthread_rwlock_unlock(&views_lk);
-    return rc; 
+    return rc;
 }
 
 /**
