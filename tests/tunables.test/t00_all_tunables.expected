@@ -175,7 +175,7 @@
 (name='disable_bbipc', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='disable_blob_check', description='return immediately in check_blob_buffers', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_cache_internal_nodes', description='Disables 'enable_cache_internal_nodes'. B-tree leaf nodes are treated same as internal nodes.', type='BOOLEAN', value='OFF', read_only='Y')
-(name='disable_caching_stmt_with_fdb', description='Don't cache query plans for statements with foreign table references.', type='BOOLEAN', value='ON', read_only='N')
+(name='disable_caching_stmt_with_fdb', description='Don't cache query plans for statements with foreign table references.', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_cnonce_blkseq', description='Don't use cnonce for blkseq (for testing)', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_connection_refresh', description='disable_connection_refresh', type='BOOLEAN', value='OFF', read_only='N')
 (name='disable_datetime_ms_us_sc', description='Disables 'enable_datetime_ms_us_sc'', type='BOOLEAN', value='OFF', read_only='Y')

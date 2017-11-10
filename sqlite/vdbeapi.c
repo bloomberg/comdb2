@@ -99,6 +99,7 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 */
 int sqlite3_finalize(sqlite3_stmt *pStmt){
   int rc;
+printf("AZ finalize: %p\n", pStmt);
   if( pStmt==0 ){
     /* IMPLEMENTATION-OF: R-57228-12904 Invoking sqlite3_finalize() on a NULL
     ** pointer is a harmless no-op. */

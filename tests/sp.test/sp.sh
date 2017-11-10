@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 [[ -n "$3" ]] && exec >$3 2>&1
 cdb2sql $SP_OPTIONS - <<'EOF'
 create table t {

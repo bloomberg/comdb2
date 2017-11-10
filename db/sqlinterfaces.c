@@ -2636,6 +2636,8 @@ static u_int strhashfunc_stmt(u_char *keyp, int len)
 static int finalize_stmt_hash(void *stmt_entry, void *args)
 {
     stmt_hash_entry_type *entry = (stmt_hash_entry_type *)stmt_entry;
+
+printf("AZ finalizeStmt: %p (%p, sql '%s')\n", entry, entry->stmt, entry->sql);
     sqlite3_finalize(entry->stmt);
     if (entry->params_to_bind) {
         free_tag_schema(entry->params_to_bind);
@@ -2651,29 +2653,33 @@ static int finalize_stmt_hash(void *stmt_entry, void *args)
 static void delete_stmt_table(hash_t *stmt_table)
 {
     /* parse through hash table and finalize all the statements */
+printf("AZ START delete_stmt_table\n");
     hash_for(stmt_table, finalize_stmt_hash, NULL);
     hash_clear(stmt_table);
     hash_free(stmt_table);
+printf("AZ DONE delete_stmt_table\n");
 }
 
 static void init_stmt_table(hash_t **stmt_table)
 {
     *stmt_table =
         hash_init_user((hashfunc_t *)strhashfunc_stmt,
-                       (cmpfunc_t *)strcmpfunc_stmt, 0, MAX_HASH_SQL_LENGTH);
+                       (cmpfunc_t *)strcmpfunc_stmt, 
+                       offsetof(stmt_hash_entry_type, sql), 
+                       MAX_HASH_SQL_LENGTH);
 }
 
 void requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
-    stmt_hash_entry_type **tail = NULL;
     stmt_hash_entry_type **head = NULL;
+    stmt_hash_entry_type **tail = NULL;
 
     if (entry->params_to_bind) {
-        tail = &thd->param_stmt_tail;
         head = &thd->param_stmt_head;
+        tail = &thd->param_stmt_tail;
     } else {
-        tail = &thd->noparam_stmt_tail;
         head = &thd->noparam_stmt_head;
+        tail = &thd->noparam_stmt_tail;
     }
 
     stmt_hash_entry_type *prev_entry = entry->prev;
@@ -2702,34 +2708,96 @@ void requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 static void delete_last_stmt_entry(struct sqlthdstate *thd,
                                    struct schema *params_to_bind)
 {
+    stmt_hash_entry_type **head = NULL;
     stmt_hash_entry_type **tail = NULL;
+    int *cache_entries_counter_ptr;
     if (params_to_bind) {
+        head = &thd->param_stmt_head;
         tail = &thd->param_stmt_tail;
+        cache_entries_counter_ptr = &thd->param_cache_entries;
     } else {
+        head = &thd->noparam_stmt_head;
         tail = &thd->noparam_stmt_tail;
+        cache_entries_counter_ptr = &thd->noparam_cache_entries;
     }
-    int has_params = 0;
+
     hash_t *stmt_table = thd->stmt_table;
-    stmt_hash_entry_type *entry = (*tail)->prev;
     if ((*tail)->query && gbl_debug_temptables) {
         free((*tail)->query);
         (*tail)->query = NULL;
     }
     sqlite3_finalize((*tail)->stmt);
     if ((*tail)->params_to_bind) {
-        has_params = 1;
         free_tag_schema((*tail)->params_to_bind);
     }
-    hash_del(stmt_table, (*tail)->sql);
-    entry->next = NULL;
+
+    stmt_hash_entry_type *tmp = hash_find(thd->stmt_table, (*tail)->sql);
+printf("AZ hash find found: %p, sql: '%s', *tail: %p, sql: '%s'\n", tmp, tmp->sql, *tail, (*tail)->sql);
+
+    assert (*tail == tmp);
+    int rc = hash_del(stmt_table, *tail);
+printf("AZ hash_del: %p (stmt %p) rc=%d\n", *tail, (*tail)->stmt, rc);
+    assert(rc == 0);
+    assert(hash_find(stmt_table, (*tail)->sql) == NULL);
+
+    stmt_hash_entry_type *prev = (*tail)->prev;
     sqlite3_free(*tail);
-    *tail = entry;
-    if (has_params) {
-        thd->param_cache_entries--;
-    } else {
-        thd->noparam_cache_entries--;
+    *tail = prev;
+    (*cache_entries_counter_ptr)--;
+
+    if (*tail)
+        (*tail)->next = NULL;
+    else {
+       assert( (*cache_entries_counter_ptr) == 0);
+       (*head) = NULL;
     }
 }
+
+static void delete_stmt_entry(struct sqlthdstate *thd,
+                              stmt_hash_entry_type *entry)
+{
+    stmt_hash_entry_type **head = NULL;
+    stmt_hash_entry_type **tail = NULL;
+    int *cache_entries_counter_ptr;
+
+    if (entry->params_to_bind) {
+        head = &thd->param_stmt_head;
+        tail = &thd->param_stmt_tail;
+        cache_entries_counter_ptr = &thd->param_cache_entries;
+    } else {
+        head = &thd->noparam_stmt_head;
+        tail = &thd->noparam_stmt_tail;
+        cache_entries_counter_ptr = &thd->noparam_cache_entries;
+    }
+
+    stmt_hash_entry_type *prev_entry = entry->prev;
+    stmt_hash_entry_type *next_entry = entry->next;
+
+    if (prev_entry)
+        prev_entry->next = next_entry;
+    if (next_entry)
+        next_entry->prev = prev_entry;
+
+    if (*tail == entry)
+        *tail = prev_entry;
+    if (*head == entry)
+        *head = next_entry;
+
+    hash_t *stmt_table = thd->stmt_table;
+    if (entry->query && gbl_debug_temptables) {
+        free(entry->query);
+        entry->query = NULL;
+    }
+    sqlite3_finalize(entry->stmt);
+    if (entry->params_to_bind) {
+        free_tag_schema(entry->params_to_bind);
+    }
+printf("AZ hash_del: %p\n", entry->stmt);
+    hash_del(stmt_table, entry->sql);
+    sqlite3_free(entry);
+    (*cache_entries_counter_ptr)--;
+}
+
 
 static inline void add_at_front_of_list(stmt_hash_entry_type **head, 
                                         stmt_hash_entry_type **tail, 
@@ -2738,19 +2806,27 @@ static inline void add_at_front_of_list(stmt_hash_entry_type **head,
     entry->prev = NULL;
     entry->next = (*head);
     if ((*head) == NULL) {
+        assert((*tail) == NULL);
         (*tail) = entry;
     } else {
+        assert((*head)->prev == NULL);
         (*head)->prev = entry;
     }
     (*head) = entry;
 }
 
+/* On error will return non zero and
+ * caller will need to finalize_stmt() in that case
+ */
 int add_stmt_table(struct sqlthdstate *thd, const char *sql, char *actual_sql,
                    sqlite3_stmt *stmt, struct schema *params_to_bind)
 {
-
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
-        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    if(hash_find(thd->stmt_table, sql) != NULL) {
+        printf("AZ already in hash tbl %s\n", sql);
         return -1;
     }
 
@@ -2770,7 +2846,7 @@ int add_stmt_table(struct sqlthdstate *thd, const char *sql, char *actual_sql,
         delete_last_stmt_entry(thd, params_to_bind);
 
     stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
-    strcpy(entry->sql, sql);
+    strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
     entry->stmt = stmt;
     entry->params_to_bind = params_to_bind;
     if (actual_sql && gbl_debug_temptables)
@@ -2778,8 +2854,11 @@ int add_stmt_table(struct sqlthdstate *thd, const char *sql, char *actual_sql,
     else
         entry->query = NULL;
 
+
+printf("AZ hash_addEntry: %p (stmt %p, sql: '%s')\n", entry, entry->stmt, entry->sql);
     int ret = hash_add(thd->stmt_table, entry);
     if (ret == 0) {
+        assert(hash_find(thd->stmt_table, sql) == entry);
         add_at_front_of_list(head, tail, entry);
         (*cache_entries_counter_ptr)++;
     }
@@ -2791,6 +2870,7 @@ int find_stmt_table(hash_t *stmt_table, const char *sql,
 {
     if (strlen(sql) < MAX_HASH_SQL_LENGTH) {
         *entry = hash_find(stmt_table, sql);
+printf("AZ hash_find %p\n", *entry);
         if (*entry)
             return 0;
     }
@@ -3821,7 +3901,7 @@ static int get_prepared_bound_param(struct sqlthdstate *thd,
     return 0;
 }
 
-static void clear_stmt_record(struct sql_state *rec)
+static void clear_parameters_to_bind(struct sql_state *rec)
 {
     if (rec->parameters_to_bind) {
         free_tag_schema(rec->parameters_to_bind);
@@ -3844,7 +3924,6 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         rec->parameters_to_bind == NULL) {
         return 1;
     }
-    sqlite3_reset(stmt);
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) &&
         sqlite3_stmt_has_remotes(stmt)) {
         return 1;
@@ -3857,8 +3936,8 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
 
         return 0;
     }
-    if (outrc) return 1;
 
+    sqlite3_reset(stmt);
     const char *sqlptr = clnt->sql;
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
@@ -3872,7 +3951,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (rc == 0) {
         rec->parameters_to_bind = NULL;
     }
-    return 0;
+    return rc;
 }
 
 /**
@@ -3885,11 +3964,13 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     int rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
     if (rc != 0 && rec->stmt) {
+        //delete_stmt_entry(thd, rec->stmt); //will finalize and remove from hash and queue
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
     }
-    clear_stmt_record(rec);
-    if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
+    clear_parameters_to_bind(rec);
+    if ((rec->status & CACHE_HAS_HINT) && 
+        (rec->status & CACHE_FOUND_STR)) {
         char *k = rec->cache_hint;
         pthread_mutex_lock(&gbl_sql_lock);
         {
@@ -5434,7 +5515,7 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
 
-    clear_stmt_record(rec);
+    clear_parameters_to_bind(rec);
 
     if (clnt->want_query_effects) {
         clnt->had_errors = 1;
