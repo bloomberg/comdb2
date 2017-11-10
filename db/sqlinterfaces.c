@@ -6418,6 +6418,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->want_query_effects = 0;
     clnt->send_one_row = 0;
     clnt->verifyretry_off = 0;
+    clnt->is_expert = 0;
 
     /* Reset the version, we have to set it for every run */
     clnt->spname[0] = 0;
