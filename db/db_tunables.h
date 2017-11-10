@@ -1303,6 +1303,4 @@ REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
 
-
-
 #endif /* _DB_TUNABLES_H */
