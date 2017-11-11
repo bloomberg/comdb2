@@ -3775,7 +3775,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
     struct comdb2_ddl_context *ctx;
     int max_size;
 
-    assert(use_sqlite_impl(pParse) == 0);
+    assert(use_sqlite_impl(pParse));
 
     v = sqlite3GetVdbe(pParse);
 
