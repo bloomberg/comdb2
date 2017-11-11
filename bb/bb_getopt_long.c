@@ -139,7 +139,7 @@ static void replace_args(int argc, char *argv[], char *options,
         } else if ((idx = opt_idx(argv[ii], options, long_options, &req_arg)) !=
                    -1) {
             if (idx >= 0 && argv[ii][1] != '-') {
-                char *r = (char *)malloc(strlen(argv[ii] + 2));
+                char *r = (char *)malloc(strlen(argv[ii]) + 2);
                 r[0] = '-';
                 strcpy(&r[1], argv[ii]);
                 argv[ii] = r;
