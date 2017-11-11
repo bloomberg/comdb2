@@ -40,3 +40,9 @@ list(APPEND SQLITE_FLAGS
   -DSQLITE_SOUNDEX
   -DSQLITE_THREADSAFE=0
 )
+
+if(${CMAKE_BUILD_TYPE} STREQUAL Debug)
+  add_definitions(-DSQLITE_DEBUG)
+endif()
+
+

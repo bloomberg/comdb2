@@ -12,9 +12,11 @@ fi
 port=19500
 while :; do
     export COMDB2_PMUX_PORT=${port}
-    ${TESTSROOTDIR}/../pmux -l -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
+    RANGE="-r 22000:22100"
+    ${TESTSROOTDIR}/../pmux -l -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} $RANGE &
     pid=$!
     sleep 2
+    #only check if we can send signal
     kill -0 $pid
     [[ $? -eq 0 ]] && break
     port=$(($port +1))
@@ -29,8 +31,9 @@ echo "have $atstart fds at start"
 
 typeset -A createpids
 for i in $(seq 1 10); do 
-    mkdir $(pwd)/testdb${i}
-    ${TESTSROOTDIR}/../comdb2 testdb${i} --create --dir $(pwd)/testdb${i} &
+    TSTDBDIR=$(pwd)/testdb${i}
+    mkdir $TSTDBDIR
+    ${TESTSROOTDIR}/../comdb2 testdb${i} --create --dir $TSTDBDIR &
     createpids[$i]=$!
 done
 
@@ -40,9 +43,10 @@ done
 
 typeset -A dbpids
 for i in $(seq 1 10); do 
-    echo "portmux_port ${COMDB2_PMUX_PORT=}" >> $(pwd)/testdb${i}/testdb${i}.lrl
-    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $(pwd)/testdb${i}/testdb${i}.lrl
-	${TESTSROOTDIR}/../comdb2 testdb${i} --lrl $(pwd)/testdb${i}/testdb${i}.lrl & 
+    DBLRL=$(pwd)/testdb${i}/testdb${i}.lrl
+    echo "portmux_port ${COMDB2_PMUX_PORT=}" >> $DBLRL
+    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+	${TESTSROOTDIR}/../comdb2 testdb${i} --lrl $DBLRL &
     dbpids[$i]=$!
 done
 
