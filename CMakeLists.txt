@@ -17,12 +17,15 @@ if(COMDB2_BUILD_STATIC)
   SET(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
+if(${CMAKE_BUILD_TYPE} STREQUAL Debug)
+  add_definitions(-DSQLITE_DEBUG)
+endif()
+
 option(WITH_SSL "Turn OFF to compile without SSL" ON)
 if(WITH_SSL)
   add_definitions(-DWITH_SSL=1)
 else()
   add_definitions(-DWITH_SSL=0)
-endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   # Homebrew will install here by default

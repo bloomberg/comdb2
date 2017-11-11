@@ -189,8 +189,10 @@ int sqlite3_stmt_has_remotes(sqlite3_stmt *pStmt)
       int i;
       if( v->btreeMask[0] >= 4){
         rc = 1;
+printf("AZ if( v->btreeMask[0] >= 4) setting rc = 1\n");
       }else{
         rc = !sqlite3DbMaskAllZero(v->btreeMask, 1);
+printf("AZ calling sqlite3DbMaskAllZero rc = %d\n", rc);
       }
 #else
       rc = (v->btreeMask >= 4);
