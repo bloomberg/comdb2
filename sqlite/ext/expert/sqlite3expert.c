@@ -1485,7 +1485,7 @@ static int idxLargestIndex(sqlite3 *db, int *pnMax, char **pzErr){
   int rc = SQLITE_OK;
   const char *zMax = 
     "SELECT max(i.seqno) FROM "
-    "  sqlite_master AS s, "
+    "  sqlite_temp_master AS s, "
     "  pragma_index_list(s.name) AS l, "
     "  pragma_index_info(l.name) AS i "
     "WHERE s.type = 'table'";
@@ -1654,6 +1654,8 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   /* COMDB2 MODIFICATION */
   rc = sqlite3_exec(p->dbm, "ANALYZEEXPERT; PRAGMA writable_schema=1", 0, 0, 0);
 
+  nMax++;
+
   if( rc==SQLITE_OK ){
     int nByte = sizeof(struct IdxRemCtx) + (sizeof(struct IdxRemSlot) * nMax);
     pCtx = (struct IdxRemCtx*)idxMalloc(&rc, nByte);
@@ -1672,7 +1674,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
   }
 
   if( rc==SQLITE_OK ){
-    pCtx->nSlot = nMax+1;
+    pCtx->nSlot = nMax;
     rc = idxPrepareStmt(p->dbm, &pAllIndex, pzErr, zAllIndex);
   }
   if( rc==SQLITE_OK ){
