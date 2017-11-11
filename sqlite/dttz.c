@@ -25,7 +25,6 @@
 /* forwards from type.h|c; this is damn stupid */
 struct field_conv_opts;
 struct blob_buffer_t;
-typedef struct blob_buffer blob_buffer_t;
 int SERVER_DATETIME_to_CLIENT_CSTR( const void *in, int inlen,
         const struct field_conv_opts *inopts, blob_buffer_t *inblob,
         void *out, int outlen, int *outnull, int * outdtsz,
@@ -349,7 +348,7 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
        precision = sqlite3_value_int(argv[0]);
    else if (SQLITE_TEXT == sqlite3_value_type(argv[0])) {
        msus = sqlite3_value_text(argv[0]);
-       DTTZ_TEXT_TO_PREC(msus, precision, 0, goto err);
+       DTTZ_TEXT_TO_PREC((char *)msus, precision, 0, goto err);
    }
 
    if (precision != DTTZ_PREC_MSEC

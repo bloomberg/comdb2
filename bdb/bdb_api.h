@@ -34,6 +34,7 @@
 #include <inttypes.h>
 #include <limits.h>
 
+#include "fwd_types.h"
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
@@ -45,7 +46,6 @@ struct filepage_t;
 typedef struct filepage_t filepage_type;
 
 struct bdb_state_tag;
-typedef struct bdb_state_tag bdb_state_type;
 
 struct bdb_callback_tag;
 typedef struct bdb_callback_tag bdb_callback_type;
@@ -1968,8 +1968,6 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
-typedef struct BtCursor BtCursor;
-typedef struct UnpackedRecord UnpackedRecord;
 struct bias_info {
     int bias;
     int dirLeft;

@@ -14,13 +14,22 @@
    limitations under the License.
  */
 
-#ifndef __bdb_net_h__
-#define __bdb_net_h__
+/*
+ * forward declared types
+ */
 
-#include "fwd_types.h"
+#ifndef __fwd_types_h__
+#define __fwd_types_h__
 
-char *print_addr(struct sockaddr_in *addr, char *buf);
-const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
-                                    unsigned int hash);
+typedef struct bdb_state_tag bdb_state_type;
+typedef struct UnpackedRecord UnpackedRecord;
+typedef struct Vdbe Vdbe;
+typedef struct Btree Btree;
+typedef struct BtCursor BtCursor;
+typedef struct BtShared BtShared;
+typedef struct BtreePayload BtreePayload;
+typedef struct Mem Mem;
+typedef struct Schema Schema;
 
-#endif /* __bdb_net_h__ */
+
+#endif

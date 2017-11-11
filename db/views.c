@@ -855,7 +855,7 @@ static int _generate_new_shard_name(const char *oldname, char *newname,
     } else {
         char hash[128];
         len = snprintf(hash, sizeof(hash), "%u%s", nextnum, oldname);
-        len = crc32c(hash, len);
+        len = crc32c((uint8_t*)hash, len);
         snprintf(newname, newnamelen, "$%u_%X", nextnum, len);
     }
 

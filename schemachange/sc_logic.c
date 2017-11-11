@@ -619,6 +619,7 @@ void *sc_resuming_watchdog(void *p)
     logmsg(LOGMSG_INFO, "%s: existing\n", __func__);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     pthread_mutex_unlock(&sc_resuming_mtx);
+    return NULL;
 }
 
 int resume_schema_change(void)
@@ -801,7 +802,7 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
      * switch) */
     if (resume) {
         db->handle = bdb_open_more(
-            tmpname, db->dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
+            tmpname, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */
@@ -824,7 +825,7 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
     if (!db->handle) /* did not/could not open existing one, creating new one */
     {
         db->handle = bdb_create_tran(
-            tmpname, db->dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
+            tmpname, db->dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */

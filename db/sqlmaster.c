@@ -10,13 +10,13 @@
  * rootpages are local to an sqlite engine, and are indexes in the
  * sql thread cache of sqlmaster;
  */
-typedef struct master_entry {
+struct master_entry {
     char *tblname;
     int isstrdup; /* True if tblname is obtained from strdup(). */
     int ixnum;
     int entry_size;
     void *entry;
-} master_entry_t;
+};
 
 /*********** GLOBAL SQLITE MASTER ********************************************/
 

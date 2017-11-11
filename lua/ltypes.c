@@ -672,7 +672,7 @@ void luabb_todecimal(lua_State *lua, int idx, decQuad *val)
         break;
     case DBTYPES_INTEGER:
         ival = ((lua_int_t *) lua_topointer(lua, idx))->val;
-        sprintf(sbuf, "%lld", ival);
+        sprintf(sbuf, "%d", ival);
         sval = sbuf;
         break;
     case DBTYPES_REAL:
@@ -1825,7 +1825,7 @@ static int l_blob_tostring_int(Lua lua, int idx)
       int len = blob->val.length * 2;
       uint8_t *hexified = malloc(len + 1);
       util_tohex(hexified, blob->val.data, blob->val.length);
-      lua_pushlstring(lua, hexified, len);
+      lua_pushlstring(lua, (char *)hexified, len);
       free(hexified);
     }
     return 1;

@@ -709,6 +709,12 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         sc_printf(s, "%s schema change running in parallel scan mode\n",
                   (s->live ? "Live" : "Readonly"));
         break;
+    case SCAN_STRIPES:
+        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        break;
+    case SCAN_OLDCODE:
+        sc_printf(s, "%s schema change running in oldcode mode\n");
+        break;
     }
 }
 
@@ -894,7 +900,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         /* reopen db */
         newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
+            table, thedb->basedir, newdb->lrl, newdb->nix, (short *)newdb->ix_keylen,
             newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
             newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
             thedb->bdb_env, tran, &bdberr);
@@ -950,7 +956,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
          * schemas */
         /* faffing with schema required. schema can change in fastinit */
         db->handle = bdb_open_more_tran(
-            table, thedb->basedir, db->lrl, db->nix, db->ix_keylen,
+            table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
             &bdberr);
