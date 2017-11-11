@@ -2829,14 +2829,12 @@ int add_stmt_table(struct sqlthdstate *thd, const char *sql, char *actual_sql,
     }
 
     assert(thd->stmt_table);
-    /* should not have this stmt in cache */
-    assert(hash_find(thd->stmt_table, sql) == NULL);
-    /*
+    /* should not have this stmt in cache 
+    assert(hash_find(thd->stmt_table, sql) == NULL);*/
     if(hash_find(thd->stmt_table, sql) != NULL) {
         printf("AZ already in hash tbl %s\n", sql);
         return -1;
     }
-    */
 
     stmt_hash_entry_type **head;
     stmt_hash_entry_type **tail;
