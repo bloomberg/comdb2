@@ -1581,21 +1581,21 @@ int create_sqlite_master_table(const char *etype, const char *name,
     crt = rec;
     remsz = total_header_sz + total_data_sz;
 
-    sz = sqlite3PutVarint(crt, total_header_sz);
+    sz = sqlite3PutVarint((unsigned char *)crt, total_header_sz);
     crt += sz;
     remsz -= sz;
 
     /* serialize headers */
     for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
         sz = sqlite3PutVarint(
-            crt, sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
+            (unsigned char *)crt, sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
                                        &len));
         crt += sz;
         remsz -= sz;
     }
     for (fnum = 0; fnum < SQLITE_MASTER_ROW_COLS; fnum++) {
         sz = sqlite3VdbeSerialPut(
-            crt, &mems[fnum],
+            (unsigned char *)crt, &mems[fnum],
             sqlite3VdbeSerialType(&mems[fnum], SQLITE_DEFAULT_FILE_FORMAT,
                                   &len));
         crt += sz;
@@ -2694,7 +2694,7 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     dtabuf = pCur->keybuf + hdrsz;
 
     /* put header size in header */
-    sz = sqlite3PutVarint(hdrbuf, hdrsz);
+    sz = sqlite3PutVarint((unsigned char *)hdrbuf, hdrsz);
     hdrbuf += sz;
 
     /* keep track of the size remaining */
@@ -2703,11 +2703,11 @@ static int fdb_serialize_key(BtCursor *pCur, Mem *key, int nfields)
     for (fnum = 0; fnum < nfields; fnum++) {
         type =
             sqlite3VdbeSerialType(&key[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len);
-        sz = sqlite3VdbeSerialPut(dtabuf, &key[fnum], type);
+        sz = sqlite3VdbeSerialPut((unsigned char *)dtabuf, &key[fnum], type);
         dtabuf += sz;
         remainingsz -= sz;
         sz = sqlite3PutVarint(
-            hdrbuf, sqlite3VdbeSerialType(&key[fnum],
+            (unsigned char *)hdrbuf, sqlite3VdbeSerialType(&key[fnum],
                                           SQLITE_DEFAULT_FILE_FORMAT, &len));
         hdrbuf += sz;
     }
@@ -3375,8 +3375,8 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
             logmsg(LOGMSG_USER,
                    "Cursor %s: INSERT for transaction %s genid=%llx "
                    "seq=%d %s%s\n",
-                   comdb2uuidstr(fdbc->cid, ciduuid),
-                   comdb2uuidstr(trans->tid, tiduuid), genid, trans->seq,
+                   comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
+                   comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid, trans->seq,
                    (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
         } else {
             logmsg(LOGMSG_USER,
@@ -3432,8 +3432,8 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
             logmsg(LOGMSG_USER,
                    "Cursor %s: DELETE for transaction %s genid=%llx "
                    "seq=%d %s%s\n",
-                   comdb2uuidstr(fdbc->cid, ciduuid),
-                   comdb2uuidstr(trans->tid, tiduuid), genid, trans->seq,
+                   comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
+                   comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid, trans->seq,
                    (tblname) ? "tblname=" : "", (tblname) ? tblname : "");
         } else {
             logmsg(LOGMSG_USER,
@@ -3489,8 +3489,8 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
             uuidstr_t tiduuid;
             logmsg(LOGMSG_USER, "Cursor %s: UPDATE for transaction %s "
                                 "oldgenid=%llx to genid=%llx seq=%d %s%s\n",
-                   comdb2uuidstr(fdbc->cid, ciduuid),
-                   comdb2uuidstr(trans->tid, tiduuid), genid, oldgenid,
+                   comdb2uuidstr((unsigned char *)fdbc->cid, ciduuid),
+                   comdb2uuidstr((unsigned char *)trans->tid, tiduuid), genid, oldgenid,
                    trans->seq, (tblname) ? "tblname=" : "",
                    (tblname) ? tblname : "");
         } else {
@@ -3629,7 +3629,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         if (gbl_fdb_track) {
             uuidstr_t us;
             logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
-                    comdb2uuidstr(tran->tid, us), fdb->dbname);
+                    comdb2uuidstr((unsigned char *)tran->tid, us), fdb->dbname);
         } else {
             logmsg(LOGMSG_USER, "%s Created tid=%llx db=\"%s\"\n", __func__,
                     *(unsigned long long *)tran->tid, fdb->dbname);
@@ -3639,7 +3639,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
             if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
-                        comdb2uuidstr(tran->tid, us), fdb->dbname);
+                        comdb2uuidstr((unsigned char *)tran->tid, us), fdb->dbname);
             } else {
                 logmsg(LOGMSG_USER, "%s Reusing tid=%llx db=\"%s\"\n", __func__,
                         *(unsigned long long *)tran->tid, fdb->dbname);
@@ -3746,7 +3746,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
             if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%s db=\"%s\"\n", __func__,
-                        rc, comdb2uuidstr(tran->tid, us), tran->fdb->dbname);
+                        rc, comdb2uuidstr((unsigned char *)tran->tid, us), tran->fdb->dbname);
             } else {
                 logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%llx db=\"%s\"\n",
                         __func__, rc, *(unsigned long long *)tran->tid,
@@ -4594,7 +4594,7 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
         if (gbl_fdb_track) {
             if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
                 uuidstr_t us;
-                comdb2uuidstr(tran->tid, us);
+                comdb2uuidstr((unsigned char *)tran->tid, us);
                 logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
                         __func__, us, tran->fdb->dbname, rc);
             } else

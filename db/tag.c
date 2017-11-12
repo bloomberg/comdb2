@@ -2507,7 +2507,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (rc != 0) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->source_field_idx = from_field_idx;
                     fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
@@ -3153,7 +3153,7 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
 
         /* call new cached version instead of stag_to_stag_buf_flags() */
         rc = stag_to_stag_buf_cachedmap(
-            db->versmap[ver], from_schema, to_schema, inbuf, rec,
+            (int *)db->versmap[ver], from_schema, to_schema, inbuf, (char *)rec,
             CONVERT_NULL_NO_ERROR, &reason, NULL, 0);
 
         if (rc) {
@@ -6739,7 +6739,7 @@ void update_dbstore(struct dbtable *db)
             abort();
         }
 
-        db->versmap[v] = get_tag_mapping(ver, ondisk);
+        db->versmap[v] = (unsigned int *)get_tag_mapping(ver, ondisk);
         db->vers_compat_ondisk[v] = 1;
         if (SC_TAG_CHANGE ==
             compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))

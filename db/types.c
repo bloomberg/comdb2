@@ -9515,7 +9515,7 @@ int make_order_decimal64(server_decimal64_t *pdec64, int exponent)
                   (2 * i + ((pdec64->coef[i] & 0x0F0) ? 0 : 1)) -
                   1 /*sign nibble*/;
 
-        shift_coefficient_to_ondisk(DECDOUBLE_PACKED_COEF, pdec64->coef,
+        shift_coefficient_to_ondisk(DECDOUBLE_PACKED_COEF, (char *)pdec64->coef,
                                     &tailzero);
 
         /* update exponent */
@@ -9570,7 +9570,7 @@ int dec64_exponent_is_outrageous(server_decimal64_t *pdec64, char *decimals)
 
         /* check range for negative exponents; first nibble is 7 for new format!
          */
-        if ((highnibble & 0x080 == 0) && (highnibble != 0x070)) {
+        if ((highnibble & 0x080) == 0 && (highnibble != 0x070)) {
             return 0;
         }
         /* check range for positive exponents; first nibble is 8 for new format!
@@ -9734,7 +9734,7 @@ int make_order_decimal128(server_decimal128_t *pdec128, int exponent)
                   (2 * i + ((pdec128->coef[i] & 0x0F0) ? 0 : 1)) -
                   1 /*sign nibble*/;
 
-        shift_coefficient_to_ondisk(DECQUAD_PACKED_COEF, pdec128->coef,
+        shift_coefficient_to_ondisk(DECQUAD_PACKED_COEF, (char *)pdec128->coef,
                                     &tailzero);
 
         /* update exponent */
@@ -9972,7 +9972,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
         }
     }
 
-    decDoubleFromPacked(dn, exponent, decimals);
+    decDoubleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
 void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
@@ -10014,7 +10014,7 @@ void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
         }
     }
 
-    decQuadFromPacked(dn, exponent, decimals);
+    decQuadFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
 int decimal_ondisk_to_sqlite(const void *in, int len, decQuad *dn, int *outnull)

@@ -310,7 +310,7 @@ static void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
 
     if (isuuid) {
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
-        comdb2uuidcpy(clnt->osql.uuid, tid);
+        comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
     } else {
         clnt->osql.rqid = *(unsigned long long *)tid;
     }
@@ -352,7 +352,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     /* register transaction */
     if (isuuid) {
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
-        comdb2uuidcpy(clnt->osql.uuid, tid);
+        comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
     } else
         memcpy(&clnt->osql.rqid, tid, sizeof(clnt->osql.rqid));
     if (osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
@@ -558,7 +558,7 @@ int fdb_svc_trans_join_uuid(char *tid, struct sqlclntstate **clnt)
 {
     int rc = 0;
 
-    rc = osql_chkboard_get_clnt_uuid(tid, clnt);
+    rc = osql_chkboard_get_clnt_uuid((unsigned char *)tid, clnt);
 
     if (rc)
         return rc;
@@ -990,7 +990,7 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
     /* this returns a dtran_mtx locked structure */
     do {
         if (isuuid)
-            rc = osql_chkboard_get_clnt_uuid(tid, &clnt);
+            rc = osql_chkboard_get_clnt_uuid((unsigned char *)tid, &clnt);
         else
             rc = osql_chkboard_get_clnt(*(unsigned long long *)tid, &clnt);
         if (rc && rc == -1) {

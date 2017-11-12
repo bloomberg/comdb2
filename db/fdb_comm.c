@@ -391,8 +391,8 @@ int fdb_send_open(fdb_msg_t *msg, char *cid, fdb_tran_t *trans, int rootp,
     msg->co.cid = (char *)msg->co.ciduuid;
     msg->co.tid = (char *)msg->co.tiduuid;
 
-    comdb2uuid_clear(msg->co.cid);
-    comdb2uuid_clear(msg->co.tid);
+    comdb2uuid_clear((unsigned char *)msg->co.cid);
+    comdb2uuid_clear((unsigned char *)msg->co.tid);
 
     if (isuuid) {
         memcpy(msg->co.cid, cid, sizeof(uuid_t));
@@ -2053,7 +2053,7 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         logmsg(LOGMSG_USER,
                "XXXX: %llu %s sb=%p UPDATE cid=%s rootp=%d "
                "version=%d oldgenid=%llx genid=%llx datalen=%d seq %d %s%s\n",
-               t, prefix, sb, comdb2uuidstr(msg->up.cid, cus), msg->up.rootpage,
+               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->up.cid, cus), msg->up.rootpage,
                msg->up.version, msg->up.oldgenid, msg->up.genid,
                msg->up.datalen, msg->up.seq,
                (msg->up.tblname) ? " tblname=" : "",
@@ -2064,7 +2064,7 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s INDEX cid=%s rootp=%d version=%d "
                         "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
-                t, prefix, comdb2uuidstr(msg->ix.cid, cus), msg->ix.rootpage,
+                t, prefix, comdb2uuidstr((unsigned char *)msg->ix.cid, cus), msg->ix.rootpage,
                 msg->ix.version, msg->ix.genid, msg->ix.is_delete,
                 msg->ix.ixnum, msg->ix.ixlen);
         break;

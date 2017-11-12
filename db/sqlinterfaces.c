@@ -1228,7 +1228,7 @@ void newsql_send_strbuf_response(struct sqlclntstate *clnt, const char *str,
         cdb2__sqlresponse__column__init(columns[i]);
         columns[i]->has_type = 0;
         columns[i]->value.len = slen;
-        columns[i]->value.data = (char *)str;
+        columns[i]->value.data = (uint8_t *)str;
     }
 
     _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, columns,

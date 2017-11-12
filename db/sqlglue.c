@@ -4549,7 +4549,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag)
                 clnt, pthread_self(), clnt->dbtran.mode, clnt->intrans);
     }
 #endif
-    if (rc = initialize_shadow_trans(clnt, thd))
+    if ((rc = initialize_shadow_trans(clnt, thd)) != 0)
         goto done;
 
     uuidstr_t us;
@@ -6252,7 +6252,7 @@ again:
     if (rc) {
         if (bdberr == BDBERR_DEADLOCK) {
             nretries++;
-            if (rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
+            if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
                 if (!gbl_rowlocks)
                     logmsg(LOGMSG_ERROR, "%s: %zu failed dd recovery\n",
                            __func__, pthread_self());
@@ -6373,7 +6373,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
             in_orig[0] = ~in_orig[0];
         }
         if (flip_orig) {
-            xorbufcpy(&in[1], &in[1], f->len - 1);
+            xorbufcpy((char *)&in[1], (char *)&in[1], f->len - 1);
         } else {
             switch (f->type) {
             case SERVER_BINT:
@@ -6388,7 +6388,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                 /* This way we don't have to flip them back. */
                 uint8_t *p = alloca(f->len);
                 p[0] = in[0];
-                xorbufcpy(&p[1], &in[1], f->len - 1);
+                xorbufcpy((char *)&p[1], (char *)&in[1], f->len - 1);
                 in = p;
                 break;
             }
@@ -6457,9 +6457,9 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
     case SERVER_BCSTR:
         /* point directly at the ondisk string */
-        m->z = &in[1]; /* skip header byte in front */
+        m->z = (char *)&in[1]; /* skip header byte in front */
         if (flip_orig || !(f->flags & INDEX_DESCEND)) {
-            m->n = cstrlenlim(&in[1], f->len - 1);
+            m->n = cstrlenlim((char *)&in[1], f->len - 1);
         } else {
             m->n = cstrlenlimflipped(&in[1], f->len - 1);
         }
@@ -6468,7 +6468,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
     case SERVER_BYTEARRAY:
         /* just point to bytearray directly */
-        m->z = &in[1];
+        m->z = (char *)&in[1];
         m->n = f->len - 1;
         m->flags = MEM_Blob | MEM_Ephem;
         break;
@@ -6512,7 +6512,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
         } else {
             /* previous broken case, treat as bytearay */
-            m->z = &in[1];
+            m->z = (char *)&in[1];
             m->n = f->len - 1;
             if (stype_is_null(in))
                 m->flags = MEM_Null;
@@ -6565,7 +6565,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
             }
         } else {
             /* previous broken case, treat as bytearay */
-            m->z = &in[1];
+            m->z = (char *)&in[1];
             m->n = f->len - 1;
             m->flags = MEM_Blob;
         }
@@ -6653,7 +6653,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
         if (len <= f->len - 5) {
             /* point directly at the ondisk string */
             /* TODO use types.c's enum for header length */
-            m->z = &in[5];
+            m->z = (char *)&in[5];
 
             /* m->n is the blob length */
             m->n = (len > 0) ? len : 0;
@@ -6677,7 +6677,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
         if (len <= f->len - 5) {
             /* point directly at the ondisk string */
             /* TODO use types.c's enum for header length */
-            m->z = &in[5];
+            m->z = (char *)&in[5];
 
             /* sqlite string lengths do not include NULL */
             m->n = (len > 0) ? len - 1 : 0;
@@ -6764,7 +6764,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                 logmsg(LOGMSG_USER, "\n");
             }
 
-            in = new_in;
+            in = (char *)new_in;
         } else if (pCur->ixnum >= 0 && pCur->db->ix_datacopy[pCur->ixnum]) {
             struct field *fidx = &(pCur->db->schema->member[f->idx]);
             assert(f->len == fidx->len);
@@ -7540,9 +7540,9 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         /* I would like to open here a transaction if this is
            an actual update */
         if (clnt->iswrite /* TODO: maybe only create one if we write to remote && fdb_write_is_remote()*/) {
-            trans = fdb_trans_begin_or_join(clnt, fdb, tid);
+            trans = fdb_trans_begin_or_join(clnt, fdb, (char *)tid);
         } else {
-            trans = fdb_trans_join(clnt, fdb, tid);
+            trans = fdb_trans_join(clnt, fdb, (char *)tid);
         }
     } else {
         *(unsigned long long *)tid = 0ULL;
@@ -7564,7 +7564,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
             uuidstr_t cus, tus;
             logmsg(LOGMSG_USER, "%s Created cursor cid=%s with tid=%s rootp=%d "
                             "db:tbl=\"%s:%s\"\n",
-                    __func__, comdb2uuidstr(cur->fdbc->id(cur), cus),
+                    __func__, comdb2uuidstr((unsigned char *)cur->fdbc->id(cur), cus),
                     comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
                     cur->fdbc->name(cur));
         } else {
@@ -8285,7 +8285,7 @@ int sqlite3BtreeInsert(
              * update remote */
             uuid_t tid;
             fdb_tran_t *trans =
-                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, tid);
+                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -8632,7 +8632,7 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
             void luabb_fromhex(uint8_t *out, const uint8_t *in, size_t len);
             while(*sptr) {
                 uint8_t num;
-                luabb_fromhex(&num, sptr, 2);
+                luabb_fromhex(&num, (const uint8_t *)sptr, 2);
                 sptr+=2;
 
                 if (cnt > thd->sqlclntstate->sql_query->cnonce.len || 
@@ -8695,7 +8695,7 @@ void sql_dump_running_statements(void)
             logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s\n", thd->id,
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin);
-            log_cnonce(thd->sqlclntstate->sql_query->cnonce.data,
+            log_cnonce((char *)thd->sqlclntstate->sql_query->cnonce.data,
                 thd->sqlclntstate->sql_query->cnonce.len);
             logmsg(LOGMSG_USER, "%s\n", thd->sqlclntstate->sql);
 
@@ -9218,8 +9218,8 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
         }
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (rc = recover_deadlock(thedb->bdb_env, thd,
-                                      (is_temp_bdbcur) ? cur : NULL, 0)) {
+            if ((rc = recover_deadlock(thedb->bdb_env, thd,
+                                      (is_temp_bdbcur) ? cur : NULL, 0)) != 0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
@@ -9414,7 +9414,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
         info->dirLeft = (bias == OP_SeekLE);
         rc = cur->find_last_dup(cur, key, keylen, keymax, info, bdberr);
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
+            if ((rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0)) != 0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
@@ -9623,8 +9623,8 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
         }
 
         if (*bdberr == BDBERR_DEADLOCK) {
-            if (rc = recover_deadlock(thedb->bdb_env, thd,
-                                      (freshcursor) ? pCur->bdbcur : NULL, 0)) {
+            if ((rc = recover_deadlock(thedb->bdb_env, thd,
+                                      (freshcursor) ? pCur->bdbcur : NULL, 0)) != 0){
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else
@@ -9824,7 +9824,7 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             if (sqlquery->bindvars[fld]->has_index) {
                 pos = sqlquery->bindvars[fld]->index;
             }
-            buf = sqlquery->bindvars[fld]->value.data;
+            buf = (char *)sqlquery->bindvars[fld]->value.data;
             if (buf == NULL) {
                 if (f->type == CLIENT_BLOB && c_fld.datalen == 0 &&
                     sqlquery->bindvars[fld]->has_isnull &&
@@ -9893,19 +9893,19 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         } else {
             switch (f->type) {
             case CLIENT_INT:
-                if ((rc = get_int_field(f, buf, (uint64_t *)&ival)) == 0)
+                if ((rc = get_int_field(f, (uint8_t *)buf, (int64_t *)&ival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
                 add_to_bind_array(arr, f->name, f->type, &ival, f->datalen,
                                   isnull);
                 break;
             case CLIENT_UINT:
-                if ((rc = get_uint_field(f, buf, (uint64_t *)&uival)) == 0)
+                if ((rc = get_uint_field(f, (uint8_t *)buf, (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
                 add_to_bind_array(arr, f->name, f->type, &uival, f->datalen,
                                   isnull);
                 break;
             case CLIENT_REAL:
-                if ((rc = get_real_field(f, buf, &dval)) == 0)
+                if ((rc = get_real_field(f, (uint8_t *)buf, &dval)) == 0)
                     rc = sqlite3_bind_double(stmt, pos, dval);
                 add_to_bind_array(arr, f->name, f->type, &dval, f->datalen,
                                   isnull);
@@ -9913,12 +9913,12 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             case CLIENT_CSTR:
             case CLIENT_PSTR:
             case CLIENT_PSTR2:
-                if ((rc = get_str_field(f, buf, &str, &datalen)) == 0)
+                if ((rc = get_str_field(f, (uint8_t *)buf, &str, &datalen)) == 0)
                     rc = sqlite3_bind_text(stmt, pos, str, datalen, NULL);
                 add_to_bind_array(arr, f->name, f->type, buf, datalen, isnull);
                 break;
             case CLIENT_BYTEARRAY:
-                if ((rc = get_byte_field(f, buf, &byteval, &datalen)) == 0)
+                if ((rc = get_byte_field(f, (uint8_t *)buf, &byteval, &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
                 add_to_bind_array(arr, f->name, f->type, byteval, datalen,
                                   isnull);
@@ -9958,7 +9958,7 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 }
                 break;
             case CLIENT_DATETIME:
-                if ((rc = get_datetime_field(f, buf, clnt->tzname, &dt,
+                if ((rc = get_datetime_field(f, (uint8_t *)buf, clnt->tzname, &dt,
                                              little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
 
@@ -9967,7 +9967,7 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 break;
 
             case CLIENT_DATETIMEUS:
-                if ((rc = get_datetimeus_field(f, buf, clnt->tzname, &dt,
+                if ((rc = get_datetimeus_field(f, (uint8_t *)buf, clnt->tzname, &dt,
                                                little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
 
@@ -9986,9 +9986,9 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if (do_intv_flip) {
                     char *nbuf = (buf + f->offset);
 #ifdef _LINUX_SOURCE
-                    client_intv_ym_get(&ci, nbuf, nbuf + sizeof(ci));
+                    client_intv_ym_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
 #else
-                    client_intv_ym_little_get(&ci, nbuf, nbuf + sizeof(ci));
+                    client_intv_ym_little_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
 #endif
                 }
                 rc = CLIENT_INTVYM_to_SERVER_INTVYM(
@@ -10027,10 +10027,10 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if (do_intv_flip) {
                     char *nbuf = (buf + f->offset);
 #ifdef _LINUX_SOURCE
-                    client_intv_ds_get(&ci, nbuf, nbuf + sizeof(ci));
+                    client_intv_ds_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
 #else
 
-                    client_intv_ds_little_get(&ci, nbuf, nbuf + sizeof(ci));
+                    client_intv_ds_little_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
 #endif
                 }
                 rc = CLIENT_INTVDS_to_SERVER_INTVDS(
@@ -10073,10 +10073,10 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if (do_intv_flip) {
                     char *nbuf = (buf + f->offset);
 #ifdef _LINUX_SOURCE
-                    client_intv_dsus_get(&ci, nbuf, nbuf + sizeof(ci));
+                    client_intv_dsus_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
 #else
 
-                    client_intv_dsus_little_get(&ci, nbuf, nbuf + sizeof(ci));
+                    client_intv_dsus_little_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
 #endif
                 }
                 rc = CLIENT_INTVDSUS_to_SERVER_INTVDSUS(
@@ -10875,7 +10875,7 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
         unsigned int mask = va_arg(ap, unsigned int);
 
         assert(mask == BTREE_SEEK_EQ || mask == BTREE_BULKLOAD ||
-               mask == BTREE_SEEK_EQ | BTREE_BULKLOAD || mask == 0);
+               mask == (BTREE_SEEK_EQ | BTREE_BULKLOAD) || mask == 0);
 
         sqlite3BtreeCursorHint_Flags(pCur, mask);
 
