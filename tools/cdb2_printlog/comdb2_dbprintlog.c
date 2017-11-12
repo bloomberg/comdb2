@@ -181,7 +181,7 @@ txn_retrieve(u_int32_t txnid)
 	trak_txn_t *txn;
 
 	/* Find this transaction. */
-	if (txn = hash_find(h, &txnid)) {
+	if ((txn = hash_find(h, &txnid)) != NULL) {
 		return txn;
 	}
 
@@ -219,7 +219,7 @@ comdb2_txn_regop_print(curlog_t * c)
 	trak_txn_t *txn;
 
 	/* Find this transaction. */
-	if (txn = hash_find(h, &c->txnid)) {
+	if ((txn = hash_find(h, &c->txnid)) != NULL) {
 		/* Free the memory. */
 		free(txn);
 

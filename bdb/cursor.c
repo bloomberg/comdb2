@@ -108,8 +108,8 @@ static void hexdump(loglvl lvl, char *key, int keylen)
         logmsg(LOGMSG_ERROR, "NULL(%d)\n", keylen);
         return;
     }
-    uint8_t *mem = alloca((2 * keylen) + 2);
-    uint8_t *output = util_tohex(mem, (uint8_t *)key, keylen);
+    char *mem = alloca((2 * keylen) + 2);
+    char *output = util_tohex(mem, key, keylen);
 
     logmsg(lvl, "%s\n", output);
 }
@@ -6178,14 +6178,14 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
     int rrn = 0;
     unsigned long long genid = 0;
     int fidlen = (DB_FILE_ID_LEN * 2) + 1;
-    unsigned char fileid[DB_FILE_ID_LEN] = {0};
+    char _fileid[DB_FILE_ID_LEN] = {0};
     char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
 
     if (cur->trak) {
         int bdberr = 0;
-        cur->rl->fileid(cur->rl, fileid, &bdberr);
+        cur->rl->fileid(cur->rl, _fileid, &bdberr);
         hex_fid[fidlen - 1] = '\0';
-        util_tohex((uint8_t *)hex_fid, fileid, DB_FILE_ID_LEN);
+        util_tohex(hex_fid, _fileid, DB_FILE_ID_LEN);
     }
 
     bdb_state_type *bdb_state;
@@ -6267,8 +6267,8 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
          */
 
         if (cur->trak) {
-            uint8_t *mem = alloca((2 * datalen_rl) + 2);
-            util_tohex(mem, (uint8_t *)data_rl, datalen_rl);
+            char *mem = alloca((2 * datalen_rl) + 2);
+            util_tohex(mem, data_rl, datalen_rl);
             lkprintf(LOGMSG_ERROR, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(real) len=%d dta=0x%s\n",
                      cur->shadow_tran, cur, hex_fid, cur->idx,
@@ -6310,8 +6310,8 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
          */
 
         if (cur->trak) {
-            uint8_t *mem = alloca((2 * datalen_sd) + 2);
-            util_tohex(mem, (uint8_t *)data_sd, datalen_sd);
+            char *mem = alloca((2 * datalen_sd) + 2);
+            util_tohex(mem, data_sd, datalen_sd);
             lkprintf(LOGMSG_USER, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(shadow) len=%d dta=0x%s\n",
                      cur->shadow_tran, cur, hex_fid, cur->idx,
@@ -6399,11 +6399,11 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
         }
 
         if (cur->trak) {
-            uint8_t *real_mem = alloca((2 * datalen_rl) + 2);
-            uint8_t *shadow_mem = alloca((2 * datalen_sd) + 2);
+            char *real_mem = alloca((2 * datalen_rl) + 2);
+            char *shadow_mem = alloca((2 * datalen_sd) + 2);
 
-            util_tohex(real_mem, (uint8_t *)data_rl, datalen_rl);
-            util_tohex(shadow_mem, (uint8_t *)data_sd, datalen_sd);
+            util_tohex(real_mem, data_rl, datalen_rl);
+            util_tohex(shadow_mem, data_sd, datalen_sd);
 
             lkprintf(LOGMSG_USER, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(both->real) len=%d dta=0x%s vs len=%d "
@@ -6448,11 +6448,11 @@ static int bdb_btree_merge(bdb_cursor_impl_t *cur, int stripe_rl, int page_rl,
     } else if (((rc > 0) && (how == DB_NEXT || how == DB_FIRST)) ||
                ((rc < 0) && (how == DB_PREV || how == DB_LAST))) {
         if (cur->trak) {
-            uint8_t *real_mem = alloca((2 * datalen_rl) + 2);
-            uint8_t *shadow_mem = alloca((2 * datalen_sd) + 2);
+            char *real_mem = alloca((2 * datalen_rl) + 2);
+            char *shadow_mem = alloca((2 * datalen_sd) + 2);
 
-            util_tohex(real_mem, (uint8_t *)data_rl, datalen_rl);
-            util_tohex(shadow_mem, (uint8_t *)data_sd, datalen_sd);
+            util_tohex(real_mem, data_rl, datalen_rl);
+            util_tohex(shadow_mem, data_sd, datalen_sd);
 
             lkprintf(LOGMSG_USER, "shadtrn %p cur %p fid %s merging stripe %d %s "
                              "(both->shadow) len=%d dta=0x%s vs len=%d "

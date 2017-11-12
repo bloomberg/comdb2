@@ -614,13 +614,13 @@ void hexdumpbuf(char *key, int keylen, char **buf)
 
 /* Return a hex string
  * output buffer should be appropriately sized */
-uint8_t *util_tohex(uint8_t *out, const uint8_t *in, size_t len)
+char *util_tohex(char *out, const char *in, size_t len)
 {
-    uint8_t *beginning = out;
+    char *beginning = out;
     char hex[] = "0123456789abcdef";
-    const uint8_t *end = in + len;
+    const char *end = in + len;
     while (in != end) {
-        uint8_t i = *(in++);
+        char i = *(in++);
         *(out++) = hex[(i & 0xf0) >> 4];
         *(out++) = hex[i & 0x0f];
     }

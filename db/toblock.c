@@ -2070,8 +2070,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                fprintf(stderr, "%d %s:%d Using iq %p priority %d\n",
-                        pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                fprintf(stderr, "%x %s:%d Using iq %p priority %d\n",
+                        (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
             irc = trans_start_set_retries(
                 iq, parent_trans ? *parent_trans : NULL, trans, iq->priority);
         } else {
@@ -2727,8 +2727,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                logmsg(LOGMSG_USER, "%lu %s:%d Using iq %p priority %d\n",
-                       pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                logmsg(LOGMSG_USER, "%x %s:%d Using iq %p priority %d\n",
+                       (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
 
             irc =
                 trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
@@ -2764,7 +2764,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     if (iq->debug) {
         /* TODO print trans twice? No parent_trans? */
-        reqprintf(iq, "%llx:START TRANSACTION ID %p DB %d '%s'", pthread_self(),
+        reqprintf(iq, "%x:START TRANSACTION ID %p DB %d '%s'", (int)pthread_self(),
                   trans, iq->usedb->dbnum, iq->usedb->tablename);
     }
 
@@ -2817,7 +2817,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             /* remove all prefixes tothe debug trace and put in the transaction
              * and operation name prefix. */
             reqpopprefixes(iq, -1);
-            reqpushprefixf(iq, "%llx:tran %p:%s ", pthread_self(), 
+            reqpushprefixf(iq, "%x:tran %p:%s ", (int)pthread_self(), 
                     trans, breq2a(hdr.opcode));
 
             reqprintflush(iq);
@@ -5016,8 +5016,8 @@ backout:
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                 if (verbose_deadlocks)
                     fprintf(stderr,
-                            "%d %s:%d Setting iq %p priority from %d to %d\n",
-                            pthread_self(), __FILE__, __LINE__, iq,
+                            "%x %s:%d Setting iq %p priority from %d to %d\n",
+                            (int)pthread_self(), __FILE__, __LINE__, iq,
                             iq->priority, priority);
 
                 if (((unsigned)priority) == UINT_MAX) {
@@ -5230,9 +5230,9 @@ backout:
        gonna execute fine */
     if (rc == ERR_NOMASTER && have_blkseq) {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%lu %s:%d Skipping add blkseq due to early "
+            logmsg(LOGMSG_USER, "%x %s:%d Skipping add blkseq due to early "
                                 "bplog termination\n",
-                   pthread_self(), __FILE__, __LINE__);
+                   (int)pthread_self(), __FILE__, __LINE__);
 
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
@@ -5479,13 +5479,13 @@ add_blkseq:
                 trans_abort(iq, parent_trans);
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
-                    logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n",
-                           pthread_self(), __FILE__, __LINE__);             
+                    logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
+                           (int)pthread_self(), __FILE__, __LINE__);             
                     outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                            replay_data, replay_len, __LINE__);
                     did_replay = 1;
-                    logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n",
-                           pthread_self(), __FILE__, __LINE__, outrc);
+                    logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
+                           (int)pthread_self(), __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
 
                     goto cleanup;
@@ -5583,13 +5583,13 @@ add_blkseq:
             /* if it's a logical transaction and the commit fails we abort
              * inside the commit call */
             if (rc == IX_DUP) {
-                logmsg(LOGMSG_WARN, "%lu %s:%d replay detected!\n",
-                       pthread_self(), __FILE__, __LINE__);
+                logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
+                       (int)pthread_self(), __FILE__, __LINE__);
                 outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
                 did_replay = 1;
-                logmsg(LOGMSG_DEBUG, "%lu %s:%d replay returned %d!\n",
-                       pthread_self(), __FILE__, __LINE__, outrc);
+                logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
+                       (int)pthread_self(), __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
 
                 goto cleanup;
