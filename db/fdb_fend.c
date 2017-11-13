@@ -710,9 +710,12 @@ retry_find_table:
      * well
      */
     if (!in_analysis_load) {
-        /* since we removed ourselves, it is possible that the fdb object will go away
-           in this case, we need to get an exclusive lock while syncronizing with the
-           destroy_fdb process; we need to use a copy of fdb->dbname instead of volative fdb object */
+        /* since we removed ourselves, it is possible that the fdb object will
+           go away
+           in this case, we need to get an exclusive lock while syncronizing
+           with the
+           destroy_fdb process; we need to use a copy of fdb->dbname instead of
+           volative fdb object */
         char *tmpname = strdup(fdb->dbname);
 
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
@@ -1327,72 +1330,65 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 
 static int __lock_wrlock_exclusive(char *dbname)
 {
-   fdb_t *fdb;
-   struct sql_thread *thd;
-   int rc = FDB_NOERR;
-   int idx = -1;
-   int len = strlen(dbname)+1;
+    fdb_t *fdb;
+    struct sql_thread *thd;
+    int rc = FDB_NOERR;
+    int idx = -1;
+    int len = strlen(dbname) + 1;
 
-   if( _test_trap_dlock1 == 2)
-   {
-      _test_trap_dlock1++;
-   }
+    if (_test_trap_dlock1 == 2) {
+        _test_trap_dlock1++;
+    }
 
-   do
-   {
-      pthread_rwlock_rdlock(&fdbs.arr_lock);
-      if (!(idx>=0 && idx<fdbs.nused && fdbs.arr[idx] == fdb &&
-               strncasecmp(dbname, fdbs.arr[idx]->dbname, len) == 0))
-      {
-         fdb = __cache_fnd_fdb(dbname, &idx);
-      }
+    do {
+        pthread_rwlock_rdlock(&fdbs.arr_lock);
+        if (!(idx >= 0 && idx < fdbs.nused && fdbs.arr[idx] == fdb &&
+              strncasecmp(dbname, fdbs.arr[idx]->dbname, len) == 0)) {
+            fdb = __cache_fnd_fdb(dbname, &idx);
+        }
 
-      if(!fdb)
-      {
-         pthread_rwlock_unlock(&fdbs.arr_lock);
-         rc = FDB_ERR_FDB_NOTFOUND;
-         goto done;
-      }
+        if (!fdb) {
+            pthread_rwlock_unlock(&fdbs.arr_lock);
+            rc = FDB_ERR_FDB_NOTFOUND;
+            goto done;
+        }
 
-      pthread_rwlock_wrlock(&fdb->h_rwlock);
+        pthread_rwlock_wrlock(&fdb->h_rwlock);
 
+        /* we got the lock, are there any lockless users ? */
+        if (fdb->users > 1) {
+            pthread_rwlock_unlock(&fdb->h_rwlock);
+            pthread_rwlock_unlock(&fdbs.arr_lock);
 
-      /* we got the lock, are there any lockless users ? */
-      if (fdb->users > 1)
-      {
-         pthread_rwlock_unlock(&fdb->h_rwlock);
-         pthread_rwlock_unlock(&fdbs.arr_lock);
+            /* if we loop, make sure this is not a live lock
+               deadlocking with another sqlite engine that waits
+               for a bdb write lock to be processed */
+            if (bdb_lock_desired(thedb->bdb_env)) {
+                thd = pthread_getspecific(query_info_key);
+                if (thd) {
+                    rc = recover_deadlock(
+                        thedb->bdb_env, thd, NULL,
+                        100 * thd->sqlclntstate->deadlock_recovered++);
+                    if (rc) {
+                        fprintf(stderr, "%s:%d recover_deadlock returned %d\n",
+                                __func__, __LINE__, rc);
+                        rc = FDB_ERR_GENERIC;
+                        goto done;
+                    }
+                }
+            }
 
-         /* if we loop, make sure this is not a live lock
-            deadlocking with another sqlite engine that waits
-            for a bdb write lock to be processed */
-         if(bdb_lock_desired(thedb->bdb_env)) {
-            thd = pthread_getspecific(query_info_key);
-            if(thd) {
-               rc = recover_deadlock(thedb->bdb_env, thd, NULL, 
-                     100* thd->sqlclntstate->deadlock_recovered++);
-               if(rc) {
-                  fprintf(stderr, "%s:%d recover_deadlock returned %d\n", 
-                        __func__, __LINE__, rc);
-                  rc = FDB_ERR_GENERIC;
-                  goto done;
-               }
-            } 
-         }
-
-         continue;
-      }
-      else
-      {
-         rc = FDB_NOERR;
-         break;   /* own fdb */
-      }
-   } while (1);  /* 1 is the creator */
+            continue;
+        } else {
+            rc = FDB_NOERR;
+            break; /* own fdb */
+        }
+    } while (1); /* 1 is the creator */
 
 done:
-   pthread_rwlock_unlock(&fdbs.arr_lock);
+    pthread_rwlock_unlock(&fdbs.arr_lock);
 
-   return rc;
+    return rc;
 }
 
 static fdb_tbl_ent_t *get_fdb_tbl_ent_by_rootpage_from_fdb(fdb_t *fdb,
