@@ -155,8 +155,9 @@ typedef enum {
     LLMETA_LUA_AFUNC = 41,
     LLMETA_VERSIONED_SP = 42,
     LLMETA_DEFAULT_VERSIONED_SP = 43,
-    LLMETA_TABLE_USER_SCHEMA    = 44,
-    LLMETA_USER_PASSWORD_HASH   = 45
+    LLMETA_TABLE_USER_SCHEMA = 44,
+    LLMETA_USER_PASSWORD_HASH = 45,
+    LLMETA_FVER_FILE_TYPE_QDB = 46 /* file version for a dbqueue */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -1602,6 +1603,7 @@ static int bdb_new_file_version(
     case LLMETA_FVER_FILE_TYPE_TBL:
     case LLMETA_FVER_FILE_TYPE_DTA:
     case LLMETA_FVER_FILE_TYPE_IX:
+    case LLMETA_FVER_FILE_TYPE_QDB:
         break;
 
     default:
@@ -2192,6 +2194,14 @@ int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                 version_num, bdberr);
 }
 
+int bdb_new_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long version_num, int *bdberr)
+{
+    return bdb_new_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
+                                bdberr);
+}
+
 /* update all of the db's file's version numbers, usually called when first
  * creating a table */
 int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
@@ -2354,6 +2364,7 @@ static int bdb_get_file_version(
     case LLMETA_FVER_FILE_TYPE_TBL:
     case LLMETA_FVER_FILE_TYPE_DTA:
     case LLMETA_FVER_FILE_TYPE_IX:
+    case LLMETA_FVER_FILE_TYPE_QDB:
         break;
 
     default:
@@ -2625,6 +2636,14 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 {
     return bdb_get_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_TBL, 0 /*file_num*/,
+                                version_num, bdberr);
+}
+
+int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                               unsigned long long *version_num, int *bdberr)
+{
+    return bdb_get_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_QDB, 0,
                                 version_num, bdberr);
 }
 
