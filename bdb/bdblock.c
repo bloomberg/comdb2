@@ -296,13 +296,7 @@ static const char *locktype2str(enum bdb_lock_type locktype)
 
 static int init_thd_priority(void)
 {
-    int rc = pthread_setschedprio(pthread_self(), 10);
-    if (0 != rc) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_setschedprio returns %d for thd %d\n",
-                __func__, rc, pthread_self());
-        return rc;
-    }
-    return 0;
+    return pthread_setschedprio(pthread_self(), 10);
 }
 
 static int lower_thd_priority(void)

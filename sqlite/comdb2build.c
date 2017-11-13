@@ -2814,7 +2814,7 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    if (isTemp || isView || isVirtual || pParse->db->init.busy || IN_DECLARE_VTAB) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -3289,7 +3289,8 @@ void comdb2CreateIndex(
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     int ifNotExist,     /* Omit error if index already exists */
     u8 idxType,         /* The index type */
-    int withOpts        /* WITH options (DATACOPY) */
+    int withOpts,        /* WITH options (DATACOPY) */
+    int temp
     )
 {
     Vdbe *v;
@@ -3302,7 +3303,7 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
-    if (pParse->db->init.busy || IN_DECLARE_VTAB) {
+    if (temp || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);
@@ -3774,7 +3775,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
     struct comdb2_ddl_context *ctx;
     int max_size;
 
-    assert(use_sqlite_impl(pParse) == 0);
+    assert(use_sqlite_impl(pParse));
 
     v = sqlite3GetVdbe(pParse);
 

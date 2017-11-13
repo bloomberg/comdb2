@@ -82,12 +82,7 @@ extern "C" {
  * isn't an integral type the same size as a pointer -- here's hoping.
  */
 typedef unsigned long long db_align_t;
-
-#ifdef BB64BIT
-typedef unsigned long long db_alignp_t;
-#else
-typedef unsigned int db_alignp_t;
-#endif
+typedef uintptr_t db_alignp_t;
 
 /* Align an integer to a specific boundary. */
 #undef	ALIGN

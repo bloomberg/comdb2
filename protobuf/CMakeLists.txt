@@ -1,3 +1,4 @@
+find_program(protoc-c NAMES protoc-c)
 list(APPEND proto bpfunc.proto  sqlquery.proto  sqlresponse.proto) 
 foreach(p ${proto})
   string(REPLACE ".proto" ".pb-c.h" h ${p})
@@ -7,7 +8,7 @@ foreach(p ${proto})
   add_custom_command(
     OUTPUT ${h} ${c}
     DEPENDS ${p}
-    COMMAND protoc-c -I${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/${p} --c_out=${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND ${protoc-c} -I${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/${p} --c_out=${CMAKE_CURRENT_BINARY_DIR}
   )
 endforeach()
 add_custom_target(protobuf DEPENDS ${dot_c} ${dot_h})

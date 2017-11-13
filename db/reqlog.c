@@ -1932,6 +1932,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
 out:
     reqlog_reset_logger(logger); //will reset which bzeros much of logger
+    assert(logger->have_id == 0);
+    assert(logger->have_fingerprint == 0);
+    assert(logger->error_code == 0);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if

@@ -6691,15 +6691,18 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
     case SERVER_BLOB: {
         int len;
-
         memcpy(&len, &in[1], 4);
         len = ntohl(len);
-        if (len == 0) { /* this blob is zerolen, we should'nt need to fetch*/
+        if (stype_is_null(in)) {
+            m->flags = MEM_Null;
+        } else if (len == 0) {
+            /* this blob is zerolen, we should'nt need to fetch*/
             m->z = NULL;
             m->flags = MEM_Blob;
             m->n = 0;
-        } else
+        } else {
             rc = fetch_blob_into_sqlite_mem(pCur, sc, fnum, m);
+        }
         break;
     }
     case SERVER_DECIMAL:
@@ -7045,6 +7048,9 @@ sqlite3BtreeCursor_temptable(Btree *pBt,      /* The btree */
                 __func__);
         return SQLITE_INTERNAL;
     }
+
+    int num_tables = 0;
+    sqlite3BtreeCreateTable(pBt, &num_tables, BTREE_INTKEY);
 
     struct temptable *src = &pBt->temp_tables[iTable];
     cur->tmptable->tbl = src->tbl;
@@ -8066,7 +8072,7 @@ int sqlite3BtreeInsert(
     }
 
     /* send opcode to reload stats at commit */
-    if (clnt->is_analyze && is_stat1(pCur->db->tablename))
+    if (clnt->is_analyze && pCur->db && is_stat1(pCur->db->tablename))
         rc = osql_updstat(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), 0);
 
     if (pCur->bt->is_temporary) {
@@ -10868,7 +10874,8 @@ void sqlite3BtreeCursorHint(BtCursor *pCur, int eHintType, ...)
     case BTREE_HINT_FLAGS: {
         unsigned int mask = va_arg(ap, unsigned int);
 
-        assert(mask == BTREE_SEEK_EQ || mask == BTREE_BULKLOAD || mask == 0);
+        assert(mask == BTREE_SEEK_EQ || mask == BTREE_BULKLOAD ||
+               mask == BTREE_SEEK_EQ | BTREE_BULKLOAD || mask == 0);
 
         sqlite3BtreeCursorHint_Flags(pCur, mask);
 

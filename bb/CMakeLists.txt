@@ -1,7 +1,7 @@
 set(module bb)
 set(MODULE BB)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_bb.h @ONLY)
-add_library(bb
+set(src
   averager.c
   bb_asprintf.c
   bb_daemon.c
@@ -35,7 +35,6 @@ add_library(bb
   sbuf2.c
   segstring.c
   sltpck.c
-  ssl_support.c
   str0.c
   strbuf.c
   switches.c
@@ -48,6 +47,10 @@ add_library(bb
   walkback.c
   xstring.c
 )
+if(WITH_SSL)
+  list(APPEND src ssl_support.c)
+endif()
+add_library(bb ${src})
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}

@@ -188,9 +188,17 @@ int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len);
 int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len);
 #define sbuf2unbufferedwrite SBUF2_FUNC(sbuf2unbufferedwrite)
 
+/* Given an fd, work out which machine the connection is from.
+   Cache hostname info only in server mode. */
+char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *);
+#define get_origin_mach_by_buf SBUF2_FUNC(get_origin_mach_by_buf)
+
 #ifndef WITH_SSL
 #  define WITH_SSL 1
+#endif
+
 /* SSL routines. */
+#if WITH_SSL
 #  include <ssl_support.h>
 #  include <ssl_io.h>
 #endif

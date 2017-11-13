@@ -1860,10 +1860,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             if (!thedb->handle_sibling)
                 return -1;
             osql_net_cmd(line, lline, st, 1);
-        } else if (tokcmp(tok, ltok, "signalnet") == 0) {
-            if (!thedb->handle_sibling_signal)
-                return -1;
-            net_cmd(thedb->handle_sibling_signal, line, lline, st, 1);
         } else if (tokcmp(tok, ltok, "prefault") == 0) {
             prefault_stats(dbenv);
         } else if (tokcmp(tok, ltok, "stax") == 0) {
@@ -2100,8 +2096,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             fdb_stat_alias();
         } else if (tokcmp(tok, ltok, "uprecs") == 0) {
             upgrade_records_stats();
+#if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
+#endif
         } else {
             logmsg(LOGMSG_ERROR, "bad stat command\n");
             print_help_page(HELP_STAT);
@@ -2271,7 +2269,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 
         host = intern(realhost);
         net_send_decom_all(thedb->handle_sibling, host);
-        net_send_decom_all(thedb->handle_sibling_signal, host);
         osql_process_message_decom(host);
     } else if (tokcmp(tok, ltok, "electtime") == 0) {
         int num;
@@ -4436,18 +4433,12 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0 || tokcmp(tok, ltok, "replication") == 0) {
                 print_all_udp_stat(dbenv->handle_sibling);
-            } else if (tokcmp(tok, ltok, "signal") == 0) {
-                print_all_udp_stat(dbenv->handle_sibling_signal);
             } else if (tokcmp(tok, ltok, "offloadsql") == 0) {
                 print_all_udp_stat(osql_get_netinfo());
             } else if (tokcmp(tok, ltok, "all") == 0) {
                 netinfo_type *netinfo;
                 logmsg(LOGMSG_USER, "Replication:\n");
                 netinfo = dbenv->handle_sibling;
-                print_all_udp_stat(netinfo);
-
-                logmsg(LOGMSG_USER, "Signal:\n");
-                netinfo = dbenv->handle_sibling_signal;
                 print_all_udp_stat(netinfo);
 
                 logmsg(LOGMSG_USER, "Offloadsql:\n");
@@ -4460,7 +4451,6 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             }
         } else if (tokcmp(tok, ltok, "reset") == 0) {
             udp_reset(dbenv->handle_sibling);
-            udp_reset(dbenv->handle_sibling_signal);
             udp_reset(osql_get_netinfo());
         } else if (tokcmp(tok, ltok, "ping") == 0) {
             tok = segtok(line, lline, &st, &ltok);

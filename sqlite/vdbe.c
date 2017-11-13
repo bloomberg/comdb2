@@ -66,6 +66,11 @@ void getRowid(BtCursor *pCursor, i64 rowid, u8 p3, Mem *pOut)
       return;
   }
 
+  if( pCursor==NULL ){
+      MemSetTypeFlag(pOut, MEM_Null);
+      return;
+  }
+
   if( p3 == 1 ){
     sqlite3BtreeRecordIDString(pCursor, rowid, &pOut->z, 0);
     pOut->n = strlen(pOut->z);

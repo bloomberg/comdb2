@@ -1,4 +1,4 @@
-add_executable(comdb2
+set(src
   appsock_handler.c
   autoanalyze.c
   block_internal.c
@@ -73,7 +73,6 @@ add_executable(comdb2
   sqloffload.c
   sqlstat1.c
   sqlsupport.c
-  ssl_bend.c
   tag.c
   testcompr.c
   thrman.c
@@ -97,6 +96,10 @@ add_executable(comdb2
   ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_verify/cdb2_verify.c
 )
+if(WITH_SSL)
+  list(APPEND src ssl_bend.c)
+endif()
+add_executable(comdb2 ${src})
 set(module uncategorized)
 set(MODULE UNCATEGORIZED)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_uncategorized.h @ONLY)
@@ -157,9 +160,9 @@ target_link_libraries(comdb2
   cson
   db
   dfpal
-  dlmalloc
   lua
   mem
+  dlmalloc
   net
   sockpool
   sqlite
@@ -172,7 +175,6 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
-  Threads::Threads
 )
 configure_file(copycomdb2 copycomdb2 @ONLY)
 add_custom_command(

@@ -18,10 +18,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/sockpool
 )
 add_definitions(-DBUILDING_TOOLS)
-target_link_libraries(cdb2sockpool
-  sockpool
-  Threads::Threads
-)
+target_link_libraries(cdb2sockpool sockpool)
 configure_file(cdb2sockpool.service cdb2sockpool.service @ONLY)
 install(TARGETS cdb2sockpool RUNTIME DESTINATION bin)
 install(FILES
