@@ -1935,6 +1935,7 @@ out:
     assert(logger->have_id == 0);
     assert(logger->have_fingerprint == 0);
     assert(logger->error_code == 0);
+    assert(logger->path == 0);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if
