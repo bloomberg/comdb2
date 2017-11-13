@@ -67,8 +67,8 @@ struct dbq_entry_t {
 
 static pool_t *pq_reqs;  /* queue entry pool */
 
-pool_t *p_bufs;          /* buffer pool for socket requests */
-pool_t *p_slocks;        /* pool of socket locks*/
+pool_t *p_bufs;   /* buffer pool for socket requests */
+pool_t *p_slocks; /* pool of socket locks*/
 
 static LISTC_T(struct dbq_entry_t) q_reqs;  /* all queued requests */
 static LISTC_T(struct dbq_entry_t) rq_reqs; /* queue of read requests */
