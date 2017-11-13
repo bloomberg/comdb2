@@ -608,6 +608,7 @@
 (name='planner_effort', description='Planner effort (try harder) levels. (Default: 1)', type='INTEGER', value='1', read_only='N')
 (name='planner_show_scanstats', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='planner_warn_on_discrepancy', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='plugindir', description='Default directory to look for shared object files.', type='STRING', value=NULL, read_only='Y')
 (name='poll_on_lock_desired', description='poll_on_lock_desired', type='BOOLEAN', value='ON', read_only='N')
 (name='portmux_bind_path', description='', type='STRING', value='/tmp/portmux.socket', read_only='Y')
 (name='portmux_port', description='', type='INTEGER', value='5105', read_only='Y')
