@@ -27,81 +27,79 @@ static int sqlmaster_nentries;
 static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
                                       int tblnum, int ixnum, int *sz);
 
-int destroy_sqlite_master(master_entry_t *arr, int arr_len)
+inline int destroy_sqlite_master(master_entry_t *arr, int arr_len)
 {
-    master_entry_t *ent;
-    int i;
-
     if (!arr)
         return 0;
 
-    for (i = 0; i < arr_len; i++) {
-        ent = arr + i;
+    for (int i = 0; i < arr_len; i++) {
+        master_entry_t *ent = &arr[i];
         if (ent->isstrdup)
             free(ent->tblname);
         free(ent->entry);
     }
-
     free(arr);
-
     return 0;
+}
+
+/* accessor called from comdb2.c clean_exit() */
+void cleanup_sqlite_master()
+{
+    destroy_sqlite_master(sqlmaster, sqlmaster_nentries);
+    sqlmaster = NULL;
+    sqlmaster_nentries = 0;
 }
 
 /**
  * Create sqlite_master row and populate the associated hash
  *
  */
-int create_sqlite_master(void)
+int create_sqlite_master()
 {
-    master_entry_t *new_arr;
-    master_entry_t *old_arr;
-    master_entry_t *ent;
-    struct dbtable *db;
-    int tblnum, ixnum;
-    int local_nentries;
+    int tblnum; 
     int tbl_idx;
     int i;
+    int local_nentries = 0;
 
-    local_nentries = 0;
+    /* for each table, account for table and all its indices */
     for (tblnum = 0; tblnum < thedb->num_dbs; tblnum++)
         local_nentries += 1 + thedb->dbs[tblnum]->nsqlix;
 
-    old_arr = sqlmaster;
-    new_arr = calloc(local_nentries, sizeof(master_entry_t));
+    master_entry_t *new_arr = calloc(local_nentries, sizeof(master_entry_t));
     if (!new_arr) {
         fprintf(stderr, "MALLOC OOM\n");
         return -1;
     }
 
     for (i = 0, tblnum = 0; tblnum < thedb->num_dbs; tblnum++) {
-        ent = &new_arr[i];
-        db = thedb->dbs[tblnum];
-        ent->tblname = strdup(db->tablename);
+        master_entry_t *ent = &new_arr[i];
+        struct dbtable *tbl = thedb->dbs[tblnum];
+        ent->tblname = strdup(tbl->tablename);
         ent->isstrdup = 1;
         ent->ixnum = -1;
-        ent->entry = create_sqlite_master_row(i + RTPAGE_START, db->csc2_schema,
+        ent->entry = create_sqlite_master_row(i + RTPAGE_START, tbl->csc2_schema,
                                               tblnum, -1, &ent->entry_size);
         tbl_idx = i;
         i++;
 
-        for (ixnum = 0; ixnum < db->nix; ixnum++) {
+        for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
             ent = &new_arr[i];
             /* skip indexes that we aren't advertising to sqlite */
-            if (db->ixsql[ixnum] != NULL) {
-                ent->isstrdup = 0;
-                free(ent->tblname);
-                ent->tblname = new_arr[tbl_idx].tblname;
-                ent->ixnum = ixnum; /* comdb2 index number */
-                ent->entry = create_sqlite_master_row(
-                    i + RTPAGE_START, NULL, tblnum, ixnum, &ent->entry_size);
-                i++;
-            }
+            if (tbl->ixsql[ixnum] == NULL)
+                continue;
+            ent->isstrdup = 0;
+            assert(ent->tblname == NULL);
+            ent->tblname = new_arr[tbl_idx].tblname;
+            ent->ixnum = ixnum; /* comdb2 index number */
+            ent->entry = create_sqlite_master_row(
+                i + RTPAGE_START, NULL, tblnum, ixnum, &ent->entry_size);
+            i++;
         }
     }
 
     assert(i == local_nentries);
 
-    destroy_sqlite_master(old_arr, sqlmaster_nentries);
+    destroy_sqlite_master(sqlmaster, sqlmaster_nentries);
 
     sqlmaster = new_arr;
     sqlmaster_nentries = local_nentries;
@@ -175,7 +173,7 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
     /* text type, text name, text tbl_name, integer rootpage, text sql, text
      * csc2 */
     Mem mems[6] = {0};
-    struct dbtable *db;
+    struct dbtable *tbl;
     char *etype;
     char name[128];
     char *dbname;
@@ -185,12 +183,12 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
 
     assert(tblnum < thedb->num_dbs);
 
-    db = thedb->dbs[tblnum];
-    dbname = db->tablename;
+    tbl = thedb->dbs[tblnum];
+    dbname = tbl->tablename;
 
     if (ixnum == -1) {
         strcpy(name, dbname);
-        sql = db->sql;
+        sql = tbl->sql;
         etype = "table";
     } else {
         snprintf(name, sizeof(name), ".ONDISK_ix_%d", ixnum);
@@ -198,10 +196,10 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
         if (schema->sqlitetag) {
             strcpy(name, schema->sqlitetag);
         } else {
-            sql_index_name_trans(name, sizeof name, schema, db, ixnum, NULL);
+            sql_index_name_trans(name, sizeof name, schema, tbl, ixnum, NULL);
         }
 
-        sql = db->ixsql[ixnum];
+        sql = tbl->ixsql[ixnum];
         etype = "index";
     }
     ctrace("rootpage %d sql %s\n", rootpage, sql);
@@ -224,7 +222,7 @@ static void *create_sqlite_master_row(int rootpage, char *csc2_schema,
 
 struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
 {
-    struct dbtable *db;
+    struct dbtable *tbl;
     char *tblname;
 
     assert(thd->rootpages);
@@ -235,14 +233,14 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum)
         return NULL;
     }
 
-    db = get_dbtable_by_name(tblname);
-    if (!db)
+    tbl = get_dbtable_by_name(tblname);
+    if (!tbl)
         return NULL;
 
     if (ixnum)
         *ixnum = thd->rootpages[iTable - RTPAGE_START].ixnum;
 
-    return db;
+    return tbl;
 }
 
 int get_sqlite_entry_size(struct sql_thread *thd, int n)

@@ -1786,8 +1786,7 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
     return 0;
 }
 
-/* create and write SQL statements. uses ondisk schema. writes the sql
- * statements to stdout as per Alex's request. */
+/* create and write SQL statements. uses ondisk schema */
 int create_sqlmaster_records(void *tran)
 {
     int table;
