@@ -288,6 +288,7 @@
 (name='MAXKEYLEN', description='Maximum key length', value=512)
 (name='MAXNETS', description='Maximum number of networks', value=3)
 (name='MAXNODES', description='Maximum number of nodes', value=32768)
+(name='MAXPLUGINS', description='Maximum number of plugins', value=100)
 (name='MAXSIBLINGS', description='Maximum number of sibling nodes', value=64)
 (name='MAXTABLELEN', description='Maximum table name length', value=32)
 (name='MAXTAGLEN', description='Maximum tag name length', value=64)
