@@ -25,6 +25,7 @@ enum comdb2_plugin_type {
 };
 
 enum comdb2_plugin_flag {
+    /* Flag to indicate whether the plugin is static. */
     COMDB2_PLUGIN_STATIC = 1,
 };
 
@@ -34,7 +35,7 @@ struct comdb2_plugin {
     int type;                /* Plugin type */
     int version;             /* Plugin version */
     int iface_version;       /* Plugin interface version */
-    int flags;               /* Plugin flags (unused) */
+    int flags;               /* Plugin flags */
     int (*init_cb)(void *);  /* Initialization function */
     int (*destroy_cb)(void); /* Destroy function */
     void *data;              /* Plugin-specific data */

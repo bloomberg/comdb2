@@ -20,6 +20,8 @@
 enum {
     /* Cache the connection */
     APPSOCK_FLAG_CACHE_CONN = 1 << 1,
+    /* Whether it's an SQL handler? */
+    APPSOCK_FLAG_IS_SQL = 1 << 2,
 };
 
 struct comdb2_appsock_arg {
@@ -37,7 +39,7 @@ struct comdb2_appsock {
     /* Usage message */
     const char *usage;
     /* Execution count, incremented atomically */
-    unsigned long long exec_count;
+    unsigned int exec_count;
     /* appsock-specific flags */
     int flags;
     /* The handler function */
