@@ -6344,6 +6344,51 @@ static inline int tdef_to_tranlevel(int tdef)
     }
 }
 
+void cleanup_clnt(struct sqlclntstate *clnt)
+{
+    if (clnt->saved_errstr) {
+        free(clnt->saved_errstr);
+        clnt->saved_errstr = NULL;
+    }    
+
+    if (clnt->context) {
+        for (int i = 0; i < clnt->ncontext; i++) {
+            free(clnt->context[i]);
+        }
+        free(clnt->context);
+        clnt->context = NULL;
+    }
+
+
+    if (clnt->selectv_arr) {
+        currangearr_free(clnt->selectv_arr);
+        clnt->selectv_arr = NULL;
+    }
+
+    if (clnt->arr) {
+        currangearr_free(clnt->arr);
+        clnt->arr = NULL;
+    }
+
+    if (clnt->spversion.version_str) {
+        free(clnt->spversion.version_str);
+        clnt->spversion.version_str = NULL;
+    }
+
+    if (clnt->numallocblobs) {
+            free(clnt->alloc_blobs);
+            clnt->alloc_blobs = NULL;
+            free(clnt->alloc_bloblens);
+            clnt->alloc_bloblens = NULL;
+        }
+
+    if (clnt->query_stats) {
+        free(clnt->query_stats);
+        clnt->query_stats = NULL;
+    }
+}
+
+
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 {
     int wrtimeoutsec = 0;
@@ -8184,14 +8229,7 @@ done:
     /* XXX free logical tran?  */
     close_appsock(sb);
 
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    set_high_availability(&clnt, 0);
-    if (clnt.query_stats)
-        free(clnt.query_stats);
-
-    for (int i = 0, len = clnt.ncontext; i != len; ++i)
-        free(clnt.context[i]);
-    free(clnt.context);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -8281,9 +8319,7 @@ int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
 
     /* XXX free logical tran?  */
 
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -9541,11 +9577,7 @@ void run_internal_sql(char *sql)
         clnt.dbglog = NULL;
     }
 
-    /* XXX free logical tran?  */
-
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -9597,8 +9629,7 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     }
 
     clnt->dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt->query_stats)
-        free(clnt->query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt->wait_mutex);
     pthread_cond_destroy(&clnt->wait_cond);

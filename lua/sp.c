@@ -2749,7 +2749,7 @@ static void *dispatch_lua_thread(void *lt)
 
     dispatch_sql_query(&clnt); // --> exec_thread()
 
-    if (clnt.query_stats) free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -6794,7 +6794,7 @@ void *exec_trigger(trigger_reg_t *reg)
         luabb_trigger_unregister(q);
     }
     close_sp(&clnt);
-    reset_clnt(&clnt, NULL, 0);
+    cleanup_clnt(&clnt);
     sqlengine_thd_end(NULL, &thd);
     return NULL;
 }
