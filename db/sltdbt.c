@@ -289,18 +289,18 @@ int handle_ireq(struct ireq *iq)
     if (gbl_print_deadlock_cycles)
         osql_snap_info = &iq->snap_info;
 
-    if (gbl_rowlocks || gbl_disable_tagged_api) {
+    comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
+    if (!opcode) {
+        logmsg(LOGMSG_ERROR, "bad request %d from %s\n", iq->opcode,
+               getorigin(iq));
+        /* Starting write, no more reads */
+        iq->p_buf_in_end = iq->p_buf_in = NULL;
         rc = ERR_BADREQ;
-        iq->where = "opcode execution skipped";
     } else {
-        comdb2_opcode_t *opcode =
-            hash_find_readonly(gbl_opcode_hash, &iq->opcode);
-        if (!opcode) {
-            logmsg(LOGMSG_ERROR, "bad request %d from %s\n", iq->opcode,
-                   getorigin(iq));
-            /* Starting write, no more reads */
-            iq->p_buf_in_end = iq->p_buf_in = NULL;
+        if (gbl_rowlocks && (opcode->opcode != OP_BLOCK) &&
+            (opcode->opcode != OP_FWD_BLOCK)) {
             rc = ERR_BADREQ;
+            iq->where = "opcode execution skipped";
         } else {
             rc = opcode->opcode_handler(iq);
 
