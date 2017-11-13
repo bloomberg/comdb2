@@ -285,27 +285,46 @@ void appsock_quick_stat(void)
 
 void appsock_stat(void)
 {
-    int ii;
+    comdb2_appsock_t *rec;
+    unsigned int exec_count;
+    unsigned int bkt;
+    void *ent;
+
     appsock_quick_stat();
     logmsg(LOGMSG_USER, "bad appsock commands    %llu\n", num_bad_toks);
     logmsg(LOGMSG_USER, "rejected appsock conns  %llu\n",
            total_appsock_rejections);
-#if 0
-    /* TODO: fix me */
-    for (ii = 0; ii < num_commands; ii++) {
-        if (commands[ii].num_uses) {
-            logmsg(LOGMSG_USER, "  num %-16s  %llu\n", commands[ii].cmd,
-                   commands[ii].num_uses);
+
+    for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
+         rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
+        exec_count = ATOMIC_LOAD(rec->exec_count);
+        if (exec_count > 0) {
+            logmsg(LOGMSG_USER, "  num %-16s  %u\n", rec->name, exec_count);
         }
     }
-#endif
 }
 
 void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql)
 {
+    comdb2_appsock_t *rec;
+    unsigned int exec_count;
+    unsigned int bkt;
+    void *ent;
+
     *n_appsock = total_appsock_conns;
-    /* TODO: fix me */
-    //*n_sql = cmd_fastsql->num_uses;
+    exec_count = 0;
+
+    /*
+      Iterate through the list of registered appsock handlers
+      and find the number of executions of SQL appsock handlers.
+    */
+    for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
+         rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
+        if (rec->flags & APPSOCK_FLAG_IS_SQL) {
+            exec_count += ATOMIC_LOAD(rec->exec_count);
+        }
+    }
+    *n_sql = exec_count;
 }
 
 static void dumprrns(struct dbtable *tbl, SBUF2 *sb)

@@ -955,11 +955,11 @@ done:
 }
 
 comdb2_appsock_t newsql_plugin = {
-    "newsql",                /* Name */
-    "",                      /* Usage info */
-    0,                       /* Execution count */
-    APPSOCK_FLAG_CACHE_CONN, /* Flags */
-    handle_newsql_request    /* Handler function */
+    "newsql",                                      /* Name */
+    "",                                            /* Usage info */
+    0,                                             /* Execution count */
+    APPSOCK_FLAG_CACHE_CONN | APPSOCK_FLAG_IS_SQL, /* Flags */
+    handle_newsql_request                          /* Handler function */
 };
 
 #include "plugin.h"
