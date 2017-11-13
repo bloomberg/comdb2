@@ -189,7 +189,7 @@ struct fdb_cursor {
 
 static fdb_cache_t fdbs;
 
-static fdb_t *__cache_fnd_fdb(const char *dbname);
+static fdb_t *__cache_fnd_fdb(const char *dbname, int *idx);
 static int __cache_link_fdb(fdb_t *fdb);
 static void __cache_unlink_fdb(fdb_t *fdb);
 
@@ -294,14 +294,19 @@ int fdb_cache_init(int n)
  * internal, locate an fdb object based on name
  *
  */
-static fdb_t *__cache_fnd_fdb(const char *dbname)
+static fdb_t *__cache_fnd_fdb(const char *dbname, int *idx)
 {
     int len = strlen(dbname);
     int i = 0;
 
+    if (idx)
+        *idx = -1;
+
     for (i = 0; i < fdbs.nused; i++) {
         if (len == fdbs.arr[i]->dbname_len &&
             strncasecmp(dbname, fdbs.arr[i]->dbname, len) == 0) {
+            if (idx)
+                *idx = i;
             return fdbs.arr[i];
         }
     }
@@ -425,7 +430,7 @@ fdb_t *get_fdb(const char *dbname)
     fdb_t *fdb = NULL;
 
     pthread_rwlock_rdlock(&fdbs.arr_lock);
-    fdb = __cache_fnd_fdb(dbname);
+    fdb = __cache_fnd_fdb(dbname, NULL);
 #if 0
    NOTE: we will rely on table locks instead of this! 
    if(fdb)
@@ -450,7 +455,7 @@ fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class)
     fdb_t *fdb;
 
     pthread_rwlock_wrlock(&fdbs.arr_lock);
-    fdb = __cache_fnd_fdb(dbname);
+    fdb = __cache_fnd_fdb(dbname, NULL);
     if (fdb) {
         assert(class == fdb->class);
         __fdb_add_user(fdb);
@@ -724,6 +729,10 @@ retry_find_table:
         rc = __lock_wrlock_exclusive(tmpname);
         free(tmpname);
         if (rc) {
+            if (rc == FDB_ERR_FDB_NOTFOUND) {
+                /* the db got deleted from under us, start fresh */
+                return rc;
+            }
             logmsg(LOGMSG_ERROR, "%s: fail to lock rc=%d!\n", __func__, rc);
             return rc;
         }
@@ -1176,7 +1185,7 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
                                                : FDB_ERR_CLASS_DENIED,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
-
+retry_fdb_creation:
     fdb = new_fdb(dbname, &created, lvl);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
@@ -1230,6 +1239,10 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
        the lock and returning */
     rc = _add_table_and_stats_fdb(fdb, table, version, in_analysis_load);
     if (rc != FDB_NOERR) {
+        if (rc == FDB_ERR_FDB_NOTFOUND) {
+            /* fdb deleted from under us by creator thread */
+            goto retry_fdb_creation;
+        }
 
         logmsg(LOGMSG_ERROR, "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
                 __func__, dbname, table, rc);
