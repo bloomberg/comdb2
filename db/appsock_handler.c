@@ -697,7 +697,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     struct log_delete_state log_delete_state;
     char recovery_command[200] = {0};
     char recovery_lsn[100] = {0};
-    char *line;
+    char line[128] = {0};
     int before_count;
     int after_count;
     int before_master;
@@ -709,7 +709,6 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
 
     thr_self = arg->thr_self;
     sb = arg->sb;
-    line = arg->cmdline;
 
     /*
       There is no difference between log delete one and two, just that
@@ -734,7 +733,7 @@ static int handle_logdelete_request(comdb2_appsock_arg_t *arg)
     sbuf2printf(sb, "log file deletion disabled\n");
     sbuf2flush(sb);
 
-    if (strncmp(logdelete3_handler.name, line,
+    if (strncmp(logdelete3_handler.name, arg->cmdline,
                 strlen(logdelete3_handler.name)) == 0) {
         rc = bdb_recovery_start_lsn(thedb->bdb_env, recovery_lsn,
                                     sizeof(recovery_lsn));
