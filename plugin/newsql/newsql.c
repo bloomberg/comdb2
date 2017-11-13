@@ -227,6 +227,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                 } else {
                     clnt->want_stored_procedure_trace = 1;
                 }
+            } else if (strncasecmp(sqlstr, "cursordebug", 11) == 0) {
+                sqlstr += 11;
+                sqlstr = cdb2_skipws(sqlstr);
+                bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
             } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
                 sqlstr += 7;
                 sqlstr = cdb2_skipws(sqlstr);
@@ -268,6 +272,15 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                     clnt->verifyretry_off = 0;
                 } else {
                     clnt->verifyretry_off = 1;
+                }
+            } else if (strncasecmp(sqlstr, "queryeffects", 12) == 0) {
+                sqlstr += 12;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "statement", 9) == 0) {
+                    clnt->statement_query_effects = 1;
+                }
+                if (strncasecmp(sqlstr, "transaction", 11) == 0) {
+                    clnt->statement_query_effects = 0;
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
                 sqlstr += 6;
@@ -320,6 +333,14 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt)
                 printf("setting clnt->planner_effort to %d\n",
                        clnt->planner_effort);
 #endif
+            } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
+                sqlstr += 15;
+                sqlstr = cdb2_skipws(sqlstr);
+                if (strncasecmp(sqlstr, "on", 2) == 0) {
+                    clnt->ignore_coherency = 1;
+                } else {
+                    clnt->ignore_coherency = 0;
+                }
             } else {
                 rc = ii + 1;
             }
@@ -722,7 +743,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
 
-    if (!bdb_am_i_coherent(dbenv->bdb_env)) {
+    extern int gbl_allow_incoherent_sql;
+    if (!gbl_allow_incoherent_sql && !bdb_am_i_coherent(thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
@@ -844,7 +866,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (!bdb_am_i_coherent(dbenv->bdb_env) &&
+        if (clnt.ignore_coherency == 0 && !bdb_am_i_coherent(thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "
