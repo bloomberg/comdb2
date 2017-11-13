@@ -498,6 +498,11 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
                                  int item_size, int pagesize,
                                  bdb_state_type *parent_bdb_state,
                                  int isqueuedb, int *bdberr);
+bdb_state_type *bdb_create_queue_tran(tran_type *, const char name[],
+                                      const char dir[], int item_size,
+                                      int pagesize,
+                                      bdb_state_type *parent_bdb_state,
+                                      int isqueuedb, int *bdberr);
 
 /* create a lite table */
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
@@ -1378,6 +1383,8 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
                              int *bdberr);
 int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long version_num, int *bdberr);
+int bdb_new_file_version_qdb(bdb_state_type *, tran_type *,
+                             unsigned long long version, int *bdberr);
 
 int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long *version_num,
@@ -1387,6 +1394,8 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr);
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr);
+int bdb_get_file_version_qdb(bdb_state_type *, tran_type *,
+                             unsigned long long *version, int *bdberr);
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);

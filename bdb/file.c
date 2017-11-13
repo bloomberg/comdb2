@@ -115,7 +115,6 @@ static const char NEW_PREFIX[] = "new.";
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;
 
 int rep_caught_up(bdb_state_type *bdb_state);
-static int bdb_del_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr);
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr);
 static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
@@ -621,6 +620,26 @@ static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
 {
     return form_file_name(bdb_state, tid, 0 /*is_data_file*/, ixnum,
                           0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen);
+}
+
+static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
+                             int create, char *name, size_t len)
+{
+    unsigned long long ver;
+    int rc, bdberr;
+    if (create) {
+        ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
+        rc = bdb_new_file_version_qdb(bdb_state, tran, ver, &bdberr);
+        if (rc || bdberr != BDBERR_NOERROR) {
+            return -1;
+        }
+    }
+    if (bdb_get_file_version_qdb(bdb_state, tran, &ver, &bdberr) == 0) {
+        snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name, ver);
+    } else {
+        snprintf0(name, len, "XXX.%s.queuedb", bdb_state->name);
+    }
+    return 0;
 }
 
 int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
@@ -3960,26 +3979,35 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
             }
         }
     }
-
     if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_QUEUEDB ||
         bdbtype == BDBTYPE_LITE) {
-        const char *ext;
-        DB *dbp;
-        if (bdbtype == BDBTYPE_QUEUE)
-            ext = "queue";
-        else if (bdbtype == BDBTYPE_QUEUEDB)
-            ext = "queuedb";
-        else
-            ext = "dta";
-        snprintf(tmpname, sizeof(tmpname), "XXX.%s.%s",
-                           bdb_state->name, ext);
+        int rc = 0;
+        switch (bdbtype) {
+        case BDBTYPE_QUEUEDB:
+            rc = form_queuedb_name(bdb_state, &tran, create, tmpname,
+                                   sizeof(tmpname));
+            break;
+        case BDBTYPE_QUEUE:
+            snprintf(tmpname, sizeof(tmpname), "XXX.%s.queue", bdb_state->name);
+            break;
+        case BDBTYPE_LITE:
+            snprintf(tmpname, sizeof(tmpname), "XXX.%s.dta", bdb_state->name);
+            break;
+        }
+        if (rc) {
+            if (tid) {
+                tid->abort(tid);
+            }
+            return rc;
+        }
+
         if (create) {
             char new[100];
-
             print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
             unlink(bdb_trans(tmpname, new));
         }
 
+        DB *dbp;
         rc = db_create(&dbp, bdb_state->dbenv, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "db_create: %s\n", db_strerror(rc));
@@ -5977,11 +6005,13 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
     return ret;
 }
 
-bdb_state_type *bdb_create_queue(const char name[], const char dir[],
-                                 int item_size, int pagesize,
-                                 bdb_state_type *parent_bdb_state,
-                                 int isqueuedb, int *bdberr)
+bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
+                                      const char dir[], int item_size,
+                                      int pagesize,
+                                      bdb_state_type *parent_bdb_state,
+                                      int isqueuedb, int *bdberr)
 {
+    DB_TXN *tid = tran ? tran->tid : NULL;
     bdb_state_type *bdb_state, *ret = NULL;
 
     *bdberr = BDBERR_NOERROR;
@@ -6007,11 +6037,20 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
         0,                    /* upgrade */
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
-        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, NULL, 0, NULL);
+        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL);
 
     BDB_RELLOCK();
 
     return ret;
+}
+
+bdb_state_type *bdb_create_queue(const char name[], const char dir[],
+                                 int item_size, int pagesize,
+                                 bdb_state_type *parent_bdb_state,
+                                 int isqueuedb, int *bdberr)
+{
+    return bdb_create_queue_tran(NULL, name, dir, item_size, pagesize,
+                                 parent_bdb_state, isqueuedb, bdberr);
 }
 
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
@@ -6211,11 +6250,12 @@ static int bdb_del_ix_int(bdb_state_type *bdb_state, DB_TXN *tid, int ixnum,
     return 0;
 }
 
-static int bdb_del_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
     int rc = 0;
     int i;
     int dtanum;
+    DB_TXN *tid = tran->tid;
 
     *bdberr = BDBERR_NOERROR;
 
@@ -6233,8 +6273,8 @@ static int bdb_del_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
             if (0 != bdb_del_ix_int(bdb_state, tid, i, bdberr))
                 return -1;
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        char name[100];
-        snprintf(name, sizeof(name), "XXX.%s.queuedb", bdb_state->name);
+        char name[PATH_MAX];
+        form_queuedb_name(bdb_state, tran, 0, name, sizeof(name));
         rc = bdb_del_file(bdb_state, tid, name, bdberr);
     }
 
@@ -6246,7 +6286,7 @@ int bdb_del(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     int rc;
 
     BDB_READLOCK("bdb_del");
-    rc = bdb_del_int(bdb_state, tran->tid, bdberr);
+    rc = bdb_del_int(bdb_state, tran, bdberr);
     BDB_RELLOCK();
     return rc;
 }
@@ -7177,6 +7217,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     const char *blob_ext = ".blob";
     const char *data_ext = ".data";
     const char *index_ext = ".index";
+    const char *qdb_ext = ".queuedb";
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
@@ -7236,7 +7277,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    /* */
     if (snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name) >=
         sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
@@ -7267,6 +7307,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (endp == file_name_post_prefix ||
                 (strncmp(endp, blob_ext, strlen(blob_ext)) != 0 &&
                  strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
+                 strncmp(endp, qdb_ext, strlen(qdb_ext)) != 0 &&
                  strncmp(endp, index_ext, strlen(index_ext)) != 0)) {
                 file_version = 0;
             } else {
@@ -7280,9 +7321,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 file_version = p_file_version_num_type.version_num;
             }
 
-            /*fprintf(stderr, "found version %s %016llx on disk\n",*/
-            /*ent->d_name, file_version); */
-
             /* brute force scan to find any files on disk that we aren't
              * actually using */
             if (file_version) {
@@ -7290,27 +7328,29 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 int i;
 
                 /* try to find the file version amongst the active data files */
-                for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
-                     ++i) {
-                    rc = bdb_get_file_version_data(
-                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
+                for (i = 0; i < bdb_state->numdtafiles; ++i) {
+                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+                        rc = bdb_get_file_version_qdb(bdb_state, tran,
+                                                      &version_num, bdberr);
+                    } else {
+                        rc = bdb_get_file_version_data(bdb_state, tran, i,
+                                                       &version_num, bdberr);
+                    }
                     if (rc == 0) {
-                        /*fprintf(stderr, "found data version %016llx in "*/
-                        /*"llmeta\n", version_num);*/
-
-                        if (version_num == file_version)
+                        if (version_num == file_version) {
                             found_in_llmeta = 1;
+                            break;
+                        }
                     }
                 }
 
                 /* try to find the file version amongst the active indices */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
+                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
+                        break;
                     rc = bdb_get_file_version_index(
                         bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
-                        /*fprintf(stderr, "found ix version %016llx in "*/
-                        /*"llmeta\n", version_num);*/
-
                         if (version_num == file_version)
                             found_in_llmeta = 1;
                     }
@@ -7322,8 +7362,9 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
                     if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
                                  ent->d_name) >= sizeof(munged_name)) {
-                        logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
-                                __func__, ent->d_name);
+                        logmsg(LOGMSG_ERROR,
+                               "%s: filename too long to munge: %s\n", __func__,
+                               ent->d_name);
                         continue;
                     }
 
@@ -7336,38 +7377,32 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                             print(bdb_state,
                                   "failed to collect old file (list full) %s\n",
                                   ent->d_name);
-                            continue;
                         } else {
-                            /*fprintf(stderr, "deleting file %s\n", ent->d_name);*/
                             print(bdb_state, "collected old file %s\n",
                                   ent->d_name);
                         }
                     } else {
-                        /*fprintf(stderr, "deleting file %s\n", ent->d_name);*/
                         print(bdb_state, "deleting file %s\n", ent->d_name);
-
                         DB_TXN *tid;
                         if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
                                                         tran ? tran->tid : NULL,
                                                         &tid, 0 /*flags*/)) {
-                            logmsg(LOGMSG_ERROR, "%s: failed to begin trans for "
-                                            "deleteing file: %s\n",
-                                    __func__, ent->d_name);
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: failed to begin trans for "
+                                   "deleteing file: %s\n",
+                                   __func__, ent->d_name);
                             continue;
                         }
-
                         if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
-                            logmsg(LOGMSG_ERROR, "%s: failed to delete file: %s\n",
-                                    __func__, ent->d_name);
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: failed to delete file: %s\n", __func__,
+                                   ent->d_name);
                             tid->abort(tid);
-                            continue;
-                        }
-
-                        if (tid->commit(tid, 0)) {
-                            logmsg(LOGMSG_ERROR, "%s: failed to commit trans for "
-                                            "deleteing file: %s\n",
-                                    __func__, ent->d_name);
-                            continue;
+                        } else if (tid->commit(tid, 0)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: failed to commit trans for "
+                                   "deleteing file: %s\n",
+                                   __func__, ent->d_name);
                         }
                     }
                 }

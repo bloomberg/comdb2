@@ -417,8 +417,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         /* I am master: create new db */
-        db->handle = bdb_create_queue(db->tablename, thedb->basedir, 65536,
-                                      65536, thedb->bdb_env, 1, &bdberr);
+        db->handle =
+            bdb_create_queue_tran(tran, db->tablename, thedb->basedir, 65536,
+                                  65536, thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -544,7 +545,12 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        rc = bdb_del(db->handle, tran, &bdberr);
+        unsigned long long ver = 0;
+        if (bdb_get_file_version_qdb(db->handle, tran, &ver, &bdberr) == 0) {
+            sc_del_unused_files_tran(db, tran);
+        } else {
+            rc = bdb_del(db->handle, tran, &bdberr);
+        }
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                    __func__, rc, bdberr);
