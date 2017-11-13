@@ -1568,6 +1568,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
+    assert(logger->path == 0);
 
     thd->nmove = thd->nfind = thd->nwrite = thd->ntmpread = thd->ntmpwrite = 0;
 
