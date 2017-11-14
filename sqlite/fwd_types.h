@@ -21,7 +21,6 @@
 #ifndef __fwd_types_h__
 #define __fwd_types_h__
 
-typedef struct bdb_state_tag bdb_state_type;
 typedef struct UnpackedRecord UnpackedRecord;
 typedef struct Vdbe Vdbe;
 typedef struct Btree Btree;

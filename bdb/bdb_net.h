@@ -17,8 +17,7 @@
 #ifndef __bdb_net_h__
 #define __bdb_net_h__
 
-#include "fwd_types.h"
-
+typedef struct bdb_state_tag bdb_state_type;
 char *print_addr(struct sockaddr_in *addr, char *buf);
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
