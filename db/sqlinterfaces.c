@@ -2821,18 +2821,18 @@ static inline void add_at_front_of_list(stmt_hash_entry_type **head,
 /* On error will return non zero and
  * caller will need to finalize_stmt() in that case
  */
-int add_stmt_table(struct sqlthdstate *thd, const char *sql, char *actual_sql,
-                   sqlite3_stmt *stmt, struct schema *params_to_bind)
+static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
+        char *actual_sql, sqlite3_stmt *stmt, struct schema *params_to_bind)
 {
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
         return -1;
     }
 
     assert(thd->stmt_table);
-    /* should not have this stmt in cache 
-    assert(hash_find(thd->stmt_table, sql) == NULL);*/
+    /* stored procedure can call same stmt a lua thread more than once 
+     * so we should not add stmt that exists already */
     if(hash_find(thd->stmt_table, sql) != NULL) {
-        printf("AZ already in hash tbl %s\n", sql);
+        printf("AZ already in hash tbl '%s'\n", sql);
         return -1;
     }
 
@@ -2871,13 +2871,13 @@ printf("AZ hash_addEntry: %p (stmt %p, sql: '%s')\n", entry, entry->stmt, entry-
     return ret;
 }
 
-int find_stmt_table(hash_t *stmt_table, const char *sql,
-                    stmt_hash_entry_type **entry)
+static inline int find_stmt_table(hash_t *stmt_table, const char *sql,
+                                  stmt_hash_entry_type **entry)
 {
-    assert(stmt_table);
     if(stmt_table == NULL) 
         return -1;
 
+printf("AZ find_stmt_table '%s'\n", sql);
     if (strlen(sql) < MAX_HASH_SQL_LENGTH) {
         *entry = hash_find(stmt_table, sql);
 printf("AZ hash_find %p (sql %s)\n", *entry, sql);
@@ -3603,7 +3603,7 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
 /* if userpassword does not match this function
  * will write error response and return a non 0 rc
  */
-inline static int check_user_password(struct sqlclntstate *clnt,
+static inline int check_user_password(struct sqlclntstate *clnt,
                                       struct fsqlresp *resp)
 {
     int password_rc = 0;
@@ -3968,8 +3968,6 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         }
     }
 
-    if (clnt->trans_has_sp) 
-        return 1;
     int rc = add_stmt_table(
             thd, sqlptr, (char *)(gbl_debug_temptables ? rec->sql : NULL),
             stmt, rec->parameters_to_bind);
@@ -5657,10 +5655,6 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct errstat err;
     char *errstr;
     int rc;
-
-    rdlock_schema_lk();
-    sqlengine_prepare_engine(thd, clnt, 1);
-    unlock_schema_lk();
 
     reqlog_set_event(thd->logger, "sp");
 

@@ -110,12 +110,6 @@ struct sqlthdstate {
     int started_backend;
 };
 
-int find_stmt_table(hash_t *stmt_table, const char *sql,
-                    stmt_hash_entry_type **entry);
-void touch_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry);
-int add_stmt_table(struct sqlthdstate *, const char *sql, char *actual_sql,
-                   sqlite3_stmt *, struct schema *params_to_bind);
-
 typedef struct osqltimings {
     unsigned long long query_received; /* query received, in need of dispatch */
     unsigned long long query_dispatched; /* start sql processing */
