@@ -4,13 +4,15 @@ set(src
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
 )
+if(WITH_SSL)
+  list(APPEND src ${PROJECT_SOURCE_DIR}/bb/ssl_support.c)
+endif()
 set_source_files_properties(
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
   PROPERTIES GENERATED TRUE
 )
 include_directories(
-  ${PROJECT_SOURCE_DIR}/bb
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROTOBUF_C_INCLUDE_DIR}
@@ -26,7 +28,7 @@ add_library(cdb2api STATIC $<TARGET_OBJECTS:objlib>)
 add_library(cdb2api_shared SHARED $<TARGET_OBJECTS:objlib>)
 set_target_properties(cdb2api_shared PROPERTIES OUTPUT_NAME cdb2api)
 # required for generating .dylib on macOS
-if(${CMAKE_CXX_COMPILER_ID} STREQUAL AppleClang)
+if(${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "${CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS} -undefined dynamic_lookup")
 endif()
 configure_file(cdb2api.pc cdb2api.pc @ONLY)

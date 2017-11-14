@@ -581,7 +581,7 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_CRLE) {
-                Comdb2RLE rle = {.in = (char *)from + ODH_SIZE,
+                Comdb2RLE rle = {.in = (uint8_t *)from + ODH_SIZE,
                                  .insz = fromlen - ODH_SIZE,
                                  .out = to,
                                  .outsz = odh->length};

@@ -720,7 +720,6 @@ typedef struct {
 struct sockaddr_in;
 typedef struct {
     netinfo_type *netinfo;
-    netinfo_type *netinfo_signal;
 
     char *master_host;
     char *myhost;
@@ -1855,7 +1854,7 @@ void populate_deleted_files(bdb_state_type *bdb_state);
 
 int has_low_headroom(const char *path, int threshold, int debug);
 
-const char *deadlock_policy_str(int policy);
+const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 #endif /* __bdb_int_h__ */

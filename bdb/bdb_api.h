@@ -34,6 +34,8 @@
 #include <inttypes.h>
 #include <limits.h>
 
+#include "fwd_types.h"
+#include "bdb_net.h"
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
@@ -45,7 +47,6 @@ struct filepage_t;
 typedef struct filepage_t filepage_type;
 
 struct bdb_state_tag;
-typedef struct bdb_state_tag bdb_state_type;
 
 struct bdb_callback_tag;
 typedef struct bdb_callback_tag bdb_callback_type;
@@ -525,8 +526,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
                              bdb_callback_type *bdb_callback, void *usr_ptr,
-                             netinfo_type *netinfo,
-                             netinfo_type *netinfo_signal, char *recoverlsn,
+                             netinfo_type *netinfo, char *recoverlsn,
                              int *bdberr);
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
@@ -1969,8 +1969,6 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
-typedef struct BtCursor BtCursor;
-typedef struct UnpackedRecord UnpackedRecord;
 struct bias_info {
     int bias;
     int dirLeft;

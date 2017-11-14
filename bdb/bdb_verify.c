@@ -93,8 +93,8 @@ int bdb_verify(
 
     BDB_READLOCK("bdb_verify");
 
-    if (rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
-                                             DB_LOCK_ID_READONLY)) {
+    if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
+                                              DB_LOCK_ID_READONLY)) != 0) {
         BDB_RELLOCK();
         logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
         return rc;

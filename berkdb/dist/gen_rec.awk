@@ -84,7 +84,7 @@ BEGIN {
 	printf("/* #define %s_DEBUG to turn on debug trace */\n", prefix) >> CFILE
 
 	# Start .h file, make the entire file conditional.
-	printf("/* Do not edit: automatically built by gen_rec_endian.awk. */\n\n") \
+	printf("/* Do not edit: automatically built by gen_rec.awk. */\n\n") \
 	    > HFILE
 
 	printf("#ifndef\t%s_AUTO_H\n#define\t%s_AUTO_H\n", prefix, prefix) \
@@ -194,7 +194,7 @@ BEGIN {
 		t = types[i];
 		if (modes[i] == "POINTER") {
 			ndx = index(t, "*");
-			t = substr(types[i], 0, ndx - 2);
+			t = substr(types[i], 1, ndx - 2);
 		}
 		else if (types[i] == "genid_t") {
 			t = "u_int64_t"

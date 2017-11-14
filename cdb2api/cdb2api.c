@@ -727,7 +727,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
                 (void *)pthread_self(), cfg_info);
 }
 
-static inline char get_char(FILE *fp, char *buf, int *chrno)
+static inline int get_char(FILE *fp, char *buf, int *chrno)
 {
     int ch;
     if (fp) {
@@ -2518,7 +2518,7 @@ static void make_random_str(char *str, size_t max_len, int *len)
     strncpy(str, cached_portion, cached_portion_len);
     *len = cached_portion_len;
     *len += snprintf(str + cached_portion_len, max_len - cached_portion_len,
-                     "%u-%d", tv.tv_usec, randval);
+                     "%d-%d", (int)tv.tv_usec, randval);
     return;
 }
 
@@ -3396,7 +3396,6 @@ read_record:
                 (void *)pthread_self(), host, __LINE__, rc, type);
     }
 
-#if WITH_SSL
     if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
 #if WITH_SSL
         hndl->s_sslmode = PEER_SSL_REQUIRE;
@@ -3405,12 +3404,13 @@ read_record:
 
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
+        GOTO_RETRY_QUERIES();
 #else
+        sprintf(hndl->errstr, "%s: The database requires SSL connections.",
+                __func__);
         PRINT_RETURN(-1);
 #endif
-        GOTO_RETRY_QUERIES();
     }
-#endif
 
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
@@ -4673,7 +4673,7 @@ done:
 }
 
 #if WITH_SSL
-#  include <ssl_support.c>
+#include <ssl_support.h>
 static int set_up_ssl_params(cdb2_hndl_tp *hndl)
 {
     /* In case that the application connects to multiple databases

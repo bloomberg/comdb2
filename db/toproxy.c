@@ -131,8 +131,8 @@ uint8_t *get_prox2_config_info_put(uint8_t *p_buf, const uint8_t *p_buf_end)
 
         /* set and pack the prox config hdr */
         rsp.nlines = listc_size(&proxy_config_lines);
-        if (p_buf = db_proxy_config_rsp_no_hdr_no_lines_put(&rsp, p_buf,
-                                                            p_buf_end)) {
+        p_buf = db_proxy_config_rsp_no_hdr_no_lines_put(&rsp, p_buf, p_buf_end);
+        if (p_buf) {
             /* if the hdr was packed successfully, pack each line's length
              * (including NUL byte) followed by the line itself */
             LISTC_FOR_EACH(&proxy_config_lines, p_l, lnk)

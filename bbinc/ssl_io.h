@@ -25,9 +25,6 @@
 int SBUF2_FUNC(sslio_close)(SBUF2 *, int reuse);
 #define sslio_close SBUF2_FUNC(sslio_close)
 
-char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *);
-#define get_origin_mach_by_buf SBUF2_FUNC(get_origin_mach_by_buf)
-
 int SBUF2_FUNC(sslio_read)(SBUF2 *, char *cc, int len);
 #define sslio_read SBUF2_FUNC(sslio_read)
 int SBUF2_FUNC(sslio_write)(SBUF2 *, const char *cc, int len);

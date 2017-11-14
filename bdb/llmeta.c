@@ -5721,7 +5721,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
             return -1;
         }
 
-        p_buf_key ==
+        p_buf_key =
             llmeta_high_genid_key_type_get(&akey, p_buf_key, p_buf_end_key);
 
         genid = *(unsigned long long *)data;
@@ -5817,7 +5817,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%llu\"\n", tblname,
                flibc_ntohll(version));
         } break;
         case LLMETA_GENID_FORMAT: {
@@ -6263,7 +6263,7 @@ retry:
         *bdberr = BDBERR_DTA_MISMATCH;
         return -1;
     } else {
-        p_buf = data;
+        p_buf = (uint8_t *)data;
         p_buf_end = p_buf + LLMETA_ROWLOCKS_STATE_DATA_LEN;
         llmeta_rowlocks_state_data_type_get(&rowlocks_data, p_buf, p_buf_end);
         *rlstate = rowlocks_data.rowlocks_state;
@@ -6344,7 +6344,7 @@ retry:
 
     if (!input_trans) {
         rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
-        if (rc & *bdberr != BDBERR_NOERROR)
+        if (rc && *bdberr != BDBERR_NOERROR)
             return -1;
         llmeta_bdb_state->dbenv->log_flush(llmeta_bdb_state->dbenv, NULL);
     }
@@ -6684,7 +6684,8 @@ static int __llmeta_preop_alias(struct llmeta_tablename_alias_key *key,
     strncpy(key->tablename_alias, tablename_alias,
             sizeof(key->tablename_alias));
 
-    if (llmeta_tablename_alias_key_put(key, key_buf, key_buf + key_buf_len) ==
+    if (llmeta_tablename_alias_key_put(key, (uint8_t *)key_buf,
+                                       (uint8_t *)(key_buf + key_buf_len)) ==
         NULL) {
         logmsg(LOGMSG_ERROR, "%s: tablename alias serializing error\n", __func__);
         if (errstr)
@@ -6731,8 +6732,9 @@ int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
 
     strncpy(data.url, url, sizeof(data.url));
 
-    if (llmeta_tablename_alias_data_put(&data, data_buf,
-                                        data_buf + sizeof(data_buf)) == NULL) {
+    if (llmeta_tablename_alias_data_put(
+            &data, (uint8_t *)data_buf,
+            (uint8_t *)(data_buf + sizeof(data_buf))) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: tablename url serializing error\n", __func__);
         if (errstr)
             *errstr = strdup("tablename url serializing error");
@@ -6976,13 +6978,13 @@ int bdb_llmeta_print_alias(bdb_state_type *bdb_state, void *key, int keylen,
     bzero(&akey, sizeof(akey));
     bzero(&adata, sizeof(adata));
 
-    if (llmeta_tablename_alias_key_get(&akey, key, ((char *)key) + keylen) ==
-        NULL) {
+    if (llmeta_tablename_alias_key_get(&akey, key, ((const uint8_t *)key) +
+                                                       keylen) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: wrong format tablename alias key\n", __func__);
         return -1;
     }
-    if (llmeta_tablename_alias_data_get(&adata, data,
-                                        ((char *)data) + datalen) == NULL) {
+    if (llmeta_tablename_alias_data_get(&adata, data, ((const uint8_t *)data) +
+                                                          datalen) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: wrong format tablename alias key\n", __func__);
         return -1;
     }
@@ -7679,7 +7681,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
         logmsg(LOGMSG_ERROR, "cson_output_buffer returned rc %d", rc);
     } else if (buf.used > 2) {
         // JSON data is the first (buf.used) bytes of (buf.mem).
-        bdb_set_table_csonparameters(parent_tran, table, buf.mem,
+        bdb_set_table_csonparameters(parent_tran, table, (const char *)buf.mem,
                                      buf.used); // save to llmeta blob
     } else {
         bdb_del_table_csonparameters(parent_tran, table);
@@ -7719,8 +7721,8 @@ struct queue_data {
     char **dest;
 };
 
-static uint8_t *llmeta_queue_key_put(struct queue_key *key, char *p_buf,
-                                     char *p_buf_end)
+static uint8_t *llmeta_queue_key_put(struct queue_key *key, uint8_t *p_buf,
+                                     uint8_t *p_buf_end)
 {
     if (p_buf_end - p_buf < sizeof(struct queue_key))
         return NULL;
@@ -7729,8 +7731,8 @@ static uint8_t *llmeta_queue_key_put(struct queue_key *key, char *p_buf,
     return p_buf;
 }
 
-static uint8_t *llmeta_queue_key_get(struct queue_key *key, char *p_buf,
-                                     char *p_buf_end)
+static uint8_t *llmeta_queue_key_get(struct queue_key *key, uint8_t *p_buf,
+                                     uint8_t *p_buf_end)
 {
     if (p_buf_end - p_buf < sizeof(struct queue_key))
         return NULL;
@@ -7756,8 +7758,8 @@ static int llmeta_queue_data_size(struct queue_data *data)
     return sz;
 }
 
-static uint8_t *llmeta_queue_data_put(struct queue_data *data, char *p_buf,
-                                      char *p_buf_end)
+static uint8_t *llmeta_queue_data_put(struct queue_data *data, uint8_t *p_buf,
+                                      uint8_t *p_buf_end)
 {
     int sz = 0;
     int len;
@@ -7789,7 +7791,8 @@ static void queue_data_destroy(struct queue_data *qd)
     }
 }
 
-static struct queue_data *llmeta_queue_data_get(char *p_buf, char *p_buf_end)
+static struct queue_data *llmeta_queue_data_get(uint8_t *p_buf,
+                                                uint8_t *p_buf_end)
 {
     struct queue_data *qd = NULL;
     int len;
@@ -7831,7 +7834,7 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     struct queue_key qk = {0};
     int rc;
 
-    p_buf = key;
+    p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     /* TODO: range check? assume sanitized at this point? */
@@ -7896,7 +7899,7 @@ int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    p_buf = key;
+    p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     strcpy(qk.dbname, queue);

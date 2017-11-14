@@ -118,7 +118,7 @@ static int write_pidfile(const char *pidfile)
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
-    char c;
+    int c;
     int options_idx;
 
     while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
@@ -581,7 +581,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
                     dbenv->sibling_port[ii][NET_REPLICATION] = port;
                     dbenv->sibling_port[ii][NET_SQL] = port;
-                    dbenv->sibling_port[ii][NET_SIGNAL] = port;
                     break;
                 }
             }
@@ -596,7 +595,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             /* nsiblings == 1 means there's no other nodes in the cluster */
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
-            dbenv->sibling_port[0][NET_SIGNAL] = port;
         }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
@@ -628,7 +626,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 /* Check to see if this name is another name for me. */
                 h = bb_gethostbyname(nodename);
                 if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length == 0)) {
+                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
                 }
@@ -1259,10 +1257,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return 0;
         }
         DTTZ_TEXT_TO_PREC(tok, gbl_datetime_precision, 0, return 0);
+#if WITH_SSL
     } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
         /* Let's have a separate function for ssl directives. */
         rc = ssl_process_lrl(line, len);
         if (rc != 0) return -1;
+#endif
     } else {
         logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
                options->lrlname);

@@ -184,7 +184,14 @@ static int master_downgrading(struct schema_change_type *s)
     return SC_OK;
 }
 
-static void stop_and_free_sc(int rc, struct schema_change_type *s, int free_sc)
+static void free_sc(struct schema_change_type *s)
+{
+    free_schema_change_type(s);
+    /* free any memory csc2 allocated when parsing schema */
+    csc2_free_all();
+}
+
+static void stop_and_free_sc(int rc, struct schema_change_type *s, int do_free)
 {
     if (!s->partialuprecs) {
         if (rc != 0) {
@@ -196,10 +203,9 @@ static void stop_and_free_sc(int rc, struct schema_change_type *s, int free_sc)
         }
     }
     sc_set_running(0, sc_seed, NULL, 0);
-
-    if (free_sc) free_schema_change_type(s);
-    /* free any memory csc2 allocated when parsing schema */
-    csc2_free_all();
+    if (do_free) {
+        free_sc(s);
+    }
 }
 
 static int set_original_tablename(struct schema_change_type *s)
@@ -494,14 +500,25 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->type == DBTYPE_MORESTRIPE)
         rc = do_alter_stripes(s);
 
+    if (rc == SC_MASTER_DOWNGRADE) {
+        if (s && s->newdb && s->newdb->handle) {
+            /* start new event; some functions above end event on return */
+            int bdberr;
+            backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+            bdb_close_only(s->newdb->handle, &bdberr);
+            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+        }
+    }
     reset_sc_thread(oldtype, s);
-    if (s->resume != SC_NEW_MASTER_RESUME && rc != SC_COMMIT_PENDING &&
-        rc != SC_MASTER_DOWNGRADE) {
+    if (rc == SC_MASTER_DOWNGRADE) {
         pthread_mutex_unlock(&s->mtx);
-        stop_and_free_sc(rc, s, 1 /*free_sc*/);
-    } else
+        free_sc(s);
+    } else if (s->resume == SC_NEW_MASTER_RESUME || rc == SC_COMMIT_PENDING) {
         pthread_mutex_unlock(&s->mtx);
-
+    } else {
+        pthread_mutex_unlock(&s->mtx);
+        stop_and_free_sc(rc, s, 1 /*do_free*/);
+    }
     return rc;
 }
 
@@ -602,6 +619,7 @@ void *sc_resuming_watchdog(void *p)
     logmsg(LOGMSG_INFO, "%s: existing\n", __func__);
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     pthread_mutex_unlock(&sc_resuming_mtx);
+    return NULL;
 }
 
 int resume_schema_change(void)
@@ -784,9 +802,9 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
      * switch) */
     if (resume) {
         db->handle = bdb_open_more(
-            tmpname, db->dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
-            db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed,
+            tmpname, db->dbenv->basedir, db->lrl, db->nix,
+            (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
+            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, &bdberr);
 
@@ -807,9 +825,9 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
     if (!db->handle) /* did not/could not open existing one, creating new one */
     {
         db->handle = bdb_create_tran(
-            tmpname, db->dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
-            db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed,
+            tmpname, db->dbenv->basedir, db->lrl, db->nix,
+            (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
+            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, temp, &bdberr, tran);
         if (db->handle == NULL) {

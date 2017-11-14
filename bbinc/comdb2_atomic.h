@@ -2,6 +2,7 @@
 #define __COMDB2_ATOMIC_H__
 
 #ifdef _SUN_SOURCE
+#include <atomic.h>
 #define CAS(mem, oldv, newv) (atomic_cas_32(&mem, oldv, newv) == newv)
 #define XCHANGE(mem, newv) atomic_swap_32(&mem, newv)
 #define ATOMIC_LOAD(mem) (atomic_add_int_nv((int *)&mem, 0))
