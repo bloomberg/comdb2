@@ -2494,7 +2494,7 @@ uint64_t val_combine(uint64_t lhs, uint64_t rhs)
 static void make_random_str(char *str, size_t max_len, int *len)
 {
     static __thread unsigned short rand_state[3] = {0};
-    static __thread char cached_portion[21] = {0}; // 2 * 10 digits + '\n'
+    static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
     static __thread size_t cached_portion_len = 0;
 
     struct timeval tv;
