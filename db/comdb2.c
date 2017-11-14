@@ -1418,6 +1418,7 @@ void clean_exit(void)
     free_gbl_tunables();
     free_tzdir();
     tz_hash_free();
+    cleanup_sqlite_master();
 
     logmsg(LOGMSG_WARN, "goodbye\n");
 

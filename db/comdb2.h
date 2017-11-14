@@ -2499,7 +2499,8 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
-int create_sqlite_master(void);
+void cleanup_sqlite_master();
+int create_sqlite_master();
 typedef struct master_entry master_entry_t;
 int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq);

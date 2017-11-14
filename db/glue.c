@@ -3211,6 +3211,9 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
     rc = reload_schema(table, csc2, NULL);
 
     rc2 = create_sqlmaster_records(NULL);
+    if (rc2) {
+        logmsg(LOGMSG_ERROR, "create_sqlmaster_records rc2 %d\n", rc2);
+    }
     create_sqlite_master(); /* create sql statements */
 
     net_ack_message(hndl, rc || rc2);
