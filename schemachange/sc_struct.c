@@ -900,10 +900,10 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         /* reopen db */
         newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix, (short *)newdb->ix_keylen,
-            newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-            newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-            thedb->bdb_env, tran, &bdberr);
+            table, thedb->basedir, newdb->lrl, newdb->nix,
+            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
         logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;

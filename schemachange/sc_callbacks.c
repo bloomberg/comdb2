@@ -50,7 +50,7 @@ static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
     case (genid48_disable):
         bdb_genid_set_format(bdb_state, LLMETA_GENID_ORIGINAL);
         break;
-    default: 
+    default:
         break;
     }
     return 0;
@@ -304,8 +304,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
     }
     struct convert_failure reason;
     rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK",
-                                (const char *)od_dta, ".NEW..ONDISK",
-                                new_dta, &reason, blobs, maxblobs, 1);
+                                (const char *)od_dta, ".NEW..ONDISK", new_dta,
+                                &reason, blobs, maxblobs, 1);
     if (rc) {
         gbl_sc_abort = 1;
         MEMORY_SYNC;
@@ -600,7 +600,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case lua_afunc: return reload_lua_afuncs();
     case rename_table:
         return reload_rename_table(table, (char *)arg);
-    default: break;
+    default:
+        break;
     }
 
     int add_new_db = 0;

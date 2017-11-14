@@ -1141,7 +1141,9 @@ static void dumpval(char *buf, int type, int len)
         }
         case CLIENT_DATETIME: {
             cdb2_client_datetime_t dt;
-            client_datetime_get(&dt, (uint8_t *)buf, (uint8_t *)buf + sizeof(cdb2_client_datetime_t));
+            client_datetime_get(&dt, (uint8_t *)buf,
+                                (uint8_t *)buf +
+                                    sizeof(cdb2_client_datetime_t));
             logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.msec, dt.tzname);
@@ -1151,7 +1153,8 @@ static void dumpval(char *buf, int type, int len)
         case CLIENT_DATETIMEUS: {
             cdb2_client_datetimeus_t dt;
             client_datetimeus_get(&dt, (uint8_t *)buf,
-                                  (uint8_t *)buf + sizeof(cdb2_client_datetimeus_t));
+                                  (uint8_t *)buf +
+                                      sizeof(cdb2_client_datetimeus_t));
             logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.usec, dt.tzname);
@@ -1160,14 +1163,16 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_INTVYM: {
             cdb2_client_intv_ym_t ym;
-            client_intv_ym_get(&ym, (uint8_t *)buf, (uint8_t *)buf + sizeof(cdb2_client_intv_ym_t));
+            client_intv_ym_get(&ym, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(cdb2_client_intv_ym_t));
             logmsg(LOGMSG_USER, "%s%u-%u", (ym.sign < 0) ? "- " : "", ym.years, ym.months);
             break;
         }
 
         case CLIENT_INTVDS: {
             cdb2_client_intv_ds_t ds;
-            client_intv_ds_get(&ds, (uint8_t *)buf, (uint8_t *)buf + sizeof(cdb2_client_intv_ds_t));
+            client_intv_ds_get(&ds, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(cdb2_client_intv_ds_t));
             logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.msec);
             break;
@@ -1176,7 +1181,8 @@ static void dumpval(char *buf, int type, int len)
         case CLIENT_INTVDSUS: {
             cdb2_client_intv_dsus_t ds;
             client_intv_dsus_get(&ds, (uint8_t *)buf,
-                                 (uint8_t *)buf + sizeof(cdb2_client_intv_dsus_t));
+                                 (uint8_t *)buf +
+                                     sizeof(cdb2_client_intv_dsus_t));
             logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%6.6u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.usec);
             break;
@@ -1261,31 +1267,36 @@ static void dumpval(char *buf, int type, int len)
             break;
         case SERVER_DATETIME: {
             server_datetime_t dt;
-            server_datetime_get(&dt, (uint8_t *)buf, (uint8_t *)buf + sizeof(server_datetime_t));
+            server_datetime_get(&dt, (uint8_t *)buf,
+                                (uint8_t *)buf + sizeof(server_datetime_t));
             logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.msec);
             break;
         }
         case SERVER_DATETIMEUS: {
             server_datetimeus_t dt;
-            server_datetimeus_get(&dt, (uint8_t *)buf, (uint8_t *)buf + sizeof(server_datetimeus_t));
+            server_datetimeus_get(&dt, (uint8_t *)buf,
+                                  (uint8_t *)buf + sizeof(server_datetimeus_t));
             logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.usec);
             break;
         }
         case SERVER_INTVYM: {
             server_intv_ym_t si;
-            server_intv_ym_get(&si, (uint8_t *)buf, (uint8_t *)buf + sizeof(server_intv_ym_t));
+            server_intv_ym_get(&si, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(server_intv_ym_t));
             logmsg(LOGMSG_USER, "%d", si.months);
             break;
         }
         case SERVER_INTVDS: {
             server_intv_ds_t ds;
-            server_intv_ds_get(&ds, (uint8_t *)buf, (uint8_t *)buf + sizeof(server_intv_ds_t));
+            server_intv_ds_get(&ds, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(server_intv_ds_t));
             logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.msec);
             break;
         }
         case SERVER_INTVDSUS: {
             server_intv_dsus_t ds;
-            server_intv_dsus_get(&ds, (uint8_t *)buf, (uint8_t *)buf + sizeof(server_intv_dsus_t));
+            server_intv_dsus_get(&ds, (uint8_t *)buf,
+                                 (uint8_t *)buf + sizeof(server_intv_dsus_t));
             logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.usec);
             break;
         }

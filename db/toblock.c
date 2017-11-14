@@ -2071,7 +2071,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
 
             if (verbose_deadlocks)
                 fprintf(stderr, "%x %s:%d Using iq %p priority %d\n",
-                        (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                        (int)pthread_self(), __FILE__, __LINE__, iq,
+                        iq->priority);
             irc = trans_start_set_retries(
                 iq, parent_trans ? *parent_trans : NULL, trans, iq->priority);
         } else {
@@ -2728,7 +2729,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             if (verbose_deadlocks)
                 logmsg(LOGMSG_USER, "%x %s:%d Using iq %p priority %d\n",
-                       (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                       (int)pthread_self(), __FILE__, __LINE__, iq,
+                       iq->priority);
 
             irc =
                 trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
@@ -2764,8 +2766,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     if (iq->debug) {
         /* TODO print trans twice? No parent_trans? */
-        reqprintf(iq, "%x:START TRANSACTION ID %p DB %d '%s'", (int)pthread_self(),
-                  trans, iq->usedb->dbnum, iq->usedb->tablename);
+        reqprintf(iq, "%x:START TRANSACTION ID %p DB %d '%s'",
+                  (int)pthread_self(), trans, iq->usedb->dbnum,
+                  iq->usedb->tablename);
     }
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
@@ -2817,8 +2820,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             /* remove all prefixes tothe debug trace and put in the transaction
              * and operation name prefix. */
             reqpopprefixes(iq, -1);
-            reqpushprefixf(iq, "%x:tran %p:%s ", (int)pthread_self(), 
-                    trans, breq2a(hdr.opcode));
+            reqpushprefixf(iq, "%x:tran %p:%s ", (int)pthread_self(), trans,
+                           breq2a(hdr.opcode));
 
             reqprintflush(iq);
         }
@@ -5480,7 +5483,7 @@ add_blkseq:
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
                     logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
-                           (int)pthread_self(), __FILE__, __LINE__);             
+                           (int)pthread_self(), __FILE__, __LINE__);
                     outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                            replay_data, replay_len, __LINE__);
                     did_replay = 1;

@@ -1478,10 +1478,9 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
             }
             d->dest = strdup(tok + 5);
             if (d->dest == NULL) {
-                fprintf(
-                    stderr,
-                    "%s: malloc can't allocate %zu bytes for destination name\n",
-                    __func__, strlen(tok + 5));
+                fprintf(stderr, "%s: malloc can't allocate %zu bytes for "
+                                "destination name\n",
+                        __func__, strlen(tok + 5));
                 free(d);
                 return -1;
             }

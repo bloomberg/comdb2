@@ -7563,10 +7563,11 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         if (cur->fdbc->isuuid(cur)) {
             uuidstr_t cus, tus;
             logmsg(LOGMSG_USER, "%s Created cursor cid=%s with tid=%s rootp=%d "
-                            "db:tbl=\"%s:%s\"\n",
-                    __func__, comdb2uuidstr((unsigned char *)cur->fdbc->id(cur), cus),
-                    comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
-                    cur->fdbc->name(cur));
+                                "db:tbl=\"%s:%s\"\n",
+                   __func__,
+                   comdb2uuidstr((unsigned char *)cur->fdbc->id(cur), cus),
+                   comdb2uuidstr(tid, tus), iTable, pBt->zFilename,
+                   cur->fdbc->name(cur));
         } else {
             uuidstr_t tus;
             logmsg(LOGMSG_USER,
@@ -8696,7 +8697,7 @@ void sql_dump_running_statements(void)
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, thd->sqlclntstate->origin);
             log_cnonce((char *)thd->sqlclntstate->sql_query->cnonce.data,
-                thd->sqlclntstate->sql_query->cnonce.len);
+                       thd->sqlclntstate->sql_query->cnonce.len);
             logmsg(LOGMSG_USER, "%s\n", thd->sqlclntstate->sql);
 
             if (thd->bt) {
@@ -9219,7 +9220,8 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
 
         if (*bdberr == BDBERR_DEADLOCK) {
             if ((rc = recover_deadlock(thedb->bdb_env, thd,
-                                      (is_temp_bdbcur) ? cur : NULL, 0)) != 0) {
+                                       (is_temp_bdbcur) ? cur : NULL, 0)) !=
+                0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
@@ -9624,7 +9626,8 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
 
         if (*bdberr == BDBERR_DEADLOCK) {
             if ((rc = recover_deadlock(thedb->bdb_env, thd,
-                                      (freshcursor) ? pCur->bdbcur : NULL, 0)) != 0){
+                                       (freshcursor) ? pCur->bdbcur : NULL,
+                                       0)) != 0) {
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else
@@ -9893,13 +9896,15 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         } else {
             switch (f->type) {
             case CLIENT_INT:
-                if ((rc = get_int_field(f, (uint8_t *)buf, (int64_t *)&ival)) == 0)
+                if ((rc = get_int_field(f, (uint8_t *)buf, (int64_t *)&ival)) ==
+                    0)
                     rc = sqlite3_bind_int64(stmt, pos, ival);
                 add_to_bind_array(arr, f->name, f->type, &ival, f->datalen,
                                   isnull);
                 break;
             case CLIENT_UINT:
-                if ((rc = get_uint_field(f, (uint8_t *)buf, (uint64_t *)&uival)) == 0)
+                if ((rc = get_uint_field(f, (uint8_t *)buf,
+                                         (uint64_t *)&uival)) == 0)
                     rc = sqlite3_bind_int64(stmt, pos, uival);
                 add_to_bind_array(arr, f->name, f->type, &uival, f->datalen,
                                   isnull);
@@ -9913,12 +9918,14 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             case CLIENT_CSTR:
             case CLIENT_PSTR:
             case CLIENT_PSTR2:
-                if ((rc = get_str_field(f, (uint8_t *)buf, &str, &datalen)) == 0)
+                if ((rc = get_str_field(f, (uint8_t *)buf, &str, &datalen)) ==
+                    0)
                     rc = sqlite3_bind_text(stmt, pos, str, datalen, NULL);
                 add_to_bind_array(arr, f->name, f->type, buf, datalen, isnull);
                 break;
             case CLIENT_BYTEARRAY:
-                if ((rc = get_byte_field(f, (uint8_t *)buf, &byteval, &datalen)) == 0)
+                if ((rc = get_byte_field(f, (uint8_t *)buf, &byteval,
+                                         &datalen)) == 0)
                     rc = sqlite3_bind_blob(stmt, pos, byteval, datalen, NULL);
                 add_to_bind_array(arr, f->name, f->type, byteval, datalen,
                                   isnull);
@@ -9958,8 +9965,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 }
                 break;
             case CLIENT_DATETIME:
-                if ((rc = get_datetime_field(f, (uint8_t *)buf, clnt->tzname, &dt,
-                                             little_endian)) == 0)
+                if ((rc = get_datetime_field(f, (uint8_t *)buf, clnt->tzname,
+                                             &dt, little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
 
                 add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
@@ -9967,8 +9974,8 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 break;
 
             case CLIENT_DATETIMEUS:
-                if ((rc = get_datetimeus_field(f, (uint8_t *)buf, clnt->tzname, &dt,
-                                               little_endian)) == 0)
+                if ((rc = get_datetimeus_field(f, (uint8_t *)buf, clnt->tzname,
+                                               &dt, little_endian)) == 0)
                     rc = sqlite3_bind_datetime(stmt, pos, &dt, clnt->tzname);
 
                 add_to_bind_array(arr, f->name, f->type, buf, f->datalen,
@@ -9986,9 +9993,11 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if (do_intv_flip) {
                     char *nbuf = (buf + f->offset);
 #ifdef _LINUX_SOURCE
-                    client_intv_ym_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
+                    client_intv_ym_get(&ci, (uint8_t *)nbuf,
+                                       (uint8_t *)nbuf + sizeof(ci));
 #else
-                    client_intv_ym_little_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
+                    client_intv_ym_little_get(&ci, (uint8_t *)nbuf,
+                                              (uint8_t *)nbuf + sizeof(ci));
 #endif
                 }
                 rc = CLIENT_INTVYM_to_SERVER_INTVYM(
@@ -10027,10 +10036,12 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if (do_intv_flip) {
                     char *nbuf = (buf + f->offset);
 #ifdef _LINUX_SOURCE
-                    client_intv_ds_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
+                    client_intv_ds_get(&ci, (uint8_t *)nbuf,
+                                       (uint8_t *)nbuf + sizeof(ci));
 #else
 
-                    client_intv_ds_little_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
+                    client_intv_ds_little_get(&ci, (uint8_t *)nbuf,
+                                              (uint8_t *)nbuf + sizeof(ci));
 #endif
                 }
                 rc = CLIENT_INTVDS_to_SERVER_INTVDS(
@@ -10073,10 +10084,12 @@ int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
                 if (do_intv_flip) {
                     char *nbuf = (buf + f->offset);
 #ifdef _LINUX_SOURCE
-                    client_intv_dsus_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
+                    client_intv_dsus_get(&ci, (uint8_t *)nbuf,
+                                         (uint8_t *)nbuf + sizeof(ci));
 #else
 
-                    client_intv_dsus_little_get(&ci, (uint8_t *)nbuf, (uint8_t *)nbuf + sizeof(ci));
+                    client_intv_dsus_little_get(&ci, (uint8_t *)nbuf,
+                                                (uint8_t *)nbuf + sizeof(ci));
 #endif
                 }
                 rc = CLIENT_INTVDSUS_to_SERVER_INTVDSUS(

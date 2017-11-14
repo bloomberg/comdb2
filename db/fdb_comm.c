@@ -972,7 +972,9 @@ int fdb_recv_rc(fdb_msg_t *msg, fdb_tran_t *trans)
     trans->rc = msg->rc.rc;
 
     if (trans->isuuid) {
-        if ((trans->rc == 0) && (comdb2uuidcmp((unsigned char *)msg->rc.tid, (unsigned char *)trans->tid) != 0)) {
+        if ((trans->rc == 0) &&
+            (comdb2uuidcmp((unsigned char *)msg->rc.tid,
+                           (unsigned char *)trans->tid) != 0)) {
             abort();
         }
     } else {
@@ -1928,37 +1930,40 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_TRAN_ROLLBACK:
 
         logmsg(LOGMSG_USER, "XXXX: %s %s tid=%s fl=%x lvl=%s\n", prefix,
-                __req_2_str(msg->hd.type), comdb2uuidstr((unsigned char *)msg->tr.tid, tus),
-                msg->tr.flags, __tran_2_str(msg->tr.lvl));
+               __req_2_str(msg->hd.type),
+               comdb2uuidstr((unsigned char *)msg->tr.tid, tus), msg->tr.flags,
+               __tran_2_str(msg->tr.lvl));
         break;
 
     case FDB_MSG_TRAN_RC:
 
         logmsg(LOGMSG_USER, "XXXX: %s TRAN_RC tid=%s rc=%d %s\n", prefix,
-                comdb2uuidstr((unsigned char *)msg->rc.tid, tus), msg->rc.rc,
-                (msg->rc.errstrlen > 0 && msg->rc.errstr) ? msg->rc.errstr
-                                                          : "");
+               comdb2uuidstr((unsigned char *)msg->rc.tid, tus), msg->rc.rc,
+               (msg->rc.errstrlen > 0 && msg->rc.errstr) ? msg->rc.errstr : "");
         break;
 
     case FDB_MSG_CURSOR_OPEN:
         if (msg->co.flags == FDB_MSG_CURSOR_OPEN_SQL) {
-            logmsg(LOGMSG_USER, 
-                    "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%s tid=%s fl=%x "
-                    "rootpage=%d version=%d\n",
-                    t, prefix, sb, comdb2uuidstr((unsigned char *)msg->co.cid, cus),
-                    comdb2uuidstr((unsigned char *)msg->co.tid, tus), msg->co.flags,
-                    msg->co.rootpage, msg->co.version);
+            logmsg(LOGMSG_USER,
+                   "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%s tid=%s fl=%x "
+                   "rootpage=%d version=%d\n",
+                   t, prefix, sb,
+                   comdb2uuidstr((unsigned char *)msg->co.cid, cus),
+                   comdb2uuidstr((unsigned char *)msg->co.tid, tus),
+                   msg->co.flags, msg->co.rootpage, msg->co.version);
         } else if (msg->co.flags == FDB_MSG_CURSOR_OPEN_SQL_TRAN) {
-            logmsg(LOGMSG_USER, 
-                    "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%s tid=%s fl=%x "
-                    "rootpage=%d version=%d seq=%d\n",
-                    t, prefix, sb, comdb2uuidstr((unsigned char *)msg->co.cid, cus),
-                    comdb2uuidstr((unsigned char *)msg->co.tid, tus), msg->co.flags,
-                    msg->co.rootpage, msg->co.version, msg->co.seq);
+            logmsg(
+                LOGMSG_USER,
+                "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%s tid=%s fl=%x "
+                "rootpage=%d version=%d seq=%d\n",
+                t, prefix, sb, comdb2uuidstr((unsigned char *)msg->co.cid, cus),
+                comdb2uuidstr((unsigned char *)msg->co.tid, tus), msg->co.flags,
+                msg->co.rootpage, msg->co.version, msg->co.seq);
         } else {
-            logmsg(LOGMSG_USER, 
-                    "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%s tid=%s fl=%x "
-                    "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
+            logmsg(
+                LOGMSG_USER,
+                "XXXX: %llu %s sb=%p CURSOR_OPEN cid=%s tid=%s fl=%x "
+                "rootpage=%d version=%d seq=%d SRC[%d, %s]\n",
                 t, prefix, sb, comdb2uuidstr((unsigned char *)msg->co.cid, cus),
                 comdb2uuidstr((unsigned char *)msg->co.tid, tus), msg->co.flags,
                 msg->co.rootpage, msg->co.version, msg->co.seq, msg->co.srcpid,
@@ -1970,48 +1975,49 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_CURSOR_CLOSE:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_CLOSE cid=%s\n", t, prefix,
-                comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
+               comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
         break;
 
     case FDB_MSG_CURSOR_FIRST:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_FIRST cid=%s\n", t, prefix,
-                comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
+               comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
         break;
 
     case FDB_MSG_CURSOR_LAST:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_LAST cid=%s\n", t, prefix,
-                comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
+               comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
         break;
 
     case FDB_MSG_CURSOR_NEXT:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_NEXT cid=%s\n", t, prefix,
-                comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
+               comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
         break;
 
     case FDB_MSG_CURSOR_PREV:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s CURSOR_PREV cid=%s\n", t, prefix,
-                comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
+               comdb2uuidstr((unsigned char *)msg->cc.cid, cus));
         break;
 
     case FDB_MSG_DATA_ROW:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s DATA_ROW cid=%s rc=%d genid=%llx "
-                        "datalen=%d datacpylen=%d\n",
-                t, prefix, comdb2uuidstr((unsigned char *)msg->dr.cid, cus), msg->dr.rc,
-                msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
+                            "datalen=%d datacpylen=%d\n",
+               t, prefix, comdb2uuidstr((unsigned char *)msg->dr.cid, cus),
+               msg->dr.rc, msg->dr.genid, msg->dr.datalen, msg->dr.datacopylen);
         break;
 
     case FDB_MSG_CURSOR_FIND:
     case FDB_MSG_CURSOR_FIND_LAST:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s %s cid=%s key[%d]=\"", t, prefix,
-                (msg->hd.type == FDB_MSG_CURSOR_FIND) ? "CURSOR_FIND"
-                                                      : "CURSOR_FIND_LAST",
-                comdb2uuidstr((unsigned char *)msg->cf.cid, cus), msg->cf.keylen);
+               (msg->hd.type == FDB_MSG_CURSOR_FIND) ? "CURSOR_FIND"
+                                                     : "CURSOR_FIND_LAST",
+               comdb2uuidstr((unsigned char *)msg->cf.cid, cus),
+               msg->cf.keylen);
         fsnapf(stderr, msg->cf.key, msg->cf.keylen);
         logmsg(LOGMSG_USER, "\"\n");
 
@@ -2020,18 +2026,19 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_RUN_SQL:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s RUN_SQL cid=%s version=%d flags=%x "
-                        "sqllen=%d sql=\"%s\" trim=\"%s\"\n",
-                t, prefix, comdb2uuidstr((unsigned char *)msg->sq.cid, cus), msg->sq.version,
-                msg->sq.flags, msg->sq.sqllen, msg->sq.sql,
-                (msg->sq.flags == FDB_RUN_SQL_TRIM) ? "yes" : "no");
+                            "sqllen=%d sql=\"%s\" trim=\"%s\"\n",
+               t, prefix, comdb2uuidstr((unsigned char *)msg->sq.cid, cus),
+               msg->sq.version, msg->sq.flags, msg->sq.sqllen, msg->sq.sql,
+               (msg->sq.flags == FDB_RUN_SQL_TRIM) ? "yes" : "no");
         break;
 
     case FDB_MSG_INSERT_PI:
     case FDB_MSG_INSERT:
         logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p INSERT cid=%s rootp=%d "
                             "version=%d genid=%llx datalen=%d seq=%d%s%s\n",
-               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->in.cid, cus), msg->in.rootpage,
-               msg->in.version, msg->in.genid, msg->in.datalen, msg->in.seq,
+               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->in.cid, cus),
+               msg->in.rootpage, msg->in.version, msg->in.genid,
+               msg->in.datalen, msg->in.seq,
                (msg->in.tblname) ? " tblname=" : "",
                (msg->in.tblname) ? msg->in.tblname : "");
         break;
@@ -2041,8 +2048,8 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s sb=%p DELETE cid=%s rootp=%d "
                             "version=%d genid=%llx seq=%d%s%s\n",
-               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->de.cid, cus), msg->de.rootpage,
-               msg->de.version, msg->de.genid, msg->de.seq,
+               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->de.cid, cus),
+               msg->de.rootpage, msg->de.version, msg->de.genid, msg->de.seq,
                (msg->de.tblname) ? " tblname=" : "",
                (msg->de.tblname) ? msg->de.tblname : "");
         break;
@@ -2053,9 +2060,9 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
         logmsg(LOGMSG_USER,
                "XXXX: %llu %s sb=%p UPDATE cid=%s rootp=%d "
                "version=%d oldgenid=%llx genid=%llx datalen=%d seq %d %s%s\n",
-               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->up.cid, cus), msg->up.rootpage,
-               msg->up.version, msg->up.oldgenid, msg->up.genid,
-               msg->up.datalen, msg->up.seq,
+               t, prefix, sb, comdb2uuidstr((unsigned char *)msg->up.cid, cus),
+               msg->up.rootpage, msg->up.version, msg->up.oldgenid,
+               msg->up.genid, msg->up.datalen, msg->up.seq,
                (msg->up.tblname) ? " tblname=" : "",
                (msg->up.tblname) ? msg->up.tblname : "");
         break;
@@ -2063,10 +2070,10 @@ static void fdb_msg_print_message_uuid(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     case FDB_MSG_INDEX:
 
         logmsg(LOGMSG_USER, "XXXX: %llu %s INDEX cid=%s rootp=%d version=%d "
-                        "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
-                t, prefix, comdb2uuidstr((unsigned char *)msg->ix.cid, cus), msg->ix.rootpage,
-                msg->ix.version, msg->ix.genid, msg->ix.is_delete,
-                msg->ix.ixnum, msg->ix.ixlen);
+                            "genid=%llx is_delete=%d, ixnum=%d, ixlen=%d\n",
+               t, prefix, comdb2uuidstr((unsigned char *)msg->ix.cid, cus),
+               msg->ix.rootpage, msg->ix.version, msg->ix.genid,
+               msg->ix.is_delete, msg->ix.ixnum, msg->ix.ixlen);
         break;
 
     case FDB_MSG_HBEAT:

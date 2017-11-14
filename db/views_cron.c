@@ -218,7 +218,7 @@ static void *_cron_runner(void *arg)
         locked = 1;
 
         clock_gettime(CLOCK_REALTIME, &now);
-        while ((event = sched->events.top) != NULL){
+        while ((event = sched->events.top) != NULL) {
             /* refresh now, since callback can take a long time!*/
             clock_gettime(CLOCK_REALTIME, &now);
 

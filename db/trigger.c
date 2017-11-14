@@ -66,8 +66,9 @@ static inline int trigger_register_int(trigger_reg_t *t)
         strcpy(info->spname, t->spname);
         info->trigger_cookie = t->trigger_cookie;
         hash_add(trigger_hash, info);
-        printf("%s %s ASSIGNED host:%s trigger_cookie:0x%" PRIu64 "\n", __func__,
-               info->spname, info->host, flibc_htonll(info->trigger_cookie));
+        printf("%s %s ASSIGNED host:%s trigger_cookie:0x%" PRIu64 "\n",
+               __func__, info->spname, info->host,
+               flibc_htonll(info->trigger_cookie));
         return 1;
     } else if (strcmp(info->host, trigger_hostname(t)) &&
                info->trigger_cookie == t->trigger_cookie) {
@@ -111,8 +112,8 @@ static int trigger_unregister_int(trigger_reg_t *t)
         trigger_hash_del(info);
         return CDB2_TRIG_REQ_SUCCESS;
     }
-    printf("%s failed:%s node:%s trigger_cookie:0x%" PRIu64 "\n", __func__, t->spname,
-           trigger_hostname(t), flibc_htonll(t->trigger_cookie));
+    printf("%s failed:%s node:%s trigger_cookie:0x%" PRIu64 "\n", __func__,
+           t->spname, trigger_hostname(t), flibc_htonll(t->trigger_cookie));
     if (info) {
         printf("%s %s registered to node:%s cookie:0x%" PRIu64 "\n", __func__,
                info->spname, info->host, flibc_htonll(info->trigger_cookie));
@@ -274,8 +275,8 @@ void trigger_stat()
     if (trigger_hash) {
         info = hash_first(trigger_hash, &ent, &bkt);
         while (info) {
-            printf("%s %s IS ASSIGNED TO node:%s cookie:0x%" PRIu64 "\n", __func__,
-                   info->spname, info->host, info->trigger_cookie);
+            printf("%s %s IS ASSIGNED TO node:%s cookie:0x%" PRIu64 "\n",
+                   __func__, info->spname, info->host, info->trigger_cookie);
             info = hash_next(trigger_hash, &ent, &bkt);
         }
     }

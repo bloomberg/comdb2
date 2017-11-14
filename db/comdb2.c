@@ -4194,7 +4194,8 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
-        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits, (int64_t *)&bpool_misses);
+        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
+                               (int64_t *)&bpool_misses);
 
         if (!dbenv->exiting && !dbenv->stopped) {
             bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);

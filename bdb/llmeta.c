@@ -7791,7 +7791,8 @@ static void queue_data_destroy(struct queue_data *qd)
     }
 }
 
-static struct queue_data *llmeta_queue_data_get(uint8_t *p_buf, uint8_t *p_buf_end)
+static struct queue_data *llmeta_queue_data_get(uint8_t *p_buf,
+                                                uint8_t *p_buf_end)
 {
     struct queue_data *qd = NULL;
     int len;
