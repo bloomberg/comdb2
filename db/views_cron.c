@@ -123,7 +123,7 @@ static void _insert_ordered_event(cron_sched_t * sched, cron_event_t *event)
     listc_init(&tmpsched, offsetof(struct cron_event, lnk));
 
     /* add all older records that preceed current event */
-    while (crt = sched->events.top) {
+    while ((crt = sched->events.top) != NULL) {
         if (crt->epoch <= event->epoch) {
             listc_rfl(&sched->events, crt);
             listc_atl(&tmpsched, crt); /* ! reversed order */
@@ -141,7 +141,7 @@ static void _insert_ordered_event(cron_sched_t * sched, cron_event_t *event)
     }
 
     /* add all older events */
-    while (crt = tmpsched.top) {
+    while ((crt = tmpsched.top) != NULL) {
         listc_rfl(&tmpsched, crt);
         listc_atl(&sched->events, crt); /* now order is proper again */
     }
@@ -218,7 +218,7 @@ static void *_cron_runner(void *arg)
         locked = 1;
 
         clock_gettime(CLOCK_REALTIME, &now);
-        while (event = sched->events.top) {
+        while ((event = sched->events.top) != NULL) {
             /* refresh now, since callback can take a long time!*/
             clock_gettime(CLOCK_REALTIME, &now);
 

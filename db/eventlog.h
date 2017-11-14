@@ -2,7 +2,8 @@
 #define INCLUDED_EVENTLOG_H
 
 #include "reqlog_int.h"
-typedef struct cson_array cson_array; // forward declare
+#include "cson_amalgamation_core.h"
+
 cson_array *get_bind_array(struct reqlogger *logger, int nfields);
 void add_to_bind_array(cson_array *arr, char *name, int type, void *val,
                        int dlen, int isnull);

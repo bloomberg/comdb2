@@ -7721,8 +7721,8 @@ struct queue_data {
     char **dest;
 };
 
-static uint8_t *llmeta_queue_key_put(struct queue_key *key, char *p_buf,
-                                     char *p_buf_end)
+static uint8_t *llmeta_queue_key_put(struct queue_key *key, uint8_t *p_buf,
+                                     uint8_t *p_buf_end)
 {
     if (p_buf_end - p_buf < sizeof(struct queue_key))
         return NULL;
@@ -7731,8 +7731,8 @@ static uint8_t *llmeta_queue_key_put(struct queue_key *key, char *p_buf,
     return p_buf;
 }
 
-static uint8_t *llmeta_queue_key_get(struct queue_key *key, char *p_buf,
-                                     char *p_buf_end)
+static uint8_t *llmeta_queue_key_get(struct queue_key *key, uint8_t *p_buf,
+                                     uint8_t *p_buf_end)
 {
     if (p_buf_end - p_buf < sizeof(struct queue_key))
         return NULL;
@@ -7758,8 +7758,8 @@ static int llmeta_queue_data_size(struct queue_data *data)
     return sz;
 }
 
-static uint8_t *llmeta_queue_data_put(struct queue_data *data, char *p_buf,
-                                      char *p_buf_end)
+static uint8_t *llmeta_queue_data_put(struct queue_data *data, uint8_t *p_buf,
+                                      uint8_t *p_buf_end)
 {
     int sz = 0;
     int len;
@@ -7791,7 +7791,8 @@ static void queue_data_destroy(struct queue_data *qd)
     }
 }
 
-static struct queue_data *llmeta_queue_data_get(char *p_buf, char *p_buf_end)
+static struct queue_data *llmeta_queue_data_get(uint8_t *p_buf,
+                                                uint8_t *p_buf_end)
 {
     struct queue_data *qd = NULL;
     int len;
@@ -7833,7 +7834,7 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     struct queue_key qk = {0};
     int rc;
 
-    p_buf = key;
+    p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     /* TODO: range check? assume sanitized at this point? */
@@ -7898,7 +7899,7 @@ int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    p_buf = key;
+    p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     strcpy(qk.dbname, queue);

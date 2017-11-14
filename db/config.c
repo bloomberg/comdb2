@@ -626,7 +626,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 /* Check to see if this name is another name for me. */
                 h = bb_gethostbyname(nodename);
                 if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length == 0)) {
+                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
                 }

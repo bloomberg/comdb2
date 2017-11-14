@@ -112,7 +112,7 @@ int timepart_serialize_view(timepart_view_t *view, int *plen, char **out,
  *  NOTE: writing a NULL or 0 length string deletes existing entry if any
  *
  */
-int views_write(const const char *str);
+int views_write(const char *str);
 
 /**
  *  Write a CSON representation of a view

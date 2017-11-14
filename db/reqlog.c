@@ -1290,7 +1290,7 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
     if (logger && (logger->mask & event_flag)) {
         struct print_event *event;
         char *hexstr;
-        const unsigned char *dptr = d;
+        const char *dptr = d;
 
         hexstr = malloc(len * 2 + 1);
         if (!hexstr) {
@@ -1843,7 +1843,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             log_rule(logger, use_rule->out, use_rule->event_mask);
             deref_output_ll(use_rule->out);
         }
-        while (use_rule = use_rules) {
+        while ((use_rule = use_rules) != NULL) {
             use_rules = use_rule->next;
             free(use_rule);
         }

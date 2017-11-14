@@ -18,6 +18,7 @@
 /* COMDB2 MODIFICATION */
 #include <cheapstack.h>
 #include "tunables.h"
+#include "fwd_types.h"
 
 #undef debug_raw
 /* Special Comments:
@@ -1016,7 +1017,6 @@ typedef struct Bitvec Bitvec;
 typedef struct CollSeq CollSeq;
 typedef struct Column Column;
 typedef struct Db Db;
-typedef struct Schema Schema;
 typedef struct Expr Expr;
 typedef struct ExprList ExprList;
 typedef struct ExprSpan ExprSpan;
@@ -1050,7 +1050,6 @@ typedef struct TreeView TreeView;
 typedef struct Trigger Trigger;
 typedef struct TriggerPrg TriggerPrg;
 typedef struct TriggerStep TriggerStep;
-typedef struct UnpackedRecord UnpackedRecord;
 typedef struct VTable VTable;
 typedef struct VtabCtx VtabCtx;
 typedef struct Walker Walker;

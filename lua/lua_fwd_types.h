@@ -14,12 +14,14 @@
    limitations under the License.
  */
 
-#ifndef __bdb_net_h__
-#define __bdb_net_h__
+/*
+ * forward declared types
+ */
 
-typedef struct bdb_state_tag bdb_state_type;
-char *print_addr(struct sockaddr_in *addr, char *buf);
-const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
-                                    unsigned int hash);
+#ifndef __lua_fwd_types_h__
+#define __lua_fwd_types_h__
 
-#endif /* __bdb_net_h__ */
+typedef struct lua_TValue TValue;
+
+
+#endif
