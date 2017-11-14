@@ -338,6 +338,64 @@ matchable_log_type(int rectype)
 }
 
 /*
+ * __rep_verify_will_recover --
+ *
+ * This routine returns non-zero if a subsequent call to __rep_process_message
+ * will run recovery.
+ *
+ * PUBLIC: int __rep_verify_will_recover __P((DB_ENV *, DBT *, DBT *));
+ */
+
+int
+__rep_verify_will_recover(dbenv, control, rec)
+	DB_ENV *dbenv;
+	DBT *control, *rec;
+{
+	DB_LOG *dblp;
+	DBT mylog;
+	REP_CONTROL *rp;
+	DB_LSN lsn;
+	LOG *lp;
+	DB_LOGC *logc;
+	int will_recover = 0;
+	int ret;
+	u_int32_t rectype;
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+	rp = (REP_CONTROL *)control->data;
+
+	if (LOG_SWAPPED())
+		__rep_control_swap(rp);
+
+	if (IS_ZERO_LSN(lp->verify_lsn))
+		goto done;
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		goto done;
+
+	memset(&mylog, 0, sizeof(mylog));
+
+	if ((ret = __log_c_get(logc, &rp->lsn, &mylog, DB_SET)) != 0)
+		goto close_cursor;
+
+	LOGCOPY_32(&rectype, mylog.data);
+
+	if (mylog.size == rec->size &&
+			matchable_log_type(rectype) && 
+			memcmp(mylog.data, rec->data, rec->size) == 0)
+		will_recover = 1;
+
+close_cursor:
+	__log_c_close(logc);
+
+done:
+	if (LOG_SWAPPED())
+		__rep_control_swap(rp);
+
+	return will_recover;
+}
+
+/*
  * __rep_process_message --
  *
  * This routine takes an incoming message and processes it.
