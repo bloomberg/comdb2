@@ -56,7 +56,7 @@ void cleanup_sqlite_master()
  */
 int create_sqlite_master()
 {
-    int tblnum; 
+    int tblnum;
     int tbl_idx;
     int i;
     int local_nentries = 0;
@@ -77,8 +77,8 @@ int create_sqlite_master()
         ent->tblname = strdup(tbl->tablename);
         ent->isstrdup = 1;
         ent->ixnum = -1;
-        ent->entry = create_sqlite_master_row(i + RTPAGE_START, tbl->csc2_schema,
-                                              tblnum, -1, &ent->entry_size);
+        ent->entry = create_sqlite_master_row(
+            i + RTPAGE_START, tbl->csc2_schema, tblnum, -1, &ent->entry_size);
         tbl_idx = i;
         i++;
 
