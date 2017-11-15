@@ -373,6 +373,7 @@ static void detachFunc(
   }
 
   comdb2_dynamic_detach(db, i);
+  return;
 
 detach_error:
   sqlite3_result_error(context, zErr, -1);

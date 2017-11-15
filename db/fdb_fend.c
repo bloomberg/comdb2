@@ -4869,7 +4869,6 @@ int fdb_get_remote_version(const char *dbname, const char *table,
     const char *location;
     int flags;
 
-        location = (local)?"localhost":get_cdb2_class_str(class);
     if (local) {
         location = "localhost";
         flags = CDB2_DIRECT_CPU;
