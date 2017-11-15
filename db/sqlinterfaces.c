@@ -2760,6 +2760,7 @@ printf("AZ hash_del: %p (stmt %p) rc=%d\n", *tail, (*tail)->stmt, rc);
 static void delete_stmt_entry(struct sqlthdstate *thd,
                               stmt_hash_entry_type *entry)
 {
+    assert(entry);
     stmt_hash_entry_type **head = NULL;
     stmt_hash_entry_type **tail = NULL;
     int *cache_entries_counter_ptr;
@@ -2776,6 +2777,8 @@ static void delete_stmt_entry(struct sqlthdstate *thd,
 
     stmt_hash_entry_type *prev_entry = entry->prev;
     stmt_hash_entry_type *next_entry = entry->next;
+    assert(next_entry == NULL || next_entry);
+    assert(prev_entry == NULL || prev_entry);
 
     if (prev_entry)
         prev_entry->next = next_entry;
@@ -2871,20 +2874,27 @@ printf("AZ hash_addEntry: %p (stmt %p, sql: '%s')\n", entry, entry->stmt, entry-
     return ret;
 }
 
-static inline int find_stmt_table(hash_t *stmt_table, const char *sql,
+static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
                                   stmt_hash_entry_type **entry)
 {
+    assert(thd);
+    hash_t *stmt_table = thd->stmt_table;
     if(stmt_table == NULL) 
         return -1;
 
 printf("AZ find_stmt_table '%s'\n", sql);
-    if (strlen(sql) < MAX_HASH_SQL_LENGTH) {
-        *entry = hash_find(stmt_table, sql);
+    if (strlen(sql) >= MAX_HASH_SQL_LENGTH)
+        return -1;
+
+    *entry = hash_find(stmt_table, sql);
 printf("AZ hash_find %p (sql %s)\n", *entry, sql);
-        if (*entry)
-            return 0;
-    }
-    return -1;
+
+    if (*entry == NULL)
+        return -1;
+
+    delete_stmt_entry(thd, *entry);
+
+    return 0;
 }
 
 static const char *osqlretrystr(int i)
@@ -3780,7 +3790,7 @@ printf("AZ get_cached_stmt %s\n", rec->sql);
         int hint_len = sizeof(rec->cache_hint);
         if (extract_sqlcache_hint(rec->sql, rec->cache_hint, &hint_len)) {
             rec->status = CACHE_HAS_HINT;
-            if (find_stmt_table(thd->stmt_table, rec->cache_hint,
+            if (find_stmt_table(thd, rec->cache_hint,
                                 &rec->stmt_entry) == 0) {
                 rec->status |= CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
@@ -3795,7 +3805,7 @@ printf("AZ get_cached_stmt %s\n", rec->sql);
                 }
             }
         } else {
-            if (find_stmt_table(thd->stmt_table, rec->sql, &rec->stmt_entry) ==
+            if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) ==
                 0) {
                 rec->status = CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
@@ -3824,7 +3834,7 @@ static void get_cached_params(struct sqlthdstate *thd,
         hint_len = sizeof(rec->cache_hint);
         if (extract_sqlcache_hint(clnt->sql, rec->cache_hint, &hint_len)) {
             rec->status = CACHE_HAS_HINT;
-            if (find_stmt_table(thd->stmt_table, rec->cache_hint,
+            if (find_stmt_table(thd, rec->cache_hint,
                                 &rec->stmt_entry) == 0) {
                 rec->status |= CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
@@ -3836,7 +3846,7 @@ static void get_cached_params(struct sqlthdstate *thd,
                 }
             }
         } else {
-            if (find_stmt_table(thd->stmt_table, rec->sql, &rec->stmt_entry) ==
+            if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) ==
                 0) {
                 rec->status = CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
