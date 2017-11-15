@@ -1362,8 +1362,7 @@ static int __lock_wrlock_exclusive(char *dbname)
 
         if (!fdb) {
             pthread_rwlock_unlock(&fdbs.arr_lock);
-            rc = FDB_ERR_FDB_NOTFOUND;
-            goto done;
+            return FDB_ERR_FDB_NOTFOUND;
         }
 
         pthread_rwlock_wrlock(&fdb->h_rwlock);
@@ -1385,8 +1384,7 @@ static int __lock_wrlock_exclusive(char *dbname)
                     if (rc) {
                         fprintf(stderr, "%s:%d recover_deadlock returned %d\n",
                                 __func__, __LINE__, rc);
-                        rc = FDB_ERR_GENERIC;
-                        goto done;
+                        return FDB_ERR_GENERIC;
                     }
                 }
             }
