@@ -27,17 +27,22 @@ function tblver
 
 function alter
 {
-    csc2=$1
-    cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table ${tbl} { `cat ${csc2}` }"
+    csc=$1
+    echo cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table ${tbl} { `cat ${csc}` }"
+    cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table ${tbl} { `cat ${csc}` }"
     if (( $? != 0 )) ; then
-        echo "Failed to alter schema to ${csc2}"
+        echo "Failed to alter schema to ${csc}"
         exit 1
     fi
+
+    fdbinfo 
+    tblver
 }
 
 function sel
 {
     col=$1
+    echo cdb2sql ${a_cdb2config} ${a_dbname} default "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}"
     cdb2sql ${a_cdb2config} ${a_dbname} default "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
     if (( $? != 0 )) ; then
         echo "Failed to select rows from ${a_dbname}"
@@ -61,6 +66,7 @@ csc1="t1.csc2"
 csc2="t2.csc2"
 tbl="t"
 
+sed "s/ t / LOCAL_${a_remdbname}.t /g" output.log.src > output.log
 test1=0
 test2=1000
 
@@ -77,7 +83,7 @@ test=1
 if (( $test >= $test1 && $test<= $test2 )) ; then
 
 echo cdb2sql -s --cdb2cfg ${a_remcdb2config} ${a_remdbname} "create table ${tbl} {`cat ${csc1}`}"
-cdb2sql -s --cdb2cfg ${a_remcdb2config} ${a_remdbname} "create table ${tbl} {`cat ${csc1}`}" > $output 2>&1
+cdb2sql -s --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "create table ${tbl} {`cat ${csc1}`}" > $output 2>&1
 if (( $? != 0 )); then
     echo "Fail to create table ${tbl} for ${a_remdbname}"
     exit 1
@@ -110,9 +116,6 @@ if (( $test >= $test1 && $test<= $test2 )) ; then
 # alter schema remote, add a column
 alter ${csc2}
 
-fdbinfo
-tblver
-
 fi
 let test=test+1
 if (( $test >= $test1 && $test<= $test2 )) ; then
@@ -129,9 +132,6 @@ if (( $test >= $test1 && $test<= $test2 )) ; then
 
 # make the column dissappear
 alter ${csc1}
-
-fdbinfo 
-tblver
 
 fi
 let test=test+1
@@ -166,9 +166,6 @@ if (( $test >= $test1 && $test<= $test2 )) ; then
 
 # remove the column again to try recover using a good column
 alter ${csc1}
-
-fdbinfo
-tblver
 
 fi
 let test=test+1
