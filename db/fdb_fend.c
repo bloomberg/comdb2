@@ -600,8 +600,8 @@ enum table_status {
  *       of fdb itself
  *
  */
-static int _table_exists(fdb_t *fdb, const char *table_name, enum table_status *status, 
-        int *version)
+static int _table_exists(fdb_t *fdb, const char *table_name,
+                         enum table_status *status, int *version)
 {
     unsigned long long remote_version;
     fdb_tbl_t *table;
@@ -620,16 +620,19 @@ static int _table_exists(fdb_t *fdb, const char *table_name, enum table_status *
         } else {
             if (comdb2_get_verify_remote_schemas()) {
                 /* this is a retry for an already */
-                rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class, fdb->loc == NULL,
-                        &remote_version);
+                rc = fdb_get_remote_version(fdb->dbname, table_name, fdb->class,
+                                            fdb->loc == NULL, &remote_version);
                 if (rc == FDB_NOERR) {
                     if (table->version != remote_version) {
-                        logmsg(LOGMSG_WARN, "Remote table %s.%d new version is %lld, cached %lld\n",
-                            fdb->dbname, table_name, remote_version, table->version);
+                        logmsg(LOGMSG_WARN, "Remote table %s.%d new version is "
+                                            "%lld, cached %lld\n",
+                               fdb->dbname, table_name, remote_version,
+                               table->version);
                         table->need_version = remote_version;
                         *status = TABLE_STALE;
                     } else {
-                        /* table version correct, make sure to pass this upstream */
+                        /* table version correct, make sure to pass this
+                         * upstream */
                         *version = table->version;
                     }
                 } else {
@@ -710,13 +713,13 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
 retry_find_table:
     /* check if the table exists, and if it does need refreshing
        if it exists and has right version, grab the version and return */
-    rc = _table_exists(fdb, table_name,  &status, version);
+    rc = _table_exists(fdb, table_name, &status, version);
     if (rc == FDB_NOERR && status == TABLE_EXISTS) {
         /* fdb unlocked, users incremented */
         goto nop;
     } else if (rc != FDB_NOERR) {
-        logmsg(LOGMSG_WARN, "failure to connect to remote %s.%s\n",
-                fdb->dbname, table_name);
+        logmsg(LOGMSG_WARN, "failure to connect to remote %s.%s\n", fdb->dbname,
+               table_name);
         goto nop;
     }
 
@@ -755,14 +758,16 @@ retry_find_table:
 
         /* add ourselves back */
         __fdb_add_user(fdb);
-        
+
         if (status == TABLE_STALE) {
             /* remove the stale table here */
-                        /* ok, stale; we need to garbage this one out */
-            fdb_tbl_t *remtbl  = hash_find_readonly(fdb->h_tbls_name, &table_name);
-            /* anything is possible with the table while waiting for exclusive fdb 
+            /* ok, stale; we need to garbage this one out */
+            fdb_tbl_t *remtbl =
+                hash_find_readonly(fdb->h_tbls_name, &table_name);
+            /* anything is possible with the table while waiting for exclusive
+             * fdb
              * lock */
-            if(remtbl) {
+            if (remtbl) {
                 /* table is still around */
                 if (remtbl->need_version == remtbl->version) {
                     /* table was fixed in the meantime!, drop exclusive lock */
@@ -772,16 +777,15 @@ retry_find_table:
                 } else {
                     /* table is still stale, remove */
                     if (gbl_fdb_track)
-                        logmsg(
-                                LOGMSG_USER,
-                                "Detected stale table \"%s.%s\" version %llu required %d\n",
-                                remtbl->fdb->dbname, remtbl->name, remtbl->version,
-                                remtbl->need_version);
+                        logmsg(LOGMSG_USER, "Detected stale table \"%s.%s\" "
+                                            "version %llu required %d\n",
+                               remtbl->fdb->dbname, remtbl->name,
+                               remtbl->version, remtbl->need_version);
 
                     if (__free_fdb_tbl(remtbl, fdb)) {
-                        logmsg(LOGMSG_ERROR,
-                                "Error clearing schema for table \"%s\" in db \"%s\"\n",
-                                table_name, fdb->dbname);
+                        logmsg(LOGMSG_ERROR, "Error clearing schema for table "
+                                             "\"%s\" in db \"%s\"\n",
+                               table_name, fdb->dbname);
                     }
                 }
             }
@@ -4839,7 +4843,6 @@ void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
     cur->ent = get_fdb_tbl_ent_by_name_from_fdb(fdb, tblname);
 }
 
-
 static const char *get_cdb2_class_str(enum mach_class cls)
 {
     switch (cls) {
@@ -4857,11 +4860,12 @@ static const char *get_cdb2_class_str(enum mach_class cls)
 }
 
 /**
- * Retrieve the schema of a remote table 
- * 
- */ 
+ * Retrieve the schema of a remote table
+ *
+ */
 int fdb_get_remote_version(const char *dbname, const char *table,
-        enum mach_class class, int local, unsigned long long *version)
+                           enum mach_class class, int local,
+                           unsigned long long *version)
 {
     char sql[256];
     cdb2_hndl_tp *db;
@@ -4880,7 +4884,7 @@ int fdb_get_remote_version(const char *dbname, const char *table,
     snprintf(sql, sizeof(sql), "select table_version(\'%s\')", table);
 
     rc = cdb2_open(&db, dbname, location, flags);
-    if(rc)
+    if (rc)
         return FDB_ERR_GENERIC;
 
     rc = cdb2_run_statement(db, sql);
@@ -4891,21 +4895,19 @@ int fdb_get_remote_version(const char *dbname, const char *table,
 
     rc = cdb2_next_record(db);
     if (rc == CDB2_OK) {
-        switch(cdb2_column_type(db, 0)) {
+        switch (cdb2_column_type(db, 0)) {
         case CDB2_INTEGER:
-            *version = *(unsigned long long*)cdb2_column_value(db, 0);
+            *version = *(unsigned long long *)cdb2_column_value(db, 0);
             rc = FDB_NOERR;
             break;
         default:
             rc = FDB_ERR_GENERIC;
             break;
         }
-    }
-    else
+    } else
         rc = FDB_ERR_GENERIC;
 
 done:
     cdb2_close(db);
     return rc;
 }
-
