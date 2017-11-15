@@ -116,6 +116,13 @@ add_subdirectory(tools)
 add_subdirectory(db)
 add_subdirectory(tests/tools EXCLUDE_FROM_ALL)
 
+enable_testing()
+file(GLOB TESTS LIST_DIRECTORIES true "${PROJECT_SOURCE_DIR}/tests/*.test")
+foreach(TEST IN ITEMS ${TESTS}) 
+     get_filename_component(TEST ${TEST} NAME_WE)
+     add_test(NAME ${TEST} COMMAND make ${TEST} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/")
+endforeach()
+
 ########################
 ######## TODO ##########
 ########################
