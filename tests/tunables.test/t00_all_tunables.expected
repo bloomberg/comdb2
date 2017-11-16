@@ -751,7 +751,7 @@
 (name='skip_cget_in_db_put', description='Don't perform a cget when we do a cput', type='BOOLEAN', value='ON', read_only='N')
 (name='skip_clear_queue_extents', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='skip_duplicate_seqnums', description='skip_duplicate_seqnums', type='BOOLEAN', value='ON', read_only='N')
-(name='skip_skipables_on_verify', description='skip_skipables_on_verify', type='BOOLEAN', value='OFF', read_only='N')
+(name='skip_skipables_on_verify', description='skip_skipables_on_verify', type='BOOLEAN', value='ON', read_only='N')
 (name='skip_sync_if_direct', description='Don't fsync files if directio enabled', type='BOOLEAN', value='ON', read_only='N')
 (name='skip_table_schema_check', description='skip_table_schema_check', type='BOOLEAN', value='OFF', read_only='N')
 (name='skipdelaybase', description='Delay commits by at least this much if forced to delay by incoherent nodes.', type='INTEGER', value='100', read_only='N')
