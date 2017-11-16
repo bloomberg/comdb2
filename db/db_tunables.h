@@ -1304,6 +1304,4 @@ REGISTER_TUNABLE("rep_verify_will_recover_trace",
                  &gbl_rep_verify_will_recover_trace, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
-
-
 #endif /* _DB_TUNABLES_H */
