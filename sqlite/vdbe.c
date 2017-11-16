@@ -1827,8 +1827,8 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   else if( ((pIn1->flags & pIn2->flags & MEM_Interval)==MEM_Interval) &&
             (
              pIn1->du.tv.type == pIn2->du.tv.type ||
-             pIn1->du.tv.type == INTV_DS_TYPE && pIn2->du.tv.type == INTV_DSUS_TYPE ||
-             pIn1->du.tv.type == INTV_DSUS_TYPE && pIn2->du.tv.type == INTV_DS_TYPE
+             (pIn1->du.tv.type == INTV_DS_TYPE && pIn2->du.tv.type == INTV_DSUS_TYPE) ||
+             (pIn1->du.tv.type == INTV_DSUS_TYPE && pIn2->du.tv.type == INTV_DS_TYPE)
              ) &&
             ((pOp->opcode == OP_Add) || (pOp->opcode == OP_Subtract))){
   

@@ -726,6 +726,12 @@ put default procedure cons 'sptest'
 create lua trigger audit on (table foraudit for insert and update and delete)
 create lua consumer cons on (table foraudit for insert and update and delete)
 EOF
+
+for ((i=0;i<500;++i)); do
+    echo "drop lua consumer cons"
+    echo "create lua consumer cons on (table foraudit for insert and update and delete)"
+done | cdb2sql $SP_OPTIONS - > /dev/null
+
 sleep 3 # Wait for trigger to start
 cdb2sql $SP_OPTIONS "exec procedure cons()" > /dev/null 2>&1 &
 #GENERATE DATA

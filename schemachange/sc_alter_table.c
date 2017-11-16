@@ -370,7 +370,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         char temp_newdb_name[MAXTABLELEN];
         struct dbtable *temp_newdb;
         int len = strlen(s->table);
-        len = crc32c(s->table, len);
+        len = crc32c((uint8_t *)s->table, len);
         snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
         wrlock_schema_lk();
         {

@@ -2414,7 +2414,6 @@ int bulk_import(const char *tablename, const bulk_import_data_t *p_foreign_data,
 
 void debug_trap(char *line, int lline);
 int reinit_db(struct dbtable *db);
-int truncate_db(struct dbtable *db);
 int count_db(struct dbtable *db);
 int compact_db(struct dbtable *db, int timeout, int freefs);
 int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
@@ -2499,7 +2498,8 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
-int create_sqlite_master(void);
+void cleanup_sqlite_master();
+int create_sqlite_master();
 typedef struct master_entry master_entry_t;
 int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq);

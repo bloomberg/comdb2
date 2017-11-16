@@ -449,7 +449,7 @@ timepart_views_t *views_create_all_views(void)
         /* make sure view names are the same */
         if (strcmp(view->name, cson_string_cstr(ckey))) {
             fprintf(stderr, "%s: incorrect view format for key %s\n", __func__,
-                    ckey);
+                    cson_string_cstr(ckey));
             rc = VIEW_ERR_BUG;
             goto done;
         }

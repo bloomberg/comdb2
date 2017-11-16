@@ -1228,7 +1228,7 @@ void newsql_send_strbuf_response(struct sqlclntstate *clnt, const char *str,
         cdb2__sqlresponse__column__init(columns[i]);
         columns[i]->has_type = 0;
         columns[i]->value.len = slen;
-        columns[i]->value.data = (char *)str;
+        columns[i]->value.data = (uint8_t *)str;
     }
 
     _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, columns,
@@ -6392,6 +6392,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* reset extended_tm */
     clnt->have_extended_tm = 0;
     clnt->extended_tm = 0;
+
+    clnt->is_readonly = 0;
+    clnt->ignore_coherency = 0;
 
     /* reset page-order. */
     clnt->pageordertablescan =

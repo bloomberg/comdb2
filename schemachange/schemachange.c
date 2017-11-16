@@ -1277,7 +1277,7 @@ int start_table_upgrade(struct dbenv *dbenv, const char *tbl,
         calloc(1, sizeof(struct schema_change_type));
     if (sc == NULL) return ENOMEM;
 
-    if (full == 0 && partial == 0 || full != 0 && partial != 0) {
+    if ((full == 0 && partial == 0) || (full != 0 && partial != 0)) {
         free(sc);
         return EINVAL;
     }
@@ -1472,16 +1472,15 @@ int appsock_schema_change(SBUF2 *sb, int *keepsocket)
             d = malloc(sizeof(struct dest));
             /* TODO: check for dupes here? */
             if (d == NULL) {
-                fprintf(stderr, "%s: malloc can't allocate %d bytes\n",
+                fprintf(stderr, "%s: malloc can't allocate %zu bytes\n",
                         __func__, sizeof(struct dest));
                 return -1;
             }
             d->dest = strdup(tok + 5);
             if (d->dest == NULL) {
-                fprintf(
-                    stderr,
-                    "%s: malloc can't allocate %d bytes for destination name\n",
-                    __func__, strlen(tok + 5));
+                fprintf(stderr, "%s: malloc can't allocate %zu bytes for "
+                                "destination name\n",
+                        __func__, strlen(tok + 5));
                 free(d);
                 return -1;
             }

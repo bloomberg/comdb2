@@ -263,7 +263,7 @@ static int db_send(Lua L) {
 
     if (gbl_uses_password) {
       SP sp = getsp(L);
-      if (sp && sp->clnt && sp->clnt->user) {
+      if (sp && sp->clnt) {
           int bdberr;
           if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
               return luaL_error(L, "User doesn't have access to run this command.");

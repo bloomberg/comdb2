@@ -34,6 +34,8 @@
 #include <inttypes.h>
 #include <limits.h>
 
+#include "fwd_types.h"
+#include "bdb_net.h"
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
@@ -45,7 +47,6 @@ struct filepage_t;
 typedef struct filepage_t filepage_type;
 
 struct bdb_state_tag;
-typedef struct bdb_state_tag bdb_state_type;
 
 struct bdb_callback_tag;
 typedef struct bdb_callback_tag bdb_callback_type;
@@ -497,6 +498,11 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
                                  int item_size, int pagesize,
                                  bdb_state_type *parent_bdb_state,
                                  int isqueuedb, int *bdberr);
+bdb_state_type *bdb_create_queue_tran(tran_type *, const char name[],
+                                      const char dir[], int item_size,
+                                      int pagesize,
+                                      bdb_state_type *parent_bdb_state,
+                                      int isqueuedb, int *bdberr);
 
 /* create a lite table */
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
@@ -1227,11 +1233,7 @@ int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, SBUF2 *sb,
  * length, and it doesn't help if we have the right data length but wrong
  * schema, but it catches a lot of problems easily. */
 int bdb_get_first_data_length(bdb_state_type *bdb_state, int *bdberr);
-int bdb_get_first_index_length(bdb_state_type *bdb_state, int ixnum,
-                               int *bdberr);
-
-int bdb_truncate(bdb_state_type *bdb_state, int *bdberr);
-
+int bdb_get_first_index_length(bdb_state_type *, int ixnum, int *bdberr);
 void bdb_start_request(bdb_state_type *bdb_state);
 void bdb_end_request(bdb_state_type *bdb_state);
 void bdb_start_exclusive_request(bdb_state_type *bdb_state);
@@ -1381,6 +1383,8 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
                              int *bdberr);
 int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long version_num, int *bdberr);
+int bdb_new_file_version_qdb(bdb_state_type *, tran_type *,
+                             unsigned long long version, int *bdberr);
 
 int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long *version_num,
@@ -1390,6 +1394,8 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr);
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr);
+int bdb_get_file_version_qdb(bdb_state_type *, tran_type *,
+                             unsigned long long *version, int *bdberr);
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);
@@ -1968,8 +1974,6 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
-typedef struct BtCursor BtCursor;
-typedef struct UnpackedRecord UnpackedRecord;
 struct bias_info {
     int bias;
     int dirLeft;

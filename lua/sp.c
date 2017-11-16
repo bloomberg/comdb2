@@ -1009,7 +1009,7 @@ static int send_col_data(Lua lua, SP sp, sqlite3_stmt *stmt, int nargs)
             const char *colname = NULL;
             if (gbl_return_long_column_names) {
                 column[i].value.len = strlen(parent->clntname[i]) + 1;
-                column[i].value.data = parent->clntname[i];
+                column[i].value.data = (uint8_t *)parent->clntname[i];
             } else {
                 column[i].value.len = 32;
                 column[i].value.data = (uint8_t *)info[i].column_name;
@@ -1448,7 +1448,7 @@ static int get_remote_input(lua_State *lua, char *buffer)
         CDB2QUERY *query;
         char *cmddata = malloc(hdr.length);
         rc = sbuf2fread(cmddata, hdr.length, 1, sp->debug_clnt->sb);
-        query = cdb2__query__unpack(NULL, hdr.length, cmddata);
+        query = cdb2__query__unpack(NULL, hdr.length, (uint8_t *)cmddata);
         strcpy(buffer, query->spcmd);
         free(cmddata);
         cdb2__query__free_unpacked(query, NULL);
@@ -1532,7 +1532,7 @@ static int db_debug(lua_State *lua)
         }
     }
 
-    if ((gbl_break_lua == INT_MAX)) {
+    if (gbl_break_lua == INT_MAX) {
         char sp_info[128];
         int len;
         if (sp->spversion.version_num) {
@@ -1597,7 +1597,7 @@ static int db_db_debug(Lua lua)
             i = atoi(&buffer[9]);
             sprintf(buffer, " %s(%d)", "_SP.delete_breakpoint", i);
         } else if (strncmp(buffer, "print ", 6) == 0) {
-            sprintf(old_buffer, "%s", &buffer);
+            sprintf(old_buffer, "%s", buffer);
             int len = strlen(&old_buffer[6]);
             old_buffer[6 + len - 1] = '\0';
             sprintf(buffer, "eval('%s')", &old_buffer[6]);
@@ -1608,10 +1608,10 @@ static int db_db_debug(Lua lua)
             continue;
         } else if (strncmp(buffer, "where", 5) == 0) {
             sprintf(buffer, " %s", "_SP.where()");
-        } else if (replace_from = strstr(buffer, "getvariable")) {
+        } else if ((replace_from = strstr(buffer, "getvariable")) != 0) {
             strncpy(replace_from, "_SP.get_var", 11);
             replace_from = NULL;
-        } else if (replace_from = strstr(buffer, "setvariable")) {
+        } else if ((replace_from = strstr(buffer, "setvariable")) != 0) {
             strncpy(replace_from, "_SP.set_var", 11);
             replace_from = NULL;
         } else if (read == 0) {
@@ -2019,7 +2019,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         }
         sp->num_instructions++;
 
-        if ((gbl_break_lua == INT_MAX)) {
+        if (gbl_break_lua == INT_MAX) {
             lua_getstack(lua, 1, debug);
             lua_getinfo(lua, "nSl", debug);
             char sp_info[128];
@@ -2641,7 +2641,7 @@ static const char *db_commit_int(Lua L, int *rc)
         sp->clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
                                 SQLENG_WRONG_STATE);
-        return no_transaction(L);
+        return no_transaction();
     }
     reset_stmts(sp);
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_FNSH_STATE);
@@ -2668,7 +2668,7 @@ static const char *db_rollback_int(Lua L, int *rc)
         sp->clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
                                 SQLENG_WRONG_STATE);
-        return no_transaction(L);
+        return no_transaction();
     }
     reset_stmts(sp);
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
@@ -3197,7 +3197,7 @@ bad:
 static int dbthread_error(lua_State *lua)
 {
     dbthread_t *lt = lua_touserdata(lua, -1);
-    if (lt && lt->error) {
+    if (lt) {
         lua_pushstring(lua, lt->error);
         return 1;
     } else {
@@ -4025,10 +4025,11 @@ static int db_now(Lua lua)
         precision = sp->clnt->dtprec;
     else {
         z = luabb_tostring(lua, 2);
-        if (z != NULL)
+        if (z != NULL) {
             DTTZ_TEXT_TO_PREC(
                 z, precision, 0,
                 return luaL_error(lua, "incorrect precision %s", z));
+        }
     }
 
     if (clock_gettime(CLOCK_REALTIME, &ts) != 0) goto err;
@@ -4554,7 +4555,7 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         size_t l = strlen(s);
         if (l % 2 != 0) return -1;
         uint8_t *b = malloc(l / 2);
-        luabb_fromhex(b, s, l);
+        luabb_fromhex(b, (uint8_t *)s, l);
         luabb_pushcstring_dl(L, s);
     } else if (strcmp(type, "integer") == 0) {
         if (!cson_value_is_integer(v)) return -1;
@@ -4582,7 +4583,7 @@ static int cson_push_value_annotated(Lua L, cson_value *val)
         const char *s = cson_value_get_cstr(v);
         size_t l = strlen(s);
         uint8_t *b = malloc(l / 2);
-        luabb_fromhex(b, s, l);
+        luabb_fromhex(b, (uint8_t *)s, l);
         blob_t x = {.data = b, .length = l / 2};
         luabb_pushblob_dl(L, &x);
     } else if (strcmp(type, "datetime") == 0) {
@@ -5390,7 +5391,7 @@ static int push_param(Lua lua, struct sqlclntstate *clnt, struct schema *params,
                 ++(*blobno);
             }
         } else {
-            luabb_pushcstringlen(lua, buf, f->datalen);
+            luabb_pushcstringlen(lua, (char *)buf, f->datalen);
             ++(*blobno);
         }
         break;
@@ -5656,7 +5657,7 @@ do_continue:
     }
 
     if (debug_clnt == clnt) {
-        debug_clnt == NULL;
+        debug_clnt = NULL;
     }
     clnt->sp = NULL;
     sleep(2);
@@ -5992,7 +5993,7 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         break;
     case SP_FIELD_STRING:
         copy(szstr, int32_t, payload, ntohl);
-        luabb_pushcstringlen(lua, payload, szstr);
+        luabb_pushcstringlen(lua, (char *)payload, szstr);
         payload += szstr + 1;
         break;
     case SP_FIELD_BLOB:
@@ -6136,7 +6137,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
     payload += 2;
 
     char tbl[sztbl];
-    strcpy(tbl, payload);
+    strcpy(tbl, (char *)payload);
     payload += sztbl;
 
     lua_newtable(L);
@@ -6361,7 +6362,7 @@ static int sqlite_to_lua(Lua L, const char *tz, int argc, sqlite3_value **argv)
             break;
         case SQLITE_NULL: lua_pushnil(L); break;
         case SQLITE_TEXT:
-            luabb_pushcstring(L, sqlite3_value_text(argv[i]));
+            luabb_pushcstring(L, (char *)sqlite3_value_text(argv[i]));
             break;
         case SQLITE_DATETIME:
         case SQLITE_DATETIMEUS:

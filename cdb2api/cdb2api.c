@@ -604,6 +604,8 @@ struct cdb2_ssl_sess_list {
 static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 #endif
 
+#define MAX_CNONCE_LEN 100
+
 struct cdb2_hndl {
     char dbname[64];
     char cluster[64];
@@ -630,7 +632,7 @@ struct cdb2_hndl {
     int use_hint;
     int flags;
     char errstr[1024];
-    char cnonce[100];
+    char cnonce[MAX_CNONCE_LEN];
     int cnonce_len;
     char *sql;
     int ntypes;
@@ -2489,9 +2491,11 @@ uint64_t val_combine(uint64_t lhs, uint64_t rhs)
  * the third part is the current time usec portion
  * the fourth part is a [pseudo]random number
  */
-static void make_random_str(char *str, int *len)
+static void make_random_str(char *str, size_t max_len, int *len)
 {
     static __thread unsigned short rand_state[3] = {0};
+    static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
+    static __thread size_t cached_portion_len = 0;
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
@@ -2507,10 +2511,14 @@ static void make_random_str(char *str, int *len)
         rand_state[0] = hash;
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
+        cached_portion_len = snprintf(cached_portion, sizeof(cached_portion),
+                                      "%d-%d-", cdb2_hostid(), _PID);
     }
     int randval = nrand48(rand_state);
-    sprintf(str, "%d-%d-%u-%d", cdb2_hostid(), _PID, tv.tv_usec, randval);
-    *len = strlen(str);
+    strncpy(str, cached_portion, cached_portion_len);
+    *len = cached_portion_len;
+    *len += snprintf(str + cached_portion_len, max_len - cached_portion_len,
+                     "%d-%d", (int)tv.tv_usec, randval);
     return;
 }
 
@@ -3171,7 +3179,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
                 char c_hint[128];
                 int length;
-                make_random_str(c_hint, &length);
+                make_random_str(c_hint, sizeof(c_hint), &length);
 
                 cdb2_query_with_hint(hndl, sql, c_hint, &hndl->hint,
                                      &hndl->query_hint);
@@ -3184,7 +3192,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     if (!hndl->in_trans) { /* only one cnonce for a transaction. */
         clear_snapshot_info(hndl, __LINE__);
         hndl->is_retry = 0;
-        make_random_str(hndl->cnonce, &hndl->cnonce_len);
+        make_random_str(hndl->cnonce, MAX_CNONCE_LEN, &hndl->cnonce_len);
     }
     hndl->retry_all = 1;
     int run_last = 1;

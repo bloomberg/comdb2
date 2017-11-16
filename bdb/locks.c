@@ -340,7 +340,7 @@ int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
     memcpy(keynamebuf, name, MIN(len, SHORT_TABLENAME_LEN));
 
     if (len > SHORT_TABLENAME_LEN) {
-        cksum = crc32c(name, len);
+        cksum = crc32c((uint8_t *)name, len);
         memcpy(keynamebuf + SHORT_TABLENAME_LEN, &cksum, sizeof(u_int32_t));
     }
 

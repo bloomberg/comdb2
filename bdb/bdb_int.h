@@ -46,8 +46,6 @@
 #include "intern_strings.h"
 #include "bdb_schemachange.h"
 
-#define NAME_MANGLE
-
 #define MAXRECSZ (17 * 1024)
 #define MAXKEYSZ (1024)
 
