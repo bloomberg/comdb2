@@ -2662,7 +2662,7 @@ printf("AZ START delete_stmt_table\n");
 printf("AZ DONE delete_stmt_table\n");
 }
 
-static void init_stmt_table(hash_t **stmt_table)
+static inline void init_stmt_table(hash_t **stmt_table)
 {
 printf("AZ thread %p: init_stmt_table\n", pthread_self());
     *stmt_table =
@@ -2673,40 +2673,53 @@ printf("AZ thread %p: init_stmt_table\n", pthread_self());
     assert(*stmt_table && "hash_init_user: can not init");
 }
 
-void requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
+
+static inline void add_at_front_of_list(stmt_hash_entry_type **head, 
+                                        stmt_hash_entry_type **tail, 
+                                        stmt_hash_entry_type *entry)
+{
+    entry->prev = NULL;
+    entry->next = (*head);
+    if ((*head) == NULL) {
+        assert((*tail) == NULL);
+        (*tail) = entry;
+    } else {
+        assert((*head)->prev == NULL);
+        (*head)->prev = entry;
+    }
+    (*head) = entry;
+}
+
+
+/* 
+ * Reque a stmt that was previously removed from the queues
+ * by calling remove_stmt_entry(). 
+ * Similar to add_stmt_table() but does not need to allocate.
+ */
+int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
     stmt_hash_entry_type **head = NULL;
     stmt_hash_entry_type **tail = NULL;
+    int *cache_entries_counter_ptr;
 
     if (entry->params_to_bind) {
+        cache_entries_counter_ptr = &thd->param_cache_entries;
         head = &thd->param_stmt_head;
         tail = &thd->param_stmt_tail;
     } else {
+        cache_entries_counter_ptr = &thd->noparam_cache_entries;
         head = &thd->noparam_stmt_head;
         tail = &thd->noparam_stmt_tail;
     }
 
-    stmt_hash_entry_type *prev_entry = entry->prev;
-    stmt_hash_entry_type *next_entry = entry->next;
-
-    if (prev_entry != NULL) {
-        prev_entry->next = next_entry;
-    } else {
-        /* This is already the first entry. */
-        return;
+printf("AZ hash_addEntry: %p (stmt %p, sql: '%s')\n", entry, entry->stmt, entry->sql);
+    int ret = hash_add(thd->stmt_table, entry);
+    if (ret == 0) {
+        assert(hash_find(thd->stmt_table, entry->sql) == entry);
+        add_at_front_of_list(head, tail, entry);
+        (*cache_entries_counter_ptr)++;
     }
-
-    if (next_entry != NULL) {
-        next_entry->prev = prev_entry;
-    } else {
-        /* This means this is the end of list.
-            set the new tail. */
-        (*tail) = prev_entry;
-    }
-    entry->next = (*head);
-    entry->prev = NULL;
-    (*head)->prev = entry;
-    (*head) = entry;
+    return ret;
 }
 
 static void delete_last_stmt_entry(struct sqlthdstate *thd,
@@ -2757,7 +2770,13 @@ printf("AZ hash_del: %p (stmt %p) rc=%d\n", *tail, (*tail)->stmt, rc);
     }
 }
 
-static void delete_stmt_entry(struct sqlthdstate *thd,
+/* 
+ * Remove from queue and stmt_table this entry so that 
+ * subsequent finds of the same sql will not find it but
+ * rather create a new stmt (to avoid having stmt vdbe
+ * used by two sql at the same time). 
+ */
+static void remove_stmt_entry(struct sqlthdstate *thd,
                               stmt_hash_entry_type *entry)
 {
     assert(entry);
@@ -2790,6 +2809,13 @@ static void delete_stmt_entry(struct sqlthdstate *thd,
     if (*head == entry)
         *head = next_entry;
 
+printf("AZ hash_del: %p\n", entry->stmt);
+    hash_del(thd->stmt_table, entry->sql);
+    (*cache_entries_counter_ptr)--;
+}
+
+static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+{
     if (entry->query && gbl_debug_temptables) {
         free(entry->query);
         entry->query = NULL;
@@ -2798,28 +2824,9 @@ static void delete_stmt_entry(struct sqlthdstate *thd,
     if (entry->params_to_bind) {
         free_tag_schema(entry->params_to_bind);
     }
-printf("AZ hash_del: %p\n", entry->stmt);
-    hash_del(thd->stmt_table, entry->sql);
     sqlite3_free(entry);
-    (*cache_entries_counter_ptr)--;
 }
 
-
-static inline void add_at_front_of_list(stmt_hash_entry_type **head, 
-                                        stmt_hash_entry_type **tail, 
-                                        stmt_hash_entry_type *entry)
-{
-    entry->prev = NULL;
-    entry->next = (*head);
-    if ((*head) == NULL) {
-        assert((*tail) == NULL);
-        (*tail) = entry;
-    } else {
-        assert((*head)->prev == NULL);
-        (*head)->prev = entry;
-    }
-    (*head) = entry;
-}
 
 /* On error will return non zero and
  * caller will need to finalize_stmt() in that case
@@ -2839,18 +2846,13 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
         return -1;
     }
 
-    stmt_hash_entry_type **head;
-    stmt_hash_entry_type **tail;
     int *cache_entries_counter_ptr;
-    if (params_to_bind) {
+    if (params_to_bind)
         cache_entries_counter_ptr = &thd->param_cache_entries;
-        tail = &thd->param_stmt_tail;
-        head = &thd->param_stmt_head;
-    } else {
+    else
         cache_entries_counter_ptr = &thd->noparam_cache_entries;
-        tail = &thd->noparam_stmt_tail;
-        head = &thd->noparam_stmt_head;
-    }
+
+    /* remove older entries */
     if (gbl_max_sqlcache <= (*cache_entries_counter_ptr))
         delete_last_stmt_entry(thd, params_to_bind);
 
@@ -2863,15 +2865,7 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     else
         entry->query = NULL;
 
-
-printf("AZ hash_addEntry: %p (stmt %p, sql: '%s')\n", entry, entry->stmt, entry->sql);
-    int ret = hash_add(thd->stmt_table, entry);
-    if (ret == 0) {
-        assert(hash_find(thd->stmt_table, sql) == entry);
-        add_at_front_of_list(head, tail, entry);
-        (*cache_entries_counter_ptr)++;
-    }
-    return ret;
+    return requeue_stmt_entry(thd, entry);
 }
 
 static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
@@ -2892,7 +2886,7 @@ printf("AZ hash_find %p (sql %s)\n", *entry, sql);
     if (*entry == NULL)
         return -1;
 
-    delete_stmt_entry(thd, *entry);
+    remove_stmt_entry(thd, *entry); //will add again when done
 
     return 0;
 }
@@ -3958,10 +3952,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         return 1;
     }
     if (rec->stmt_entry != NULL) {
-        if (outrc == 0) 
+        if (hash_find(thd->stmt_table, rec->stmt_entry->sql) == NULL)
             requeue_stmt_entry(thd, rec->stmt_entry);
-        else if (rec->status & CACHE_HAS_HINT)
-            rec->parameters_to_bind = NULL;
+        else
+            cleanup_stmt_entry(rec->stmt_entry);
 
         return 0;
     }
