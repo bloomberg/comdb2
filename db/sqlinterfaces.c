@@ -6349,7 +6349,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
-    }    
+    }
 
     if (clnt->context) {
         for (int i = 0; i < clnt->ncontext; i++) {
@@ -6358,7 +6358,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         free(clnt->context);
         clnt->context = NULL;
     }
-
 
     if (clnt->selectv_arr) {
         currangearr_free(clnt->selectv_arr);
@@ -6376,18 +6375,17 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
 
     if (clnt->numallocblobs) {
-            free(clnt->alloc_blobs);
-            clnt->alloc_blobs = NULL;
-            free(clnt->alloc_bloblens);
-            clnt->alloc_bloblens = NULL;
-        }
+        free(clnt->alloc_blobs);
+        clnt->alloc_blobs = NULL;
+        free(clnt->alloc_bloblens);
+        clnt->alloc_bloblens = NULL;
+    }
 
     if (clnt->query_stats) {
         free(clnt->query_stats);
         clnt->query_stats = NULL;
     }
 }
-
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 {
