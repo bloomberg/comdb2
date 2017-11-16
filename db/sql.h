@@ -775,6 +775,7 @@ void sql_mem_shutdown(void *dummy);
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
 
 void reset_clnt(struct sqlclntstate *, SBUF2 *, int initial);
+void cleanup_clnt(struct sqlclntstate *);
 void reset_query_effects(struct sqlclntstate *);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
