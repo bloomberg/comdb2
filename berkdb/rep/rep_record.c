@@ -337,6 +337,8 @@ matchable_log_type(int rectype)
 	return ret;
 }
 
+int gbl_rep_verify_will_recover_trace = 0;
+
 /*
  * __rep_verify_will_recover --
  *
@@ -378,12 +380,17 @@ __rep_verify_will_recover(dbenv, control, rec)
 	if ((ret = __log_c_get(logc, &rp->lsn, &mylog, DB_SET)) != 0)
 		goto close_cursor;
 
-	LOGCOPY_32(&rectype, mylog.data);
-
 	if (mylog.size == rec->size &&
-			matchable_log_type(rectype) && 
 			memcmp(mylog.data, rec->data, rec->size) == 0)
 		will_recover = 1;
+
+	LOGCOPY_32(&rectype, mylog.data);
+
+	if ((will_recover == 1 && !matchable_log_type(rectype)) &&
+			((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0)
+			|| (ret == DB_NOTFOUND)) {
+		will_recover = 0;
+	}
 
 close_cursor:
 	__log_c_close(logc);
@@ -391,6 +398,9 @@ close_cursor:
 done:
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
+
+	if (gbl_rep_verify_will_recover_trace)
+		logmsg(LOGMSG_ERROR, "%s is returning %d\n", __func__, will_recover);
 
 	return will_recover;
 }
@@ -1227,10 +1237,12 @@ send:			if (__rep_send_message(dbenv,
 		/*
 		 * Skip over any records recovery can write.
 		 */
-		if ((match == 0 || !matchable_log_type(rectype))) {
+		if ((match == 0 || !matchable_log_type(rectype)) &&
+		    (ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0) {
 			match = 0;
 
 			if (gbl_berkdb_verify_skip_skipables) {
+				LOGCOPY_32(&rectype, mylog.data);
 				while (!matchable_log_type(rectype) && (ret =
 					__log_c_get(logc, &lsn, &mylog,
 					    DB_PREV)) == 0) {
@@ -1257,10 +1269,60 @@ send:			if (__rep_send_message(dbenv,
 
 			(void)__rep_send_message(dbenv,
 			    *eidp, REP_VERIFY_REQ, &lsn, NULL, 0, NULL);
-		} 
 
-        if (0) {
+		} else if (ret == DB_NOTFOUND) {
 notfound:
+			if (gbl_berkdb_verify_skip_skipables) {
+				__db_err(dbenv,
+				    "Log contains only skippable records, chance of diverging logs\n");
+				ret = __log_c_get(logc, &lsn, &mylog, DB_FIRST);
+
+				if (ret == 0) {
+					MUTEX_LOCK(dbenv, db_rep->db_mutexp);
+					lp->verify_lsn = lsn;
+					lp->rcvd_recs = 0;
+					lp->wait_recs = rep->request_gap;
+					MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
+
+					match = 0;
+
+					/*
+					 * gbl_berkdb_verify_skip_skipables = 0;
+					 */
+
+					/*
+					 * fprintf(stderr, "Client file %s line %d sending verify req for lsn %d:%d\n",
+					 * __FILE__, __LINE__, lsn.file, lsn.offset);
+					 */
+
+                    verify_req_count++;
+                    if ((now = time(NULL)) > verify_req_print) {
+                        logmsg(LOGMSG_INFO, "%s line %d: recovery sending verify_req count=%llu lsn [%d][%d]\n", 
+                                __func__, __LINE__, verify_req_count, lsn.file, lsn.offset);
+                        verify_req_print = now;
+                    }
+
+					(void)__rep_send_message(dbenv,
+					    *eidp, REP_VERIFY_REQ, &lsn, NULL,
+					    0, NULL);
+				} else
+					abort();
+
+				goto rep_verify_err;
+			}
+			/*
+			 * If we've truly matched on the first record,
+			 * verify to that.
+			 */
+#if 0
+			if (match) {
+				__db_err(dbenv,
+				    "Match but log contains only skippable records, chance of diverging logs\n");
+                // This is never correct
+				goto verify;
+			}
+#endif
+
 			/* We've either run out of records because
 			 * logs have been removed or we've rolled back
 			 * all the way to the beginning.  In both cases

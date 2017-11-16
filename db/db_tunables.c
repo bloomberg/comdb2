@@ -135,6 +135,7 @@ extern int gbl_rep_process_msg_print_rc;
 extern int gbl_verbose_master_req;
 extern int gbl_verbose_send_coherency_lease;
 extern int gbl_reset_on_unelectable_cluster;
+extern int gbl_rep_verify_will_recover_trace;
 
 extern long long sampling_threshold;
 
