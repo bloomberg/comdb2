@@ -12,7 +12,7 @@ fi
 port=19500
 while :; do
     export COMDB2_PMUX_PORT=${port}
-    RANGE="-r 22000:22100"
+    RANGE="-r 30000:30100"
     ${TESTSROOTDIR}/../pmux -l -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} $RANGE &
     pid=$!
     sleep 2
