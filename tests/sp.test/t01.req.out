@@ -821,3 +821,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (version='sptest')
 (val0='0', val1='0')
 (val0='255', val1='255')
+(rows inserted=10)
+(version='sptest')
+($0=10.000000)
+($0=10.000000)
