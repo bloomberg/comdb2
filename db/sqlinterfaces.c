@@ -9630,7 +9630,7 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     }
 
     clnt->dbtran.mode = TRANLEVEL_INVALID;
-    cleanup_clnt(&clnt);
+    cleanup_clnt(clnt);
 
     pthread_mutex_destroy(&clnt->wait_mutex);
     pthread_cond_destroy(&clnt->wait_cond);
