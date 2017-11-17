@@ -38,6 +38,7 @@
 #define SOCKPOOL_SOCKET_NAME "/tmp/sockpool.socket"
 #define COMDB2DB "comdb2db"
 #define COMDB2DB_NUM 32432
+#define MAX_STATIC_BUFSIZE_KEEP 8192
 
 static char CDB2DBCONFIG_NOBBENV[512] = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
 /* The real path is COMDB2_ROOT + CDB2DBCONFIG_NOBBENV_PATH  */
@@ -1987,6 +1988,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            int ntypes, int *types, int is_begin, int skip_nrows,
                            int retries_done, int do_append, int fromline)
 {
+    static __thread unsigned char *staticbuf = NULL;
+    static __thread size_t staticbuf_size = 0;
     int n_features = 0;
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
@@ -2117,11 +2120,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         buf = malloc(len + 1);
     }
     else {
-        static __thread unsigned char *staticbuf = NULL;
-        static __thread size_t staticbuf_size = 0;
         /* make staticbuf bigger if necessary */
         if (staticbuf_size <= len) {
-            size_t newsz = 1.4 * len;
+            size_t newsz = len;
             buf = realloc(staticbuf, newsz);
             if(!buf)
                 return -1;
@@ -2164,6 +2165,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                 last = last->next;
             last->next = item;
         }
+    }
+    else if (staticbuf_size > MAX_STATIC_BUFSIZE_KEEP) {
+        staticbuf_size = MAX_STATIC_BUFSIZE_KEEP;
+        staticbuf = realloc(staticbuf, staticbuf_size);
     }
 
     return 0;
