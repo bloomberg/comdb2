@@ -76,8 +76,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-/* temporarily pull in a local copy of comdb2_shm.h until it's in the libraries
- */
 #include "comdb2_shm.h"
 #include "sql.h"
 
@@ -1418,6 +1416,7 @@ void clean_exit(void)
     free_gbl_tunables();
     free_tzdir();
     tz_hash_free();
+    cleanup_sqlite_master();
 
     logmsg(LOGMSG_WARN, "goodbye\n");
 
@@ -3253,6 +3252,7 @@ static int init(int argc, char **argv)
     if (thedb == 0)
         return -1;
 
+#if WITH_SSL
     /* Initialize SSL backend before creating any net.
        If we're in creat mode, don't bother. */
     if (!gbl_create_mode && ssl_bend_init(thedb->basedir) != 0) {
@@ -3260,6 +3260,7 @@ static int init(int argc, char **argv)
         return -1;
     }
     logmsg(LOGMSG_INFO, "SSL backend initialized.\n");
+#endif
 
     if (init_blob_cache() != 0) return -1;
 
@@ -4192,7 +4193,8 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
-        bdb_get_bpool_counters(thedb->bdb_env, &bpool_hits, &bpool_misses);
+        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
+                               (int64_t *)&bpool_misses);
 
         if (!dbenv->exiting && !dbenv->stopped) {
             bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);

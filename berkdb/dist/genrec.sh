@@ -9,9 +9,6 @@ fi
 #executables
 s_awk=awk
 s_gen=dist/gen_rec.awk
-#if [[ ! -x $s_awk ]]; then
-#    s_awk=$(whence awk)
-#fi
 
 #temp files
 t_cfl=/tmp/__db_s.$$

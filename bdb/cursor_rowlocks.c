@@ -267,11 +267,11 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
     dbtdta.flags |= DB_DBT_MALLOC;
 
     if (debug_trace(berkdb)) {
-        uint8_t *srcmemp;
-        uint8_t *srckeyp;
+        char *srcmemp;
+        char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = util_tohex(srcmemp, (uint8_t *)r->lastkey, r->keylen);
+        srckeyp = util_tohex(srcmemp, r->lastkey, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s return_key='%s'\n", berkdb,
                 __func__, bdb_state->name, curtypetostr(cur->type), srckeyp);
@@ -2053,14 +2053,13 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
 
         if (keylen > 0) {
             /* Search key stack variables */
-            uint8_t *srcmemp;
+            char *srcmemp;
             char *srckeyp = "(NULL)";
 
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp =
-                    (char *)util_tohex(srcmemp, (uint8_t *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, srckey, keylen);
             }
 
             /* Print */
@@ -2197,25 +2196,23 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
 
         if (keylen > 0) {
             /* Search key stack variables */
-            uint8_t *srcmemp;
+            char *srcmemp;
             char *srckeyp = "(NULL)";
 
             /* Found key stack variables */
-            uint8_t *fndmemp;
+            char *fndmemp;
             char *fndkeyp = "(NULL)";
 
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp =
-                    (char *)util_tohex(srcmemp, (uint8_t *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, srckey, keylen);
             }
 
             /* Found key to hex */
             if (fndkey) {
                 fndmemp = alloca((2 * keylen) + 2);
-                fndkeyp =
-                    (char *)util_tohex(fndmemp, (uint8_t *)fndkey, keylen);
+                fndkeyp = util_tohex(fndmemp, fndkey, keylen);
             }
 
             /* Print */
@@ -2589,8 +2586,8 @@ int bdb_berkdb_rowlocks_dta(bdb_berkdb_t *berkdb, char **dta, int *bdberr)
     if (debug_trace(berkdb)) {
         bdb_state_type *bdb_state = berkdb->impl->bdb_state;
         bdb_cursor_impl_t *cur = berkdb->impl->cur;
-        uint8_t *srcmemp;
-        uint8_t *srcdtap;
+        char *srcmemp;
+        char *srcdtap;
 
         srcmemp = alloca((2 * r->dtalen) + 2);
         srcdtap = util_tohex(srcmemp, r->dta, r->dtalen);
@@ -2612,11 +2609,11 @@ int bdb_berkdb_rowlocks_key(bdb_berkdb_t *berkdb, char **key, int *bdberr)
     if (debug_trace(berkdb)) {
         bdb_state_type *bdb_state = berkdb->impl->bdb_state;
         bdb_cursor_impl_t *cur = berkdb->impl->cur;
-        uint8_t *srcmemp;
-        uint8_t *srckeyp;
+        char *srcmemp;
+        char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = util_tohex(srcmemp, (uint8_t *)r->key, r->keylen);
+        srckeyp = util_tohex(srcmemp, r->key, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s key='%s'\n", berkdb, __func__,
                 bdb_state->name, curtypetostr(cur->type), srckeyp);

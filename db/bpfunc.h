@@ -24,7 +24,6 @@ enum {
     BPFUNC_SET_SKIPSCAN = 12,
 };
 
-typedef struct bpfunc bpfunc_t;
 typedef int (*bpfunc_prot)(void *tran, bpfunc_t *arg, char *err);
 typedef struct bpfunc_user_info { void *iq; } bpfunc_info;
 

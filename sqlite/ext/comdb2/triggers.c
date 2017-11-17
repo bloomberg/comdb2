@@ -104,7 +104,7 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     t = sqlite3_malloc(sizeof(trigger));
     t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;
-    if( thedb->qdbs[i]->consumers && thedb->qdbs[i]->consumers[0] )
+    if(thedb->qdbs[i]->consumers[0] )
       t->type = thedb->qdbs[i]->consumers[0]->type;
     listc_abl(&cur->trgs, t);
   }

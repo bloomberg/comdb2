@@ -166,7 +166,7 @@ int tool_cdb2_printlog_main(argc, argv)
 			/* Printing only a few of the logs. */
 			int start, end;
 			char *p;
-			if (p = strchr(optarg, '-')) {
+			if ((p = strchr(optarg, '-')) != NULL) {
 				*p = '\0';
 				start = atoi(optarg);
 				end = atoi(&p[1]);

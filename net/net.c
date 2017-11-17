@@ -551,8 +551,10 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
     }
 
     sb = host_node_ptr->sb;
+#if WITH_SSL
     if (sb && sslio_has_ssl(sb))
         sslio_close(sb, 1);
+#endif
 
     /* If we have an fd or sbuf, and no reader or writer thread, then
      * close the socket properly */
@@ -818,7 +820,7 @@ static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
     while (nread < maxbytes) {
         if (host_node_ptr) /* not set by all callers */
             host_node_ptr->timestamp = time(NULL);
-        int n = sbuf2unbufferedread(sb, ptr + nread, maxbytes - nread);
+        int n = sbuf2unbufferedread(sb, (char *)ptr + nread, maxbytes - nread);
         if (n > 0) {
             nread += n;
         } else if (n < 0) {
@@ -999,8 +1001,10 @@ static ssize_t write_stream(netinfo_type *netinfo_ptr,
     return nwrite;
 }
 
+#if WITH_SSL
 extern ssl_mode gbl_rep_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
+#endif
 static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                                 int *portnum, netinfo_type *netinfo_ptr)
 {
@@ -1087,6 +1091,7 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     strncpy(hostname, my_hostname, hostnamel);
     *portnum = connect_message.my_portnum;
 
+#if WITH_SSL
     if (connect_message.ssl) {
         if (gbl_rep_ssl_mode < SSL_ALLOW) {
             /* Reject if mis-configured. */
@@ -1105,6 +1110,13 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                "Replicant SSL connections are required.\n");
         return -1;
     }
+#else
+    if (connect_message.ssl) {
+        logmsg(LOGMSG_ERROR, "Misconfiguration: Peer requested SSL, "
+                             "but I am not built with SSL.\n");
+        return -1;
+    }
+#endif
 
     return 0;
 }
@@ -1173,7 +1185,11 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
     }
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
+#if WITH_SSL
     connect_message.ssl = (gbl_rep_ssl_mode >= SSL_REQUIRE);
+#else
+    connect_message.ssl = 0;
+#endif
 
     if (netinfo_ptr->myhostname_len >= HOSTNAME_LEN) {
         snprintf(connect_message.my_hostname,
@@ -1226,12 +1242,14 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
         }
     }
 
+#if WITH_SSL
     if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
         sbuf2flush(sb);
         if (sslio_connect(sb, gbl_ssl_ctx,
                           gbl_rep_ssl_mode, NULL, 0) != 1)
             return 1;
     }
+#endif
 
     return 0;
 }
@@ -4656,14 +4674,14 @@ int net_check_bad_subnet_lk(int ii)
 
     if (!last_bad_subnet_time) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Not set %d %s\n", pthread_self(),
-                   __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%" PRIu64 " %s Not set %d %s\n",
+                   pthread_self(), __func__, ii, subnet_suffices[ii]);
         goto out;
     }
 
     if (last_bad_subnet_time * 1000 + subnet_blackout_timems < time_epochms()) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Clearing out net %d %s\n",
+            logmsg(LOGMSG_USER, "%" PRIu64 " %s Clearing out net %d %s\n",
                    pthread_self(), __func__, ii, subnet_suffices[ii]);
         last_bad_subnet_time = 0;
         goto out;
@@ -4671,8 +4689,8 @@ int net_check_bad_subnet_lk(int ii)
 
     if (ii == last_bad_subnet_idx) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Bad net %d %s\n", pthread_self(),
-                   __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%" PRIu64 " %s Bad net %d %s\n",
+                   pthread_self(), __func__, ii, subnet_suffices[ii]);
         rc = 1;
     }
 out:
@@ -4701,7 +4719,9 @@ void net_set_bad_subnet(const char *subnet)
             last_bad_subnet_time = time_epochms();
             last_bad_subnet_idx = i;
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "%x %s Marking %s bad, idx %d time %d\n",
+                logmsg(LOGMSG_USER,
+                       "%" PRIu64 " %s Marking %s bad, idx %d time %" PRId64
+                       "\n",
                        pthread_self(), __func__, subnet_suffices[i],
                        last_bad_subnet_idx, last_bad_subnet_time);
         }
@@ -5201,12 +5221,13 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
 static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
-    int lcl_len = sizeof(lcl_addr_inet);
+    size_t lcl_len = sizeof(lcl_addr_inet);
     struct hostent *he;
     int hlen;
     char *subnet;
 
-    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet, &lcl_len)) {
+    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet,
+                     (socklen_t *)&lcl_len)) {
         he = gethostbyaddr(&lcl_addr_inet.sin_addr,
                            sizeof lcl_addr_inet.sin_addr, AF_INET);
         /*if (gbl_verbose_net)*/
@@ -5571,7 +5592,7 @@ static void *accept_thread(void *arg)
     connect_and_accept_t *ca;
     pthread_t tid;
     char paddr[64];
-    int clilen;
+    size_t clilen;
     int new_fd;
     int flag = 1;
     SBUF2 *sb;
@@ -5641,7 +5662,8 @@ static void *accept_thread(void *arg)
         }
 
         if(portmux_fds) {
-            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
+            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr,
+                             (socklen_t *)&clilen);
             if (rc) {
               logmsg(LOGMSG_ERROR, "Failed to get peer address\n");
               close(new_fd);

@@ -66,12 +66,13 @@ static inline int trigger_register_int(trigger_reg_t *t)
         strcpy(info->spname, t->spname);
         info->trigger_cookie = t->trigger_cookie;
         hash_add(trigger_hash, info);
-        printf("%s %s ASSIGNED host:%s trigger_cookie:0x%llx\n", __func__,
-               info->spname, info->host, flibc_htonll(info->trigger_cookie));
+        printf("%s %s ASSIGNED host:%s trigger_cookie:0x%" PRIu64 "\n",
+               __func__, info->spname, info->host,
+               flibc_htonll(info->trigger_cookie));
         return 1;
     } else if (strcmp(info->host, trigger_hostname(t)) &&
                info->trigger_cookie == t->trigger_cookie) {
-        printf("%s %s ALREADY ASSIGNED host:%s trigger_cookie:0x%llx\n",
+        printf("%s %s ALREADY ASSIGNED host:%s trigger_cookie:0x%" PRIu64 "\n",
                __func__, info->spname, info->host,
                flibc_htonll(info->trigger_cookie));
         return 1;
@@ -92,7 +93,7 @@ int trigger_register(trigger_reg_t *t)
 
 static void trigger_hash_del(trigger_info_t *info)
 {
-    printf("%s name:%s node:%s cookie:0x%llx\n", __func__, info->spname,
+    printf("%s name:%s node:%s cookie:0x%" PRIu64 "\n", __func__, info->spname,
            info->host, flibc_ntohll(info->trigger_cookie));
     hash_del(trigger_hash, info);
     free(info);
@@ -111,10 +112,10 @@ static int trigger_unregister_int(trigger_reg_t *t)
         trigger_hash_del(info);
         return CDB2_TRIG_REQ_SUCCESS;
     }
-    printf("%s failed:%s node:%s trigger_cookie:0x%llx\n", __func__, t->spname,
-           trigger_hostname(t), flibc_htonll(t->trigger_cookie));
+    printf("%s failed:%s node:%s trigger_cookie:0x%" PRIu64 "\n", __func__,
+           t->spname, trigger_hostname(t), flibc_htonll(t->trigger_cookie));
     if (info) {
-        printf("%s %s registered to node:%s cookie:0x%llx\n", __func__,
+        printf("%s %s registered to node:%s cookie:0x%" PRIu64 "\n", __func__,
                info->spname, info->host, flibc_htonll(info->trigger_cookie));
     } else {
         printf("%s %s was not assigned to any node\n", __func__, t->spname);
@@ -147,7 +148,7 @@ static void *trigger_start_int(void *name_)
     free(name_);
     trigger_reg_t *reg;
     trigger_reg_init(reg, name);
-    printf("%s waiting for %s elect_cookie:%d trigger_cookie:0x%llx\n",
+    printf("%s waiting for %s elect_cookie:%d trigger_cookie:0x%" PRIu64 "\n",
            __func__, name, ntohl(reg->elect_cookie), reg->trigger_cookie);
     int rc, retry = 10;
     while (--retry > 0) {
@@ -274,8 +275,8 @@ void trigger_stat()
     if (trigger_hash) {
         info = hash_first(trigger_hash, &ent, &bkt);
         while (info) {
-            printf("%s %s IS ASSIGNED TO node:%d cookie:0x%p\n", __func__,
-                   info->spname, info->host, info->trigger_cookie);
+            printf("%s %s IS ASSIGNED TO node:%s cookie:0x%" PRIu64 "\n",
+                   __func__, info->spname, info->host, info->trigger_cookie);
             info = hash_next(trigger_hash, &ent, &bkt);
         }
     }

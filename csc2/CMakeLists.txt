@@ -12,10 +12,11 @@ add_definitions(-DYYMAXDEPTH=1100)
 set(module csc2)
 set(MODULE CSC2)
 configure_file(${PROJECT_SOURCE_DIR}/mem/mem.h.in mem_csc2.h @ONLY)
+find_program(yacc NAMES bison yacc)
 add_custom_command(
   OUTPUT maccparse.h maccparse.c
   DEPENDS maccparse.y
-  COMMAND yacc -d -o maccparse.c ${CMAKE_CURRENT_SOURCE_DIR}/maccparse.y
+  COMMAND ${yacc} -d -o maccparse.c ${CMAKE_CURRENT_SOURCE_DIR}/maccparse.y
 )
 find_program(lex NAMES flex lex)
 add_custom_command(

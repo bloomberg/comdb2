@@ -2096,8 +2096,10 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             fdb_stat_alias();
         } else if (tokcmp(tok, ltok, "uprecs") == 0) {
             upgrade_records_stats();
+#if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
+#endif
         } else {
             logmsg(LOGMSG_ERROR, "bad stat command\n");
             print_help_page(HELP_STAT);
@@ -2860,33 +2862,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
             else
                 logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
         }
-    } else if (tokcmp(tok, ltok, "cleartable") == 0) {
-        struct dbtable *db;
-        char dbname[100];
-
-        if (gbl_mynode != thedb->master) {
-            logmsg(LOGMSG_ERROR, "Please run cleartable on master\n");
-            return -1;
-        }
-
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR, "usage: cleartable tablename\n");
-            return -1;
-        }
-        tokcpy(tok, ltok, dbname);
-        db = get_dbtable_by_name(dbname);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "No such db %s\n", dbname);
-        } else {
-            rc = truncate_db(db);
-            if (rc)
-                logmsg(LOGMSG_ERROR, "reinit %s failed rc %d\n", dbname, rc);
-            else
-                logmsg(LOGMSG_USER, "reinit %s ok\n", dbname);
-        }
-    }
-    else if (tokcmp(tok, ltok, "fastcount") == 0) {
+    } else if (tokcmp(tok, ltok, "fastcount") == 0) {
         struct dbtable *db;
         char dbname[100];
 
