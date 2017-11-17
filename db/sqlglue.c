@@ -1529,38 +1529,38 @@ char *sql_field_default_trans(struct field *f, int is_out)
     return dstr;
 }
 
-static void create_sqlite_stat_sqlmaster_record(struct dbtable *db)
+static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
 {
-    if (db->sql)
-        free(db->sql);
-    for (int i = 0; i < db->nsqlix; i++) {
-        free(db->ixsql[i]);
-        db->ixsql[i] = NULL;
+    if (tbl->sql)
+        free(tbl->sql);
+    for (int i = 0; i < tbl->nsqlix; i++) {
+        free(tbl->ixsql[i]);
+        tbl->ixsql[i] = NULL;
     }
-    switch (db->tablename[11]) {
+    switch (tbl->tablename[11]) {
         case '1':
-            db->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
+            tbl->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
             break;
         case '2':
-            db->sql =
+            tbl->sql =
                 strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
             break;
         case '4':
-            db->sql = strdup(
+            tbl->sql = strdup(
                     "create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
             break;
         default:
             abort();
     }
-    if (db->ixsql) {
-        free(db->ixsql);
-        db->ixsql = NULL;
+    if (tbl->ixsql) {
+        free(tbl->ixsql);
+        tbl->ixsql = NULL;
     }
-    db->ixsql = calloc(sizeof(char *), db->nix);
-    db->nsqlix = 0;
-    db->ix_expr = 0;
-    db->ix_partial = 0;
-    db->ix_blob = 0;
+    tbl->ixsql = calloc(sizeof(char *), tbl->nix);
+    tbl->nsqlix = 0;
+    tbl->ix_expr = 0;
+    tbl->ix_partial = 0;
+    tbl->ix_blob = 0;
 }
 
 /* This creates SQL statements that correspond to a table's schema. These

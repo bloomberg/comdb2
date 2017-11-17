@@ -1370,8 +1370,16 @@ void clean_exit(void)
 
     thedb->exiting = 1;
     stop_threads(thedb);
-
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    sleep(4);
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
+
     rc = backend_close(thedb);
     if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
@@ -1393,7 +1401,6 @@ void clean_exit(void)
             free(indicator_file);
         }
     }
-
     eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
@@ -1401,26 +1408,22 @@ void clean_exit(void)
     if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
+    cleanup_file_locations();
 
     /*
       Wait for other threads to exit by themselves.
       TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
-    sleep(4);
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
-    cleanup_q_vars();
-    cleanup_switches();
-    free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
     cleanup_sqlite_master();
     for (ii = 0; ii < thedb->num_dbs; ii++)
         freedb(thedb->dbs[ii]);
 
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    sleep(1);
+    logmsg(LOGMSG_ERROR, "goodbye\n");
 
     exit(0);
 }

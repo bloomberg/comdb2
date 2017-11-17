@@ -5750,7 +5750,6 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
 
         /* remote send */
         while (rc) {
-            int rc2;
 #if 0
          printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
 #endif
@@ -5765,7 +5764,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
                     return -1;
                 }
 
-                if ((rc2 = osql_comm_check_bdb_lock()) != 0) {
+                if (osql_comm_check_bdb_lock() != 0) {
                     logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
                             __LINE__, host);
                     return rc;
