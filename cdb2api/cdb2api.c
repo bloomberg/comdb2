@@ -85,7 +85,7 @@ static __thread int _MACHINE_ID;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
-#define MAX_NODES 16
+#define MAX_NODES 128
 #define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
 #define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
