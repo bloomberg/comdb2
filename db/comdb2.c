@@ -1417,6 +1417,17 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     cleanup_sqlite_master();
+    for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
+        delete_schema(thedb->dbs[ii]->tablename); //tags hash
+        delete_db(thedb->dbs[ii]->tablename); // will free db
+    }
+    if (thedb->db_hash) {
+        hash_clear(thedb->db_hash);
+        hash_free(thedb->db_hash);
+        thedb->db_hash = NULL;
+    }
+    //hash_destroy(stringstuff);
+    //extern void cleanup_peer_hash();
 
     logmsg(LOGMSG_WARN, "goodbye\n");
 
@@ -5300,6 +5311,7 @@ void delete_db(char *db_name)
 
     /* Remove the table from hash. */
     hash_del(thedb->db_hash, thedb->dbs[idx]);
+    freedb(thedb->dbs[idx]);
 
     for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];

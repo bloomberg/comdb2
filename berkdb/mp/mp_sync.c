@@ -184,7 +184,8 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 		__db_err(dbenv,
 		    "in __checkpoint_save, but couldn't read %u:%u\n",
 		    lsn->file, lsn->offset);
-		abort();
+        if(!db_is_stopped())
+            abort();
 	}
 
 	rc = __os_io(dbenv, DB_IO_WRITE, dbenv->checkpoint, 0, 512,

@@ -6851,8 +6851,11 @@ void delete_schema(const char *dbname)
         listc_rfl(&dbt->taglist, tmp);
         freeschema(tmp);
     }
-    if (dbt->tags)
+    if (dbt->tags) {
+        hash_clear(dbt->tags);
         hash_free(dbt->tags);
+        dbt->tags = NULL;
+    }
     free(dbt->tblname);
     free(dbt);
 }
