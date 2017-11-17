@@ -75,6 +75,7 @@ extern int gbl_goslow;
 
 extern int gbl_partial_indexes;
 
+extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
 
 typedef struct osql_blknds {
@@ -3305,7 +3306,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
             if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
                 abort();
 
-            p_buf_end = rpl + rpllen;
+            p_buf_end = (unsigned char *)rpl + rpllen;
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
@@ -5576,7 +5577,7 @@ static void *osql_heartbeat_thread(void *arg)
 
     thread_started("osql heartbeat");
 
-    while (1) {
+    while (!db_is_stopped()) {
         uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN],
             *p_buf = buf, *p_buf_end = (buf + OSQLCOMM_HBEAT_TYPE_LEN);
 
@@ -5764,7 +5765,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
                     return -1;
                 }
 
-                if (rc2 = osql_comm_check_bdb_lock()) {
+                if ((rc2 = osql_comm_check_bdb_lock()) != 0) {
                     logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
                             __LINE__, host);
                     return rc;
@@ -7648,7 +7649,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         comdb2uuidstr(uuid, us);
         type = rpl.type;
         id = rpl.sid;
-        comdb2uuid_clear(us);
+        comdb2uuid_clear((unsigned char *)us);
     }
 
     if (!logsb) {

@@ -1417,6 +1417,8 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     cleanup_sqlite_master();
+    for (ii = 0; ii < thedb->num_dbs; ii++)
+        freedb(thedb->dbs[ii]);
 
     logmsg(LOGMSG_WARN, "goodbye\n");
 

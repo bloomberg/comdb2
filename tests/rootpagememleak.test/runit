@@ -9,7 +9,7 @@ set -e
 mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 echo "target machine is $mach"
 
-columns='i0 INTEGER'
+columns='i0 INTEGER PRIMARY KEY'
 for j in `seq 1 199`; do
   columns="$columns, i$j INTEGER"
 done

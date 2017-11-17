@@ -237,7 +237,7 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while ((lease_time = bdb_state->attr->master_lease) != 0) {
+    while (!db_is_stopped() && (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
             int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);
@@ -338,10 +338,7 @@ void *coherency_lease_thread(void *arg)
 
 void *logdelete_thread(void *arg)
 {
-    bdb_state_type *bdb_state;
-
-    bdb_state = (bdb_state_type *)arg;
-
+    bdb_state_type *bdb_state = (bdb_state_type *)arg;
     if (bdb_state->parent) bdb_state = bdb_state->parent;
 
     while (!bdb_state->after_llmeta_init_done)
@@ -352,27 +349,24 @@ void *logdelete_thread(void *arg)
     thread_started("bdb logdelete");
 
     bdb_thread_event(bdb_state, 1);
+    time_t last_add_record = 0;
 
-    while (1) {
-        int sleeptime;
-        BDB_READLOCK("logdelete_thread");
-
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
-
+    while (!db_is_stopped()) {
+        time_t now = time(NULL);
+        int run_interval = bdb_state->attr->logdelete_run_interval;
+        run_interval = (run_interval <= 0 ? 30 : run_interval);
+        
+        if((now - last_add_record) >= run_interval) {
+            BDB_READLOCK("logdelete_thread");
+            delete_log_files(bdb_state);
             BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
         }
-
-        delete_log_files(bdb_state);
-
-        BDB_RELLOCK();
-        sleeptime = bdb_state->attr->logdelete_run_interval;
-        sleeptime = (sleeptime <= 0 ? 30 : sleeptime);
-
-        sleep(sleeptime);
+        sleep(1);
     }
+
+    logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
+    bdb_thread_event(bdb_state, 0);
+    return NULL;
 }
 
 extern int gbl_rowlocks;
