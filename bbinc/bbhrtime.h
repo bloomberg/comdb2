@@ -32,7 +32,7 @@ extern "C" {
 typedef timebasestruct_t bbhrtime_t;
 #endif
 
-#if defined(sun) || defined(_HP_SOURCE)
+#if defined(__sun) || defined(_HP_SOURCE)
 typedef hrtime_t bbhrtime_t;
 #endif
 

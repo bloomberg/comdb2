@@ -20,6 +20,6 @@ done
 ps -e -o pid,cmd | egrep "comdb2 $tests" | grep -v "egrep" | awk '{print $1}' | xargs kill -9
 if [[ -n "$CLUSTER" ]]; then
     for node in $CLUSTER; do
-        ssh $node  "ps -e -o pid,cmd | egrep \"$tests\" | grep -v \"egrep\" | awk '{print $1}' | xargs kill -9"
+        ssh $node  "ps -e -o pid,cmd | egrep \"$tests\" | grep -v \"egrep\" | awk '{print $1}' | xargs kill -9" < /dev/null
     done
 fi

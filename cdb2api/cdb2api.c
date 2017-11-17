@@ -81,6 +81,9 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int allow_pmux_route = 0;
 
+static __thread int _PID;
+static __thread int _MACHINE_ID;
+
 #define DB_TZNAME_DEFAULT "America/New_York"
 
 #define MAX_NODES 16
@@ -104,6 +107,8 @@ static void do_init_once(void)
         /* can't call back cdb2_set_comdb2db_config from do_init_once */
         strncpy(CDB2DBCONFIG_NOBBENV, config, 511);
     }
+    _PID = getpid();
+    _MACHINE_ID = gethostid();
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -600,6 +605,8 @@ struct cdb2_ssl_sess_list {
 static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 #endif
 
+#define MAX_CNONCE_LEN 100
+
 struct cdb2_hndl {
     char dbname[64];
     char cluster[64];
@@ -626,7 +633,7 @@ struct cdb2_hndl {
     int use_hint;
     int flags;
     char errstr[1024];
-    char cnonce[100];
+    char cnonce[MAX_CNONCE_LEN];
     int cnonce_len;
     char *sql;
     int ntypes;
@@ -668,6 +675,7 @@ struct cdb2_hndl {
     cdb2_ssl_sess_list *sess_list;
 #endif
     struct context_messages context_msgs;
+    char *env_tz;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -720,7 +728,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
                 (void *)pthread_self(), cfg_info);
 }
 
-static inline char get_char(FILE *fp, char *buf, int *chrno)
+static inline int get_char(FILE *fp, char *buf, int *chrno)
 {
     int ch;
     if (fp) {
@@ -1108,7 +1116,7 @@ static int open_sockpool_ll(void)
     /* Connected - write hello message */
     memcpy(hello.magic, "SQLP", 4);
     hello.protocol_version = 0;
-    hello.pid = getpid();
+    hello.pid = _PID;
     hello.slot = 0;
 
     ptr = (const char *)&hello;
@@ -1972,13 +1980,9 @@ retry_read:
     return 0;
 }
 
-static int cdb2_hostid()
+static inline int cdb2_hostid()
 {
-    static int MACHINE_ID = 0;
-    if (MACHINE_ID == 0) {
-        MACHINE_ID = gethostid();
-    }
-    return MACHINE_ID;
+    return _MACHINE_ID;
 }
 
 static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
@@ -1996,7 +2000,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    cinfo.pid = getpid();
+    cinfo.pid = _PID;
     cinfo.th_id = (int)pthread_self();
     cinfo.host_id = cdb2_hostid();
 
@@ -2005,39 +2009,30 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     while (isspace(*sql))
         sql++;
     sqlquery.sql_query = sql;
-    sqlquery.little_endian = 0;
 #if _LINUX_SOURCE
     sqlquery.little_endian = 1;
+#else
+    sqlquery.little_endian = 0;
 #endif
 
     sqlquery.n_bindvars = n_bindvars;
     sqlquery.bindvars = bindvars;
     sqlquery.n_types = ntypes;
     sqlquery.types = types;
+    sqlquery.tzname = (hndl) ? hndl->env_tz : DB_TZNAME_DEFAULT;
+    sqlquery.mach_class = cdb2_default_cluster;
 
-    char *env_tz = getenv("COMDB2TZ");
-    char *host = "NOT-CONNECTED";
-    if (hndl && hndl->connected_host >= 0)
-        host = hndl->hosts[hndl->connected_host];
 
     if (hndl && hndl->debug_trace) {
+        char *host = "NOT-CONNECTED";
+        if (hndl && hndl->connected_host >= 0)
+            host = hndl->hosts[hndl->connected_host];
+
         fprintf(stderr, "td %u %s sending '%s' to %s from-line %d retries is "
                         "%d do_append is %d\n",
                 (uint32_t)pthread_self(), __func__, sql, host, fromline,
                 retries_done, do_append);
     }
-
-    if (env_tz == NULL) {
-        env_tz = getenv("TZ");
-    }
-
-    if (env_tz == NULL) {
-        env_tz = DB_TZNAME_DEFAULT;
-    }
-
-    sqlquery.tzname = env_tz;
-
-    sqlquery.mach_class = cdb2_default_cluster;
 
     query.sqlquery = &sqlquery;
 
@@ -2519,18 +2514,19 @@ uint64_t val_combine(uint64_t lhs, uint64_t rhs)
  * the third part is the current time usec portion
  * the fourth part is a [pseudo]random number
  */
-static void make_random_str(char *str, int *len)
+static void make_random_str(char *str, size_t max_len, int *len)
 {
-    static __thread int PID = 0;
-    static __thread unsigned short rand_state[3];
+    static __thread unsigned short rand_state[3] = {0};
+    static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
+    static __thread size_t cached_portion_len = 0;
 
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if (PID == 0) { /* Initialize PID and rand_state once per thread */
-         /* PID will ensure that cnonce will be different accross processes */
-        PID = getpid(); 
+    if (rand_state[0] == 0) {
+        /* Initialize rand_state once per thread
+         * _PID will ensure that cnonce will be different accross processes
 
-        /* Get the initial random state by using thread id and time info. */
+         * Get the initial random state by using thread id and time info. */
         uint32_t tmp[2];
         tmp[0] = tv.tv_sec;
         tmp[1] = tv.tv_usec;
@@ -2538,10 +2534,14 @@ static void make_random_str(char *str, int *len)
         rand_state[0] = hash;
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
+        cached_portion_len = snprintf(cached_portion, sizeof(cached_portion),
+                                      "%d-%d-", cdb2_hostid(), _PID);
     }
     int randval = nrand48(rand_state);
-    sprintf(str, "%d-%d-%lld-%d", cdb2_hostid(), PID, tv.tv_usec, randval);
-    *len = strlen(str);
+    strncpy(str, cached_portion, cached_portion_len);
+    *len = cached_portion_len;
+    *len += snprintf(str + cached_portion_len, max_len - cached_portion_len,
+                     "%d-%d", (int)tv.tv_usec, randval);
     return;
 }
 
@@ -2678,12 +2678,12 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
     int rc = 0;
-    char *host = "NOT-CONNECTED";
-    if (hndl->connected_host >= 0)
-        host = hndl->hosts[hndl->connected_host];
-
     if (hndl->in_trans && (hndl->snapshot_file ||
                            hndl->query_no <= 1)) { /* Replay all the queries. */
+        char *host = "NOT-CONNECTED";
+        if (hndl->connected_host >= 0)
+            host = hndl->hosts[hndl->connected_host];
+
         /*Send Begin. */
         hndl->is_retry = num_retry;
 
@@ -3000,11 +3000,83 @@ static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
     hndl->query_list = NULL;
 }
 
-static void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
+static inline void clear_snapshot_info(cdb2_hndl_tp *hndl, int line)
 {
     hndl->clear_snap_line = line;
     hndl->snapshot_file = 0;
     hndl->snapshot_offset = 0;
+}
+
+static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
+{
+    int i, j, k;
+    if (hndl->in_trans) {
+        sprintf(hndl->errstr, "Can't run set query inside transaction.");
+        hndl->error_in_trans = CDB2ERR_BADREQ;
+        hndl->client_side_error = 1;
+        return CDB2ERR_BADREQ;
+    }
+    i = hndl->num_set_commands;
+    if (i > 0) {
+        int skip_len = 4;
+        char *dup_sql = strdup(sql + skip_len);
+        char *rest;
+        char *set_tok = strtok_r(dup_sql, " ", &rest);
+        /* special case for spversion */
+        if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
+            skip_len += 10;
+            set_tok = strtok_r(rest, " ", &rest);
+        }
+        if (!set_tok) {
+            free(dup_sql);
+            return 0;
+        }
+        int len = strlen(set_tok);
+
+        for (j = 0; j < i; j++) {
+            /* If this matches any of the previous commands. */
+            if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) ==
+                 0) &&
+                (hndl->commands[j][len + skip_len] == ' ')) {
+                free(dup_sql);
+                if (j == (i - 1)) {
+                    if (strcmp(hndl->commands[j], sql) == 0) {
+                        /* Do Nothing. */
+                    } else {
+                        hndl->commands[i - 1] =
+                            realloc(hndl->commands[i - 1], strlen(sql) + 1);
+                        strcpy(hndl->commands[i - 1], sql);
+                    }
+                } else {
+                    char *cmd = hndl->commands[j];
+                    /* Move all the commands down the array. */
+                    for (k = j; k < i - 1; k++) {
+                        hndl->commands[k] = hndl->commands[k + 1];
+                    }
+                    if (strcmp(cmd, sql) == 0) {
+                        hndl->commands[i - 1] = cmd;
+                    } else {
+                        hndl->commands[i - 1] = realloc(cmd, strlen(sql) + 1);
+                        strcpy(hndl->commands[i - 1], sql);
+                    }
+                }
+                if (hndl->num_set_commands_sent)
+                    hndl->num_set_commands_sent--;
+                return 0;
+            }
+        }
+        free(dup_sql);
+    }
+    hndl->num_set_commands++;
+    hndl->commands =
+        realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
+    hndl->commands[i] = malloc(strlen(sql) + 1);
+    strcpy(hndl->commands[i], sql);
+    int hasql_val;
+    if (is_hasql(sql, &hasql_val)) {
+        hndl->is_hasql = hasql_val;
+    }
+    return 0;
 }
 
 #define GOTO_RETRY_QUERIES()                                                   \
@@ -3021,7 +3093,6 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 {
     int return_value;
     int using_hint = 0;
-    int hasql_val;
     int rc = 0;
     int is_begin = 0;
     int is_commit = 0;
@@ -3050,73 +3121,10 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     if (!sql)
         return 0;
 
-    // Ohai .. i want to sniff out 'set hasql on' here ..
+    /* sniff out 'set hasql on' here */
     if (strncasecmp(sql, "set", 3) == 0) {
-        int i, j, k;
-        if (hndl->in_trans) {
-            sprintf(hndl->errstr, "Can't run set query inside transaction.");
-            hndl->error_in_trans = CDB2ERR_BADREQ;
-            hndl->client_side_error = 1;
-            return CDB2ERR_BADREQ;
-        }
-        i = hndl->num_set_commands;
-        if (i > 0) {
-            int skip_len = 4;
-            char *dup_sql = strdup(sql+skip_len); 
-            char *rest;
-            char *set_tok = strtok_r(dup_sql, " ", &rest);
-            /* special case for spversion */
-            if (set_tok && strcasecmp(set_tok, "spversion") == 0) {
-                skip_len += 10;
-                set_tok = strtok_r(rest, " ", &rest);
-            }
-            if (!set_tok) {
-                free(dup_sql);
-                return 0;
-            }
-            int len = strlen(set_tok);
-
-            for (j = 0; j < i; j++) {
-                /* If this matches any of the previous commands. */
-                if ((strncasecmp(&hndl->commands[j][skip_len], set_tok, len) == 0) &&
-                    (hndl->commands[j][len+skip_len] == ' ')) {
-                    free(dup_sql);
-                    if (j == (i - 1)) {
-                        if (strcmp(hndl->commands[j], sql) == 0) {
-                            /* Do Nothing. */
-                        } else {
-                           hndl->commands[i-1] = realloc(hndl->commands[i-1], strlen(sql) + 1);
-                           strcpy(hndl->commands[i-1], sql);
-                        }
-                    } else {
-                        char *cmd = hndl->commands[j];
-                        /* Move all the commands down the array. */
-                        for (k = j; k < i - 1; k++) {
-                            hndl->commands[k] = hndl->commands[k + 1];
-                        }
-                        if (strcmp(cmd, sql) == 0) {
-                            hndl->commands[i - 1] = cmd;
-                        } else {
-                            hndl->commands[i-1] = realloc(cmd, strlen(sql) + 1);
-                            strcpy(hndl->commands[i-1], sql);
-                        }
-                    }
-                    if (hndl->num_set_commands_sent)
-                        hndl->num_set_commands_sent--;
-                    return 0;
-                }
-            }
-            free(dup_sql);
-        }
-        hndl->num_set_commands++;
-        hndl->commands =
-            realloc(hndl->commands, sizeof(char *) * hndl->num_set_commands);
-        hndl->commands[i] = malloc(strlen(sql) + 1);
-        strcpy(hndl->commands[i], sql);
-        if (is_hasql(sql, &hasql_val)) {
-            hndl->is_hasql = hasql_val;
-        }
-        return 0;
+        rc = process_set_command(hndl, sql);
+        return rc;
     }
 
     if (strncasecmp(sql, "begin", 5) == 0) {
@@ -3194,7 +3202,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
                 char c_hint[128];
                 int length;
-                make_random_str(c_hint, &length);
+                make_random_str(c_hint, sizeof(c_hint), &length);
 
                 cdb2_query_with_hint(hndl, sql, c_hint, &hndl->hint,
                                      &hndl->query_hint);
@@ -3207,7 +3215,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
     if (!hndl->in_trans) { /* only one cnonce for a transaction. */
         clear_snapshot_info(hndl, __LINE__);
         hndl->is_retry = 0;
-        make_random_str(hndl->cnonce, &hndl->cnonce_len);
+        make_random_str(hndl->cnonce, MAX_CNONCE_LEN, &hndl->cnonce_len);
     }
     hndl->retry_all = 1;
     int run_last = 1;
@@ -3332,11 +3340,7 @@ retry_queries:
         sprintf(hndl->errstr, "%s: Can't send query to the db", __func__);
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         hndl->retry_all = 1;
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %u %s line %d goto retry_queries\n", (uint32_t)
-                    pthread_self(), __func__, __LINE__);
-        }
-        goto retry_queries;
+        GOTO_RETRY_QUERIES();
     }
     run_last = 0;
 
@@ -3411,13 +3415,10 @@ read_record:
         char *host = "NOT-CONNECTED";
         if (hndl && hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
-        if (hndl->debug_trace) {
-            fprintf(stderr, "td %p reading from %s line %d rc=%d type:%d\n",
-                    (void *)pthread_self(), host, __LINE__, rc, type);
-        }
+        fprintf(stderr, "td %p reading from %s line %d rc=%d type:%d\n",
+                (void *)pthread_self(), host, __LINE__, rc, type);
     }
 
-#if WITH_SSL
     if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
 #if WITH_SSL
         hndl->s_sslmode = PEER_SSL_REQUIRE;
@@ -3426,12 +3427,13 @@ read_record:
 
         /* Decrement retry counter: It is not a real retry. */
         --retries_done;
+        GOTO_RETRY_QUERIES();
 #else
+        sprintf(hndl->errstr, "%s: The database requires SSL connections.",
+                __func__);
         PRINT_RETURN(-1);
 #endif
-        GOTO_RETRY_QUERIES();
     }
-#endif
 
     /* Dbinfo .. go to new node */
     if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
@@ -4694,7 +4696,7 @@ done:
 }
 
 #if WITH_SSL
-#  include <ssl_support.c>
+#include <ssl_support.h>
 static int set_up_ssl_params(cdb2_hndl_tp *hndl)
 {
     /* In case that the application connects to multiple databases
@@ -4938,6 +4940,15 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
+
+    hndl->env_tz = getenv("COMDB2TZ");
+
+    if (hndl->env_tz == NULL)
+        hndl->env_tz = getenv("TZ");
+
+    if (hndl->env_tz == NULL)
+        hndl->env_tz = DB_TZNAME_DEFAULT;
+
 
     cdb2_init_context_msgs(hndl);
 

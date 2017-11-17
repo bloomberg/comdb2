@@ -1369,6 +1369,8 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
         rc = phys_dta_upd(bdb_state, rrn, oldgenid, newgenid, dbp, tran,
                           dtafile, dtastripe, verify_dta, dta);
         break;
+    default:
+        break;
     }
 
 done:
@@ -1469,6 +1471,8 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
     case TRANCLASS_LOGICAL:
         rc = phys_rowlocks_log_bench_lk(bdb_state, tran, op, arg1, arg2,
                                         payload, paylen);
+        break;
+    default:
         break;
     }
     return rc;

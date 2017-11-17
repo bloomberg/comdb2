@@ -3088,7 +3088,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
     if (p_slock == NULL)
         return ENOMEM;
 
-    p_slock->reply_done = 0;
+    p_slock->reply_state = REPLY_STATE_NA;
     p_slock->sb = NULL;
 
     // initialize lock and cond
@@ -3110,7 +3110,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
         rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
         if (rc == 0) {
             nwakeups = 0;
-            while (!p_slock->reply_done) {
+            while (p_slock->reply_state != REPLY_STATE_DONE) {
                 clock_gettime(CLOCK_REALTIME, &ts);
                 ts.tv_sec += 1;
                 rc = pthread_cond_timedwait(&(p_slock->wait_cond),
@@ -3188,11 +3188,23 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     /* using p_slock pointer as the request id now, this contains info about
      * socket request.*/
     struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
-    p_slock->rc = net_msg->rc;
-    sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data, net_msg->datalen,
-                       net_msg->rc);
-    /* Signal to allow the appsock thread to take new request from client.*/
-    signal_buflock(p_slock);
+    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
+        if (p_slock->reply_state == REPLY_STATE_DISCARD) {
+            /* The tag request is handled by master. However by the time
+               (1000+ seconds) the replicant receives the reply from master,
+               the tag request is already discarded. */
+            pthread_mutex_unlock(&p_slock->req_lock);
+            cleanup_lock_buffer(p_slock);
+        } else {
+            p_slock->rc = net_msg->rc;
+            sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data,
+                               net_msg->datalen, net_msg->rc);
+            /* Signal to allow the appsock thread
+               to take new request from client. */
+            signal_buflock(p_slock);
+            pthread_mutex_unlock(&p_slock->req_lock);
+        }
+    }
 }
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
@@ -8915,7 +8927,7 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
 
         ++uprec->nreqs;
         nwakeups = 0;
-        while (!p_slock->reply_done) {
+        while (p_slock->reply_state != REPLY_STATE_DONE) {
             clock_gettime(CLOCK_REALTIME, &ts);
             ts.tv_sec += 1;
             rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
@@ -8929,7 +8941,7 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
             }
         }
 
-        if (!p_slock->reply_done) {
+        if (p_slock->reply_state != REPLY_STATE_DONE) {
             // timedout from #1
             // intv = 0.75 * intv + 0.25 * T(this time)
             uprec->intv += (uprec->intv << 1) + nwakeups;
@@ -9028,7 +9040,7 @@ static void uprec_sender_array_init(void)
     }
 
     uprec->lk = &uprec->slock.req_lock;
-    uprec->slock.reply_done = 0;
+    uprec->slock.reply_state = REPLY_STATE_NA;
     uprec->slock.sb = 0;
 
     // kick off upgradetable cron

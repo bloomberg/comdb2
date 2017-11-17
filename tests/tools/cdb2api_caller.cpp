@@ -199,7 +199,7 @@ int main(int argc, char *argv[])
     }
 
     // insert records with bind params
-    for (int j = 2000; j < 2002; j++) {
+    for (int j = 2000; j < 3002; j++) {
         std::ostringstream ss;
         time_t rawtime;
         struct tm * timeinfo;

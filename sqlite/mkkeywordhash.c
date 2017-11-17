@@ -235,7 +235,7 @@ static Keyword aKeywordTable[] = {
   { "REGEXP",           "TK_LIKE_KW",      ALWAYS,                 1},
   { "REINDEX",          "TK_REINDEX",      REINDEX,                1},
   { "RELEASE",          "TK_RELEASE",      ALWAYS,                 1},
-  { "RENAME",           "TK_RENAME",       ALTER,                  0},
+  { "RENAME",           "TK_RENAME",       ALWAYS,                 1},
   { "REPLACE",          "TK_REPLACE",      CONFLICT,               1},
   { "RESTRICT",         "TK_RESTRICT",     FKEY,                   0},
   { "RIGHT",            "TK_JOIN_KW",      ALWAYS,                 1},
@@ -267,6 +267,7 @@ static Keyword aKeywordTable[] = {
 
 /**** COMDB2 CUSTOM ***********************************************/
   { "ANALYZESQLITE",    "TK_ANALYZESQLITE", ALWAYS,                 1},
+  { "ANALYZEEXPERT",    "TK_ANALYZEEXPERT", ALWAYS,                 1},
   { "AGGREGATE",        "TK_AGGREGATE",     ALWAYS,                 0},
   { "ALIAS",            "TK_ALIAS",         ALWAYS,                 0},
   { "AUTHENTICATION",   "TK_AUTHENTICATION",ALWAYS,                 0},

@@ -405,7 +405,7 @@ int static dbqueue_add_consumer_int(struct dbtable *db, int consumern,
         goto done;
     }
 
-    if (!checkonly && consumern < 0 || consumern >= MAXCONSUMERS) {
+    if (!checkonly && (consumern < 0 || consumern >= MAXCONSUMERS)) {
         logmsg(LOGMSG_ERROR,
                "dbqueue_add_consumer: %s consumer number %d out of range\n",
                db->tablename, consumern);
@@ -1608,7 +1608,7 @@ static void *dbqueue_consume_thread(void *arg)
                  * otherwise. */
                 if (consumer->type == CONSUMER_TYPE_FSTSND &&
                     consumer->rmtmach != NULL &&
-                    !machine_is_up(consumer->rmtmach) != 1)
+                    !machine_is_up(consumer->rmtmach))
                     consumer_sleep(consumer, 60, 0);
                 else
                     consumer_sleep(consumer, 1, 0);

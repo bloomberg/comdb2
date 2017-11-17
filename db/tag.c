@@ -1141,7 +1141,9 @@ static void dumpval(char *buf, int type, int len)
         }
         case CLIENT_DATETIME: {
             cdb2_client_datetime_t dt;
-            client_datetime_get(&dt, buf, buf + sizeof(cdb2_client_datetime_t));
+            client_datetime_get(&dt, (uint8_t *)buf,
+                                (uint8_t *)buf +
+                                    sizeof(cdb2_client_datetime_t));
             logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.msec, dt.tzname);
@@ -1150,8 +1152,9 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_DATETIMEUS: {
             cdb2_client_datetimeus_t dt;
-            client_datetimeus_get(&dt, buf,
-                                  buf + sizeof(cdb2_client_datetimeus_t));
+            client_datetimeus_get(&dt, (uint8_t *)buf,
+                                  (uint8_t *)buf +
+                                      sizeof(cdb2_client_datetimeus_t));
             logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.usec, dt.tzname);
@@ -1160,14 +1163,16 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_INTVYM: {
             cdb2_client_intv_ym_t ym;
-            client_intv_ym_get(&ym, buf, buf + sizeof(cdb2_client_intv_ym_t));
+            client_intv_ym_get(&ym, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(cdb2_client_intv_ym_t));
             logmsg(LOGMSG_USER, "%s%u-%u", (ym.sign < 0) ? "- " : "", ym.years, ym.months);
             break;
         }
 
         case CLIENT_INTVDS: {
             cdb2_client_intv_ds_t ds;
-            client_intv_ds_get(&ds, buf, buf + sizeof(cdb2_client_intv_ds_t));
+            client_intv_ds_get(&ds, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(cdb2_client_intv_ds_t));
             logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.msec);
             break;
@@ -1175,8 +1180,9 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_INTVDSUS: {
             cdb2_client_intv_dsus_t ds;
-            client_intv_dsus_get(&ds, buf,
-                                 buf + sizeof(cdb2_client_intv_dsus_t));
+            client_intv_dsus_get(&ds, (uint8_t *)buf,
+                                 (uint8_t *)buf +
+                                     sizeof(cdb2_client_intv_dsus_t));
             logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%6.6u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.usec);
             break;
@@ -1261,31 +1267,36 @@ static void dumpval(char *buf, int type, int len)
             break;
         case SERVER_DATETIME: {
             server_datetime_t dt;
-            server_datetime_get(&dt, buf, buf + sizeof(server_datetime_t));
+            server_datetime_get(&dt, (uint8_t *)buf,
+                                (uint8_t *)buf + sizeof(server_datetime_t));
             logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.msec);
             break;
         }
         case SERVER_DATETIMEUS: {
             server_datetimeus_t dt;
-            server_datetimeus_get(&dt, buf, buf + sizeof(server_datetimeus_t));
+            server_datetimeus_get(&dt, (uint8_t *)buf,
+                                  (uint8_t *)buf + sizeof(server_datetimeus_t));
             logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.usec);
             break;
         }
         case SERVER_INTVYM: {
             server_intv_ym_t si;
-            server_intv_ym_get(&si, buf, buf + sizeof(server_intv_ym_t));
+            server_intv_ym_get(&si, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(server_intv_ym_t));
             logmsg(LOGMSG_USER, "%d", si.months);
             break;
         }
         case SERVER_INTVDS: {
             server_intv_ds_t ds;
-            server_intv_ds_get(&ds, buf, buf + sizeof(server_intv_ds_t));
+            server_intv_ds_get(&ds, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(server_intv_ds_t));
             logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.msec);
             break;
         }
         case SERVER_INTVDSUS: {
             server_intv_dsus_t ds;
-            server_intv_dsus_get(&ds, buf, buf + sizeof(server_intv_dsus_t));
+            server_intv_dsus_get(&ds, (uint8_t *)buf,
+                                 (uint8_t *)buf + sizeof(server_intv_dsus_t));
             logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.usec);
             break;
         }
@@ -2217,7 +2228,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
      * if we're doing an update. */
     if ((plan->fail_reason.reason != CONVERT_OK) && !(flags & CONVERT_UPDATE)) {
         if (fail_reason) {
-            memcpy(fail_reason, &plan->fail_reason, sizeof(fail_reason));
+            memcpy(fail_reason, &plan->fail_reason, sizeof(*fail_reason));
         }
         return -1;
     }
@@ -2266,7 +2277,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (to_field->blob_index >= maxblobs) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->reason = CONVERT_FAILED_BAD_BLOB_PROGRAMMER;
                 }
@@ -2326,7 +2337,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
                     if (from_field->blob_index >= maxblobs) {
                         if (fail_reason) {
                             memcpy(fail_reason, &plan->fail_reason,
-                                   sizeof(fail_reason));
+                                   sizeof(*fail_reason));
                             fail_reason->target_field_idx = to_field_idx;
                             fail_reason->source_field_idx = from_field_idx;
                             fail_reason->reason =
@@ -2364,7 +2375,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
                     if (!CLIENT_TYPE_CAN_BE_PARTIAL(from_field->type)) {
                         if (fail_reason) {
                             memcpy(fail_reason, &plan->fail_reason,
-                                   sizeof(fail_reason));
+                                   sizeof(*fail_reason));
                             fail_reason->target_field_idx = to_field_idx;
                             fail_reason->source_field_idx = from_field_idx;
                             fail_reason->reason =
@@ -2423,7 +2434,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (to_field->flags & NO_NULL) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->source_field_idx = from_field_idx;
                     fail_reason->reason =
@@ -2507,7 +2518,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (rc != 0) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->source_field_idx = from_field_idx;
                     fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
@@ -3153,7 +3164,7 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
 
         /* call new cached version instead of stag_to_stag_buf_flags() */
         rc = stag_to_stag_buf_cachedmap(
-            db->versmap[ver], from_schema, to_schema, inbuf, rec,
+            (int *)db->versmap[ver], from_schema, to_schema, inbuf, (char *)rec,
             CONVERT_NULL_NO_ERROR, &reason, NULL, 0);
 
         if (rc) {
@@ -6739,7 +6750,7 @@ void update_dbstore(struct dbtable *db)
             abort();
         }
 
-        db->versmap[v] = get_tag_mapping(ver, ondisk);
+        db->versmap[v] = (unsigned int *)get_tag_mapping(ver, ondisk);
         db->vers_compat_ondisk[v] = 1;
         if (SC_TAG_CHANGE ==
             compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))
@@ -6844,6 +6855,18 @@ void delete_schema(const char *dbname)
         hash_free(dbt->tags);
     free(dbt->tblname);
     free(dbt);
+}
+
+void rename_schema(const char *oldname, char *newname)
+{
+    struct dbtag *dbt;
+    lock_taglock();
+    dbt = hash_find(tags, &oldname);
+    hash_del(tags, dbt);
+    free(dbt->tblname);
+    dbt->tblname = newname;
+    hash_add(tags, dbt);
+    unlock_taglock();
 }
 
 void freeschema_internals(struct schema *schema)
@@ -7283,7 +7306,7 @@ void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
         }
         case SERVER_BYTEARRAY: {
             uint8_t *b;
-            b = (char *)((uint8_t *)rec + f->offset);
+            b = (uint8_t *)rec + f->offset;
             isnull = btst(b, null_bit);
             if (isnull)
                 strbuf_appendf(buf, "null");

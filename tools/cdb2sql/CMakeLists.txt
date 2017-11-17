@@ -10,14 +10,14 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${READLINE_INCLUDE_DIR}
 )
-target_link_libraries(cdb2sql
+set(libs
   cdb2api
-  ${OPENSSL_LIBRARIES}
   ${PROTOBUF_C_LIBRARY}
   ${READLINE_LIBRARY}
-  Threads::Threads
+  ${CURSES_LIBRARIES}
 )
-if(${CMAKE_SYSTEM_NAME} STREQUAL "SunOS")
-  target_link_libraries(cdb2sql -lsocket -lnsl)
+if(WITH_SSL)
+  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endif()
+target_link_libraries(cdb2sql ${libs})
 install(TARGETS cdb2sql RUNTIME DESTINATION bin)

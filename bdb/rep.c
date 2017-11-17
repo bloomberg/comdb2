@@ -1611,7 +1611,7 @@ static inline int net_get_lsn(bdb_state_type *bdb_state, const void *buf,
     uint8_t *p_buf;
     const uint8_t *p_buf_end;
 
-    p_buf = (char *)buf;
+    p_buf = (uint8_t *)buf;
     p_buf_end = p_buf + buflen;
 
     /* Skip net wire-header up to the 'type'.  16 + 4 + 4 + 16 + 4 + 4 */
@@ -1683,10 +1683,10 @@ int net_cmplsn_rtn(netinfo_type *netinfo_ptr, void *x, int xlen, void *y,
 
     /* Do not tolerate malformed buffers.  I am inserting x with the inorder
      * flag.  It has to be correct. */
-    if (rc = net_get_lsn(bdb_state, x, xlen, &xlsn) != 0)
+    if ((rc = net_get_lsn(bdb_state, x, xlen, &xlsn)) != 0)
         abort();
 
-    if (rc = net_get_lsn(bdb_state, y, ylen, &ylsn) != 0)
+    if ((rc = net_get_lsn(bdb_state, y, ylen, &ylsn)) != 0)
         return -1;
 
     return log_compare(&xlsn, &ylsn);
@@ -1724,6 +1724,8 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
 
 /* Timestamp of when our coherency lease expires on replicant */
 uint64_t coherency_timestamp = 0;
+int gbl_dump_zero_coherency_timestamp;
+
 char coherency_master[128] = {0};
 
 /* Don't let anything commit on the master until after this */
@@ -1772,6 +1774,8 @@ typedef struct {
     char *host;
 } hostdown_type;
 
+int gbl_reset_on_unelectable_cluster = 1;
+
 void *hostdown_thread(void *arg)
 {
     bdb_state_type *bdb_state;
@@ -1812,7 +1816,7 @@ void *hostdown_thread(void *arg)
     print(bdb_state, "master is %s we are %s\n", master_host,
           bdb_state->repinfo->myhost);
 
-    {
+    if (gbl_reset_on_unelectable_cluster) {
         int num_up, num_connected, electable;
 
         print(bdb_state, "xxx master is %d we are %d\n", master_host,
@@ -1893,12 +1897,20 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
         pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
         if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT) {
+            /*
+             * We defer waits, making sure the coherency lease expires for
+             * the disconnected replicant;  the node needs to be incoherent,
+             * no need to wait for it.
+             * Once the node reconnects, master will switch the state
+             * to STATE_INCOHERENT_WAIT, and master will wait for it again;
+             * replicant will run recovery to catch up
+             */
             defer_commits(bdb_state, host, __func__);
-            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT_WAIT;
+            bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
         }
 
         /* hostdown can defer commits */
-        bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms(NULL);
+        bdb_state->last_downgrade_time[nodeix(host)] = gettimeofday_ms();
 #ifdef INCOHERENT_CTRACE
         ctrace("%s %d setting host %s to INCOHERENT_WAIT\n", __FILE__, __LINE__,
                host);
@@ -1911,6 +1923,8 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     if (host == master_host) {
         logmsg(LOGMSG_WARN, "net_hostdown_rtn: HOSTDOWN was the master, calling "
                         "for election\n");
+
+        /* this is replicant, we are running election followed by recovery */
 
         call_for_election(bdb_state);
     }
@@ -2607,7 +2621,7 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                     bdb_state->coherent_state[nodeix(host)] =
                         STATE_INCOHERENT_SLOW;
                     bdb_state->last_downgrade_time[nodeix(host)] =
-                        gettimeofday_ms(NULL);
+                        gettimeofday_ms();
 #ifdef INCOHERENT_CTRACE
                     ctrace("%s:%d setting host %s to COHERENT\n", __FILE__,
                            __LINE__, worst_node);
@@ -2735,7 +2749,7 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                 if (bdb_state->coherent_state[nodeix(host)] == STATE_COHERENT)
                     defer_commits(bdb_state, host, __func__);
                 bdb_state->last_downgrade_time[nodeix(host)] =
-                    gettimeofday_ms(NULL);
+                    gettimeofday_ms();
                 bdb_state->coherent_state[nodeix(host)] = STATE_INCOHERENT;
 #ifdef INCOHERENT_CTRACE
                 ctrace("%s:%d setting host %s to INCOHERENT\n", __FILE__,
@@ -2994,6 +3008,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     uint32_t nodegen;
     int num_successfully_acked = 0;
     int total_connected;
+    int lock_desired = 0;
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
@@ -3079,6 +3094,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
                                                    nodelist[i], 1000, __LINE__);
 
+            if (bdb_lock_desired(bdb_state)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s line %d early exit because lock-is-desired\n",
+                       __func__, __LINE__);
+                return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+            }
+
             if (rc == 0) {
                 base_node = nodelist[i];
                 num_successfully_acked++;
@@ -3102,7 +3124,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 goto got_ack;
             }
         }
-    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms);
+    } while (time_epochms() - begin_time < bdb_state->attr->rep_timeout_maxms &&
+             !(lock_desired = bdb_lock_desired(bdb_state)));
 
     /* if we get here then we timed out without finding even one good node.
      * allow a waitms of ZERO for the remaining nodes - we've run out of
@@ -3115,8 +3138,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         bdb_state->attr->rep_timeout_minms - bdb_state->attr->rep_timeout_maxms;
     if (waitms < 0)
         waitms = 0;
-    logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
-            lsn_to_str(str, &(seqnum->lsn)));
+    if(!lock_desired)
+        logmsg(LOGMSG_WARN, "timed out waiting for initial replication of <%s>\n",
+               lsn_to_str(str, &(seqnum->lsn)));
+    else
+        logmsg(LOGMSG_WARN,
+               "lock desired, not waiting for initial replication of <%s>\n",
+               lsn_to_str(str, &(seqnum->lsn)));
 
 got_ack:
 
@@ -3147,6 +3175,14 @@ got_ack:
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
                                                waitms, __LINE__);
+
+        if (bdb_lock_desired(bdb_state)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s line %d early exit because lock-is-desired\n", __func__,
+                   __LINE__);
+
+            return (durable_lsns ? BDBERR_NOT_DURABLE : -1);
+        }
 
         if (rc == -999) {
             logmsg(LOGMSG_WARN, "replication timeout to node %s (%d ms), base node "
@@ -3206,7 +3242,7 @@ got_ack:
 
                 /* Record the downgrade time */
                 bdb_state->last_downgrade_time[nodeix(nodelist[i])] =
-                    gettimeofday_ms(NULL);
+                    gettimeofday_ms();
 
 #ifdef INCOHERENT_CTRACE
                 ctrace("%s %d setting node %s to INCOHERENT\n", __FILE__,
@@ -3304,8 +3340,11 @@ done_wait:
              * seqnums can race against each other.  If we got a majority of 
              * these during the commit we are okay */
             if (was_durable && log_compare(&calc_lsn, &seqnum->lsn) < 0) {
-                logmsg(LOGMSG_ERROR, "ERROR: calculate_durable_lsn trails seqnum, "
-                                "but this is durable?\n");
+                logmsg(LOGMSG_ERROR,
+                       "ERROR: calculate_durable_lsn trails seqnum, "
+                       "but this is durable (%d:%d vs %d:%d)?\n",
+                       calc_lsn.file, calc_lsn.offset, seqnum->lsn.file,
+                       seqnum->lsn.offset);
             }
             logmsg(LOGMSG_USER, 
                 "Last txn was %s, tot_connected=%d tot_acked=%d, "
@@ -3509,7 +3548,7 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
                     &p, p_net_seqnum,
                     (const uint8_t *)((seqnum_type *)p_net_seqnum + 1));
 
-                fprintf(stderr, "%s:%d %s sending %d:%d to %d\n", __FILE__,
+                fprintf(stderr, "%s:%d %s sending %d:%d to %s\n", __FILE__,
                         __LINE__, __func__, p.lsn.file, p.lsn.offset,
                         hostlist[i]);
             }
@@ -3752,6 +3791,10 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
         } else
             bdb_setmaster(bdb_state, host);
 
+        if (gbl_dump_zero_coherency_timestamp) {
+            logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n",
+                   __func__, __LINE__);
+        }
         coherency_timestamp = 0;
         break;
 
@@ -3951,7 +3994,25 @@ uint8_t *colease_type_put(const colease_t *p_colease_type, uint8_t *p_buf,
     return p_buf;
 }
 
-uint64_t get_coherency_timestamp(void) { return coherency_timestamp; }
+uint64_t get_coherency_timestamp(void)
+{
+    uint64_t x = coherency_timestamp;
+    if (x == 0) {
+        static uint32_t lastpr;
+        static uint32_t zero_ts_count = 0;
+        uint32_t now;
+
+        zero_ts_count++;
+        if (gbl_dump_zero_coherency_timestamp &&
+            ((now = time(NULL)) - lastpr)) {
+            logmsg(LOGMSG_ERROR,
+                   "%s returning 0 coherency_timestamp, count=%u\n", __func__,
+                   zero_ts_count);
+            lastpr = now;
+        }
+    }
+    return x;
+}
 
 typedef struct start_lsn_response {
     uint32_t gen;
@@ -4066,7 +4127,7 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
 
     assert(usertype == USER_TYPE_COHERENCY_LEASE);
     p_buf = (uint8_t *)dta;
-    p_buf_end = (int8_t *)(dta + dtalen);
+    p_buf_end = (uint8_t *)(dta + dtalen);
 
     if (!(colease_type_get(&colease, p_buf, p_buf_end))) {
         logmsg(LOGMSG_ERROR, "%s: corrupt colease packet from %s, len=%d\n",
@@ -4297,7 +4358,6 @@ void berkdb_receive_msg(void *ack_handle, void *usr_ptr, char *from_host,
 
         osql_decom_node(host);
         net_decom_node(bdb_state->repinfo->netinfo, host);
-        net_decom_node(bdb_state->repinfo->netinfo_signal, host);
         break;
     }
 
@@ -5429,6 +5489,20 @@ int bdb_debug_logreq(bdb_state_type *bdb_state, int file, int offset)
     return 0;
 }
 
+// Piggy-backing durable LSN requests doesn't work: each thread must make a
+// SEPARATE request for a durable LSN.  Here's the counter-example:
+//
+// 1. Thread A makes a request for a durable LSN from the master - it goes to
+//    the master and is stalled on it's way back to the replicant
+// 2. Thread B writes a record durably
+// 3. Thread C make a request for a durable LSN- instead of going to the master
+//    directly, it gloms onto the already outstanding durable LSN request, and
+//    retrieves the previous durable LSN
+//
+// .. Because Thread C started AFTER Thread B, it should see a durable LSN
+//    corresponding to B's writes
+//
+
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, 
         uint32_t *durable_file, uint32_t *durable_offset, 
         uint32_t *durable_gen) {
@@ -5483,9 +5557,10 @@ int request_durable_lsn_from_master(bdb_state_type *bdb_state,
     }
 
     start_time = gettimeofday_ms();
-    if ((rc = net_send_message_payload_ack(bdb_state->repinfo->netinfo_signal,
-            bdb_state->repinfo->master_host, USER_TYPE_REQ_START_LSN,
-            (void *)&data, sizeof(data), (uint8_t **)&buf, &buflen, 1, waitms)) != 0) {
+    if ((rc = net_send_message_payload_ack(
+             bdb_state->repinfo->netinfo, bdb_state->repinfo->master_host,
+             USER_TYPE_REQ_START_LSN, (void *)&data, sizeof(data),
+             (uint8_t **)&buf, &buflen, 1, waitms)) != 0) {
         end_time = gettimeofday_ms();
         if (rc == NET_SEND_FAIL_TIMEOUT) {
             logmsg(LOGMSG_WARN,

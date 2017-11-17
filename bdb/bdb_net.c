@@ -255,7 +255,7 @@ static int udp_send(bdb_state_type *bdb_state, ack_info *info, const char *to)
         if (nsent != -999) {
             logmsgperror("udp_send:sendto");
             ack_info_to_cpu(info);
-            printf("sz:%u, hdr:%d payload:%d type:%d from:me to:%s\n", len,
+            printf("sz:%zu, hdr:%d payload:%d type:%d from:me to:%s\n", len,
                    info->hdrsz, info->len, info->type, to);
         }
         ++fail_udp;
@@ -361,7 +361,7 @@ void udp_ping_ip(bdb_state_type *bdb_state, char *ip)
     if (nsent != len) {
         logmsgperror("udp_ping_ip:sendto");
         ack_info_to_cpu(info);
-        printf("total len:%u, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
+        printf("total len:%zu, hdr:%d type:%d len:%d from:%d to:%d %s\n", len,
                info->hdrsz, info->type, info->len, info->from, info->to,
                print_addr(&addr, straddr));
         return;
@@ -525,7 +525,7 @@ static void *udp_reader(void *arg)
         ack_info_to_cpu(info);
 
         if (ack_info_size(info) != nrecv) {
-            fprintf(stderr, "%s:invalid read of %d (header suggests: %u)\n",
+            fprintf(stderr, "%s:invalid read of %zd (header suggests: %u)\n",
                     __func__, nrecv, ack_info_size(info));
             ++recl_udp;
             continue;
@@ -740,13 +740,16 @@ int send_myseqnum_to_master_udp(bdb_state_type *bdb_state)
 
         count++;
         if ((now = time(NULL)) > lastpr) {
-            fprintf(stderr, "%s: get_myseqnum returned non-0, count=%llu\n",
+            fprintf(stderr,
+                    "%s: get_myseqnum returned non-0, count=%" PRIu64 "\n",
                     __func__, count);
             lastpr = now;
         }
     }
     return rc;
 }
+
+int gbl_verbose_send_coherency_lease;
 
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *inc_wait)
@@ -793,7 +796,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         /* Assume disconnected node(s) are incoherent */
         *inc_wait = 1;
 
-        if (last_count != count || (now = time(NULL)) - lastpr) {
+        if (gbl_verbose_send_coherency_lease &&
+            (last_count != count || (now = time(NULL)) - lastpr)) {
             char *machs = (char *)malloc(1);
             int machs_len = 0;
             machs[0] = '\0';
@@ -856,16 +860,17 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
 
                 udp_send(bdb_state, info, hostlist[i]);
             } else {
-                net_send_message(bdb_state->repinfo->netinfo_signal,
-                        hostlist[i], USER_TYPE_COHERENCY_LEASE,
-                        buf, COLEASE_TYPE_LEN, 0, 0);
+                net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
+                                 USER_TYPE_COHERENCY_LEASE, buf,
+                                 COLEASE_TYPE_LEN, 0, 0);
             }
         } else {
             static time_t lastpr = 0;
             time_t now;
-            if ((now = time(NULL)) - lastpr) {
-                logmsg(LOGMSG_INFO, "%s: not sending to %s\n", __func__,
-                        hostlist[i]);
+            if (gbl_verbose_send_coherency_lease &&
+                (now = time(NULL)) - lastpr) {
+                logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
+                       hostlist[i]);
                 lastpr = now;
             }
         }
@@ -973,14 +978,15 @@ const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash)
 {
     repinfo_type *repinfo = bdb_state->repinfo;
-    if(crc32c(repinfo->myhost, strlen(repinfo->myhost)) == hash)
+    int tmp = crc32c((const uint8_t *)repinfo->myhost, strlen(repinfo->myhost));
+    if (tmp == hash)
         return repinfo->myhost;
 
     const char *hosts[REPMAX];
     int count = net_get_all_nodes(repinfo->netinfo, hosts);
 
     for (int i = 0; i < count; i++) {
-        if(crc32c(hosts[i], strlen(hosts[i])) == hash) 
+        if(crc32c((const uint8_t*)hosts[i], strlen(hosts[i])) == hash) 
             return hosts[i];
     }
     return NULL;

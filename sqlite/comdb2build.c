@@ -307,7 +307,7 @@ int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
      if (authOn != 0)
         return SQLITE_OK;
 
-     if (thd->sqlclntstate && tablename && thd->sqlclntstate->user)
+     if (thd->sqlclntstate && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
             tablename, thd->sqlclntstate->user, &bdberr))
@@ -340,7 +340,7 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
 
-     if (thd->sqlclntstate && tablename && thd->sqlclntstate->user)
+     if (thd->sqlclntstate)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
          struct sqlclntstate *s = thd->sqlclntstate;
@@ -1455,7 +1455,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         /* Check if its password change request */
-        if (!(thd && thd->sqlclntstate && thd->sqlclntstate->user &&
+        if (!(thd && thd->sqlclntstate &&
                    strcmp(thd->sqlclntstate->user, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             return;
@@ -1705,6 +1705,47 @@ clean_arg:
         free_bpfunc_arg(arg);
 }
 
+
+void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
+        int dryrun)
+{
+    sqlite3 *db = pParse->db;
+    Vdbe *v  = sqlite3GetVdbe(pParse);
+    struct schema_change_type *sc;
+
+    TokenStr(table, pSrcName);
+    TokenStr(newtable, pName);
+
+    if(get_dbtable_by_name(newtable)) {
+        setError(pParse, SQLITE_ERROR, "New table name exists");
+        return;
+    }
+
+    sc = new_schemachange_type();
+    if (sc == NULL) {
+        setError(pParse, SQLITE_NOMEM, "System out of memory");
+        return;
+    }
+
+    if (chkAndCopyTableTokens(v, pParse, sc->table, pSrcName, NULL, 1))
+        goto out;
+
+    if (authenticateSC(sc->table, pParse))
+        goto out;
+
+
+    comdb2WriteTransaction(pParse);
+    sc->nothrevent = 1;
+    sc->live = 1;
+    sc->rename = 1;
+    strncpy(sc->newtable, newtable, sizeof(sc->newtable));
+
+    comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb, (vdbeFuncArgFree) &free_schema_change_type);
+    return;
+
+out:
+    free_schema_change_type(sc);
+}
 
 void comdb2schemachangeCommitsleep(Parse* pParse, int num)
 {
@@ -2544,7 +2585,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     /* Change the type and length of fields in the cloned schema. */
     for (int i = 0; i < schema->nmembers; i++) {
-        fix_type_and_len(&schema->member[i].type, &schema->member[i].len);
+        fix_type_and_len(&schema->member[i].type, (int *)&schema->member[i].len);
     }
 
     /* Populate columns list */
@@ -2773,7 +2814,7 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    if (isTemp || isView || isVirtual || pParse->db->init.busy || IN_DECLARE_VTAB) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -2915,7 +2956,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     strncpy0(type, pType->z, sizeof(type));
     sqlite3Dequote(type);
 
-    if ((field->type = comdb2_parse_sql_type(type, &field->len)) == -1) {
+    if ((field->type = comdb2_parse_sql_type(type, (int *)&field->len)) == -1) {
         setError(pParse, SQLITE_MISUSE, "Invalid type specified.");
         goto cleanup;
     }
@@ -3248,7 +3289,8 @@ void comdb2CreateIndex(
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     int ifNotExist,     /* Omit error if index already exists */
     u8 idxType,         /* The index type */
-    int withOpts        /* WITH options (DATACOPY) */
+    int withOpts,        /* WITH options (DATACOPY) */
+    int temp
     )
 {
     Vdbe *v;
@@ -3261,7 +3303,7 @@ void comdb2CreateIndex(
     int found;
     char *keyname;
 
-    if (pParse->db->init.busy || IN_DECLARE_VTAB) {
+    if (temp || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
         sqlite3CreateIndex(pParse, pName1, pName2, pTblName, pList, onError,
                            pStart, pPIWhere->pExpr, sortOrder, ifNotExist,
                            idxType);
@@ -3733,7 +3775,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
     struct comdb2_ddl_context *ctx;
     int max_size;
 
-    assert(use_sqlite_impl(pParse) == 0);
+    assert(use_sqlite_impl(pParse));
 
     v = sqlite3GetVdbe(pParse);
 

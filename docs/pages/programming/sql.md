@@ -406,7 +406,9 @@ definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
 ```DROP``` operation, the references to the column being dropped will be
-silently removed from the referring keys and constraints definitions.
+silently removed from the referring keys and constraints definitions. ```RENAME TO```
+option renames a table.  This option cannot be combined with other ```ALTER TABLE```
+options.
 
 See also:
 

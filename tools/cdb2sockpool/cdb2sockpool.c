@@ -337,7 +337,7 @@ static int cache_port(char *typestr, int fd, char *prefix)
                     num_port_hints++;
 
                     if (VERBOSE) {
-                        syslog(LOG_DEBUG, "%s: %s: \"%s\" caching port %hd\n",
+                        syslog(LOG_DEBUG, "%s: %s: \"%s\" caching port %d\n",
                                prefix, __func__, hint->typestr, hint->portnum);
                     }
                 } else {
@@ -684,7 +684,7 @@ void *client_thd(void *voidarg)
                     num_port_hints--;
 
                     if (VERBOSE) {
-                        syslog(LOG_DEBUG, "%s: \"%.*s\" forgetting port %hd\n",
+                        syslog(LOG_DEBUG, "%s: \"%.*s\" forgetting port %d\n",
                                prefix, (int)sizeof(typestr), typestr, port);
                     }
                 }

@@ -28,6 +28,18 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 
+static int reload_rename_table(const char *name, const char *newtable)
+{
+    struct dbtable *db = get_dbtable_by_name(name);
+
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
+        return -1;
+    }
+
+    return rename_db(db, newtable);
+}
+
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
     int bdberr, rc;
@@ -37,6 +49,8 @@ static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
         break;
     case (genid48_disable):
         bdb_genid_set_format(bdb_state, LLMETA_GENID_ORIGINAL);
+        break;
+    default:
         break;
     }
     return 0;
@@ -289,9 +303,9 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
-                                ".NEW..ONDISK", new_dta, &reason, blobs,
-                                maxblobs, 1);
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK",
+                                (const char *)od_dta, ".NEW..ONDISK", new_dta,
+                                &reason, blobs, maxblobs, 1);
     if (rc) {
         gbl_sc_abort = 1;
         MEMORY_SYNC;
@@ -561,7 +575,7 @@ static int replicant_reload_views(const char *name)
  * their copies of the modified database
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
-int scdone_callback(bdb_state_type *bdb_state, const char table[],
+int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
     switch (type) {
@@ -584,6 +598,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
+    case rename_table:
+        return reload_rename_table(table, (char *)arg);
+    default:
+        break;
     }
 
     int add_new_db = 0;

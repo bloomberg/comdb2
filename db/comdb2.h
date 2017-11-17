@@ -137,7 +137,7 @@ enum AUXDB_TYPES {
     AUXDB_FSTBLK = 3
 };
 
-enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_SIGNAL };
+enum NET_NAMES { NET_REPLICATION, NET_SQL };
 /* This is thenumber of bytes taken up by the null bitmap in the wire protocol,
  * which traditionally is fixed at 32 bytes (enough for 256 columns). */
 enum { NULLBMPWIRELENGTH = 32 };
@@ -886,7 +886,6 @@ struct dbenv {
     /* banckend db engine handle for replication */
     void *handle_sibling;
     void *handle_sibling_offload;
-    void *handle_sibling_signal;
 
     /*replication sync mode */
     int rep_sync;
@@ -1557,7 +1556,6 @@ extern int gbl_osql_max_queue;
 extern int gbl_net_poll;
 extern int gbl_osql_net_poll;
 extern int gbl_osql_net_portmux_register_interval;
-extern int gbl_signal_net_portmux_register_interval;
 extern int gbl_net_portmux_register_interval;
 extern int gbl_net_max_queue;
 extern int gbl_nullfkey;
@@ -1881,11 +1879,18 @@ void appsock_get_dbinfo2_stats(uint32_t *n_appsock, uint32_t *n_sql);
 void ixstats(struct dbenv *dbenv);
 void curstats(struct dbenv *dbenv);
 
+/* Not available - this is the initial state. */
+#define REPLY_STATE_NA 0
+/* Sent - set by a tag thread. */
+#define REPLY_STATE_DONE 1
+/* Discard - set by an appsock thread if the child tag thread has timed out. */
+#define REPLY_STATE_DISCARD 2
 struct buf_lock_t {
     pthread_mutex_t req_lock;
     pthread_cond_t wait_cond;
     int rc;
-    int reply_done;
+    int reply_state; /* See REPLY_STATE_* macros above */
+    uint8_t *bigbuf;
     SBUF2 *sb;
 };
 
@@ -2333,6 +2338,7 @@ void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int reload_schema(char *table, const char *csc2, tran_type *tran);
 void delete_db(char *db_name);
+int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
                            void *fnddta, int *fndlen, int *recnum, int maxlen);
@@ -2384,8 +2390,6 @@ int load_new_table_schema_tran(struct dbenv *dbenv, tran_type *tran,
                                const char *table, const char *csc2_text);
 int load_new_table_schema(struct dbenv *dbenv, const char *table,
                           const char *csc2_text);
-int load_new_table_schema_trans(void *tran, struct dbenv *dbenv,
-                                const char *table, const char *csc2_text);
 int dump_all_csc2_to_disk();
 int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname);
 int dump_table_csc2_to_disk(const char *table);
@@ -2410,7 +2414,6 @@ int bulk_import(const char *tablename, const bulk_import_data_t *p_foreign_data,
 
 void debug_trap(char *line, int lline);
 int reinit_db(struct dbtable *db);
-int truncate_db(struct dbtable *db);
 int count_db(struct dbtable *db);
 int compact_db(struct dbtable *db, int timeout, int freefs);
 int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
@@ -2495,7 +2498,8 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
 
 int get_copy_rootpages_nolock(struct sql_thread *thd);
 int get_copy_rootpages(struct sql_thread *thd);
-int create_sqlite_master(void);
+void cleanup_sqlite_master();
+int create_sqlite_master();
 typedef struct master_entry master_entry_t;
 int destroy_sqlite_master(master_entry_t *, int);
 int new_indexes_syntax_check(struct ireq *iq);
@@ -3640,5 +3644,7 @@ int db_is_stopped(void);
  * check if a tablename is a queue
  */
 int is_tablename_queue(const char *tablename, int len);
+
+int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
 #endif /* !INCLUDED_COMDB2_H */

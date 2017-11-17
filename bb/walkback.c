@@ -864,9 +864,9 @@ void comdb2_cheapstack(FILE *f)
 {
     void *stack[MAXFRAMES];
     unsigned int nframes;
-    int rc, i;
+    int i;
 
-    if (rc = stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         fprintf(f, "Can't get stack trace\n");
         return;
     }
