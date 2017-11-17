@@ -1420,8 +1420,10 @@ void clean_exit(void)
     net_cleanup_subnets();
     cleanup_sqlite_master();
     for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
-        delete_schema(thedb->dbs[ii]->tablename); //tags hash
-        delete_db(thedb->dbs[ii]->tablename); // will free db
+        struct dbtable *tbl = thedb->dbs[ii];
+        delete_schema(tbl->tablename); //tags hash
+        delete_db(tbl->tablename); // will free db
+        freedb(tbl);
     }
     if (thedb->db_hash) {
         hash_clear(thedb->db_hash);
@@ -5314,7 +5316,6 @@ void delete_db(char *db_name)
 
     /* Remove the table from hash. */
     hash_del(thedb->db_hash, thedb->dbs[idx]);
-    freedb(thedb->dbs[idx]);
 
     for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
