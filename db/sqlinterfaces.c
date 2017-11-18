@@ -4405,10 +4405,7 @@ static void set_ret_column_info(struct sqlthdstate *thd,
     sqlite3_stmt *stmt = rec->stmt;
     int col;
 
-    if (thd->ncols < ncols) {
-        thd->cinfo = realloc(thd->cinfo, ncols * sizeof(struct column_info));
-        thd->ncols = ncols;
-    }
+    thd->cinfo = realloc(thd->cinfo, ncols * sizeof(struct column_info));
 
     for (col = 0; col < ncols; col++) {
 
