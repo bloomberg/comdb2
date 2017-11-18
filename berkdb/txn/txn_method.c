@@ -42,7 +42,7 @@ static int __txn_set_logical_start __P((DB_ENV *,
 static int __txn_set_logical_commit __P((DB_ENV *,
 	int (*)(DB_ENV *, void *, u_int64_t, DB_LSN *)));
 
-int gbl_use_perfect_ckp = 1;
+int gbl_use_perfect_ckp = 0;
 pthread_key_t txn_key;
 static pthread_once_t init_txn_key_once = PTHREAD_ONCE_INIT;
 

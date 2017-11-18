@@ -28,6 +28,18 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 
+static int reload_rename_table(const char *name, const char *newtable)
+{
+    struct dbtable *db = get_dbtable_by_name(name);
+
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
+        return -1;
+    }
+
+    return rename_db(db, newtable);
+}
+
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
     int bdberr, rc;
@@ -37,6 +49,8 @@ static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
         break;
     case (genid48_disable):
         bdb_genid_set_format(bdb_state, LLMETA_GENID_ORIGINAL);
+        break;
+    default:
         break;
     }
     return 0;
@@ -219,7 +233,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->dbname, ".ONDISK", od_dta,
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
@@ -289,9 +303,9 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->dbname, ".ONDISK", od_dta,
-                                ".NEW..ONDISK", new_dta, &reason, blobs,
-                                maxblobs, 1);
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK",
+                                (const char *)od_dta, ".NEW..ONDISK", new_dta,
+                                &reason, blobs, maxblobs, 1);
     if (rc) {
         gbl_sc_abort = 1;
         MEMORY_SYNC;
@@ -530,10 +544,11 @@ static int bthash_callback(const char *table)
         if (bthashsz) {
             logmsg(LOGMSG_INFO,
                    "Building bthash for table %s, size %dkb per stripe\n",
-                   db->dbname, bthashsz);
+                   db->tablename, bthashsz);
             bdb_handle_dbp_add_hash(db->handle, bthashsz);
         } else {
-            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n", db->dbname);
+            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n",
+                   db->tablename);
             bdb_handle_dbp_drop_hash(db->handle);
         }
         return 0;
@@ -560,7 +575,7 @@ static int replicant_reload_views(const char *name)
  * their copies of the modified database
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
-int scdone_callback(bdb_state_type *bdb_state, const char table[],
+int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
     switch (type) {
@@ -583,6 +598,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
+    case rename_table:
+        return reload_rename_table(table, (char *)arg);
+    default:
+        break;
     }
 
     int add_new_db = 0;
@@ -717,10 +736,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
         struct schema *ver_one;
         char tag[MAXTAGLEN];
 
-        ondisk_schema = find_tag_schema(db->dbname, ".ONDISK");
+        ondisk_schema = find_tag_schema(db->tablename, ".ONDISK");
         if (NULL == ondisk_schema) {
             logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
-                   db->dbname);
+                   db->tablename);
             exit(1);
         }
         ver_one = clone_schema(ondisk_schema);
@@ -731,7 +750,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
             logmsg(LOGMSG_FATAL, "strdup failed %s @ %d\n", __func__, __LINE__);
             exit(1);
         }
-        add_tag_schema(db->dbname, ver_one);
+        add_tag_schema(db->tablename, ver_one);
     }
 
     ++gbl_dbopen_gen;
@@ -742,10 +761,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch
      * it from there. */
-    dbnum = llmeta_get_dbnum_tran(tran, db->dbname, &bdberr);
+    dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
     if (dbnum == -1) {
         logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
-               db->dbname);
+               db->tablename);
         rc = BDBERR_MISC;
         goto done;
     }

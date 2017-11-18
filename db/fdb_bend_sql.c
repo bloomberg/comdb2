@@ -310,7 +310,7 @@ static void init_sqlclntstate(struct sqlclntstate *clnt, char *tid, int isuuid)
 
     if (isuuid) {
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
-        comdb2uuidcpy(clnt->osql.uuid, tid);
+        comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
     } else {
         clnt->osql.rqid = *(unsigned long long *)tid;
     }
@@ -352,7 +352,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     /* register transaction */
     if (isuuid) {
         clnt->osql.rqid = OSQL_RQID_USE_UUID;
-        comdb2uuidcpy(clnt->osql.uuid, tid);
+        comdb2uuidcpy(clnt->osql.uuid, (unsigned char *)tid);
     } else
         memcpy(&clnt->osql.rqid, tid, sizeof(clnt->osql.rqid));
     if (osql_register_sqlthr(clnt, OSQL_SOCK_REQ /* not needed actually*/)) {
@@ -558,7 +558,7 @@ int fdb_svc_trans_join_uuid(char *tid, struct sqlclntstate **clnt)
 {
     int rc = 0;
 
-    rc = osql_chkboard_get_clnt_uuid(tid, clnt);
+    rc = osql_chkboard_get_clnt_uuid((unsigned char *)tid, clnt);
 
     if (rc)
         return rc;
@@ -567,9 +567,9 @@ int fdb_svc_trans_join_uuid(char *tid, struct sqlclntstate **clnt)
 }
 
 static struct sql_thread *
-_fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
-                      unsigned long long genid, int need_bdbcursor,
-                      int *standalone)
+_fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
+                      int rootpage, unsigned long long genid,
+                      int need_bdbcursor, int *standalone)
 {
     struct sql_thread *thd;
     int rc = 0;
@@ -623,8 +623,13 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, int rootpage,
     pCur->genid = genid;
 
     /* retrieve the table involved */
-    pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
-    pCur->numblobs = get_schema_blob_count(pCur->db->dbname, ".ONDISK");
+    if (tblname) {
+        pCur->db = get_dbtable_by_name(tblname);
+        pCur->ixnum = -1;
+    } else {
+        pCur->db = get_sqlite_db(thd, rootpage, &pCur->ixnum);
+    }
+    pCur->numblobs = get_schema_blob_count(pCur->db->tablename, ".ONDISK");
 
     if (need_bdbcursor) {
         pCur->bdbcur = bdb_cursor_open(
@@ -742,8 +747,9 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *
                               NULL, 0, fail_reason, pCur);
         if (rc != getkeysize(db, i)) {
             char errs[128];
-            convert_failure_reason_str(fail_reason, db->dbname, "SQLite format",
-                                       ".ONDISK_ix", errs, sizeof(errs));
+            convert_failure_reason_str(fail_reason, db->tablename,
+                                       "SQLite format", ".ONDISK_ix", errs,
+                                       sizeof(errs));
             return -1;
         }
         free(pIndexes[i]);
@@ -756,9 +762,9 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *
  * Insert a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
-                          unsigned long long genid, char *data, int datalen,
-                          int seq)
+int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version, unsigned long long genid,
+                          char *data, int datalen, int seq)
 {
     BtCursor bCur;
     struct sql_thread *thd;
@@ -770,7 +776,8 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
     int rc2 = 0;
     int standalone = 0;
 
-    thd = _fdb_svc_cursor_start(&bCur, clnt, rootpage, genid, 0, &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 0,
+                                &standalone);
     if (!thd) {
         return -1;
     }
@@ -799,7 +806,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
                           rowblobs, MAXBLOBS, &clnt->fail_reason, &bCur);
     if (rc < 0) {
         char errs[128];
-        convert_failure_reason_str(&clnt->fail_reason, db->dbname,
+        convert_failure_reason_str(&clnt->fail_reason, db->tablename,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
 
@@ -836,8 +843,9 @@ done:
  * Delete a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_delete(struct sqlclntstate *clnt, int rootpage, int version,
-                          unsigned long long genid, int seq)
+int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version, unsigned long long genid,
+                          int seq)
 {
     BtCursor bCur;
     struct sql_thread *thd;
@@ -845,7 +853,8 @@ int fdb_svc_cursor_delete(struct sqlclntstate *clnt, int rootpage, int version,
     int rc2 = 0;
     int standalone = 0;
 
-    thd = _fdb_svc_cursor_start(&bCur, clnt, rootpage, genid, 1, &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, genid, 1,
+                                &standalone);
     if (!thd) {
         return -1;
     }
@@ -882,7 +891,8 @@ done:
  * Update a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
+int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version,
                           unsigned long long oldgenid, unsigned long long genid,
                           char *data, int datalen, int seq)
 {
@@ -896,8 +906,8 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
     int rc2 = 0;
     int standalone = 0;
 
-    thd =
-        _fdb_svc_cursor_start(&bCur, clnt, rootpage, oldgenid, 1, &standalone);
+    thd = _fdb_svc_cursor_start(&bCur, clnt, tblname, rootpage, oldgenid, 1,
+                                &standalone);
     if (!thd) {
         return -1;
     }
@@ -934,7 +944,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
                           rowblobs, MAXBLOBS, &clnt->fail_reason, &bCur);
     if (rc < 0) {
         char errs[128];
-        convert_failure_reason_str(&clnt->fail_reason, db->dbname,
+        convert_failure_reason_str(&clnt->fail_reason, db->tablename,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
 
@@ -980,7 +990,7 @@ struct sqlclntstate *fdb_svc_trans_get(char *tid, int isuuid)
     /* this returns a dtran_mtx locked structure */
     do {
         if (isuuid)
-            rc = osql_chkboard_get_clnt_uuid(tid, &clnt);
+            rc = osql_chkboard_get_clnt_uuid((unsigned char *)tid, &clnt);
         else
             rc = osql_chkboard_get_clnt(*(unsigned long long *)tid, &clnt);
         if (rc && rc == -1) {

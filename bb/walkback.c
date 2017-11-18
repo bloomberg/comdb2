@@ -106,7 +106,7 @@ struct frame {
     void *fr_savpc;
 };
 
-#elif defined(__linux)
+#elif defined(__linux__)
 
 #define UNW_LOCAL_ONLY /* only async-safe code */
 #ifdef USE_UNWIND
@@ -129,6 +129,10 @@ typedef struct {
 static void walkback_allocator_init(walkback_alloc_t *allocator);
 static void *walkback_allocate(walkback_alloc_t *allocator, size_t size);
 static void walkback_free(walkback_alloc_t *allocator, void *ptr);
+
+#elif defined(__APPLE__)
+
+#include <libunwind.h>
 
 #else
 
@@ -471,7 +475,7 @@ static int _AIX_stack_walkback(ucontext_t *context, unsigned maxframes,
 } /*    end of _AIX_stack_walkback()    */
 #endif
 
-#if defined(__linux)
+#if defined(__linux__) || defined(__APPLE__)
 
 /******************************************************************************
 *
@@ -695,7 +699,7 @@ int stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
 
     return _AIX_stack_walkback(context, maxframes, handler, handlerarg);
 
-#elif defined(__linux)
+#elif defined(__linux__) || defined(__APPLE__)
 
     return __linux_stack_walkback(context, maxframes, handler, handlerarg);
 
@@ -860,9 +864,9 @@ void comdb2_cheapstack(FILE *f)
 {
     void *stack[MAXFRAMES];
     unsigned int nframes;
-    int rc, i;
+    int i;
 
-    if (rc = stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
+    if (stack_pc_getlist(NULL, stack, MAXFRAMES, &nframes)) {
         fprintf(f, "Can't get stack trace\n");
         return;
     }

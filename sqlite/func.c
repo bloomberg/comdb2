@@ -756,7 +756,7 @@ static void tableVersionFunc(
     return;
   }
 
-  tablename = sqlite3_value_text(argv[0]);
+  tablename = (const char *)sqlite3_value_text(argv[0]);
 
   version = comdb2_table_version(tablename);
   if (version<0) {
@@ -786,12 +786,12 @@ static void partitionInfoFunc(
   if( sqlite3_value_type(argv[0]) != SQLITE_TEXT ){
     return;
   }
-  partition_name = sqlite3_value_text(argv[0]);
+  partition_name = (const char *)sqlite3_value_text(argv[0]);
   
   if( sqlite3_value_type(argv[1]) != SQLITE_TEXT ){
     return;
   }
-  option = sqlite3_value_text(argv[1]);
+  option = (const char *)sqlite3_value_text(argv[1]);
 
   info = comdb2_partition_info(partition_name, option);
 

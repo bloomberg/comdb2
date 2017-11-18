@@ -27,7 +27,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include <db.h>
+#include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
 #include <endian_core.h>
@@ -216,7 +216,7 @@ int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
     return 0;
 }
 
-const char *deadlock_policy_str(int policy)
+const char *deadlock_policy_str(u_int32_t policy)
 {
     switch (policy) {
     case DB_LOCK_NORUN: return "DB_LOCK_NORUN";
@@ -255,7 +255,8 @@ int deadlock_policy_max()
 
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)
 {
-    int rc, policy;
+    int rc;
+    u_int32_t policy;
     extern int gbl_locks_check_waiters;
     extern unsigned long long check_waiters_skip_count;
     extern unsigned long long check_waiters_commit_count;
@@ -635,12 +636,24 @@ static void sanc_dump(FILE *out, bdb_state_type *bdb_state)
         logmsgf(LOGMSG_USER, out, "sanc nodes are missin\n");
 }
 
+#if WITH_SSL
+static void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
+{
+    extern ssl_mode gbl_client_ssl_mode;
+    if (gbl_client_ssl_mode <= SSL_UNKNOWN)
+        return;
+    dbinfo_response->has_require_ssl = 1;
+    dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
+}
+#else
+#define fill_ssl_info(arg)
+#endif
+
 void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
 {
     CDB2DBINFORESPONSE *dbinfo_response = p_response;
     struct host_node_info nodes[REPMAX];
     int num_nodes = 0, i = 0;
-    extern ssl_mode gbl_client_ssl_mode;
 
     num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
 
@@ -729,12 +742,8 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
 
     dbinfo_response->nodes = nodeinfos;
     dbinfo_response->master = master;
-    if (gbl_client_ssl_mode <= SSL_UNKNOWN)
-        dbinfo_response->has_require_ssl = 0;
-    else {
-        dbinfo_response->has_require_ssl = 1;
-        dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
-    }
+
+    fill_ssl_info(dbinfo_response);
 }
 
 static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
@@ -1637,8 +1646,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         free(host);
 
         net_send_decom_all(bdb_state->repinfo->netinfo, intern(realhost));
-        net_send_decom_all(bdb_state->repinfo->netinfo_signal,
-                           intern(realhost));
         osql_process_message_decom(intern(realhost));
     }
 
@@ -1961,7 +1968,7 @@ int dump_llmeta(bdb_state_type *bdb_state, int *bdberr)
     return 0;
 }
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "dbinc/log.h"
 
 static void dump_dbreg(DB *dbp)

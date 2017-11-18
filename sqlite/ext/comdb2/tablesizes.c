@@ -112,7 +112,7 @@ static int systblTblSizeColumn(
 ){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
   struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  char *x = pDb->dbname;
+  char *x = pDb->tablename;
 
   switch( i ){
     case STTS_TABLE: {

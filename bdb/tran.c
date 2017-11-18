@@ -38,7 +38,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 #include <plbitlib.h> /* for bset/btst */
 #include <lockmacro.h>
@@ -53,7 +53,7 @@
 #include "bdb_osqlcur.h"
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "missing.h"
 #include <alloca.h>
 
@@ -772,8 +772,8 @@ tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
 
 extern int gbl_extended_sql_debug_trace;
 
-int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, 
-        tran_type *tran, int *file, int *offset)
+int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
+                                   int *file, int *offset)
 {
     if (gbl_new_snapisol_asof) {
         if (tran && tran->asof_lsn.file) {
@@ -808,7 +808,8 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state,
         {
             // If we are not in a transaction, return nothing
             if (tran) {
-                bdb_get_current_lsn(bdb_state, file, offset);
+                bdb_get_current_lsn(bdb_state, (unsigned int *)file,
+                                    (unsigned int *)offset);
                 if (gbl_extended_sql_debug_trace) {
                     logmsg(LOGMSG_USER, "%s line %d using current lsn[%d][%d], tran is %p\n", 
                             __func__, __LINE__, *file, *offset, tran);
@@ -2334,6 +2335,8 @@ cleanup:
     case TRANCLASS_PHYSICAL:
     case TRANCLASS_BERK:
         bdb_tran_free_shadows(bdb_state, tran);
+        break;
+    default:
         break;
     }
 

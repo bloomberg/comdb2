@@ -47,7 +47,7 @@
 #include <stddef.h>
 #include <pthread.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -77,7 +77,7 @@ static DB_TXN *resolve_db_txn(bdb_state_type *bdb_state, tran_type *tran)
     if (tran) {
         if (tran->tranclass == TRANCLASS_LOGICAL && !tran->reptxn) {
             tran_type ptxn, *pptr;
-            if (rc = get_physical_transaction(bdb_state, tran, &pptr) != 0) {
+            if ((rc = get_physical_transaction(bdb_state, tran, &pptr)) != 0) {
                 logmsg(LOGMSG_ERROR, "%s %d: error getting transaction, rc=%d\n",
                         __FILE__, __LINE__, rc);
                 abort();
@@ -242,15 +242,15 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                 if (dbt_data_t.data)
                     free(dbt_data_t.data);
 
-                if (rc2 = dbcp_t->c_close(dbcp_t)) {
+                if ((rc2 = dbcp_t->c_close(dbcp_t)) != 0) {
                     logmsg(LOGMSG_ERROR, "bdb_fetch_blobs_by_rrn_and_genid_int_int:"
                            "error closing a temporary cursor %d\n",
                            rc2);
                 }
                 dbcp_t = NULL;
 
-                if (pparent->updateshadows_pglogs(pparent, &pgno, dbp->fileid,
-                                                  bdberr))
+                if (pparent->updateshadows_pglogs(
+                        pparent, (unsigned int *)&pgno, dbp->fileid, bdberr))
                     return -1;
             }
 
@@ -376,7 +376,7 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                 rc = bdb_cget_unpack_blob(bdb_state, dbcp, &dbt_key, &dbt_data,
                                           &args->ver, DB_SET);
 
-                if (rc2 = dbcp->c_close(dbcp)) {
+                if ((rc2 = dbcp->c_close(dbcp)) != 0) {
                     logmsg(LOGMSG_ERROR, "bdb_fetch_blobs_by_rrn_and_genid_int_int:"
                            "error closing a temporary cursor %d\n",
                            rc2);

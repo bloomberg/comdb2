@@ -60,7 +60,7 @@ void reset_aa_counter(char *tblname)
         bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
 
         char epoch[30] = {0};
-        sprintf(epoch, "%d", tbl->aa_lastepoch);
+        sprintf(epoch, "%" PRId64, tbl->aa_lastepoch);
         bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
     }
 
@@ -68,7 +68,7 @@ void reset_aa_counter(char *tblname)
 
     ctrace("AUTOANALYZE: Analyzed Table %s, reseting counter to %d and last "
            "run time %s",
-           tbl->dbname, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
+           tbl->tablename, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
 }
 
 static inline void loc_print_date(const time_t *timep)
@@ -140,17 +140,18 @@ int load_auto_analyze_counters(void)
 
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *tbl = thedb->dbs[i];
-        if (is_sqlite_stat(tbl->dbname))
+        if (is_sqlite_stat(tbl->tablename))
             continue;
 
         tbl->aa_saved_counter = 0;
         tbl->aa_lastepoch = 0;
         if (save_freq > 0) {
-            get_saved_counter_epoch(tbl->dbname, &tbl->aa_saved_counter,
+            get_saved_counter_epoch(tbl->tablename, &tbl->aa_saved_counter,
                                     &tbl->aa_lastepoch);
 
             ctrace("AUTOANALYZE: Loading table %s, count %d, last run time %s",
-                   tbl->dbname, tbl->aa_saved_counter, ctime(&tbl->aa_lastepoch));
+                   tbl->tablename, tbl->aa_saved_counter,
+                   ctime(&tbl->aa_lastepoch));
         }
     }
 
@@ -183,7 +184,7 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     struct schema *s;
 
     /* Grab the tag schema, or punt. */
-    if (!(s = find_tag_schema(tbldb->dbname, fnd_txt))) {
+    if (!(s = find_tag_schema(tbldb->tablename, fnd_txt))) {
         fprintf(stderr, "Couldn't find tag schema for '%s'.\n", fnd_txt);
         goto abort;
     }
@@ -195,7 +196,8 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
     s = iq.usedb->schema;
 
     /* create a stat1 record */
-    rc = stat1_ondisk_record(&iq, tbldb->dbname, ix_txt, NULL, (void **)&rec);
+    rc =
+        stat1_ondisk_record(&iq, tbldb->tablename, ix_txt, NULL, (void **)&rec);
     if (rc != 0) {
         fprintf(stderr, "%s: couldn't create ondisk record for sqlite_stat1\n",
                 __func__);
@@ -221,7 +223,7 @@ static long long get_num_rows_from_stat1(struct dbtable *tbldb)
         printf("%s: Error converting '%s' '%lld'\n", __func__, stat1, val);
 #ifdef DEBUG
     else
-        printf("table %s has %lld rows\n", tbldb->dbname, val);
+        printf("table %s has %lld rows\n", tbldb->tablename, val);
 #endif
 
 abort:
@@ -266,7 +268,7 @@ void stat_auto_analyze(void)
 
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *tbl = thedb->dbs[i];
-        if (is_sqlite_stat(tbl->dbname))
+        if (is_sqlite_stat(tbl->tablename))
             continue;
 
         unsigned prev = tbl->saved_write_count[RECORD_WRITE_DEL] +
@@ -287,10 +289,11 @@ void stat_auto_analyze(void)
             new_aa_percnt =
                 (100.0 * newautoanalyze_counter) / get_num_rows_from_stat1(tbl);
 
-        logmsg(LOGMSG_USER, "Table %s, aa counter=%d (saved %d, new %d, percent of tbl "
+        logmsg(LOGMSG_USER,
+               "Table %s, aa counter=%d (saved %d, new %d, percent of tbl "
                "%.2f), last run time=",
-               tbl->dbname, newautoanalyze_counter, tbl->aa_saved_counter, delta,
-               (new_aa_percnt > 100 ? 100 : new_aa_percnt));
+               tbl->tablename, newautoanalyze_counter, tbl->aa_saved_counter,
+               delta, (new_aa_percnt > 100 ? 100 : new_aa_percnt));
         loc_print_date(&tbl->aa_lastepoch);
         logmsg(LOGMSG_USER, "\n");
     }
@@ -353,14 +356,14 @@ void *auto_analyze_main(void *unused)
             break;
 
         struct dbtable *tbl = thedb->dbs[i];
-        if (is_sqlite_stat(tbl->dbname))
+        if (is_sqlite_stat(tbl->tablename))
             continue;
 
         // should we track this table? check analyzethreshold if zero, dont
         // track
         long long thresholdvalue = 0;
         int bdberr = 0;
-        int rc = bdb_get_analyzethreshold_table(NULL, tbl->dbname,
+        int rc = bdb_get_analyzethreshold_table(NULL, tbl->tablename,
                                                 &thresholdvalue, &bdberr);
         if (rc != 0)
             printf("bdb_get_analyzethreshold_table rc = %d, bdberr=%d\n", rc,
@@ -409,13 +412,14 @@ void *auto_analyze_main(void *unused)
 
             ctrace("AUTOANALYZE: Analyzing Table %s, counters (%d, %d); last "
                    "run time %s\n",
-                   tbl->dbname, tbl->aa_saved_counter, delta,
+                   tbl->tablename, tbl->aa_saved_counter, delta,
                    ctime(&tbl->aa_lastepoch));
             auto_analyze_running = true; // will be reset by
                                          // auto_analyze_table()
             pthread_t analyze;
             char *tblname = strdup(
-                (char *)tbl->dbname); // will be freed in auto_analyze_table()
+                (char *)
+                    tbl->tablename); // will be freed in auto_analyze_table()
             pthread_create(&analyze, &gbl_pthread_attr_detached,
                            auto_analyze_table, tblname);
         } else if (delta > 0 && save_freq > 0 &&
@@ -423,11 +427,11 @@ void *auto_analyze_main(void *unused)
                        0) { // save updated counter
             ctrace("AUTOANALYZE: Table %s, saving counter (%d, %d); last run "
                    "time %s\n",
-                   tbl->dbname, tbl->aa_saved_counter, delta,
+                   tbl->tablename, tbl->aa_saved_counter, delta,
                    ctime(&tbl->aa_lastepoch));
             char str[12] = {0};
             sprintf(str, "%d", newautoanalyze_counter);
-            bdb_set_table_parameter(NULL, tbl->dbname, aa_counter_str, str);
+            bdb_set_table_parameter(NULL, tbl->tablename, aa_counter_str, str);
         }
 
         tbl->aa_saved_counter = newautoanalyze_counter;

@@ -101,6 +101,12 @@ static void disableLookaside(Parse *pParse){
   pParse->db->lookaside.bDisable++;
 }
 
+/* COMDB2 MODIFICATION
+   Add flag for ANALYZE EXPERT */
+static void setExpert(Parse *pParse){
+  pParse->db->isExpert = 1;
+}
+
 } // end %include
 
 // Input is a single SQL command
@@ -751,7 +757,6 @@ sortlist(A) ::= expr(Y) sortorder(Z). {
 }
 
 %type sortorder {int}
-
 sortorder(A) ::= ASC.           {A = SQLITE_SO_ASC;}
 sortorder(A) ::= DESC.          {A = SQLITE_SO_DESC;}
 sortorder(A) ::= .              {A = SQLITE_SO_UNDEFINED;}
@@ -1323,11 +1328,11 @@ paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 
 ///////////////////////////// The CREATE INDEX command ///////////////////////
 //
-cmd ::= createkw(S) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
+cmd ::= createkw(S) temp(T) uniqueflag(U) INDEX ifnotexists(NE) nm(X) dbnm(D)
         ON nm(Y) LP sortlist(Z) RP with_opt(O) where_opt(W). {
   comdb2CreateIndex(pParse, &X, &D,
                     sqlite3SrcListAppend(pParse->db,0,&Y,0), Z, U,
-                    &S, &W, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF, O);
+                    &S, &W, SQLITE_SO_ASC, NE, SQLITE_IDXTYPE_APPDEF, O, T);
 }
 
 %type uniqueflag {int}
@@ -1592,6 +1597,9 @@ cmd ::= REINDEX nm(X) dbnm(Y).  {sqlite3Reindex(pParse, &X, &Y);}
 %ifndef SQLITE_OMIT_ANALYZE
 cmd ::= ANALYZESQLITE.                {sqlite3Analyze(pParse, 0, 0);}
 cmd ::= ANALYZESQLITE nm(X) dbnm(Y).  {sqlite3Analyze(pParse, &X, &Y);}
+/* COMDB2 MODIFICATION */
+cmd ::= ANALYZEEXPERT.                {setExpert(pParse); sqlite3Analyze(pParse, 0, 0);}
+cmd ::= ANALYZEEXPERT nm(X) dbnm(Y).  {setExpert(pParse); sqlite3Analyze(pParse, &X, &Y);}
 %endif
 
 //////////////////////// ALTER TABLE table ... ////////////////////////////////
@@ -2095,6 +2103,15 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
 %endif
+
+
+/////////////////// COMDB2 RENAME TABLE STATEMENT  //////////////////////////////
+cmd ::= rename_comdb2table.
+
+rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
+    comdb2WriteTransaction(pParse);
+    sqlite3AlterRenameTable(pParse,&X,&Y,D);
+}
 
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}

@@ -22,23 +22,23 @@
 
 #include <arpa/inet.h>
 
-#include "db.h"
-#include "db_int.h"
-#include "db_page.h"
+#include <build/db.h>
+#include <build/db_int.h>
 
-#include "dbinc/fop.h"
-#include "dbinc/hash.h"
-#include "dbinc/log.h"
-#include "dbinc/qam.h"
-#include "dbinc/txn.h"
+#include <dbinc/btree.h>
+#include <dbinc_auto/btree_auto.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/fop.h>
+#include <dbinc/hash.h>
+#include <dbinc/log.h>
+#include <dbinc/qam.h>
+#include <dbinc/txn.h>
 
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "llog_auto.h"
 
-#include "btree.h"
-#include "db_swap.h"
-#include "dbinc_auto/btree_auto.h"
 
 #include "bdb_int.h"
 #include "plhash.h"

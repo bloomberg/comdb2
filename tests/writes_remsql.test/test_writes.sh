@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
@@ -56,6 +56,8 @@ run_test()
    input=$1
    exp_output=$2
    output=$3
+
+   rm $output
 
    work_input=${input}.actual
 

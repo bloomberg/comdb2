@@ -301,7 +301,7 @@ __bam_lz4_pg_img(dbp, h, hdrp, dtap, dtabuf)
 
 	if (gbl_compress_page_compact_log) {
 		ncompr = LZ4_compress_default((const char *)h + HOFFSET(h),
-				dtabuf, (dbp->pgsize - HOFFSET(h)), (dbp->pgsize - HOFFSET(h) - 1));
+		    (char *)dtabuf, (dbp->pgsize - HOFFSET(h)), (dbp->pgsize - HOFFSET(h) - 1));
 		if (ncompr <= 0)
 			goto fallback_to_nocompr;
 
@@ -1453,7 +1453,7 @@ __bam_ispgcompactible(dbc, pgno, dbt, ff)
 	}
 
 	/* We need the 1st key on the page. */
-	memset(dbt, 0, sizeof(dbt));
+	memset(dbt, 0, sizeof(DBT));
 	ret = __db_ret(dbp,
 			h, 0, dbt, &dbt->data, &dbt->ulen);
 

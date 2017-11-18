@@ -33,7 +33,6 @@
 #include "net.h"
 #include "sqlstat1.h"
 #include <ctrace.h>
-#include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "socket_interfaces.h"
 #include "debug_switches.h"
@@ -3089,7 +3088,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
     if (p_slock == NULL)
         return ENOMEM;
 
-    p_slock->reply_done = 0;
+    p_slock->reply_state = REPLY_STATE_NA;
     p_slock->sb = NULL;
 
     // initialize lock and cond
@@ -3111,7 +3110,7 @@ int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
         rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
         if (rc == 0) {
             nwakeups = 0;
-            while (!p_slock->reply_done) {
+            while (p_slock->reply_state != REPLY_STATE_DONE) {
                 clock_gettime(CLOCK_REALTIME, &ts);
                 ts.tv_sec += 1;
                 rc = pthread_cond_timedwait(&(p_slock->wait_cond),
@@ -3189,11 +3188,23 @@ static void net_block_reply(void *hndl, void *uptr, char *fromhost,
     /* using p_slock pointer as the request id now, this contains info about
      * socket request.*/
     struct buf_lock_t *p_slock = (struct buf_lock_t *)net_msg->rqid;
-    p_slock->rc = net_msg->rc;
-    sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data, net_msg->datalen,
-                       net_msg->rc);
-    /* Signal to allow the appsock thread to take new request from client.*/
-    signal_buflock(p_slock);
+    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
+        if (p_slock->reply_state == REPLY_STATE_DISCARD) {
+            /* The tag request is handled by master. However by the time
+               (1000+ seconds) the replicant receives the reply from master,
+               the tag request is already discarded. */
+            pthread_mutex_unlock(&p_slock->req_lock);
+            cleanup_lock_buffer(p_slock);
+        } else {
+            p_slock->rc = net_msg->rc;
+            sndbak_open_socket(p_slock->sb, (u_char *)net_msg->data,
+                               net_msg->datalen, net_msg->rc);
+            /* Signal to allow the appsock thread
+               to take new request from client. */
+            signal_buflock(p_slock);
+            pthread_mutex_unlock(&p_slock->req_lock);
+        }
+    }
 }
 
 static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
@@ -6631,7 +6642,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                    "duplicate key '%s' on "
                                                    "table '%s' index %d",
                           get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                          iq->usedb->dbname, err->ixnum);
+                          iq->usedb->tablename, err->ixnum);
             } else if (rc != RC_INTERNAL_RETRY) {
                 reqerrstr(iq, COMDB2_ADD_RC_INVL_KEY,
                           "unable to add record rc = %d", rc);
@@ -6716,7 +6727,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             /* Make sure this is sane before sending to upd_record. */
             for (ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
-                    int idx = get_schema_blob_field_idx(iq->usedb->dbname,
+                    int idx = get_schema_blob_field_idx(iq->usedb->tablename,
                                                         ".ONDISK", ii);
                     assert(idx < ncols);
                     assert(-1 == (*updCols)[idx + 1]);
@@ -6786,7 +6797,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_CLRTBL: {
         if (logsb) {
             sbuf2printf(logsb, "[%llu %s] OSQL_CLRTBL %s\n", rqid,
-                        comdb2uuidstr(uuid, us), iq->usedb->dbname);
+                        comdb2uuidstr(uuid, us), iq->usedb->tablename);
             sbuf2flush(logsb);
         }
 
@@ -7758,7 +7769,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     case OSQL_CLRTBL: {
         sbuf2printf(logsb, "[%llx %s] OSQL_CLRTBL %s\n", id, us,
-                    iq->usedb->dbname);
+                    iq->usedb->tablename);
         sbuf2flush(logsb);
     } break;
 
@@ -8443,18 +8454,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 break;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK", (char *)fnddta,
-                                  keytag, key, NULL);
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+                                  (char *)fnddta, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, 
-                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 break;
             }
 
@@ -8477,18 +8488,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                   (char *)req->record, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, 
-                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 continue;
             }
 
@@ -8541,17 +8552,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK", (char *)fnddta,
-                                  keytag, key, NULL);
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
+                                  (char *)fnddta, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 continue;
             }
 
@@ -8569,17 +8581,18 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
             keysz = getkeysize(iq.usedb, ixnum);
             if (keysz < 0) {
                 logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                " tbl %s. idx %d\n",
-                        iq.usedb->dbname, ixnum);
+                                     " tbl %s. idx %d\n",
+                       iq.usedb->tablename, ixnum);
                 continue;
             }
             snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->dbname, ".ONDISK",
+            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
                                   (char *)req->record, keytag, key, NULL);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                        " %d of TBL %s\n",
-                        ixnum, iq.usedb->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
+                       " %d of TBL %s\n",
+                       ixnum, iq.usedb->tablename);
                 continue;
             }
 
@@ -8818,10 +8831,11 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     p_buf_op_hdr_end = p_buf;
 
     usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->dbname) + 1 /*NUL byte*/;
+    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, p_buf_end)))
         return NULL;
-    if (!(p_buf = buf_no_net_put(db->dbname, usekl.taglen, p_buf, p_buf_end)))
+    if (!(p_buf =
+              buf_no_net_put(db->tablename, usekl.taglen, p_buf, p_buf_end)))
         return NULL;
 
     op_hdr.opcode = BLOCK2_USE;
@@ -8913,7 +8927,7 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
 
         ++uprec->nreqs;
         nwakeups = 0;
-        while (!p_slock->reply_done) {
+        while (p_slock->reply_state != REPLY_STATE_DONE) {
             clock_gettime(CLOCK_REALTIME, &ts);
             ts.tv_sec += 1;
             rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
@@ -8927,7 +8941,7 @@ static void *uprec_cron_event(uuid_t source_id, void *arg1, void *arg2, void *ar
             }
         }
 
-        if (!p_slock->reply_done) {
+        if (p_slock->reply_state != REPLY_STATE_DONE) {
             // timedout from #1
             // intv = 0.75 * intv + 0.25 * T(this time)
             uprec->intv += (uprec->intv << 1) + nwakeups;
@@ -9026,7 +9040,7 @@ static void uprec_sender_array_init(void)
     }
 
     uprec->lk = &uprec->slock.req_lock;
-    uprec->slock.reply_done = 0;
+    uprec->slock.reply_state = REPLY_STATE_NA;
     uprec->slock.sb = 0;
 
     // kick off upgradetable cron

@@ -215,14 +215,14 @@ svc_cursor_t *fdb_svc_cursor_open(char *tid, char *cid, int code_release,
         logmsg(LOGMSG_ERROR, "%s failed to create cursor\n", __func__);
         return NULL;
     }
-    cur->cid = cur->ciduuid;
-    cur->tid = cur->tiduuid;
+    cur->cid = (char *)cur->ciduuid;
+    cur->tid = (char *)cur->tiduuid;
     cur->code_rel = code_release;
     cur->tblnum = -1;
     cur->ixnum = -1;
 
     if (isuuid) {
-        if (comdb2uuidcmp(tid, zerouuid)) {
+        if (comdb2uuidcmp((unsigned char *)tid, zerouuid)) {
             cur->autocommit = 0;
         } else {
             cur->autocommit = 1;
@@ -416,7 +416,7 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
         uuidstr_t us;
         cur = hash_find(center->cursorsuuid_hash, cid);
         if (!cur) {
-            comdb2uuidstr(cid, us);
+            comdb2uuidstr((unsigned char *)cid, us);
             pthread_rwlock_unlock(&center->cursors_rwlock);
 
             logmsg(LOGMSG_ERROR, "%s: missing cursor %s\n", __func__, us);
@@ -648,9 +648,9 @@ again:
             }
 
             if (nretries >= gbl_maxretries) {
-               logmsg(LOGMSG_ERROR, "too much contention fetching "
-                       "tbl %s blob %s tried %d times\n",
-                       thedb->dbs[cur->tblnum]->dbname, f->name, nretries);
+                logmsg(LOGMSG_ERROR, "too much contention fetching "
+                                     "tbl %s blob %s tried %d times\n",
+                       thedb->dbs[cur->tblnum]->tablename, f->name, nretries);
                 return SQLITE_DEADLOCK;
             }
             goto again;
@@ -780,7 +780,7 @@ static int fdb_get_data_int(svc_cursor_t *cur, struct schema *sc, char *in,
             if (flip_orig || !(f->flags & INDEX_DESCEND)) {
                 m->n = cstrlenlim(&in[1], f->len - 1);
             } else {
-                m->n = cstrlenlimflipped(&in[1], f->len - 1);
+                m->n = cstrlenlimflipped((unsigned char *)&in[1], f->len - 1);
             }
             m->flags = MEM_Str | MEM_Ephem;
         }
@@ -1394,13 +1394,13 @@ int fdb_svc_trans_init(struct sqlclntstate *clnt, const char *tid,
 
     fdb_tran =
         (fdb_tran_t *)((char *)trans->dtran + sizeof(fdb_distributed_tran_t));
-    fdb_tran->tid = fdb_tran->tiduuid;
+    fdb_tran->tid = (char *)fdb_tran->tiduuid;
 
     listc_init(&trans->dtran->fdb_trans, offsetof(struct fdb_tran, lnk));
     trans->dtran->remoted = 1;
     fdb_tran->seq = seq;
     if (isuuid) {
-        comdb2uuidcpy(fdb_tran->tid, (unsigned char *)tid);
+        comdb2uuidcpy((unsigned char *)fdb_tran->tid, (unsigned char *)tid);
     } else {
         memcpy(fdb_tran->tid, tid, sizeof(unsigned long long));
     }

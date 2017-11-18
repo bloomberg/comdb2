@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 # Grab my database name.
@@ -38,7 +38,7 @@ function errquit
 cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 # Insert some large records - this will insert 3 records
-cdb2sql -f ./largerecs.sql ${CDB2_OPTIONS} $dbnm default >/dev/null 2>&1
+cdb2sql -s -f ./largerecs.sql ${CDB2_OPTIONS} $dbnm default &> /dev/null
 maxrc=3
 
 # Start a coprocess: input/output in ${COPROC[]} offset 0/1

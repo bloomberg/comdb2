@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # This script runs analyze and sends analyze abort to cancel it 
 # The analyse abort command needs to be sent to the same node 
 # which is performing analyze.

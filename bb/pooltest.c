@@ -22,7 +22,7 @@
 
 #include <pool.h>
 
-void main()
+int main()
 {
     int ii, zz;
     pool_t *p;

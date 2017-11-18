@@ -95,7 +95,7 @@ static int db_comdbg_tables(Lua L) {
                 lua_createtable(L, 8, 0); 
 
                 lua_pushstring(L, "tablename");
-                lua_pushstring(L, db->dbname);
+                lua_pushstring(L, db->tablename);
                 lua_settable(L, -3);
 
                 lua_pushstring(L, "dbnum");
@@ -228,7 +228,7 @@ static int db_comdb_verify(Lua L) {
     int found = 0;
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
         struct dbtable *t = thedb->dbs[dbn];
-        if (strcmp(tbl, t->dbname) == 0) {
+        if (strcmp(tbl, t->tablename) == 0) {
             found = 1;
             break;
         }
@@ -263,7 +263,7 @@ static int db_send(Lua L) {
 
     if (gbl_uses_password) {
       SP sp = getsp(L);
-      if (sp && sp->clnt && sp->clnt->user) {
+      if (sp && sp->clnt) {
           int bdberr;
           if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
               return luaL_error(L, "User doesn't have access to run this command.");

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 db=$1
 db=$2
@@ -60,7 +60,7 @@ cdb2sql ${CDB2_OPTIONS} $db default "select * from compress_alter"
 # alter db with blob compression
 ################################
 cdb2sql ${CDB2_OPTIONS} $db default "drop table compress_alter"
-cdb2sql ${CDB2_OPTIONS} $db default "create table compress_alter { `cat compress_alter0.csc2 ` }" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $db default "create table compress_alter { `cat compress_alter0.csc2 ` }" > /dev/null
 cdb2sql ${CDB2_OPTIONS} $db default "insert into compress_alter(a) values(0)"
 
 #comdb2sc -y $db alter compress_alter compress_alter1.csc2
@@ -86,7 +86,7 @@ cdb2sql ${CDB2_OPTIONS} $db default "select * from compress_alter"
 # alter db & compress dta + blob
 ################################
 cdb2sql ${CDB2_OPTIONS} $db default "drop table compress_alter"
-cdb2sql ${CDB2_OPTIONS} $db default "create table compress_alter { `cat compress_alter0.csc2 ` }" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $db default "create table compress_alter { `cat compress_alter0.csc2 ` }" > /dev/null
 cdb2sql ${CDB2_OPTIONS} $db default "insert into compress_alter(a) values(0)"
 
 #comdb2sc -y $db alter compress_alter compress_alter1.csc2

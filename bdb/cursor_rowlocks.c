@@ -55,7 +55,7 @@
 #include <assert.h>
 #include <strings.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_cursor.h"
 #include "bdb_int.h"
@@ -271,7 +271,7 @@ static inline int return_cursor(bdb_berkdb_t *berkdb)
         char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = util_tohex(srcmemp, (char *)r->lastkey, r->keylen);
+        srckeyp = util_tohex(srcmemp, r->lastkey, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s return_key='%s'\n", berkdb,
                 __func__, bdb_state->name, curtypetostr(cur->type), srckeyp);
@@ -903,7 +903,7 @@ static inline int bdb_berkdb_rowlocks_nextprev_int(bdb_berkdb_t *berkdb,
     repokeyptr = r->key;
 
     /* Bulk test */
-    if (bulksz = switch_bulk_test(berkdb, dir)) {
+    if ((bulksz = switch_bulk_test(berkdb, dir)) != 0) {
         /* Switching to bulk mode */
         r->use_bulk = 1;
 
@@ -1986,7 +1986,8 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
                                   int how, int enter_lkcount, int exit_lkcount)
 {
     bdb_state_type *bdb_state = berkdb->impl->bdb_state;
-    int now, cursor_count, page_lock_count;
+    int now, cursor_count;
+    u_int32_t page_lock_count;
     bdb_cursor_impl_t *cur = berkdb->impl->cur;
 
     /* I'm just looking for which function to instrument */
@@ -2058,7 +2059,7 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = util_tohex(srcmemp, (char *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, srckey, keylen);
             }
 
             /* Print */
@@ -2075,7 +2076,7 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
 
         /* Grab the lock count if debugging */
         bdb_state->dbenv->lock_locker_lockcount(
-            bdb_state->dbenv, cur->curtran->lockerid, lkcount);
+            bdb_state->dbenv, cur->curtran->lockerid, (u_int32_t *)lkcount);
     }
 
     /* Mark cursor as active */
@@ -2118,8 +2119,8 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
     }
 
     if (r->paused) {
-        if (rc = (r->pagelock_cursor->c_unpause(r->pagelock_cursor,
-                                                &r->pagelock_pause))) {
+        if ((rc = (r->pagelock_cursor->c_unpause(r->pagelock_cursor,
+                                                 &r->pagelock_pause))) != 0) {
             /* Error on unpause trace */
             if (debug_trace(berkdb)) {
                 logmsg(LOGMSG_USER, 
@@ -2191,7 +2192,7 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
 
         /* Grab the lock count */
         bdb_state->dbenv->lock_locker_lockcount(
-            bdb_state->dbenv, cur->curtran->lockerid, lkcount);
+            bdb_state->dbenv, cur->curtran->lockerid, (u_int32_t *)lkcount);
 
         if (keylen > 0) {
             /* Search key stack variables */
@@ -2205,13 +2206,13 @@ static inline int bdb_berkdb_rowlocks_exit(bdb_berkdb_t *berkdb,
             /* Search key to hex */
             if (srckey) {
                 srcmemp = alloca((2 * keylen) + 2);
-                srckeyp = util_tohex(srcmemp, (char *)srckey, keylen);
+                srckeyp = util_tohex(srcmemp, srckey, keylen);
             }
 
             /* Found key to hex */
             if (fndkey) {
                 fndmemp = alloca((2 * keylen) + 2);
-                fndkeyp = util_tohex(fndmemp, (char *)fndkey, keylen);
+                fndkeyp = util_tohex(fndmemp, fndkey, keylen);
             }
 
             /* Print */
@@ -2612,7 +2613,7 @@ int bdb_berkdb_rowlocks_key(bdb_berkdb_t *berkdb, char **key, int *bdberr)
         char *srckeyp;
 
         srcmemp = alloca((2 * r->keylen) + 2);
-        srckeyp = util_tohex(srcmemp, (char *)r->key, r->keylen);
+        srckeyp = util_tohex(srcmemp, r->key, r->keylen);
 
         logmsg(LOGMSG_USER, "Cur %p %s tbl %s %s key='%s'\n", berkdb, __func__,
                 bdb_state->name, curtypetostr(cur->type), srckeyp);

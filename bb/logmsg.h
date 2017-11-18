@@ -13,11 +13,14 @@ typedef enum {
     LOGMSG_USER = 6,
 } loglvl;
 
-int logmsg(loglvl lvl, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+#ifdef _SUN_SOURCE
+#define FORMAT_PRINTF(x,y)
+#else
+#define FORMAT_PRINTF(x,y) __attribute__((format(printf,x,y)))
+#endif
+int logmsg(loglvl lvl, const char *fmt, ...) FORMAT_PRINTF(2, 3);
 int logmsgv(loglvl lvl, const char *fmt, va_list args);
-int logmsgf(loglvl lvl, FILE *f, const char *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+int logmsgf(loglvl lvl, FILE *f, const char *fmt, ...) FORMAT_PRINTF(3, 4);
 int logmsgvf(loglvl lvl, FILE *f, const char *fmt, va_list args);
 int logmsgperror(const char *s);
 

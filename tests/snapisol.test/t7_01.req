@@ -27,3 +27,19 @@
 2 commit
 1 select * from t7
 1 select csc2 from sqlite_master where name = 't70'
+1 truncate t7
+1 select * from t7
+1 drop table t7
+1 select * from t7
+1 begin
+1 insert into t70 values (1, 10)
+1 insert into t70 values (2, 20)
+2 rebuild t70
+1 commit
+1 select * from t70
+1 begin
+1 insert into t70 values (1, 10)
+2 rebuild t70
+1 insert into t70 values (2, 20)
+1 commit
+1 select * from t70

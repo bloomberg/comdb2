@@ -183,7 +183,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
 
     *out = NULL;
 
-    pthread_mutex_lock(&views_mtx);
+    pthread_rwlock_wrlock(&views_lk);
 
     if (views->nviews == 0) {
         str = _concat(NULL, &len, "[]\n");
@@ -221,7 +221,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
     rc = VIEW_NOERR;
 
 done:
-    pthread_mutex_unlock(&views_mtx);
+    pthread_rwlock_unlock(&views_lk);
 
     *out = str;
 
@@ -449,7 +449,7 @@ timepart_views_t *views_create_all_views(void)
         /* make sure view names are the same */
         if (strcmp(view->name, cson_string_cstr(ckey))) {
             fprintf(stderr, "%s: incorrect view format for key %s\n", __func__,
-                    ckey);
+                    cson_string_cstr(ckey));
             rc = VIEW_ERR_BUG;
             goto done;
         }

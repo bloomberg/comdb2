@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -x
 
 # Grab my database name.
 dbnm=$1
 
 # Run the executable
-exe=./serial
+exe=./sicountbug
 
 echo "Testing snapisol"
 $exe -d $dbnm

@@ -25,6 +25,7 @@
 #include <alloca.h>
 #include "sqliteInt.h"
 #include "comdb2Int.h"
+#include "pragma.h"
 
 /* COMDB2 MODIFICATION */
 #include "logmsg.h"
@@ -535,6 +536,12 @@ Table *sqlite3LocateTable(
           zName = tmp;
       }
       Module *pMod = (Module*)sqlite3HashFind(&pParse->db->aModule, zName);
+      if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
+        return pMod->pEpoTab;
+      }
+      if( pMod==0 && sqlite3_strnicmp(zName, "pragma_", 7)==0 ){
+        pMod = sqlite3PragmaVtabRegister(pParse->db, zName);
+      }
       if( pMod && sqlite3VtabEponymousTableInit(pParse, pMod) ){
         return pMod->pEpoTab;
       }
@@ -3743,7 +3750,7 @@ void sqlite3CreateIndex(
     */
     sqlite3NestedParse(pParse, 
         /* COMDB2 MODIFICATION */
-        "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#0,%Q,NULL);",
+        "INSERT INTO %Q.%s VALUES('index',%Q,%Q,#%d,%Q,NULL);",
         db->aDb[iDb].zDbSName, SCHEMA_TABLE(iDb),
         pIndex->zName,
         pTab->zName,

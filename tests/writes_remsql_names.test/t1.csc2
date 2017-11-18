@@ -1,0 +1,9 @@
+tag ondisk
+{
+   int  id
+   blob b1
+}
+keys
+{
+   "ID"  = id
+}
