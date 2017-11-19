@@ -12,6 +12,9 @@ set(COMDB2_PLUGIN_TYPE "preferred" CACHE STRING
 set(PLUGIN_BASE_DIR "${PROJECT_SOURCE_DIR}/plugin")
 
 # Clear the list of static plugin libraries from cache.
+unset(PLUGINS CACHE)
+
+# Clear the list of static plugin library paths from cache.
 unset(PLUGIN_LIBRARIES CACHE)
 
 # List all plugin directories
@@ -32,7 +35,7 @@ file(WRITE ${PLUGIN_INCLUDE_FILE}
   "#ifndef _INCLUDED_ALL_PLUGINS_H\n"
   "#define _INCLUDED_ALL_PLUGINS_H\n")
 
-foreach(PLUGIN ${PLUGIN_LIBRARIES})
+foreach(PLUGIN ${PLUGINS})
   file(APPEND ${PLUGIN_INCLUDE_FILE}
     "extern struct comdb2_plugin comdb2_plugin_${PLUGIN};\n")
 endforeach(PLUGIN)
@@ -40,7 +43,7 @@ endforeach(PLUGIN)
 file(APPEND ${PLUGIN_INCLUDE_FILE}
   "struct comdb2_plugin *all_plugins[] = {\n")
 
-foreach(PLUGIN ${PLUGIN_LIBRARIES})
+foreach(PLUGIN ${PLUGINS})
   file(APPEND ${PLUGIN_INCLUDE_FILE}
     "&comdb2_plugin_${PLUGIN},\n")
 endforeach(PLUGIN)
