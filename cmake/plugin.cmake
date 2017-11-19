@@ -2,9 +2,13 @@ macro(add_static_plugin PLUGIN SOURCES)
   set(PLUGIN_SYM "comdb2_plugin_${PLUGIN}")
   configure_file(plugin.h.in plugin.h @ONLY)
   add_library(${PLUGIN} STATIC ${SOURCES})
+  set(PLUGINS "${PLUGINS};${PLUGIN}"
+      CACHE STRING
+      "List of static plugins"
+      FORCE)
   set(PLUGIN_LIBRARIES "${PLUGIN_LIBRARIES};${PLUGIN}"
       CACHE STRING
-      "List of static plugin libraries"
+      "List of static plugin library paths"
       FORCE)
 endmacro()
 
