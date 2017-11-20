@@ -12248,6 +12248,28 @@ done:
     return 0;
 }
 
+void comdb2_set_verify_remote_schemas(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+
+    if (thd && thd->sqlclntstate) {
+        if (thd->sqlclntstate->verify_remote_schemas == 0)
+            thd->sqlclntstate->verify_remote_schemas = 1;
+        else /* anything else disables it */
+            thd->sqlclntstate->verify_remote_schemas = 2;
+    }
+}
+
+int comdb2_get_verify_remote_schemas(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+
+    if (thd && thd->sqlclntstate)
+        return thd->sqlclntstate->verify_remote_schemas == 1;
+
+    return 0;
+}
+
 uint16_t stmt_num_tbls(sqlite3_stmt *stmt)
 {
     Vdbe *v = (Vdbe *)stmt;

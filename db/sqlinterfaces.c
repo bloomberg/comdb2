@@ -4102,6 +4102,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
+        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
+            sqlite3ResetFdbSchemas(thd->sqldb);
+            return rc = SQLITE_SCHEMA_REMOTE;
         }
         if (rc != SQLITE_SCHEMA_REMOTE) {
             break;
@@ -4123,6 +4126,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (rc) {
         _prepare_error(thd, clnt, rec, rc, err);
+    } else {
+        clnt->verify_remote_schemas = 0;
     }
     if (tail && *tail) {
         logmsg(LOGMSG_INFO,
@@ -5592,6 +5597,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
+        if (rc == SQLITE_SCHEMA_REMOTE)
+            continue;
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */

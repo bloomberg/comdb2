@@ -3647,4 +3647,7 @@ int is_tablename_queue(const char *tablename, int len);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);
 
+int comdb2_get_verify_remote_schemas(void);
+void comdb2_set_verify_remote_schemas(void);
+
 #endif /* !INCLUDED_COMDB2_H */

@@ -513,6 +513,8 @@ struct sqlclntstate {
 
     int ignore_coherency;
     int statement_query_effects;
+
+    int verify_remote_schemas;
 };
 
 /* Query stats. */

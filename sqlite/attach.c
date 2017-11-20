@@ -317,6 +317,15 @@ static void attachFunc(
   if( rc ) sqlite3_result_error_code(context, rc);
 }
 
+void comdb2_dynamic_detach(sqlite3 *db, int idx)
+{
+  Db *pDb = &db->aDb[idx];
+  sqlite3BtreeClose(pDb->pBt);
+  pDb->pBt = 0;
+  pDb->pSchema = 0;
+  sqlite3CollapseDatabaseArray(db);
+}
+
 /*
 ** An SQL user-function registered to do the work of an DETACH statement. The
 ** three arguments to the function come directly from a detach statement:
@@ -363,10 +372,7 @@ static void detachFunc(
     goto detach_error;
   }
 
-  sqlite3BtreeClose(pDb->pBt);
-  pDb->pBt = 0;
-  pDb->pSchema = 0;
-  sqlite3CollapseDatabaseArray(db);
+  comdb2_dynamic_detach(db, i);
   return;
 
 detach_error:
