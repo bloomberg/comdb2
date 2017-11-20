@@ -7,11 +7,8 @@ if [[ $# != 4 ]]; then
 fi
 
 #executables
-s_awk=gawk
-s_gen=${SRCHOME}/berkdb/dist/gen_rec_endian.awk
-#if [[ ! -x $s_awk ]]; then
-#    s_awk=$(whence awk)
-#fi
+s_awk=awk
+s_gen=dist/gen_rec.awk
 
 #temp files
 t_cfl=/tmp/__db_s.$$
@@ -37,7 +34,7 @@ $s_awk -f $s_gen                                        \
 #move header into place
 #cmp $t_hdr $a_hdr > /dev/null 2>&1 ||
 (
-    echo "Building $a_hdr"
+    #echo "Building $a_hdr"
     rm -f $a_hdr
     cp $t_hdr $a_hdr
     chmod 444 $a_hdr
@@ -46,7 +43,7 @@ $s_awk -f $s_gen                                        \
 #move cfile into place
 #cmp $t_cfl $a_cfl > /dev/null 2>&1 ||
 (
-    echo "Building $a_cfl"
+    #echo "Building $a_cfl"
     rm -f $a_cfl
     cp $t_cfl $a_cfl
     chmod 444 $a_cfl
@@ -55,7 +52,7 @@ $s_awk -f $s_gen                                        \
 #move template file into place
 #cmp $t_tmp $a_tmp > /dev/null 2>&1 ||
 (
-    echo "Building $a_tmp"
+    #echo "Building $a_tmp"
     rm -f $a_tmp
     cp $t_tmp $a_tmp
     chmod 444 $a_tmp

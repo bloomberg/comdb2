@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2017 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <cstring>
 #include <cstdarg>
+#include <strings.h>
 
 #include <algorithm>
 #include <iostream>
@@ -53,8 +54,9 @@
 #include <signal.h>
 #include <syslog.h>
 #include <netdb.h>
-
+#ifdef VERBOSE
 #include <fsnapf.h>
+#endif
 #include <passfd.h>
 
 #include "pmux_store.h"
@@ -66,6 +68,7 @@
 static std::map<std::string, int> port_map;
 static std::map<std::string, int> fd_map;
 static std::mutex fdmap_mutex;
+static std::mutex active_services_mutex;
 static std::set<int> free_ports;
 static long open_max;
 static bool foreground_mode = false;
@@ -81,7 +84,11 @@ struct connection {
     bool is_hello;
     std::string service;
     struct in_addr addr;
-    connection(void) : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out() {}
+    connection(void)
+        : fd{-1}, inbuf{0}, inoff{0}, writable{false}, addr{0}, out(),
+          is_hello(false)
+    {
+    }
 };
 
 static std::set<std::string> active_services;
@@ -94,39 +101,34 @@ static int get_fd(const char *svc)
 {
     int fd_ret = -1;
     std::string key(svc);
-    fdmap_mutex.lock();
+    std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &fd = fd_map.find(key);
     if (fd == fd_map.end()) {
-        fdmap_mutex.unlock();
         return fd_ret;
     }
     fd_ret = fd->second;
-    fdmap_mutex.unlock();
     return fd_ret;
 }
 
 static int dealloc_fd(const char *svc)
 {
     std::string key(svc);
-    fdmap_mutex.lock();
+    std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &i = fd_map.find(key);
     if (i == fd_map.end()) {
-        fdmap_mutex.unlock();
         return 0;
     }
     if (i->second > 0)
         close(i->second);
     fd_map.erase(i);
-    fdmap_mutex.unlock();
     return 0;
 }
 
 static int alloc_fd(const char *svc, int fd)
 {
-    fdmap_mutex.lock();
+    std::lock_guard<std::mutex> l(fdmap_mutex);
     std::pair<std::string, int> kv(svc, fd);
     fd_map.insert(kv);
-    fdmap_mutex.unlock();
     return 0;
 }
 
@@ -154,7 +156,11 @@ static int connect_instance(int servicefd, char *name)
     if (oldfd > 0) {
         dealloc_fd(name);
     }
-    return alloc_fd(name, servicefd);
+    int rc = alloc_fd(name, servicefd);
+#ifdef VERBOSE
+    std::cout << "connect " << name << " " << servicefd << std::endl;
+#endif
+    return rc;
 }
 
 int client_func(int fd)
@@ -171,15 +177,46 @@ int client_func(int fd)
     char *sav;
     char *cmd = strtok_r(service + 4, " \n", &sav);
     if (strncasecmp(service, "reg", 3) == 0) {
+        {
+            std::lock_guard<std::mutex> l(active_services_mutex);
+            if (active_services.find(cmd) == active_services.end()) {
+                syslog(LOG_WARNING, "reg request from %s, but not an active service?\n",
+                        cmd);
+                close(fd);
+                return -1;
+            }
+        }
         connect_instance(listenfd, cmd);
     }
+    return 0;
 }
 
 static void unwatchfd(struct pollfd &fd)
 {
     connections[fd.fd].inoff = 0;
     if (connections[fd.fd].is_hello) {
-        active_services.erase(connections[fd.fd].service);
+        {
+            std::lock_guard<std::mutex> l(active_services_mutex);
+            active_services.erase(connections[fd.fd].service);
+        }
+        std::string svc(connections[fd.fd].service);
+
+#ifdef VERBOSE
+        std::cout << "bye from " << svc << std::endl;
+#endif
+
+        {
+            std::lock_guard<std::mutex> l(fdmap_mutex);
+            auto ufd = fd_map.find(svc);
+            if (ufd != fd_map.end()) {
+                fd_map.erase(svc);
+                int rc = close(ufd->second);
+                if (rc) {
+                    syslog(LOG_WARNING, "%s close fd %d rc %d\n", svc.c_str(),
+                            ufd->second, rc);
+                }
+            }
+        }
     }
 
     // Throw away any buffers we may have
@@ -190,9 +227,6 @@ static void unwatchfd(struct pollfd &fd)
     syslog(LOG_INFO, "close conn %d\n", fd.fd);
 #endif
     int rc = close(fd.fd);
-    if (rc) {
-        fprintf(stderr, "hi: close rc %d\n", rc);
-    }
     fd = {.fd = -1, .events = 0, .revents = 0};
 }
 
@@ -214,7 +248,7 @@ static void accept_thd(int listenfd)
         if (fd == -1) {
             if (errno == EINTR)
                 continue;
-            fprintf(stderr, "%s:accept %d %s\n", __func__, errno,
+            syslog(LOG_ERR, "%s:accept %d %s\n", __func__, errno,
                     strerror(errno));
             exit(1);
         }
@@ -235,12 +269,12 @@ static void init_router_mode()
 
     listenfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (listenfd == -1) {
-        fprintf(stderr, "Error socket: %d %s\n", errno, strerror(errno));
+        syslog(LOG_ERR, "Error socket: %d %s\n", errno, strerror(errno));
         exit(1);
     }
 
     if (unlink(unix_bind_path) == -1 && errno != ENOENT) {
-        fprintf(stderr, "Error unlinking '%s': %d %s\n", unix_bind_path, errno,
+        syslog(LOG_ERR, "Error unlinking '%s': %d %s\n", unix_bind_path, errno,
                 strerror(errno));
     }
 
@@ -250,19 +284,19 @@ static void init_router_mode()
 
     if (bind(listenfd, (const struct sockaddr *)&serv_addr,
              sizeof(serv_addr)) == -1) {
-        fprintf(stderr, "Error bind: %d %s\n", errno, strerror(errno));
+        syslog(LOG_ERR, "Error bind: %d %s\n", errno, strerror(errno));
         exit(1);
     }
 
     if (listen(listenfd, 128) == -1) {
-        fprintf(stderr, "Error listen: %d %s\n", errno, strerror(errno));
+        syslog(LOG_ERR, "Error listen: %d %s\n", errno, strerror(errno));
         exit(1);
     }
 
     static struct stat save_st;
 
     if (-1 == stat(unix_bind_path, &save_st)) {
-        fprintf(stderr, "Unable to stat '%s': %d %s\n", unix_bind_path, errno,
+        syslog(LOG_ERR, "Unable to stat '%s': %d %s\n", unix_bind_path, errno,
                 strerror(errno));
         exit(1);
     }
@@ -361,7 +395,7 @@ static int use_port(const char *svc, int port)
         if (usedport == port)
             return 0;
 
-        fprintf(stderr, "%s -- not using port, not on free list:%d\n", svc,
+        syslog(LOG_ERR, "%s -- not using port, not on free list:%d\n", svc,
                 port);
         return -1;
     } else {
@@ -505,7 +539,7 @@ static int run_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds, char *in)
 
 #ifdef VERBOSE
     syslog(LOG_INFO, "%d: cmd: %s\n", fd.fd, in);
-    fsnapf(stdout, in, strlen(in));
+//  fsnapf(stdout, in, strlen(in));
 #endif
 
     cmd = strtok_r(in, " ", &sav);
@@ -603,14 +637,21 @@ again:
         if (c.writable && svc != nullptr) {
             if (svc != nullptr) {
                 c.is_hello = true;
-                active_services.insert(std::string(svc));
+                {
+                    std::lock_guard<std::mutex> l(active_services_mutex);
+                    active_services.insert(std::string(svc));
+                }
                 c.service = std::string(svc);
                 conn_printf(c, "ok\n");
+#ifdef VERBOSE
+                std::cout << "hello from " << svc << std::endl;
+#endif
             }
         } else {
             disallowed_write(c, cmd);
         }
     } else if (strcmp(cmd, "active") == 0) {
+        std::lock_guard<std::mutex> l(active_services_mutex);
         conn_printf(c, "%d\n", active_services.size());
         for (auto it : active_services) {
             conn_printf(c, "%s\n", it.c_str());
@@ -657,7 +698,7 @@ static int do_cmd(struct pollfd &fd, std::vector<struct pollfd> &fds)
     }
 #ifdef VERBOSE
     syslog(LOG_INFO, "read %d:\n", n);
-    fsnapf(stdout, c.inbuf + c.inoff, n);
+//  fsnapf(stdout, c.inbuf + c.inoff, n);
 #endif
 
     c.inoff += n;
@@ -894,7 +935,6 @@ int main(int argc, char **argv)
                 exit(2);
             }
             strncpy(unix_bind_path, optarg, sizeof(unix_bind_path));
-            store_mode = MODE_COMDB2DB;
             break;
         case 'p':
             if (default_ports) {
@@ -936,7 +976,7 @@ int main(int argc, char **argv)
         else
             pmux_store.reset(new comdb2_store(host, dbname, cluster));
     } catch (std::exception &e) {
-        std::cerr << e.what() << std::endl;
+        syslog(LOG_ERR, "%s\n", e.what());
         return EXIT_FAILURE;
     }
 

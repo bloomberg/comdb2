@@ -21,10 +21,9 @@ enum {
     BPFUNC_TIMEPART_RETENTION = 9,
     BPFUNC_ROWLOCKS_ENABLE = 10,
     BPFUNC_GENID48_ENABLE = 11,
-    BPFUNC_SET_SKIPSCAN = 12
+    BPFUNC_SET_SKIPSCAN = 12,
 };
 
-typedef struct bpfunc bpfunc_t;
 typedef int (*bpfunc_prot)(void *tran, bpfunc_t *arg, char *err);
 typedef struct bpfunc_user_info { void *iq; } bpfunc_info;
 
@@ -32,8 +31,8 @@ int bpfunc_init(void *tran, int32_t function_id, int32_t data_len, bpfunc_info *
 void free_bpfunc(bpfunc_t *func);
 void free_bpfunc_arg(BpfuncArg *arg);
 
-int bpfunc_prepare(bpfunc_t **func, void *tran, int32_t data_len,
-                   uint8_t *data, bpfunc_info *info);
+int bpfunc_prepare(bpfunc_t **func, int32_t data_len, uint8_t *data,
+                   bpfunc_info *info);
 
 struct bpfunc {
     BpfuncArg *arg;

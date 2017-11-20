@@ -44,10 +44,7 @@ char *union_names[MAX];
 int union_index = -1;
 int union_level = -1;
 int un_init = 0;
-char *maccfuncpath = "";
 char *customcode = NULL;
-/*char *maccfuncpath="/bbinc/Cinclude/";*/
-time_t ctm;
 char includename[256];
 char includefiles[MAX_INCLUDES][MAX_INC_NAME];
 int includetypes[MAX_INCLUDES];
@@ -157,7 +154,6 @@ void init_globals()
     union_index = -1;
     union_level = -1;
     un_init = 0;
-    maccfuncpath = "";
     customcode = NULL;
     memset(includename, 0, sizeof(includename));
     memset(includefiles, 0, sizeof(includefiles));

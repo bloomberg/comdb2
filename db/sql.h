@@ -27,15 +27,7 @@
 #include "osqlsqlthr.h"
 #include "osqlcheckboard.h"
 #include "osqlshadtbl.h"
-
-#define TYPEDEF(x) typedef struct x x;
-TYPEDEF(BtCursor)
-TYPEDEF(Btree)
-TYPEDEF(Mem)
-TYPEDEF(Schema)
-TYPEDEF(Table)
-TYPEDEF(UnpackedRecord)
-TYPEDEF(Vdbe)
+#include "fwd_types.h"
 
 #include "fdb_fend.h"
 #include <sp.h>
@@ -173,6 +165,11 @@ typedef struct osqlstate {
     struct temp_table
         *sc_tbl; /* storage for schemachange, common for all transaction */
     struct temp_cursor *sc_cur; /* schemachange cursor */
+
+    struct temp_table
+        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
+    int bpfunc_seq;
 
     struct errstat xerr; /* extended error */
 
@@ -441,6 +438,7 @@ struct sqlclntstate {
     int snapshot_offset;
     int is_hasql_retry;
     int is_readonly;
+    int is_expert;
     int is_newsql;
     CDB2SQLQUERY *sql_query; /* Needed to fetch the bind variables. */
     CDB2QUERY *query;
@@ -512,6 +510,9 @@ struct sqlclntstate {
 
     hash_t *ddl_tables;
     hash_t *dml_tables;
+
+    int ignore_coherency;
+    int statement_query_effects;
 };
 
 /* Query stats. */
@@ -738,6 +739,8 @@ struct sql_thread {
 
 /* makes master swing verbose */
 extern int gbl_master_swing_osql_verbose;
+/* for testing: sleep in osql_sock_restart when master swings */
+extern int gbl_master_swing_sock_restart_sleep;
 
 /* takes care of both stat1 and stat2 */
 #define is_sqlite_stat(x)                                                      \
@@ -772,6 +775,7 @@ void sql_mem_shutdown(void *dummy);
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
 
 void reset_clnt(struct sqlclntstate *, SBUF2 *, int initial);
+void cleanup_clnt(struct sqlclntstate *);
 void reset_query_effects(struct sqlclntstate *);
 
 int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,

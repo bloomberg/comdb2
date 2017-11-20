@@ -480,7 +480,7 @@ __dbenv_heap_dump(dbenv)
 		struct mallinfo info;
 		int i;
 
-		logmsg(LOGMSG_USER, "addr %016p sz %10d used %10d (%6.02f%%) blocks [%s]\n",
+		logmsg(LOGMSG_USER, "addr %p sz %zu used %10d (%6.02f%%) blocks [%s]\n",
 		    h->mem, h->size, h->used,
 		    100 * ((double)h->used / (double)h->size), h->description);
 		if (__db_mutex_lock(dbenv, h->lock)) {
@@ -488,7 +488,7 @@ __dbenv_heap_dump(dbenv)
 			return;
 		}
 		info = comdb2_mallinfo(h->msp);
-        logmsg(LOGMSG_USER, "  %d heap blocks, %d malloc blocks:\n", h->blocks,
+        logmsg(LOGMSG_USER, "  %d heap blocks, %zu malloc blocks:\n", h->blocks,
 		    info.hblks);
 		for (i = 0; i < 32; i++) {
 			if (h->blocksz[i])

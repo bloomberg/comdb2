@@ -146,7 +146,7 @@ __os_fsync(dbenv, fhp)
 	    ((ret = __os_get_errno()) == EINTR || ret == EBUSY) &&
 	    ++retries < DB_RETRY);
 
-#elif defined (__sun) || defined(_LINUX_SOURCE)
+#elif defined (__sun) || defined(__linux__)
 
 	/* use fdatasync on solaris and linux */
 

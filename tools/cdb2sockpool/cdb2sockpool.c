@@ -39,22 +39,18 @@
 #include <syslog.h>
 
 #include <passfd.h>
-#include <socket_pool.h>
+#include <sockpool.h>
 #include <sockpool_p.h>
 
 #include <lockmacros.h>
 #include <fsnapf.h>
 #include <list.h>
 #include <plhash.h>
+#include <bb_daemon.h>
 
-#include "sockpool.h"
-#include "bb_daemon.h"
-
-#include <mem.h>
+#include "cdb2sockpool.h"
 
 #define MAX_TYPESTR_LEN 2048
-
-extern int f2cstr(char *f_str, int flen, char *c_str, int maxlen);
 
 enum {
     SOCKET_POOL_TIMER_NO = 1,
@@ -142,6 +138,48 @@ struct port_hint {
 static pthread_mutex_t gbl_port_hints_lock = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *port_hints = NULL;
 static int num_port_hints = 0;
+
+static int pthread_create_attrs(pthread_t *tid, int detachstate,
+                                size_t stacksize,
+                                void *(*start_routine)(void *), void *arg)
+{
+    int rc;
+    pthread_attr_t attr;
+    pthread_t local_tid;
+    if (!tid)
+        tid = &local_tid;
+    rc = pthread_attr_init(&attr);
+    if (rc != 0) {
+        syslog(LOG_ERR, "%s:pthread_attr_init: %d %s\n", __func__, rc,
+               strerror(rc));
+        return -1;
+    }
+    if (stacksize > 0) {
+        rc = pthread_attr_setstacksize(&attr, stacksize);
+        if (rc != 0) {
+            syslog(LOG_ERR, "%s:pthread_attr_getstacksize: %d %s\n", __func__,
+                   rc, strerror(rc));
+            pthread_attr_destroy(&attr);
+            return -1;
+        }
+    }
+    rc = pthread_attr_setdetachstate(&attr, detachstate);
+    if (rc != 0) {
+        syslog(LOG_ERR, "%s:pthread_attr_setdetachstate: %d %s\n", __func__, rc,
+               strerror(rc));
+        pthread_attr_destroy(&attr);
+        return -1;
+    }
+    rc = pthread_create(tid, &attr, start_routine, arg);
+    if (rc != 0) {
+        syslog(LOG_ERR, "%s:pthread_create: %d %s\n", __func__, rc,
+               strerror(rc));
+        pthread_attr_destroy(&attr);
+        return -1;
+    }
+    pthread_attr_destroy(&attr);
+    return 0;
+}
 
 static int get_num_clients()
 {
@@ -299,7 +337,7 @@ static int cache_port(char *typestr, int fd, char *prefix)
                     num_port_hints++;
 
                     if (VERBOSE) {
-                        syslog(LOG_DEBUG, "%s: %s: \"%s\" caching port %hd\n",
+                        syslog(LOG_DEBUG, "%s: %s: \"%s\" caching port %d\n",
                                prefix, __func__, hint->typestr, hint->portnum);
                     }
                 } else {
@@ -646,7 +684,7 @@ void *client_thd(void *voidarg)
                     num_port_hints--;
 
                     if (VERBOSE) {
-                        syslog(LOG_DEBUG, "%s: \"%.*s\" forgetting port %hd\n",
+                        syslog(LOG_DEBUG, "%s: \"%.*s\" forgetting port %d\n",
                                prefix, (int)sizeof(typestr), typestr, port);
                     }
                 }
@@ -1094,8 +1132,6 @@ int main(int argc, char *argv[])
     openlog("cdb2sockpool", LOG_NDELAY | LOG_PERROR, LOG_USER);
 
     setvbuf(stdout, 0, _IOLBF, 0);
-
-    comdb2ma_init(0, 0);
 
     optind = 1;
 

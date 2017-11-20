@@ -1,4 +1,4 @@
-#include "db_config.h"
+#include "build/db_config.h"
 #include "list.h"
 #include <errno.h>
 #include <stdio.h>
@@ -6,13 +6,12 @@
 #include <plhash.h>
 #include <assert.h>
 #include <string.h>
-#include "db.h"
-#include "db_int.h"
+#include "build/db.h"
+#include "build/db_int.h"
 #include "dbinc/db_swap.h"
 #include "dbinc/printlog_hooks.h"
 #include "flibc.h"
 #include <alloca.h>
-#include "db_config.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_am.h"
 #include "dbinc/txn.h"
@@ -182,7 +181,7 @@ txn_retrieve(u_int32_t txnid)
 	trak_txn_t *txn;
 
 	/* Find this transaction. */
-	if (txn = hash_find(h, &txnid)) {
+	if ((txn = hash_find(h, &txnid)) != NULL) {
 		return txn;
 	}
 
@@ -220,7 +219,7 @@ comdb2_txn_regop_print(curlog_t * c)
 	trak_txn_t *txn;
 
 	/* Find this transaction. */
-	if (txn = hash_find(h, &c->txnid)) {
+	if ((txn = hash_find(h, &c->txnid)) != NULL) {
 		/* Free the memory. */
 		free(txn);
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
@@ -15,19 +15,42 @@ function call_unsetup {
     ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
 }
 
+function warn_long_setup {
+    start=$(date +%s)
+    ( ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" ) ) &
+    pid=$!
+    kill -0 $pid >/dev/null 2>&1
+    r=$?
+    while [[ $r == 0 ]]; do
+        sleep 1
+        now=$(date +%s)
+        if [[ $(( now - start )) -gt 120 ]]; then
+            echo "SLOW SETUP : $(( now - start )) SECONDS .. LOOK AT THIS"
+        fi
+        kill -0 $pid >/dev/null 2>&1
+        r=$?
+    done
+    return 0
+}
 
 function call_setup {
     [[ $COMDB2_UNITTEST == 1 ]] && return
-    timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
-    rc=$?
+
+    if [[ $SETUP_WARN ]]; then
+         warn_long_setup
+         rc=$?
+    else
+        timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
+        rc=$?
+    fi
     glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`
     if [ "x$glist" != "x" ] ; then
         kill -9 $glist
     fi
     sleep 0.1
     if [[ $rc -ne 0 ]]; then
-        echo "!$TESTCASE: setup failed" >> ${TESTDIR}/test.log
-        echo "!$TESTCASE: setup failed see ${TESTDIR}/logs/${DBNAME}.setup"
+        echo "!$TESTCASE: setup failed (rc=$rc)" >> ${TESTDIR}/test.log
+        echo "!$TESTCASE: setup failed (rc=$rc) see ${TESTDIR}/logs/${DBNAME}.setup"
         call_unsetup
         sleep 0.1
         exit 1
@@ -35,7 +58,7 @@ function call_setup {
 }
 
 call_setup
-echo "!$TESTCASE: running"
+echo "!$TESTCASE: running with timeout ${TEST_TIMEOUT}"
 
 timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 
@@ -47,6 +70,7 @@ if [[ $rc -eq 0 ]]; then
 elif [[ $rc -eq 124 ]]; then
     echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TESTDIR}/test.log
+    successful=-1
 else
     echo "!$TESTCASE: failed rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TESTDIR}/test.log

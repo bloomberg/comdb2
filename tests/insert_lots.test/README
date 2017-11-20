@@ -1,0 +1,2 @@
+Insert many rows to db from multithreaded writer, 
+and make sure that they all succeeded.

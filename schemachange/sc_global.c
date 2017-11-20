@@ -174,7 +174,7 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
     gbl_schema_change_in_progress = running;
     if (running) {
         sc_seed = seed;
-        sc_host = host ? crc32c(host, strlen(host)) : 0;
+        sc_host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
         sc_time = time;
     } else {
         sc_seed = 0;
@@ -200,7 +200,7 @@ void sc_status(struct dbenv *dbenv)
         localtime_r(&timet, &tm);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
-        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%llx\n",
+        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%lx\n",
                sc_seed);
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",

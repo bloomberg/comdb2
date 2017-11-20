@@ -635,7 +635,7 @@ foundlsn:
 	if (rep_check)
 		__env_rep_exit(dbenv);
 
-	if (ret = __lc_cache_init(dbenv, 0))
+	if ((ret = __lc_cache_init(dbenv, 0)) != 0)
 		goto err;
 
 	dbenv->verbose |= DB_VERB_REPLICATION;

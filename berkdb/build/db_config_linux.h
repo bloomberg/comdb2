@@ -213,7 +213,11 @@
 /* #undef HAVE_NDIR_H */
 
 /* Define to 1 if you have the O_DIRECT flag. */
-#define HAVE_O_DIRECT 1
+#ifdef __APPLE__
+#  define DIRECTIO_ON
+#else
+#  define HAVE_O_DIRECT 1
+#endif
 
 /* Define to 1 if you have the `pread' function. */
 #define HAVE_PREAD 1

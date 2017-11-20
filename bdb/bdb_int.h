@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <bb_stdint.h>
 #include <compile_time_assert.h>
 
@@ -45,8 +45,6 @@
 #include "averager.h"
 #include "intern_strings.h"
 #include "bdb_schemachange.h"
-
-#define NAME_MANGLE
 
 #define MAXRECSZ (17 * 1024)
 #define MAXKEYSZ (1024)
@@ -720,7 +718,6 @@ typedef struct {
 struct sockaddr_in;
 typedef struct {
     netinfo_type *netinfo;
-    netinfo_type *netinfo_signal;
 
     char *master_host;
     char *myhost;
@@ -1009,6 +1006,8 @@ struct bdb_state_tag {
 
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
+
+    int hellofd;
 };
 
 /* define our net user types */
@@ -1853,7 +1852,7 @@ void populate_deleted_files(bdb_state_type *bdb_state);
 
 int has_low_headroom(const char *path, int threshold, int debug);
 
-const char *deadlock_policy_str(int policy);
+const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 #endif /* __bdb_int_h__ */

@@ -264,6 +264,7 @@ const char *portmux_fds_get_instance(portmux_fd_t *fds);
 
 void set_portmux_port(int port);
 int set_portmux_bind_path(const char *path);
+char *get_portmux_bind_path(void);
 
 /**
  * @brief  Connects to remote_host using portmux registered
@@ -373,11 +374,16 @@ int portmux_geti(struct in_addr addr, const char *app, const char *service,
 int portmux_geti_to(struct in_addr addr, const char *app, const char *service,
                     const char *instance, int timeout_ms);
 
-int portmux_hello(char *host, char *name);
+int portmux_hello(char *host, char *name, int *fdout);
 
 /* override default portmux timeout */
 void portmux_set_default_timeout(unsigned timeoutms);
 void portmux_set_max_wait_timeout(unsigned timeoutms);
+
+void portmux_register_reconnect_callback(int (*callback)(void *), void *);
+
+int get_portmux_port(void);
+void set_portmux_port(int);
 
 #if defined __cplusplus
 }

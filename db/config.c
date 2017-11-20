@@ -23,9 +23,9 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "sqliteInt.h"
 #include "comdb2.h"
 #include "intern_strings.h"
-#include "sqliteInt.h"
 #include "bb_oscompat.h"
 #include "switches.h"
 #include "plugin.h"
@@ -118,7 +118,7 @@ static int write_pidfile(const char *pidfile)
 int handle_cmdline_options(int argc, char **argv, char **lrlname)
 {
     char *p;
-    char c;
+    int c;
     int options_idx;
 
     while ((c = bb_getopt_long(argc, argv, "h", long_options, &options_idx)) !=
@@ -505,7 +505,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
     } else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
         tok = segtok(line, len, &st, &ltok);
         long long maxmmapsz = toknumll(tok, ltok);
-        logmsg(LOGMSG_INFO, "setting sqlsortermaxmmapsize to %ld bytes\n",
+        logmsg(LOGMSG_INFO, "setting sqlsortermaxmmapsize to %lld bytes\n",
                maxmmapsz);
         sqlite3_config(SQLITE_CONFIG_MMAP_SIZE, SQLITE_DEFAULT_MMAP_SIZE,
                        maxmmapsz);
@@ -560,7 +560,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
         }
         if (ltok >= sizeof(hostname)) {
             logmsg(LOGMSG_ERROR,
-                   "Unexpectedly long hostname %.*s len %d max %d\n", ltok,
+                   "Unexpectedly long hostname %.*s len %d max %zu\n", ltok,
                    hostname, ltok, sizeof(hostname));
             return -1;
         }
@@ -581,7 +581,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 if (strcmp(dbenv->sibling_hostname[ii], hostname) == 0) {
                     dbenv->sibling_port[ii][NET_REPLICATION] = port;
                     dbenv->sibling_port[ii][NET_SQL] = port;
-                    dbenv->sibling_port[ii][NET_SIGNAL] = port;
                     break;
                 }
             }
@@ -596,7 +595,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             /* nsiblings == 1 means there's no other nodes in the cluster */
             dbenv->sibling_port[0][NET_REPLICATION] = port;
             dbenv->sibling_port[0][NET_SQL] = port;
-            dbenv->sibling_port[0][NET_SIGNAL] = port;
         }
     } else if (tokcmp(tok, ltok, "cluster") == 0) {
         /*parse line...*/
@@ -611,7 +609,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 if (ltok == 0) break;
                 if (ltok > sizeof(nodename)) {
                     logmsg(LOGMSG_ERROR,
-                           "host %.*s name too long (expected < %d)\n", ltok,
+                           "host %.*s name too long (expected < %lu)\n", ltok,
                            tok, sizeof(nodename));
                     return -1;
                 }
@@ -628,7 +626,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
                 /* Check to see if this name is another name for me. */
                 h = bb_gethostbyname(nodename);
                 if (h && h->h_addrtype == AF_INET &&
-                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length == 0)) {
+                    memcmp(&gbl_myaddr.s_addr, h->h_addr, h->h_length) == 0) {
                     /* Assume I am better known by this name. */
                     gbl_mynode = intern(nodename);
                 }
@@ -1259,10 +1257,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line, void *p, int len)
             return 0;
         }
         DTTZ_TEXT_TO_PREC(tok, gbl_datetime_precision, 0, return 0);
+#if WITH_SSL
     } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
         /* Let's have a separate function for ssl directives. */
         rc = ssl_process_lrl(line, len);
         if (rc != 0) return -1;
+#endif
     } else {
         logmsg(LOGMSG_ERROR, "unknown opcode '%.*s' in lrl %s\n", ltok, tok,
                options->lrlname);
@@ -1313,8 +1313,35 @@ done:
     return rc;
 }
 
+static int global_is_local(const char *lrlfile, const char *pwd,
+                           const char *cfgfile)
+{
+    int pwdlen;
+
+    if (!pwd || !lrlfile)
+        return 0;
+
+    pwdlen = strlen(pwd) + 1 /* / */;
+
+    if (strlen(lrlfile) <= pwdlen)
+        return 0;
+
+    if (strncasecmp(lrlfile, pwd, strlen(pwd)))
+        return 0;
+
+    if (strncasecmp(&lrlfile[pwdlen], cfgfile, strlen(cfgfile) + 1))
+        return 0;
+
+    /* identical */
+    return 1;
+}
+
 int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 {
+    int loaded_comdb2 = 0;
+    int loaded_comdb2_local = 0;
+    const char *crtdir = getenv("PWD");
+
     init_deferred_options(dbenv);
     listc_init(&dbenv->lrl_files, offsetof(struct lrlfile, lnk));
 
@@ -1326,7 +1353,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
         /* firm wide defaults */
         lrlfile = comdb2_location("config", "comdb2.lrl");
-
+        loaded_comdb2 = global_is_local(lrlfile, crtdir, "comdb2.lrl");
         if (!read_lrl_file(dbenv, lrlfile, 0 /*not required*/)) {
             free(lrlfile);
             return 0;
@@ -1335,6 +1362,7 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
 
         /* local defaults */
         lrlfile = comdb2_location("config", "comdb2_local.lrl");
+        loaded_comdb2 = global_is_local(lrlfile, crtdir, "comdb2_local.lrl");
         if (!read_lrl_file(dbenv, lrlfile, 0)) {
             free(lrlfile);
             return 0;
@@ -1361,12 +1389,14 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     }
 
     /* look for overriding lrl's in the local directory */
-    if (!read_lrl_file(dbenv, "comdb2.lrl", 0 /*not required*/)) {
+    if (!loaded_comdb2 &&
+        !read_lrl_file(dbenv, "comdb2.lrl", 0 /*not required*/)) {
         return 0;
     }
 
     /* local defaults */
-    if (!read_lrl_file(dbenv, "comdb2_local.lrl", 0 /*not required*/)) {
+    if (!loaded_comdb2_local &&
+        !read_lrl_file(dbenv, "comdb2_local.lrl", 0 /*not required*/)) {
         return 0;
     }
 
@@ -1384,11 +1414,17 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     /* switch to keyless mode as long as no mode has been selected yet */
     bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
-    if (dbenv->basedir == NULL && gbl_dbdir) dbenv->basedir = gbl_dbdir;
-    if (dbenv->basedir == NULL) dbenv->basedir = getenv("COMDB2_DB_DIR");
-    if (dbenv->basedir == NULL)
+    if (dbenv->basedir == NULL && gbl_dbdir) {
+        dbenv->basedir = strdup(gbl_dbdir);
+    }
+    if (dbenv->basedir == NULL) {
+        if ((dbenv->basedir = getenv("COMDB2_DB_DIR")) != NULL) {
+            dbenv->basedir = strdup(dbenv->basedir);
+        }
+    }
+    if (dbenv->basedir == NULL) {
         dbenv->basedir = comdb2_location("database", "%s", dbenv->envname);
-
+    }
     if (dbenv->basedir == NULL) {
         logmsg(LOGMSG_ERROR, "must specify database directory\n");
         return 0;

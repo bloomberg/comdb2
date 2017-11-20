@@ -314,7 +314,7 @@ __db_find_earliest_recover_point(dbenv, outlsn)
 		LOGCOPY_32(&type, rec.data);
 		if (type == DB___db_debug) {
 			int optype = 0;
-			if(ret = __db_debug_read(dbenv, rec.data, &debug_args))
+			if((ret = __db_debug_read(dbenv, rec.data, &debug_args)) != 0)
 				goto err;
 			LOGCOPY_32(&optype, debug_args->op.data);
 			__os_free(dbenv, debug_args);

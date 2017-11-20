@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 DB="$1"
-cdb2sql ${CDB2_OPTIONS} $DB default "drop table t" > /dev/null 2>&1
+cdb2sql -s ${CDB2_OPTIONS} $DB default "drop table t" &> /dev/null
 cdb2sql ${CDB2_OPTIONS} $DB default 'create table t {
 schema
 {
@@ -25,7 +25,7 @@ while [[ $i -lt 25 ]]; do
 	j=$(( 24 - $i ))
 	echo "insert into t(i, j) values(1, $j);"
 	i=$(( $i + 1 ))
-done | cdb2sql ${CDB2_OPTIONS} $DB default - > /dev/null
+done | cdb2sql -s ${CDB2_OPTIONS} $DB default - > /dev/null
 
 cdb2sql ${CDB2_OPTIONS} $DB default 'exec procedure sys.cmd.analyze("","100")'
 #AZ: kills sql thread on server: cdb2sql ${CDB2_OPTIONS} $DB default 'exec procedure sys.cmd.send("stat4dump")'
@@ -42,8 +42,8 @@ cdb2sql ${CDB2_OPTIONS} $DB default 'exec procedure sys.cmd.analyze("","100")'
 i=0
 while [[ $i -lt 100 ]]; do
     set -e
-	cdb2sql ${CDB2_OPTIONS} $DB default "delete from sqlite_stat4 where 1" > /dev/null
-	cat sqlite_stat4.sql | perl -MList::Util=shuffle -e 'print shuffle(<STDIN>);' | cdb2sql ${CDB2_OPTIONS} $DB default - > /dev/null
+	cdb2sql -s ${CDB2_OPTIONS} $DB default "delete from sqlite_stat4 where 1" > /dev/null
+	cat sqlite_stat4.sql | perl -MList::Util=shuffle -e 'print shuffle(<STDIN>);' | cdb2sql -s ${CDB2_OPTIONS} $DB default - > /dev/null
 #comdb2sc $DB send stat4dump 2>&1 > sqlite_stat4.output
 #	diff sqlite_stat4.output sqlite_stat4.expected
 #	if [[ $? -ne 0 ]] ; then

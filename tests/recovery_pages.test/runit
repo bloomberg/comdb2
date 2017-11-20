@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -x
@@ -37,7 +37,7 @@ echo "Working with node $node"
 echo "Inserting records"
 
 while [[ $j -lt 100 ]]; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
     let j=j+1
 done
 
@@ -54,7 +54,7 @@ fi
 while [[ $? == 0 ]]; do
     let j=j+1 
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1 &
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1 &
     cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "exec procedure sys.cmd.send('flush')"
 done
 
@@ -117,7 +117,7 @@ restart_node $node 0
 
 echo "We are up!  Insert a few records as a final sanity check."
 while [[ $j -lt 100 ]]; do
-    cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm --host $node "insert into t1(id) values($j)" >/dev/null 2>&1
 
     if [[ $? != 0 ]]; then
         echo "Error inserting into database!"

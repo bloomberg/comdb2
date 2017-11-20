@@ -24,7 +24,7 @@
  * sql handle to a comdb2 on sundev1.
  */
 
-#include <socket_pool.h>
+#include <sockpool.h>
 #include <sockpool_p.h>
 
 #include <sys/param.h>
@@ -215,12 +215,14 @@ static void hold_sigpipe_ll(int on)
     } else if (!sigismember(&oset, SIGPIPE)) {
         /* unblock SIGPIPE (if it wasn't blocked before).
          * Also catch any pending sigpipes. */
+#       ifndef __APPLE__
         siginfo_t info;
         struct timespec timeout = {0, 0};
         if (sigtimedwait(&sset, NULL, &timeout) == -1 && errno != EAGAIN) {
             fprintf(stderr, "%s:sigtimedwait: %d %s\n", __func__, errno,
                     strerror(errno));
         }
+#       endif
         rc = pthread_sigmask(SIG_SETMASK, &oset, NULL);
         if (rc != 0) {
             fprintf(stderr, "%s:pthread_sigmask(%d): %d %s\n", __func__, on, rc,

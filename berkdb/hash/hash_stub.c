@@ -36,6 +36,7 @@ __db_no_hash_am(dbenv)
 {
 	__db_err(dbenv,
 	    "library build did not include support for the Hash access method");
+	abort();
 	return (DB_OPNOTSUP);
 }
 
@@ -147,6 +148,18 @@ __ham_db_create(dbp)
 
 int
 __ham_init_getpgnos(dbenv, dtabp, dtabsizep)
+	DB_ENV *dbenv;
+	int (***dtabp)__P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
+	size_t *dtabsizep;
+{
+	COMPQUIET(dbenv, NULL);
+	COMPQUIET(dtabp, NULL);
+	COMPQUIET(dtabsizep, NULL);
+	return (0);
+}
+
+int
+__ham_init_getallpgnos(dbenv, dtabp, dtabsizep)
 	DB_ENV *dbenv;
 	int (***dtabp)__P((DB_ENV *, DBT *, DB_LSN *, db_recops, void *));
 	size_t *dtabsizep;
@@ -273,6 +286,14 @@ __ham_pgout(dbenv, dummydbp, pg, pp, cookie)
 	COMPQUIET(pp, NULL);
 	COMPQUIET(cookie, NULL);
 	return (__db_no_hash_am(dbenv));
+}
+
+int
+__ham_mswap(pg)
+	void *pg;
+{
+	COMPQUIET(pg, NULL);
+	return (__db_no_hash_am(NULL));
 }
 
 int

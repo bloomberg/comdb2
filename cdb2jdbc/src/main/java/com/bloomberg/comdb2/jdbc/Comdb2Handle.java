@@ -68,6 +68,7 @@ public class Comdb2Handle extends AbstractConnection {
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
     boolean pmuxrte = false;
+    boolean statement_effects = false;
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
@@ -164,6 +165,16 @@ public class Comdb2Handle extends AbstractConnection {
     public Comdb2Handle(String dbname, String cluster) {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
+
+        /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
+         */
+        String envvar = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
+        statement_effects = (envvar != null && !envvar.equals("0"));
+        if (statement_effects)
+            sets.add("set queryeffects statement");
+
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
@@ -221,6 +232,18 @@ public class Comdb2Handle extends AbstractConnection {
         pmuxrte = val;
         if (val)
             overriddenPort = portMuxPort;
+    }
+
+    public void setStatementQueryEffects(boolean val) {
+        if (val == statement_effects)
+            return;
+
+        if (val)
+            sets.add("set queryeffects statement");
+        else
+            sets.clear();
+
+        statement_effects = val;
     }
 
     void addHosts(List<String> hosts) {
@@ -769,6 +792,13 @@ public class Comdb2Handle extends AbstractConnection {
         sql = sql.trim();
         String lowerSql = sql.toLowerCase();
 
+        while (next_int() == Errors.CDB2_OK)
+            ;
+
+        clearResp();
+
+        rowsRead = 0;
+
         tdlog(Level.FINE, "[running sql] %s", sql);
 
         if (lowerSql.startsWith("set")) {
@@ -803,12 +833,6 @@ public class Comdb2Handle extends AbstractConnection {
             return 0;
         }
 
-        while (next_int() == Errors.CDB2_OK)
-            ;
-
-        clearResp();
-
-        rowsRead = 0;
         boolean is_begin = false, is_commit = false, is_rollback = false;
 
         if (lowerSql.equals("begin"))
@@ -1726,7 +1750,7 @@ readloop:
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
-        int start_req = dbHostIdx++;
+        int start_req = ++dbHostIdx;
 
         for (; dbHostIdx < myDbHosts.size(); ++dbHostIdx) {
             if (dbHostIdx == masterIndexInMyDbHosts

@@ -17,11 +17,7 @@
 #ifndef INCLUDED_SBUF2
 #define INCLUDED_SBUF2
 
-/* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255
-
- * WARNING - don't incude this in other header files that will be widely used
- * (e.g. comdb2_api.h) - the symbol sbuf2 conflicts with many fortran common
- * area names */
+/* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255 */
 
 /* Server sbuf2 uses dlmalloc. Client does not. The simplest approach
    to avoid adding dlmalloc dependency to client API is to compile
@@ -123,7 +119,7 @@ int SBUF2_FUNC(sbuf2fread)(char *ptr, int size, int nitems, SBUF2 *sb);
 #define sbuf2fread SBUF2_FUNC(sbuf2fread)
 
 /* returns # of bytes written or <0 for err*/
-int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, char *fmt, ...);
+int SBUF2_FUNC(sbuf2printf)(SBUF2 *sb, const char *fmt, ...);
 #define sbuf2printf SBUF2_FUNC(sbuf2printf)
 
 /* returns # of bytes written or <0 for err*/
@@ -192,9 +188,17 @@ int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len);
 int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len);
 #define sbuf2unbufferedwrite SBUF2_FUNC(sbuf2unbufferedwrite)
 
+/* Given an fd, work out which machine the connection is from.
+   Cache hostname info only in server mode. */
+char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *);
+#define get_origin_mach_by_buf SBUF2_FUNC(get_origin_mach_by_buf)
+
 #ifndef WITH_SSL
 #  define WITH_SSL 1
+#endif
+
 /* SSL routines. */
+#if WITH_SSL
 #  include <ssl_support.h>
 #  include <ssl_io.h>
 #endif

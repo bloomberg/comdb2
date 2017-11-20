@@ -33,19 +33,37 @@ On every machine in the cluster:
    ** Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL) **
         
    ```
-   sudo apt-get install -y build-essential bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
+   sudo apt-get install -y build-essential cmake bison flex libprotobuf-c-dev libreadline-dev libsqlite3-dev libssl-dev libunwind-dev libz1 libz-dev make gawk protobuf-c-compiler uuid-dev liblz4-tool liblz4-dev libprotobuf-c1 libsqlite3-0 libuuid1 libz1 tzdata ncurses-dev tcl bc
    ```
 
    ** CentOS 7 **
 
    ```
-   sudo yum install -y gcc gcc-c++ protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
+   sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
    ```
 
-3. Build Comdb2:
+   ** macOS High Sierra (experimental) **
+
+   Install Xcode and Homebrew. Then install required libraries:
 
    ```
-   make && sudo make install
+   brew install cmake lz4 openssl protobuf-c readline ossp-uuid
+   ```
+
+   To run tests, install following:
+
+   ```
+   brew install coreutils bash
+   export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
+   ```
+
+   It is recommended to increase the open file limits, at least in the sessions which start pmux and server.
+
+
+3. Build and Install Comdb2:
+
+   ```
+   mkdir build && cd build && cmake .. && make && sudo make install
    ```
 
 4. Add */opt/bb/bin* to your PATH
@@ -55,6 +73,7 @@ On every machine in the cluster:
    ```
 
 5. Start pmux:
+
    ```
    pmux -n
    ```

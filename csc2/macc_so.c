@@ -2278,7 +2278,7 @@ char *dyns_field_option_text(int option)
 
 static char fullname[256];
 
-static char *istring;
+static char *ischematext;
 static int ipos;
 static int iusestr = 0;
 
@@ -2302,7 +2302,7 @@ int macc_getc(FILE *fh)
 
 
     if (iusestr) {
-        ch = istring[ipos];
+        ch = ischematext[ipos];
         if (ch == 0) {
             ch = EOF;
         } else {
@@ -2350,7 +2350,7 @@ int macc_ferror(FILE *fh)
     return 0;
 }
 
-static int dyns_load_schema_int(char *filename, char *string, char *dbname,
+static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
                                 char *tablename)
 {
     char buf[256], *ifn = NULL;
@@ -2370,7 +2370,6 @@ static int dyns_load_schema_int(char *filename, char *string, char *dbname,
         *ifn = 0;
 
     init_globals();
-    ctm = time(NULL); /* what time is it?             */
 
     flag_anyname = 1;
     if (strlen(dbname) >= MAX_DBNAME_LENGTH || strlen(dbname) < 3) {
@@ -2385,9 +2384,9 @@ static int dyns_load_schema_int(char *filename, char *string, char *dbname,
     strncpy(opt_tblname, tablename, sizeof(opt_tblname));
 
     /* check args for an input filename or any options */
-    if (string) {
+    if (schematxt) {
         ifn = dbname;
-        istring = string;
+        ischematext = schematxt;
         ipos = 0;
         iusestr = 1;
     } else if (filename) {
@@ -2424,9 +2423,9 @@ static int dyns_load_schema_int(char *filename, char *string, char *dbname,
     return 0;
 }
 
-int dyns_load_schema_string(char *string, char *dbname, char *tablename)
+int dyns_load_schema_string(char *schematxt, char *dbname, char *tablename)
 {
-    return dyns_load_schema_int(NULL, string, dbname, tablename);
+    return dyns_load_schema_int(NULL, schematxt, dbname, tablename);
 }
 
 int dyns_load_schema(char *filename, char *dbname, char *tablename)

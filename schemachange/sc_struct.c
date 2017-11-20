@@ -135,7 +135,8 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->drop_table) + sizeof(s->original_master_node) +
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
-        sizeof(s->is_sfunc) + sizeof(s->is_afunc);
+        sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
+        sizeof(s->newtable);
 
     return s->packed_len;
 }
@@ -278,6 +279,9 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->defaultsp, sizeof(s->defaultsp), p_buf, p_buf_end);
     p_buf = buf_put(&s->is_sfunc, sizeof(s->is_sfunc), p_buf, p_buf_end);
     p_buf = buf_put(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -480,6 +484,10 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         (uint8_t *)buf_get(&s->is_sfunc, sizeof(s->is_sfunc), p_buf, p_buf_end);
     p_buf =
         (uint8_t *)buf_get(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_no_net_get(s->newtable, sizeof(s->newtable), p_buf,
+                                      p_buf_end);
 
     return p_buf;
 }
@@ -701,6 +709,12 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         sc_printf(s, "%s schema change running in parallel scan mode\n",
                   (s->live ? "Live" : "Readonly"));
         break;
+    case SCAN_STRIPES:
+        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        break;
+    case SCAN_OLDCODE:
+        sc_printf(s, "%s schema change running in oldcode mode\n");
+        break;
     }
 }
 
@@ -873,24 +887,24 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
 
-        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->dbname,
+        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
                bdb_isopen(db->handle));
 
         /* the master doesn't tell the replicants to close the db
          * ahead of time */
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->dbname);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
         }
 
         /* reopen db */
         newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
-            newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-            newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-            thedb->bdb_env, tran, &bdberr);
-        logmsg(LOGMSG_DEBUG, "reload_schema handle %08x bdberr %d\n",
+            table, thedb->basedir, newdb->lrl, newdb->nix,
+            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
+        logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
 
@@ -933,7 +947,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     } else {
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->dbname);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
         }
 
@@ -942,12 +956,12 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
          * schemas */
         /* faffing with schema required. schema can change in fastinit */
         db->handle = bdb_open_more_tran(
-            table, thedb->basedir, db->lrl, db->nix, db->ix_keylen,
+            table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
-               "reload_schema (fastinit case) handle %08x bdberr %d\n",
+               "reload_schema (fastinit case) handle %p bdberr %d\n",
                db->handle, bdberr);
         if (!db->handle || bdberr != 0) return 1;
 
@@ -959,7 +973,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     if (bthashsz) {
         logmsg(LOGMSG_INFO,
                "Rebuilding bthash for table %s, size %dkb per stripe\n",
-               db->dbname, bthashsz);
+               db->tablename, bthashsz);
         bdb_handle_dbp_add_hash(db->handle, bthashsz);
     }
 

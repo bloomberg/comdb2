@@ -67,6 +67,8 @@ struct schema_change_type {
                  or DBTYPE_MORESTRIPE */
     size_t table_len;
     char table[MAXTABLELEN]; /* name of table/queue */
+    int rename;              /* new table name */
+    char newtable[MAXTABLELEN]; /* rename table */
     size_t fname_len;
     char fname[256];         /* name of schema file for table schema change
                                 or client provided SP version */
@@ -329,5 +331,7 @@ void sb_errf(SBUF2 *sb, const char *fmt, ...);
 void sc_printf(struct schema_change_type *s, const char *fmt, ...);
 void sc_errf(struct schema_change_type *s, const char *fmt, ...);
 int do_dryrun(struct schema_change_type *);
+
+extern int gbl_test_scindex_deadlock;
 
 #endif

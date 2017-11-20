@@ -194,7 +194,8 @@ void req_stats(struct dbtable *db)
         int flag = 0;
         if (db->typcnt[ii]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "%-20s %u\n", req2a(ii), db->typcnt[ii]);
@@ -203,7 +204,8 @@ void req_stats(struct dbtable *db)
     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
         if (db->blocktypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj),
@@ -213,7 +215,8 @@ void req_stats(struct dbtable *db)
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
         if (db->blockosqltypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "    %-20s %u\n", osql_breq2a(jj),
@@ -422,6 +425,8 @@ int handle_ireq(struct ireq *iq)
                         }
                     }
 
+                    iq->usedb = iq->origdb;
+
                     n_retries++;
                     poll(0, 0, (rand() % 25 + 1));
                     goto retry;
@@ -480,8 +485,8 @@ int handle_ireq(struct ireq *iq)
         }
 
         /* Record the dbname (aka table) for this op */
-        if (iq->usedb && iq->usedb->dbname)
-            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->dbname);
+        if (iq->usedb && iq->usedb->tablename)
+            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
     } else {
         rc = ERR_BADREQ;
         iq->where = "opcode not supported";
@@ -564,9 +569,23 @@ int handle_ireq(struct ireq *iq)
                         iq->frommach, iq->rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
                 } else {
-                    sndbak_open_socket(iq->sb, iq->p_buf_out_start,
-                                       iq->p_buf_out - iq->p_buf_out_start, rc);
-                    free_bigbuf(iq->p_buf_out_start, iq->request_data);
+                    /* The tag request is handled locally.
+                       We know for sure `request_data' is a `buf_lock_t'. */
+                    struct buf_lock_t *p_slock =
+                        (struct buf_lock_t *)iq->request_data;
+                    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
+                        if (p_slock->reply_state == REPLY_STATE_DISCARD) {
+                            pthread_mutex_unlock(&p_slock->req_lock);
+                            cleanup_lock_buffer(p_slock);
+                            free_bigbuf_nosignal(iq->p_buf_out_start);
+                        } else {
+                            sndbak_open_socket(
+                                iq->sb, iq->p_buf_out_start,
+                                iq->p_buf_out - iq->p_buf_out_start, rc);
+                            free_bigbuf(iq->p_buf_out_start, iq->request_data);
+                            pthread_mutex_unlock(&p_slock->req_lock);
+                        }
+                    }
                 }
                 iq->request_data = iq->p_buf_out_start = NULL;
             } else {

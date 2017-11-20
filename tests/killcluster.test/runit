@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# Make sure we behave correctly if entire cluster goes down
+#debug=1
+#debug_trace="-D"
+#We use instest to load the database
+
+[[ "$debug" == 1 ]] && set -x
+loadcount=2000000
+instest=${TESTSROOTDIR}/tools/insert
+needcluster=0
+sleeptime=10
+db=$1
+
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED installation."
+    exit 0
+fi
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function loadtable
+{
+    echo "Loading table t1:"
+    echo "$instest -d $db -c ${CDB2_CONFIG} -t $stage -S $loadcount -Y"
+    $instest -d $db -c ${CDB2_CONFIG} -t $stage -S $loadcount -Y
+}
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table t1 {schema{int a} keys{ \"a\" = a }}" >/dev/null 2>&1
+}
+
+function checkforerrors
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    dbout=$1
+    dbnrm=$2
+    dbcrt=$3
+
+    egrep -v comdb2_host $dbout > $dbnrm
+    python ./generate_correct_out.py $loadcount > $dbcrt
+
+    diff $dbnrm $dbcrt
+    if [[ $? != 0 ]]; then
+        echo "Error in test!  See diff $dbnrm $dbcrt"
+        exit 1
+    fi
+
+    echo "Success!"
+}
+
+function bouncecluster
+{
+    [[ "$debug" == 1 ]] && set -x
+    for node in $CLUSTER ; do
+        PARAMS="$db --no-global-lrl"
+        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; $comdb2task ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+        if [ $node == $(hostname) ] ; then
+            (
+                kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+                sleep $sleeptime
+                ${DEBUG_PREFIX} $comdb2task ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
+            ) &
+        else
+            kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${db}.${node}.db) &
+            echo $! > ${TMPDIR}/${db}.${node}.pid
+        fi
+    done
+}
+
+function bouncelocal
+{
+    [[ "$debug" == 1 ]] && set -x
+    (
+        PARAMS="$db --no-global-lrl"
+        kill -9 $(cat ${TMPDIR}/${db}.pid)
+        sleep $sleeptime
+        ${DEBUG_PREFIX} $comdb2task $PARAMS -pidfile ${TMPDIR}/${db}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.db &
+    ) &
+}
+
+function bouncedatabase
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    if [[ -n "$CLUSTER" ]]; then
+        bouncecluster
+    else
+        bouncelocal
+    fi
+}
+
+function blockonclient
+{
+    [[ "$debug" == 1 ]] && set -x
+    sqlpid=$1
+    kill -0 $sqlpid 
+    while [[ $? == 0 ]]; do
+        sleep 1
+        kill -0 $sqlpid
+    done
+}
+
+function exitdatabase
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+        done
+    else
+        kill -9 $(cat ${TMPDIR}/${db}.pid)
+    fi
+}
+
+function runtestwithoptions
+{
+    [[ "$debug" == 1 ]] && set -x
+    dt=$(date +%Y%m%d%H%M%S)
+
+    # Session output
+    dbout=$(pwd)/killcluster.$db.$dt.out
+
+    # Normalized session output
+    dbnrm=$(pwd)/killcluster.$db.$dt.nrm
+
+    # Session error
+    dberr=$(pwd)/killcluster.$db.$dt.err
+
+    # Correct output
+    dbcrt=$(pwd)/killcluster.$db.$dt.crt
+
+    # The sql begins a transaction then does a large select
+    cdb2sql ${CDB2_OPTIONS} -maxretries 1000000 -debugtrace $db $stage < ./sql > $dbout 2>$dberr &
+    sqlpid=$!
+
+    # Make sure we get part-way through reading
+    sleep 8
+
+    # Bounce cluster during test
+    bouncedatabase
+
+    # Wait for client to complete
+    blockonclient $sqlpid
+
+    checkforerrors $dbout $dbnrm $dbcrt
+    rm $dbout $dberr $dbnrm $dbcrt
+}
+
+function longtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+function normaltest
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    if [[ -z "$CONTINUOUS" ]]; then
+        normaltest
+    else
+        longtest
+    fi
+}
+
+createtables
+loadtable
+runtest
+exitdatabase
+
+echo "Success"
+exit 0

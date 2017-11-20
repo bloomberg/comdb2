@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/statvfs.h>
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
 #include <sys/vfs.h>
 #endif
 #include <sys/msg.h>
@@ -108,46 +108,6 @@ u_int strhashfunc(u_char **keyp, int len)
     return hash;
 }
 
-int gooddir(char *d)
-{
-#ifndef _LINUX_SOURCE
-    struct statvfs buf;
-#else
-    struct statfs buf;
-#endif
-    int rc;
-
-#ifndef _LINUX_SOURCE
-    rc = statvfs(d, &buf);
-#else
-    rc = statfs(d, &buf);
-#endif
-
-    if (gbl_force_bad_directory) {
-        return 1;
-    }
-
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "* * * INVALID DATA DIRECTORY * * *\n");
-        logmsg(LOGMSG_ERROR, "* * * STATVFS FAILED * * *\n");
-        return 0;
-    }
-
-#ifndef _LINUX_SOURCE
-    /* expected types: nfs, nfs3 */
-    if (!strncmp(buf.f_basetype, "nfs", 3)) {
-#else
-    /* TODO: there must be a #define for the NFS magic value somewhere */
-    if (buf.f_type == 0x6969 /*NFS_SUPER_MAGIC*/) {
-#endif
-        logmsg(LOGMSG_ERROR, "* * * INVALID DATA DIRECTORY * * *\n");
-        logmsg(LOGMSG_ERROR, "* * * %s IS A NFS DIRECTORY! * * *\n", d);
-        return 0;
-    }
-
-    return 1;
-}
-
 void xorbufcpy(char *dest, const char *src, size_t len)
 {
     while (len > 4) {
@@ -217,8 +177,8 @@ char *load_text_file(const char *filename)
 
     buf = malloc(buflen + 1);
     if (!buf) {
-        logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %u\n",
-                filename, buflen);
+        logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %zu\n",
+               filename, buflen);
         return NULL;
     }
 
@@ -241,8 +201,9 @@ char *load_text_file(const char *filename)
             buflen += bytesread;
             newbuf = realloc(buf, buflen + 1);
             if (!newbuf) {
-                logmsg(LOGMSG_ERROR, "load_text_file: '%s' out of memory, need %u\n",
-                        filename, buflen);
+                logmsg(LOGMSG_ERROR,
+                       "load_text_file: '%s' out of memory, need %zu\n",
+                       filename, buflen);
                 free(buf);
                 close(fd);
                 return NULL;
@@ -651,15 +612,15 @@ void hexdumpbuf(char *key, int keylen, char **buf)
     *buf = output;
 }
 
-/* Return a hex string 
+/* Return a hex string
  * output buffer should be appropriately sized */
-uint8_t *util_tohex(uint8_t *out, const uint8_t *in, size_t len)
+char *util_tohex(char *out, const char *in, size_t len)
 {
-    uint8_t *beginning = out;
+    char *beginning = out;
     char hex[] = "0123456789abcdef";
-    const uint8_t *end = in + len;
+    const char *end = in + len;
     while (in != end) {
-        uint8_t i = *(in++);
+        char i = *(in++);
         *(out++) = hex[(i & 0xf0) >> 4];
         *(out++) = hex[i & 0x0f];
     }

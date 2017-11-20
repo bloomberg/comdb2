@@ -1,5 +1,4 @@
-all: basicops $(patsubst %.test,%,$(shell tools/get_tests_inorder.sh))
-
+all: basicops all_tests
 
 export TESTSROOTDIR:=$(shell pwd)
 
@@ -10,17 +9,29 @@ endif
 export SRCHOME
 
 export TESTID:=$(shell tools/get_random.sh)
-CURRDIR:=$(shell pwd)
-export TESTDIR:=$(CURRDIR)/test_$(TESTID)
-# get md5sum of executable use check when running every test in a series
+export TESTDIR:=$(TESTSROOTDIR)/test_$(TESTID)
+# List of disabled tests
+export DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
+# List of all tests that need to run. This is essentially a list of all
+# non-disabled tests.
+export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
+    $(shell tools/get_tests_inorder.sh)))
 
+TOTAL=$(words $(MAKECMDGOALS))
+ifeq ($(TOTAL),0)
+TOTAL=$(words $(ALL_TESTS))
+endif
+
+# Run all non-disabled tests.
+all_tests: $(ALL_TESTS)
+
+# get md5sum of executable use check when running every test in a series
 export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
 export COMDB2_EXE:=$(SRCHOME)/comdb2
 export CDB2SQL_EXE:=$(SRCHOME)/cdb2sql
 export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
 export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
 export PMUX_EXE:=$(SRCHOME)/pmux
-
 
 ifeq ($(wildcard $(COMDB2_EXE)),)
   $(error $(COMDB2_EXE) missing, please run make in $(SRCHOME))
@@ -41,9 +52,7 @@ ifeq ($(wildcard $(PMUX_EXE)),)
   $(error $(PMUX_EXE) missing, please run make in $(SRCHOME))
 endif
 
-
 export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
-
 
 basicops_nokey:
 	$(shell mkdir -p ${TESTDIR})
@@ -54,18 +63,12 @@ basicops_nokey:
 	$(shell echo "SRCHOME=${SRCHOME} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
+	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
-
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
-
-TOTAL=$(words $(MAKECMDGOALS))
-ifeq ($(TOTAL),0)
-TOTAL=$(shell ls -1d *.test | wc -l)
-endif
-
 
 .PHONY: tools
 
@@ -113,10 +116,9 @@ testtotalclean: $(patsubst %.test,%.clean,$(shell ls -d *.test))
 	rm -f $(TMPDIR)/cdb2test*
 	$(MAKE) -C tools clean
 
-
 clean: testclean
 
 testclean:
 	@rm -rf test_[0-9]*
-	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*';)
+	@$(foreach n, $(CLUSTER), ssh $(n) 'rm -rf *.trap; rm -rf $(TESTSROOTDIR)/test_[0-9]*' < /dev/null;)
 	@$(MAKE) -C tools clean

@@ -64,14 +64,14 @@
 #  define DEFAULT_CA            "root.crt"
 #endif
 
-/* logmsg: when compiled with cdb2api, use fprintf. */
+/* logmsg: when compiled with cdb2api, do nothing. */
 #if SBUF2_SERVER
 #  include <logmsg.h>
 #  define logi(...) logmsg(LOGMSG_INFO, ##__VA_ARGS__)
 #  define loge(...) logmsg(LOGMSG_ERROR, ##__VA_ARGS__)
 #else
-#  define logi(...) fprintf(stdout, ##__VA_ARGS__)
-#  define loge(...) fprintf(stderr, ##__VA_ARGS__)
+#define logi(...)
+#define loge(...)
 #endif
 
 /* Helper functions */

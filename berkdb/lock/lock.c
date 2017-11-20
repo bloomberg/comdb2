@@ -922,7 +922,6 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	DB_LOCK_ILOCK *ilock;
 	struct __db_lock_lsn *lsnp;
 	struct __db_lock_lsn *first_lsnp;
-	int rc = 0;
 
 	if ((ret = __find_latch_lockerid(dbenv, lockerid, &lidptr, 0)) != 0)
 		abort();
@@ -938,7 +937,7 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 
 	for (i = 0; i < lidptr->ntrackedlocks; i++) {
 		ilatch = lidptr->tracked_locklist[i];
-		if (rc = __allocate_db_lock_lsn(dbenv, &lsnp))
+		if (__allocate_db_lock_lsn(dbenv, &lsnp))
 			return ENOMEM;
 		lsnp->llsn = lsn;
 		pthread_mutex_lock(&ilatch->lsns_mtx);
@@ -1144,8 +1143,12 @@ __get_page_latch_int(lt, locker, flags, obj, lock_mode, lock)
 				timeout.tv_sec = now.tv_sec;
 				timeout.tv_nsec = 1000 * now.tv_usec;
 				ret =
+#ifdef __APPLE__
+				    pthread_mutex_trylock(&latch->lock);
+#else
 				    pthread_mutex_timedlock(&latch->lock,
 				    &timeout);
+#endif
 			} else {
 				int latch_max_poll = dbenv->attr.latch_max_poll;
 				int latch_poll_us = dbenv->attr.latch_poll_us;
@@ -2011,25 +2014,26 @@ rep_return_deadlock(DB_ENV *dbenv, u_int32_t sz)
 	if (IS_REP_CLIENT(dbenv) &&
 	    is_comdb2_rowlock(sz) && rowlocks_bdb_lock_check(dbenv->app_private)
 	    ) {
-		fprintf(stderr, "%s: thread %d returning deadlock\n", __func__,
-		    pthread_self());
+		fprintf(stderr, "%s: thread %p returning deadlock\n", __func__,
+		    (void *)pthread_self());
 		return 1;
 	} else {
 		return 0;
 	}
 }
 
-#define ADD_TO_HOLDARR(x) 	do { 								\
-					if(holdix+1 >= holdsz) {				\
-						int newsz = (holdsz == 0 ? 10 : holdsz << 1);	\
-						if(ret = __os_realloc(dbenv, 			\
-							newsz * sizeof(u_int32_t), &holdarr))	\
-							abort();				\
-						holdsz = newsz; 				\
-					}							\
-					holdarr[holdix++] = x;					\
-				} while (0)
-
+#define ADD_TO_HOLDARR(x)                                                      \
+	do {                                                                   \
+		if (holdix + 1 >= holdsz) {                                    \
+			int newsz = (holdsz == 0 ? 10 : holdsz << 1);          \
+			if ((ret = __os_realloc(dbenv,                         \
+						newsz * sizeof(u_int32_t),     \
+						&holdarr)) != 0)               \
+				abort();                                       \
+			holdsz = newsz;                                        \
+		}                                                              \
+		holdarr[holdix++] = x;                                         \
+	} while (0)
 
 /*
  * __lock_get_internal --
@@ -2943,7 +2947,7 @@ __lock_get_internal(lt, locker, sh_locker, flags, obj, lock_mode, timeout, lock)
 	if (sh_locker && F_ISSET(sh_locker, DB_LOCKER_TRACK)) {
 		struct __db_lock *lockp;
 		lockp = (struct __db_lock *)R_ADDR(&lt->reginfo, lock->off);
-		logmsg(LOGMSG_USER, "LOCKID %u ", sh_locker->id, rc);
+		logmsg(LOGMSG_USER, "LOCKID %u rc %d", sh_locker->id, rc);
 		if (rc == 0) {
 			__lock_printlock(lt, lockp, 1, stderr);
 		} else
@@ -5473,10 +5477,10 @@ __lock_get_rowlocks_list(dbenv, locker, flags, lock_mode, list, locklist,
 
 
 			if (!gbl_disable_rowlocks) {
-				if (ret =
+				if ((ret =
 				    __lock_get_internal(lt, locker, sh_locker,
 					flags, &obj_dbt, lock_mode, 0,
-					&ret_lock[*lockcnt]) != 0) {
+					&ret_lock[*lockcnt])) != 0) {
 					goto err;
 				}
 				(*lockcnt)++;
@@ -5525,7 +5529,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 	u_int32_t *keycnt;
 	int get_lock;
 	void **ret_dp;
-    FILE *fp;
+	FILE *fp;
 {
 	DBT obj_dbt;
 	DB_LOCK ret_lock;
@@ -5697,7 +5701,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 		/* special case, no locks, only context
 		 * dp points to context */
 
-		logmsg(LOGMSG_ERROR, "%d size is 0, no nocks\n", pthread_self());
+		logmsg(LOGMSG_ERROR, "%lu size is 0, no nocks\n", pthread_self());
 
 		LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 		locked_region = 1;
@@ -5773,9 +5777,9 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			lock->pgno = save_pgno;
 		}
 	} else {
-		ret =
-		    __lock_list_parse_pglogs_int(dbenv, locker, flags,
-		    lock_mode, list, maxlsn, pglogs, keycnt, 1, &dp);
+		ret = __lock_list_parse_pglogs_int(
+		    dbenv, locker, flags, lock_mode, list, maxlsn, pglogs,
+		    keycnt, 1, &dp, NULL);
 		if (ret)
 			return ret;
 	}
@@ -5834,7 +5838,7 @@ lock_list_parse_pglogs(dbenv, list, maxlsn, pglogs, keycnt)
 	u_int32_t *keycnt;
 {
 	return __lock_list_parse_pglogs_int(dbenv, 0, LOCK_GET_LIST_PAGELOGS, 0,
-	    list, maxlsn, pglogs, keycnt, 0, NULL);
+	    list, maxlsn, pglogs, keycnt, 0, NULL, NULL);
 }
 
 
@@ -6088,7 +6092,7 @@ __lock_abort_logical_waiters(dbenv, locker, flags)
 		/* Abort anything blocked on its rowlocks */
 		if (is_comdb2_rowlock(lockobj->lockobj.size)) {
 			/* This releases the lockobj */
-			if (ret = __dd_abort_waiters(dbenv, lockobj)) {
+			if ((ret = __dd_abort_waiters(dbenv, lockobj)) != 0) {
 				__db_err(dbenv, "Error aborting waiters\n");
 				goto err;
 			}
@@ -6186,7 +6190,7 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 		LOCKER_INDX(lt, region, lockerid, ndx);
 		if (__lock_getlocker(lt, lockerid, ndx, 0, 0, &locker) != 0
 		    || locker == NULL) {
-			logmsg(LOGMSG_ERROR, "%s: lockid %lx not found\n", __func__,
+			logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__,
 			    lockerid);
 			return -1;
 		}
@@ -6200,7 +6204,7 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 		LOCKER_INDX(lt, region, parentid, ndx);
 		if (__lock_getlocker(lt, parentid, ndx, 0, 0,
 			&parent_locker) != 0 || parent_locker == NULL) {
-			logmsg(LOGMSG_ERROR, "%s: parent-lockid %lx not found\n",
+			logmsg(LOGMSG_ERROR, "%s: parent-lockid %x not found\n",
 			    __func__, parentid);
 			return -1;
 		}
@@ -6227,14 +6231,14 @@ __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
 	    || locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %lx not found\n", __func__, lockid);
+		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
 		return -1;
 	}
 
 	LOCKER_INDX(lt, region, parentid, ndx);
 	if (__lock_getlocker(lt, parentid, ndx, 0, 0, &parent_locker) != 0
 	    || parent_locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %lx not found\n", __func__,
+		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__,
 		    parentid);
 		return -1;
 	}
@@ -6272,7 +6276,7 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
 	    || locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %lx not found\n", __func__, lockid);
+		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
 		return -1;
 	}
 	if (!F_ISSET(locker, DB_LOCKER_TRACK_WRITELOCKS))
@@ -6338,7 +6342,7 @@ __lock_clear_tracked_writelocks_pp(DB_ENV *dbenv, u_int32_t lockid)
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, GETLOCKER_CREATE, &locker) != 0
 	    || locker == NULL) {
-		logmsg(LOGMSG_ERROR, "%s: lockid %lx not found\n", __func__, lockid);
+		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
 		return -1;
 	}
 	F_SET(locker, DB_LOCKER_TRACK_WRITELOCKS);

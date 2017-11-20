@@ -96,7 +96,11 @@ typedef struct
 #else // no LOCKMGRDBG
 
 #ifdef  __x86_64
-#define FLUFF uint8_t fluff[152]
+#  ifdef __APPLE__
+#    define FLUFF uint8_t fluff[128]
+#  else
+#    define FLUFF uint8_t fluff[152]
+#  endif
 #else
 #define FLUFF uint8_t fluff[1]
 #endif

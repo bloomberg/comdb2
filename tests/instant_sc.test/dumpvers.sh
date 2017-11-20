@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 table=$1
 db=$2

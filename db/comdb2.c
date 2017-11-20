@@ -76,8 +76,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-/* temporarily pull in a local copy of comdb2_shm.h until it's in the libraries
- */
 #include "comdb2_shm.h"
 #include "sql.h"
 
@@ -118,7 +116,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "dbdest.h"
 #include "intern_strings.h"
 #include "bb_oscompat.h"
-#include "comdb2util.h"
 #include "comdb2uuid.h"
 #include "debug_switches.h"
 #include "machine.h"
@@ -180,18 +177,6 @@ void berkdb_use_malloc_for_regions_with_callbacks(void *mem,
                                                   void *(*alloc)(void *, int),
                                                   void (*free)(void *, void *));
 
-/* some random prototypes that should have their own header */
-void buffer_origin_(int *mch, int *pid, int *slot);
-void swapinit_(int *, int *);
-int set_db_rngkeymode(int dbnum);
-int set_db_rngextmode(int dbnum);
-void enable_ack_trace(void);
-void disable_ack_trace(void);
-void set_cursor_rowlocks(int cr);
-void walkback_set_warnthresh(int thresh);
-void walkback_disable(void);
-void walkback_enable(void);
-
 static int put_all_csc2();
 
 static void *purge_old_blkseq_thread(void *arg);
@@ -200,17 +185,11 @@ static int lrllinecmp(char *lrlline, char *cmpto);
 static void ttrap(struct timer_parm *parm);
 int clear_temp_tables(void);
 
-int q_reqs_len(void);
-int handle_buf_bbipc(struct dbenv *, uint8_t *p_buf, const uint8_t *p_buf_end,
-                     int debug, int frommach, int do_inline);
-
 pthread_key_t comdb2_open_key;
-pthread_key_t blockproc_retry_key;
 
 /*---GLOBAL SETTINGS---*/
 const char *const gbl_db_release_name = "R7.0pre";
 int gbl_enque_flush_interval;
-int gbl_enque_flush_interval_signal;
 int gbl_enque_reorder_lookahead = 20;
 int gbl_morecolumns = 0;
 int gbl_return_long_column_names = 1;
@@ -246,13 +225,11 @@ int gbl_osql_bkoff_netsend_lmt = 5 * 60 * 1000; /* 5 mins */
 int gbl_osql_bkoff_netsend = 100;               /* wait 100 msec */
 int gbl_net_max_queue = 25000;
 int gbl_net_max_mem = 0;
-int gbl_net_max_queue_signal = 100;
 int gbl_net_poll = 100;
 int gbl_net_throttle_percent = 50;
 int gbl_osql_net_poll = 100;
 int gbl_osql_max_queue = 10000;
 int gbl_osql_net_portmux_register_interval = 600;
-int gbl_signal_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
 
 int gbl_max_sqlcache = 10;
@@ -349,9 +326,7 @@ int gbl_maxblobretries =
 int gbl_maxcontextskips = 10000; /* that's a whole whale of a lotta retries */
 char gbl_cwd[256];               /* start directory */
 int gbl_heartbeat_check = 0, gbl_heartbeat_send = 0, gbl_decom = 0;
-int gbl_heartbeat_check_signal = 0, gbl_heartbeat_send_signal = 0;
 int gbl_netbufsz = 1 * 1024 * 1024;
-int gbl_netbufsz_signal = 64 * 1024;
 int gbl_loghist = 0;
 int gbl_loghist_verbose = 0;
 int gbl_repdebug = -1;
@@ -375,7 +350,7 @@ int gbl_init_single_meta = 1;
 int gbl_schedule = 0;
 
 int gbl_init_with_rowlocks = 0;
-int gbl_init_with_genid48 = 0;
+int gbl_init_with_genid48 = 1;
 int gbl_init_with_odh = 1;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
@@ -393,7 +368,6 @@ volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 int gbl_sqlhistsz = 25;
-int gbl_force_bad_directory = 1;
 int gbl_lclpooled_buffers = 32;
 
 int gbl_maxblockops = 25000;
@@ -806,19 +780,6 @@ int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-/* 040407dh: sys_nerr and sys_errlist are deprecated but still
-   in use in util.c and ../berkdb/4.2.52/clib/strerror.c
-   Not available in SUN 64 bits, add them here
-   TODO:revise this hack
-*/
-#ifdef _IBM_SOURCE
-#ifdef BB64BIT
-
-int sys_nerr = -1; /* this will prevent accessing the sys_errlist */
-char *sys_errlist[1] = {0};
-#endif
-#endif
-
 int getkeyrecnums(const struct dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
@@ -946,12 +907,13 @@ void showdbenv(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "-----\n");
     for (jj = 0; jj < dbenv->num_dbs; jj++) {
         usedb = dbenv->dbs[jj]; /*de-stink*/
-        logmsg(LOGMSG_USER, "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
+        logmsg(LOGMSG_USER,
+               "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
                "nconns %d  nrevconns %d\n",
-               usedb->dbname, usedb->dbnum, dbenv->basedir,
+               usedb->tablename, usedb->dbnum, dbenv->basedir,
                (usedb->lrlfname) ? usedb->lrlfname : "NULL",
                usedb->n_constraints, usedb->n_rev_constraints);
-       logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
+        logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER, "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c\n",
@@ -960,8 +922,8 @@ void showdbenv(struct dbenv *dbenv)
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
-        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii, dbenv->sibling_hostname[ii],
-               dbenv->sibling_port[ii]);
+        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii,
+               dbenv->sibling_hostname[ii], *dbenv->sibling_port[ii]);
     }
 }
 
@@ -1427,7 +1389,7 @@ void clean_exit(void)
             }
 
             indicator_file =
-                comdb2_location("marker", "%s.done", thedb->dbs[ii]->dbname);
+                comdb2_location("marker", "%s.done", thedb->dbs[ii]->tablename);
             fd = creat(indicator_file, 0666);
             if (fd != -1) close(fd);
             free(indicator_file);
@@ -1456,6 +1418,7 @@ void clean_exit(void)
     free_gbl_tunables();
     free_tzdir();
     tz_hash_free();
+    cleanup_sqlite_master();
 
     logmsg(LOGMSG_WARN, "goodbye\n");
 
@@ -1511,7 +1474,7 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
     int rc;
 
     tbl = calloc(1, sizeof(struct dbtable));
-    tbl->dbname = strdup(name);
+    tbl->tablename = strdup(name);
     tbl->dbenv = env;
     tbl->is_readonly = 0;
     tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
@@ -1535,9 +1498,9 @@ void cleanup_newdb(struct dbtable *tbl)
     if (!tbl)
         return;
 
-    if (tbl->dbname) {
-        free(tbl->dbname);
-        tbl->dbname = NULL;
+    if (tbl->tablename) {
+        free(tbl->tablename);
+        tbl->tablename = NULL;
     }
 
     if (tbl->lrlfname) {
@@ -1576,7 +1539,7 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->dbtype = DBTYPE_TAGGED_TABLE;
     if (fname)
         tbl->lrlfname = strdup(fname);
-    tbl->dbname = strdup(tblname);
+    tbl->tablename = strdup(tblname);
     tbl->dbenv = env;
     tbl->is_readonly = 0;
     tbl->dbnum = dbnum;
@@ -1890,7 +1853,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
             /* load schema for older versions */
             for (int v = 1; v <= ver; ++v) {
                 char *csc2text;
-                if (get_csc2_file(tbl->dbname, v, &csc2text, NULL)) {
+                if (get_csc2_file(tbl->tablename, v, &csc2text, NULL)) {
                     logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__,
                             __LINE__);
                     continue;
@@ -1905,7 +1868,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv)
                     goto cleanup;
                 }
 
-                add_tag_schema(tbl->dbname, s);
+                add_tag_schema(tbl->tablename, s);
                 free(csc2text);
             }
         }
@@ -2075,9 +2038,10 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
            routines and SQL can get at it */
         rc = add_cmacc_stmt(tbl, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to load schema: can't process schema file "
-                            "%s\n",
-                    tbl->dbname);
+            logmsg(LOGMSG_ERROR,
+                   "Failed to load schema: can't process schema file "
+                   "%s\n",
+                   tbl->tablename);
             ++i; /* this tblname has already been marshalled so we dont want to
                   * free it below */
             rc = 1;
@@ -2108,7 +2072,7 @@ int llmeta_set_tables(tran_type *tran, struct dbenv *dbenv)
 
     /* gather all the table names and tbl numbers */
     for (i = 0; i < dbenv->num_dbs; ++i) {
-        tblnames[i] = dbenv->dbs[i]->dbname;
+        tblnames[i] = dbenv->dbs[i]->tablename;
         dbnums[i] = dbenv->dbs[i]->dbnum;
     }
 
@@ -2197,15 +2161,15 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                            "number for %s's main data files\n",
-                    dbenv->dbs[i]->dbname);
+                                 "number for %s's main data files\n",
+                   dbenv->dbs[i]->tablename);
             rc = -1;
             goto done;
         }
 
         sbuf2printf(sbfile,
                     "table %s %d\n\tdata files: %016llx\n\tblob files\n",
-                    dbenv->dbs[i]->dbname, dbenv->dbs[i]->lrl,
+                    dbenv->dbs[i]->tablename, dbenv->dbs[i]->lrl,
                     flibc_htonll(version_num));
 
         /* print the indicies' version numbers */
@@ -2214,9 +2178,10 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                                           j /*dtanum*/, &version_num,
                                           &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's blob num %d's files\n",
-                        dbenv->dbs[i]->dbname, j);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's blob num %d's files\n",
+                       dbenv->dbs[i]->tablename, j);
                 rc = -1;
                 goto done;
             }
@@ -2232,9 +2197,10 @@ int llmeta_dump_mapping_tran(void *tran, struct dbenv *dbenv)
                                            j /*dtanum*/, &version_num,
                                            &bdberr) ||
                 bdberr != BDBERR_NOERROR) {
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's index num %d\n",
-                        dbenv->dbs[i]->dbname, j);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's index num %d\n",
+                       dbenv->dbs[i]->tablename, j);
                 rc = -1;
                 goto done;
             }
@@ -2273,20 +2239,21 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
         bdberr != BDBERR_NOERROR) {
         if (err)
             logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                            "number for %s's main data files\n",
-                    p_db->dbname);
+                                 "number for %s's main data files\n",
+                   p_db->tablename);
         else
             ctrace("llmeta_dump_mapping: failed to fetch version number for "
                    "%s's main data files\n",
-                   p_db->dbname);
+                   p_db->tablename);
         return -1;
     }
 
     if (err)
-        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016llx\n\tblob files\n",
-                p_db->dbname, flibc_htonll(version_num));
+        logmsg(LOGMSG_INFO, "table %s\n\tdata files: %016lx\n\tblob files\n",
+               p_db->tablename, flibc_htonll(version_num));
     else
-        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n", p_db->dbname,
+        ctrace("table %s\n\tdata files: %016llx\n\tblob files\n",
+               p_db->tablename,
                (long long unsigned int)flibc_htonll(version_num));
 
     /* print the blobs' version numbers */
@@ -2295,18 +2262,19 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                       &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's blob num %d's files\n",
-                        p_db->dbname, i);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's blob num %d's files\n",
+                       p_db->tablename, i);
             else
                 ctrace("llmeta_dump_mapping: failed to fetch version number "
                        "for %s's blob num %d's files\n",
-                       p_db->dbname, i);
+                       p_db->tablename, i);
             return -1;
         }
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016llx\n", i,
-                    flibc_htonll(version_num));
+            logmsg(LOGMSG_INFO, "\t\tblob num %d: %016lx\n", i,
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tblob num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -2319,19 +2287,20 @@ int llmeta_dump_mapping_table_tran(void *tran, struct dbenv *dbenv,
                                        &version_num, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             if (err)
-                logmsg(LOGMSG_ERROR, "llmeta_dump_mapping: failed to fetch version "
-                                "number for %s's index num %d\n",
-                        p_db->dbname, i);
+                logmsg(LOGMSG_ERROR,
+                       "llmeta_dump_mapping: failed to fetch version "
+                       "number for %s's index num %d\n",
+                       p_db->tablename, i);
             else
                 ctrace("llmeta_dump_mapping: failed to fetch version number "
                        "for %s's index num %d\n",
-                       p_db->dbname, i);
+                       p_db->tablename, i);
             return -1;
         }
 
         if (err)
-            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016llx\n", i,
-                    flibc_htonll(version_num));
+            logmsg(LOGMSG_INFO, "\t\tindex num %d: %016lx\n", i,
+                   flibc_htonll(version_num));
         else
             ctrace("\t\tindex num %d: %016llx\n", i,
                    (long long unsigned int)flibc_htonll(version_num));
@@ -2390,10 +2359,10 @@ static struct dbenv *newdbenv(char *dbname, char *lrlname)
     /* Initialize the table/queue hashes. */
     dbenv->db_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct dbtable, dbname), 0);
+                       offsetof(struct dbtable, tablename), 0);
     dbenv->qdb_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct dbtable, dbname), 0);
+                       offsetof(struct dbtable, tablename), 0);
 
     if ((rc = pthread_mutex_init(&dbenv->dbqueue_admin_lk, NULL)) != 0) {
         logmsg(LOGMSG_FATAL, "can't init lock %d %s\n", rc, strerror(errno));
@@ -2485,17 +2454,18 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
 
         for (jj = 0; jj < dbenv->num_dbs; jj++) {
             if (jj != ii) {
-                if (strcasecmp(dbenv->dbs[ii]->dbname,
-                               dbenv->dbs[jj]->dbname) == 0) {
+                if (strcasecmp(dbenv->dbs[ii]->tablename,
+                               dbenv->dbs[jj]->tablename) == 0) {
                     have_bad_schema = 1;
-                    logmsg(LOGMSG_FATAL, "Two tables have identical names (%s) tblnums %d "
+                    logmsg(LOGMSG_FATAL,
+                           "Two tables have identical names (%s) tblnums %d "
                            "%d\n",
-                           dbenv->dbs[ii]->dbname, ii, jj);
+                           dbenv->dbs[ii]->tablename, ii, jj);
                 }
             }
         }
 
-        if ((strcasecmp(dbenv->dbs[ii]->dbname, dbenv->envname) == 0) &&
+        if ((strcasecmp(dbenv->dbs[ii]->tablename, dbenv->envname) == 0) &&
             (dbenv->dbs[ii]->dbnum != 0) &&
             (dbenv->dbnum != dbenv->dbs[ii]->dbnum)) {
 
@@ -2507,7 +2477,7 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
         if (dbenv->dbs[ii]->nix > MAXINDEX) {
             have_bad_schema = 1;
             logmsg(LOGMSG_FATAL, "Database %s has too many indexes (%d)\n",
-                   dbenv->dbs[ii]->dbname, dbenv->dbs[ii]->nix);
+                   dbenv->dbs[ii]->tablename, dbenv->dbs[ii]->nix);
         }
 
         /* last ditch effort to stop invalid schemas getting through */
@@ -2515,7 +2485,7 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
             if (dbenv->dbs[ii]->ix_keylen[jj] > MAXKEYLEN) {
                 have_bad_schema = 1;
                 logmsg(LOGMSG_FATAL, "Database %s index %d too large (%d)\n",
-                       dbenv->dbs[ii]->dbname, jj,
+                       dbenv->dbs[ii]->tablename, jj,
                        dbenv->dbs[ii]->ix_keylen[jj]);
             }
 
@@ -2535,12 +2505,12 @@ static int dump_queuedbs(char *dir)
         int ndests;
         char **dests;
         int bdberr;
-        char *name = thedb->qdbs[i]->dbname;
+        char *name = thedb->qdbs[i]->tablename;
         int rc;
         rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Can't get data for %s: bdberr %d\n",
-                   thedb->qdbs[i]->dbname, bdberr);
+                   thedb->qdbs[i]->tablename, bdberr);
             return -1;
         }
         char path[PATH_MAX];
@@ -2551,14 +2521,14 @@ static int dump_queuedbs(char *dir)
                     strerror(errno));
             return -1;
         }
-        fprintf(f, "%s\n%d\n", thedb->qdbs[i]->dbname, ndests);
+        fprintf(f, "%s\n%d\n", thedb->qdbs[i]->tablename, ndests);
         for (int j = 0; j < ndests; ++j) {
             fprintf(f, "%s\n", dests[j]);
         }
         fprintf(f, "%s", config);
         fclose(f);
         logmsg(LOGMSG_INFO, "%s wrote file:%s for queuedb:%s\n", __func__, path,
-               thedb->qdbs[i]->dbname);
+               thedb->qdbs[i]->tablename);
         free(config);
         for (int j = 0; j < ndests; ++j)
             free(dests[j]);
@@ -2616,8 +2586,8 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
         if (get_csc2_fname(thedb->dbs[i], p_data->lrl_fname_out_dir,
                            p_data->csc2_paths[i],
                            sizeof(p_data->csc2_paths[i]))) {
-            logmsg(LOGMSG_ERROR, "%s: get_csc2_fname failed for: %s\n", __func__,
-                    thedb->dbs[i]->dbname);
+            logmsg(LOGMSG_ERROR, "%s: get_csc2_fname failed for: %s\n",
+                   __func__, thedb->dbs[i]->tablename);
 
             free(p_data);
             return -1;
@@ -2626,15 +2596,16 @@ static int repopulate_lrl(const char *p_lrl_fname_out)
         /* dump the csc2 */
         if (dump_table_csc2_to_disk_fname(thedb->dbs[i],
                                           p_data->csc2_paths[i])) {
-            logmsg(LOGMSG_ERROR, "%s: dump_table_csc2_to_disk_fname failed for: "
-                            "%s\n",
-                    __func__, thedb->dbs[i]->dbname);
+            logmsg(LOGMSG_ERROR,
+                   "%s: dump_table_csc2_to_disk_fname failed for: "
+                   "%s\n",
+                   __func__, thedb->dbs[i]->tablename);
 
             free(p_data);
             return -1;
         }
 
-        p_data->p_table_names[i] = thedb->dbs[i]->dbname;
+        p_data->p_table_names[i] = thedb->dbs[i]->tablename;
         p_data->p_csc2_paths[i] = p_data->csc2_paths[i];
         p_data->table_nums[i] = thedb->dbs[i]->dbnum;
     }
@@ -2962,7 +2933,7 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int llmeta_set_qdbs()
+static int llmeta_set_qdbs(void)
 {
     if (qdbs == NULL)
         return 0;
@@ -3283,6 +3254,7 @@ static int init(int argc, char **argv)
     if (thedb == 0)
         return -1;
 
+#if WITH_SSL
     /* Initialize SSL backend before creating any net.
        If we're in creat mode, don't bother. */
     if (!gbl_create_mode && ssl_bend_init(thedb->basedir) != 0) {
@@ -3290,6 +3262,7 @@ static int init(int argc, char **argv)
         return -1;
     }
     logmsg(LOGMSG_INFO, "SSL backend initialized.\n");
+#endif
 
     if (init_blob_cache() != 0) return -1;
 
@@ -3875,7 +3848,7 @@ static int init(int argc, char **argv)
             read_spfile(gbl_spfile_name);
         }
 
-        if (llmeta_set_qdbs(qdbs) != 0) {
+        if (llmeta_set_qdbs() != 0) {
             logmsg(LOGMSG_FATAL, "failed to add queuedbs to llmeta\n");
             return -1;
         }
@@ -3943,11 +3916,6 @@ static int init(int argc, char **argv)
         net_set_max_bytes(thedb->handle_sibling, bytes);
     }
 
-    if (gbl_net_max_queue_signal) {
-        net_set_max_queue(thedb->handle_sibling_signal,
-                          gbl_net_max_queue_signal);
-    }
-
     if (gbl_net_throttle_percent) {
         net_set_throttle_percent(thedb->handle_sibling,
                                  gbl_net_throttle_percent);
@@ -3958,22 +3926,9 @@ static int init(int argc, char **argv)
                                           gbl_net_portmux_register_interval);
     }
 
-    if (gbl_signal_net_portmux_register_interval) {
-        net_set_portmux_register_interval(
-            thedb->handle_sibling_signal,
-            gbl_signal_net_portmux_register_interval);
-    }
-    if (!gbl_accept_on_child_nets)
-        net_set_portmux_register_interval(thedb->handle_sibling_signal, 0);
-
     if (gbl_enque_flush_interval) {
         net_set_enque_flush_interval(thedb->handle_sibling,
                                      gbl_enque_flush_interval);
-    }
-
-    if (gbl_enque_flush_interval_signal) {
-        net_set_enque_flush_interval(thedb->handle_sibling_signal,
-                                     gbl_enque_flush_interval_signal);
     }
 
     if (gbl_enque_reorder_lookahead) {
@@ -3992,17 +3947,8 @@ static int init(int argc, char **argv)
         net_set_heartbeat_check_time(thedb->handle_sibling,
                                      gbl_heartbeat_check);
     }
-    if (gbl_heartbeat_send_signal) {
-        net_set_heartbeat_send_time(thedb->handle_sibling_signal,
-                                    gbl_heartbeat_send_signal);
-    }
-    if (gbl_heartbeat_check_signal) {
-        net_set_heartbeat_check_time(thedb->handle_sibling_signal,
-                                     gbl_heartbeat_check_signal);
-    }
 
     net_setbufsz(thedb->handle_sibling, gbl_netbufsz);
-    net_setbufsz(thedb->handle_sibling_signal, gbl_netbufsz_signal);
 
     if (javasp_init_procedures() != 0) {
         logmsg(LOGMSG_FATAL, "*ERROR* cannot initialise Java stored procedures\n");
@@ -4092,13 +4038,10 @@ void create_old_blkseq_thread(struct dbenv *dbenv)
     }
 }
 
-#ifdef __hpux
-static void adjust_ulimits(void) {}
-#else
-
 /* bump up ulimit for no. fds up to hard limit */
 static void adjust_ulimits(void)
 {
+#   if !defined(__hpux) && !defined(__APPLE__)
     struct rlimit64 rlim;
 
     if (-1 == getrlimit64(RLIMIT_DATA, &rlim)) {
@@ -4117,7 +4060,6 @@ static void adjust_ulimits(void)
             logmsg(LOGMSG_INFO, "%s: set ulimit for data to %d\n", __func__,
                     (int)rlim.rlim_cur);
         }
-
     } else {
         logmsg(LOGMSG_INFO, "ulimit for data already set\n");
     }
@@ -4143,9 +4085,8 @@ static void adjust_ulimits(void)
     } else {
         logmsg(LOGMSG_INFO, "ulimit for no. fds already set\n");
     }
+#   endif //__hpux
 }
-
-#endif
 
 extern void set_throttle(int);
 extern int get_throttle(void);
@@ -4254,7 +4195,8 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
-        bdb_get_bpool_counters(thedb->bdb_env, &bpool_hits, &bpool_misses);
+        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
+                               (int64_t *)&bpool_misses);
 
         if (!dbenv->exiting && !dbenv->stopped) {
             bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
@@ -4315,17 +4257,16 @@ void *statthd(void *p)
                 if (diff_nretries)
                     logmsg(LOGMSG_USER, " n_retries %d", diff_nretries);
                 if (diff_vreplays)
-                    logmsg(LOGMSG_USER, " vreplays %lld", diff_vreplays);
+                    logmsg(LOGMSG_USER, " vreplays %d", diff_vreplays);
                 if (diff_newsql)
-                    logmsg(LOGMSG_USER, " nnewsql %lld", diff_newsql);
+                    logmsg(LOGMSG_USER, " nnewsql %d", diff_newsql);
                 if (diff_ncommit_time)
                     logmsg(LOGMSG_USER, " n_commit_time %f ms",
-                           diff_ncommit_time / (1000 * diff_ncommits));
+                           (double)diff_ncommit_time / (1000 * diff_ncommits));
                 if (diff_bpool_hits)
-                    logmsg(LOGMSG_USER, " cache_hits %llu", diff_bpool_hits);
+                    logmsg(LOGMSG_USER, " cache_hits %lu", diff_bpool_hits);
                 if (diff_bpool_misses)
-                    logmsg(LOGMSG_USER, " cache_misses %llu",
-                           diff_bpool_misses);
+                    logmsg(LOGMSG_USER, " cache_misses %lu", diff_bpool_misses);
                 have_scon_stats = 1;
             }
         }
@@ -4405,7 +4346,7 @@ void *statthd(void *p)
                         if (diff > 0) {
                             if (hdr == 0) {
                                 reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            tbl->dbnum, tbl->dbname);
+                                            tbl->dbnum, tbl->tablename);
                                 hdr = 1;
                             }
                             reqlog_logf(statlogger, REQL_INFO, "%-20s %u\n",
@@ -4419,7 +4360,7 @@ void *statthd(void *p)
                         if (diff) {
                             if (hdr == 0) {
                                 reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            tbl->dbnum, tbl->dbname);
+                                            tbl->dbnum, tbl->tablename);
                                 hdr = 1;
                             }
                             reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
@@ -4433,7 +4374,7 @@ void *statthd(void *p)
                         if (diff) {
                             if (hdr == 0) {
                                 reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            tbl->dbnum, tbl->dbname);
+                                            tbl->dbnum, tbl->tablename);
                                 hdr = 1;
                             }
                             reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
@@ -4446,7 +4387,7 @@ void *statthd(void *p)
                     if (diff) {
                         if (hdr == 0) {
                             reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        tbl->dbnum, tbl->dbname);
+                                        tbl->dbnum, tbl->tablename);
                             hdr = 1;
                         }
                         reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
@@ -4458,7 +4399,7 @@ void *statthd(void *p)
                     if (diff) {
                         if (hdr == 0) {
                             reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        tbl->dbnum, tbl->dbname);
+                                        tbl->dbnum, tbl->tablename);
                             hdr = 1;
                         }
                         reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
@@ -4470,7 +4411,7 @@ void *statthd(void *p)
                     if (diff) {
                         if (hdr == 0) {
                             reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        tbl->dbnum, tbl->dbname);
+                                        tbl->dbnum, tbl->tablename);
                             hdr = 1;
                         }
                         reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
@@ -4985,7 +4926,7 @@ static void register_all_int_switches()
     register_int_switch("rep_printlock", "Print locks in rep commit",
                         &gbl_rep_printlock);
     register_int_switch("accept_on_child_nets",
-                        "listen on separate port for osql/signal nets",
+                        "listen on separate port for osql net",
                         &gbl_accept_on_child_nets);
     register_int_switch("disable_etc_services_lookup",
                         "When on, disables using /etc/services first to "
@@ -5090,7 +5031,7 @@ void create_marker_file()
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbnum) {
             marker_file =
-                comdb2_location("marker", "%s.trap", thedb->dbs[ii]->dbname);
+                comdb2_location("marker", "%s.trap", thedb->dbs[ii]->tablename);
             tmpfd = creat(marker_file, 0666);
             free(marker_file);
             if (tmpfd != -1) close(tmpfd);
@@ -5179,7 +5120,7 @@ int main(int argc, char **argv)
     comdb2ma_init(0, 0);
 
     /* more reliable */
-#ifdef _LINUX_SOURCE
+#ifdef __linux__
     char fname[PATH_MAX];
     rc = readlink("/proc/self/exe", fname, sizeof(fname));
     if (rc > 0 && rc < sizeof(fname)) {
@@ -5367,8 +5308,35 @@ void delete_db(char *db_name)
 
     thedb->num_dbs -= 1;
     thedb->dbs[thedb->num_dbs] = NULL;
+    pthread_rwlock_unlock(&thedb_lock);
+}
+
+/* rename in memory db names; fragile */
+int rename_db(struct dbtable *db, const char *newname)
+{
+    int rc;
+    char *tag_name = strdup(newname);
+    char *bdb_name = strdup(newname);
+
+    if (!tag_name || !bdb_name)
+        return -1;
+
+    pthread_rwlock_wrlock(&thedb_lock);
+
+    /* tags */
+    rename_schema(db->tablename, tag_name);
+
+    /* bdb_state */
+    bdb_state_rename(db->handle, bdb_name);
+
+    /* db */
+    hash_del(thedb->db_hash, db);
+    db->tablename = (char *)newname;
+    db->version = 0; /* reset, new table */
+    hash_add(thedb->db_hash, db);
 
     pthread_rwlock_unlock(&thedb_lock);
+    return 0;
 }
 
 void replace_db_idx(struct dbtable *p_db, int idx)
@@ -5377,7 +5345,7 @@ void replace_db_idx(struct dbtable *p_db, int idx)
     pthread_rwlock_wrlock(&thedb_lock);
 
     if (idx < 0 || idx >= thedb->num_dbs ||
-        strcasecmp(thedb->dbs[idx]->dbname, p_db->dbname) != 0) {
+        strcasecmp(thedb->dbs[idx]->tablename, p_db->tablename) != 0) {
         thedb->dbs =
             realloc(thedb->dbs, (thedb->num_dbs + 1) * sizeof(struct dbtable *));
         if (idx < 0 || idx >= thedb->num_dbs) idx = thedb->num_dbs;
@@ -5429,13 +5397,15 @@ static int put_all_csc2()
             int rc;
             
             if (thedb->dbs[ii]->lrlfname)
-               rc = load_new_table_schema_file(thedb, thedb->dbs[ii]->dbname,
-                     thedb->dbs[ii]->lrlfname);
+                rc = load_new_table_schema_file(
+                    thedb, thedb->dbs[ii]->tablename, thedb->dbs[ii]->lrlfname);
             else
-               rc = load_new_table_schema_tran(thedb, NULL, thedb->dbs[ii]->dbname, thedb->dbs[ii]->csc2_schema);
+                rc = load_new_table_schema_tran(thedb, NULL,
+                                                thedb->dbs[ii]->tablename,
+                                                thedb->dbs[ii]->csc2_schema);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "error storing schema for table '%s'\n",
-                       thedb->dbs[ii]->dbname);
+                       thedb->dbs[ii]->tablename);
                 return -1;
             }
         }
@@ -5458,7 +5428,7 @@ int check_current_schemas(void)
         for (ii = 0; ii < thedb->num_dbs; ii++) {
             if (thedb->dbs[ii]->dbtype == DBTYPE_TAGGED_TABLE) {
                 int rc;
-                rc = check_table_schema(thedb, thedb->dbs[ii]->dbname,
+                rc = check_table_schema(thedb, thedb->dbs[ii]->tablename,
                                         thedb->dbs[ii]->lrlfname);
                 if (rc != 0)
                     schema_errors++;

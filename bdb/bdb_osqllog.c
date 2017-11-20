@@ -27,41 +27,32 @@
 #include <list.h>
 #include <plbitlib.h>
 #include <fsnap.h>
-#include <db.h>
-#include <dbinc_auto/dbreg_auto.h>
-#include "llog_auto.h"
-#include "llog_int.h"
-#include "db_int.h"
-#include "dbinc/db_swap.h"
-#include "bdb_osqllog.h"
-#include "bdb_osqltrn.h"
-#include "bdb_int.h"
-#include "bdb_osqlcur.h"
-#include "flibc.h"
-#include "locks.h"
+#include <bdb_osqllog.h>
+#include <bdb_osqltrn.h>
+#include <bdb_int.h>
+#include <bdb_osqlcur.h>
+#include <flibc.h>
+#include <locks.h>
 
-#include "dbinc/db_page.h"
-#include "dbinc/db_shash.h"
-#include "dbinc/btree.h"
-#include "dbinc/lock.h"
-#include "dbinc/log.h"
-#include "dbinc/mp.h"
+#include <logmsg.h>
 
-#include "logmsg.h"
-
-#undef STDC_HEADERS
-#define STDC_HEADERS
-#include <db_int.h>
-#include <db_page.h>
-#include <db_shash.h>
+#include <build/db.h>
+#include <build/db_int.h>
 #include <dbinc_auto/db_auto.h>
+#include <dbinc_auto/dbreg_auto.h>
+#include <dbinc/txn.h>
 #include <dbinc_auto/txn_auto.h>
-#include <txn.h>
-#include <txn_ext.h>
-#include <btree.h>
-#include <mp.h>
-#include <db.h>
-#undef STDC_HEADERS
+#include <dbinc_auto/txn_ext.h>
+#include <dbinc/btree.h>
+#include <dbinc/db_page.h>
+#include <dbinc/db_shash.h>
+#include <dbinc/db_swap.h>
+#include <dbinc/lock.h>
+#include <dbinc/log.h>
+#include <dbinc/mp.h>
+
+#include <llog_auto.h>
+#include <llog_ext.h>
 
 #define MAXTABLENAME 128
 #define LOG_DTA_PTR_BIT 1
@@ -459,8 +450,8 @@ bdb_osql_upddta_rec(llog_undo_upd_dta_args *upd_dta, DB_LSN *lsn, int *bdberr)
 
     if (flibc_ntohll(upd_dta->oldgenid) >= flibc_ntohll(upd_dta->newgenid)) {
         logmsg(LOGMSG_FATAL, "%s:%d %s incorrect genid received %llx %llx\n",
-                __FILE__, __LINE__, __func__, flibc_ntohll(upd_dta->oldgenid),
-                flibc_ntohll(upd_dta->newgenid));
+               __FILE__, __LINE__, __func__, flibc_ntohll(upd_dta->oldgenid),
+               flibc_ntohll(upd_dta->newgenid));
         abort();
     }
 
@@ -549,10 +540,11 @@ int bdb_osql_log_updix(bdb_osql_log_t *log, DB_LSN *lsn,
     listc_atl(&log->impl->recs, rec);
 
     if (log->impl->trak)
-        logmsg(LOGMSG_USER, "TRK_LOG: log %p rec %p upd_ix file=%d stripe=%d %s "
-                "genid=%llx->%llx oldest=%llx\n",
-                log, rec, rec->dtafile, rec->dtastripe, rec->table, rec->genid,
-                upd_ix->newgenid, log->impl->oldest_genid);
+        logmsg(LOGMSG_USER,
+               "TRK_LOG: log %p rec %p upd_ix file=%d stripe=%d %s "
+               "genid=%llx->%lx oldest=%llx\n",
+               log, rec, rec->dtafile, rec->dtastripe, rec->table, rec->genid,
+               upd_ix->newgenid, log->impl->oldest_genid);
 
     return 0;
 }
@@ -1389,8 +1381,9 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
             }
 
             if (trak & SQL_DBG_SHADOW) {
-                logmsg(LOGMSG_USER, "INSERTED DT[%d:%d]:\n\tkeylen=%d\n\tkey=\"", rec->dbnum,
-                       tableid, sizeof(genid));
+                logmsg(LOGMSG_USER,
+                       "INSERTED DT[%d:%d]:\n\tkeylen=%zu\n\tkey=\"",
+                       rec->dbnum, tableid, sizeof(genid));
                 hexdump((char *)&genid, sizeof(genid));
                 logmsg(LOGMSG_USER, "\"\n\tdatalen=%d\n\tdata=\"", dtalen);
                 hexdump(dta, dtalen);
@@ -2095,8 +2088,8 @@ bdb_osql_log_t *parse_log_for_shadows_int(bdb_state_type *bdb_state,
 
         case DB_llog_undo_upd_ix_lk:
 
-            rc == llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
-                                           &upd_ix_lk);
+            rc = llog_undo_upd_ix_lk_read(bdb_state->dbenv, logdta.data,
+                                          &upd_ix_lk);
             if (rc) goto done;
 
             /* queue the record */
@@ -2528,7 +2521,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
         return 0;
 
     /* Skip entirely if there are no clients */
-    if (rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) {
+    if ((rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) !=0 ) {
         logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
         return rc;
     }

@@ -29,22 +29,14 @@
 #include <signal.h>
 #include <unistd.h>
 #include <bb_getopt_long.h>
-
-#include <sbuf2.h>
-#include <string.h>
-#include <str0.h>
-
 #include <readline/readline.h>
 #include <readline/history.h>
-
 #include "cdb2api.h"
 #include <pthread.h>
-
 #include <assert.h>
-
-#include "mem.h"
+#include <sys/time.h>
 #include "cdb2_constants.h"
-#include "epochlib.h"
+#include <inttypes.h>
 
 static char *dbname = NULL;
 static char *dbtype = NULL;
@@ -78,6 +70,7 @@ static int show_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
 static int maxretries = 0;
+static int minretries = 0;
 static FILE *redirect = NULL;
 static int hold_stdout = -1;
 static char *history_file = NULL;
@@ -85,9 +78,19 @@ static int istty = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
+static int now_ms(void)
+{
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) != 0) {
+        perror(__func__);
+        abort();
+    }
+    return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
 static void hexdump(FILE *f, void *datap, int len)
 {
-    u_char *data = (u_char *)datap;
+    uint8_t *data = (uint8_t *)datap;
     int i;
     for (i = 0; i < len; i++)
         fprintf(f, "%02x", (unsigned int)data[i]);
@@ -138,7 +141,7 @@ static const char *usage_text =
 
 void cdb2sql_usage(int exit_val)
 {
-    fprintf((exit_val == EXIT_SUCCESS) ? stdout : stderr, usage_text);
+    fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
 
@@ -170,7 +173,7 @@ char *level_one_generator (const char *text, int state)
         list_index = 0;
         len = strlen (text);
     }
-    while (name = words[list_index]) {
+    while ((name = words[list_index]) != NULL) {
         list_index++;
         if (len == 0 || strncasecmp (name, text, len) == 0) {
             return strdup (name);
@@ -246,7 +249,7 @@ char *db_generator (int state, const char *sql)
     if (!db_words)
         return ((char *) NULL);
 
-    while (name = db_words[list_index]) {
+    while ((name = db_words[list_index]) != NULL) {
         list_index++;
         return strdup(name);
     }
@@ -637,11 +640,19 @@ static int run_statement(const char *sql, int ntypes, int *types,
     if (printmode & STDERR)
         out = stderr;
 
-    startms = time_epochms();
+    startms = now_ms();
     *start_time = 0;
     *run_time = 0;
 
     if (cdb2h == NULL) {
+
+        if (maxretries) {
+            cdb2_set_max_retries(maxretries);
+        }
+        if (minretries) {
+            cdb2_set_min_retries(minretries);
+        }
+
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
         } else {
@@ -661,10 +672,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
         if (show_ports) {
             cdb2_dump_ports(cdb2h, stderr);
         }
-        if (maxretries) {
-            cdb2_set_max_retries(maxretries);
-        }
-
         if (docost) {
             rc = cdb2_run_statement(cdb2h, "set getcost on");
             if (rc) {
@@ -750,7 +757,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
             retries++;
         }
     }
-    rowms = time_epochms();
+    rowms = now_ms();
     *start_time = rowms - startms;
 
     cdb2_clearbindings(cdb2h);
@@ -824,7 +831,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
     }
 
-    endms = time_epochms();
+    endms = now_ms();
     *run_time = endms - startms;
     if (rc != CDB2_OK_DONE) {
         const char *err = cdb2_errstr(cdb2h);
@@ -1131,8 +1138,7 @@ int main(int argc, char *argv[])
     int opt_indx = 0;
     int c;
 
-    comdb2ma_init(0, 0);
-    sigignore(SIGPIPE);
+    sighold(SIGPIPE);
 
     replace_args(argc, argv);
 
@@ -1158,10 +1164,11 @@ int main(int argc, char *argv[])
         {"gensql",     required_argument, NULL,               'g'},
         {"type",       required_argument, NULL,               't'},
         {"host",       required_argument, NULL,               'n'},
+        {"minretries", required_argument, NULL,               'R'},
         {0, 0, 0, 0}
     };
 
-    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:", long_options,
+    while ((c = bb_getopt_long(argc, argv, "hsr:p:c:f:g:t:n:R:", long_options,
                                &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1174,6 +1181,9 @@ int main(int argc, char *argv[])
             break;
         case 'r':
             maxretries = atoi(optarg);
+            break;
+        case 'R':
+            minretries = atoi(optarg);
             break;
         case 'p':
             precision = atoi(optarg);

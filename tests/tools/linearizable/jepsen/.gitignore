@@ -1,0 +1,3 @@
+.lein-failures
+store/
+target/

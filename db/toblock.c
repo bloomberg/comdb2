@@ -69,7 +69,6 @@
 #include "osqlblkseq.h"
 #include "localrep.h"
 #include "util.h"
-#include "comdb2util.h"
 #include "osqlcomm.h"
 #include "nodemap.h"
 #include <bdb_schemachange.h>
@@ -117,7 +116,7 @@ extern int gbl_prefault_udp;
     err.errcode = (blockerrcode);                                              \
     err.ixnum = -1;                                                            \
     numerrs = 1;                                                               \
-    free_dynamic_schema(iq->usedb->dbname, dynschema);                         \
+    free_dynamic_schema(iq->usedb->tablename, dynschema);                      \
     dynschema = NULL;                                                          \
     goto backout
 #define BACKOUT_BLOCK_FREE_SCHEMA_OP(rcode, ii)                                \
@@ -459,8 +458,8 @@ static int forward_longblock_to_master(struct ireq *iq,
 
     if (mstr == bdb_master_dupe || mstr == db_eid_invalid) {
         if (iq->debug)
-            logmsg(LOGMSG_ERROR, "%s:no master! (%d) req from %s\n", __func__, mstr,
-                   getorigin(iq));
+            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
+                   mstr, getorigin(iq));
         return ERR_NOMASTER;
     }
 
@@ -514,8 +513,8 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
 
     if (mstr == bdb_master_dupe || mstr == db_eid_invalid) {
         if (iq->debug)
-            logmsg(LOGMSG_ERROR, "%s:no master! (%d) req from %s\n", __func__, mstr,
-                   getorigin(iq));
+            logmsg(LOGMSG_ERROR, "%s:no master! (%s) req from %s\n", __func__,
+                   mstr, getorigin(iq));
         return ERR_NOMASTER;
     }
 
@@ -839,9 +838,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         goto replay_error;
     } else if (datalen < sizeof(struct fstblk_header)) {
         int *seq = (int *)fstseqnum;
-        logmsg(LOGMSG_ERROR, "%s: %08x:%08x:%08x fstblk replay too small %d < %d\n",
-                __func__, seq[0], seq[1], seq[2], datalen,
-                sizeof(struct fstblk_header));
+        logmsg(LOGMSG_ERROR,
+               "%s: %08x:%08x:%08x fstblk replay too small %d < %zu\n",
+               __func__, seq[0], seq[1], seq[2], datalen,
+               sizeof(struct fstblk_header));
         blkseq_line = __LINE__;
         goto replay_error;
     } else {
@@ -1008,10 +1008,19 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     outrc = snapinfo_outrc;
                 } else {
                     switch (err.errcode) {
+                    case ERR_NO_RECORDS_FOUND:
+                    case ERR_CONVERT_DTA:
                     case ERR_NULL_CONSTRAINT:
+                    case ERR_SQL_PREP:
+                    case ERR_CONSTR:
                     case ERR_UNCOMMITABLE_TXN:
-                    case ERR_NOMASTER: outrc = err.errcode; break;
-                    default: outrc = ERR_BLOCK_FAILED; break;
+                    case ERR_NOMASTER:
+                    case ERR_NOTSERIAL:
+                        outrc = err.errcode;
+                        break;
+                    default:
+                        outrc = ERR_BLOCK_FAILED;
+                        break;
                     }
                 }
 
@@ -2061,8 +2070,9 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                fprintf(stderr, "%d %s:%d Using iq %p priority %d\n",
-                        pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                fprintf(stderr, "%x %s:%d Using iq %p priority %d\n",
+                        (int)pthread_self(), __FILE__, __LINE__, iq,
+                        iq->priority);
             irc = trans_start_set_retries(
                 iq, parent_trans ? *parent_trans : NULL, trans, iq->priority);
         } else {
@@ -2082,7 +2092,7 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     if (iq->debug) {
         /* TODO print trans twice? No parent_trans? */
         reqprintf(iq, "%p:START TRANSACTION OSQL ID %p DB %d '%s'", *trans,
-                  *trans, iq->usedb->dbnum, iq->usedb->dbname);
+                  *trans, iq->usedb->dbnum, iq->usedb->tablename);
     }
 
     if (parent_trans)
@@ -2718,8 +2728,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                logmsg(LOGMSG_USER, "%d %s:%d Using iq %p priority %d\n",
-                        pthread_self(), __FILE__, __LINE__, iq, iq->priority);
+                logmsg(LOGMSG_USER, "%x %s:%d Using iq %p priority %d\n",
+                       (int)pthread_self(), __FILE__, __LINE__, iq,
+                       iq->priority);
 
             irc =
                 trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
@@ -2755,8 +2766,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     if (iq->debug) {
         /* TODO print trans twice? No parent_trans? */
-        reqprintf(iq, "%llx:START TRANSACTION ID %p DB %d '%s'", 
-                pthread_self(), trans, iq->usedb->dbnum, iq->usedb->dbname);
+        reqprintf(iq, "%x:START TRANSACTION ID %p DB %d '%s'",
+                  (int)pthread_self(), trans, iq->usedb->dbnum,
+                  iq->usedb->tablename);
     }
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
@@ -2808,8 +2820,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             /* remove all prefixes tothe debug trace and put in the transaction
              * and operation name prefix. */
             reqpopprefixes(iq, -1);
-            reqpushprefixf(iq, "%llx:tran %p:%s ", pthread_self(), 
-                    trans, breq2a(hdr.opcode));
+            reqpushprefixf(iq, "%x:tran %p:%s ", (int)pthread_self(), trans,
+                           breq2a(hdr.opcode));
 
             reqprintflush(iq);
         }
@@ -3337,7 +3349,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                use record to form and delete other keys */
             snprintf(client_tag, MAXTAGLEN, ".DEFAULT_IX_0");
             snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_0");
-            rc = ctag_to_stag_buf(iq->usedb->dbname, client_tag,
+            rc = ctag_to_stag_buf(iq->usedb->tablename, client_tag,
                                   (const char *)iq->p_buf_in, WHOLE_BUFFER,
                                   nulls, ondisk_tag, key, 0, NULL);
             if (rc == -1) {
@@ -3719,7 +3731,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             /* convert key */
             bzero(nulls, sizeof(nulls));
-            rc = ctag_to_stag_buf(iq->usedb->dbname, ".DEFAULT_IX_0",
+            rc = ctag_to_stag_buf(iq->usedb->tablename, ".DEFAULT_IX_0",
                                   (const char *)p_keydat, WHOLE_BUFFER, nulls,
                                   ".ONDISK_IX_0", key, 0, NULL);
             if (rc == -1) {
@@ -3849,12 +3861,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                    capture comdb clients that are trying to verify
                    only a prefix of the row (size < .default rowsize)
                  */
-                int rowsz =
-                    get_size_of_schema_by_name(iq->usedb->dbname, ".DEFAULT");
+                int rowsz = get_size_of_schema_by_name(iq->usedb->tablename,
+                                                       ".DEFAULT");
                 if (rowsz != vlen) {
-                    logmsg(LOGMSG_ERROR, 
-                            "%s: %s prefix bug, client sz=%d, default-tag sz=%d\n",
-                            getorigin(iq), iq->usedb->dbname, newlen, rowsz);
+                    logmsg(
+                        LOGMSG_ERROR,
+                        "%s: %s prefix bug, client sz=%d, default-tag sz=%d\n",
+                        getorigin(iq), iq->usedb->tablename, newlen, rowsz);
                 }
             }
 
@@ -3945,7 +3958,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 BACKOUT;
             }
             if (iq->debug)
-                reqprintf(iq, "DB NUM %d '%s'", use.dbnum, iq->usedb->dbname);
+                reqprintf(iq, "DB NUM %d '%s'", use.dbnum,
+                          iq->usedb->tablename);
             break;
         }
 
@@ -3994,7 +4008,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     BACKOUT;
                 }
                 if (iq->debug)
-                    reqprintf(iq, "DB '%s'", iq->usedb->dbname);
+                    reqprintf(iq, "DB '%s'", iq->usedb->tablename);
             } else {
                 iq->usedb = getdbbynum(usekl.dbnum);
                 if (iq->usedb == 0) {
@@ -4008,7 +4022,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 }
                 if (iq->debug)
                     reqprintf(iq, "DB NUM %d '%s'", usekl.dbnum,
-                              iq->usedb->dbname);
+                              iq->usedb->tablename);
             }
             break;
         }
@@ -4075,8 +4089,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
                         if (!blob->data) {
                             logmsg(LOGMSG_ERROR, "BLOCK2_QBLOB: malloc "
-                                            "failed %u\n",
-                                    blob->length);
+                                                 "failed %zu\n",
+                                   blob->length);
                             reqerrstr(iq, COMDB2_BLOB_RC_ALLOC,
                                       "malloc failed");
                             rc = ERR_INTERNAL;
@@ -4223,7 +4237,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 rc = ERR_BADREQ;
                 break;
             }
-            dtalen = get_size_of_schema_by_name(iq->usedb->dbname, ".ONDISK");
+            dtalen =
+                get_size_of_schema_by_name(iq->usedb->tablename, ".ONDISK");
 
             if (!trans) {
                 if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
@@ -4264,7 +4279,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 if (iq->debug)
                     reqprintf(iq, "DELETE_OLDER %d %s genid %016llx rc "
                                   "%d\n",
-                              delolder.timestamp, iq->usedb->dbname, genid, rc);
+                              delolder.timestamp, iq->usedb->tablename, genid,
+                              rc);
                 if (rc) {
                     fromline = __LINE__;
                     goto backout;
@@ -4272,7 +4288,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             } else {
                 if (iq->debug)
                     reqprintf(iq, "DELETE_OLDER %s none found\n",
-                              iq->usedb->dbname);
+                              iq->usedb->tablename);
                 rc = ERR_NO_RECORDS_FOUND;
             }
             free(rec);
@@ -4516,7 +4532,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             // thread.
             // otherwise use upgrade_record shortcut.
             if (uptbl.nrecs > 1) {
-                rc = start_table_upgrade(iq->dbenv, iq->usedb->dbname,
+                rc = start_table_upgrade(iq->dbenv, iq->usedb->tablename,
                                          uptbl.genid, 0, uptbl.nrecs, 1);
                 if (rc != 0)
                     BACKOUT;
@@ -5003,8 +5019,8 @@ backout:
                              BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                 if (verbose_deadlocks)
                     fprintf(stderr,
-                            "%d %s:%d Setting iq %p priority from %d to %d\n",
-                            pthread_self(), __FILE__, __LINE__, iq,
+                            "%x %s:%d Setting iq %p priority from %d to %d\n",
+                            (int)pthread_self(), __FILE__, __LINE__, iq,
                             iq->priority, priority);
 
                 if (((unsigned)priority) == UINT_MAX) {
@@ -5217,8 +5233,9 @@ backout:
        gonna execute fine */
     if (rc == ERR_NOMASTER && have_blkseq) {
         if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%d %s:%d Skipping add blkseq due to early bplog termination\n",
-                pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_USER, "%x %s:%d Skipping add blkseq due to early "
+                                "bplog termination\n",
+                   (int)pthread_self(), __FILE__, __LINE__);
 
         /* we need to abort the logical/parent transaction
            we'll skip the rest of statistics */
@@ -5473,13 +5490,13 @@ add_blkseq:
                 trans_abort(iq, parent_trans);
                 parent_trans = NULL;
                 if (rc == IX_DUP) {
-                    logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(),
-                           __FILE__, __LINE__);
+                    logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
+                           (int)pthread_self(), __FILE__, __LINE__);
                     outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                            replay_data, replay_len, __LINE__);
                     did_replay = 1;
-                    logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
-                            __FILE__, __LINE__, outrc);
+                    logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
+                           (int)pthread_self(), __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
 
                     goto cleanup;
@@ -5577,13 +5594,13 @@ add_blkseq:
             /* if it's a logical transaction and the commit fails we abort
              * inside the commit call */
             if (rc == IX_DUP) {
-                logmsg(LOGMSG_WARN, "%d %s:%d replay detected!\n", pthread_self(), __FILE__,
-                       __LINE__);
+                logmsg(LOGMSG_WARN, "%x %s:%d replay detected!\n",
+                       (int)pthread_self(), __FILE__, __LINE__);
                 outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
                 did_replay = 1;
-                logmsg(LOGMSG_DEBUG, "%d %s:%d replay returned %d!\n", pthread_self(),
-                       __FILE__, __LINE__, outrc);
+                logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
+                       (int)pthread_self(), __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
 
                 goto cleanup;
@@ -5837,8 +5854,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     pthread_mutex_unlock(&blklk);
 
     if (prcnt && gbl_print_blockp_stats) {
-        logmsg(LOGMSG_USER, "%llu total time spent in the block processor\n",
-                block_processor_ms);
+        logmsg(LOGMSG_USER, "%lu total time spent in the block processor\n",
+               block_processor_ms);
     }
 
     return rc;
@@ -5875,8 +5892,8 @@ static int keyless_range_delete_formkey(void *record, size_t record_len,
     snprintf(index_tag_name, sizeof(index_tag_name), ".ONDISK_IX_%d",
              index_num);
 
-    rc = stag_to_stag_buf(iq->usedb->dbname, ".ONDISK", record, index_tag_name,
-                          index, NULL);
+    rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", record,
+                          index_tag_name, index, NULL);
     if (rc == -1) {
         if (iq->debug)
             reqprintf(iq, "%p:RNGDELKL CALLBACK CANT FORM INDEX %d",
@@ -5930,12 +5947,12 @@ static int keyless_range_delete_post_delete(void *record, size_t record_len,
         int rc;
         struct javasp_rec *jrec;
         jrec = javasp_alloc_rec(record, record_len,
-                                rngdel_info->iq->usedb->dbname);
+                                rngdel_info->iq->usedb->tablename);
         if (rngdel_info->saveblobs)
             javasp_rec_set_blobs(jrec, rngdel_info->oldblobs);
-        rc = javasp_trans_tagged_trigger(rngdel_info->javasp_trans_handle,
-                                         JAVASP_TRANS_LISTEN_AFTER_DEL, jrec,
-                                         NULL, rngdel_info->iq->usedb->dbname);
+        rc = javasp_trans_tagged_trigger(
+            rngdel_info->javasp_trans_handle, JAVASP_TRANS_LISTEN_AFTER_DEL,
+            jrec, NULL, rngdel_info->iq->usedb->tablename);
         javasp_dealloc_rec(jrec);
         if (rngdel_info->iq->debug)
             reqprintf(rngdel_info->iq,
@@ -6010,12 +6027,12 @@ int access_control_check_read(struct ireq *iq, tran_type *trans, int *bdberr)
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(iq->dbenv->bdb_env, trans,
-                                             iq->usedb->dbname,
+                                             iq->usedb->tablename,
                                              nodeix(iq->frommach), bdberr);
         if (rc <= 0) {
             reqerrstr(iq, ERR_ACCESS,
                       "Read access denied to %s from %s bdberr=%d\n",
-                      iq->usedb->dbname, iq->corigin, *bdberr);
+                      iq->usedb->tablename, iq->corigin, *bdberr);
             return ERR_ACCESS;
         }
     }
@@ -6029,12 +6046,12 @@ int access_control_check_write(struct ireq *iq, tran_type *trans, int *bdberr)
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(iq->dbenv->bdb_env, trans,
-                                              iq->usedb->dbname,
+                                              iq->usedb->tablename,
                                               nodeix(iq->frommach), bdberr);
         if (rc <= 0) {
             reqerrstr(iq, ERR_ACCESS,
                       "Write access denied to %s from %s bdberr=%d\n",
-                      iq->usedb->dbname, iq->corigin, *bdberr);
+                      iq->usedb->tablename, iq->corigin, *bdberr);
             return ERR_ACCESS;
         }
     }

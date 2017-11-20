@@ -17,6 +17,8 @@
 #ifndef _OSQL_SQLTHR_H_
 #define _OSQL_SQLTHR_H_
 
+#include "bpfunc.pb-c.h"
+
 /**
  *
  *  Interface with sqlglue.c
@@ -185,6 +187,14 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
 */
 int osql_schemachange_logic(struct schema_change_type *, struct sql_thread *,
                             int usedb);
+
+/**
+ *
+ * Process a bpfunc request
+ * Returns SQLITE_OK if successful.
+ *
+ */
+int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg);
 
 int osql_dbq_consume_logic(struct sqlclntstate *, const char *spname, genid_t);
 int osql_dbq_consume(struct sqlclntstate *, const char *spname, genid_t);

@@ -17,12 +17,12 @@
 #include "bdb_api.h"
 #include "bdb_int.h"
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "llog_auto.h"
-#include "llog_int.h"
+#include "llog_ext.h"
 #include "printformats.h"
 
-#include <db_swap.h>
+#include <dbinc/db_swap.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -170,11 +170,11 @@ int bdb_blkseq_recover(DB_ENV *dbenv, u_int32_t rectype, llog_blkseq_args *args,
 
     // printf("at "PR_LSN", blkseq\n", PARM_LSNP(lsn));
     if (op == DB_TXN_PRINT) {
-        printf("[%lu][%lu] CUSTOM: add_blkseq: rec: %lu txnid %lx"
+        printf("[%u][%u] CUSTOM: add_blkseq: rec: %u txnid %x"
                " prevlsn[" PR_LSN "]\n",
                lsn->file, lsn->offset, rectype, args->txnid->txnid,
                PARM_LSN(args->prev_lsn));
-        printf("\ttime:     %llu\n", args->time);
+        printf("\ttime:     %" PRId64 "\n", args->time);
         printf("\tkey:      ");
         hexdumpdbt(&args->key);
         printf("\n");
@@ -605,8 +605,9 @@ int bdb_recover_blkseq(bdb_state_type *bdb_state)
                 k = (int *)blkseq->key.data;
                 if ((now - blkseq->time) >
                     bdb_state->attr->private_blkseq_maxage) {
-                    logmsg(LOGMSG_INFO, "Stopping at " PR_LSN ", blkseq age %d > max %d\n",
-                           lsn, now - blkseq->time,
+                    logmsg(LOGMSG_INFO,
+                           "Stopping at " PR_LSN ", blkseq age %ld > max %d\n",
+                           PARM_LSN(lsn), now - blkseq->time,
                            bdb_state->attr->private_blkseq_maxage);
                     break;
                 }

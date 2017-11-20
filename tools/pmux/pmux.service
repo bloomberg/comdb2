@@ -2,7 +2,7 @@
 Description=Port allocator for Comdb2
 
 [Service]
-ExecStart=/opt/bb/bin/pmux -l
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/pmux -l
 Type=forking
 User=comdb2
 

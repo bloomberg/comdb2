@@ -34,6 +34,8 @@
 #include <inttypes.h>
 #include <limits.h>
 
+#include "fwd_types.h"
+#include "bdb_net.h"
 #include <assert.h>
 /*#include "protobuf/sqlresponse.pb-c.h"*/
 
@@ -45,7 +47,6 @@ struct filepage_t;
 typedef struct filepage_t filepage_type;
 
 struct bdb_state_tag;
-typedef struct bdb_state_tag bdb_state_type;
 
 struct bdb_callback_tag;
 typedef struct bdb_callback_tag bdb_callback_type;
@@ -497,6 +498,11 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
                                  int item_size, int pagesize,
                                  bdb_state_type *parent_bdb_state,
                                  int isqueuedb, int *bdberr);
+bdb_state_type *bdb_create_queue_tran(tran_type *, const char name[],
+                                      const char dir[], int item_size,
+                                      int pagesize,
+                                      bdb_state_type *parent_bdb_state,
+                                      int isqueuedb, int *bdberr);
 
 /* create a lite table */
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
@@ -525,8 +531,7 @@ bdb_create_tran(const char name[], const char dir[], int lrl, short numix,
 bdb_state_type *bdb_open_env(const char name[], const char dir[],
                              bdb_attr_type *bdb_attr,
                              bdb_callback_type *bdb_callback, void *usr_ptr,
-                             netinfo_type *netinfo,
-                             netinfo_type *netinfo_signal, char *recoverlsn,
+                             netinfo_type *netinfo, char *recoverlsn,
                              int *bdberr);
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
@@ -655,7 +660,8 @@ int bdb_tran_commit_logical_with_seqnum_size(bdb_state_type *bdb_state,
                                              uint64_t *out_txnsize,
                                              int *bdberr);
 
-int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran, int *file, int *offset);
+int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
+                                   int *file, int *offset);
 
 /* commit the transaction referenced by the tran handle.  return a
    seqnum that is guaranteed to be greater or equal to the seqnum
@@ -1045,13 +1051,16 @@ int bdb_close_only(bdb_state_type *bdb_handle, int *bdberr);
 */
 int bdb_rename(bdb_state_type *bdb_handle, tran_type *tran, char newtablename[],
                int *bdberr);
+int bdb_rename_table(bdb_state_type *bdb_handle, tran_type *tran, char *newname,
+                     int *bdberr);
+int bdb_rename_table_metadata(bdb_state_type *bdb_state, tran_type *tran,
+                              const char *newname, int version, int *bdberr);
 int bdb_rename_data(bdb_state_type *bdb_state, tran_type *tran,
                     char newtablename[], int fromdtanum, int todtanum,
                     int *bdberr);
 int bdb_rename_ix(bdb_state_type *bdb_state, tran_type *tran,
                   char newtablename[], int fromixnum, int toixnum, int *bdberr);
-int bdb_rename_name(bdb_state_type *bdb_state, char newtablename[],
-                    int *bdberr);
+void bdb_state_rename(bdb_state_type *bdb_state, char *newname);
 
 /* rename all the blob files for dynamic upgrade to blobstripe */
 int bdb_rename_blob1(bdb_state_type *bdb_state, tran_type *tran,
@@ -1224,11 +1233,7 @@ int bdb_fstdumpdta_sendsz(bdb_state_type *bdb_state, SBUF2 *sb,
  * length, and it doesn't help if we have the right data length but wrong
  * schema, but it catches a lot of problems easily. */
 int bdb_get_first_data_length(bdb_state_type *bdb_state, int *bdberr);
-int bdb_get_first_index_length(bdb_state_type *bdb_state, int ixnum,
-                               int *bdberr);
-
-int bdb_truncate(bdb_state_type *bdb_state, int *bdberr);
-
+int bdb_get_first_index_length(bdb_state_type *, int ixnum, int *bdberr);
 void bdb_start_request(bdb_state_type *bdb_state);
 void bdb_end_request(bdb_state_type *bdb_state);
 void bdb_start_exclusive_request(bdb_state_type *bdb_state);
@@ -1378,6 +1383,8 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
                              int *bdberr);
 int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long version_num, int *bdberr);
+int bdb_new_file_version_qdb(bdb_state_type *, tran_type *,
+                             unsigned long long version, int *bdberr);
 
 int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long *version_num,
@@ -1387,9 +1394,13 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr);
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr);
+int bdb_get_file_version_qdb(bdb_state_type *, tran_type *,
+                             unsigned long long *version, int *bdberr);
 
 int bdb_del_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
                           int *bdberr);
+int bdb_chg_file_versions(bdb_state_type *bdb_state, tran_type *input_trans,
+                          const char *new_tbl_name, int *bdberr);
 
 int bdb_new_csc2(tran_type *input_trans, const char *db_name, int csc2_vers,
                  char *schema, int *bdberr);
@@ -1421,8 +1432,8 @@ int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
     const unsigned long long *p_dst_blob_genids, size_t num_blob_genids,
     char *outbuf, size_t buflen, int *bdberr);
 
-int bdb_start_file_versioning_table(bdb_state_type *bdb_state, tran_type *tran,
-                                    int *bdberr);
+int bdb_rename_file_versioning_table(bdb_state_type *bdb_state, tran_type *tran,
+                                     char *newtblname, int *bdberr);
 void bdb_remove_prefix(bdb_state_type *bdb_state);
 
 void *bdb_del_list_new(int *bdberr);
@@ -1647,6 +1658,8 @@ tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
                                       int retries, int *bdberr);
 void bdb_lockspeed(bdb_state_type *bdb_state);
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
+int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
+                             tran_type *tran);
 int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
 int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
@@ -1961,8 +1974,6 @@ uint32_t bdb_get_rep_gen(bdb_state_type *bdb_state);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
-typedef struct BtCursor BtCursor;
-typedef struct UnpackedRecord UnpackedRecord;
 struct bias_info {
     int bias;
     int dirLeft;
@@ -1973,5 +1984,6 @@ struct bias_info {
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
 #endif

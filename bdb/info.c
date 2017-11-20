@@ -27,7 +27,7 @@
 #include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include <db.h>
+#include <build/db.h>
 #include <str0.h>
 #include <ctrace.h>
 #include <endian_core.h>
@@ -216,7 +216,7 @@ int bdb_get_bpool_counters(bdb_state_type *bdb_state, int64_t *bpool_hits,
     return 0;
 }
 
-const char *deadlock_policy_str(int policy)
+const char *deadlock_policy_str(u_int32_t policy)
 {
     switch (policy) {
     case DB_LOCK_NORUN: return "DB_LOCK_NORUN";
@@ -255,7 +255,8 @@ int deadlock_policy_max()
 
 static void lock_stats(FILE *out, bdb_state_type *bdb_state)
 {
-    int rc, policy;
+    int rc;
+    u_int32_t policy;
     extern int gbl_locks_check_waiters;
     extern unsigned long long check_waiters_skip_count;
     extern unsigned long long check_waiters_commit_count;
@@ -368,11 +369,13 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     prn_stat(st_election_tiebreaker);
     prn_stat(st_election_votes);
 
-    logmsgf(LOGMSG_USER, out, "txn parallel: %lld\n", gbl_rep_trans_parallel);
-    logmsgf(LOGMSG_USER, out, "txn serial: %lld\n", gbl_rep_trans_serial);
-    logmsgf(LOGMSG_USER, out, "txn inline: %lld\n", gbl_rep_trans_inline);
-    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %lld\n", gbl_rep_rowlocks_multifile);
-    logmsgf(LOGMSG_USER, out, "txn deadlocked: %lld\n", gbl_rep_trans_deadlocked);
+    logmsgf(LOGMSG_USER, out, "txn parallel: %ld\n", gbl_rep_trans_parallel);
+    logmsgf(LOGMSG_USER, out, "txn serial: %ld\n", gbl_rep_trans_serial);
+    logmsgf(LOGMSG_USER, out, "txn inline: %ld\n", gbl_rep_trans_inline);
+    logmsgf(LOGMSG_USER, out, "txn multifile rowlocks: %ld\n",
+            gbl_rep_rowlocks_multifile);
+    logmsgf(LOGMSG_USER, out, "txn deadlocked: %ld\n",
+            gbl_rep_trans_deadlocked);
     prn_lstat(lc_cache_hits);
     prn_lstat(lc_cache_misses);
     prn_stat(lc_cache_size);
@@ -633,12 +636,24 @@ static void sanc_dump(FILE *out, bdb_state_type *bdb_state)
         logmsgf(LOGMSG_USER, out, "sanc nodes are missin\n");
 }
 
+#if WITH_SSL
+static void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
+{
+    extern ssl_mode gbl_client_ssl_mode;
+    if (gbl_client_ssl_mode <= SSL_UNKNOWN)
+        return;
+    dbinfo_response->has_require_ssl = 1;
+    dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
+}
+#else
+#define fill_ssl_info(arg)
+#endif
+
 void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
 {
     CDB2DBINFORESPONSE *dbinfo_response = p_response;
     struct host_node_info nodes[REPMAX];
     int num_nodes = 0, i = 0;
-    extern ssl_mode gbl_client_ssl_mode;
 
     num_nodes = net_get_nodes_info(bdb_state->repinfo->netinfo, REPMAX, nodes);
 
@@ -727,12 +742,8 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
 
     dbinfo_response->nodes = nodeinfos;
     dbinfo_response->master = master;
-    if (gbl_client_ssl_mode <= SSL_UNKNOWN)
-        dbinfo_response->has_require_ssl = 0;
-    else {
-        dbinfo_response->has_require_ssl = 1;
-        dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
-    }
+
+    fill_ssl_info(dbinfo_response);
 }
 
 static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
@@ -969,7 +980,7 @@ static void process_reptrca(bdb_state_type *bdb_state, int on_off)
         rc = net_send_message(bdb_state->repinfo->netinfo, hostlist[i],
                               USER_TYPE_REPTRC, &tmp, sizeof(int), 1, 5 * 1000);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "trouble sending to node %d\n", hostlist[i]);
+            logmsg(LOGMSG_ERROR, "trouble sending to node %s\n", hostlist[i]);
         }
     }
 }
@@ -1159,7 +1170,7 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
             logmsg(LOGMSG_USER, "  %s ix %d   => %u\n", bdb_state->name, ix, npages);
         }
     }
-    logmsg(LOGMSG_USER, "total freelist pages for %s: %llu\n", bdb_state->name,
+    logmsg(LOGMSG_USER, "total freelist pages for %s: %lu\n", bdb_state->name,
            total_npages);
     return total_npages;
 }
@@ -1181,7 +1192,7 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
             return;
         }
     }
-    logmsg(LOGMSG_USER, "total free pages: %llu\n", npages);
+    logmsg(LOGMSG_USER, "total free pages: %lu\n", npages);
 }
 
 const char *bdb_find_net_host(bdb_state_type *bdb_state, const char *host)
@@ -1635,8 +1646,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         free(host);
 
         net_send_decom_all(bdb_state->repinfo->netinfo, intern(realhost));
-        net_send_decom_all(bdb_state->repinfo->netinfo_signal,
-                           intern(realhost));
         osql_process_message_decom(intern(realhost));
     }
 
@@ -1959,7 +1968,7 @@ int dump_llmeta(bdb_state_type *bdb_state, int *bdberr)
     return 0;
 }
 
-#include "db_int.h"
+#include <build/db_int.h>
 #include "dbinc/log.h"
 
 static void dump_dbreg(DB *dbp)
@@ -2024,7 +2033,8 @@ void bdb_show_reptimes_compact(bdb_state_type *bdb_state)
                     first = 0;
                     logmsg(LOGMSG_USER, "reptimes  ");
                 }
-                logmsg(LOGMSG_USER, "%d: %.2f %.2f   ", nodes[i], avg[0], avg[1]);
+                logmsg(LOGMSG_USER, "%s: %.2f %.2f   ", nodes[i], avg[0],
+                       avg[1]);
                 numdisplayed++;
             }
         }
@@ -2044,7 +2054,8 @@ void bdb_show_reptimes(bdb_state_type *bdb_state)
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
     for (int i = 0; i < numnodes; i++) {
         if (bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]) {
-            logmsg(LOGMSG_USER, "%5d %10.2f %10.2f\n", nodes[i],
+            logmsg(
+                LOGMSG_USER, "%s %10.2f %10.2f\n", nodes[i],
                 averager_avg(
                     bdb_state->seqnum_info->time_10seconds[nodeix(nodes[i])]),
                 averager_avg(
