@@ -134,6 +134,10 @@ dir     $DBDIR
 setattr MASTER_REJECT_REQUESTS 0
 EOPTIONS
 
+if [[ -n "$CUSTOMLRLPATH" ]]; then
+    cat $CUSTOMLRLPATH >> $DBDIR/$DBNAME.lrl
+fi
+
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
 
 # If CLUSTER is defined, populate config and lrl with that info
