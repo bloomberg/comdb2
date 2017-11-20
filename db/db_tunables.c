@@ -650,6 +650,39 @@ static void *sql_tranlevel_default_value()
     }
 }
 
+static int sql_tranlevel_default_update(void *context, void *value)
+{
+    char *line;
+    char *tok;
+    int st = 0;
+    int llen;
+    int ltok;
+
+    line = (char *)value;
+    llen = strlen(line);
+
+    tok = segtok(line, llen, &st, &ltok);
+    if (tok == NULL) {
+        logmsg(LOGMSG_USER, "expected transaction level\n");
+        return 1;
+    } else if (tokcmp(tok, ltok, "blocksock") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+    } else if (tokcmp(tok, ltok, "recom") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
+    } else if (tokcmp(tok, ltok, "snapisol") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+    } else if (tokcmp(tok, ltok, "serial") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
+    } else {
+        logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
+        return 1;
+    }
+    gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
+    logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
+           (char *)sql_tranlevel_default_value());
+    return 0;
+}
+
 /* Routines for the tunable system itself - tunable-specific
  * routines belong above */
 

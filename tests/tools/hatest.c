@@ -425,7 +425,7 @@ void printCol(FILE *f, cdb2_hndl_tp *cdb2h, void *val, int col, int printmode)
 }
 
 #include <sys/socket.h>
-#define MAX_NODES 16
+#define MAX_NODES 128
 
 struct dummy_cdb2buf {
     int fd;

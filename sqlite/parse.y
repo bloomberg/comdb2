@@ -756,13 +756,6 @@ sortlist(A) ::= expr(Y) sortorder(Z). {
   sqlite3ExprListSetSortOrder(A,Z);
 }
 
-cmd ::= rename_comdb2table.
-
-rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
-    comdb2WriteTransaction(pParse);
-    sqlite3AlterRenameTable(pParse,&X,&Y,D);
-}
-
 %type sortorder {int}
 sortorder(A) ::= ASC.           {A = SQLITE_SO_ASC;}
 sortorder(A) ::= DESC.          {A = SQLITE_SO_DESC;}
@@ -2110,6 +2103,15 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
 %endif
+
+
+/////////////////// COMDB2 RENAME TABLE STATEMENT  //////////////////////////////
+cmd ::= rename_comdb2table.
+
+rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
+    comdb2WriteTransaction(pParse);
+    sqlite3AlterRenameTable(pParse,&X,&Y,D);
+}
 
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}
