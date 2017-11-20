@@ -3305,7 +3305,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
             if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
                 abort();
 
-            p_buf_end = rpl + rpllen;
+            p_buf_end = (const uint8_t *)rpl + rpllen;
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
@@ -7648,7 +7648,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         comdb2uuidstr(uuid, us);
         type = rpl.type;
         id = rpl.sid;
-        comdb2uuid_clear(us);
+        comdb2uuid_clear((unsigned char *)us);
     }
 
     if (!logsb) {

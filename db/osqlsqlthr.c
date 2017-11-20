@@ -1124,7 +1124,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
             !(clnt->ins_keys & (1ULL << i)))
             continue;
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 0,
-                             i, thd->sqlclntstate->idxInsert[i],
+                             i, (char *)thd->sqlclntstate->idxInsert[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         RESTART_SOCKSQL;
         if (rc)
@@ -1151,7 +1151,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur, struct sql_thread *thd,
             !(clnt->del_keys & (1ULL << i)))
             continue;
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 1,
-                             i, thd->sqlclntstate->idxDelete[i],
+                             i, (char *)thd->sqlclntstate->idxDelete[i],
                              getkeysize(pCur->db, i), nettype, osql->logsb);
         RESTART_SOCKSQL;
         if (rc)

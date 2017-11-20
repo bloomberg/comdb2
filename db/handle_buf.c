@@ -595,10 +595,10 @@ static void *thd_req(void *vthd)
                     /* dont process next request as it goes over
                        the write limit..put it back on queue and grab
                        next read */
-                    (void)listc_atl(&q_reqs, nxtrq);
+                    listc_atl(&q_reqs, nxtrq);
                     nxtrq = (struct dbq_entry_t *)listc_rtl(&rq_reqs);
                     if (nxtrq != NULL) {
-                        (void)listc_rfl(&q_reqs, nxtrq);
+                        listc_rfl(&q_reqs, nxtrq);
                         /* release the memory block of the link */
                         thd->iq = nxtrq->obj;
                         pool_relablk(pq_reqs, nxtrq);
@@ -609,7 +609,7 @@ static void *thd_req(void *vthd)
                 } else {
                     if (!newrqwriter) {
                         /*get rid of new request from read queue */
-                        (struct dbq_entry_t *)listc_rfl(&rq_reqs, nxtrq);
+                        listc_rfl(&rq_reqs, nxtrq);
                     }
                     /* release the memory block of the link */
                     pool_relablk(pq_reqs, nxtrq);
@@ -1340,7 +1340,7 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
             if (iamwriter &&
                 (write_thd_count - iothreads) >= numwriterthreads) {
                 /* i am invalid writer, check the read queue instead */
-                (void *)listc_atl(&q_reqs, nextrq);
+                listc_atl(&q_reqs, nextrq);
 
                 nextrq = (struct dbq_entry_t *)listc_rtl(&rq_reqs);
                 if (nextrq == NULL)
@@ -1358,7 +1358,7 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 /* i am reader or valid writer */
                 if (!iamwriter) {
                     /* remove reader from read queue */
-                    (void)listc_rfl(&rq_reqs, nextrq);
+                    listc_rfl(&rq_reqs, nextrq);
                 }
                 /* release link block */
                 pool_relablk(pq_reqs, nextrq);
@@ -1461,7 +1461,7 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                 iq = nextrq->obj;
                 iamwriter = is_req_write(iq->opcode) ? 1 : 0;
                 if (!iamwriter) {
-                    (void)listc_rfl(&rq_reqs, nextrq);
+                    listc_rfl(&rq_reqs, nextrq);
                 }
                 pool_relablk(pq_reqs, nextrq);
                 pthread_mutex_unlock(&lock);

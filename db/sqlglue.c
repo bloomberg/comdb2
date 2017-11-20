@@ -708,7 +708,7 @@ static int ondisk_to_sqlite_tz(struct dbtable *db, struct schema *s, void *inp,
     int datasz = 0;
     int hdrsz = 0;
     int remainingsz = 0;
-    int sz;
+    unsigned int sz;
     unsigned char *hdrbuf, *dtabuf;
     i64 ival;
     int nummalloc = 0;
@@ -960,8 +960,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                               0, &outdtsz, &f->convopts, vutf8_outblob);
 
         if (gbl_report_sqlite_numeric_conversion_errors &&
-                f->type == SERVER_BINT ||
-            f->type == SERVER_UINT || f->type == SERVER_BREAL) {
+            (f->type == SERVER_BINT || f->type == SERVER_UINT || f->type == SERVER_BREAL)) {
             double rValue;
             char *s;
             struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1354,7 +1353,7 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
             current += snprintf(buf + current, sizeof buf - current, "DESC");
         }
     }
-    crc = crc32(0, buf, current);
+    crc = crc32(0, (unsigned char*)buf, current);
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 
@@ -2777,7 +2776,7 @@ static int cursor_move_remote(BtCursor *pCur, int *pRes, int how)
         /* NOTE: local cache doesn't provide advanced eof termination,
          *  so don't stop on IX_FND
          */
-        if (rc == IX_FND && !is_sqlite_stat(pCur->fdbc->name(pCur))) {
+        if (rc == IX_FND && !(is_sqlite_stat(pCur->fdbc->name(pCur))) ) {
             if (how == CNEXT || how == CFIRST) {
                 pCur->next_is_eof = 1;
             } else if (how == CPREV || how == CLAST) {
@@ -3643,7 +3642,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
              * update remote */
             uuid_t tid;
             fdb_tran_t *trans =
-                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, tid);
+                fdb_trans_begin_or_join(clnt, pCur->bt->fdb, (char *)tid);
 
             if (!trans) {
                 logmsg(LOGMSG_ERROR, 
@@ -6763,7 +6762,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
                 logmsg(LOGMSG_USER, "\n");
             }
 
-            in = (char *)new_in;
+            in = (unsigned char *)new_in;
         } else if (pCur->ixnum >= 0 && pCur->db->ix_datacopy[pCur->ixnum]) {
             struct field *fidx = &(pCur->db->schema->member[f->idx]);
             assert(f->len == fidx->len);
@@ -10978,12 +10977,12 @@ int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
     Mem m;
 
     /* extract genid */
-    hdroffset = sqlite3GetVarint32(key, &hdrsz);
+    hdroffset = sqlite3GetVarint32((unsigned char *)key, &hdrsz);
     dataoffset = hdrsz;
-    hdroffset += sqlite3GetVarint32(key + hdroffset, &type);
+    hdroffset += sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
     assert(type == 6);
     assert(hdroffset == dataoffset);
-    sqlite3VdbeSerialGet(key + dataoffset, type, &m);
+    sqlite3VdbeSerialGet((unsigned char *)key + dataoffset, type, &m);
     *outlen = sizeof(m.u.i);
     memcpy(outbuf, &m.u.i, *outlen);
 
@@ -11008,13 +11007,13 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
     int fld;
     char *str;
 
-    hdroffset = sqlite3GetVarint32(row, &hdrsz);
+    hdroffset = sqlite3GetVarint32((unsigned char *)row, &hdrsz);
     dataoffset = hdrsz;
     fld = 0;
     while (hdroffset < hdrsz) {
-        hdroffset += sqlite3GetVarint32(row + hdroffset, &type);
+        hdroffset += sqlite3GetVarint32((unsigned char *)row + hdroffset, &type);
         prev_dataoffset = dataoffset;
-        dataoffset += sqlite3VdbeSerialGet(row + prev_dataoffset, type, &m);
+        dataoffset += sqlite3VdbeSerialGet((unsigned char *)row + prev_dataoffset, type, &m);
 
         if (fld < 7 && fld != 3 && fld != 6) {
             str = (char *)malloc(m.n + 1);
@@ -11039,7 +11038,7 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
 
             /* we need to replace the source with the local rootpage */
             m.u.i = new_rootpage;
-            sqlite3VdbeSerialPut(row + prev_dataoffset, &m, type);
+            sqlite3VdbeSerialPut((unsigned char *)row + prev_dataoffset, &m, type);
 
             break;
 
@@ -11506,7 +11505,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
             in_orig[0] = ~in_orig[0];
         }
         if (flip_orig) {
-            xorbufcpy(&in[1], &in[1], f->len - 1);
+            xorbufcpy((char *)&in[1], (char *)&in[1], f->len - 1);
         } else {
             switch (f->type) {
             case SERVER_BINT:
@@ -11521,7 +11520,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
                 /* This way we don't have to flip them back. */
                 uint8_t *p = alloca(f->len);
                 p[0] = in[0];
-                xorbufcpy(&p[1], &in[1], f->len - 1);
+                xorbufcpy((char *)&p[1], (char *)&in[1], f->len - 1);
                 in = p;
                 break;
             }
@@ -11587,9 +11586,9 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 
     case SERVER_BCSTR:
         /* point directly at the ondisk string */
-        m->z = &in[1]; /* skip header byte in front */
+        m->z = (char *)&in[1]; /* skip header byte in front */
         if (flip_orig || !(f->flags & INDEX_DESCEND)) {
-            m->n = cstrlenlim(&in[1], f->len - 1);
+            m->n = cstrlenlim((char *)&in[1], f->len - 1);
         } else {
             m->n = cstrlenlimflipped(&in[1], f->len - 1);
         }
@@ -11598,7 +11597,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 
     case SERVER_BYTEARRAY:
         /* just point to bytearray directly */
-        m->z = &in[1];
+        m->z = (char *)&in[1];
         m->n = f->len - 1;
         m->flags = MEM_Blob | MEM_Ephem;
         break;
@@ -11643,7 +11642,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 
         } else {
             /* previous broken case, treat as bytearay */
-            m->z = &in[1];
+            m->z = (char *)&in[1];
             m->n = f->len - 1;
             if (stype_is_null(in))
                 m->flags = MEM_Null;
@@ -11695,7 +11694,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
             }
         } else {
             /* previous broken case, treat as bytearay */
-            m->z = &in[1];
+            m->z = (char *)&in[1];
             m->n = f->len - 1;
             m->flags = MEM_Blob;
         }
@@ -11783,7 +11782,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
         if (len <= f->len - 5) {
             /* point directly at the ondisk string */
             /* TODO use types.c's enum for header length */
-            m->z = &in[5];
+            m->z = (char *)&in[5];
 
             /* m->n is the blob length */
             m->n = (len > 0) ? len : 0;
@@ -11808,7 +11807,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
         if (len <= f->len - 5) {
             /* point directly at the ondisk string */
             /* TODO use types.c's enum for header length */
-            m->z = &in[5];
+            m->z = (char *)&in[5];
 
             /* sqlite string lengths do not include NULL */
             m->n = (len > 0) ? len - 1 : 0;
@@ -12065,7 +12064,7 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
     }
 
     len = strlen(db->tablename);
-    len = crc32c(db->tablename, len);
+    len = crc32c((uint8_t *)db->tablename, len);
     snprintf(temp_newdb_name, MAXTABLELEN, "sc_alter_temp_%X", len);
 
     for (ixnum = 0; ixnum < db->nix; ixnum++) {
@@ -12202,7 +12201,7 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
 
     for (i = 0; i < sc->nmembers; i++) {
         memset(&m[i], 0, sizeof(Mem));
-        rc = get_data_from_ondisk(sc, (char *)inbuf, blobs, maxblobs, i, &m[i],
+        rc = get_data_from_ondisk(sc, (uint8_t *)inbuf, blobs, maxblobs, i, &m[i],
                                   0, tzname);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to convert to ondisk\n", __func__);

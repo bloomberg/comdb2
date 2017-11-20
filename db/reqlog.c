@@ -1727,9 +1727,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
-    if (logger->fingerprint) {
-        reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
-    }
+    reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
 
     logger->in_request = 0;
 
