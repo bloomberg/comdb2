@@ -78,7 +78,8 @@ static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
 
 int bdb_cleanup_private_blkseq(bdb_state_type *bdb_state)
 {
-    for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes; stripe++) {
+    for (int stripe = 0; stripe < bdb_state->attr->private_blkseq_stripes;
+         stripe++) {
         if (bdb_state->blkseq_env[stripe]) {
             pthread_mutex_destroy(&bdb_state->blkseq_lk[stripe]);
             for (int i = 0; i < 2; i++) {
@@ -150,6 +151,7 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
             return rc;
         }
 
+        bdb_state->blkseq_env[stripe] = env;
         env->set_errfile(env, stderr);
 
         rc = env->set_cachesize(env, 0, bdb_state->attr->private_blkseq_cachesz,
@@ -178,7 +180,6 @@ int bdb_create_private_blkseq(bdb_state_type *bdb_state)
                 return -1;
             bzero(&bdb_state->blkseq_last_lsn[i][stripe], sizeof(DB_LSN));
         }
-        bdb_state->blkseq_env[stripe] = env;
     }
     bdb_state->blkseq_last_roll_time = time_epoch();
 

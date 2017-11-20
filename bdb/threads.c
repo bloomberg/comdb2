@@ -237,7 +237,8 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (!db_is_stopped() && (lease_time = bdb_state->attr->master_lease) != 0) {
+    while (!db_is_stopped() &&
+           (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
             int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);
@@ -355,8 +356,8 @@ void *logdelete_thread(void *arg)
         time_t now = time(NULL);
         int run_interval = bdb_state->attr->logdelete_run_interval;
         run_interval = (run_interval <= 0 ? 30 : run_interval);
-        
-        if((now - last_add_record) >= run_interval) {
+
+        if ((now - last_add_record) >= run_interval) {
             BDB_READLOCK("logdelete_thread");
             delete_log_files(bdb_state);
             BDB_RELLOCK();

@@ -1538,19 +1538,19 @@ static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
         tbl->ixsql[i] = NULL;
     }
     switch (tbl->tablename[11]) {
-        case '1':
-            tbl->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
-            break;
-        case '2':
-            tbl->sql =
-                strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
-            break;
-        case '4':
-            tbl->sql = strdup(
-                    "create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
-            break;
-        default:
-            abort();
+    case '1':
+        tbl->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
+        break;
+    case '2':
+        tbl->sql =
+            strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
+        break;
+    case '4':
+        tbl->sql =
+            strdup("create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
+        break;
+    default:
+        abort();
     }
     if (tbl->ixsql) {
         free(tbl->ixsql);
@@ -1657,7 +1657,8 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             return -1;
         }
 
-        sql_index_name_trans(namebuf, sizeof(namebuf), schema, tbl, ixnum, tran);
+        sql_index_name_trans(namebuf, sizeof(namebuf), schema, tbl, ixnum,
+                             tran);
         if (schema->sqlitetag)
             free(schema->sqlitetag);
         schema->sqlitetag = strdup(namebuf);
@@ -1754,7 +1755,8 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                 logmsg(LOGMSG_ERROR, "PARTIAL INDEXES FOUND IN SCHEMA! PLEASE FIRST "
                                 "ENABLE THE PARTIAL INDEXES FEATURE.\n");
                 if (tbl->iq)
-                    reqerrstr(tbl->iq, ERR_SC, "Please enable partial indexes.");
+                    reqerrstr(tbl->iq, ERR_SC,
+                              "Please enable partial indexes.");
                 strbuf_free(sql);
                 return -1;
             }
@@ -1777,7 +1779,6 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
     strbuf_free(sql);
     return 0;
 }
-
 
 /* create and write SQL statements. uses ondisk schema */
 int create_sqlmaster_records(void *tran)

@@ -6396,9 +6396,6 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     }
     clnt->ddl_tables = NULL;
     clnt->dml_tables = NULL;
-
-
-
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)

@@ -741,7 +741,7 @@ int free_gbl_tunables()
         free_tunable(gbl_tunables->array[i]);
         free(gbl_tunables->array[i]);
     }
-    if(gbl_tunables->hash) {
+    if (gbl_tunables->hash) {
         hash_clear(gbl_tunables->hash);
         hash_free(gbl_tunables->hash);
         gbl_tunables->hash = NULL;
@@ -796,7 +796,8 @@ int register_tunable(comdb2_tunable tunable)
         logmsg(LOGMSG_ERROR, "%s: Tunable must have a name.\n", __func__);
         goto err;
     }
-    if ((t->name = strdup(tunable.name)) == NULL) goto oom_err;
+    if ((t->name = strdup(tunable.name)) == NULL)
+        goto oom_err;
     /* Keep tunable names in lower case (to be consistent). */
     tunable_tolower(t->name);
 

@@ -1421,8 +1421,8 @@ void clean_exit(void)
     cleanup_sqlite_master();
     for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
         struct dbtable *tbl = thedb->dbs[ii];
-        delete_schema(tbl->tablename); //tags hash
-        delete_db(tbl->tablename); // will free db
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
         freedb(tbl);
     }
     if (thedb->db_hash) {
@@ -1431,7 +1431,7 @@ void clean_exit(void)
         thedb->db_hash = NULL;
     }
     cleanup_interned_strings();
-    //TODO: extern void cleanup_peer_hash();
+    // TODO: extern void cleanup_peer_hash();
 
     sleep(1);
     logmsg(LOGMSG_ERROR, "goodbye\n");
