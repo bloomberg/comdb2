@@ -350,17 +350,18 @@ void *logdelete_thread(void *arg)
     thread_started("bdb logdelete");
 
     bdb_thread_event(bdb_state, 1);
-    time_t last_add_record = 0;
+    time_t last_run_time = 0;
 
     while (!db_is_stopped()) {
         time_t now = time(NULL);
         int run_interval = bdb_state->attr->logdelete_run_interval;
         run_interval = (run_interval <= 0 ? 30 : run_interval);
 
-        if ((now - last_add_record) >= run_interval) {
+        if ((now - last_run_time) >= run_interval) {
             BDB_READLOCK("logdelete_thread");
             delete_log_files(bdb_state);
             BDB_RELLOCK();
+            last_run_time = now;
         }
         sleep(1);
     }
