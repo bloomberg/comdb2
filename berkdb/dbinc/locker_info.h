@@ -19,7 +19,7 @@
 
 #define	ISSET_MAP(M, N)	((M)[(N) / 32] & (1 << (N) % 32))
 
-#include "db.h"
+#include "build/db.h"
 #ifndef _DB_LOCK_H_
 typedef struct DB_LOCKOBJ DB_LOCKOBJ;
 #endif

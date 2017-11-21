@@ -36,7 +36,7 @@
 #include "util.h"
 #include "plhash.h"
 #include "logmsg.h"
-#include "berkdb/dbinc/locker_info.h"
+#include "dbinc/locker_info.h"
 
 #include "cson_amalgamation_core.h"
 
