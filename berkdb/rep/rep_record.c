@@ -338,6 +338,7 @@ matchable_log_type(int rectype)
 }
 
 int gbl_rep_verify_will_recover_trace = 0;
+int gbl_rep_verify_always_grab_writelock = 0;
 
 /*
  * __rep_verify_will_recover --
@@ -365,6 +366,9 @@ __rep_verify_will_recover(dbenv, control, rec)
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
 	rp = (REP_CONTROL *)control->data;
+
+	if (gbl_rep_verify_always_grab_writelock)
+		return 1;
 
 	if (LOG_SWAPPED())
 		__rep_control_swap(rp);
