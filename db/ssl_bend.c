@@ -52,6 +52,8 @@ char *gbl_ca_file = NULL;
 int gbl_ssl_allow_remsql = 0;
 /* negative -> OpenSSL default */
 long gbl_sess_cache_sz = -1;
+/* Default cipher suites comdb2 uses. */
+const char *gbl_ciphers = "HIGH:!aNULL:!eNULL";
 ssl_mode gbl_client_ssl_mode = SSL_UNKNOWN;
 ssl_mode gbl_rep_ssl_mode = SSL_UNKNOWN;
 SSL_CTX *gbl_ssl_ctx = NULL;
@@ -185,6 +187,19 @@ int ssl_process_lrl(char *line, size_t len)
         logmsg(LOGMSG_WARN, "POTENTIAL SECURITY ISSUE: "
                "Plaintext remote SQL is permitted. Please make sure that "
                "the databases are in a secure environment.\n");
+    } else if (tokcmp(line, ltok, "ssl_cipher_suites") == 0) {
+        /* Get cipher suites. */
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok <= 0) {
+            my_ssl_eprintln("Expected ciphers for `ssl_cipher_suites'.");
+            return EINVAL;
+        }
+
+        gbl_ciphers = tokdup(tok, ltok);
+        if (gbl_ciphers == NULL) {
+            my_ssl_eprintln("Failed to duplicate string: %s.", strerror(errno));
+            return errno;
+        }
     }
     return 0;
 }
@@ -263,9 +278,9 @@ int ssl_bend_init(const char *default_certdir)
     }
     if (gbl_client_ssl_mode >= SSL_UNKNOWN ||
         gbl_rep_ssl_mode >= SSL_UNKNOWN) {
-        rc = ssl_new_ctx(&gbl_ssl_ctx, ks,
-                         &gbl_cert_file, &gbl_key_file,
-                         &gbl_ca_file, gbl_sess_cache_sz, errmsg, sizeof(errmsg));
+        rc = ssl_new_ctx(&gbl_ssl_ctx, ks, &gbl_cert_file, &gbl_key_file,
+                         &gbl_ca_file, gbl_sess_cache_sz, gbl_ciphers, errmsg,
+                         sizeof(errmsg));
         if (rc == 0) {
             if (gbl_client_ssl_mode == SSL_UNKNOWN)
                 gbl_client_ssl_mode = SSL_ALLOW;
@@ -325,4 +340,6 @@ void ssl_stats(void)
                SSL_SESSION_CACHE_MAX_SIZE_DEFAULT);
     else
         logmsg(LOGMSG_INFO, "Session Cache Size: %ld\n", gbl_sess_cache_sz);
+
+    logmsg(LOGMSG_INFO, "Cipher suites: %s\n", gbl_ciphers);
 }

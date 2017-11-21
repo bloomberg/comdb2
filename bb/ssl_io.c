@@ -208,9 +208,27 @@ static int ssl_verify_cn(const char *hostname, const X509 *cert)
 
 static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
 {
+    /*
+    ** 1) Perform a reverse DNS lookup to get the hostname
+    **    associated with the source address.
+    ** 2) Perform a forward DNS lookup to get a list of addresses
+    **    associated with the hostname.
+    ** 3) If the source address is in the list, proceed;
+    **    otherwise, return 1 immediately.
+    ** 4) Perform SAN/CN validation.
+    **
+    ** The forward DNS lookup is necessary in case an attacker is
+    ** in control of reverse DNS for the source IP.
+    */
     const char *peerhost;
-    int rc;
+    struct sockaddr_in peeraddr;
+    struct in_addr *peer_in_addr, **p_fwd_in_addr;
+    socklen_t len = sizeof(struct sockaddr_in);
+    int rc, found_addr, herr;
+    char buf[8192];
+    struct hostent hostbuf, *hp = NULL;
 
+    /* Reverse lookup the hostname */
     peerhost = get_origin_mach_by_buf(sb);
 
     if (strcmp(peerhost, "???") == 0) {
@@ -218,6 +236,40 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
                      "Could not obtain peer host name.");
         return 1;
     }
+
+    /* Should always succeed as get_origin_mach_by_buf()
+       returns a valid hostname. */
+    getpeername(sb->fd, (struct sockaddr *)&peeraddr, &len);
+
+/* Forward lookup the IPs */
+#if defined(_LINUX_SOURCE)
+    gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &hp, &herr);
+#elif defined(_SUN_SOURCE)
+    hp = gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &herr);
+#else
+    hp = gethostbyname(peerhost);
+#endif
+
+    if (hp == NULL) {
+        ssl_sfeprint(err, n, my_ssl_eprintln,
+                     "Failed to perform forward DNS lookup.");
+        return 1;
+    }
+
+    /* Find the source address in the address list returned
+       by the forward DNS lookup. */
+    for (found_addr = 0, peer_in_addr = &peeraddr.sin_addr,
+        p_fwd_in_addr = (struct in_addr **)hp->h_addr_list;
+         *p_fwd_in_addr != NULL; ++p_fwd_in_addr) {
+        if (peer_in_addr->s_addr == (*p_fwd_in_addr)->s_addr) {
+            found_addr = 1;
+            break;
+        }
+    }
+
+    /* Suspicious PTR record. Reject it. */
+    if (!found_addr)
+        return 1;
 
     /* Trust localhost */
     if (strcasecmp(peerhost, "localhost") == 0 ||
