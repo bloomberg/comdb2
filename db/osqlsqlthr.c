@@ -1573,7 +1573,10 @@ int osql_dbq_consume_logic(struct sqlclntstate *clnt, const char *spname,
     if ((rc = osql_save_dbq_consume(clnt, spname, genid)) != 0) {
         return rc;
     }
-    return osql_dbq_consume(clnt, spname, genid);
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        rc = osql_dbq_consume(clnt, spname, genid);
+    }
+    return rc;
 }
 
 extern int gbl_allow_user_schema;

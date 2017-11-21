@@ -17,7 +17,7 @@ function call_unsetup {
 
 function warn_long_setup {
     start=$(date +%s)
-    ( ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" ) ) &
+    ( ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" ) ) &
     pid=$!
     kill -0 $pid >/dev/null 2>&1
     r=$?
@@ -40,7 +40,7 @@ function call_setup {
          warn_long_setup
          rc=$?
     else
-        timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ t='${DBNAME}'; print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
+        timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!" )
         rc=$?
     fi
     glist=`pgrep gawk -a | grep ${DBNAME} | cut -f1 -d' ' | xargs echo`

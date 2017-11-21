@@ -1099,7 +1099,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         }
         len = vsnprintf(s, len, fmt, args_c);
     } else {
-        len = nchars;
+        len = strlen(s);
     }
     va_end(args_c);
 
@@ -1208,7 +1208,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         }
         len = vsnprintf(s, len, fmt, args_c);
     } else {
-        len = nchars;
+        len = strlen(s);
     }
     va_end(args_c);
 
@@ -1313,6 +1313,7 @@ int reqlog_loghex(struct reqlogger *logger, unsigned event_flag, const void *d,
 
         util_tohex(hexstr, dptr, len);
         if (logger->dump_mask & event_flag) {
+            assert(strlen(hexstr) + 1 >= len * 2);
             dump(logger, NULL, hexstr, len * 2);
         }
     }
@@ -1590,6 +1591,7 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
                 } else {
                     dump(logger, out, ", ", 2);
                 }
+                assert(strlen(pevent->text) + 1 >= pevent->length);
                 dump(logger, out, pevent->text, pevent->length);
             }
         }
@@ -1632,6 +1634,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
                 if (pevent->length < 0) {
                     pevent->length = strlen(pevent->text);
                 }
+                assert(strlen(pevent->text) + 1 >= pevent->length);
                 dump(logger, out, pevent->text, pevent->length);
             }
             break;
