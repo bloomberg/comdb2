@@ -1431,7 +1431,7 @@ void clean_exit(void)
         thedb->db_hash = NULL;
     }
     cleanup_interned_strings();
-    // TODO: extern void cleanup_peer_hash();
+    cleanup_peer_hash();
 
     sleep(1);
     logmsg(LOGMSG_ERROR, "goodbye\n");

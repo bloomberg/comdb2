@@ -336,8 +336,8 @@ int write_logmsg(void *state, const void *src, unsigned int n)
 
 static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
 {
-    cson_value *contexts = cson_value_new_array();
     if (logger->ncontext > 0) {
+        cson_value *contexts = cson_value_new_array();
         cson_array *arr = cson_value_get_array(contexts);
         cson_array_reserve(arr, logger->ncontext);
         for (int i = 0; i < logger->ncontext; i++) {

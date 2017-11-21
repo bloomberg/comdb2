@@ -1485,7 +1485,6 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
-    add_tag_schema(table, to);
     to->nmembers = from->nmembers;
     to->member = calloc(to->nmembers, sizeof(struct field));
     to->flags = from->flags;
@@ -1519,7 +1518,6 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
                     to->member[i].in_default_len = 0;
                 }
             }
-            del_tag_schema(table, to->tag);
             free(to->tag);
             free(to);
             return -1;
@@ -1532,6 +1530,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
+    add_tag_schema(table, to);
     return 0;
 }
 
@@ -6837,11 +6836,11 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema)
     unlock_taglock();
 }
 
-void delete_schema(const char *dbname)
+void delete_schema(const char *tblname)
 {
     struct dbtag *dbt;
     lock_taglock();
-    dbt = hash_find(tags, &dbname);
+    dbt = hash_find(tags, &tblname);
     hash_del(tags, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;

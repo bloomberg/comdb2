@@ -987,14 +987,16 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 #endif
 }
 
-#if SBUF2_SERVER
-void cleanup_peer_hash()
+void SBUF2_FUNC(cleanup_peer_hash)()
 {
-    hash_clear(peer_hash);
-    hash_free(peer_hash);
-    peer_hash = NULL;
-}
+#if SBUF2_SERVER
+    if (peer_hash) {
+        hash_clear(peer_hash);
+        hash_free(peer_hash);
+        peer_hash = NULL;
+    }
 #endif
+}
 
 #if WITH_SSL
 #  ifdef my_ssl_println
