@@ -99,7 +99,6 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 */
 int sqlite3_finalize(sqlite3_stmt *pStmt){
   int rc;
-printf("AZ finalize: %p\n", pStmt);
   if( pStmt==0 ){
     /* IMPLEMENTATION-OF: R-57228-12904 Invoking sqlite3_finalize() on a NULL
     ** pointer is a harmless no-op. */
@@ -189,10 +188,8 @@ int sqlite3_stmt_has_remotes(sqlite3_stmt *pStmt)
       int i;
       if( v->btreeMask[0] >= 4){
         rc = 1;
-printf("AZ if( v->btreeMask[0] >= 4) setting rc = 1\n");
       }else{
         rc = !sqlite3DbMaskAllZero(v->btreeMask, 1);
-printf("AZ calling sqlite3DbMaskAllZero rc = %d\n", rc);
       }
 #else
       rc = (v->btreeMask >= 4);
