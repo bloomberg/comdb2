@@ -381,8 +381,10 @@ __rep_verify_will_recover(dbenv, control, rec)
 
 	memset(&mylog, 0, sizeof(mylog));
 
-	if ((ret = __log_c_get(logc, &rp->lsn, &mylog, DB_SET)) != 0)
+	if ((ret = __log_c_get(logc, &rp->lsn, &mylog, DB_SET)) != 0) {
+		will_recover = 1;
 		goto close_cursor;
+    }
 
 	if (mylog.size == rec->size &&
 			memcmp(mylog.data, rec->data, rec->size) == 0)
@@ -391,8 +393,7 @@ __rep_verify_will_recover(dbenv, control, rec)
 	LOGCOPY_32(&rectype, mylog.data);
 
 	if ((will_recover == 1 && !matchable_log_type(rectype)) &&
-			((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0)
-			|| (ret == DB_NOTFOUND)) {
+			((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0)){
 		will_recover = 0;
 	}
 
