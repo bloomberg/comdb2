@@ -445,16 +445,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "cnonce",
                         cson_value_new_string(logger->request->cnonce.data,
                                               logger->request->cnonce.len));
-
-    if (logger->iq && logger->iq->have_snap_info) /* for txn type */
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(logger->iq->snap_info.key,
-                                              logger->iq->snap_info.keylen));
-    else if (logger->request != NULL &&
-             logger->request->has_cnonce) /* for sql*/
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(logger->request->cnonce.data,
-                                              logger->request->cnonce.len));
     if (logger->have_id)
         cson_object_set(obj, "id",
                         cson_value_new_string(logger->id, sizeof(logger->id)));
