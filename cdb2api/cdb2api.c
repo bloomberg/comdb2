@@ -1516,9 +1516,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
         return -1;
     }
 
-    rc = ssl_new_ctx(&ctx, hndl->sslpath,
-                     &hndl->cert, &hndl->key, &hndl->ca,
-                     hndl->num_hosts, hndl->errstr, sizeof(hndl->errstr));
+    rc = ssl_new_ctx(&ctx, hndl->sslpath, &hndl->cert, &hndl->key, &hndl->ca,
+                     hndl->num_hosts, NULL, hndl->errstr, sizeof(hndl->errstr));
     if (rc != 0) {
         hndl->sslerr = 1;
         return -1;
