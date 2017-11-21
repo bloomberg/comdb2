@@ -402,8 +402,8 @@ __db_relink(dbc, add_rem, pagep, new_next, needlock)
 	/* Log the change. */
 	if (DBC_LOGGING(dbc)) {
 		if ((ret = __db_relink_log(dbp, dbc->txn, &ret_lsn, 0, add_rem,
-			    pagep->pgno, &pagep->lsn, pagep->prev_pgno, plsnp,
-			    pagep->next_pgno, nlsnp)) != 0)
+				pagep->pgno, &pagep->lsn, pagep->prev_pgno, plsnp,
+				pagep->next_pgno, nlsnp)) != 0)
 			goto err;
 
 		if (bdb_relink_pglogs(dbp->dbenv->app_private, mpf->fileid,

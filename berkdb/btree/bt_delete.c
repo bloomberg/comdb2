@@ -484,15 +484,15 @@ err:		for (; epg <= cp->csp; ++epg) {
 			b.size = TYPE(parent) == P_IRECNO ? RINTERNAL_SIZE :
 			    BINTERNAL_SIZE(((BINTERNAL *)b.data)->len);
 			if ((ret = __bam_rsplit_log(dbp, dbc->txn,
-			    &child->lsn, 0, PGNO(child), &a,
-			    PGNO(parent), RE_NREC(parent), &b,
-			    &parent->lsn)) != 0)
+				&child->lsn, 0, PGNO(child), &a,
+				PGNO(parent), RE_NREC(parent), &b,
+				&parent->lsn)) != 0)
 				goto stop;
 			if (bdb_relink_pglogs(dbp->dbenv->app_private,
 				mpf->fileid, PGNO(child), PGNO(parent),
 				PGNO_INVALID, child->lsn) != 0) {
 				logmsg(LOGMSG_FATAL, "%s: failed relink pglogs\n",
-				    __func__);
+					__func__);
 				abort();
 			}
 		} else

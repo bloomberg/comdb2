@@ -513,7 +513,7 @@ __db_relink_recover(dbenv, dbtp, lsnp, op, info)
 	REC_INTRO(__db_relink_read, 1);
 
 	if (mpf && bdb_relink_pglogs(dbenv->app_private, mpf->fileid,
-	    argp->pgno, argp->prev, argp->next, *lsnp) != 0) {
+		argp->pgno, argp->prev, argp->next, *lsnp) != 0) {
 		logmsg(LOGMSG_FATAL, "%s: fail relink pglogs\n", __func__);
 		abort();
 	}
