@@ -2638,7 +2638,6 @@ static int finalize_stmt_hash(void *stmt_entry, void *args)
 {
     stmt_hash_entry_type *entry = (stmt_hash_entry_type *)stmt_entry;
 
-    printf("AZ finalizeStmt: %p (%p, sql '%s')\n", entry, entry->stmt,
            entry->sql);
     sqlite3_finalize(entry->stmt);
     if (entry->params_to_bind) {
@@ -2656,16 +2655,13 @@ static void delete_stmt_table(hash_t *stmt_table)
 {
     assert(stmt_table);
     /* parse through hash table and finalize all the statements */
-    printf("AZ START delete_stmt_table\n");
     hash_for(stmt_table, finalize_stmt_hash, NULL);
     hash_clear(stmt_table);
     hash_free(stmt_table);
-    printf("AZ DONE delete_stmt_table\n");
 }
 
 static inline void init_stmt_table(hash_t **stmt_table)
 {
-    printf("AZ thread %p: init_stmt_table\n", pthread_self());
     *stmt_table = hash_init_user(
         (hashfunc_t *)strhashfunc_stmt, (cmpfunc_t *)strcmpfunc_stmt,
         offsetof(stmt_hash_entry_type, sql), MAX_HASH_SQL_LENGTH);
@@ -2709,8 +2705,6 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
         tail = &thd->noparam_stmt_tail;
     }
 
-    printf("AZ hash_addEntry: %p (stmt %p, sql: '%s')\n", entry, entry->stmt,
-           entry->sql);
     int ret = hash_add(thd->stmt_table, entry);
     if (ret == 0) {
         assert(hash_find(thd->stmt_table, entry->sql) == entry);
@@ -2747,12 +2741,9 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd,
 
     assert(thd->stmt_table);
     stmt_hash_entry_type *tmp = hash_find(thd->stmt_table, (*tail)->sql);
-    printf("AZ hash find found: %p, sql: '%s', *tail: %p, sql: '%s'\n", tmp,
-           tmp->sql, *tail, (*tail)->sql);
 
     assert(*tail == tmp);
     int rc = hash_del(thd->stmt_table, *tail);
-    printf("AZ hash_del: %p (stmt %p) rc=%d\n", *tail, (*tail)->stmt, rc);
     assert(rc == 0);
     assert(hash_find(thd->stmt_table, (*tail)->sql) == NULL);
 
@@ -2808,7 +2799,6 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     if (*head == entry)
         *head = next_entry;
 
-    printf("AZ hash_del: %p\n", entry->stmt);
     hash_del(thd->stmt_table, entry->sql);
     (*cache_entries_counter_ptr)--;
 }
@@ -2841,7 +2831,6 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     /* stored procedure can call same stmt a lua thread more than once
      * so we should not add stmt that exists already */
     if (hash_find(thd->stmt_table, sql) != NULL) {
-        printf("AZ already in hash tbl '%s'\n", sql);
         return -1;
     }
 
@@ -2875,12 +2864,10 @@ static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
     if (stmt_table == NULL)
         return -1;
 
-    printf("AZ find_stmt_table '%s'\n", sql);
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH)
         return -1;
 
     *entry = hash_find(stmt_table, sql);
-    printf("AZ hash_find %p (sql %s)\n", *entry, sql);
 
     if (*entry == NULL)
         return -1;
@@ -3776,7 +3763,6 @@ static void query_stats_setup(struct sqlthdstate *thd,
 static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                             struct sql_state *rec)
 {
-    printf("AZ get_cached_stmt %s\n", rec->sql);
     rec->status = CACHE_DISABLED;
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_ALL ||
         (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM && clnt->tag)) {
