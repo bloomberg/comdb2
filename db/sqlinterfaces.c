@@ -4349,6 +4349,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     /* additional non-sqlite requests */
     stored_proc = 0;
     if ((rc = check_sql(clnt, &stored_proc)) != 0) {
+        //TODO: set this: outrc = rc;
         return rc;
     }
 
