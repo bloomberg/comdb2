@@ -926,8 +926,11 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	if ((ret = __find_latch_lockerid(dbenv, lockerid, &lidptr, 0)) != 0)
 		abort();
 
-	if (!F_ISSET(lidptr, DB_LOCKER_TRACK_WRITELOCKS))
-		return 0;
+	if (!F_ISSET(lidptr, DB_LOCKER_TRACK_WRITELOCKS)) {
+		logmsg(LOGMSG_FATAL, "%s: BUG! Writelocks for lsn[%u][%u] were not tracked\n",
+			__func__, lsn.file, lsn.offset);
+		abort();
+	}
 
 	F_CLR(lidptr, DB_LOCKER_TRACK_WRITELOCKS);
 	lidptr->has_pglk_lsn = 1;
@@ -935,6 +938,7 @@ __latch_update_tracked_writelocks_lsn(DB_ENV *dbenv, DB_TXN *txnp,
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
 
+	assert(lidptr->ntrackedlocks != 0);
 	for (i = 0; i < lidptr->ntrackedlocks; i++) {
 		ilatch = lidptr->tracked_locklist[i];
 		if (__allocate_db_lock_lsn(dbenv, &lsnp))
@@ -6297,17 +6301,23 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 	int ndx;
 	LOCKER_INDX(lt, region, lockid, ndx);
 	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
-	    || locker == NULL) {
+		|| locker == NULL) {
 		logmsg(LOGMSG_ERROR, "%s: lockid %x not found\n", __func__, lockid);
 		return -1;
 	}
-	if (!F_ISSET(locker, DB_LOCKER_TRACK_WRITELOCKS))
-		return 0;
+
+	if (!F_ISSET(locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+		logmsg(LOGMSG_FATAL, "%s: BUG! Writelocks for lsn[%u][%u] were not tracked\n",
+			__func__, lsn.file, lsn.offset);
+		abort();
+	}
+
 	F_CLR(locker, DB_LOCKER_TRACK_WRITELOCKS);
 	locker->has_pglk_lsn = 1;
 
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+	assert(locker->ntrackedlocks != 0);
 	for (i = 0; i < locker->ntrackedlocks; i++) {
 		lp = locker->tracked_locklist[i];
 		if (lp->status == DB_LSTAT_HELD) {

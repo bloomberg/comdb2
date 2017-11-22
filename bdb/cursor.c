@@ -7744,8 +7744,9 @@ static int bdb_btree_update_shadows_for_page(bdb_cursor_impl_t *cur,
     /*
     char *buf = NULL;
     hexdumpbuf(infileid, DB_FILE_ID_LEN, &buf);
-    printf("%s: FILEID: %s, pgno %d, upto [%d][%d]\n", __func__, buf, key.pgno,
-           upto.file, upto.offset);
+    printf("%s: shadow %p cur %p FILEID: %s, pgno %d, upto [%d][%d]\n",
+           __func__, cur->shadow_tran, cur, buf, key.pgno, upto.file,
+           upto.offset);
     free(buf);
     buf = NULL;
     */
@@ -8075,7 +8076,7 @@ static int update_pglogs_from_global_queues_int(
             current = current->lnk.prev;
         }
 
-        if (!current && prev && prev->type == PGLOGS_QUEUE_PAGE) {
+        if (!current && prev && found_greater) {
             update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, prev);
             last_lsn = prev->commit_lsn;
             current = prev;
@@ -8098,21 +8099,29 @@ static int update_pglogs_from_global_queues_int(
             last_lsn = current->commit_lsn;
     }
 
-    qcur->last = current;
-
-#if 0
-   if (last_lsn.file)
-   {
-      int len = (DB_FILE_ID_LEN * 2) + 1;
-      char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
-      hex_fid[len - 1] = '\0';
-      util_tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
-      lkprintf(stderr, "shadtrn %p cur %p upd_pglogs_from_queue: %s updated to [%d][%d]\n",
-            cur->shadow_tran, cur, hex_fid, last_lsn.file, last_lsn.offset);
+    if (qcur->last != current) {
+        /*
+        int len = (DB_FILE_ID_LEN * 2) + 1;
+        char hex_fid[(DB_FILE_ID_LEN * 2) + 1];
+        hex_fid[len - 1] = '\0';
+        util_tohex(hex_fid, qcur->fileid, DB_FILE_ID_LEN);
+        fprintf(stderr, "shadtrn %p cur %p upd_pglogs_from_queue: %s last "
+                        "[%d][%d] updated to [%d][%d]\n",
+                cur->shadow_tran, cur, hex_fid,
+                qcur->last ? qcur->last->commit_lsn.file : 0,
+                qcur->last ? qcur->last->commit_lsn.offset : 0,
+                current ? current->commit_lsn.file : 0,
+                current ? current->commit_lsn.offset : 0);
+        */
+    } else if (current != last) {
+        assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
+               log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <
+                   0);
    }
-#endif
 
-    return 0;
+   qcur->last = current;
+
+   return 0;
 }
 
 static int update_pglogs_from_global_queues(bdb_cursor_impl_t *cur,
