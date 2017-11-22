@@ -1423,6 +1423,7 @@ void clean_exit(void)
         struct dbtable *tbl = thedb->dbs[ii];
         delete_schema(tbl->tablename); // tags hash
         delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
         freedb(tbl);
     }
     if (thedb->db_hash) {

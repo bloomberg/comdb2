@@ -1985,6 +1985,7 @@ struct bias_info {
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+void bdb_cleanup_fld_hints(bdb_state_type *bdb_state);
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
 #endif
