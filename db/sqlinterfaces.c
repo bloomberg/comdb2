@@ -2637,8 +2637,6 @@ static u_int strhashfunc_stmt(u_char *keyp, int len)
 static int finalize_stmt_hash(void *stmt_entry, void *args)
 {
     stmt_hash_entry_type *entry = (stmt_hash_entry_type *)stmt_entry;
-
-           entry->sql);
     sqlite3_finalize(entry->stmt);
     if (entry->params_to_bind) {
         free_tag_schema(entry->params_to_bind);
