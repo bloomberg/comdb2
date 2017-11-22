@@ -34,16 +34,16 @@ int fdb_unp_to_p(Mem *m, int ncols, int hdrsz, int datasz, char *out,
     }
 
     /* put header size in header */
-    sz = sqlite3PutVarint(hdrbuf, hdrsz);
+    sz = sqlite3PutVarint((unsigned char *)hdrbuf, hdrsz);
     hdrbuf += sz;
 
     for (fnum = 0; fnum < ncols; fnum++) {
         sz = sqlite3VdbeSerialPut(
-            dtabuf, &m[fnum],
+            (unsigned char *)dtabuf, &m[fnum],
             sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
         dtabuf += sz;
         sz = sqlite3PutVarint(
-            hdrbuf,
+            (unsigned char *)hdrbuf,
             sqlite3VdbeSerialType(&m[fnum], SQLITE_DEFAULT_FILE_FORMAT, &len));
         hdrbuf += sz;
         assert(hdrbuf <= (out + hdrsz));

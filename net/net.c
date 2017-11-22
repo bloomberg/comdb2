@@ -820,7 +820,7 @@ static int read_stream(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
     while (nread < maxbytes) {
         if (host_node_ptr) /* not set by all callers */
             host_node_ptr->timestamp = time(NULL);
-        int n = sbuf2unbufferedread(sb, ptr + nread, maxbytes - nread);
+        int n = sbuf2unbufferedread(sb, (char *)ptr + nread, maxbytes - nread);
         if (n > 0) {
             nread += n;
         } else if (n < 0) {
@@ -4674,14 +4674,14 @@ int net_check_bad_subnet_lk(int ii)
 
     if (!last_bad_subnet_time) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Not set %d %s\n", pthread_self(),
-                   __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%" PRIu64 " %s Not set %d %s\n",
+                   pthread_self(), __func__, ii, subnet_suffices[ii]);
         goto out;
     }
 
     if (last_bad_subnet_time * 1000 + subnet_blackout_timems < time_epochms()) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Clearing out net %d %s\n",
+            logmsg(LOGMSG_USER, "%" PRIu64 " %s Clearing out net %d %s\n",
                    pthread_self(), __func__, ii, subnet_suffices[ii]);
         last_bad_subnet_time = 0;
         goto out;
@@ -4689,8 +4689,8 @@ int net_check_bad_subnet_lk(int ii)
 
     if (ii == last_bad_subnet_idx) {
         if (gbl_verbose_net)
-            logmsg(LOGMSG_USER, "%x %s Bad net %d %s\n", pthread_self(),
-                   __func__, ii, subnet_suffices[ii]);
+            logmsg(LOGMSG_USER, "%" PRIu64 " %s Bad net %d %s\n",
+                   pthread_self(), __func__, ii, subnet_suffices[ii]);
         rc = 1;
     }
 out:
@@ -4719,7 +4719,9 @@ void net_set_bad_subnet(const char *subnet)
             last_bad_subnet_time = time_epochms();
             last_bad_subnet_idx = i;
             if (gbl_verbose_net)
-                logmsg(LOGMSG_USER, "%x %s Marking %s bad, idx %d time %d\n",
+                logmsg(LOGMSG_USER,
+                       "%" PRIu64 " %s Marking %s bad, idx %d time %" PRId64
+                       "\n",
                        pthread_self(), __func__, subnet_suffices[i],
                        last_bad_subnet_idx, last_bad_subnet_time);
         }
@@ -5219,12 +5221,13 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
 static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
-    int lcl_len = sizeof(lcl_addr_inet);
+    size_t lcl_len = sizeof(lcl_addr_inet);
     struct hostent *he;
     int hlen;
     char *subnet;
 
-    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet, &lcl_len)) {
+    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet,
+                     (socklen_t *)&lcl_len)) {
         he = gethostbyaddr(&lcl_addr_inet.sin_addr,
                            sizeof lcl_addr_inet.sin_addr, AF_INET);
         /*if (gbl_verbose_net)*/
@@ -5589,7 +5592,7 @@ static void *accept_thread(void *arg)
     connect_and_accept_t *ca;
     pthread_t tid;
     char paddr[64];
-    int clilen;
+    size_t clilen;
     int new_fd;
     int flag = 1;
     SBUF2 *sb;
@@ -5659,7 +5662,8 @@ static void *accept_thread(void *arg)
         }
 
         if(portmux_fds) {
-            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
+            rc = getpeername(new_fd, (struct sockaddr *)&cliaddr,
+                             (socklen_t *)&clilen);
             if (rc) {
               logmsg(LOGMSG_ERROR, "Failed to get peer address\n");
               close(new_fd);

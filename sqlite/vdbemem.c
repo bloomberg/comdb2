@@ -2785,7 +2785,9 @@ static int _dttz_to_native_datetimeus(cdb2_client_datetimeus_t * cdt, const Mem 
     bzero(tmp, sizeof(tmp));
 
     /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT] */
-    if (!debug_switch_unlimited_datetime_range() && inp->du.dt.dttz_sec < -377705030401ll || inp->du.dt.dttz_sec > 253402214400ll)
+    if (!debug_switch_unlimited_datetime_range() && 
+        (inp->du.dt.dttz_sec < -377705030401ll || 
+         inp->du.dt.dttz_sec > 253402214400ll))
        return -1;
 
     tmp[0] = 8;

@@ -1228,7 +1228,7 @@ void newsql_send_strbuf_response(struct sqlclntstate *clnt, const char *str,
         cdb2__sqlresponse__column__init(columns[i]);
         columns[i]->has_type = 0;
         columns[i]->value.len = slen;
-        columns[i]->value.data = (char *)str;
+        columns[i]->value.data = (uint8_t *)str;
     }
 
     _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, columns,
@@ -4189,6 +4189,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
+        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
+            sqlite3ResetFdbSchemas(thd->sqldb);
+            return rc = SQLITE_SCHEMA_REMOTE;
         }
         if (rc != SQLITE_SCHEMA_REMOTE) {
             break;
@@ -4210,6 +4213,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (rc) {
         _prepare_error(thd, clnt, rec, rc, err);
+    } else {
+        clnt->verify_remote_schemas = 0;
     }
     if (tail && *tail) {
         logmsg(LOGMSG_INFO,
@@ -5678,6 +5683,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
+        if (rc == SQLITE_SCHEMA_REMOTE)
+            continue;
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
@@ -6430,6 +6437,49 @@ static inline int tdef_to_tranlevel(int tdef)
     }
 }
 
+void cleanup_clnt(struct sqlclntstate *clnt)
+{
+    if (clnt->saved_errstr) {
+        free(clnt->saved_errstr);
+        clnt->saved_errstr = NULL;
+    }
+
+    if (clnt->context) {
+        for (int i = 0; i < clnt->ncontext; i++) {
+            free(clnt->context[i]);
+        }
+        free(clnt->context);
+        clnt->context = NULL;
+    }
+
+    if (clnt->selectv_arr) {
+        currangearr_free(clnt->selectv_arr);
+        clnt->selectv_arr = NULL;
+    }
+
+    if (clnt->arr) {
+        currangearr_free(clnt->arr);
+        clnt->arr = NULL;
+    }
+
+    if (clnt->spversion.version_str) {
+        free(clnt->spversion.version_str);
+        clnt->spversion.version_str = NULL;
+    }
+
+    if (clnt->numallocblobs) {
+        free(clnt->alloc_blobs);
+        clnt->alloc_blobs = NULL;
+        free(clnt->alloc_bloblens);
+        clnt->alloc_bloblens = NULL;
+    }
+
+    if (clnt->query_stats) {
+        free(clnt->query_stats);
+        clnt->query_stats = NULL;
+    }
+}
+
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 {
     int wrtimeoutsec = 0;
@@ -6478,6 +6528,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* reset extended_tm */
     clnt->have_extended_tm = 0;
     clnt->extended_tm = 0;
+
+    clnt->is_readonly = 0;
+    clnt->ignore_coherency = 0;
 
     /* reset page-order. */
     clnt->pageordertablescan =
@@ -8270,14 +8323,7 @@ done:
     /* XXX free logical tran?  */
     close_appsock(sb);
 
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    set_high_availability(&clnt, 0);
-    if (clnt.query_stats)
-        free(clnt.query_stats);
-
-    for (int i = 0, len = clnt.ncontext; i != len; ++i)
-        free(clnt.context[i]);
-    free(clnt.context);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -8367,9 +8413,7 @@ int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
 
     /* XXX free logical tran?  */
 
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -9627,11 +9671,7 @@ void run_internal_sql(char *sql)
         clnt.dbglog = NULL;
     }
 
-    /* XXX free logical tran?  */
-
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
+    cleanup_clnt(&clnt);
 
     pthread_mutex_destroy(&clnt.wait_mutex);
     pthread_cond_destroy(&clnt.wait_cond);
@@ -9683,8 +9723,7 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     }
 
     clnt->dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt->query_stats)
-        free(clnt->query_stats);
+    cleanup_clnt(clnt);
 
     pthread_mutex_destroy(&clnt->wait_mutex);
     pthread_cond_destroy(&clnt->wait_cond);

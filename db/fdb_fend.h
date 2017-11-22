@@ -367,5 +367,13 @@ int fdb_heartbeats(struct sqlclntstate *clnt);
 void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
                           const char *tblname);
 
+/**
+ * Retrieve the schema of a remote table
+ *
+ */
+int fdb_get_remote_version(const char *dbname, const char *table,
+                           enum mach_class class, int local,
+                           unsigned long long *version);
+
 #endif
 

@@ -272,6 +272,12 @@ if ! diff  dupupd.txt dupupd.exp; then
     failexit "Expected failure when executing bad procedure"
 fi
 
+echo "begin
+select count(*) from t1
+select count(*) from t2
+select count(*) from t2 where i = 1
+commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans.txt
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure nonexistent(4)" &> badproc.txt
 echo "[exec procedure nonexistent(4)] failed with rc -3 no such procedure: nonexistent ver:0" > badproc.exp
 if ! diff badproc.txt badproc.exp ; then

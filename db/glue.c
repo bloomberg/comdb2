@@ -3211,6 +3211,9 @@ void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
     rc = reload_schema(table, csc2, NULL);
 
     rc2 = create_sqlmaster_records(NULL);
+    if (rc2) {
+        logmsg(LOGMSG_ERROR, "create_sqlmaster_records rc2 %d\n", rc2);
+    }
     create_sqlite_master(); /* create sql statements */
 
     net_ack_message(hndl, rc || rc2);
@@ -5537,23 +5540,6 @@ retry:
 
 done:
     /*resume_threads(db->dbenv);*/
-    return rc;
-}
-
-int truncate_db(struct dbtable *db)
-{
-    int rc, bdberr;
-    void *bdb_handle;
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-
-    stop_threads(db->dbenv);
-
-    rc = bdb_truncate(bdb_handle, &bdberr);
-
-    resume_threads(db->dbenv);
     return rc;
 }
 

@@ -60,7 +60,7 @@ void reset_aa_counter(char *tblname)
         bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
 
         char epoch[30] = {0};
-        sprintf(epoch, "%d", tbl->aa_lastepoch);
+        sprintf(epoch, "%" PRId64, tbl->aa_lastepoch);
         bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
     }
 

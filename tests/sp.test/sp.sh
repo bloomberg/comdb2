@@ -727,6 +727,12 @@ put default procedure cons 'sptest'
 create lua trigger audit on (table foraudit for insert and update and delete)
 create lua consumer cons on (table foraudit for insert and update and delete)
 EOF
+
+for ((i=0;i<500;++i)); do
+    echo "drop lua consumer cons"
+    echo "create lua consumer cons on (table foraudit for insert and update and delete)"
+done | cdb2sql $SP_OPTIONS - > /dev/null
+
 sleep 3 # Wait for trigger to start
 cdb2sql $SP_OPTIONS "exec procedure cons()" > /dev/null 2>&1 &
 #GENERATE DATA
@@ -991,12 +997,13 @@ local function main()
     local s1 = db:exec("select i from t order by i")
     local s2 = db:exec("select i from tmp")
     local s3 = db:exec("select i from tmp")
-    local s4 = db:exec("delete from t where 1")
 
     for i = 1, total/2 do
         db:emit(s1:fetch())
         db:emit(s2:fetch())
     end
+
+    local s4 = db:exec("delete from t where 1")
 
     local row = s3:fetch()
     while row do

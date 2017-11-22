@@ -155,8 +155,9 @@ typedef enum {
     LLMETA_LUA_AFUNC = 41,
     LLMETA_VERSIONED_SP = 42,
     LLMETA_DEFAULT_VERSIONED_SP = 43,
-    LLMETA_TABLE_USER_SCHEMA    = 44,
-    LLMETA_USER_PASSWORD_HASH   = 45
+    LLMETA_TABLE_USER_SCHEMA = 44,
+    LLMETA_USER_PASSWORD_HASH = 45,
+    LLMETA_FVER_FILE_TYPE_QDB = 46 /* file version for a dbqueue */
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -1602,6 +1603,7 @@ static int bdb_new_file_version(
     case LLMETA_FVER_FILE_TYPE_TBL:
     case LLMETA_FVER_FILE_TYPE_DTA:
     case LLMETA_FVER_FILE_TYPE_IX:
+    case LLMETA_FVER_FILE_TYPE_QDB:
         break;
 
     default:
@@ -2192,6 +2194,14 @@ int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                 version_num, bdberr);
 }
 
+int bdb_new_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                             unsigned long long version_num, int *bdberr)
+{
+    return bdb_new_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
+                                bdberr);
+}
+
 /* update all of the db's file's version numbers, usually called when first
  * creating a table */
 int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
@@ -2354,6 +2364,7 @@ static int bdb_get_file_version(
     case LLMETA_FVER_FILE_TYPE_TBL:
     case LLMETA_FVER_FILE_TYPE_DTA:
     case LLMETA_FVER_FILE_TYPE_IX:
+    case LLMETA_FVER_FILE_TYPE_QDB:
         break;
 
     default:
@@ -2625,6 +2636,14 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 {
     return bdb_get_file_version(tran, bdb_state->name,
                                 LLMETA_FVER_FILE_TYPE_TBL, 0 /*file_num*/,
+                                version_num, bdberr);
+}
+
+int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                               unsigned long long *version_num, int *bdberr)
+{
+    return bdb_get_file_version(tran, bdb_state->name,
+                                LLMETA_FVER_FILE_TYPE_QDB, 0,
                                 version_num, bdberr);
 }
 
@@ -7721,8 +7740,8 @@ struct queue_data {
     char **dest;
 };
 
-static uint8_t *llmeta_queue_key_put(struct queue_key *key, char *p_buf,
-                                     char *p_buf_end)
+static uint8_t *llmeta_queue_key_put(struct queue_key *key, uint8_t *p_buf,
+                                     uint8_t *p_buf_end)
 {
     if (p_buf_end - p_buf < sizeof(struct queue_key))
         return NULL;
@@ -7731,8 +7750,8 @@ static uint8_t *llmeta_queue_key_put(struct queue_key *key, char *p_buf,
     return p_buf;
 }
 
-static uint8_t *llmeta_queue_key_get(struct queue_key *key, char *p_buf,
-                                     char *p_buf_end)
+static uint8_t *llmeta_queue_key_get(struct queue_key *key, uint8_t *p_buf,
+                                     uint8_t *p_buf_end)
 {
     if (p_buf_end - p_buf < sizeof(struct queue_key))
         return NULL;
@@ -7758,8 +7777,8 @@ static int llmeta_queue_data_size(struct queue_data *data)
     return sz;
 }
 
-static uint8_t *llmeta_queue_data_put(struct queue_data *data, char *p_buf,
-                                      char *p_buf_end)
+static uint8_t *llmeta_queue_data_put(struct queue_data *data, uint8_t *p_buf,
+                                      uint8_t *p_buf_end)
 {
     int sz = 0;
     int len;
@@ -7791,7 +7810,8 @@ static void queue_data_destroy(struct queue_data *qd)
     }
 }
 
-static struct queue_data *llmeta_queue_data_get(char *p_buf, char *p_buf_end)
+static struct queue_data *llmeta_queue_data_get(uint8_t *p_buf,
+                                                uint8_t *p_buf_end)
 {
     struct queue_data *qd = NULL;
     int len;
@@ -7833,7 +7853,7 @@ int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
     struct queue_key qk = {0};
     int rc;
 
-    p_buf = key;
+    p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     /* TODO: range check? assume sanitized at this point? */
@@ -7898,7 +7918,7 @@ int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
-    p_buf = key;
+    p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;
     strcpy(qk.dbname, queue);

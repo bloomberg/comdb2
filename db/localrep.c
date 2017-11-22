@@ -210,7 +210,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
                     if (rc) {
                         fprintf(
                             stderr,
-                            "table %s field %: can't determine length rc %d\n",
+                            "table %s field %s: can't determine length rc %d\n",
                             iq->usedb->tablename, fld->name, rc);
                         rc = OP_FAILED_INTERNAL;
                         goto err;
@@ -561,7 +561,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
                     if (rc) {
                         fprintf(
                             stderr,
-                            "table %s field %: can't determine length rc %d\n",
+                            "table %s field %s: can't determine length rc %d\n",
                             iq->usedb->tablename, fld->name, rc);
                         rc = OP_FAILED_INTERNAL;
                         goto err;

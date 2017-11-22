@@ -18,6 +18,7 @@
 /* COMDB2 MODIFICATION */
 #include <cheapstack.h>
 #include "tunables.h"
+#include "fwd_types.h"
 
 #undef debug_raw
 /* Special Comments:
@@ -1016,7 +1017,6 @@ typedef struct Bitvec Bitvec;
 typedef struct CollSeq CollSeq;
 typedef struct Column Column;
 typedef struct Db Db;
-typedef struct Schema Schema;
 typedef struct Expr Expr;
 typedef struct ExprList ExprList;
 typedef struct ExprSpan ExprSpan;
@@ -1050,7 +1050,6 @@ typedef struct TreeView TreeView;
 typedef struct Trigger Trigger;
 typedef struct TriggerPrg TriggerPrg;
 typedef struct TriggerStep TriggerStep;
-typedef struct UnpackedRecord UnpackedRecord;
 typedef struct VTable VTable;
 typedef struct VtabCtx VtabCtx;
 typedef struct Walker Walker;
@@ -3681,6 +3680,8 @@ Module *sqlite3PragmaVtabRegister(sqlite3*,const char *zName);
 void sqlite3ResetAllSchemasOfConnection(sqlite3*);
 void sqlite3ResetOneSchema(sqlite3*,int);
 void sqlite3ResetOneSchemaByName(sqlite3*,const char*,const char*);
+/* COMDB2 MODIFICATIONS */
+void sqlite3ResetFdbSchemas(sqlite3 *db);
 void sqlite3CollapseDatabaseArray(sqlite3*);
 void sqlite3CommitInternalChanges(sqlite3*);
 void sqlite3DeleteColumnNames(sqlite3*,Table*);
@@ -4446,6 +4447,7 @@ extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
 extern int sqlite3UnlockTable(const char *dbname, const char *table);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, sqlite3_value **argv,
       const char *zName, const char *zFile, char **pzErrDyn, int version);
+extern void comdb2_dynamic_detach(sqlite3 *db, int idx);  
 extern int comdb2_fdb_check_class(const char *dbname);
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);
 extern int sqlite3UpdateMemCollAttr(BtCursor *pCur, int idx, Mem *mem);

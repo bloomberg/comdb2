@@ -115,7 +115,6 @@ static const char NEW_PREFIX[] = "new.";
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;
 
 int rep_caught_up(bdb_state_type *bdb_state);
-static int bdb_del_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr);
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr);
 static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
@@ -473,11 +472,7 @@ static int form_file_name_ex(
 
     /* start building the file name */
     if (add_prefix) {
-#ifdef NAME_MANGLE
         offset = snprintf(outbuf, buflen, "XXX.");
-#else
-        offset = snprintf(outbuf, buflen, "%s/", bdb_state->dir);
-#endif
         outbuf += offset;
         buflen -= offset;
     }
@@ -625,6 +620,26 @@ static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
 {
     return form_file_name(bdb_state, tid, 0 /*is_data_file*/, ixnum,
                           0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen);
+}
+
+static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
+                             int create, char *name, size_t len)
+{
+    unsigned long long ver;
+    int rc, bdberr;
+    if (create) {
+        ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
+        rc = bdb_new_file_version_qdb(bdb_state, tran, ver, &bdberr);
+        if (rc || bdberr != BDBERR_NOERROR) {
+            return -1;
+        }
+    }
+    if (bdb_get_file_version_qdb(bdb_state, tran, &ver, &bdberr) == 0) {
+        snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name, ver);
+    } else {
+        snprintf0(name, len, "XXX.%s.queuedb", bdb_state->name);
+    }
+    return 0;
 }
 
 int bdb_bulk_import_copy_cmd_add_tmpdir_filenames(
@@ -1144,193 +1159,6 @@ int bdb_del_list_add_all(bdb_state_type *bdb_state, tran_type *tran, void *list,
     return 0;
 }
 
-/* deletes all the files that are no longer in use by a table */
-int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
-                              int *bdberr)
-{
-    const char *blob_ext = ".blob";
-    const char *data_ext = ".data";
-    const char *index_ext = ".index";
-    int rc = 0;
-    char table_prefix[80];
-    unsigned long long file_version;
-    unsigned long long version_num;
-
-    struct dirent *buf;
-    struct dirent *ent;
-    DIR *dirp;
-    int error;
-
-    if (!bdb_state || !bdberr) {
-        logmsg(LOGMSG_ERROR, "%s: null or invalid argument\n", __func__);
-        if (bdberr)
-            *bdberr = BDBERR_BADARGS;
-
-        return -1;
-    }
-
-    if (!bdb_have_llmeta()) {
-        logmsg(LOGMSG_ERROR, "%s: db is not llmeta\n", __func__);
-        *bdberr = BDBERR_MISC;
-
-        return -1;
-    }
-
-    /* must be large enough to hold a dirent struct with the longest possible
-     * filename */
-    buf = malloc(4096);
-    if (!buf) {
-        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
-        *bdberr = BDBERR_MALLOC;
-
-        return -1;
-    }
-
-    /* open the db's directory */
-    dirp = opendir(bdb_state->parent->dir);
-    if (!dirp) {
-        logmsg(LOGMSG_ERROR, "%s: opendir failed\n", __func__);
-        *bdberr = BDBERR_MISC;
-
-        free(buf);
-        return -1;
-    }
-
-    /* */
-    if (snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name) >=
-        sizeof(table_prefix)) {
-        logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
-        *bdberr = BDBERR_MISC;
-
-        free(buf);
-        closedir(dirp);
-        return -1;
-    }
-
-    /* for each file in the db's directory */
-    while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
-        /* if the file's name is longer then the prefix and it belongs to our
-         * table */
-        if ((strlen(ent->d_name) > strlen(table_prefix)) &&
-            strncmp(ent->d_name, table_prefix, strlen(table_prefix)) == 0) {
-            const char *file_name_post_prefix;
-            unsigned long long invers;
-            char *endp;
-
-            /* file version should start right after the prefix */
-            file_name_post_prefix = ent->d_name + strlen(table_prefix);
-
-            /* try to parse a file version */
-            invers = strtoull(file_name_post_prefix, &endp, 16 /*base*/);
-
-            /* if no file_version was found after the prefix or the next thing
-             * after the file version isn't .blob or .data or .index */
-            if (endp == file_name_post_prefix ||
-                (strncmp(endp, blob_ext, strlen(blob_ext)) != 0 &&
-                 strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
-                 strncmp(endp, index_ext, strlen(index_ext)) != 0)) {
-                file_version = 0;
-            } else {
-                uint8_t *p_buf = (uint8_t *)&invers,
-                        *p_buf_end = p_buf + sizeof(invers);
-                struct bdb_file_version_num_type p_file_version_num_type;
-
-                bdb_file_version_num_get(&p_file_version_num_type, p_buf,
-                                         p_buf_end);
-
-                file_version = p_file_version_num_type.version_num;
-            }
-
-            /*fprintf(stderr, "found version %s %016llx on disk\n",*/
-            /*ent->d_name, file_version); */
-
-            /* brute force scan to find any files on disk that we aren't
-             * actually using */
-            if (file_version) {
-                int found_in_llmeta = 0;
-                int i;
-
-                /* try to find the file version amongst the active data files */
-                for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
-                     ++i) {
-                    rc = bdb_get_file_version_data(
-                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
-                    if (rc == 0) {
-                        /*fprintf(stderr, "found data version %016llx in "*/
-                        /*"llmeta\n", version_num);*/
-
-                        if (version_num == file_version)
-                            found_in_llmeta = 1;
-                    }
-                }
-
-                /* try to find the file version amongst the active indiciese */
-                for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
-                    rc = bdb_get_file_version_index(
-                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
-                    if (rc == 0) {
-                        /*fprintf(stderr, "found ix version %016llx in "*/
-                        /*"llmeta\n", version_num);*/
-
-                        if (version_num == file_version)
-                            found_in_llmeta = 1;
-                    }
-                }
-
-                /* if the file's version wasn't found in llmeta, delete it */
-                if (!found_in_llmeta) {
-                    DB_TXN *tid;
-                    char munged_name[FILENAMELEN];
-
-                    if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
-                                 ent->d_name) >= sizeof(munged_name)) {
-                        logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
-                                __func__, ent->d_name);
-                        continue;
-                    }
-
-                    /*fprintf(stderr, "deleting file %s\n", ent->d_name);*/
-                    print(bdb_state, "deleting file %s\n", ent->d_name);
-
-                    if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
-                                                    tran ? tran->tid : NULL,
-                                                    &tid, 0 /*flags*/)) {
-                        logmsg(LOGMSG_ERROR, "%s: failed to begin trans for "
-                                        "deleteing file: %s\n",
-                                __func__, ent->d_name);
-                        continue;
-                    }
-
-                    if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
-                        logmsg(LOGMSG_ERROR, "%s: failed to delete file: %s\n",
-                                __func__, ent->d_name);
-                        tid->abort(tid);
-                        continue;
-                    }
-
-                    if (tid->commit(tid, 0)) {
-                        logmsg(LOGMSG_ERROR, "%s: failed to commit trans for "
-                                        "deleteing file: %s\n",
-                                __func__, ent->d_name);
-                        continue;
-                    }
-                }
-            }
-        }
-    }
-
-    closedir(dirp);
-    free(buf);
-
-    *bdberr = BDBERR_NOERROR;
-    return 0;
-}
-
-int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
-{
-    return bdb_del_unused_files_tran(bdb_state, NULL, bdberr);
-}
-
 int bdb_del_list_free(void *list, int *bdberr)
 {
     struct del_list_item *item, *tmp;
@@ -1389,11 +1217,6 @@ char *bdb_trans(const char infile[], char outfile[])
 
     /*bdb_state = pthread_getspecific(bdb_key);*/
     bdb_state = gbl_bdb_state;
-
-#ifndef NAME_MANGLE
-    strcpy(outfile, infile);
-    return outfile;
-#endif
 
     if (bdb_state == NULL) {
         strcpy(outfile, infile);
@@ -2666,17 +2489,12 @@ static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 
     set_dbenv_stuff(dbenv, bdb_state);
 
-/* now open the environment */
-#ifdef NAME_MANGLE
+    /* now open the environment */
 
     if (bdb_state->attr->nonames)
         sprintf(txndir, "XXX.logs");
     else
         sprintf(txndir, "XXX.%s.txn", bdb_state->name);
-
-#else
-    strcpy(txndir, bdb_state->txndir);
-#endif
 
     /* these things need to be set up for logical recovery which will
        happen as soon as we call dbenv->open */
@@ -4101,20 +3919,11 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                     }
                 }
 
-                /*fprintf(stderr, "calling set_pagesize %d for %s\n", pagesize,
-                  bdb_state->name);*/
-
                 rc = dbp->set_pagesize(dbp, pagesize);
                 if (rc != 0) {
                     logmsg(LOGMSG_ERROR, "unable to set pagesize on %s to %d\n",
                             tmpname, pagesize);
                 }
-
-#if defined(BERKDB_46)
-/*            db_flags |= DB_MULTIVERSION; */
-#endif
-
-                /*fprintf(stderr, "opening %s\n", tmpname);*/
 
                 print(bdb_state, "opening %s\n", tmpname);
                 // dbp is datafile
@@ -4170,33 +3979,35 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
             }
         }
     }
-
     if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_QUEUEDB ||
         bdbtype == BDBTYPE_LITE) {
-        const char *ext;
-        DB *dbp;
-        if (bdbtype == BDBTYPE_QUEUE)
-            ext = "queue";
-        else if (bdbtype == BDBTYPE_QUEUEDB)
-            ext = "queuedb";
-        else
-            ext = "dta";
+        int rc = 0;
+        switch (bdbtype) {
+        case BDBTYPE_QUEUEDB:
+            rc = form_queuedb_name(bdb_state, &tran, create, tmpname,
+                                   sizeof(tmpname));
+            break;
+        case BDBTYPE_QUEUE:
+            snprintf(tmpname, sizeof(tmpname), "XXX.%s.queue", bdb_state->name);
+            break;
+        case BDBTYPE_LITE:
+            snprintf(tmpname, sizeof(tmpname), "XXX.%s.dta", bdb_state->name);
+            break;
+        }
+        if (rc) {
+            if (tid) {
+                tid->abort(tid);
+            }
+            return rc;
+        }
 
-/* HERE:DBQUEUE */
-#ifdef NAME_MANGLE
-        snprintf(tmpname, sizeof(tmpname), "XXX.%s.%s",
-                           bdb_state->name, ext);
-#else
-        snprintf(tmpname, sizeof(tmpname), "%s/%s.%s", bdb_state->dir,
-                           bdb_state->name, ext);
-#endif
         if (create) {
             char new[100];
-
             print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
             unlink(bdb_trans(tmpname, new));
         }
 
+        DB *dbp;
         rc = db_create(&dbp, bdb_state->dbenv, 0);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "db_create: %s\n", db_strerror(rc));
@@ -6194,11 +6005,13 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
     return ret;
 }
 
-bdb_state_type *bdb_create_queue(const char name[], const char dir[],
-                                 int item_size, int pagesize,
-                                 bdb_state_type *parent_bdb_state,
-                                 int isqueuedb, int *bdberr)
+bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
+                                      const char dir[], int item_size,
+                                      int pagesize,
+                                      bdb_state_type *parent_bdb_state,
+                                      int isqueuedb, int *bdberr)
 {
+    DB_TXN *tid = tran ? tran->tid : NULL;
     bdb_state_type *bdb_state, *ret = NULL;
 
     *bdberr = BDBERR_NOERROR;
@@ -6224,11 +6037,20 @@ bdb_state_type *bdb_create_queue(const char name[], const char dir[],
         0,                    /* upgrade */
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
-        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, NULL, 0, NULL);
+        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL);
 
     BDB_RELLOCK();
 
     return ret;
+}
+
+bdb_state_type *bdb_create_queue(const char name[], const char dir[],
+                                 int item_size, int pagesize,
+                                 bdb_state_type *parent_bdb_state,
+                                 int isqueuedb, int *bdberr)
+{
+    return bdb_create_queue_tran(NULL, name, dir, item_size, pagesize,
+                                 parent_bdb_state, isqueuedb, bdberr);
 }
 
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
@@ -6273,69 +6095,6 @@ bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],
     BDB_RELLOCK();
 
     return ret;
-}
-
-int bdb_truncate_int(bdb_state_type *bdb_state, int *bdberr)
-{
-    int rc;
-    DB_TXN *tid;
-    bdb_state_type *new_bdb_state;
-
-    BDB_READLOCK("bdb_truncate_int");
-
-    rc = bdb_close_only_int(bdb_state, bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error closing file rc=%d\n", rc);
-        return rc;
-    }
-
-    rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error begining tran\n");
-        return -1;
-    }
-
-    rc = bdb_del_int(bdb_state, tid, bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error deleting file rc=%d\n", rc);
-        tid->abort(tid);
-        return rc;
-    }
-
-    new_bdb_state = bdb_open_more_tran_int(
-        bdb_state->name, bdb_state->dir, bdb_state->lrl, bdb_state->numix,
-        bdb_state->ixlen, bdb_state->ixdups, bdb_state->ixrecnum,
-        bdb_state->ixdta, bdb_state->ixcollattr, bdb_state->ixnulls,
-        bdb_state->numdtafiles, bdb_state->parent, tid, bdberr);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error opening file rc=%d\n", rc);
-        tid->abort(tid);
-        return rc;
-    }
-
-    bdb_free_int(bdb_state, NULL, bdberr);
-
-    rc = tid->commit(tid, 0);
-
-    rc = bdb_flush_int(new_bdb_state, bdberr, 1);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "error flushing log\n");
-    }
-
-    return 0;
-}
-
-int bdb_truncate(bdb_state_type *bdb_state, int *bdberr)
-{
-    int rc;
-
-    BDB_READLOCK("bdb_truncate");
-
-    rc = bdb_truncate_int(bdb_state, bdberr);
-
-    BDB_RELLOCK();
-
-    return rc;
 }
 
 static int bdb_reinit_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -6491,11 +6250,12 @@ static int bdb_del_ix_int(bdb_state_type *bdb_state, DB_TXN *tid, int ixnum,
     return 0;
 }
 
-static int bdb_del_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
     int rc = 0;
     int i;
     int dtanum;
+    DB_TXN *tid = tran->tid;
 
     *bdberr = BDBERR_NOERROR;
 
@@ -6513,8 +6273,8 @@ static int bdb_del_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
             if (0 != bdb_del_ix_int(bdb_state, tid, i, bdberr))
                 return -1;
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        char name[100];
-        snprintf(name, sizeof(name), "XXX.%s.queuedb", bdb_state->name);
+        char name[PATH_MAX];
+        form_queuedb_name(bdb_state, tran, 0, name, sizeof(name));
         rc = bdb_del_file(bdb_state, tid, name, bdberr);
     }
 
@@ -6526,7 +6286,7 @@ int bdb_del(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     int rc;
 
     BDB_READLOCK("bdb_del");
-    rc = bdb_del_int(bdb_state, tran->tid, bdberr);
+    rc = bdb_del_int(bdb_state, tran, bdberr);
     BDB_RELLOCK();
     return rc;
 }
@@ -7083,14 +6843,8 @@ uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
 
-#ifdef NAME_MANGLE
-
     form_indexfile_name(bdb_state, NULL, ixnum, bdbname, sizeof(bdbname));
     bdb_trans(bdbname, physname);
-#else
-    form_indexfile_name(bdb_state, NULL, bdb_state->name, ixnum, bdbname,
-                        sizeof(bdbname));
-#endif
 
     return mystat(physname);
 }
@@ -7455,15 +7209,15 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
     return lognum;
 }
 
-/* queue all found unused files for garbage collection */
-int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
-                               int *bdberr, char *powner)
+static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
+                                    int *bdberr, char *powner, int delay)
 {
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
     const char *blob_ext = ".blob";
     const char *data_ext = ".data";
     const char *index_ext = ".index";
+    const char *qdb_ext = ".queuedb";
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
@@ -7475,7 +7229,7 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
     int error;
     int lognum = 0;
 
-    if (bdb_state->attr->keep_referenced_files) {
+    if (delay && bdb_state->attr->keep_referenced_files) {
         lognum = bdb_get_first_logfile(bdb_state, bdberr);
         if (lognum == -1)
             return -1;
@@ -7523,7 +7277,6 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    /* */
     if (snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name) >=
         sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
@@ -7554,6 +7307,7 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
             if (endp == file_name_post_prefix ||
                 (strncmp(endp, blob_ext, strlen(blob_ext)) != 0 &&
                  strncmp(endp, data_ext, strlen(data_ext)) != 0 &&
+                 strncmp(endp, qdb_ext, strlen(qdb_ext)) != 0 &&
                  strncmp(endp, index_ext, strlen(index_ext)) != 0)) {
                 file_version = 0;
             } else {
@@ -7567,9 +7321,6 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                 file_version = p_file_version_num_type.version_num;
             }
 
-            /*fprintf(stderr, "found version %s %016llx on disk\n",*/
-            /*ent->d_name, file_version); */
-
             /* brute force scan to find any files on disk that we aren't
              * actually using */
             if (file_version) {
@@ -7577,27 +7328,29 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                 int i;
 
                 /* try to find the file version amongst the active data files */
-                for (i = 0; !found_in_llmeta && i < bdb_state->numdtafiles;
-                     ++i) {
-                    rc = bdb_get_file_version_data(
-                        bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
+                for (i = 0; i < bdb_state->numdtafiles; ++i) {
+                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+                        rc = bdb_get_file_version_qdb(bdb_state, tran,
+                                                      &version_num, bdberr);
+                    } else {
+                        rc = bdb_get_file_version_data(bdb_state, tran, i,
+                                                       &version_num, bdberr);
+                    }
                     if (rc == 0) {
-                        /*fprintf(stderr, "found data version %016llx in "*/
-                        /*"llmeta\n", version_num);*/
-
-                        if (version_num == file_version)
+                        if (version_num == file_version) {
                             found_in_llmeta = 1;
+                            break;
+                        }
                     }
                 }
 
                 /* try to find the file version amongst the active indices */
                 for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
+                    if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
+                        break;
                     rc = bdb_get_file_version_index(
                         bdb_state, tran, i /*dtanum*/, &version_num, bdberr);
                     if (rc == 0) {
-                        /*fprintf(stderr, "found ix version %016llx in "*/
-                        /*"llmeta\n", version_num);*/
-
                         if (version_num == file_version)
                             found_in_llmeta = 1;
                     }
@@ -7609,43 +7362,80 @@ int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
 
                     if (snprintf(munged_name, sizeof(munged_name), "XXX.%s",
                                  ent->d_name) >= sizeof(munged_name)) {
-                        logmsg(LOGMSG_ERROR, "%s: filename too long to munge: %s\n",
-                                __func__, ent->d_name);
+                        logmsg(LOGMSG_ERROR,
+                               "%s: filename too long to munge: %s\n", __func__,
+                               ent->d_name);
                         continue;
                     }
 
-                    /* dont add filename more than once in the list */
-                    if (oldfile_list_contains(munged_name))
-                        continue;
+                    if (delay) {
+                        /* dont add filename more than once in the list */
+                        if (oldfile_list_contains(munged_name))
+                            continue;
 
-                    if (oldfile_list_add(strdup(munged_name), lognum)) {
-                        print(bdb_state,
-                              "failed to collect old file (list full) %s\n",
-                              ent->d_name);
-                        goto done;
+                        if (oldfile_list_add(strdup(munged_name), lognum)) {
+                            print(bdb_state,
+                                  "failed to collect old file (list full) %s\n",
+                                  ent->d_name);
+                        } else {
+                            print(bdb_state, "collected old file %s\n",
+                                  ent->d_name);
+                        }
                     } else {
-                        /*fprintf(stderr, "deleting file %s\n", ent->d_name);*/
-                        print(bdb_state, "collected old file %s\n",
-                              ent->d_name);
+                        print(bdb_state, "deleting file %s\n", ent->d_name);
+                        DB_TXN *tid;
+                        if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
+                                                        tran ? tran->tid : NULL,
+                                                        &tid, 0 /*flags*/)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: failed to begin trans for "
+                                   "deleteing file: %s\n",
+                                   __func__, ent->d_name);
+                            continue;
+                        }
+                        if (bdb_del_file(bdb_state, tid, munged_name, bdberr)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: failed to delete file: %s\n", __func__,
+                                   ent->d_name);
+                            tid->abort(tid);
+                        } else if (tid->commit(tid, 0)) {
+                            logmsg(LOGMSG_ERROR,
+                                   "%s: failed to commit trans for "
+                                   "deleteing file: %s\n",
+                                   __func__, ent->d_name);
+                        }
                     }
                 }
             }
         }
     }
 
-done:
-
     closedir(dirp);
     free(buf);
 
     Pthread_mutex_lock(&owner_mtx);
-    if (owner != NULL) {
-        owner = NULL;
-    }
+    owner = NULL;
     Pthread_mutex_unlock(&owner_mtx);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
+}
+
+int bdb_del_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                              int *bdberr)
+{
+    return bdb_process_unused_files(bdb_state, tran, bdberr, "del_unused", 0);
+}
+
+int bdb_del_unused_files(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_del_unused_files_tran(bdb_state, NULL, bdberr);
+}
+
+int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
+                               int *bdberr, char *powner)
+{
+    return bdb_process_unused_files(bdb_state, tran, bdberr, powner, 1);
 }
 
 int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
@@ -7695,7 +7485,9 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     if (!munged_name) return 1;
 
     /* skip already deleted files */
-    if (stat(munged_name, &sb)) return 0;
+    char path[PATH_MAX];
+    bdb_trans(munged_name, path);
+    if (stat(path, &sb)) return 0;
 
     if (lognum && lowfilenum && lognum >= lowfilenum) {
         oldfile_list_add(munged_name, lognum);

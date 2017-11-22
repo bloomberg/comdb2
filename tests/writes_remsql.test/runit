@@ -45,5 +45,4 @@ if (( $result != 0 )) ; then
    exit 1
 fi
 
-
 echo "SUCCESS"

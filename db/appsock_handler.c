@@ -571,7 +571,7 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
         } else if (cmd == cmd_explain) {
             int trace, all;
             trace = all = 0;
-            while (tok = segtok(line, rc, &st, &ltok)) {
+            while ((tok = segtok(line, rc, &st, &ltok)) != NULL) {
                 if (ltok == 0) {
                     break;
                 } else if (tokcmp(tok, ltok, "-v") == 0) {

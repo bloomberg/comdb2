@@ -307,7 +307,7 @@ int comdb2AuthenticateUserDDL(Vdbe* v, const char *tablename, Parse* pParse)
      if (authOn != 0)
         return SQLITE_OK;
 
-     if (thd->sqlclntstate && tablename && thd->sqlclntstate->user)
+     if (thd->sqlclntstate && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
             tablename, thd->sqlclntstate->user, &bdberr))
@@ -340,7 +340,7 @@ static int comdb2AuthenticateOpPassword(Vdbe* v, Parse* pParse)
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
 
-     if (thd->sqlclntstate && tablename && thd->sqlclntstate->user)
+     if (thd->sqlclntstate)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
          struct sqlclntstate *s = thd->sqlclntstate;
@@ -428,10 +428,26 @@ static int comdb2SqlSchemaChange(OpFunc *f)
 int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    osql_sock_start(thd->sqlclntstate, OSQL_SOCK_REQ ,0);
+    struct sqlclntstate *clnt = thd->sqlclntstate;
+    osqlstate_t *osql = &clnt->osql;
+    int rc = 0;
+    int sentops = 0;
+    int bdberr = 0;
+    osql_sock_start(clnt, OSQL_SOCK_REQ ,0);
     comdb2SqlSchemaChange(f);
-    int rst = osql_sock_commit(thd->sqlclntstate, OSQL_SOCK_REQ);
-    osqlstate_t *osql = &thd->sqlclntstate->osql;
+    if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
+        rc = osql_shadtbl_process(clnt, &sentops, &bdberr, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d failed to process shadow table, rc %d, bdberr %d\n",
+                   __func__, __LINE__, rc, bdberr);
+            osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            f->rc = osql->xerr.errval = ERR_INTERNAL;
+            f->errorMsg = "Failed to process shadow table";
+            return ERR_INTERNAL;
+        }
+    }
+    rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
     if (osql->xerr.errval == COMDB2_SCHEMACHANGE_OK) {
         osql->xerr.errval = 0;
     }
@@ -850,6 +866,7 @@ void comdb2DefaultProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     } else {
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
+        sc->newcsc2[ver->n] = '\0';
     }
     sc->defaultsp = 1;
 
@@ -882,6 +899,7 @@ void comdb2DropProcedure(Parse* pParse, Token* nm, Token* ver, int str)
     } else {
         sc->newcsc2 = malloc(ver->n + 1);
         strncpy(sc->newcsc2, ver->z, ver->n);
+        sc->newcsc2[ver->n] = '\0';
     }
     sc->delsp = 1;
   
@@ -1455,7 +1473,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     {
         struct sql_thread *thd = pthread_getspecific(query_info_key);
         /* Check if its password change request */
-        if (!(thd && thd->sqlclntstate && thd->sqlclntstate->user &&
+        if (!(thd && thd->sqlclntstate &&
                    strcmp(thd->sqlclntstate->user, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             return;
@@ -2585,7 +2603,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     /* Change the type and length of fields in the cloned schema. */
     for (int i = 0; i < schema->nmembers; i++) {
-        fix_type_and_len(&schema->member[i].type, &schema->member[i].len);
+        fix_type_and_len(&schema->member[i].type, (int *)&schema->member[i].len);
     }
 
     /* Populate columns list */
@@ -2956,7 +2974,7 @@ void comdb2AddColumn(Parse *pParse, /* Parser context */
     strncpy0(type, pType->z, sizeof(type));
     sqlite3Dequote(type);
 
-    if ((field->type = comdb2_parse_sql_type(type, &field->len)) == -1) {
+    if ((field->type = comdb2_parse_sql_type(type, (int *)&field->len)) == -1) {
         setError(pParse, SQLITE_MISUSE, "Invalid type specified.");
         goto cleanup;
     }

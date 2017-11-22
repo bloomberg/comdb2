@@ -41,6 +41,12 @@ if [[ -n ${DEBUGGER} ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
+    memcheck)
+        DEBUG_PREFIX="valgrind  --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
     callgrind)
         DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
@@ -127,6 +133,10 @@ dir     $DBDIR
 
 setattr MASTER_REJECT_REQUESTS 0
 EOPTIONS
+
+if [[ -n "$CUSTOMLRLPATH" ]]; then
+    cat $CUSTOMLRLPATH >> $DBDIR/$DBNAME.lrl
+fi
 
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
 

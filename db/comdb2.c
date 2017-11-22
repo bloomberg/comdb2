@@ -76,8 +76,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timers.h"
 
 #include "comdb2.h"
-/* temporarily pull in a local copy of comdb2_shm.h until it's in the libraries
- */
 #include "comdb2_shm.h"
 #include "sql.h"
 
@@ -1418,6 +1416,7 @@ void clean_exit(void)
     free_gbl_tunables();
     free_tzdir();
     tz_hash_free();
+    cleanup_sqlite_master();
 
     logmsg(LOGMSG_WARN, "goodbye\n");
 
@@ -4194,7 +4193,8 @@ void *statthd(void *p)
         nretries = n_retries;
         vreplays = gbl_verify_tran_replays;
 
-        bdb_get_bpool_counters(thedb->bdb_env, &bpool_hits, &bpool_misses);
+        bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
+                               (int64_t *)&bpool_misses);
 
         if (!dbenv->exiting && !dbenv->stopped) {
             bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
@@ -5505,6 +5505,11 @@ int gbl_hostname_refresh_time = 60;
 int comdb2_is_standalone(void *dbenv)
 {
     return bdb_is_standalone(dbenv, thedb->bdb_env);
+}
+
+const char *comdb2_get_dbname(void)
+{
+    return thedb->envname;
 }
 
 #define QUOTE_(x) #x

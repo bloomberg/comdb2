@@ -844,6 +844,8 @@ public class Comdb2Handle extends AbstractConnection {
             is_rollback = true;
         } else if (lowerSql.startsWith("select")
                 || lowerSql.startsWith("explain")
+                || lowerSql.startsWith("with")
+                || lowerSql.startsWith("get")
                 || lowerSql.startsWith("exec")) {
             isRead = true;
         } else {

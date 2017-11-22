@@ -1368,7 +1368,7 @@ static int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     break;
                 }
             }
-            if (thd = listc_rtl(&idle)) /*try to find an idle thread*/
+            if ((thd = listc_rtl(&idle)) != NULL) /*try to find an idle thread*/
             {
 #if 0
                 printf("%s:%d: thdpool FOUND THD=%d -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);

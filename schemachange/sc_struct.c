@@ -295,17 +295,32 @@ static const void *buf_get_dests(struct schema_change_type *s,
     p_buf = (uint8_t *)buf_get(&count, sizeof(count), p_buf, p_buf_end);
 
     for (int i = 0; i < count; i++) {
-        int w_len;
+        int w_len, len;
+        int no_pfx = 0;
         p_buf = (uint8_t *)buf_get(&w_len, sizeof(w_len), p_buf, p_buf_end);
-        char pfx[] = "dest"; // dest:method:xyz -- drop 'dest:' pfx
-        if (w_len > sizeof(pfx)) {
-            p_buf = (void *)buf_no_net_get(pfx, sizeof(pfx), p_buf, p_buf_end);
-
-            int len = w_len - sizeof(pfx);
+        char pfx[] = "dest:"; // dest:method:xyz -- drop 'dest:' pfx
+        len = w_len;
+        if (w_len > strlen(pfx)) {
+            p_buf = (void *)buf_no_net_get(pfx, strlen(pfx), p_buf, p_buf_end);
+            if (strncmp(pfx, "dest:", 5) != 0) {
+                /* "dest:" was dropped already */
+                no_pfx = 1;
+            }
+            len = w_len - strlen(pfx);
+        }
+        if (len > 0) {
             struct dest *d = malloc(sizeof(struct dest));
-            d->dest = malloc(len + 1);
-            p_buf = (void *)buf_no_net_get(d->dest, len, p_buf, p_buf_end);
-            d->dest[len] = '\0';
+            char *pdest;
+            if (no_pfx) {
+                d->dest = malloc(w_len + 1);
+                strncpy(d->dest, pfx, strlen(pfx));
+                pdest = d->dest + strlen(pfx);
+                d->dest[w_len] = '\0';
+            } else {
+                pdest = d->dest = malloc(len + 1);
+                d->dest[len] = '\0';
+            }
+            p_buf = (void *)buf_no_net_get(pdest, len, p_buf, p_buf_end);
             listc_abl(&s->dests, d);
         } else {
             free_dests(s);
@@ -709,6 +724,12 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         sc_printf(s, "%s schema change running in parallel scan mode\n",
                   (s->live ? "Live" : "Readonly"));
         break;
+    case SCAN_STRIPES:
+        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        break;
+    case SCAN_OLDCODE:
+        sc_printf(s, "%s schema change running in oldcode mode\n");
+        break;
     }
 }
 
@@ -894,10 +915,10 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
         /* reopen db */
         newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
-            newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-            newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-            thedb->bdb_env, tran, &bdberr);
+            table, thedb->basedir, newdb->lrl, newdb->nix,
+            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
         logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
@@ -950,7 +971,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
          * schemas */
         /* faffing with schema required. schema can change in fastinit */
         db->handle = bdb_open_more_tran(
-            table, thedb->basedir, db->lrl, db->nix, db->ix_keylen,
+            table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
             &bdberr);
