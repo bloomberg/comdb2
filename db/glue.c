@@ -405,7 +405,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_socksql";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
     }
     out_trans = bdb_tran_begin_socksql(bdb_handle, trak, &bdberr);
     iq->gluewhere = "bdb_tran_begin_socksql done";
@@ -425,7 +425,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 
     iq->gluewhere = "bdb_tran_begin_readcommitted";
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
     }
 
     out_trans = bdb_tran_begin_readcommitted(bdb_handle, trak, &bdberr);
@@ -449,8 +449,8 @@ tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
     iq->gluewhere = "bdb_tran_begin_snapisol";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n",
-               pthread_self(), __func__, epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
+               (int)pthread_self(), __func__, epoch, file, offset);
     }
     out_trans =
         bdb_tran_begin_snapisol(bdb_handle, trak, error, epoch, file, offset);
@@ -474,8 +474,8 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch, int fi
     iq->gluewhere = "bdb_tran_begin";
 
     if (gbl_extended_sql_debug_trace) {
-        logmsg(LOGMSG_USER, "td=%p %s called with epoch=%d file=%d offset=%d\n",
-               pthread_self(), __func__, epoch, file, offset);
+        logmsg(LOGMSG_USER, "td=%x %s called with epoch=%d file=%d offset=%d\n",
+               (int)pthread_self(), __func__, epoch, file, offset);
     }
     out_trans = bdb_tran_begin_serializable(bdb_handle, trak, &bdberr, epoch, 
             file, offset);
@@ -1000,8 +1000,8 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_delkey return unhandled rc %d\n", bdberr);
         while (1) {
             logmsg(LOGMSG_ERROR,
-                   "Thread %lu got delete key error - send lockstat.\n",
-                   pthread_self());
+                   "Thread %x got delete key error - send lockstat.\n",
+                   (int)pthread_self());
             sleep(5);
         }
         return ERR_INTERNAL;
@@ -4086,7 +4086,7 @@ int backend_open(struct dbenv *dbenv)
             logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
         db->handle = bdb_open_more(
-            db->tablename, dbenv->basedir, db->lrl, db->nix, db->ix_keylen,
+            db->tablename, dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, /* main record + n blobs */
             dbenv->bdb_env, &bdberr);

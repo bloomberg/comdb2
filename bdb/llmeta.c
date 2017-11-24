@@ -6562,6 +6562,7 @@ rep:
     if ((tran = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
                 bdberr, retry);
+        rc = bdberr;
         goto err;
     }
     char llkey[LLMETA_IXLEN] = {0};
@@ -7416,6 +7417,7 @@ rep:
         NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
                 bdberr, retry);
+        rc = bdberr;
         goto err;
     }
     char llkey[LLMETA_IXLEN] = {0};

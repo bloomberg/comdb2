@@ -7375,7 +7375,7 @@ static int structdatetimeus2string_ISO(cdb2_client_datetimeus_t *in, char *out,
         const uint8_t *p_out_start = out;                                      \
         const uint8_t *p_out_end = (const uint8_t *)out + outlen;              \
                                                                                \
-        if (ret = string2struct##dt##_ISO(((char *)in) + 1, inlen - 1, &cdt))  \
+        if ((ret = string2struct##dt##_ISO(((char *)in) + 1, inlen - 1, &cdt)) != 0)  \
             return ret;                                                        \
                                                                                \
         if (!cdt.tzname[0])                                                    \
@@ -7772,7 +7772,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
                                                                                \
         bzero(&cdt, sizeof(cdt));                                              \
                                                                                \
-        if (ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) {          \
+        if ((ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) != 0) {   \
             return ret;                                                        \
         }                                                                      \
                                                                                \
@@ -7802,10 +7802,10 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
             return -1;                                                         \
         }                                                                      \
                                                                                \
-        if (ret = CLIENT_##UDT##_to_SERVER_##UDT(                              \
+        if ((ret = CLIENT_##UDT##_to_SERVER_##UDT(                              \
                 &cdt_buf, sizeof(cdt_buf), 0,                                  \
                 (struct field_conv_opts *)&tzopts, NULL, out, outlen, outdtsz, \
-                outopts, NULL)) {                                              \
+                outopts, NULL)) != 0) {                                        \
             return ret;                                                        \
         }                                                                      \
                                                                                \
@@ -7817,7 +7817,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         /* time was DST, and cdt is now changed, time transform again this */  \
         /* time with DST set*/                                                 \
         bzero(&cdt, sizeof(cdt));                                              \
-        if (ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) {          \
+        if ((ret = string2struct##dt##_ISO((char *)in, inlen, &cdt)) != 0) {   \
             return ret;                                                        \
         }                                                                      \
         cdt.tm.tm_isdst = 1;                                                   \
@@ -9373,7 +9373,7 @@ int make_order_decimal32(server_decimal32_t *pdec32)
                   (2 * i + ((pdec32->coef[i] & 0x0F0) ? 0 : 1)) -
                   1 /*sign nibble*/;
 
-        shift_coefficient_to_ondisk(DECSINGLE_PACKED_COEF, pdec32->coef,
+        shift_coefficient_to_ondisk(DECSINGLE_PACKED_COEF, (char *)pdec32->coef,
                                     &tailzero);
 
         /* update exponent */
@@ -9930,7 +9930,7 @@ static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
         exponent ^= 0x080;
     }
 
-    decSingleFromPacked(dn, exponent, decimals);
+    decSingleFromPacked(dn, exponent, (uint8_t *)decimals);
 }
 
 static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
@@ -14105,7 +14105,7 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
                     pdec64->coef[DECDOUBLE_PACKED_COEF - 1] = 1;
                 }
             } else {
-                int2b_to_int2(exp, &pdec64->exp);
+                int2b_to_int2(exp, (comdb2_int2 *)&pdec64->exp);
                 pdec64->coef[DECDOUBLE_PACKED_COEF - 1] = 1;
             }
         } else {
@@ -14155,7 +14155,7 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
                     pdec128->coef[DECQUAD_PACKED_COEF - 1] = 1;
                 }
             } else {
-                int2b_to_int2(exp, &pdec128->exp);
+                int2b_to_int2(exp, (comdb2_int2 *)&pdec128->exp);
                 pdec128->coef[DECQUAD_PACKED_COEF - 1] = 1;
             }
         } else {

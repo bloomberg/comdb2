@@ -1316,13 +1316,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
-    if (iq->debug)
+    if (iq->debug) {
         if (flags & RECFLAGS_KEEP_GENID)
             reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn, vgenid,
                       rc);
         else
             reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
                       rrn, vgenid, *genid, rc);
+    }
 
     if (rc != 0) {
         *opfailcode = OP_FAILED_VERIFY;
