@@ -7375,7 +7375,8 @@ static int structdatetimeus2string_ISO(cdb2_client_datetimeus_t *in, char *out,
         const uint8_t *p_out_start = out;                                      \
         const uint8_t *p_out_end = (const uint8_t *)out + outlen;              \
                                                                                \
-        if ((ret = string2struct##dt##_ISO(((char *)in) + 1, inlen - 1, &cdt)) != 0)  \
+        if ((ret = string2struct##dt##_ISO(((char *)in) + 1, inlen - 1,        \
+                                           &cdt)) != 0)                        \
             return ret;                                                        \
                                                                                \
         if (!cdt.tzname[0])                                                    \
@@ -7802,10 +7803,10 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
             return -1;                                                         \
         }                                                                      \
                                                                                \
-        if ((ret = CLIENT_##UDT##_to_SERVER_##UDT(                              \
-                &cdt_buf, sizeof(cdt_buf), 0,                                  \
-                (struct field_conv_opts *)&tzopts, NULL, out, outlen, outdtsz, \
-                outopts, NULL)) != 0) {                                        \
+        if ((ret = CLIENT_##UDT##_to_SERVER_##UDT(                             \
+                 &cdt_buf, sizeof(cdt_buf), 0,                                 \
+                 (struct field_conv_opts *)&tzopts, NULL, out, outlen,         \
+                 outdtsz, outopts, NULL)) != 0) {                              \
             return ret;                                                        \
         }                                                                      \
                                                                                \

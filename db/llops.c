@@ -467,7 +467,8 @@ int handle_llops(SBUF2 *sb, struct dbenv *dbenv)
                             sbuf2printf(sb, ">ix %d len %d: ", i, sz);
                             printhex(sb, (unsigned char *)formkey, sz);
                             sbuf2printf(sb, " ");
-                            printhex(sb, (unsigned char *)od_dta_tail, od_len_tail);
+                            printhex(sb, (unsigned char *)od_dta_tail,
+                                     od_len_tail);
                             sbuf2printf(sb, "\n");
 
                             void *k;

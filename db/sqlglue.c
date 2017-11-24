@@ -960,7 +960,8 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                               0, &outdtsz, &f->convopts, vutf8_outblob);
 
         if (gbl_report_sqlite_numeric_conversion_errors &&
-            (f->type == SERVER_BINT || f->type == SERVER_UINT || f->type == SERVER_BREAL)) {
+            (f->type == SERVER_BINT || f->type == SERVER_UINT ||
+             f->type == SERVER_BREAL)) {
             double rValue;
             char *s;
             struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1353,7 +1354,7 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
             current += snprintf(buf + current, sizeof buf - current, "DESC");
         }
     }
-    crc = crc32(0, (unsigned char*)buf, current);
+    crc = crc32(0, (unsigned char *)buf, current);
     snprintf(namebuf, len, "$%s_%X", csctag, crc);
 }
 
@@ -2776,7 +2777,7 @@ static int cursor_move_remote(BtCursor *pCur, int *pRes, int how)
         /* NOTE: local cache doesn't provide advanced eof termination,
          *  so don't stop on IX_FND
          */
-        if (rc == IX_FND && !(is_sqlite_stat(pCur->fdbc->name(pCur))) ) {
+        if (rc == IX_FND && !(is_sqlite_stat(pCur->fdbc->name(pCur)))) {
             if (how == CNEXT || how == CFIRST) {
                 pCur->next_is_eof = 1;
             } else if (how == CPREV || how == CLAST) {
@@ -10979,7 +10980,8 @@ int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
     /* extract genid */
     hdroffset = sqlite3GetVarint32((unsigned char *)key, &hdrsz);
     dataoffset = hdrsz;
-    hdroffset += sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
+    hdroffset +=
+        sqlite3GetVarint32((unsigned char *)key + hdroffset, (u32 *)&type);
     assert(type == 6);
     assert(hdroffset == dataoffset);
     sqlite3VdbeSerialGet((unsigned char *)key + dataoffset, type, &m);
@@ -11011,9 +11013,11 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
     dataoffset = hdrsz;
     fld = 0;
     while (hdroffset < hdrsz) {
-        hdroffset += sqlite3GetVarint32((unsigned char *)row + hdroffset, &type);
+        hdroffset +=
+            sqlite3GetVarint32((unsigned char *)row + hdroffset, &type);
         prev_dataoffset = dataoffset;
-        dataoffset += sqlite3VdbeSerialGet((unsigned char *)row + prev_dataoffset, type, &m);
+        dataoffset += sqlite3VdbeSerialGet(
+            (unsigned char *)row + prev_dataoffset, type, &m);
 
         if (fld < 7 && fld != 3 && fld != 6) {
             str = (char *)malloc(m.n + 1);
@@ -11038,7 +11042,8 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
 
             /* we need to replace the source with the local rootpage */
             m.u.i = new_rootpage;
-            sqlite3VdbeSerialPut((unsigned char *)row + prev_dataoffset, &m, type);
+            sqlite3VdbeSerialPut((unsigned char *)row + prev_dataoffset, &m,
+                                 type);
 
             break;
 
@@ -12201,8 +12206,8 @@ int indexes_expressions_data(struct schema *sc, const char *inbuf, char *outbuf,
 
     for (i = 0; i < sc->nmembers; i++) {
         memset(&m[i], 0, sizeof(Mem));
-        rc = get_data_from_ondisk(sc, (uint8_t *)inbuf, blobs, maxblobs, i, &m[i],
-                                  0, tzname);
+        rc = get_data_from_ondisk(sc, (uint8_t *)inbuf, blobs, maxblobs, i,
+                                  &m[i], 0, tzname);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to convert to ondisk\n", __func__);
             goto done;
