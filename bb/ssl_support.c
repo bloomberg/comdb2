@@ -172,10 +172,9 @@ error:
 static unsigned char sid_ctx[8];
 #endif
 
-int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx,
-                          const char *dir, char **pcert,
-                          char **pkey, char **pca, long sess_sz,
-                          char *err, size_t n)
+int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, const char *dir, char **pcert,
+                            char **pkey, char **pca, long sess_sz,
+                            const char *ciphers, char *err, size_t n)
 {
     SSL_CTX *myctx;
     char *buffer, *cert, *key, *ca;
@@ -333,14 +332,22 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx,
     SSL_CTX_sess_set_cache_size(myctx, sess_sz);
 
 #if SBUF2_SERVER
-    /* Set up session id context. */
-    if (RAND_bytes(sid_ctx, sizeof(sid_ctx)) != 1) {
-        ssl_sfliberrprint(err, n, my_ssl_eprintln,
-			  "Failed to get random bytes");
-	rc = ERR_get_error();
-	goto error;
+    /* Set up session id context in server mode. */
+    if (sess_sz > 0) {
+        if (RAND_bytes(sid_ctx, sizeof(sid_ctx)) != 1) {
+            ssl_sfliberrprint(err, n, my_ssl_eprintln,
+                              "Failed to get random bytes");
+            rc = ERR_get_error();
+            goto error;
+        }
+        SSL_CTX_set_session_id_context(myctx, sid_ctx, sizeof(sid_ctx));
     }
-    SSL_CTX_set_session_id_context(myctx, sid_ctx, sizeof(sid_ctx));
+
+    rc = SSL_CTX_set_cipher_list(myctx, ciphers);
+    if (rc != 1) {
+        ssl_sfliberrprint(err, n, my_ssl_eprintln, "Failed to set cipher list");
+        goto error;
+    }
 #endif
 
     if (cert != NULL || servermode == 1) {
@@ -392,9 +399,8 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx,
         SSL_CTX_set_verify(myctx,
                            SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, NULL);
 
-#if SBUF2_SERVER
-        SSL_CTX_set_client_CA_list(myctx, cert_names);
-#endif
+        if (servermode)
+            SSL_CTX_set_client_CA_list(myctx, cert_names);
     }
 
     /* SSL success is 1. We want to return 0 upon success. */

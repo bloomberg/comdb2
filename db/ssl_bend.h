@@ -54,6 +54,9 @@ extern long gbl_sess_cache_sz;
    Turn it on at your own risk. */
 extern int gbl_ssl_allow_remsql;
 
+/* OpenSSL cipher suites. */
+extern const char *gbl_ciphers;
+
 /* Client SSL mode */
 extern ssl_mode gbl_client_ssl_mode;
 
