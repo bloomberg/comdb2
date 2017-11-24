@@ -1014,8 +1014,7 @@ int get_high_availability(struct sqlclntstate *clnt)
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
-static int fill_snapinfo(struct sqlclntstate *clnt, int *file,
-                         int *offset)
+static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 {
     char cnonce[256];
     int rcode = 0;
@@ -2182,7 +2181,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         bzero(clnt->dirty, sizeof(clnt->dirty));
 
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(), __func__);
+            logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(),
+                   __func__);
         }
 
         switch (clnt->dbtran.mode) {
@@ -2465,7 +2465,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
             break;
         case TRANLEVEL_INVALID:
-            break; //TODO: should return here?
+            break; // TODO: should return here?
         }
     }
 
@@ -4354,7 +4354,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     /* additional non-sqlite requests */
     stored_proc = 0;
     if ((rc = check_sql(clnt, &stored_proc)) != 0) {
-        //TODO: set this: outrc = rc;
+        // TODO: set this: outrc = rc;
         return rc;
     }
 
@@ -5070,7 +5070,8 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             columns[i]->value.data = NULL;
         } else {
             columns[i]->value.len = thd->offsets[i].len;
-            columns[i]->value.data = (uint8_t *)thd->buf + thd->offsets[i].offset;
+            columns[i]->value.data =
+                (uint8_t *)thd->buf + thd->offsets[i].offset;
         }
     }
 

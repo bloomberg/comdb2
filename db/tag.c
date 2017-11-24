@@ -3269,7 +3269,8 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     // *)rec,
     // &reason);
     rc = stag_to_stag_buf_flags(db->tablename, ver_tag, from, db->tablename,
-                                ".ONDISK", (char *)rec, CONVERT_NULL_NO_ERROR, &reason);
+                                ".ONDISK", (char *)rec, CONVERT_NULL_NO_ERROR,
+                                &reason);
     if (rc) {
         char err[1024];
         convert_failure_reason_str(&reason, db->tablename, ver_tag, ".ONDISK",
@@ -7100,10 +7101,10 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
 
     /* reopen db */
     newdb->handle = bdb_open_more_tran(
-        db->tablename, thedb->basedir, newdb->lrl, newdb->nix, (short *)newdb->ix_keylen,
-        newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-        newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-        thedb->bdb_env, tran, &bdberr);
+        db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
+        (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",

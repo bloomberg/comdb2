@@ -4085,11 +4085,12 @@ int backend_open(struct dbenv *dbenv)
         else
             logmsg(LOGMSG_INFO, "open table '%s'\n", db->tablename);
 
-        db->handle = bdb_open_more(
-            db->tablename, dbenv->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
-            db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
-            db->ix_nullsallowed, db->numblobs + 1, /* main record + n blobs */
-            dbenv->bdb_env, &bdberr);
+        db->handle =
+            bdb_open_more(db->tablename, dbenv->basedir, db->lrl, db->nix,
+                          (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
+                          db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+                          db->numblobs + 1, /* main record + n blobs */
+                          dbenv->bdb_env, &bdberr);
 
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,

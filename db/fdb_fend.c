@@ -3478,8 +3478,7 @@ static int fdb_cursor_insert(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
-                                (char *)clnt->idxInsert[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxInsert[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3536,8 +3535,7 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, genid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
-                                (char *)clnt->idxDelete[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxDelete[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3594,8 +3592,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, oldgenid, 1, ixnum,
                                 *((int *)clnt->idxDelete[ixnum]),
-                                (char *)clnt->idxDelete[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxDelete[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3607,8 +3604,7 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
             rc = fdb_send_index(fdbc->msg, fdbc->cid, fdbc->ent->tbl->version,
                                 fdbc->ent->source_rootpage, genid, 0, ixnum,
                                 *((int *)clnt->idxInsert[ixnum]),
-                                (char *)clnt->idxInsert[ixnum] +
-                                    sizeof(int),
+                                (char *)clnt->idxInsert[ixnum] + sizeof(int),
                                 trans->seq, trans->isuuid, trans->sb);
             if (rc)
                 return rc;
@@ -3773,7 +3769,8 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
         tran = fdb_get_subtran(dtran, fdb);
         if (tran) {
             if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
-                comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
+                comdb2uuidcpy((unsigned char *)ptid,
+                              (unsigned char *)tran->tid);
             else
                 *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
         }
