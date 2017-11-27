@@ -157,6 +157,7 @@ Expr *sqlite3LimitWhere(
   if( pOrderBy && pLimit==0 ) {
     sqlite3ErrorMsg(pParse, "ORDER BY without LIMIT on %s", zStmtType);
 limit_where_cleanup:
+    sqlite3ExprDelete(pParse->db, pWhere);
     sqlite3ExprListDelete(pParse->db, pOrderBy);
     sqlite3ExprDelete(pParse->db, pLimit);
     sqlite3ExprDelete(pParse->db, pOffset);

@@ -825,9 +825,8 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "UPDATE");
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R,0,0,0);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,O,L.pLimit,L.pOffset);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -837,7 +836,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,0,0,0);
 }
 %endif
 
@@ -1323,7 +1322,6 @@ nexprlist(A) ::= expr(Y).
 paren_exprlist(A) ::= .   {A = 0;}
 paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 %endif SQLITE_OMIT_SUBQUERY
-
 
 ///////////////////////////// The CREATE INDEX command ///////////////////////
 //
