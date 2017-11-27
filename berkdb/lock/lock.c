@@ -376,7 +376,7 @@ __lock_id_has_waiters(dbenv, id)
 		return EINVAL;
 	}
 
-	if (F_ISSET(sh_locker, DB_LOCKER_HAVE_WAITERS))
+	if (sh_locker->has_waiters)
 		ret = 1;
 	else
 		ret = 0;
@@ -2740,8 +2740,7 @@ upgrade:
 						logmsg(LOGMSG_USER, 
                                "Set waitflag for lockid %u\n",
 						    holdarr[ii]);
-					F_SET(holder_locker,
-					    DB_LOCKER_HAVE_WAITERS);
+					holder_locker->has_waiters = 1;
 					unlock_locker_partition(region,
 					    holder_locker->partition);
 				}
@@ -3908,6 +3907,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		sh_locker->nlocks = 0;
 		sh_locker->npagelocks = 0;
 		sh_locker->nwrites = 0;
+		sh_locker->has_waiters = 0;
 #if TEST_DEADLOCKS
 		printf("%d %s:%d lockerid %x setting priority to %d\n",
 		    pthread_self(), __FILE__, __LINE__, sh_locker->id, retries);
