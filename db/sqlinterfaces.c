@@ -1185,12 +1185,11 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
                          malloc, 1);
 }
 
-static int newsql_realloc_row(int ncols, CDB2SQLRESPONSE__Column ***columns, int *columns_count)
+static int newsql_realloc_row(int ncols, CDB2SQLRESPONSE__Column ***columns,
+                              int *columns_count)
 {
-    if(ncols <= *columns_count)
+    if (ncols <= *columns_count)
         return 0; /* already have more columns set up; nothing to do */
-
-printf("AZ: realloc from %d to %d\n", *columns_count, ncols);
 
     /* allocate space for the column array and the columns */
     int arrsz = ncols * sizeof(CDB2SQLRESPONSE__Column **);
@@ -1202,10 +1201,11 @@ printf("AZ: realloc from %d to %d\n", *columns_count, ncols);
         return -1;
     }
 
-    loc_cols = (CDB2SQLRESPONSE__Column **) ptr;
+    loc_cols = (CDB2SQLRESPONSE__Column **)ptr;
     for (int i = 0; i < ncols; i++) {
-        loc_cols[i] = (CDB2SQLRESPONSE__Column*) (ptr + 
-            arrsz + i * sizeof(CDB2SQLRESPONSE__Column));
+        loc_cols[i] =
+            (CDB2SQLRESPONSE__Column *)(ptr + arrsz +
+                                        i * sizeof(CDB2SQLRESPONSE__Column));
     }
     *columns = loc_cols;
     *columns_count = ncols;
@@ -5075,7 +5075,7 @@ static void *blob_alloc_override(size_t len)
     return comdb2_bmalloc(blobmem, len + 1);
 }
 
-#define DATALEN_THRESHOLD   1024
+#define DATALEN_THRESHOLD 1024
 
 static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         int ncols, int row_id,
@@ -5125,13 +5125,13 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     sql_response.value = columns;
 
     void *(*alloc_func)(size_t size) = malloc;
-    if(gbl_blob_sz_thresh_bytes > 0 && data_len > DATALEN_THRESHOLD) {
+    if (gbl_blob_sz_thresh_bytes > 0 && data_len > DATALEN_THRESHOLD) {
         int pksize = cdb2__sqlresponse__get_packed_size(&sql_response);
         if (pksize + 1 > gbl_blob_sz_thresh_bytes)
             alloc_func = blob_alloc_override;
     }
 
-    return _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, 
+    return _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response,
                          columns, ncols, alloc_func, 0);
 }
 
@@ -5411,7 +5411,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     /* create the row format and send it to client */
-    rc = newsql_realloc_row(ncols, &thd->sqlthd->columns, &thd->sqlthd->columns_count);
+    rc = newsql_realloc_row(ncols, &thd->sqlthd->columns,
+                            &thd->sqlthd->columns_count);
     if (rc)
         return -1;
 
@@ -5484,8 +5485,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER, "%s: cnonce '%s' sending row\n", __func__, cnonce);
                     }
-                    rc = comm->send_row_data(thd, clnt, new_row_data_type, 
-                                             ncols, row_id, rc, thd->sqlthd->columns);
+                    rc =
+                        comm->send_row_data(thd, clnt, new_row_data_type, ncols,
+                                            row_id, rc, thd->sqlthd->columns);
                     if (rc)
                         goto out;
                 }
@@ -5522,7 +5524,7 @@ postprocessing:
 
     /* closing: error codes, postponed write result and so on*/
     rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id,
-                               thd->sqlthd->columns, comm);
+                                thd->sqlthd->columns, comm);
 
 out:
     return rc;
