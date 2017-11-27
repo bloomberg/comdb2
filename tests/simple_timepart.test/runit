@@ -90,7 +90,7 @@ for run in 1 2 3 4 5; do
    while (( $row != 100 )) ; do
       let a=row%mod
       echo cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b=\"${blob_updates[${run}]}\" where a % ${mod} == ${a}" >> $OUT
-      cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b=\"${blob_updates[${run}]}\" where a % ${mod} == ${a}" >> $OUT
+      cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b=\"${blob_updates[${run}]}\" where a % ${mod} == ${a} limit 10000" >> $OUT
       #cdb2sql ${CDB2_OPTIONS} $dbname default "update ${VIEW1} set b='Moar rows' where a % ${mod} == ${a}" >> $OUT
       if (( $? != 0 )) ; then
          echo "FAILURE"
@@ -116,7 +116,7 @@ for run in 1 2 3 4 5; do
    while (( $row != 2 )) ; do
       let a=row%mod
       echo cdb2sql ${CDB2_OPTIONS} $dbname default "delete from ${VIEW1} where a % ${mod} == ${a}" >> $OUT
-      cdb2sql ${CDB2_OPTIONS} $dbname default "delete from ${VIEW1} where a % ${mod} == ${a}" >> $OUT
+      cdb2sql ${CDB2_OPTIONS} $dbname default "delete from ${VIEW1} where a % ${mod} == ${a} limit 10000" >> $OUT
       if (( $? != 0 )) ; then
          echo "FAILURE"
          exit 1
