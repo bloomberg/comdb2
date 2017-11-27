@@ -63,6 +63,7 @@
 #include <sys/time.h>
 #include <plbitlib.h>
 #include <strbuf.h>
+#include <math.h>
 
 #include <sqlite3.h>
 #include <sqliteInt.h>
@@ -1013,8 +1014,7 @@ int get_high_availability(struct sqlclntstate *clnt)
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
-static int fill_snapinfo(struct sqlclntstate *clnt, unsigned int *file,
-                         int *offset)
+static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 {
     char cnonce[256];
     int rcode = 0;
@@ -2205,7 +2205,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         bzero(clnt->dirty, sizeof(clnt->dirty));
 
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+            logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(),
+                   __func__);
         }
 
         switch (clnt->dbtran.mode) {
@@ -2487,6 +2488,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             }
 
             break;
+        case TRANLEVEL_INVALID:
+            break; // TODO: should return here?
         }
     }
 
@@ -3139,7 +3142,7 @@ static void compare_estimate_cost(sqlite3_stmt *stmt)
             rEstLoop *= rEst;
             double rActual = nLoop > 0 ? (double)nVisit / nLoop
                                        : 0.0; // actual rows per loop
-            double delta = abs(rActual - rEst);
+            double delta = fabs(rActual - rEst);
 
             if (n < MAX_DISC_SHOW) {
                 discrepancies[n].rActual = rActual;
@@ -3438,7 +3441,7 @@ int newsql_send_column_info(struct sqlclntstate *clnt,
         else
             colname = cinfo[i].column_name;
         columns[i]->value.len = strlen(colname) + 1;
-        columns[i]->value.data = (char *)colname;
+        columns[i]->value.data = (uint8_t *)colname;
         if (!gbl_return_long_column_names && columns[i]->value.len > 31) {
             columns[i]->value.data[31] = '\0';
             columns[i]->value.len = 32;
@@ -4126,6 +4129,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
+        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
+            sqlite3ResetFdbSchemas(thd->sqldb);
+            return rc = SQLITE_SCHEMA_REMOTE;
         }
         if (rc != SQLITE_SCHEMA_REMOTE) {
             break;
@@ -4142,11 +4148,13 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
     if (gbl_fingerprint_queries) {
         unsigned char fingerprint[FINGERPRINTSZ];
-        sqlite3_fingerprint(thd->sqldb, (unsigned char *)fingerprint);
-        reqlog_set_fingerprint(thd->logger, fingerprint);
+        sqlite3_fingerprint(thd->sqldb, (char *)fingerprint);
+        reqlog_set_fingerprint(thd->logger, (char *)fingerprint);
     }
     if (rc) {
         _prepare_error(thd, clnt, rec, rc, err);
+    } else {
+        clnt->verify_remote_schemas = 0;
     }
     if (tail && *tail) {
         logmsg(LOGMSG_INFO,
@@ -4360,6 +4368,8 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         *outrc = handle_sql_commitrollback(thd, clnt, flush_resp);
         return 1;
 
+    case SQLENG_NORMAL_PROCESS:
+    case SQLENG_INTRANS_STATE:
     case SQLENG_STRT_STATE:
         /* FALL-THROUGH for update query execution */
         break;
@@ -4368,6 +4378,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     /* additional non-sqlite requests */
     stored_proc = 0;
     if ((rc = check_sql(clnt, &stored_proc)) != 0) {
+        // TODO: set this: outrc = rc;
         return rc;
     }
 
@@ -4805,7 +4816,7 @@ static int set_retrow_columns(struct sqlthdstate *thd,
                               uint8_t *isNullCol, int total_col, int rowcount,
                               struct errstat *err)
 {
-    uint8_t *p_buf_end = thd->buf + thd->buflen;
+    uint8_t *p_buf_end = (uint8_t *)thd->buf + thd->buflen;
     int little_endian = 0;
     int fldlen;
     double dval;
@@ -5085,7 +5096,8 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             columns[i]->value.data = NULL;
         } else {
             columns[i]->value.len = thd->offsets[i].len;
-            columns[i]->value.data = thd->buf + thd->offsets[i].offset;
+            columns[i]->value.data =
+                (uint8_t *)thd->buf + thd->offsets[i].offset;
         }
         data_len += columns[i]->value.len;
     }
@@ -5620,6 +5632,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
+        if (rc == SQLITE_SCHEMA_REMOTE)
+            continue;
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */

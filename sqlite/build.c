@@ -5174,5 +5174,16 @@ char *sqlite3DescribeIndexOrder(
   return ret2;
 }
 
+/* COMDB2 MODIFICATION */
+/*
+** Reset the schema for all remote dbs from an engine 
+**
+*/
+void sqlite3ResetFdbSchemas(sqlite3 *db){
+  int i;
 
+  for( i=2; i<db->nDb; i++ ){
+    comdb2_dynamic_detach(db, i);
+  }
+}
 #endif /* !defined(SQLITE_OMIT_CTE) */

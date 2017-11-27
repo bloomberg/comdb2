@@ -816,6 +816,8 @@ const char *period_to_name(enum view_timepart_period period)
         return YEARLY_STR;
     case VIEW_TIMEPART_TEST2MIN:
         return TEST2MIN_STR;
+    default:
+        break;
     }
     return INVALID_STR;
 }

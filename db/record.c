@@ -89,6 +89,8 @@ void free_cached_idx(uint8_t * *cached_idx);
         logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);           \
     goto err;
 
+int gbl_max_wr_rows_per_txn = 0;
+
 static inline int
 add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
@@ -149,6 +151,16 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (iq->debug) {
         reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
         prefixes++;
+    }
+
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (gbl_max_wr_rows_per_txn &&
+            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max rows");
+            retrc = ERR_TRAN_TOO_BIG;
+            ERR;
+        }
     }
 
     if ((flags & RECFLAGS_NEW_SCHEMA) &&
@@ -804,6 +816,16 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
     *ixfailnum = -1;
 
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (gbl_max_wr_rows_per_txn &&
+            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max rows");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
+    }
+
     bzero(oldblobs, sizeof(oldblobs));
     bzero(add_blobs_buf, sizeof(add_blobs_buf));
     bzero(del_blobs_buf, sizeof(del_blobs_buf));
@@ -1294,13 +1316,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
-    if (iq->debug)
+    if (iq->debug) {
         if (flags & RECFLAGS_KEEP_GENID)
             reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn, vgenid,
                       rc);
         else
             reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
                       rrn, vgenid, *genid, rc);
+    }
 
     if (rc != 0) {
         *opfailcode = OP_FAILED_VERIFY;
@@ -1788,6 +1811,16 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             reqprintf(iq, "NO USEDB SET");
         retrc = ERR_BADREQ;
         goto err;
+    }
+
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (gbl_max_wr_rows_per_txn &&
+            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max rows");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
     }
 
     if (iq->debug) {

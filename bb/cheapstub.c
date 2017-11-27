@@ -58,7 +58,7 @@ static void cheapstub(FILE *f)
             "tid=0x%lx(%u) stack trace, run addr2line -f -e <exe> on: \n", tid,
             (uint32_t)tid);
     for  (int i = 2; i < n; ++i) {
-        logmsgf(LOGMSG_USER, f, "0x%p ", buf[i]);
+        logmsgf(LOGMSG_USER, f, "%p ", buf[i]);
     }
     logmsgf(LOGMSG_USER,  f, "\n");
 

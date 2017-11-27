@@ -5507,6 +5507,11 @@ int comdb2_is_standalone(void *dbenv)
     return bdb_is_standalone(dbenv, thedb->bdb_env);
 }
 
+const char *comdb2_get_dbname(void)
+{
+    return thedb->envname;
+}
+
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
 

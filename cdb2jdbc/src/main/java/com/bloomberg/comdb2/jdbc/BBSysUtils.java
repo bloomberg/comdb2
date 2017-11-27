@@ -293,8 +293,10 @@ public class BBSysUtils {
                 System.out.println("dbinfoQuery: dbinfo response " +
                         "returns " + dbInfoResp.nodes);
             }
+
+            /* Add coherent nodes. */
             for (NodeInfo node : dbInfoResp.nodes) {
-                if (node.incoherent != 0 || node.port < 0) {
+                if (node.incoherent != 0) {
                     if (debug) {
                         System.out.println("dbinfoQuery: Skipping " +
                                 node.name + ": incoherent=" + 
@@ -319,6 +321,18 @@ public class BBSysUtils {
 
                 if (myroom == node.room)
                     ++hosts_same_room;
+            }
+
+            /* Add incoherent nodes too, but don't count them for same room hosts. */
+            for (NodeInfo node : dbInfoResp.nodes) {
+                if (node.incoherent == 0)
+                    continue;
+
+                validHosts.add(node.name);
+                validPorts.add(node.port);
+
+                if (node.name.equalsIgnoreCase(dbInfoResp.master.name))
+                    master = validHosts.size() - 1;
             }
 
             if (validHosts.size() <= 0)
