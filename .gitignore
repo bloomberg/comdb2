@@ -19,6 +19,13 @@ cdb2jdbc/maven.m2/**
 cdb2jdbc/.gradle/**
 cdb2jdbc/build/**
 
+# hibernate dialect
+contrib/cdb2hibernatedialect/.gradle/**
+contrib/cdb2hibernatedialect/build/**
+contrib/cdb2hibernatedialect/target/**
+contrib/cdb2hibernatedialect/private/**
+
+
 # generated docs
 _site/
 Comdb2.docset
