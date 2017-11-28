@@ -2063,11 +2063,11 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
 
 int llmeta_load_timepart(struct dbenv *dbenv)
 {
-   /* We need to do this before resuming schema chabge , if any */
-   logmsg(LOGMSG_INFO, "Reloading time partitions\n");
-   dbenv->timepart_views = timepart_views_init(dbenv);
+    /* We need to do this before resuming schema chabge , if any */
+    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
+    dbenv->timepart_views = timepart_views_init(dbenv);
 
-   return thedb->timepart_views?0:-1;
+    return thedb->timepart_views ? 0 : -1;
 }
 
 /* replace the table names and dbnums saved in the low level meta table with the
@@ -3560,15 +3560,15 @@ static int init(int argc, char **argv)
     }
     /* we will load the tables from the llmeta table */
     else {
-        int waitfileopen = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
-        if( waitfileopen)
-        {
+        int waitfileopen =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
+        if (waitfileopen) {
             logmsg(LOGMSG_INFO, "Waiting to open file\n");
             poll(NULL, 0, waitfileopen);
             logmsg(LOGMSG_INFO, "Done waiting\n");
         }
 
-        /* we would like to open the files under schema lock, so that 
+        /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
         pthread_rwlock_wrlock(&schema_lk);
@@ -3580,9 +3580,8 @@ static int init(int argc, char **argv)
             return -1;
         }
 
-        if( llmeta_load_timepart( thedb) )
-        {
-            logmsg(LOGMSG_ERROR,"could not load time partitions\n");
+        if (llmeta_load_timepart(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load time partitions\n");
             pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
@@ -5539,7 +5538,7 @@ const char *comdb2_get_dbname(void)
 
 int sc_ready(void)
 {
-   return thedb->timepart_views != 0;
+    return thedb->timepart_views != 0;
 }
 
 #define QUOTE_(x) #x
