@@ -259,7 +259,6 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
     unsigned long long search_genid;
     int crc;
     int is_blob = 0;
-    struct odh odh = {0};
 
     if (dta_out) {
         bzero(dta_out, sizeof(DBT));
@@ -316,6 +315,9 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
            fetch it */
         if (dta_out || bdb_state->attr->snapisol || is_blob) {
             /* This codepath does a direct lookup on a masked genid. */
+            void *freeptr = NULL;
+            struct odh odh = {0};
+
             search_genid = get_search_genid(bdb_state, genid);
             dbt_key.data = &search_genid;
             dbt_key.size = sizeof(search_genid);
@@ -342,11 +344,29 @@ int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                 goto done;
             }
 
+            /* Unpack record. */
+            rc = bdb_unpack(bdb_state, dta_out_si.data, dta_out_si.size, NULL,
+                            0, &odh, &freeptr);
+            if (rc) {
+                if (freeptr)
+                    free(freeptr);
+                dbcp->c_close(dbcp);
+                goto done;
+            }
+
+            /* Verify updateid for rowlocks */
+            if (tran->logical_tran && dtafile == 0 &&
+                odh.updateid != get_updateid_from_genid(bdb_state, genid))
+                rc = DB_NOTFOUND;
+
             /* Copy the pointers if the user wanted the record. */
-            if (dta_out) {
+            if (rc == 0 && dta_out) {
                 dta_out->data = dta_out_si.data;
                 dta_out->size = dta_out_si.size;
             }
+
+            if (freeptr)
+                free(freeptr);
         } /* dta_out || snapisol || is_blob */
         else {
             /* Use the normal genid. */
