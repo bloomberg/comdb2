@@ -110,6 +110,7 @@ static int machine_class_default(const char *host)
                 my_class = CLASS_BETA;
             else if (strcmp(envclass, "prod") == 0)
                 my_class = CLASS_PROD;
+            else
             logmsg(LOGMSG_ERROR, "envclass set to \"%s\", don't recognize it\n",
                     envclass);
         } else {
