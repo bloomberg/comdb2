@@ -674,7 +674,7 @@ int gbl_allow_parallel_rep_on_prefix = 1;
 int gbl_only_match_commit_records = 1;
 
 /* Release locks if replication is waiting on a lock you hold (si-only) */
-int gbl_sql_release_locks_on_si_lockwait = 0;
+int gbl_sql_release_locks_on_si_lockwait = 1;
 /* If this is set, recom_replay will see the same row multiple times in a scan &
  * fail */
 int gbl_sql_release_locks_on_emit_row = 0;

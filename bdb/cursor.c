@@ -3335,6 +3335,9 @@ void bdb_remove_fileid_pglogs(bdb_state_type *bdb_state, unsigned char *fileid)
         return;
 
     bdb_remove_fileid_pglogs_queue(bdb_state, fileid);
+
+    if (!gbl_new_snapisol_asof)
+        return;
     bdb_remove_logfile_fileid_pglogs(bdb_state, fileid);
 }
 
