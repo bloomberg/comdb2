@@ -605,8 +605,6 @@ int tran_allocate_rlptr(tran_type *tran, DBT **rlptr, DB_LOCK **rlock)
         tran->rc_list = new_rc_list;
         tran->rc_locks = new_rc_locks;
         tran->rc_max += step;
-
-        ret = 1;
     }
 
     if (!(tran->rc_list[tran->rc_count] = pool_getablk(tran->rc_pool))) {
@@ -1662,7 +1660,7 @@ static int bdb_tran_commit_with_seqnum_int_int(
            record if we were given one. */
 
         if (!needed_to_abort || blkseq) {
-            rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+            rc = get_physical_transaction(bdb_state, tran, &physical_tran, 0);
             if (!physical_tran) {
                 logmsg(LOGMSG_FATAL, 
                         "%s %d error getting physical transaction, %d\n",
@@ -1739,7 +1737,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
 
                 /* We've already aborted but failed with blkseq.  Get a physical
                  * transaction to write the commit record. */
-                rc = get_physical_transaction(bdb_state, tran, &physical_tran);
+                rc = get_physical_transaction(bdb_state, tran, &physical_tran,
+                                              0);
                 if (!physical_tran) {
                     logmsg(LOGMSG_FATAL, 
                             "%s %d error getting physical transaction, %d\n",

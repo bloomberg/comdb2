@@ -8953,7 +8953,7 @@ static int recover_deadlock_int(bdb_state_type *bdb_state,
         logmsg(LOGMSG_ERROR, "THD %lu:recover_deadlock, and lock desired\n",
                pthread_self());
     } else if (ptrace)
-        logmsg(LOGMSG_ERROR, "THD %lu:recover_deadlock\n", pthread_self());
+        logmsg(LOGMSG_INFO, "THD %lu:recover_deadlock\n", pthread_self());
 
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;

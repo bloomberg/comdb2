@@ -298,11 +298,11 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if (iq->tranddl && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
-            int get_physical_transaction(bdb_state_type * bdb_state,
-                                         tran_type * logical_tran,
-                                         tran_type * *outtran);
+            int get_physical_transaction(
+                bdb_state_type * bdb_state, tran_type * logical_tran,
+                tran_type * *outtran, int force_commit);
             rc = get_physical_transaction(bdb_handle, *out_trans,
-                                          &physical_tran);
+                                          &physical_tran, 0);
             if (rc == BDBERR_READONLY) {
                 trans_abort_logical(iq, *out_trans, NULL, 0, NULL, 0);
                 *out_trans = NULL;

@@ -8115,7 +8115,7 @@ static int update_pglogs_from_global_queues_int(
         */
     } else if (current != last) {
         assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
-               log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <
+               log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <=
                    0);
    }
 

@@ -1396,7 +1396,7 @@ int phys_dta_add(bdb_state_type *bdb_state, tran_type *tran,
                  DBT *dbt_key, DBT *dbt_data);
 
 int get_physical_transaction(bdb_state_type *bdb_state, tran_type *logical_tran,
-                             tran_type **outtran);
+                             tran_type **outtran, int force_commit);
 int phys_dta_upd(bdb_state_type *bdb_state, int rrn,
                  unsigned long long oldgenid, unsigned long long *newgenid,
                  DB *dbp, tran_type *logical_tran, int dtafile, int dtastripe,
@@ -1695,10 +1695,11 @@ void bdb_dump_cursors(bdb_state_type *bdb_state, FILE *out);
 
 /* All flavors of rowlocks */
 int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
-                            DBT *dbt_key, DB_LOCK *lk, DBT *lkname);
+                            DBT *dbt_key, DB_LOCK *lk, DBT *lkname,
+                            int trylock);
 int bdb_lock_row_write_getlock(bdb_state_type *bdb_state, tran_type *tran,
                                int idx, unsigned long long genid, DB_LOCK *dblk,
-                               DBT *lkname);
+                               DBT *lkname, int trylock);
 
 int bdb_lock_row_write_getlock_fromlid(bdb_state_type *bdb_state, int lid,
                                        int idx, unsigned long long genid,
