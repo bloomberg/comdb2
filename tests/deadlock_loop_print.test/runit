@@ -33,19 +33,19 @@ for node in $cluster ; do
 done
 
 f1() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
 begin
-insert into t1 values (1, x'11')
-insert into t2 values (1, x'11')
+insert into t1 values (1)
+insert into t2 values (1)
 commit
 EOF
 }
 
 f2() {
-    cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
 begin
-insert into t2 values (2, x'22')
-insert into t1 values (2, x'22')
+insert into t2 values (2)
+insert into t1 values (2)
 commit
 EOF
 }
@@ -56,6 +56,18 @@ f1 &
 f2 &
 
 wait
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't1',* from t1 order by i" > content.out
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 't2',* from t2 order by i" >> content.out
+
+echo "t1	1" > content.expected
+echo "t1	2" >> content.expected
+echo "t2	1" >> content.expected
+echo "t2	2" >> content.expected
+
+if ! diff content.expected content.out ; then 
+    failexit "content not what it is supposed to be"
+fi
 
 master=`getmaster`
 logfl=`cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('reql stat')" | grep "Eventlog enabled" | cut -f2 -d ':'`
