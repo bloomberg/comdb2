@@ -109,6 +109,7 @@ struct blocksql_tran {
 typedef struct oplog_key {
     unsigned long long rqid;
     uuid_t uuid;
+    int tbl_idx;
     unsigned long long seq;
 } oplog_key_t;
 
@@ -598,7 +599,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                       unsigned long long seq, char *host)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
-    struct ireq *iq;
+    struct ireq *iq = osql_session_get_ireq(sess);
     int rc = 0, rc_op = 0;
     oplog_key_t key;
     int rpl_len = 0;
@@ -609,7 +610,18 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
-    if (type == OSQL_SCHEMACHANGE) sess->iq->tranddl = 1;
+    if (type == OSQL_SCHEMACHANGE) iq->tranddl = 1;
+    if (type == OSQL_USEDB) {
+        const char *get_tablename_from_rpl(const char *rpl);
+        const char *tablename = get_tablename_from_rpl(rpl);
+        printf("AZ: tablename = '%s'\n", tablename);
+        iq->usedb = NULL;
+        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
+            iq->usedb = get_dbtable_by_name(tablename);
+            assert(iq->usedb);
+            printf("AZ: idx = '%d'\n", iq->usedb->dbs_idx);
+        }
+    }
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
@@ -617,6 +629,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
     key.rqid = rqid;
+    //if (iq->usedb)
+        //key.tbl_idx = iq->usedb->dbs_idx;
+    //else
+        key.tbl_idx = 0;
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
 
@@ -669,8 +685,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     }
 
 #if 0 
-   printf("%s: rqid=%llx Saving op type=%d\n", __func__, key.rqid, ntohl(*((int*)rpl)));
 #endif
+   printf("%s: rqid=%llx Saving op type=%d, tbl_idx=%d\n", __func__, key.rqid, ntohl(*((int*)rpl)), key.tbl_idx);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -716,7 +732,6 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
             osql_sess_lock(sess);
             osql_sess_lock_complete(sess);
             if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-                iq = osql_session_get_ireq(sess);
                 osql_session_set_ireq(sess, NULL);
                 osql_sess_set_dispatched(sess, 1);
                 rc = handle_buf_sorese(thedb, iq, debug);

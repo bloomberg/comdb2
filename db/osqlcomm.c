@@ -6314,6 +6314,17 @@ int start_schema_change_tran_wrapper(const char *tblname,
     return (rc == SC_COMMIT_PENDING) ? 0 : rc;
 }
 
+const char *get_tablename_from_rpl(const char *rpl)
+{
+    osql_usedb_t dt;
+    const char *p_buf = rpl + sizeof(osql_uuid_rpl_t);
+    const char *p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
+    const char *tablename;
+
+    tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+    return tablename;
+}
+
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
