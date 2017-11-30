@@ -38,7 +38,7 @@ version = '2.0.0'
 
 dependencies {
     compile 'log4j:log4j:1.2.17'
-    compile 'com.google.protobuf:protobuf-java:3.4.0'
+    compile 'com.google.protobuf:protobuf-java:3.2.0'
     testCompile 'junit:junit:4.11'
 }
 
@@ -47,6 +47,7 @@ sourceSets {
         proto {
             srcDir '../protobuf/'
             exclude 'sqlresponse.proto'
+            exclude 'bpfunc.proto'
         }
     }
     
@@ -54,6 +55,7 @@ sourceSets {
         proto {
             srcDir '../protobuf/'
             exclude 'sqlquery.proto'
+            exclude 'bpfunc.proto'
         }
     }
 }
@@ -68,7 +70,7 @@ compileJava.dependsOn copyProto
 
 protobuf {
     protoc {
-        artifact = 'com.google.protobuf:protoc:3.4.0'
+        artifact = 'com.google.protobuf:protoc:3.2.0'
     }
     
     generatedFilesBaseDir = "$projectDir/build/generated-sources"
