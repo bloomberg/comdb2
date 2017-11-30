@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Test incremental copy
+export debug=1
+[[ $debug == 1 ]] && set -x
+
+# Write 10k rows.  Bring one node down.  Write another 1k rows.  Copy and
+# bring up db.  Make sure it passes verify, and has 10k rows after copy.
+
+set -e
+
+export dbname=$1
+export default=local
+
+nrecs=10000
+morerecs=1000
+lrl="${DBDIR}/${dbname}.lrl"
+
+if [[ -z "$CLUSTER" ]]; then
+    echo 'Cluster-only test, skipping'
+    exit 0
+fi
+
+typeset -a nodes
+read -r -a nodes <<< $CLUSTER
+target=${nodes[$(($RANDOM % ${#nodes[@]}))]}
+
+
+exit 0
+
+$cdb2sql ${CDB2_OPTIONS} $dbname $default "create table t (a int, b cstring(100))"
+
+schema=$($cdb2sql ${CDB2_OPTIONS} -tabs $dbname $default "select csc2 from sqlite_master where tbl_name='t' and type='table'")
+echo "schema is $schema"
+
+$cdb2sql ${CDB2_OPTIONS} $dbname $default "alter table t options rec none, rebuild {$schema}"
+
+for i in $(seq 1 $nrecs); do
+    echo "insert into t(a, b) values($i, '')"
+done | $cdb2sql ${CDB2_OPTIONS} $dbname $default - >/dev/null
+
+# create a partials tarball
+ssh $target $comdb2ar p $lrl > partials.lrl
+
+rm -fr partials
+mkdir partials
+tar -C partials xf partials.lrl
+
+# take down the target db
+ssh $target $cdb2sql $dbname local "exec procedure sys.cmd('exit')"
+
+# insert some more rows
+for i in $(seq 1 $morerecs); do
+    echo "insert into t(a, b) values($i, '')"
+done | $cdb2sql ${CDB2_OPTIONS} $dbname $default - >/dev/null
+
+# create a partial backup
+$comdb2ar -I inc -b partials $lrl > backup.tar
+
+scp backup.tar $target:$pwd
+
+# restore
+ssh $target $comdb2ar P $lrl < $pwd/backup.tar
+
+# bring back up
+ssh $target $comdb2 $dbname -lrl $lrl &
+# todo loop until up
+sleep 30
+
+ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs "exec procedure sys.cmd.verify('t')"
+target_count=$(ssh $target $comdb2sql ${CDB2_OPTIONS} -tabs $dbname local "select count(*) from t")
+if [[ $target_count != $(($nrecs + $morerecs)) ]]; then
+    echo "Wrong count expected $(($nrecs + $morerecs)) got $target_count"
+    exit 1
+fi
+exit 0
