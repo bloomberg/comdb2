@@ -1334,14 +1334,6 @@ int ll_dta_upd(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
                int dtafile, int dtastripe, int participantstripid,
                int use_new_genid, DBT *verify_dta, DBT *dta, DBT *old_dta_out);
 
-int ll_dta_upd_rowlocks(bdb_state_type *bdb_state, int rrn,
-                        unsigned long long oldgenid,
-                        unsigned long long *newgenid, DB *dbp, tran_type *tran,
-                        int dtafile, int dtastripe, int participantstripid,
-                        int use_new_genid, DBT *verify_dta, DBT *dta,
-                        DBT *old_dta_out, DBT *lock, DB_LOCK *lk,
-                        unsigned long long *pvgenid, DBT *pvlock, DB_LOCK *plk);
-
 int ll_dta_upd_blob(bdb_state_type *bdb_state, int rrn,
                     unsigned long long oldgenid, unsigned long long newgenid,
                     DB *dbp, tran_type *tran, int dtafile,
@@ -1358,30 +1350,12 @@ int ll_key_upd(bdb_state_type *bdb_state, tran_type *tran, char *table_name,
                unsigned long long oldgenid, unsigned long long genid, void *key,
                int ixnum, int keylen, void *dta, int dtalen);
 
-int ll_key_upd_rowlocks(bdb_state_type *bdb_state, tran_type *tran,
-                        char *table_name, unsigned long long oldgenid,
-                        unsigned long long genid, void *key, int ixnum,
-                        int keylen, void *dta, int dtalen);
-
 int ll_key_del(bdb_state_type *bdb_state, tran_type *tran, int ixnum, void *key,
                int keylen, int rrn, unsigned long long genid, int *payloadsz);
 
 int ll_dta_del(bdb_state_type *bdb_state, tran_type *tran, int rrn,
                unsigned long long genid, DB *dbp, int dtafile, int dtastripe,
                DBT *dta_out);
-
-int ll_key_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int ixnum,
-                        void *key, int keylen, int rrn,
-                        unsigned long long genid, int *payloadsz,
-                        unsigned long long *pvgenid,
-                        unsigned long long *nxgenid, DBT *pvlock, DB_LOCK *plk,
-                        DBT *nxlock, DB_LOCK *nlk);
-
-int ll_dta_del_rowlocks(bdb_state_type *bdb_state, tran_type *tran, int rrn,
-                        unsigned long long genid, DB *dbp, int dtafile,
-                        int dtastripe, DBT *dta_out,
-                        unsigned long long *pvgenid, DBT *lkname,
-                        DB_LOCK *prevlk);
 
 int ll_dta_upgrade(bdb_state_type *bdb_state, int rrn, unsigned long long genid,
                    DB *dbp, tran_type *tran, int dtafile, int dtastripe,
