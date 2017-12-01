@@ -1345,18 +1345,26 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
                 clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN);
     }
 
-    if (clnt->sql_query && clnt->sql_query->has_cnonce &&
-        get_high_availability(clnt) &&
-        (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN)) {
+    int send_cnonce = get_high_availability(clnt);
+    extern int gbl_always_send_cnonce;
+    if (gbl_always_send_cnonce)
+        send_cnonce = true;
 
-        if (osql->rqid == OSQL_RQID_USE_UUID) {
-            snap_info.keylen = clnt->sql_query->cnonce.len;
-            memcpy(snap_info.key, clnt->sql_query->cnonce.data,
-                   clnt->sql_query->cnonce.len);
-            snap_info.effects = clnt->effects;
-            comdb2uuidcpy(snap_info.uuid, osql->uuid);
-            snap_info_p = &snap_info;
-        }
+    if (osql->rqid == OSQL_RQID_USE_UUID && clnt->sql_query &&
+        clnt->sql_query->has_cnonce && send_cnonce &&
+        (clnt->sql_query->cnonce.len <= MAX_SNAP_KEY_LEN) &&
+        !clnt->trans_has_sp) {
+
+        /* pass to master the state of verify retry.
+         * if verify retry is on and error is retryable, don't write to
+         * blkseq on master because replicant will retry */
+        snap_info.replicant_can_retry = replicant_can_retry(clnt);
+        snap_info.keylen = clnt->sql_query->cnonce.len;
+        memcpy(snap_info.key, clnt->sql_query->cnonce.data,
+               clnt->sql_query->cnonce.len);
+        snap_info.effects = clnt->effects;
+        comdb2uuidcpy(snap_info.uuid, osql->uuid);
+        snap_info_p = &snap_info;
     }
 
 retry:

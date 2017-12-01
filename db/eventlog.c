@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#include <comdb2.h>
 #if defined(_IBM_SOURCE)
 #include <openssl/objects.h>
 #include <openssl/ec.h>
@@ -35,6 +36,7 @@
 #include "util.h"
 #include "plhash.h"
 #include "logmsg.h"
+#include "dbinc/locker_info.h"
 
 #include "cson_amalgamation_core.h"
 
@@ -85,6 +87,7 @@ static inline void free_gbl_eventlog_fname()
 static gzFile eventlog_open()
 {
     char *fname = eventlog_fname(thedb->envname);
+    gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
     if (f == NULL) {
         eventlog_enabled = 0;
@@ -513,6 +516,13 @@ void eventlog_add(const struct reqlogger *logger)
     cson_value_free(val);
 }
 
+void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
+{
+    if (obj && snap_info)
+        cson_object_set(obj, "cnonce", cson_value_new_string(
+                                           snap_info->key, snap_info->keylen));
+}
+
 void eventlog_status(void)
 {
     if (eventlog_enabled == 1)
@@ -650,5 +660,51 @@ void eventlog_process_message(char *line, int lline, int *toff)
 {
     pthread_mutex_lock(&eventlog_lk);
     eventlog_process_message_locked(line, lline, toff);
+    pthread_mutex_unlock(&eventlog_lk);
+}
+
+void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
+                        u_int32_t nlockers, u_int32_t victim)
+{
+    if (eventlog == NULL)
+        return;
+    if (!eventlog_enabled)
+        return;
+
+    cson_value *dval = cson_value_new_object();
+    cson_object *obj = cson_value_get_object(dval);
+
+    cson_value *dd_list = cson_value_new_array();
+    int64_t time_epochus(void);
+    uint64_t startus = time_epochus();
+    cson_object_set(obj, "time", cson_new_int(startus));
+    extern char *gbl_mynode;
+    cson_object_set(obj, "host",
+                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+    cson_object_set(obj, "deadlock_cycle", dd_list);
+    cson_array *arr = cson_value_get_array(dd_list);
+    cson_array_reserve(arr, nlockers);
+
+    for (int j = 0; j < nlockers; j++) {
+        if (!ISSET_MAP(deadmap, j))
+            continue;
+
+        cson_value *lobj = cson_value_new_object();
+        cson_object *vobj = cson_value_get_object(lobj);
+
+        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
+        cson_snap_info_key(vobj, idmap[j].snap_info);
+        char hex[11];
+        sprintf(hex, "0x%x", idmap[j].id);
+        cson_object_set(vobj, "lid", cson_value_new_string(hex, strlen(hex)));
+        cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].count));
+        if (j == victim)
+            cson_object_set(vobj, "victim", cson_value_new_bool(1));
+        cson_array_append(arr, lobj);
+    }
+    logmsg(LOGMSG_USER, "\n");
+
+    pthread_mutex_lock(&eventlog_lk);
+    cson_output(dval, write_json, eventlog, &opt);
     pthread_mutex_unlock(&eventlog_lk);
 }

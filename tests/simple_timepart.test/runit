@@ -15,7 +15,6 @@ OUT="run.log"
 rm $OUT 2>/dev/null
 touch $OUT
 
-
 # check the current partitions 
 echo cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
