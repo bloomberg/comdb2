@@ -109,7 +109,7 @@ struct blocksql_tran {
 typedef struct oplog_key {
     unsigned long long rqid;
     uuid_t uuid;
-    int tbl_idx;
+    unsigned long long tbl_idx;
     unsigned long long seq;
 } oplog_key_t;
 
@@ -629,9 +629,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 #endif
 
     key.rqid = rqid;
-    //if (iq->usedb)
-        //key.tbl_idx = iq->usedb->dbs_idx;
-    //else
+    if (iq->usedb)
+        key.tbl_idx = iq->usedb->dbs_idx;
+    else
         key.tbl_idx = 0;
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
@@ -686,7 +686,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
 #if 0 
 #endif
-   printf("%s: rqid=%llx Saving op type=%d, tbl_idx=%d\n", __func__, key.rqid, ntohl(*((int*)rpl)), key.tbl_idx);
+   printf("%s: rqid=%llx Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, key.seq, ntohl(*((int*)rpl)), key.tbl_idx);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -1061,8 +1061,6 @@ static int process_this_session(
     unsigned long long rqid = osql_sess_getrqid(sess);
     oplog_key_t *key = NULL;
     oplog_key_t key_next, key_crt;
-    char *data = NULL;
-    int datalen = 0;
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
@@ -1086,6 +1084,7 @@ static int process_this_session(
     }
 
     key->rqid = rqid;
+    key->tbl_idx = 0;
     key->seq = 0;
     osql_sess_getuuid(sess, key->uuid);
     osql_sess_getuuid(sess, uuid);
@@ -1100,6 +1099,7 @@ static int process_this_session(
     /* go through each record */
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
+printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
@@ -1114,8 +1114,14 @@ static int process_this_session(
 
     while (!rc && !rc_out) {
 
-        data = bdb_temp_table_data(dbc);
-        datalen = bdb_temp_table_datasize(dbc);
+        char *realkey = bdb_temp_table_key(dbc);
+        char *realkeylen = bdb_temp_table_keysize(dbc);
+        char mus[37];
+        comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
+printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey)->rqid, mus, ((oplog_key_t*)realkey)->tbl_idx, ((oplog_key_t*)realkey)->seq);
+
+        char *data = bdb_temp_table_data(dbc);
+        int datalen = bdb_temp_table_datasize(dbc);
 
         if (bdb_lock_desired(thedb->bdb_env)) {
             logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
