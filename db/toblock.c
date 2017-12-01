@@ -1080,8 +1080,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         util_tohex(printkey, fstseqnum, seqlen);
     }
 
-    logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s, cnonce %*s!\n", __func__, line, 
-            outrc, printkey, iq->snap_info.keylen, iq->snap_info.key);
+    logmsg(LOGMSG_ERROR,
+           "%s from line %d replay returns %d for fstblk %s, cnonce %*s!\n",
+           __func__, line, outrc, printkey, iq->snap_info.keylen,
+           iq->snap_info.key);
     free(printkey);
     
     /* If the latest commit is durable, then the blkseq commit must be durable.  
@@ -2654,8 +2656,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             void *replay_data = NULL;
             int replay_len = 0;
             int findout;
-            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
-                                       iq->snap_info.keylen, &replay_data, &replay_len);
+            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
+                                      iq->snap_info.key, iq->snap_info.keylen,
+                                      &replay_data, &replay_len);
             if (findout == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
@@ -5420,17 +5423,16 @@ add_blkseq:
         if (!rowlocks) {
             extern int gbl_always_send_cnonce;
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
-            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY && 
+            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
                 (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
                 /* do nothing */
-            }
-            else {
+            } else {
                 int t = time_epoch();
                 memcpy(p_buf_fstblk, &t, sizeof(int));
-                rc = bdb_blkseq_insert(
-                        thedb->bdb_env, parent_trans, bskey, bskeylen,
-                        buf_fstblk, p_buf_fstblk - buf_fstblk + sizeof(int),
-                        &replay_data, &replay_len);
+                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
+                                       bskeylen, buf_fstblk,
+                                       p_buf_fstblk - buf_fstblk + sizeof(int),
+                                       &replay_data, &replay_len);
             }
 
             if (iq->seqlen == sizeof(uuid_t)) {
@@ -5472,9 +5474,9 @@ add_blkseq:
                     memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
                     bskey[iq->snap_info.keylen] = '\0';
                     logmsg(LOGMSG_USER, "blkseq add '%s', outrc=%d errval=%d "
-                            "errstr='%s', rcout=%d commit-rc=%d\n",
-                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                            iq->sorese.rcout, irc);
+                                        "errstr='%s', rcout=%d commit-rc=%d\n",
+                           bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
+                           iq->sorese.rcout, irc);
                 }
             } else {
                 if (hascommitlock) {
@@ -5507,17 +5509,17 @@ add_blkseq:
                     if (block_state_restore(iq, p_blkstate))
                         /* TODO can I just return here? should prob go to
                          * cleanup ? */
-                    return ERR_INTERNAL;
+                        return ERR_INTERNAL;
 
                     outrc = RC_INTERNAL_RETRY;
                     fromline = __LINE__;
 
                     /* lets bump the priority if we got killed here */
                     if (bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
+                                     BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
                         iq->priority += bdb_attr_get(
-                                thedb->bdb_attr,
-                                BDB_ATTR_DEADLK_PRIORITY_BUMP_ON_FSTBLK);
+                            thedb->bdb_attr,
+                            BDB_ATTR_DEADLK_PRIORITY_BUMP_ON_FSTBLK);
                     }
                     goto cleanup;
                 }

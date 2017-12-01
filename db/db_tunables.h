@@ -1311,12 +1311,11 @@ REGISTER_TUNABLE("max_wr_rows_per_txn",
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("print_deadlock_cycles",
-                 "Print all deadlock cycles. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_print_deadlock_cycles, NOARG,
-                 NULL, NULL, NULL, NULL);
+                 "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_send_cnonce",
                  "Always send cnonce to master. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG,
-                 NULL, NULL, NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG, NULL, NULL,
+                 NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

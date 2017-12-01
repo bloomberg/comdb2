@@ -619,7 +619,8 @@ int handle_ireq(struct ireq *iq)
         osql_bplog_reqlog_queries(iq);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-    if (gbl_print_deadlock_cycles) osql_snap_info = NULL;
+    if (gbl_print_deadlock_cycles)
+        osql_snap_info = NULL;
 
     if (iq->sorese.type) {
         if (iq->p_buf_out_start) {

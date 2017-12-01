@@ -5802,7 +5802,7 @@ check_version:
         } else {
             if (thedb->timepart_views) {
                 int saved_has_cnonce;
-                if(clnt && clnt->sql_query) {
+                if (clnt && clnt->sql_query) {
                     // if this is part of an ongoing transaction, clear this
                     saved_has_cnonce = clnt->sql_query->has_cnonce;
                     clnt->sql_query->has_cnonce = 0;
@@ -5815,7 +5815,7 @@ check_version:
                             "failed to create views rc=%d errstr=\"%s\"\n",
                             xerr.errval, xerr.errstr);
                 }
-                if(clnt && clnt->sql_query) {
+                if (clnt && clnt->sql_query) {
                     clnt->sql_query->has_cnonce = saved_has_cnonce;
                 }
             }

@@ -663,12 +663,13 @@ void eventlog_process_message(char *line, int lline, int *toff)
     pthread_mutex_unlock(&eventlog_lk);
 }
 
-
-void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, 
+void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
                         u_int32_t nlockers, u_int32_t victim)
 {
-    if (eventlog == NULL) return;
-    if (!eventlog_enabled) return;
+    if (eventlog == NULL)
+        return;
+    if (!eventlog_enabled)
+        return;
 
     cson_value *dval = cson_value_new_object();
     cson_object *obj = cson_value_get_object(dval);
@@ -679,21 +680,22 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_object_set(obj, "time", cson_new_int(startus));
     extern char *gbl_mynode;
     cson_object_set(obj, "host",
-            cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
     cson_object_set(obj, "deadlock_cycle", dd_list);
     cson_array *arr = cson_value_get_array(dd_list);
     cson_array_reserve(arr, nlockers);
 
     for (int j = 0; j < nlockers; j++) {
-        if (!ISSET_MAP(deadmap, j)) continue;
+        if (!ISSET_MAP(deadmap, j))
+            continue;
 
         cson_value *lobj = cson_value_new_object();
         cson_object *vobj = cson_value_get_object(lobj);
 
-        void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
+        void cson_snap_info_key(cson_object * obj, snap_uid_t * snap_info);
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
-        sprintf(hex, "0x%x",idmap[j].id);
+        sprintf(hex, "0x%x", idmap[j].id);
         cson_object_set(vobj, "lid", cson_value_new_string(hex, strlen(hex)));
         cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].count));
         if (j == victim)
