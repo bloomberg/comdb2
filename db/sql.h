@@ -287,6 +287,7 @@ struct stored_proc;
 struct lua_State;
 
 enum early_verify_error { EARLY_ERR_VERIFY = 1, EARLY_ERR_SELECTV = 2 };
+#define FINGERPRINTSZ 16
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -504,7 +505,7 @@ struct sqlclntstate {
     int8_t gen_changed;
     uint8_t skip_peer_chk;
 
-    char fingerprint[16];
+    char fingerprint[FINGERPRINTSZ];
     int ncontext;
     char **context;
 
@@ -513,6 +514,8 @@ struct sqlclntstate {
 
     int ignore_coherency;
     int statement_query_effects;
+
+    int verify_remote_schemas;
 };
 
 /* Query stats. */
@@ -733,6 +736,8 @@ struct sql_thread {
     char *error;
     struct master_entry *rootpages;
     int rootpage_nentries;
+    CDB2SQLRESPONSE__Column **columns;
+    int columns_count;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 };

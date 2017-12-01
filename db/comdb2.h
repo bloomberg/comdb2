@@ -1423,6 +1423,8 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool tranddl : 1;
+
+    int written_row_count;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -3648,5 +3650,8 @@ int db_is_stopped(void);
 int is_tablename_queue(const char *tablename, int len);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);
+
+int comdb2_get_verify_remote_schemas(void);
+void comdb2_set_verify_remote_schemas(void);
 
 #endif /* !INCLUDED_COMDB2_H */

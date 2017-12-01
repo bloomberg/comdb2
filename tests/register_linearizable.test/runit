@@ -9,7 +9,7 @@ regtest=${TESTSROOTDIR}/tools/register
 
 if [[ -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
-    exit 0
+    exit 1
 fi
 
 if [[ -z "$stage" ]]; then

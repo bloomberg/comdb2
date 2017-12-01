@@ -69,6 +69,10 @@ init_with_compr_blobs none
 # Dump blkseq additions
 on dump_blkseq
 
+# Print trace so we know we are sometimes not getting the 
+# bdb writelock.
+rep_verify_will_recover_trace on
+
 # Force work_appsock_failures
 # on debug_sqlthd_failures
 

@@ -571,11 +571,6 @@ static void *prefault_io_thread(void *arg)
                    just to free it? */
                 od_len = getdatsize(iq.usedb);
 
-                if (fnddta == NULL) {
-                    logmsg(LOGMSG_FATAL, "prefault_thd: malloc %u failed\n", od_len);
-                    exit(1);
-                }
-
                 if (req->helper_thread != -1) {
                     unsigned char *op_bitmap;
                     unsigned char *pfk_bitmap;
@@ -679,7 +674,6 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             /* just fault in 1 key, no dta */
             case PFRQ_NEWKEY: {
                 int maxlen = 0, fndrrn = 0, err = 0;
-                void *fnddta = NULL;
                 int retries = 0;
                 unsigned long long genid = 0;
                 char fndkey[MAXKEYLEN];

@@ -110,8 +110,10 @@ static int machine_class_default(const char *host)
                 my_class = CLASS_BETA;
             else if (strcmp(envclass, "prod") == 0)
                 my_class = CLASS_PROD;
-            logmsg(LOGMSG_ERROR, "envclass set to \"%s\", don't recognize it\n",
-                    envclass);
+            else
+                logmsg(LOGMSG_ERROR,
+                       "envclass set to \"%s\", don't recognize it\n",
+                       envclass);
         } else {
             /* Try comdb2db */
             char *sql = "select class from machines where name=@name";
