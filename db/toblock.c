@@ -5421,7 +5421,7 @@ add_blkseq:
             extern int gbl_always_send_cnonce;
             // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
             if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY && 
-                (gbl_always_send_cnonce && iq->snap_info.replicant_can_retry)) {
+                (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
                 /* do nothing */
             }
             else {
