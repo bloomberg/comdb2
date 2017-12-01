@@ -614,12 +614,12 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_USEDB) {
         const char *get_tablename_from_rpl(const char *rpl);
         const char *tablename = get_tablename_from_rpl(rpl);
-        printf("AZ: tablename = '%s'\n", tablename);
+        assert(tablename); //table or queue name
         iq->usedb = NULL;
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             iq->usedb = get_dbtable_by_name(tablename);
             assert(iq->usedb);
-            printf("AZ: idx = '%d'\n", iq->usedb->dbs_idx);
+            printf("AZ: tablename='%s' idx=%d\n", tablename, iq->usedb->dbs_idx);
         }
     }
 
@@ -1076,6 +1076,7 @@ static int process_this_session(
 
     iq->queryid = osql_sess_queryid(sess);
 
+    //TODO: when is this freed?
     key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
     if (!key) {
         logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
@@ -1118,6 +1119,7 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
         char *realkeylen = bdb_temp_table_keysize(dbc);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
+
 printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey)->rqid, mus, ((oplog_key_t*)realkey)->tbl_idx, ((oplog_key_t*)realkey)->seq);
 
         char *data = bdb_temp_table_data(dbc);
@@ -1154,12 +1156,8 @@ printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey
 
         rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
         if (!rc) {
-            /* are we still on the same rqid */
+            /* are we still on the same rqid/uuid */
             key_next = *(oplog_key_t *)bdb_temp_table_key(dbc);
-            if (key_next.rqid != key_crt.rqid) {
-                /* done with the current transaction*/
-                break;
-            }
             if (key_crt.rqid == OSQL_RQID_USE_UUID) {
                 if (comdb2uuidcmp(key_crt.uuid, key_next.uuid)) {
                     /* done with the current transaction*/
