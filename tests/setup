@@ -24,11 +24,6 @@ done
 
 DBDIR=$(realpath $DBDIR)
 
-# Export variables for comdb2 tools so we can call them directly from tests
-export cdb2sql=${SRCHOME}/build-amd64/tools/cdb2sql/cdb2sql
-export comdb2ar=${SRCHOME}/build-amd64/tools/comdb2ar/comdb2ar
-export comdb2=${SRCHOME}/build-amd64/db/comdb2
-
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
 

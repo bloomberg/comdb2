@@ -11,6 +11,12 @@ set -e
 export dbname=$1
 export default=local
 
+# Export variables for comdb2 tools so we can call them directly from tests
+export cdb2sql=${SRCHOME}/cdb2sql
+export comdb2ar=${SRCHOME}/comdb2ar
+export comdb2=${SRCHOME}/comdb2
+
+
 nrecs=10000
 morerecs=1000
 lrl="${DBDIR}/${dbname}.lrl"
@@ -23,9 +29,6 @@ fi
 typeset -a nodes
 read -r -a nodes <<< $CLUSTER
 target=${nodes[$(($RANDOM % ${#nodes[@]}))]}
-
-
-exit 0
 
 $cdb2sql ${CDB2_OPTIONS} $dbname $default "create table t (a int, b cstring(100))"
 
@@ -43,10 +46,10 @@ ssh $target $comdb2ar p $lrl > partials.lrl
 
 rm -fr partials
 mkdir partials
-tar -C partials xf partials.lrl
+tar xf partials.lrl -C partials 
 
 # take down the target db
-ssh $target $cdb2sql $dbname local "exec procedure sys.cmd('exit')"
+ssh $target "$cdb2sql $dbname local 'exec procedure sys.cmd.send.(\"exit\")'"
 
 # insert some more rows
 for i in $(seq 1 $morerecs); do
