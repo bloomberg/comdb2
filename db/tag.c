@@ -7494,6 +7494,17 @@ int create_key_from_ondisk_sch_blobs(
             }
             rc = -1; /* callers like -1 */
         } else if (tail) {
+            if ((strncmp(fromtag, ".ONDISK", 7) == 0 &&
+                 strncmp(totag, ".NEW.", 5) == 0) ||
+                (strncmp(fromtag, ".NEW.", 5) == 0 &&
+                 strncmp(totag, ".NEW.", 5) != 0)) {
+                /* Abort if new index uses old ondisk datacopy;
+                 * or if old index uses new ondisk datacopy. */
+                logmsg(LOGMSG_FATAL,
+                       "%s: BUG! BUG! Converting from tag %s to %s\n", __func__,
+                       fromtag, totag);
+                abort();
+            }
             *tail = (char *)inbuf;
             *taillen = inbuflen;
         }

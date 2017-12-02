@@ -1622,6 +1622,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                     ii, tblname);
             cleanup_newdb(tbl);
             return NULL;
+        } else if (tbl->ix_datacopy[ii]) {
+            tbl->has_datacopy_ix = 1;
         }
 
         tbl->ix_nullsallowed[ii] = 0;

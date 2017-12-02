@@ -45,6 +45,7 @@ enum CDB2_ErrorCode {
 
     NOMASTER                = -101;
     NOTSERIAL               =  230;
+    SCHEMACHANGE            =  240;
     UNTAGGED_DATABASE       = -102;
     CONSTRAINTS             = -103;
     DEADLOCK                =  203;

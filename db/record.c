@@ -2362,7 +2362,8 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         sc_new = NULL;
     }
 
-    if ((gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
+    if (iq->usedb->has_datacopy_ix ||
+        (gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
         (gbl_expressions_indexes && iq->usedb->ix_expr && !iq->idxDelete)) {
         /* save new blobs being deleted */
         sc_old = malloc(iq->usedb->lrl);
@@ -2670,7 +2671,8 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
 
     /*fprintf(stderr, "DEL NEW GENID 0x%llx\n", ngenid);*/
 
-    if ((gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
+    if (iq->usedb->has_datacopy_ix ||
+        (gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
         (gbl_expressions_indexes && iq->usedb->ix_expr && !iq->idxDelete)) {
         sc_old = malloc(iq->usedb->lrl);
         if (sc_old == NULL) {
