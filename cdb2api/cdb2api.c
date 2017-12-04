@@ -80,6 +80,8 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int cdb2_allow_pmux_route = 0;
 
+#define MAX_ARGV0 128
+
 static int _PID;
 static int _MACHINE_ID;
 static char *_ARGV0;
@@ -97,6 +99,91 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
 
+static int __proc_get_cmdline(const char *caller, pid_t pid, char *cmdline,
+                              int sz, int silent, bool *truncated)
+{
+    char procname[64];
+    snprintf(procname, sizeof(procname), "/proc/%d/cmdline", (int)pid);
+
+    int fd = open(procname, O_RDONLY);
+    if ( fd == -1 )
+    {
+        if(!silent)
+        {
+            fprintf(stderr, "%s:%s: failed to open %s: %s\n",
+                    caller, __func__, procname, strerror(errno));
+        }
+        return -1;
+    }
+
+    char *pos = cmdline;
+    size_t bytesleft = sz;
+    while ( bytesleft > 0 )
+    {
+        ssize_t nbytes = read(fd, pos, bytesleft);
+        if ( nbytes == -1 )
+        {
+            if(!silent)
+            {
+                fprintf(stderr, "%s:%s: failed to read %s: %s\n",
+                        caller, __func__, procname, strerror(errno));
+            }
+            close(fd);
+            return -1;
+        }
+        else if ( nbytes == 0 )
+        {
+            break;
+        }
+        else
+        {
+            bytesleft -= nbytes;
+            pos += nbytes;
+        }
+    }
+
+    close(fd);
+
+    /* Find length of data returned. */
+    int len = (pos - cmdline);
+
+    while ( ( len > 0 ) && ( cmdline[len - 1] == 0 ) )
+        len--;
+
+    if ( len == 0 )
+    {
+        if(!silent)
+        {
+            fprintf(stderr, "%s:%s: empty command line read from %s\n",
+                    caller, __func__, procname);
+        }
+        return -1;
+    }
+
+    /* Convert intermediate nul bytes to spaces, and make sure the whole thing
+     * has a nul at the end.  If it didn't then we know that our buffer wasn't
+     * large enough and the result is truncated. */
+    if ( len == sz )
+    {
+        len--;
+        (*truncated) = true;
+    }
+    else
+    {
+        (*truncated) = false;
+    }
+
+    for ( int ii = 0; ii < len; ii++ )
+    {
+        if( cmdline[ii] == 0 )
+            cmdline[ii] = ' ';
+    }
+
+    cmdline[len] = 0;
+
+    return 0;
+}
+
 #if defined(__APPLE__)
 static char *apple_getargv0(void)
 {
@@ -112,6 +199,20 @@ static char *linux_getargv0(void)
 #if defined(_SUN_SOURCE)
 static char *sun_getargv0(void)
 {
+    char procname[64];
+    static char argv0[MAX_ARGV0+1];
+    int bytesleft = MAX_ARGV0;
+    snprintf(procname, sizeof(procname), "/proc/%d/cmdline", (int)_PID);
+    int fd = open(procname, O_RDONLY);
+    if ( fd == -1 ) {
+        fprintf(stderr, "%s unable to open %s\n", procname);
+        return NULL;
+    }
+
+    while(bytesleft > 0) {
+    }
+
+    return argv0;
 }
 #endif
 
