@@ -1085,7 +1085,7 @@ static int process_this_session(
     /* go through each record */
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
-    if(rc != IX_NFND)
+    if(rc != IX_FND)
         free(key);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
