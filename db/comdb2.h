@@ -2896,7 +2896,7 @@ int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
-void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
+void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
@@ -2905,6 +2905,9 @@ void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
+/* Convert raw fingerprint to hex string, and write at most `n' characters of
+   the result to `hexstr'. Return the number of characters written. */
+int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);

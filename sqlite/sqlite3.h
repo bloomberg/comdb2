@@ -10478,7 +10478,8 @@ struct fts5_api {
 ** END OF REGISTRATION API
 *************************************************************************/
 
-SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint(sqlite3*, char digest[16]);
+SQLITE_API const char * SQLITE_STDCALL sqlite3_fingerprint(sqlite3*);
+SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint_size(sqlite3*);
 SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint_enable(sqlite3*);
 SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint_disable(sqlite3*);
 

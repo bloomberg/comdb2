@@ -1730,7 +1730,15 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     if (logger->vreplays) {
         reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
     }
-    reqlog_logf(logger, REQL_INFO, "fingerprint=%x", logger->fingerprint);
+
+    /* If fingerprinting is enabled and the logger has a fingerprint,
+       log the fingerprint as well. */
+    if (gbl_fingerprint_queries && logger->have_fingerprint) {
+        char hexfp[FINGERPRINTSZ << 1];
+        if (reqlog_fingerprint_to_hex(logger, hexfp, FINGERPRINTSZ << 1) > 0)
+            reqlog_logf(logger, REQL_INFO, "fingerprint=%.*s",
+                        FINGERPRINTSZ << 1, hexfp);
+    }
 
     logger->in_request = 0;
 
@@ -2294,13 +2302,15 @@ void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus)
     if (logger) logger->queuetimeus = timeus;
 }
 
-void reqlog_set_fingerprint(struct reqlogger *logger,
-                            char fingerprint[FINGERPRINTSZ])
+void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
+                            size_t n)
 {
-    if (logger) {
-        memcpy(logger->fingerprint, fingerprint, sizeof(logger->fingerprint));
-        logger->have_fingerprint = 1;
-    }
+    size_t min;
+    if (logger == NULL)
+        return;
+    min = (FINGERPRINTSZ < n) ? FINGERPRINTSZ : n;
+    memcpy(logger->fingerprint, fingerprint, min);
+    logger->have_fingerprint = 1;
 }
 
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *request)
@@ -2339,4 +2349,27 @@ void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context)
 {
     logger->ncontext = ncontext;
     logger->context = context;
+}
+
+int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t i, len;
+
+    if (!gbl_fingerprint_queries)
+        return 0;
+
+    if (n & 1)
+        return 0;
+
+    if (logger == NULL)
+        return 0;
+
+    for (i = 0, len = ((n >> 1) < FINGERPRINTSZ) ? (n >> 1) : FINGERPRINTSZ;
+         i != len; ++i) {
+        hexstr[i << 1] = hex[(logger->fingerprint[i] & 0xf0) >> 4];
+        hexstr[(i << 1) + 1] = hex[logger->fingerprint[i] & 0x0f];
+    }
+
+    return (i << 1);
 }
