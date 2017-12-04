@@ -69,8 +69,11 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
     else
         bdb_state = bdb_state_in;
 
-    if (!bdb_state->passed_dbenv_open)
+    extern int sc_ready(void);
+    if (!sc_ready()) {
+        logmsg(LOGMSG_INFO, "Skipping bdb_scdone, files not opened yet!\n");
         return 0;
+    }
 
     if (!bdb_state->callback->scdone_rtn) {
         logmsg(LOGMSG_ERROR, "bdb_scdone_int: no scdone callback\n");

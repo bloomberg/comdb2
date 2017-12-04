@@ -410,6 +410,7 @@ int osql_repository_printcrtsessions(void)
     osql_repository_t *stat = theosql;
     osql_sess_t *rq = NULL;
     int rc = 0;
+    int maxops = 0;
 
     if (!stat) {
         if (gbl_ready) {
@@ -419,6 +420,9 @@ int osql_repository_printcrtsessions(void)
 
         return 0;
     }
+
+    maxops = get_osql_maxtransfer();
+    logmsg(LOGMSG_USER, "Maximum transaction size: %d bplog entries\n", maxops);
 
     if ((rc = pthread_rwlock_rdlock_check(&stat->hshlck, __func__, __LINE__))) {
         logmsg(LOGMSG_ERROR, "pthread_rwlock_rdlock: error code %d\n", rc);
