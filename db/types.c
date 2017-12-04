@@ -7326,6 +7326,8 @@ int string2structdatetimeus_ISO(char *in, int len,
 }
 
 #define structtm2string_ISO_func_body(dt, UDT, prec, frac, fracdt)             \
+    if (in->tm.tm_year+1900>9999 || in->tm.tm_year+1900 < -9999)               \
+        return -1;                                                             \
     snprintf(out, outlen, "%4.4d-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%*.*u %s",        \
              in->tm.tm_year + 1900, in->tm.tm_mon + 1, in->tm.tm_mday,         \
              in->tm.tm_hour, in->tm.tm_min, in->tm.tm_sec, prec, prec,         \
@@ -7469,7 +7471,10 @@ int SERVER_BCSTR_to_CLIENT_DATETIMEUS(S2C_FUNKY_ARGS)
     if (!client_##dt##_get_switch(&cdt, p_dt_buf, p_dt_buf_end, to_little))    \
         return -1;                                                             \
                                                                                \
-    struct##dt##2string_ISO(&cdt, out, outlen);                                \
+    ret = struct##dt##2string_ISO(&cdt, out, outlen);                          \
+    if (ret) {                                                                 \
+        return ret;                                                            \
+    }                                                                          \
     *outdtsz = strlen(out) + 1;                                                \
     *outnull = 0;                                                              \
                                                                                \
@@ -7563,6 +7568,26 @@ static TYPES_INLINE int CLIENT_to_SERVER_NO_CONV(C2S_FUNKY_ARGS) { return -1; }
 #define CLIENT_BYTEARRAY_to_SERVER_DATETIMEUS CLIENT_to_SERVER_NO_CONV
 #define CLIENT_BLOB_to_SERVER_DATETIMEUS CLIENT_to_SERVER_NO_CONV
 
+
+int datetime_check_range(long long secs, int fracs)
+{
+    if (gbl_mifid2_datetime_range) {
+        if (secs < -377673580801ll || secs > 253402300799ll)                                
+        {                                                                                
+            fprintf(stderr,                                                             
+                    "%s:%d Value %lld %d\n", __func__, __LINE__, secs, fracs);         
+            return -1;
+        }  
+    }                                                                                    
+    else                                                                                    
+    {                                                                                 
+        if (!debug_switch_unlimited_datetime_range() && (secs < -377705030401ll || secs > 253402214400ll )) 
+            return -1;                                                              
+    }
+
+    return 0;
+}
+
 #define CLIENT_DT_to_SERVER_DT_func_body(from_dt, FROM_UDT, from_prec,         \
                                          from_frac, from_fracdt, to_dt,        \
                                          TO_UDT, to_prec, to_frac, to_fracdt)  \
@@ -7636,11 +7661,7 @@ static TYPES_INLINE int CLIENT_to_SERVER_NO_CONV(C2S_FUNKY_ARGS) { return -1; }
     sdt.sec += (cdt.from_frac * IPOW10(to_prec) / IPOW10(from_prec)) /         \
                IPOW10(to_prec);                                                \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))               \
-        return -1;                                                             \
+    if (datetime_check_range(sdt.sec, sdt.to_frac)) return -1;                 \
                                                                                \
     int8_to_int8b(sdt.sec, (int8b *)&sdt.sec);                                 \
     if (!(p_out = server_##to_dt##_put(&sdt, p_out, p_out_end))) {             \
@@ -7858,11 +7879,7 @@ static TYPES_INLINE int CLIENT_DATETIMEUS_to_SERVER_BREAL(C2S_FUNKY_ARGS)
         sdt.flag = 0;                                                          \
         bset(&sdt, data_bit);                                                  \
                                                                                \
-        /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000   \
-         * GMT] */                                                             \
-        if (!debug_switch_unlimited_datetime_range() &&                        \
-            (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))           \
-            return -1;                                                         \
+        if (datetime_check_range(sdt.sec, sdt.frac)) return -1;                \
                                                                                \
         int8_to_int8b(sdt.sec, (int8b *)&sdt.sec);                             \
         if (!(p_out = server_##dt##_put(&sdt, p_out, p_out_end))) {            \
@@ -7926,16 +7943,12 @@ int CLIENT_PSTR2_to_SERVER_DATETIMEUS(C2S_FUNKY_ARGS)
     if (!tmp)                                                                  \
         return -1;                                                             \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
     rc = CLIENT_UINT_to_CLIENT_INT(in, inlen, inopts, inblob, &dbtime,         \
                                    sizeof(dbtime), &outtmp, NULL, NULL);       \
     if (isnull || rc)                                                          \
         return rc;                                                             \
     dbtime = flibc_ntohll(dbtime);                                             \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (dbtime < -377705030401ll || dbtime > 253402214400ll))                 \
-        return -1;                                                             \
+    if (datetime_check_range(dbtime, 0)) return -1;                            \
                                                                                \
     rc = CLIENT_UINT_to_SERVER_UINT(in, inlen, isnull, inopts, inblob, tmp,    \
                                     inlen + 1, &outtmp, NULL, NULL);           \
@@ -7969,16 +7982,12 @@ static TYPES_INLINE int CLIENT_UINT_to_SERVER_DATETIMEUS(C2S_FUNKY_ARGS)
     if (!tmp)                                                                  \
         return -1;                                                             \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
     rc = CLIENT_INT_to_CLIENT_INT(in, inlen, inopts, inblob, &dbtime,          \
                                   sizeof(dbtime), &outtmp, NULL, NULL);        \
     if (isnull || rc)                                                          \
         return rc;                                                             \
     dbtime = flibc_ntohll(dbtime);                                             \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (dbtime < -377705030401ll || dbtime > 253402214400ll))                 \
-        return -1;                                                             \
+    if (datetime_check_range(dbtime, 0)) return -1;                            \
                                                                                \
     rc = CLIENT_INT_to_SERVER_BINT(in, inlen, isnull, inopts, inblob, tmp,     \
                                    inlen + 1, &outtmp, NULL, NULL);            \
@@ -8015,11 +8024,7 @@ TYPES_INLINE int CLIENT_INT_to_SERVER_DATETIMEUS(C2S_FUNKY_ARGS)
         return -1;                                                             \
     int8b_to_int8(sdt.sec, (comdb2_int8 *)&sdt.sec);                           \
                                                                                \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))               \
-        return -1;                                                             \
+    if (datetime_check_range(sdt.sec, sdt.frac)) return -1;                    \
     return 0;
 /* END OF check_server_dt_func_body */
 
@@ -8392,13 +8397,7 @@ static TYPES_INLINE int SERVER_BINT_to_SERVER_DATETIMEUS(S2S_FUNKY_ARGS)
     tmp = flibc_ntohd(tmp);                                                    \
     if (_splitReal_##prec(tmp, &sdt.sec, &sdt.frac))                           \
         return -1;                                                             \
-                                                                               \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (sdt.sec < -377705030401ll || sdt.sec > 253402214400ll))               \
-        return -1;                                                             \
-                                                                               \
+    if (datetime_check_range(sdt.sec, sdt.frac)) return -1;                    \
     int8_to_int8b(sdt.sec, (int8b *)&sdt.sec);                                 \
     if (!(p_out = server_##dt##_put(&sdt, p_out, p_out_end)))                  \
         return -1;                                                             \
@@ -13300,11 +13299,7 @@ void _setIntervalDSUS(intv_ds_t *ds, long long sec, int usec)
     bzero(opts, sizeof(*opts));                                                \
     opts->flags |= 2 /*FLD_CONV_TZONE*/;                                       \
     strncpy(opts->tzname, tz, sizeof(opts->tzname));                           \
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT]  \
-     */                                                                        \
-    if (!debug_switch_unlimited_datetime_range() &&                            \
-        (in->dttz_sec < -377705030401ll || in->dttz_sec > 253402214400ll))     \
-        return 1;                                                              \
+    if (datetime_check_range(in->dttz_sec, in->dttz_frac)) return -1;          \
     /* brr, ugly */                                                            \
     tmpin[0] = 8; /* data_bit */                                               \
     sec = flibc_htonll(in->dttz_sec);                                          \
@@ -13374,9 +13369,6 @@ int real_to_dttz(double d, dttz_t *dt, int precision)
     /* a real is alway convertible to any precision */
     dt->dttz_conv = 1;
     dt->dttz_sec = d;
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT] */
-    if ((dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-        return 1;
     if ((long long)(d * 1000) == d * 1000) {
         dt->dttz_frac = (d - (long long)d) * 1E3 + 0.5;
         dt->dttz_prec = DTTZ_PREC_MSEC;
@@ -13390,6 +13382,8 @@ int real_to_dttz(double d, dttz_t *dt, int precision)
         dt->dttz_frac *= 1000;
         dt->dttz_prec = DTTZ_PREC_USEC;
     }
+    
+    if (datetime_check_range(dt->dttz_sec, dt->dttz_frac)) return -1;
 
     return 0;
 }
@@ -13400,10 +13394,9 @@ int int_to_dttz(int64_t i, dttz_t *dt, int precision)
     /* an integer is alway convertible to any precision */
     dt->dttz_conv = 1;
     dt->dttz_sec = i;
-    /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000 GMT] */
-    if (!debug_switch_unlimited_datetime_range() &&
-        (dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-        return 1;
+
+    if (datetime_check_range(dt->dttz_sec, 0)) return -1;
+
     /* converting an int to a datetime will have 0 msec */
     dt->dttz_frac = 0;
     return 0;
@@ -13434,12 +13427,9 @@ int str_to_dttz(const char *z, int n, const char *tz, dttz_t *dt, int precision)
         tmp[1] ^= 0x80;
         /* server to native */
         dt->dttz_sec = flibc_ntohll(*(unsigned long long *)&tmp[1]);
-        /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000
-         * GMT] */
-        if (!debug_switch_unlimited_datetime_range() &&
-            (dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-            return 1;
         dt->dttz_frac = ntohl(*(unsigned int *)&tmp[9]);
+
+        if (datetime_check_range(dt->dttz_sec, dt->dttz_frac)) return -1;
     } else {
         dt->dttz_prec = DTTZ_PREC_MSEC;
         tmp = alloca(SERVER_DATETIME_LEN);
@@ -13451,12 +13441,9 @@ int str_to_dttz(const char *z, int n, const char *tz, dttz_t *dt, int precision)
         tmp[1] ^= 0x80;
         /* server to native */
         dt->dttz_sec = flibc_ntohll(*(unsigned long long *)&tmp[1]);
-        /* limit range to [-9999-01-01T235959.000 GMT, 9999-12-31T000000.000
-         * GMT] */
-        if (!debug_switch_unlimited_datetime_range() &&
-            (dt->dttz_sec < -377705030401ll || dt->dttz_sec > 253402214400ll))
-            return 1;
         dt->dttz_frac = ntohs(*(unsigned short *)&tmp[9]);
+
+        if (datetime_check_range(dt->dttz_sec, dt->dttz_frac)) return -1;
     }
     /* We have to make a compromise here by make strings always convertible -
        We have seen people do "insert into datetime values(cast(now() as text)".
@@ -13489,6 +13476,8 @@ int dttz_to_client_datetime(const dttz_t *in, const char *tz,
     /* unpack into 'out' buffer in host byte order */
     if (!client_datetime_get(out, (uint8_t *)&tmp, (uint8_t *)(&tmp + 1)))
         return 1;
+    if (out->tm.tm_year+1900>9999 || out->tm.tm_year+1900<-9999)
+        return -1;
     return 0;
 }
 
@@ -13511,7 +13500,9 @@ int dttz_to_client_datetimeus(const dttz_t *in, const char *tz,
     /* unpack into 'out' buffer in host byte order */
     if (!client_datetimeus_get(out, (uint8_t *)&tmp, (uint8_t *)(&tmp + 1)))
         return 1;
-    return 0;
+    if (out->tm.tm_year+1900>9999 || out->tm.tm_year+1900<-9999)
+        return -1;
+     return 0;
 }
 
 int timespec_to_dttz(const struct timespec *ts, dttz_t *dt, int precision)

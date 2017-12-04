@@ -3617,6 +3617,7 @@ extern comdb2bma blobmem; // blobmem for db layer
 extern size_t gbl_blobmem_cap;
 extern unsigned gbl_blob_sz_thresh_bytes;
 extern int gbl_large_str_idx_find;
+extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
