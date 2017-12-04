@@ -337,6 +337,79 @@ matchable_log_type(int rectype)
 	return ret;
 }
 
+int gbl_rep_verify_will_recover_trace = 0;
+int gbl_rep_verify_always_grab_writelock = 0;
+
+/*
+ * __rep_verify_will_recover --
+ *
+ * This routine returns non-zero if a subsequent call to __rep_process_message
+ * will run recovery.
+ *
+ * PUBLIC: int __rep_verify_will_recover __P((DB_ENV *, DBT *, DBT *));
+ */
+
+int
+__rep_verify_will_recover(dbenv, control, rec)
+	DB_ENV *dbenv;
+	DBT *control, *rec;
+{
+	DB_LOG *dblp;
+	DBT mylog;
+	REP_CONTROL *rp;
+	DB_LSN lsn;
+	LOG *lp;
+	DB_LOGC *logc;
+	int will_recover = 0;
+	int ret;
+	u_int32_t rectype;
+	dblp = dbenv->lg_handle;
+	lp = dblp->reginfo.primary;
+	rp = (REP_CONTROL *)control->data;
+
+	if (gbl_rep_verify_always_grab_writelock)
+		return 1;
+
+	if (LOG_SWAPPED())
+		__rep_control_swap(rp);
+
+	if (IS_ZERO_LSN(lp->verify_lsn))
+		goto done;
+
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		goto done;
+
+	memset(&mylog, 0, sizeof(mylog));
+
+	if ((ret = __log_c_get(logc, &rp->lsn, &mylog, DB_SET)) != 0) {
+		will_recover = 1;
+		goto close_cursor;
+    }
+
+	if (mylog.size == rec->size &&
+			memcmp(mylog.data, rec->data, rec->size) == 0)
+		will_recover = 1;
+
+	LOGCOPY_32(&rectype, mylog.data);
+
+	if ((will_recover == 1 && !matchable_log_type(rectype)) &&
+			((ret = __log_c_get(logc, &lsn, &mylog, DB_PREV)) == 0)){
+		will_recover = 0;
+	}
+
+close_cursor:
+	__log_c_close(logc);
+
+done:
+	if (LOG_SWAPPED())
+		__rep_control_swap(rp);
+
+	if (gbl_rep_verify_will_recover_trace)
+		logmsg(LOGMSG_ERROR, "%s is returning %d\n", __func__, will_recover);
+
+	return will_recover;
+}
+
 /*
  * __rep_process_message --
  *

@@ -2467,12 +2467,12 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 #endif
 
-    free(hndl);
-
-done:
     if (log_calls)
         fprintf(stderr, "%p> cdb2_close(%p) = %d\n", (void *)pthread_self(),
                 hndl, rc);
+    free(hndl);
+
+done:
     return 0;
 }
 

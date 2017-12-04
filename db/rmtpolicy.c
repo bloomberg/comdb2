@@ -274,6 +274,8 @@ static int parse_mach_or_group(char *tok, int ltok, char **mach,
         *cls = CLASS_BETA;
     else if (tokcmp(tok, ltok, "prod") == 0)
         *cls = CLASS_PROD;
+    else if (tokcmp(tok, ltok, "uat") == 0)
+        *cls = CLASS_UAT;
     else {
         char *m;
         m = tokdup(tok, ltok);

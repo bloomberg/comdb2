@@ -103,6 +103,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_elect = __rep_elect;
 		dbenv->rep_flush = __rep_flush;
 		dbenv->rep_process_message = __rep_process_message;
+		dbenv->rep_verify_will_recover = __rep_verify_will_recover;
 		dbenv->rep_start = __rep_start;
 		dbenv->rep_stat = __rep_stat;
 		dbenv->get_rep_gen = __rep_get_gen;

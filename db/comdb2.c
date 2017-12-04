@@ -1622,6 +1622,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                     ii, tblname);
             cleanup_newdb(tbl);
             return NULL;
+        } else if (tbl->ix_datacopy[ii]) {
+            tbl->has_datacopy_ix = 1;
         }
 
         tbl->ix_nullsallowed[ii] = 0;
@@ -2061,6 +2063,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
         free(tblnames[i++]);
 
     return rc;
+}
+
+int llmeta_load_timepart(struct dbenv *dbenv)
+{
+    /* We need to do this before resuming schema chabge , if any */
+    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
+    dbenv->timepart_views = timepart_views_init(dbenv);
+
+    return thedb->timepart_views ? 0 : -1;
 }
 
 /* replace the table names and dbnums saved in the low level meta table with the
@@ -3553,11 +3564,32 @@ static int init(int argc, char **argv)
     }
     /* we will load the tables from the llmeta table */
     else {
+        int waitfileopen =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
+        if (waitfileopen) {
+            logmsg(LOGMSG_INFO, "Waiting to open file\n");
+            poll(NULL, 0, waitfileopen);
+            logmsg(LOGMSG_INFO, "Done waiting\n");
+        }
+
+        /* we would like to open the files under schema lock, so that
+           we don't race with a schema change from master (at this point
+           environment is opened, but files are not !*/
+        pthread_rwlock_wrlock(&schema_lk);
+
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
+            pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
+
+        if (llmeta_load_timepart(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+            pthread_rwlock_unlock(&schema_lk);
+            return -1;
+        }
+        pthread_rwlock_unlock(&schema_lk);
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -5043,14 +5075,8 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-static void set_timepart_and_handle_resume_sc()
+static void handle_resume_sc()
 {
-    /* We need to do this before resuming schema chabge , if any */
-    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
-    thedb->timepart_views = timepart_views_init(thedb);
-    if (!thedb->timepart_views)
-        abort();
-
     /* if there is an active schema changes, resume it, this is automatically
      * done every time the master changes, but on startup the low level meta
      * table wasn't open yet so we couldn't check to see if a schema change was
@@ -5222,7 +5248,7 @@ int main(int argc, char **argv)
     */
     gbl_tunables->freeze = 1;
 
-    set_timepart_and_handle_resume_sc();
+    handle_resume_sc();
 
     /* Creating a server context wipes out the db #'s dbcommon entries.
      * Recreate them. */
@@ -5505,6 +5531,16 @@ int gbl_hostname_refresh_time = 60;
 int comdb2_is_standalone(void *dbenv)
 {
     return bdb_is_standalone(dbenv, thedb->bdb_env);
+}
+
+const char *comdb2_get_dbname(void)
+{
+    return thedb->envname;
+}
+
+int sc_ready(void)
+{
+    return thedb->timepart_views != 0;
 }
 
 #define QUOTE_(x) #x

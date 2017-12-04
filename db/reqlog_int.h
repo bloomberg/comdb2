@@ -61,8 +61,6 @@ struct tablelist {
     char name[1];
 };
 
-#define FINGERPRINTSZ 16
-
 struct reqlogger {
     char origin[128];
 
