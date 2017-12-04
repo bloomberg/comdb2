@@ -82,6 +82,7 @@ static int cdb2_allow_pmux_route = 0;
 
 static int _PID;
 static int _MACHINE_ID;
+static char *_ARGV0;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
@@ -96,6 +97,45 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
 
+#if defined(__APPLE__)
+static char *apple_getargv0(void)
+{
+}
+#endif
+
+#if defined(_LINUX_SOURCE)
+static char *linux_getargv0(void)
+{
+}
+#endif
+
+#if defined(_SUN_SOURCE)
+static char *sun_getargv0(void)
+{
+}
+#endif
+
+#if defined(_IBM_SOURCE)
+static char *ibm_getargv0(void)
+{
+}
+#endif
+
+static char *getargv0(void)
+{
+#if __APPLE__
+    return apple_getargv0();
+#elif _LINUX_SOURCE
+    return linux_getargv0();
+#elif _SUN_SOURCE
+    return sun_getargv0();
+#elif _IBM_SOURCE
+    return ibm_getargv0();
+#else
+    return NULL;
+#endif
+}
+
 static void do_init_once(void)
 {
     char *do_log = getenv("CDB2_LOG_CALLS");
@@ -108,6 +148,7 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
+    _ARGV0 = getargv0();
 }
 
 static int is_sql_read(const char *sqlstr)
