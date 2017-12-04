@@ -710,6 +710,7 @@ struct dbtable {
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
     struct ireq *iq; /* iq used at sc time */
+    int has_datacopy_ix; /* set to 1 if we have datacopy indexes */
     int ix_partial;  /* set to 1 if we have partial indexes */
     int ix_expr;     /* set to 1 if we have indexes on expressions */
     int ix_blob;     /* set to 1 if blobs are involved in indexes */
