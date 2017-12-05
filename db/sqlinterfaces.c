@@ -668,6 +668,7 @@ static inline int verify_sqlresponse_error_code(int error_code,
     case CDB2__ERROR_CODE__NONKLESS:
     case CDB2__ERROR_CODE__MALLOC:
     case CDB2__ERROR_CODE__NOTSUPPORTED:
+    case CDB2__ERROR_CODE__TRAN_TOO_BIG:
     case CDB2__ERROR_CODE__DUPLICATE:
     case CDB2__ERROR_CODE__TZNAME_FAIL:
     case CDB2__ERROR_CODE__CHANGENODE:
@@ -2233,7 +2234,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             strncpy(clnt->osql.xerr.errstr,
                                     "transaction too big",
                                     sizeof(clnt->osql.xerr.errstr));
-                            rc = 202;
+                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
                             rcline = __LINE__;
                         } else if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
@@ -2312,7 +2313,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             strncpy(clnt->osql.xerr.errstr,
                                     "transaction too big",
                                     sizeof(clnt->osql.xerr.errstr));
-                            rc = 202;
+                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
                             rcline = __LINE__;
                         } else if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
