@@ -4484,6 +4484,8 @@ step1:
         /* Find my record. */
         rc = bdb_temp_table_find_exact(cur->state, cur->addcur, fndkey, keylen,
                                        bdberr);
+        if (rc != IX_FND)
+            free(fndkey);
         if (rc < 0)
             return rc;
 
@@ -4557,6 +4559,7 @@ step1:
                                         "updated row rc=%d bdberr=%d\n",
                                 __func__, rc, *bdberr);
                         rc = -1; /* we have to find this row back */
+                        free(pgenid);
                     }
 
                     /* Retrieve the header. */
@@ -5280,6 +5283,7 @@ step1:
                                     "rc=%d bdberr=%d\n",
                             __func__, rc, *bdberr);
                     rc = -1; /* we have to find this row back */
+                    free(pgenid);
                 }
 
                 /* Retrieve the header. */
