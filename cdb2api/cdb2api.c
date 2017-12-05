@@ -80,8 +80,8 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int allow_pmux_route = 0;
 
-static __thread int _PID;
-static __thread int _MACHINE_ID;
+static int _PID;
+static int _MACHINE_ID;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
