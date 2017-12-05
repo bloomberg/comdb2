@@ -6019,25 +6019,25 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
     bdb_state = parent_bdb_state;
     BDB_READLOCK("bdb_create_queue");
 
-    ret = bdb_open_int(
-        0,                    /* env only */
-        name, dir, item_size, /* pass item_size in as lrl */
-        0,                    /* numix */
-        NULL,                 /* ixlen */
-        NULL,                 /* ixdups */
-        NULL,                 /* ixrecnum */
-        NULL,                 /* ixdta */
-        NULL,                 /* ixcollattr */
-        NULL,                 /* ixnulls */
-        1,                    /* numdtafiles (berkdb queue file) */
-        NULL,                 /* bdb_attr */
-        NULL,                 /* bdb_callback */
-        NULL,                 /* usr_ptr */
-        NULL,                 /* netinfo */
-        0,                    /* upgrade */
-        1,                    /* create */
-        bdberr, parent_bdb_state, pagesize, /* pagesize override */
-        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL);
+    ret =
+        bdb_open_int(0,                    /* env only */
+                     name, dir, item_size, /* pass item_size in as lrl */
+                     0,                    /* numix */
+                     NULL,                 /* ixlen */
+                     NULL,                 /* ixdups */
+                     NULL,                 /* ixrecnum */
+                     NULL,                 /* ixdta */
+                     NULL,                 /* ixcollattr */
+                     NULL,                 /* ixnulls */
+                     1,                    /* numdtafiles (berkdb queue file) */
+                     NULL,                 /* bdb_attr */
+                     NULL,                 /* bdb_callback */
+                     NULL,                 /* usr_ptr */
+                     NULL,                 /* netinfo */
+                     0,                    /* upgrade */
+                     1,                    /* create */
+                     bdberr, parent_bdb_state, pagesize, /* pagesize override */
+                     isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL);
 
     BDB_RELLOCK();
 
@@ -7487,7 +7487,8 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     /* skip already deleted files */
     char path[PATH_MAX];
     bdb_trans(munged_name, path);
-    if (stat(path, &sb)) return 0;
+    if (stat(path, &sb))
+        return 0;
 
     if (lognum && lowfilenum && lognum >= lowfilenum) {
         oldfile_list_add(munged_name, lognum);

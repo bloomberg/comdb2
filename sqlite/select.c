@@ -5127,6 +5127,28 @@ static int countOfViewOptimization(Parse *pParse, Select *p){
 #endif /* SQLITE_COUNTOFVIEW_OPTIMIZATION */
 
 /*
+** COMDB2 MODIFICATION
+** Check list of identified source tables and check to see any of them is remote
+**
+*/
+static int sql_has_remotes(
+  Parse *pParse,       /* The parsing context */
+  SrcList *pList        /* The source list */
+) {
+  int i;
+
+  for(i=0;i<pList->nSrc; i++){
+    extern const char *comdb2_get_dbname(void);
+    char *dbname = pList->a[i].zDatabase;
+    if(dbname && strcasecmp(dbname,"main") && strcasecmp(dbname, "temp") &&
+            strcasecmp(dbname, comdb2_get_dbname())) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/*
 ** Generate code for the SELECT statement given in the p argument.  
 **
 ** The results are returned according to the SelectDest structure.
@@ -5199,6 +5221,14 @@ int sqlite3Select(
   sSort.pOrderBy = p->pOrderBy;
   pTabList = p->pSrc;
   if( pParse->nErr || db->mallocFailed ){
+    if( pParse->checkSchema == 1 /* parsing error */ && 
+            pParse->zErrMsg && strncasecmp(pParse->zErrMsg, "no such column", 
+                strlen("no such column")) == 0){
+      extern void comdb2_set_verify_remote_schemas(void);
+      if (sql_has_remotes(pParse, p->pSrc)) {
+        comdb2_set_verify_remote_schemas();
+      }
+    }
     goto select_end;
   }
   assert( p->pEList!=0 );

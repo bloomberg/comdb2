@@ -710,6 +710,7 @@ struct dbtable {
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
     struct ireq *iq; /* iq used at sc time */
+    int has_datacopy_ix; /* set to 1 if we have datacopy indexes */
     int ix_partial;  /* set to 1 if we have partial indexes */
     int ix_expr;     /* set to 1 if we have indexes on expressions */
     int ix_blob;     /* set to 1 if blobs are involved in indexes */
@@ -1195,8 +1196,10 @@ typedef struct snap_uid {
     uuid_t uuid; /* wait for the reply */
     int rqtype;  /* add/check */
     struct query_effects effects;
-    int keylen;
-    char key[MAX_SNAP_KEY_LEN];
+    uint16_t unused;
+    uint8_t replicant_can_retry; /* verifyretry on && !snapshot_iso or higer */
+    uint8_t keylen;
+    char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
 enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
@@ -1421,6 +1424,8 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool tranddl : 1;
+
+    int written_row_count;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -3612,6 +3617,7 @@ extern comdb2bma blobmem; // blobmem for db layer
 extern size_t gbl_blobmem_cap;
 extern unsigned gbl_blob_sz_thresh_bytes;
 extern int gbl_large_str_idx_find;
+extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;
@@ -3646,5 +3652,8 @@ int db_is_stopped(void);
 int is_tablename_queue(const char *tablename, int len);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);
+
+int comdb2_get_verify_remote_schemas(void);
+void comdb2_set_verify_remote_schemas(void);
 
 #endif /* !INCLUDED_COMDB2_H */

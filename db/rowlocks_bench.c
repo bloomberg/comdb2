@@ -107,9 +107,10 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
         printf("Committed %d records (0 seconds elapsed)\n", count);
     }
 
+    int denom = tcount * count;
     printf("%llu rep-calls (%d per record), %llu rep-bytes (%d per record)\n",
-           repcalls, (int)(repcalls / (tcount * count)), repbytes,
-           (int)(repbytes / (tcount * count)));
+           repcalls, (int)(denom ? repcalls / denom : 0), repbytes,
+           (int)(denom ? repbytes / denom : 0));
     printf("%llu flushes (%d records/flush), %llu explict-flushes (%d "
            "records/flush), %llu interval-flushes (%d records/flush)\n",
            flushes, flushes ? (int)((tcount * count) / flushes) : 0,

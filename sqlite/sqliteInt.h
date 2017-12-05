@@ -3680,6 +3680,8 @@ Module *sqlite3PragmaVtabRegister(sqlite3*,const char *zName);
 void sqlite3ResetAllSchemasOfConnection(sqlite3*);
 void sqlite3ResetOneSchema(sqlite3*,int);
 void sqlite3ResetOneSchemaByName(sqlite3*,const char*,const char*);
+/* COMDB2 MODIFICATIONS */
+void sqlite3ResetFdbSchemas(sqlite3 *db);
 void sqlite3CollapseDatabaseArray(sqlite3*);
 void sqlite3CommitInternalChanges(sqlite3*);
 void sqlite3DeleteColumnNames(sqlite3*,Table*);
@@ -3780,8 +3782,8 @@ void sqlite3OpenTable(Parse*, int iCur, int iDb, Table*, int);
 #if defined(SQLITE_ENABLE_UPDATE_DELETE_LIMIT) && !defined(SQLITE_OMIT_SUBQUERY)
 Expr *sqlite3LimitWhere(Parse*,SrcList*,Expr*,ExprList*,Expr*,Expr*,char*);
 #endif
-void sqlite3DeleteFrom(Parse*, SrcList*, Expr*);
-void sqlite3Update(Parse*, SrcList*, ExprList*, Expr*, int);
+void sqlite3DeleteFrom(Parse*, SrcList*, Expr*, ExprList*, Expr*, Expr*);
+void sqlite3Update(Parse*, SrcList*, ExprList*,Expr*,int,ExprList*,Expr*,Expr*);
 WhereInfo *sqlite3WhereBegin(Parse*,SrcList*,Expr*,ExprList*,ExprList*,u16,int);
 void sqlite3WhereEnd(WhereInfo*);
 LogEst sqlite3WhereOutputRowCount(WhereInfo*);
@@ -3904,7 +3906,7 @@ int sqlite3SafetyCheckSickOrOk(sqlite3*);
 void sqlite3ChangeCookie(Parse*, int);
 
 #if !defined(SQLITE_OMIT_VIEW) && !defined(SQLITE_OMIT_TRIGGER)
-void sqlite3MaterializeView(Parse*, Table*, Expr*, int);
+void sqlite3MaterializeView(Parse*, Table*, Expr*, ExprList*,Expr*,Expr*,int);
 #endif
 
 #ifndef SQLITE_OMIT_TRIGGER
@@ -4445,6 +4447,7 @@ extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
 extern int sqlite3UnlockTable(const char *dbname, const char *table);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, sqlite3_value **argv,
       const char *zName, const char *zFile, char **pzErrDyn, int version);
+extern void comdb2_dynamic_detach(sqlite3 *db, int idx);  
 extern int comdb2_fdb_check_class(const char *dbname);
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);
 extern int sqlite3UpdateMemCollAttr(BtCursor *pCur, int idx, Mem *mem);

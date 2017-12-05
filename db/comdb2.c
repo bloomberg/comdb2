@@ -284,6 +284,7 @@ int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
 int gbl_prefault_udp = 0;
 __thread int send_prefault_udp = 0;
+__thread snap_uid_t *osql_snap_info; /* contains cnonce */
 
 int gbl_starttime = 0;
 int gbl_use_sqlthrmark = 1000;
@@ -705,6 +706,7 @@ int gbl_replicant_gather_rowlocks = 1;
 int gbl_force_old_cursors = 0;
 int gbl_track_curtran_locks = 0;
 int gbl_print_deadlock_cycles = 0;
+int gbl_always_send_cnonce = 1;
 int gbl_dump_page_on_byteswap_error = 0;
 int gbl_dump_after_byteswap = 0;
 int gbl_micro_retry_on_deadlock = 1;
@@ -768,6 +770,7 @@ extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
 
@@ -1637,6 +1640,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                     ii, tblname);
             cleanup_newdb(tbl);
             return NULL;
+        } else if (tbl->ix_datacopy[ii]) {
+            tbl->has_datacopy_ix = 1;
         }
 
         tbl->ix_nullsallowed[ii] = 0;
@@ -2076,6 +2081,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
         free(tblnames[i++]);
 
     return rc;
+}
+
+int llmeta_load_timepart(struct dbenv *dbenv)
+{
+    /* We need to do this before resuming schema chabge , if any */
+    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
+    dbenv->timepart_views = timepart_views_init(dbenv);
+
+    return thedb->timepart_views ? 0 : -1;
 }
 
 /* replace the table names and dbnums saved in the low level meta table with the
@@ -3568,11 +3582,32 @@ static int init(int argc, char **argv)
     }
     /* we will load the tables from the llmeta table */
     else {
+        int waitfileopen =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
+        if (waitfileopen) {
+            logmsg(LOGMSG_INFO, "Waiting to open file\n");
+            poll(NULL, 0, waitfileopen);
+            logmsg(LOGMSG_INFO, "Done waiting\n");
+        }
+
+        /* we would like to open the files under schema lock, so that
+           we don't race with a schema change from master (at this point
+           environment is opened, but files are not !*/
+        pthread_rwlock_wrlock(&schema_lk);
+
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
+            pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
+
+        if (llmeta_load_timepart(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+            pthread_rwlock_unlock(&schema_lk);
+            return -1;
+        }
+        pthread_rwlock_unlock(&schema_lk);
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -4844,8 +4879,6 @@ static void register_all_int_switches()
                         &gbl_noenv_messages);
     register_int_switch("track_curtran_locks", "Print curtran lockinfo",
                         &gbl_track_curtran_locks);
-    register_int_switch("print_deadlock_cycles", "Print all deadlock cycles",
-                        &gbl_print_deadlock_cycles);
     register_int_switch("replicate_rowlocks", "Replicate rowlocks",
                         &gbl_replicate_rowlocks);
     register_int_switch("gather_rowlocks_on_replicant",
@@ -5020,6 +5053,9 @@ static void register_all_int_switches()
     register_int_switch("new_indexes",
                         "Let replicants send indexes values to master",
                         &gbl_new_indexes);
+    register_int_switch("mifid2_datetime_range",
+                        "Extend datetime range to meet mifid2 requirements",
+                        &gbl_mifid2_datetime_range);
 }
 
 static void getmyid(void)
@@ -5060,14 +5096,8 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-static void set_timepart_and_handle_resume_sc()
+static void handle_resume_sc()
 {
-    /* We need to do this before resuming schema chabge , if any */
-    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
-    thedb->timepart_views = timepart_views_init(thedb);
-    if (!thedb->timepart_views)
-        abort();
-
     /* if there is an active schema changes, resume it, this is automatically
      * done every time the master changes, but on startup the low level meta
      * table wasn't open yet so we couldn't check to see if a schema change was
@@ -5239,7 +5269,7 @@ int main(int argc, char **argv)
     */
     gbl_tunables->freeze = 1;
 
-    set_timepart_and_handle_resume_sc();
+    handle_resume_sc();
 
     /* Creating a server context wipes out the db #'s dbcommon entries.
      * Recreate them. */
@@ -5522,6 +5552,16 @@ int gbl_hostname_refresh_time = 60;
 int comdb2_is_standalone(void *dbenv)
 {
     return bdb_is_standalone(dbenv, thedb->bdb_env);
+}
+
+const char *comdb2_get_dbname(void)
+{
+    return thedb->envname;
+}
+
+int sc_ready(void)
+{
+    return thedb->timepart_views != 0;
 }
 
 #define QUOTE_(x) #x

@@ -89,6 +89,8 @@ void free_cached_idx(uint8_t * *cached_idx);
         logmsg(LOGMSG_USER, "err line %d rc %d retrc %d\n", __LINE__, rc, retrc);           \
     goto err;
 
+int gbl_max_wr_rows_per_txn = 0;
+
 static inline int
 add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                const uint8_t *p_buf_tag_name_end, uint8_t *p_buf_rec,
@@ -105,7 +107,6 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     struct schema *dynschema = NULL;
     void *od_dta;
     size_t od_len;
-    void *mallocced_memory = NULL;
     size_t blobno;
     int prefixes = 0;
     unsigned char lclnulls[64];
@@ -149,6 +150,16 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (iq->debug) {
         reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
         prefixes++;
+    }
+
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (gbl_max_wr_rows_per_txn &&
+            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max rows");
+            retrc = ERR_TRAN_TOO_BIG;
+            ERR;
+        }
     }
 
     if ((flags & RECFLAGS_NEW_SCHEMA) &&
@@ -243,9 +254,8 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
-            if (iq->debug)
-                reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                          iq->usedb->tablename);
+            reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
+                      iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -328,8 +338,8 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
 
         od_len = (size_t)od_len_int;
-        mallocced_memory = alloca(od_len);
-        if (!mallocced_memory) {
+        void *allocced_memory = alloca(od_len);
+        if (!allocced_memory) {
             logmsg(LOGMSG_ERROR,
                    "add_record: malloc %u failed! (table %s tag %s)\n",
                    (unsigned)od_len, iq->usedb->tablename, tag);
@@ -337,7 +347,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             retrc = ERR_INTERNAL;
             ERR;
         }
-        od_dta = mallocced_memory;
+        od_dta = allocced_memory;
 
         if (iq->have_client_endian &&
             TAGGED_API_LITTLE_ENDIAN == iq->client_endian) {
@@ -761,7 +771,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     int expected_dat_len;
     blob_status_t oldblobs[MAXBLOBS];
     struct schema *dynschema = NULL;
-    char *mallocced_memory = NULL;
+    char *allocced_memory = NULL;
     size_t mallocced_bytes;
     size_t od_len;
     int od_len_int;
@@ -803,6 +813,16 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     *ixfailnum = -1;
+
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (gbl_max_wr_rows_per_txn &&
+            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max rows");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
+    }
 
     bzero(oldblobs, sizeof(oldblobs));
     bzero(add_blobs_buf, sizeof(add_blobs_buf));
@@ -954,8 +974,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     mallocced_bytes = od_len * 2;
     if (vrecord)
         mallocced_bytes += od_len;
-    mallocced_memory = alloca(mallocced_bytes);
-    if (!mallocced_memory) {
+    allocced_memory = alloca(mallocced_bytes);
+    if (!allocced_memory) {
         logmsg(LOGMSG_ERROR,
                "upd_record: malloc %u failed! (table %s tag %s)\n",
                (unsigned)mallocced_bytes, iq->usedb->tablename, tag);
@@ -963,11 +983,11 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         retrc = ERR_INTERNAL;
         goto err;
     }
-    od_dta = mallocced_memory;
+    od_dta = allocced_memory;
     /* This is the current image at it exists in the db */
-    old_dta = mallocced_memory + od_len;
+    old_dta = allocced_memory + od_len;
     if (vrecord)
-        odv_dta = mallocced_memory + od_len * 2;
+        odv_dta = allocced_memory + od_len * 2;
 
     if (iq->have_client_endian &&
         TAGGED_API_LITTLE_ENDIAN == iq->client_endian) {
@@ -1294,13 +1314,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
-    if (iq->debug)
+    if (iq->debug) {
         if (flags & RECFLAGS_KEEP_GENID)
             reqprintf(iq, "dat_upgrade RRN %d VGENID 0x%llx RC %d", rrn, vgenid,
                       rc);
         else
             reqprintf(iq, "dat_upv RRN %d VGENID 0x%llx GENID 0x%llx RC %d",
                       rrn, vgenid, *genid, rc);
+    }
 
     if (rc != 0) {
         *opfailcode = OP_FAILED_VERIFY;
@@ -1762,7 +1783,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 {
     int retrc = 0;
     int prefixes = 0;
-    void *mallocced_memory = NULL;
+    void *allocced_memory = NULL;
     blob_status_t oldblobs[MAXBLOBS];
     void *od_dta;
     size_t od_len;
@@ -1790,6 +1811,16 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
+    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
+        if (gbl_max_wr_rows_per_txn &&
+            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max rows");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
+    }
+
     if (iq->debug) {
         reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
         prefixes++;
@@ -1806,14 +1837,14 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
     od_len = (size_t)od_len_int;
-    mallocced_memory = alloca(od_len);
-    if (!mallocced_memory) {
+    allocced_memory = alloca(od_len);
+    if (!allocced_memory) {
         logmsg(LOGMSG_ERROR, "del_record: malloc %u failed\n", (unsigned)od_len);
         *opfailcode = OP_FAILED_INTERNAL;
         retrc = ERR_INTERNAL;
         goto err;
     }
-    od_dta = mallocced_memory;
+    od_dta = allocced_memory;
 
     /* light the prefault kill bit for this subop - olddta */
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
@@ -2329,7 +2360,8 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         sc_new = NULL;
     }
 
-    if ((gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
+    if (iq->usedb->has_datacopy_ix ||
+        (gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
         (gbl_expressions_indexes && iq->usedb->ix_expr && !iq->idxDelete)) {
         /* save new blobs being deleted */
         sc_old = malloc(iq->usedb->lrl);
@@ -2637,7 +2669,8 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
 
     /*fprintf(stderr, "DEL NEW GENID 0x%llx\n", ngenid);*/
 
-    if ((gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
+    if (iq->usedb->has_datacopy_ix ||
+        (gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
         (gbl_expressions_indexes && iq->usedb->ix_expr && !iq->idxDelete)) {
         sc_old = malloc(iq->usedb->lrl);
         if (sc_old == NULL) {

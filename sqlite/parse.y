@@ -756,13 +756,6 @@ sortlist(A) ::= expr(Y) sortorder(Z). {
   sqlite3ExprListSetSortOrder(A,Z);
 }
 
-cmd ::= rename_comdb2table.
-
-rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
-    comdb2WriteTransaction(pParse);
-    sqlite3AlterRenameTable(pParse,&X,&Y,D);
-}
-
 %type sortorder {int}
 sortorder(A) ::= ASC.           {A = SQLITE_SO_ASC;}
 sortorder(A) ::= DESC.          {A = SQLITE_SO_DESC;}
@@ -805,9 +798,8 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
         orderby_opt(O) limit_opt(L). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "DELETE");
   sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
-  sqlite3DeleteFrom(pParse,X,W.pExpr);
+  sqlite3DeleteFrom(pParse,X,W.pExpr,O,L.pLimit,L.pOffset);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -815,7 +807,7 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
-  sqlite3DeleteFrom(pParse,X,W.pExpr);
+  sqlite3DeleteFrom(pParse,X,W.pExpr,0,0,0);
 }
 %endif
 
@@ -833,9 +825,8 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "UPDATE");
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,O,L.pLimit,L.pOffset);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -845,7 +836,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,0,0,0);
 }
 %endif
 
@@ -1331,7 +1322,6 @@ nexprlist(A) ::= expr(Y).
 paren_exprlist(A) ::= .   {A = 0;}
 paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 %endif SQLITE_OMIT_SUBQUERY
-
 
 ///////////////////////////// The CREATE INDEX command ///////////////////////
 //
@@ -2110,6 +2100,15 @@ alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
 kwcolumn_opt ::= .
 kwcolumn_opt ::= COLUMNKW.
 %endif
+
+
+/////////////////// COMDB2 RENAME TABLE STATEMENT  //////////////////////////////
+cmd ::= rename_comdb2table.
+
+rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
+    comdb2WriteTransaction(pParse);
+    sqlite3AlterRenameTable(pParse,&X,&Y,D);
+}
 
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}

@@ -1115,7 +1115,7 @@ ll_dta_upd_int(bdb_state_type *bdb_state, int rrn, unsigned long long oldgenid,
            were told to verify the data */
         if (verify_dta) {
             rc = 0;
-            if (memcmp(oldrec, verify_dta->data, oldsz) != 0) {
+            if (oldrec && memcmp(oldrec, verify_dta->data, oldsz) != 0) {
                 /* in this case we return a bdb return code since there's no
                    corresponding berkdb return code */
                 rc = BDBERR_DTA_MISMATCH;

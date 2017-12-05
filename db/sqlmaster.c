@@ -146,8 +146,8 @@ inline static int serialize_mems(Mem *m, int nmems, char **out, int *outlen)
     if (!*out)
         return -1;
 
-    hdrbuf = (char *)*out;
-    dtabuf = (char *)*out + hdrsz;
+    hdrbuf = (unsigned char *)*out;
+    dtabuf = (unsigned char *)*out + hdrsz;
 
     sz = sqlite3PutVarint(hdrbuf, hdrsz);
     hdrbuf += sz;

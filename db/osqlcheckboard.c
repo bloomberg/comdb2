@@ -771,7 +771,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     } else {
 
-        if (rc = pthread_mutex_lock(&entry->mtx)) {
+        if ((rc = pthread_mutex_lock(&entry->mtx)) != 0) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_lock: error code %d\n", rc);
             return rc;
         }
@@ -780,7 +780,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
         entry->timestamp = timestamp;
         entry->last_updated = time_epoch();
 
-        if (rc = pthread_mutex_unlock(&entry->mtx)) {
+        if ((rc = pthread_mutex_unlock(&entry->mtx)) != 0) {
             logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
             return rc;
         }
@@ -857,7 +857,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
     if (!checkboard)
         return 0;
 
-    if (rc = pthread_rwlock_rdlock(&checkboard->rwlock)) {
+    if ((rc = pthread_rwlock_rdlock(&checkboard->rwlock)) != 0) {
         logmsg(LOGMSG_ERROR, "pthread_rwlock_wrlock: error code %d\n", rc);
         return -1;
     }
@@ -894,7 +894,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
         rc2 = 0;
     }
 
-    if (rc = pthread_rwlock_unlock(&checkboard->rwlock)) {
+    if ((rc = pthread_rwlock_unlock(&checkboard->rwlock)) != 0) {
         logmsg(LOGMSG_ERROR, "pthread_rwlock_unlock: error code %d\n", rc);
         return -2;
     }

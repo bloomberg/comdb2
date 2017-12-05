@@ -1276,7 +1276,7 @@ static void dumpval(char *buf, int type, int len)
             server_datetimeus_t dt;
             server_datetimeus_get(&dt, (uint8_t *)buf,
                                   (uint8_t *)buf + sizeof(server_datetimeus_t));
-            logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.usec);
+            logmsg(LOGMSG_USER, "%llu.%u", dt.sec, dt.usec);
             break;
         }
         case SERVER_INTVYM: {
@@ -1297,7 +1297,7 @@ static void dumpval(char *buf, int type, int len)
             server_intv_dsus_t ds;
             server_intv_dsus_get(&ds, (uint8_t *)buf,
                                  (uint8_t *)buf + sizeof(server_intv_dsus_t));
-            logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.usec);
+            logmsg(LOGMSG_USER, "%lld.%u", ds.sec, ds.usec);
             break;
         }
         case SERVER_VUTF8:
@@ -3268,7 +3268,8 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     // *)rec,
     // &reason);
     rc = stag_to_stag_buf_flags(db->tablename, ver_tag, from, db->tablename,
-                                ".ONDISK", rec, CONVERT_NULL_NO_ERROR, &reason);
+                                ".ONDISK", (char *)rec, CONVERT_NULL_NO_ERROR,
+                                &reason);
     if (rc) {
         char err[1024];
         convert_failure_reason_str(&reason, db->tablename, ver_tag, ".ONDISK",
@@ -7102,10 +7103,10 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
 
     /* reopen db */
     newdb->handle = bdb_open_more_tran(
-        db->tablename, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
-        newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-        newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-        thedb->bdb_env, tran, &bdberr);
+        db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
+        (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",
@@ -7495,6 +7496,17 @@ int create_key_from_ondisk_sch_blobs(
             }
             rc = -1; /* callers like -1 */
         } else if (tail) {
+            if ((strncmp(fromtag, ".ONDISK", 7) == 0 &&
+                 strncmp(totag, ".NEW.", 5) == 0) ||
+                (strncmp(fromtag, ".NEW.", 5) == 0 &&
+                 strncmp(totag, ".NEW.", 5) != 0)) {
+                /* Abort if new index uses old ondisk datacopy;
+                 * or if old index uses new ondisk datacopy. */
+                logmsg(LOGMSG_FATAL,
+                       "%s: BUG! BUG! Converting from tag %s to %s\n", __func__,
+                       fromtag, totag);
+                abort();
+            }
             *tail = (char *)inbuf;
             *taillen = inbuflen;
         }

@@ -63,6 +63,7 @@
 #include <sys/time.h>
 #include <plbitlib.h>
 #include <strbuf.h>
+#include <math.h>
 
 #include <sqlite3.h>
 #include <sqliteInt.h>
@@ -667,9 +668,12 @@ static inline int verify_sqlresponse_error_code(int error_code,
     case CDB2__ERROR_CODE__NONKLESS:
     case CDB2__ERROR_CODE__MALLOC:
     case CDB2__ERROR_CODE__NOTSUPPORTED:
+    case CDB2__ERROR_CODE__TRAN_TOO_BIG:
     case CDB2__ERROR_CODE__DUPLICATE:
     case CDB2__ERROR_CODE__TZNAME_FAIL:
     case CDB2__ERROR_CODE__CHANGENODE:
+    case CDB2__ERROR_CODE__NOTSERIAL:
+    case CDB2__ERROR_CODE__SCHEMACHANGE:
     case CDB2__ERROR_CODE__UNKNOWN:
         break;
 
@@ -1013,8 +1017,7 @@ int get_high_availability(struct sqlclntstate *clnt)
 int request_durable_lsn_from_master(bdb_state_type *bdb_state, uint32_t *file,
                                     uint32_t *offset, uint32_t *durable_gen);
 
-static int fill_snapinfo(struct sqlclntstate *clnt, unsigned int *file,
-                         int *offset)
+static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 {
     char cnonce[256];
     int rcode = 0;
@@ -1185,11 +1188,36 @@ int newsql_send_last_row(struct sqlclntstate *clnt, int is_begin,
                          malloc, 1);
 }
 
+static int newsql_realloc_row(int ncols, CDB2SQLRESPONSE__Column ***columns,
+                              int *columns_count)
+{
+    if (ncols <= *columns_count)
+        return 0; /* already have more columns set up; nothing to do */
+
+    /* allocate space for the column array and the columns */
+    int arrsz = ncols * sizeof(CDB2SQLRESPONSE__Column **);
+    int newtotsize = arrsz + ncols * sizeof(CDB2SQLRESPONSE__Column);
+
+    CDB2SQLRESPONSE__Column **loc_cols = *columns;
+    char *ptr = realloc(loc_cols, newtotsize);
+    if (!ptr) {
+        return -1;
+    }
+
+    loc_cols = (CDB2SQLRESPONSE__Column **)ptr;
+    for (int i = 0; i < ncols; i++) {
+        loc_cols[i] =
+            (CDB2SQLRESPONSE__Column *)(ptr + arrsz +
+                                        i * sizeof(CDB2SQLRESPONSE__Column));
+    }
+    *columns = loc_cols;
+    *columns_count = ncols;
+    return 0;
+}
+
 CDB2SQLRESPONSE__Column **newsql_alloc_row(int ncols)
 {
     CDB2SQLRESPONSE__Column **columns;
-    int col;
-
     columns = (CDB2SQLRESPONSE__Column **)calloc(
         ncols, sizeof(CDB2SQLRESPONSE__Column **));
     if (columns) {
@@ -1533,10 +1561,9 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     unsigned long long rqid = clnt->osql.rqid;
     if (rqid != 0 && rqid != OSQL_RQID_USE_UUID)
         reqlog_set_rqid(logger, &rqid, sizeof(rqid));
-    else {
+    else if (!comdb2uuid_is_zero(clnt->osql.uuid)) {
         /* have an "id_set" instead? */
-        if (!comdb2uuid_is_zero(clnt->osql.uuid))
-            reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
+        reqlog_set_rqid(logger, clnt->osql.uuid, sizeof(uuid_t));
     }
 
     LISTC_T(struct sql_hist) lst;
@@ -2181,7 +2208,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         bzero(clnt->dirty, sizeof(clnt->dirty));
 
         if (gbl_extended_sql_debug_trace) {
-            logmsg(LOGMSG_USER, "td=%p %s called\n", pthread_self(), __func__);
+            logmsg(LOGMSG_USER, "td=%x %s called\n", (int)pthread_self(),
+                   __func__);
         }
 
         switch (clnt->dbtran.mode) {
@@ -2206,7 +2234,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             strncpy(clnt->osql.xerr.errstr,
                                     "transaction too big",
                                     sizeof(clnt->osql.xerr.errstr));
-                            rc = 202;
+                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
                             rcline = __LINE__;
                         } else if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
@@ -2285,7 +2313,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                             strncpy(clnt->osql.xerr.errstr,
                                     "transaction too big",
                                     sizeof(clnt->osql.xerr.errstr));
-                            rc = 202;
+                            rc = CDB2__ERROR_CODE__TRAN_TOO_BIG;
                             rcline = __LINE__;
                         } else if (rc == SQLITE_ABORT) {
                             /* convert this to user code */
@@ -2463,6 +2491,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             }
 
             break;
+        case TRANLEVEL_INVALID:
+            break; // TODO: should return here?
         }
     }
 
@@ -3115,7 +3145,7 @@ static void compare_estimate_cost(sqlite3_stmt *stmt)
             rEstLoop *= rEst;
             double rActual = nLoop > 0 ? (double)nVisit / nLoop
                                        : 0.0; // actual rows per loop
-            double delta = abs(rActual - rEst);
+            double delta = fabs(rActual - rEst);
 
             if (n < MAX_DISC_SHOW) {
                 discrepancies[n].rActual = rActual;
@@ -3414,7 +3444,7 @@ int newsql_send_column_info(struct sqlclntstate *clnt,
         else
             colname = cinfo[i].column_name;
         columns[i]->value.len = strlen(colname) + 1;
-        columns[i]->value.data = (char *)colname;
+        columns[i]->value.data = (uint8_t *)colname;
         if (!gbl_return_long_column_names && columns[i]->value.len > 31) {
             columns[i]->value.data[31] = '\0';
             columns[i]->value.len = 32;
@@ -4102,6 +4132,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
             rc = sqlite3LockStmtTables(rec->stmt);
+        } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
+            sqlite3ResetFdbSchemas(thd->sqldb);
+            return rc = SQLITE_SCHEMA_REMOTE;
         }
         if (rc != SQLITE_SCHEMA_REMOTE) {
             break;
@@ -4117,12 +4150,14 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         rc = FSQL_PREPARE;
     }
     if (gbl_fingerprint_queries) {
-        unsigned char fingerprint[16];
-        sqlite3_fingerprint(thd->sqldb, (unsigned char *)fingerprint);
-        reqlog_set_fingerprint(thd->logger, fingerprint);
+        unsigned char fingerprint[FINGERPRINTSZ];
+        sqlite3_fingerprint(thd->sqldb, (char *)fingerprint);
+        reqlog_set_fingerprint(thd->logger, (char *)fingerprint);
     }
     if (rc) {
         _prepare_error(thd, clnt, rec, rc, err);
+    } else {
+        clnt->verify_remote_schemas = 0;
     }
     if (tail && *tail) {
         logmsg(LOGMSG_INFO,
@@ -4336,6 +4371,8 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         *outrc = handle_sql_commitrollback(thd, clnt, flush_resp);
         return 1;
 
+    case SQLENG_NORMAL_PROCESS:
+    case SQLENG_INTRANS_STATE:
     case SQLENG_STRT_STATE:
         /* FALL-THROUGH for update query execution */
         break;
@@ -4344,6 +4381,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     /* additional non-sqlite requests */
     stored_proc = 0;
     if ((rc = check_sql(clnt, &stored_proc)) != 0) {
+        // TODO: set this: outrc = rc;
         return rc;
     }
 
@@ -4781,7 +4819,7 @@ static int set_retrow_columns(struct sqlthdstate *thd,
                               uint8_t *isNullCol, int total_col, int rowcount,
                               struct errstat *err)
 {
-    uint8_t *p_buf_end = thd->buf + thd->buflen;
+    uint8_t *p_buf_end = (uint8_t *)thd->buf + thd->buflen;
     int little_endian = 0;
     int fldlen;
     double dval;
@@ -5005,7 +5043,7 @@ int make_retrow(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 
     *fast_error = 1;
 
-    isNullCol = (uint8_t *)malloc(sizeof(uint8_t) * ncols);
+    isNullCol = (uint8_t *)alloca(sizeof(uint8_t) * ncols);
     if (!isNullCol)
         return -1;
 
@@ -5032,7 +5070,6 @@ int make_retrow(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     rc = set_retrow_columns(thd, clnt, rec->stmt, new_row_data_type, ncols,
                             isNullCol, total_col, rowcount, err);
 out:
-    free(isNullCol);
     return rc; /*error */
 }
 
@@ -5041,6 +5078,8 @@ static void *blob_alloc_override(size_t len)
     return comdb2_bmalloc(blobmem, len + 1);
 }
 
+#define DATALEN_THRESHOLD 1024
+
 static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                         int ncols, int row_id,
                         CDB2SQLRESPONSE__Column **columns)
@@ -5048,6 +5087,7 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
     int rc = 0;
     int i;
+    size_t data_len = 0;
 
     for (i = 0; i < ncols; i++) {
         cdb2__sqlresponse__column__init(columns[i]);
@@ -5059,8 +5099,10 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             columns[i]->value.data = NULL;
         } else {
             columns[i]->value.len = thd->offsets[i].len;
-            columns[i]->value.data = thd->buf + thd->offsets[i].offset;
+            columns[i]->value.data =
+                (uint8_t *)thd->buf + thd->offsets[i].offset;
         }
+        data_len += columns[i]->value.len;
     }
 
     if (clnt->num_retry) {
@@ -5084,12 +5126,16 @@ static int send_row_new(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     sql_response.value = columns;
-    return _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response, 
-                         columns, ncols, 
-                         ((cdb2__sqlresponse__get_packed_size(&sql_response)+1)
-                            > gbl_blob_sz_thresh_bytes) 
-                            ?  blob_alloc_override: malloc,
-                         0);
+
+    void *(*alloc_func)(size_t size) = malloc;
+    if (gbl_blob_sz_thresh_bytes > 0 && data_len > DATALEN_THRESHOLD) {
+        int pksize = cdb2__sqlresponse__get_packed_size(&sql_response);
+        if (pksize + 1 > gbl_blob_sz_thresh_bytes)
+            alloc_func = blob_alloc_override;
+    }
+
+    return _push_row_new(clnt, RESPONSE_TYPE__COLUMN_VALUES, &sql_response,
+                         columns, ncols, alloc_func, 0);
 }
 
 static int send_row_old(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -5331,7 +5377,6 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     struct errstat *err,
                     struct client_comm_if *comm)
 {
-    CDB2SQLRESPONSE__Column **columns;
     sqlite3_stmt *stmt = rec->stmt;
     int new_row_data_type = 0;
     int ncols;
@@ -5369,13 +5414,14 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     /* create the row format and send it to client */
-    columns = newsql_alloc_row(ncols);
-    if (!columns)
+    rc = newsql_realloc_row(ncols, &thd->sqlthd->columns,
+                            &thd->sqlthd->columns_count);
+    if (rc)
         return -1;
 
     set_ret_column_info(thd, clnt, rec, ncols);
     if(comm->send_row_format) {
-        rc = comm->send_row_format(thd, clnt, rec, ncols, columns);
+        rc = comm->send_row_format(thd, clnt, rec, ncols, thd->sqlthd->columns);
         if (rc)
             goto out;
     }
@@ -5442,8 +5488,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER, "%s: cnonce '%s' sending row\n", __func__, cnonce);
                     }
-                    rc = comm->send_row_data(thd, clnt, new_row_data_type, 
-                                             ncols, row_id, rc, columns);
+                    rc =
+                        comm->send_row_data(thd, clnt, new_row_data_type, ncols,
+                                            row_id, rc, thd->sqlthd->columns);
                     if (rc)
                         goto out;
                 }
@@ -5479,12 +5526,10 @@ postprocessing:
         rc = 0;
 
     /* closing: error codes, postponed write result and so on*/
-    rc =
-        post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id,
-                               columns, comm);
+    rc = post_sqlite_processing(thd, clnt, rec, postponed_write, ncols, row_id,
+                                thd->sqlthd->columns, comm);
 
 out:
-    newsql_dealloc_row(columns, ncols);
     return rc;
 }
 
@@ -5592,6 +5637,8 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     do {
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
+        if (rc == SQLITE_SCHEMA_REMOTE)
+            continue;
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
@@ -5757,6 +5804,12 @@ check_version:
                     __func__, rc);
         } else {
             if (thedb->timepart_views) {
+                int saved_has_cnonce;
+                if (clnt && clnt->sql_query) {
+                    // if this is part of an ongoing transaction, clear this
+                    saved_has_cnonce = clnt->sql_query->has_cnonce;
+                    clnt->sql_query->has_cnonce = 0;
+                }
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
                                          &xerr, 0);
@@ -5764,6 +5817,9 @@ check_version:
                     logmsg(LOGMSG_ERROR, 
                             "failed to create views rc=%d errstr=\"%s\"\n",
                             xerr.errval, xerr.errstr);
+                }
+                if (clnt && clnt->sql_query) {
+                    clnt->sql_query->has_cnonce = saved_has_cnonce;
                 }
             }
 

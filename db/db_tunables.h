@@ -1088,12 +1088,11 @@ REGISTER_TUNABLE("sql_time_threshold",
                  "reported as running a long time. (Default: 5000 ms)",
                  TUNABLE_INTEGER, &gbl_sql_time_threshold, READONLY, NULL, NULL,
                  NULL, NULL);
-/*
 REGISTER_TUNABLE("sql_tranlevel_default",
                  "Sets the default SQL transaction level for the database.",
                  TUNABLE_ENUM, &gbl_sql_tranlevel_default, READONLY,
-                 sql_tranlevel_default_value, NULL, NULL, NULL);
-*/
+                 sql_tranlevel_default_value, NULL,
+                 sql_tranlevel_default_update, NULL);
 REGISTER_TUNABLE(
     "sqlwrtimeout",
     "Set timeout for writing to an SQL connection. (Default: 10000ms)",
@@ -1299,5 +1298,24 @@ REGISTER_TUNABLE("verbose_send_cohlease",
 REGISTER_TUNABLE("reset_on_unelectable_cluster", "Reset master if unelectable.",
                  TUNABLE_BOOLEAN, &gbl_reset_on_unelectable_cluster,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_verify_always_grab_writelock",
+                 "Force every rep_verify to grab writelock.", TUNABLE_BOOLEAN,
+                 &gbl_rep_verify_always_grab_writelock, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("rep_verify_will_recover_trace",
+                 "Trace rep_verify_will_recover.", TUNABLE_BOOLEAN,
+                 &gbl_rep_verify_will_recover_trace, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_wr_rows_per_txn",
+                 "Set the max written rows per transaction.", TUNABLE_INTEGER,
+                 &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("print_deadlock_cycles",
+                 "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("always_send_cnonce",
+                 "Always send cnonce to master. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG, NULL, NULL,
+                 NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

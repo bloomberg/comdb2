@@ -134,16 +134,18 @@ typedef enum {
     LLMETA_CURR_ANALYZE_COUNT = 29,
     LLMETA_LAST_ANALYZE_COUNT = 30,
     LLMETA_LAST_ANALYZE_EPOCH = 31,
-    LLMETA_FDB_TABLENAME_ALIAS =32/* table name to replace a full path
-                                  DBNAME.TABLENAME */
+    LLMETA_FDB_TABLENAME_ALIAS = 32 /* table name to replace a full path
+                                    DBNAME.TABLENAME */
     ,
-    LLMETA_TABLE_VERSION      = 33/* reliable table version, updated by any schema change
-                            */
+    LLMETA_TABLE_VERSION =
+        33 /* reliable table version, updated by any schema change
+     */
     ,
-    LLMETA_TABLE_PARAMETERS   = 34/* store various parameter values for tables stored
-                               as a blob */
+    LLMETA_TABLE_PARAMETERS =
+        34 /* store various parameter values for tables stored
+        as a blob */
     ,
-    LLMETA_ROWLOCKS_STATE     = 35
+    LLMETA_ROWLOCKS_STATE = 35
     /* for some reason we skip 36 */
     ,
     LLMETA_TABLE_USER_OP = 37 /* The user can use DDL-like commands on the table
@@ -2640,11 +2642,11 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                               unsigned long long *version_num, int *bdberr)
+                             unsigned long long *version_num, int *bdberr)
 {
     return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0,
-                                version_num, bdberr);
+                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
+                                bdberr);
 }
 
 int bdb_get_pagesize_data(bdb_state_type *bdb_state, tran_type *tran,
@@ -6562,6 +6564,7 @@ rep:
     if ((tran = bdb_tran_begin(llmeta_bdb_state, NULL, &bdberr)) == NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
                 bdberr, retry);
+        rc = bdberr;
         goto err;
     }
     char llkey[LLMETA_IXLEN] = {0};
@@ -7416,6 +7419,7 @@ rep:
         NULL) {
         logmsg(LOGMSG_ERROR, "%s: bdb_tran_begin bdberr:%d retries:%d\n", __func__,
                 bdberr, retry);
+        rc = bdberr;
         goto err;
     }
     char llkey[LLMETA_IXLEN] = {0};

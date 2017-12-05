@@ -1478,7 +1478,14 @@ sp2
 
 ## SQL Lua Functions
 
-Custom SQL functions can be implemented as stored procedures. Two categories of functions can be defined:
+Custom SQL functions can be implemented as stored procedures.
+
+Couple of limitations when using stored procedures as lua functions:
+
+1. Lua functions cannot start threads.
+2. Lua functions cannot explicitly control transactions (by calling `db:begin`, `db:commit` and `db:rollback`).
+
+Two categories of functions can be defined:
 
 ### Scalar function
 

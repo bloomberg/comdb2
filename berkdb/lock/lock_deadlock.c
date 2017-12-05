@@ -27,6 +27,7 @@ static const char revid[] = "$Id: lock_deadlock.c,v 11.66 2003/11/19 19:59:02 ub
 #include "dbinc/lock.h"
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
+#include "dbinc/locker_info.h"
 #include <alloca.h>
 
 #include "debug_switches.h"
@@ -38,7 +39,6 @@ extern int gbl_rowlocks;
 
 void stack_me(char *location);
 
-#define	ISSET_MAP(M, N)	((M)[(N) / 32] & (1 << (N) % 32))
 
 #define	CLEAR_MAP(M, N) {						\
 	u_int32_t __i;							\
@@ -55,23 +55,6 @@ void stack_me(char *location);
 		D[__i] |= S[__i];					\
 }
 #define	BAD_KILLID	0xffffffff
-
-typedef struct {
-	DB_LOCKOBJ *last_obj;
-	pthread_t tid;
-	roff_t last_lock;
-	u_int32_t count;
-	u_int32_t id;
-	u_int32_t last_locker_id;
-	db_pgno_t pgno;
-	int killme;
-	int saveme;
-	int readonly;
-	u_int8_t self_wait;
-	u_int8_t valid;
-	u_int8_t in_abort;
-	u_int8_t tracked;
-} locker_info;
 
 typedef struct {
 	int *alloclist;
@@ -419,12 +402,13 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 
 		if (j == victim)
 			logmsg(LOGMSG_USER, "*");
-		logmsg(LOGMSG_USER, "%u(%u) ", idmap[j].id, idmap[j].count);
+		extern void log_snap_info_key(snap_uid_t *);
+		log_snap_info_key(idmap[j].snap_info);
+		logmsg(LOGMSG_USER, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
 	}
 	logmsg(LOGMSG_USER, "\n");
-	fflush(stderr);
 }
-
+    
 
 static void
 __dd_print_tracked(idmap, deadmap, nlockers, victim)
@@ -866,8 +850,12 @@ dokill:
 			__dd_print_tracked(idmap, *deadp, nlockers, killid);
 		}
 
-		if (gbl_print_deadlock_cycles)
+		if (gbl_print_deadlock_cycles) {
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
+
+			void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
+			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
+		}
 
 		/* Kill the locker with lockid idmap[killid]. */
 		if ((ret = __dd_abort(dbenv, &idmap[killid]))!=0) {
@@ -1568,7 +1556,9 @@ get_lock:	dd_id_array[id].last_lock = R_OFFSET(&lt->reginfo, lp);
 				memcpy(&dd_id_array[id].pgno, pptr, sizeof(db_pgno_t));
 			else
 				dd_id_array[id].pgno = 0;
-out:		unlock_obj_partition(region, lpartition);
+			dd_id_array[id].snap_info = lockerp->snap_info;
+out:
+			unlock_obj_partition(region, lpartition);
 		}
 		unlock_locker_partition(region, lkr_partition);
 	}
