@@ -770,6 +770,7 @@ extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
 
@@ -5035,6 +5036,9 @@ static void register_all_int_switches()
     register_int_switch("new_indexes",
                         "Let replicants send indexes values to master",
                         &gbl_new_indexes);
+    register_int_switch("mifid2_datetime_range",
+                        "Extend datetime range to meet mifid2 requirements",
+                        &gbl_mifid2_datetime_range);
 }
 
 static void getmyid(void)
