@@ -5986,8 +5986,8 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
             strncpy0(fnd.lcl_tbl_name, pCur->fdbc->tblname(pCur),
                      sizeof(fnd.lcl_tbl_name));
         } else if (pCur->db) {
-                strncpy0(fnd.lcl_tbl_name, pCur->db->tablename,
-                        sizeof(fnd.lcl_tbl_name));
+            strncpy0(fnd.lcl_tbl_name, pCur->db->tablename,
+                     sizeof(fnd.lcl_tbl_name));
         }
         fnd.ix = pCur->ixnum;
 

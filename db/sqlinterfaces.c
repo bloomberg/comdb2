@@ -5644,7 +5644,7 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     do {
         /* clean old stats */
         clear_cost(thd->sqlthd);
-        
+
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
         if (rc == SQLITE_SCHEMA_REMOTE)
