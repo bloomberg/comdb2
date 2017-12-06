@@ -1534,6 +1534,16 @@ void sql_dump_hist_statements(void)
     pthread_mutex_unlock(&gbl_sql_lock);
 }
 
+static void clear_cost(struct sql_thread *thd)
+{
+    if (thd) {
+        hash_clear(thd->query_hash);
+        thd->cost = 0;
+        thd->had_tablescans = 0;
+        thd->had_temptables = 0;
+    }
+}
+
 /* Save copy of sql statement and performance data.  If any other code
    should run after a sql statement is completed it should end up here. */
 static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
@@ -1634,10 +1644,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         free(qc);
         qc = listc_rtl(&thd->query_stats);
     }
-    hash_clear(thd->query_hash);
-    thd->cost = 0;
-    thd->had_tablescans = 0;
-    thd->had_temptables = 0;
+
+    clear_cost(thd);
 }
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -5635,6 +5643,9 @@ static int handle_sqlite_requests(struct sqlthdstate *thd,
     rec.sql = clnt->sql;
 
     do {
+        /* clean old stats */
+        clear_cost(thd->sqlthd);
+
         /* get an sqlite engine */
         rc = get_prepared_bound_stmt(thd, clnt, &rec, &err);
         if (rc == SQLITE_SCHEMA_REMOTE)
