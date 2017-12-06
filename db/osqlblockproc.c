@@ -122,6 +122,8 @@ static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess);
 /**
  * The bplog key-compare function - required because memcmp changes
  * the order of temp_table_next on little-endian machines.
+ *
+ * key will compare by rqid, uuid, table, stripe, genid, then sequence
  */
 static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
                               int key2len, const void *key2)
@@ -152,6 +154,14 @@ static int osql_bplog_key_cmp(void *usermem, int key1len, const void *key1,
     cmp = comdb2uuidcmp(k1->uuid, k2->uuid);
     if (cmp)
         return cmp;
+
+    if (k1->tbl_idx < k2->tbl_idx) {
+        return -1;
+    }
+
+    if (k1->tbl_idx > k2->tbl_idx) {
+        return 1;
+    }
 
     if (k1->seq < k2->seq) {
         return -1;
@@ -618,21 +628,21 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         iq->usedb = NULL;
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             iq->usedb = get_dbtable_by_name(tablename);
-            assert(iq->usedb);
             printf("AZ: tablename='%s' idx=%d\n", tablename, iq->usedb->dbs_idx);
         }
     }
+    assert(iq->usedb); /* must be set */
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
-    key.rqid = rqid;
-    if (iq->usedb)
-        key.tbl_idx = iq->usedb->dbs_idx;
+    if (type == OSQL_DONE_SNAP)
+        key.tbl_idx = INT_MAX;
     else
-        key.tbl_idx = 0;
+        key.tbl_idx = iq->usedb->dbs_idx;
+    key.rqid = rqid;
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
 
@@ -686,7 +696,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
 #if 0 
 #endif
-   printf("%s: rqid=%llx Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, key.seq, ntohl(*((int*)rpl)), key.tbl_idx);
+   printf("%s: rqid=%llx Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, key.seq, type, key.tbl_idx);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -1076,7 +1086,6 @@ static int process_this_session(
 
     iq->queryid = osql_sess_queryid(sess);
 
-    //TODO: when is this freed?
     key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
     if (!key) {
         logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
@@ -1098,8 +1107,7 @@ static int process_this_session(
     reqlog_set_event(iq->reqlogger, "txn");
 
     /* go through each record */
-    rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
-                                   bdberr);
+    rc = bdb_temp_table_find(thedb->bdb_env, dbc, key, sizeof(*key), NULL, bdberr);
 printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
@@ -1116,7 +1124,7 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
     while (!rc && !rc_out) {
 
         char *realkey = bdb_temp_table_key(dbc);
-        char *realkeylen = bdb_temp_table_keysize(dbc);
+        char *realkeylen = (char *) bdb_temp_table_keysize(dbc);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
 
@@ -1171,7 +1179,7 @@ printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey
             }
 
             /* check correct sequence; this is an attempt to
-               catch dropped packets - not that we would do that purposely */
+               catch dropped packets - not that we would do that purposely 
             if (key_next.seq != key_crt.seq + 1) {
                 uuidstr_t us;
                 comdb2uuidstr(uuid, us);
@@ -1179,7 +1187,7 @@ printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey
                                 "%llu to %llu], aborting\n",
                         __func__, rqid, us, key_crt.seq, key_next.seq);
                 rc = OSQL_SKIPSEQ;
-            }
+            }*/
         }
         step++;
     }
