@@ -8,6 +8,7 @@ enum CDB2RequestType {
     SQLQUERY  = 2;
     DBINFO    = 3;
     RESET     = 108;
+    CLIENTINFO = 104;
     /* To tell the server to perform SSL_accept(). */
     SSLCONN   = 121;
 }
@@ -24,6 +25,13 @@ enum CDB2ClientFeatures {
 message CDB2_FLAG {
   required int32 option = 1;
   required int32 value = 2;
+}
+
+message CDB2_CLIENTINFO {
+    required int32  pid     = 1;
+    required int32  th_id   = 2;
+    required int32  host_id = 3;
+    required string argv0   = 4;
 }
 
 message CDB2_SQLQUERY {
@@ -57,7 +65,6 @@ message CDB2_SQLQUERY {
     required int32  pid      = 1;
     required int32  th_id    = 2;
     required int32  host_id  = 3;
-    optional string argv0    = 4;
 
   }
   optional cinfo client_info = 15;
@@ -75,4 +82,6 @@ message CDB2_QUERY {
   optional CDB2_SQLQUERY sqlquery = 1;
   optional CDB2_DBINFO   dbinfo = 2;
   optional string        spcmd  = 3;
+  optional CDB2_CLIENTINFO clinfo = 4;
 }
+
