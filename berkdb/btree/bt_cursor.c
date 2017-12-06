@@ -3766,6 +3766,7 @@ __bam_c_search(dbc, root_pgno, key, flags, exactp)
 	db_recno_t recno;
 	u_int32_t sflags;
 	int cmp, ret;
+	int oldret;
 
 	dbp = dbc->dbp;
 	cp = (BTREE_CURSOR *)dbc->internal;
@@ -3935,11 +3936,14 @@ fast_miss:	/*
 		 * This was not the right page, so we do not need to retain
 		 * the lock even in the presence of transactions.
 		 */
+		oldret = ret;
 		DISCARD_CUR(dbc, ret);
 		cp->pgno = PGNO_INVALID;
 		(void)__LPUT(dbc, cp->lock);
 		if (ret != 0)
 			return (ret);
+		if (oldret == DB_LOCK_DEADLOCK) 
+		    return oldret;
 
 search:		if ((ret = __bam_search(dbc, root_pgno,
 		     key, sflags, 1, NULL, exactp)) != 0)

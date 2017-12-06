@@ -770,6 +770,7 @@ extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
 
@@ -1372,8 +1373,16 @@ void clean_exit(void)
 
     thedb->exiting = 1;
     stop_threads(thedb);
-
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    sleep(4);
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
+
     rc = backend_close(thedb);
     if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
@@ -1395,7 +1404,6 @@ void clean_exit(void)
             free(indicator_file);
         }
     }
-
     eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
@@ -1403,24 +1411,34 @@ void clean_exit(void)
     if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
+    cleanup_file_locations();
 
     /*
       Wait for other threads to exit by themselves.
       TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
-    sleep(4);
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
-    cleanup_q_vars();
-    cleanup_switches();
-    free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
     cleanup_sqlite_master();
+    for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
+        struct dbtable *tbl = thedb->dbs[ii];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    if (thedb->db_hash) {
+        hash_clear(thedb->db_hash);
+        hash_free(thedb->db_hash);
+        thedb->db_hash = NULL;
+    }
+    cleanup_interned_strings();
+    cleanup_peer_hash();
 
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    sleep(1);
+    logmsg(LOGMSG_ERROR, "goodbye\n");
 
     exit(0);
 }
@@ -5035,6 +5053,9 @@ static void register_all_int_switches()
     register_int_switch("new_indexes",
                         "Let replicants send indexes values to master",
                         &gbl_new_indexes);
+    register_int_switch("mifid2_datetime_range",
+                        "Extend datetime range to meet mifid2 requirements",
+                        &gbl_mifid2_datetime_range);
 }
 
 static void getmyid(void)

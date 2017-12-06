@@ -123,16 +123,16 @@ static char *ibm_getargv0(void)
 
 static char *getargv0(void)
 {
-#if __APPLE__
+#if defined (__APPLE__)
     return apple_getargv0();
-#elif _LINUX_SOURCE
+#elif defined (_LINUX_SOURCE)
     return linux_getargv0();
-#elif _SUN_SOURCE
+#elif defined (_SUN_SOURCE)
     return sun_getargv0();
-#elif _IBM_SOURCE
+#elif defined (_IBM_SOURCE)
     return ibm_getargv0();
 #else
-    return NULL;
+    return "";
 #endif
 }
 
