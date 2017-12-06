@@ -1369,6 +1369,12 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
 
 /* SOCKPOOL CODE ENDS */
 
+static int send_client_info(SBUF2 *sb)
+{
+    CDB2CLIENTINFO clientinfo = CDB2__CLIENTINFO__INIT;
+    CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
+}
+
 static int send_reset(SBUF2 *sb)
 {
     int rc = 0;
@@ -1613,7 +1619,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
         fprintf(stderr, "td %u %s:%d entering\n", (uint32_t)pthread_self(),
                 __func__, __LINE__);
     }
-    int fd = -1;
+    int fd = -1, rc;
     SBUF2 *sb = NULL;
     int rc = snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
                       "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type,
@@ -1659,6 +1665,13 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
         return -1;
     }
 #endif
+
+    if ((rc = send_client_info(sb)) != 0) {
+        if (hndl->debug_trace)
+            fprintf(stderr, "send_client_info returns %d\n", rc);
+        sbuf2close(sb);
+        return -1;
+    }
 
     sbuf2settimeout(sb, 5000, 5000);
     hndl->sb = sb;
@@ -2154,6 +2167,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
+
+/*
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
     cinfo.pid = _PID;
@@ -2161,6 +2176,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     cinfo.host_id = cdb2_hostid();
 
     sqlquery.client_info = &cinfo;
+*/
+
     sqlquery.dbname = dbname;
     while (isspace(*sql))
         sql++;
