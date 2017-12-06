@@ -72,7 +72,10 @@ hash_fileid(void *fileid, uint32_t * crc, uint32_t * hash)
 void
 rcache_destroy(void)
 {
-	free(hndl);
+    if (hndl) {
+        free(hndl);
+        hndl = NULL;
+    }
 }
 
 int

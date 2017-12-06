@@ -6441,6 +6441,17 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         free(clnt->query_stats);
         clnt->query_stats = NULL;
     }
+
+    if (clnt->ddl_tables) {
+        hash_clear(clnt->ddl_tables);
+        hash_free(clnt->ddl_tables);
+    }
+    if (clnt->dml_tables) {
+        hash_clear(clnt->dml_tables);
+        hash_free(clnt->dml_tables);
+    }
+    clnt->ddl_tables = NULL;
+    clnt->dml_tables = NULL;
 }
 
 void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
@@ -6503,7 +6514,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     osql_clean_sqlclntstate(clnt);
     /* clear dbtran after aborting unfinished shadow transactions. */
     bzero(&clnt->dbtran, sizeof(dbtran_type));
-
     clnt->origin = intern(get_origin_mach_by_buf(sb));
 
     clnt->in_client_trans = 0;

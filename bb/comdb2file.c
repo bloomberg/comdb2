@@ -224,3 +224,12 @@ char *comdb2_file(char *fmt, ...)
 
     return out;
 }
+
+void cleanup_file_locations()
+{
+    if (locations) {
+        hash_clear(locations);
+        hash_free(locations);
+        locations = NULL;
+    }
+}

@@ -1530,87 +1530,84 @@ char *sql_field_default_trans(struct field *f, int is_out)
     return dstr;
 }
 
+static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
+{
+    if (tbl->sql)
+        free(tbl->sql);
+    for (int i = 0; i < tbl->nsqlix; i++) {
+        free(tbl->ixsql[i]);
+        tbl->ixsql[i] = NULL;
+    }
+    switch (tbl->tablename[11]) {
+    case '1':
+        tbl->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
+        break;
+    case '2':
+        tbl->sql =
+            strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
+        break;
+    case '4':
+        tbl->sql =
+            strdup("create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
+        break;
+    default:
+        abort();
+    }
+    if (tbl->ixsql) {
+        free(tbl->ixsql);
+        tbl->ixsql = NULL;
+    }
+    tbl->ixsql = calloc(sizeof(char *), tbl->nix);
+    tbl->nsqlix = 0;
+    tbl->ix_expr = 0;
+    tbl->ix_partial = 0;
+    tbl->ix_blob = 0;
+}
+
 /* This creates SQL statements that correspond to a table's schema. These
    statements are used to bootstrap sqlite. */
-static int create_sqlmaster_record(struct dbtable *db, void *tran)
+static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 {
-    struct schema *schema;
-    strbuf *sql;
     int field;
     char namebuf[128];
-    char *type;
-    int ixnum;
-    char *dstr = NULL;
 
-    sql = strbuf_new();
-
-    /* do the table */
-    strbuf_clear(sql);
-    schema = db->schema;
-
+    struct schema *schema = tbl->schema;
     if (schema == NULL) {
-        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", db->tablename);
-        strbuf_free(sql);
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
         return -1;
     }
 
-    if (is_sqlite_stat(db->tablename)) {
-        if (db->sql)
-            free(db->sql);
-        for (int i = 0; i < db->nsqlix; i++) {
-            free(db->ixsql[i]);
-            db->ixsql[i] = NULL;
-        }
-        switch (db->tablename[11]) {
-        case '1':
-            db->sql = strdup("create table sqlite_stat1(tbl,idx,stat);");
-            break;
-        case '2':
-            db->sql =
-                strdup("create table sqlite_stat2(tbl,idx,sampleno,sample);");
-            break;
-        case '4':
-            db->sql = strdup(
-                "create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);");
-            break;
-        default:
-            abort();
-        }
-        if (db->ixsql) {
-            free(db->ixsql);
-            db->ixsql = NULL;
-        }
-        db->ixsql = calloc(sizeof(char *), db->nix);
-        db->nsqlix = 0;
-        strbuf_free(sql);
-        db->ix_expr = 0;
-        db->ix_partial = 0;
-        db->ix_blob = 0;
+    if (is_sqlite_stat(tbl->tablename)) {
+        create_sqlite_stat_sqlmaster_record(tbl);
         return 0;
     }
 
+    strbuf *sql = strbuf_new();
+    strbuf_clear(sql);
     strbuf_append(sql, "create table ");
     strbuf_append(sql, "\"");
-    strbuf_append(sql, db->tablename);
+    strbuf_append(sql, tbl->tablename);
     strbuf_append(sql, "\"");
     strbuf_append(sql, "(");
+
     for (field = 0; field < schema->nmembers; field++) {
         strbuf_append(sql, "\"");
         strbuf_append(sql, schema->member[field].name);
         strbuf_append(sql, "\"");
         strbuf_append(sql, " ");
-        type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
+        char *type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
             logmsg(LOGMSG_ERROR, "Unsupported type in schema: column '%s' [%d] "
                                  "table %s\n",
-                   schema->member[field].name, field, db->tablename);
+                   schema->member[field].name, field, tbl->tablename);
+            strbuf_free(sql);
             return -1;
         }
         strbuf_append(sql, type);
         /* add defaults for write sql */
         if (schema->member[field].in_default) {
-            dstr = sql_field_default_trans(&schema->member[field], 0);
             strbuf_append(sql, " DEFAULT");
+            char *dstr = sql_field_default_trans(&schema->member[field], 0);
 
             if (dstr) {
                 strbuf_append(sql, " ");
@@ -1620,7 +1617,7 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
                 logmsg(LOGMSG_ERROR,
                        "Failed to convert default value column '%s' table "
                        "%s type %d\n",
-                       schema->member[field].name, db->tablename,
+                       schema->member[field].name, tbl->tablename,
                        schema->member[field].type);
                 strbuf_free(sql);
                 return -1;
@@ -1631,41 +1628,38 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
             strbuf_append(sql, ", ");
     }
     strbuf_append(sql, ");");
-    if (db->sql)
-        free(db->sql);
-    db->sql = strdup(strbuf_buf(sql));
-    if (db->nix > 0) {
-        for (int i = 0; i < db->nsqlix; i++) {
-            free(db->ixsql[i]);
-            db->ixsql[i] = NULL;
+    if (tbl->sql)
+        free(tbl->sql);
+    tbl->sql = strdup(strbuf_buf(sql));
+    if (tbl->nix > 0) {
+        for (int i = 0; i < tbl->nsqlix; i++) {
+            free(tbl->ixsql[i]);
+            tbl->ixsql[i] = NULL;
         }
-        if (db->ixsql) {
-            free(db->ixsql);
-            db->ixsql = NULL;
+        if (tbl->ixsql) {
+            free(tbl->ixsql);
+            tbl->ixsql = NULL;
         }
-        db->ixsql = calloc(sizeof(char *), db->nix);
+        tbl->ixsql = calloc(sizeof(char *), tbl->nix);
     }
     ctrace("%s\n", strbuf_buf(sql));
-    db->nsqlix = 0;
+    tbl->nsqlix = 0;
 
     /* do the indices */
-    for (ixnum = 0; ixnum < db->nix; ixnum++) {
-        /* SQLite 3.7.2: index on sqlite_stat is an error */
-        if (is_sqlite_stat(db->tablename))
-            break;
-
+    for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
         strbuf_clear(sql);
 
         snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ixnum);
-        schema = find_tag_schema(db->tablename, namebuf);
+        schema = find_tag_schema(tbl->tablename, namebuf);
         if (schema == NULL) {
             logmsg(LOGMSG_ERROR, "No %s tag for table %s\n", namebuf,
-                   db->tablename);
+                   tbl->tablename);
             strbuf_free(sql);
             return -1;
         }
 
-        sql_index_name_trans(namebuf, sizeof(namebuf), schema, db, ixnum, tran);
+        sql_index_name_trans(namebuf, sizeof(namebuf), schema, tbl, ixnum,
+                             tran);
         if (schema->sqlitetag)
             free(schema->sqlitetag);
         schema->sqlitetag = strdup(namebuf);
@@ -1689,7 +1683,7 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
         strbuf_append(sql, namebuf);
         strbuf_append(sql, "\" on ");
         strbuf_append(sql, "\"");
-        strbuf_append(sql, db->tablename);
+        strbuf_append(sql, tbl->tablename);
         strbuf_append(sql, "\"");
         strbuf_append(sql, " (");
         for (field = 0; field < schema->nmembers; field++) {
@@ -1699,8 +1693,8 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
                 if (!gbl_expressions_indexes) {
                     logmsg(LOGMSG_ERROR, "EXPRESSIONS INDEXES FOUND IN SCHEMA! PLEASE FIRST "
                             "ENABLE THE EXPRESSIONS INDEXES FEATURE.\n");
-                    if (db->iq)
-                        reqerrstr(db->iq, ERR_SC,
+                    if (tbl->iq)
+                        reqerrstr(tbl->iq, ERR_SC,
                                   "Please enable indexes on expressions.");
                     strbuf_free(sql);
                     return -1;
@@ -1715,7 +1709,7 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
         }
 
         if (schema->flags & SCHEMA_DATACOPY) {
-            struct schema *ondisk = db->schema;
+            struct schema *ondisk = tbl->schema;
             int datacopy_pos = 0;
             size_t need;
             /* Add all fields from ONDISK to index */
@@ -1761,8 +1755,9 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
             if (!gbl_partial_indexes) {
                 logmsg(LOGMSG_ERROR, "PARTIAL INDEXES FOUND IN SCHEMA! PLEASE FIRST "
                                 "ENABLE THE PARTIAL INDEXES FEATURE.\n");
-                if (db->iq)
-                    reqerrstr(db->iq, ERR_SC, "Please enable partial indexes.");
+                if (tbl->iq)
+                    reqerrstr(tbl->iq, ERR_SC,
+                              "Please enable partial indexes.");
                 strbuf_free(sql);
                 return -1;
             }
@@ -1771,19 +1766,18 @@ static int create_sqlmaster_record(struct dbtable *db, void *tran)
             strbuf_append(sql, ")");
         }
         strbuf_append(sql, ";");
-        if (db->ixsql[ixnum])
-            free(db->ixsql[ixnum]);
+        if (tbl->ixsql[ixnum])
+            free(tbl->ixsql[ixnum]);
         if (field > 0) {
-            db->ixsql[ixnum] = strdup(strbuf_buf(sql));
+            tbl->ixsql[ixnum] = strdup(strbuf_buf(sql));
             ctrace("  %s\n", strbuf_buf(sql));
-            db->nsqlix++;
+            tbl->nsqlix++;
         } else {
-            db->ixsql[ixnum] = NULL;
+            tbl->ixsql[ixnum] = NULL;
         }
     }
 
     strbuf_free(sql);
-
     return 0;
 }
 
