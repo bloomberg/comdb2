@@ -3654,9 +3654,11 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
                  clnt->verify_retries);
 
     if (clnt->sql_query && clnt->sql_query->client_info) {
-        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d sql: %s",
+        char *argv0 = clnt->sql_query->client_info->argv0;
+        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d argv0: %s sql: %s",
                       info_nvreplays, clnt->sql_query->client_info->pid,
-                      clnt->sql_query->client_info->host_id, clnt->sql);
+                      clnt->sql_query->client_info->host_id, 
+                      argv0 ? argv0 : "(unset)", clnt->sql);
     } else {
         thrman_wheref(thd->thr_self, "%s sql: %s", info_nvreplays, clnt->sql);
     }
@@ -7611,16 +7613,6 @@ retry_read:
         goto retry_read;
     }
 
-    if (query && query->clinfo) {
-        clnt->conninfo.pid = query->clinfo->pid;
-        clnt->conninfo.node = query->clinfo->host_id;
-        if (clnt->argv0)
-            free(clnt->argv0);
-        clnt->argv0 = strdup(query->clinfo->argv0);
-        cdb2__query__free_unpacked(query, &pb_alloc);
-        goto retry_read;
-    }
-
 #if WITH_SSL
     /* Do security check before we return. We do it only after
        the query has been unpacked so that we know whether
@@ -8205,6 +8197,13 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
             }
             clnt.conninfo.pid = sql_query->client_info->pid;
             clnt.conninfo.node = sql_query->client_info->host_id;
+            if (clnt.argv0) {
+                free(clnt.argv0);
+                clnt.argv0 = NULL;
+            }
+            if (sql_query->client_info->argv0) {
+                clnt.argv0 = strdup(sql_query->client_info->argv0);
+            }
         }
 
         if (process_set_commands(&clnt))
@@ -8312,6 +8311,11 @@ done:
             cdb2__query__free_unpacked(clnt.query, &pb_alloc);
             clnt.query = NULL;
         }
+    }
+
+    if (clnt.argv0) {
+        free(clnt.argv0);
+        clnt.argv0 = NULL;
     }
 
     /* XXX free logical tran?  */

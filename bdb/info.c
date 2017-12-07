@@ -744,7 +744,6 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
     dbinfo_response->master = master;
 
     fill_ssl_info(dbinfo_response);
-    dbinfo_response->flags = /* CDB2_SEND_CLIENTINFO */ 1;
 }
 
 static void netinfo_dump(FILE *out, bdb_state_type *bdb_state)
