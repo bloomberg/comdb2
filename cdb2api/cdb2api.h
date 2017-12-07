@@ -44,10 +44,6 @@ enum cdb2_request_type {
     CDB2_REQUEST_DBINFO = 3
 };
 
-enum cdb2_dbinfo_response_flags {
-    CDB2_SEND_CLIENTINFO = 1
-};
-
 enum cdb2_errors {
     CDB2_OK = 0,
     CDB2_OK_DONE = 1,
