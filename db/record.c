@@ -230,6 +230,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TAG,
                   "invalid tag description '%.*s'", taglen, tagdescr);
         *opfailcode = OP_FAILED_BAD_REQUEST;
+    printf("AZ: add_record_int() err 1\n");
         retrc = ERR_BADREQ;
         ERR;
     }
@@ -260,6 +261,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                           iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
+    printf("AZ: add_record_int() err 2\n");
         ERR;
     }
 
@@ -287,6 +289,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                       reclen, tag, expected_dat_len);
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
+    printf("AZ: add_record_int() err 3\n");
             ERR;
         }
     }
@@ -301,6 +304,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                   "no blobs flags with blob buffers");
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
+    printf("AZ: add_record_int() err 4 -- seems like failing to check blobs\n");
         ERR;
     }
 
@@ -336,6 +340,7 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
             reqerrstr(iq, COMDB2_ADD_RC_INVL_DTA, "bad ondisk size");
             *opfailcode = OP_FAILED_BAD_REQUEST;
             retrc = ERR_BADREQ;
+    printf("AZ: add_record_int() err 5\n");
             ERR;
         }
 

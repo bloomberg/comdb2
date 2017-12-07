@@ -696,7 +696,9 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
 #if 0 
 #endif
-   printf("%s: rqid=%llx Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, key.seq, type, key.tbl_idx);
+    char mus[37];
+    comdb2uuidstr(key.uuid, mus);
+    printf("%s: rqid=%llx uuid=%s Saving op seq=%d, type=%d, tbl_idx=%d\n", __func__, key.rqid, mus, key.seq, type, key.tbl_idx);
 
     rc_op = bdb_temp_table_put(thedb->bdb_env, tran->db, &key, sizeof(key), rpl,
                                rplen, NULL, &bdberr);
@@ -1124,7 +1126,7 @@ printf("AZ: what did we find? rc=%d, bdberr=%d\n", rc, *bdberr);
     while (!rc && !rc_out) {
 
         char *realkey = bdb_temp_table_key(dbc);
-        char *realkeylen = (char *) bdb_temp_table_keysize(dbc);
+        int realkeylen = bdb_temp_table_keysize(dbc);
         char mus[37];
         comdb2uuidstr(((oplog_key_t*)realkey)->uuid, mus);
 
@@ -1147,14 +1149,17 @@ printf("AZ: key rqid=%d, uuid=%s, tbl_idx=%d, wseq=%d\n", ((oplog_key_t*)realkey
 
         lastrcv = receivedrows;
 
+        iq->debug = 1;
         /* this locks pages */
         rc_out = func(iq, rqid, uuid, iq_tran, data, datalen, &flags, &updCols,
                       blobs, step, err, &receivedrows, logsb);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
+printf("AZ: rcout=%d err=%s\n", rc_out, iq->errstat.errstr);
             /* error processing, can be a verify error or deadlock */
             break;
         }
+
 
         if (lastrcv != receivedrows && is_rowlocks_transaction(iq_tran)) {
             rowlocks_check_commit_physical(thedb->bdb_env, iq_tran, ++countops);

@@ -35,8 +35,8 @@ done
 f1() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
 begin
-insert into t1 values (1)
-insert into t2 values (1)
+insert into t1 values (1, x'abcd')
+insert into t2 values (1, x'abcd')
 commit
 EOF
 }
@@ -44,8 +44,8 @@ EOF
 f2() {
     cdb2sql ${CDB2_OPTIONS} $dbnm default <<"EOF"
 begin
-insert into t2 values (2)
-insert into t1 values (2)
+insert into t2 values (2, x'dcba')
+insert into t1 values (2, x'dcba')
 commit
 EOF
 }
