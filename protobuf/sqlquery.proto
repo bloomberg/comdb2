@@ -8,7 +8,6 @@ enum CDB2RequestType {
     SQLQUERY  = 2;
     DBINFO    = 3;
     RESET     = 108;
-    CLIENTINFO = 104;
     /* To tell the server to perform SSL_accept(). */
     SSLCONN   = 121;
 }

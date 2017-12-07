@@ -516,6 +516,7 @@ struct sqlclntstate {
     int statement_query_effects;
 
     int verify_remote_schemas;
+    char *argv0;
 };
 
 /* Query stats. */
