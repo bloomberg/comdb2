@@ -7651,6 +7651,16 @@ retry_read:
         goto retry_read;
     }
 
+    if (query && query->clinfo) {
+        clnt->conninfo.pid = query->clinfo->pid;
+        clnt->conninfo.node = query->clinfo->host_id;
+        if (clnt->argv0)
+            free(clnt->argv0);
+        clnt->argv0 = strdup(query->clinfo->argv0);
+        cdb2__query__free_unpacked(query, &pb_alloc);
+        goto retry_read;
+    }
+
 #if WITH_SSL
     /* Do security check before we return. We do it only after
        the query has been unpacked so that we know whether
