@@ -638,7 +638,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
            rqid, type, osql_reqtype_str(type), osql_log_time(), seq);
 #endif
 
-    if (type == OSQL_DONE_SNAP)
+    if (type == OSQL_DONE_SNAP || type == OSQL_DONE || 
+        type == OSQL_DONE_STATS)
         key.tbl_idx = INT_MAX;
     else
         key.tbl_idx = iq->usedb->dbs_idx;
