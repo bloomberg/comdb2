@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Debug variable
+debug=0
+
+# Grab my database name.
+dbnm=$1
+
+tbl=t1
+
+if [ "x$dbnm" == "x" ] ; then
+    echo "need a DB name"
+    exit 1
+fi
+
+# Number of records I will add.
+nrecs=100
+
+# Max number of schema changes
+max_nusc=100
+
+function failexit
+{
+    echo "Failed $1"
+    touch failexit
+    exit -1
+}
+
+function checkfailexit
+{
+    if [[ -f failexit ]] ; then
+        exit 1
+    fi
+}
+
+
+function assertcnt 
+{
+    target=$1
+    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
+
+function do_verify
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+
+    if cat verify.out | grep -i success > /dev/null ; then
+        failexit "failed verify"
+    fi
+}
+
+
+function do_rebuild_track_pid
+{
+    typeset loc_dbnm=$1
+    typeset loc_tbl=$2
+    typeset track_pid=$3
+    typeset scnt=0
+    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
+
+        echo "Running rebuild iteration $scnt"
+        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
+
+        if [[ $? != 0 ]]; then
+            echo "Error schema-changing on iteration $scnt"
+            echo "Testcase failed"
+            kill -9 $track_pid
+            exit 1
+        fi
+
+        do_verify $loc_dbnm $loc_tbl
+        let scnt=scnt+1
+    done
+
+    echo "Success!  Performed $scnt schema-changes."
+
+    return 0
+}
+
+
+
+
+function do_rebuild
+{
+    typeset max=$1
+    typeset scnt=0
+    while [[ $scnt -lt $max ]]; do 
+
+        echo "Running rebuild iteration $scnt"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
+
+        if [[ $? != 0 ]]; then
+            echo "Error schema-changing on iteration $scnt"
+            echo "Testcase failed"
+            return 1
+        fi
+        let scnt=scnt+1
+        do_verify
+        assertcnt $nrecs
+    done
+
+    return 0
+}
+
+
+function insert_records
+{
+    j=0
+    echo "Inserting $nrecs records."
+
+    while [[ $j -lt $nrecs ]]; do 
+        #insert next, if error continue to try again
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 2>&1
+        if [ $? -ne 0 ] ; then
+            failexit "Inserting record $j "
+        fi
+        let j=j+1
+        assertcnt $j
+        if [ $1 -gt 0 ] ; then
+            sleep 0.1
+        fi
+    done
+}
+
+
+
+
+#insert all records, alter aftewards, check content
+function run_test_one
+{
+    > insert.out
+    insert_records 0
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c,d,e,f from t1" > out1.txt
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  {`cat t1_2.csc2 ` }"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c,d,e,f from t1" > out2.txt
+    assertcnt $nrecs
+    do_verify
+
+    if ! diff out1.txt out2.txt ; then
+        failexit "out1 and out2 differ"
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select g,h,i from t1" > out3.txt
+    grep -v "g=NULL, h=NULL, i='INVALID_VALUE'" out3.txt && failexit "out3.txt unexpented content"
+    mv insert.out insert1.out
+}
+
+#insert records while doing schemachange
+function run_test_two
+{
+    typeset ipid=''
+
+    > insert.out
+    insert_records 0 &
+    typeset ipid=$!
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > out1.txt
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  {`cat t1_2.csc2 ` }"
+
+    wait
+    checkfailexit
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > out2.txt
+    assertcnt $nrecs
+    do_verify
+    mv insert.out insert2.out
+}
+
+
+
+
+echo "running test in machine $(hostname):${PWD}"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
+
+
+master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+
+function cleanup
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("delfiles t1")'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('flush')"
+}
+
+run_test_one
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
+
+run_test_two
+
+cleanup
+
+echo "Success"
