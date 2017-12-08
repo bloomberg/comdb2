@@ -123,8 +123,8 @@ static int machine_class_default(const char *host)
             cdb2_init_ssl(0, 0);
             rc = cdb2_open(&db, "comdb2db", "default", 0);
             if (rc) {
-                logmsg(LOGMSG_WARN, "%s(%s) open rc %d %s!\n", __func__, host, rc,
-                        cdb2_errstr(db));
+                logmsg(LOGMSG_INFO, "%s(%s) open rc %d %s!\n", __func__, host,
+                       rc, cdb2_errstr(db));
                 goto done;
             }
             rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_mynode,
@@ -186,8 +186,8 @@ static int resolve_dc(char *host)
     cdb2_init_ssl(0, 0);
     rc = cdb2_open(&db, "comdb2db", "default", 0);
     if (rc) {
-        logmsg(LOGMSG_WARN, "%s(%s) open rc %d %s!\n", __func__, host, rc,
-                cdb2_errstr(db));
+        logmsg(LOGMSG_INFO, "%s(%s) open rc %d %s!\n", __func__, host,
+               rc, cdb2_errstr(db));
         goto done;
     }
     rc = cdb2_bind_param(db, "name", CDB2_CSTRING, host, strlen(host));

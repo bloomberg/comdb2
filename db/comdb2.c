@@ -1437,7 +1437,10 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
 
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+    }
+    logmsg(LOGMSG_USER, "goodbye\n");
 
     exit(0);
 }
@@ -2703,7 +2706,7 @@ static int llmeta_open(void)
                         0 /*create_override*/, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
+               bdberr);
         return -1;
     }
     return 0;
@@ -2779,18 +2782,19 @@ static int purge_extents(void *obj, void *arg)
         while (j < i) {
             int qlen, slen;
             char qfile[PATH_MAX], sfile[PATH_MAX];
-            qlen = snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, txndir,
-                     q->name, nums[j]);
-            slen = snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, savdir,
-                     q->name, nums[j]);
+            qlen = snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            txndir, q->name, nums[j]);
+            slen = snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            savdir, q->name, nums[j]);
             if (qlen >= sizeof(qfile) || slen >= sizeof(sfile)) {
-                logmsg(LOGMSG_ERROR, "Truncated paths %s and %s\n", qfile, sfile);
+                logmsg(LOGMSG_ERROR, "Truncated paths %s and %s\n", qfile,
+                       sfile);
             }
             if (rename(qfile, sfile) == 0) {
                 logmsg(LOGMSG_INFO, "%s -> %s\n", qfile, sfile);
             } else {
                 logmsg(LOGMSG_ERROR, "%s -> %s failed:%s\n", qfile, sfile,
-                        strerror(errno));
+                       strerror(errno));
             }
             ++j;
         }
@@ -3939,8 +3943,6 @@ static int init(int argc, char **argv)
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
-        if (gbl_create_mode)
-           logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
         clean_exit();
     }
 

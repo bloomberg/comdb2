@@ -318,8 +318,8 @@ int print_register(DB_ENV *dbenv, DBT *logdta, DB_LSN *lsn, db_recops op,
     }
 
     printf("%u:%u register %x %d->%.*s%s\n", lsn->file, lsn->offset,
-           args->txnid->txnid, args->fileid, args->name.size, (char *)args->name.data,
-           newname ? " (new/changed)" : "");
+           args->txnid->txnid, args->fileid, args->name.size,
+           (char *)args->name.data, newname ? " (new/changed)" : "");
 
     free(args);
 
