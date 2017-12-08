@@ -111,6 +111,23 @@ __dbreg_rem_dbentry(dblp, ndx)
 }
 
 /*
+ * __ufid_sanity_check --
+ *	Abort if ufid and ufid_chk dont match
+ *
+ * PUBLIC: void __ufid_sanity_check __P((DB_ENV *, FNAME *));
+ */
+void
+__ufid_sanity_check(dbenv, fnp)
+    DB_ENV *dbenv;
+    FNAME *fnp;
+{
+    if (memcmp(fnp->ufid, fnp->ufid_chk, DB_FILE_ID_LEN)) {
+        abort();
+    }
+}
+
+
+/*
  * __dbreg_open_files --
  *	Put a DBREG_CHKPNT log record for each open database.
  *
@@ -150,6 +167,9 @@ __dbreg_open_files_int(dbenv, flags)
 			dbtp = &t;
 		}
 		memset(&fid_dbt, 0, sizeof(fid_dbt));
+
+        __ufid_sanity_check(dbenv, fnp);
+
 		fid_dbt.data = fnp->ufid;
 		fid_dbt.size = DB_FILE_ID_LEN;
 
@@ -496,6 +516,9 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 		 * XXX I am sending a NULL txnlist and 0 txnid which may be
 		 * completely broken ;(
 		 */
+
+        __ufid_sanity_check(dbenv, fname);
+
 		if ((ret = __dbreg_do_open(dbenv, txn, dblp,
 		    fname->ufid, name, fname->s_type,
 		    ndx, fname->meta_pgno, NULL, 0)) != 0)
@@ -657,6 +680,9 @@ __dbreg_fid_to_fname(dblp, fid, have_lock, fnamep)
 		MUTEX_LOCK(dbenv, &lp->fq_mutex);
 	for (fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
 	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+
+        __ufid_sanity_check(dbenv, fnp);
+
 		if (memcmp(fnp->ufid, fid, DB_FILE_ID_LEN) == 0) {
 			*fnamep = fnp;
 			ret = 0;
