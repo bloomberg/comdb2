@@ -624,7 +624,7 @@ static int _table_exists(fdb_t *fdb, const char *table_name,
                                             fdb->loc == NULL, &remote_version);
                 if (rc == FDB_NOERR) {
                     if (table->version != remote_version) {
-                        logmsg(LOGMSG_WARN, "Remote table %s.%d new version is "
+                        logmsg(LOGMSG_WARN, "Remote table %s.%s new version is "
                                             "%lld, cached %lld\n",
                                fdb->dbname, table_name, remote_version,
                                table->version);

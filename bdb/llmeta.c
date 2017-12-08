@@ -5838,7 +5838,7 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                  sizeof(tblname), p_buf_key+sizeof(int), p_buf_end_key);
         unsigned long long version = *(unsigned long long *)data;
         logmsg(LOGMSG_USER,
-               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%llu\"\n", tblname,
+               "LLMETA_TABLE_VERSION table=\"%s\" version=\"%lu\"\n", tblname,
                flibc_ntohll(version));
         } break;
         case LLMETA_GENID_FORMAT: {
@@ -7124,7 +7124,7 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     if (rc || *bdberr != BDBERR_NOERROR) {
         return rc;
     } else {
-        logmsg(LOGMSG_INFO, "Saved version %lld for table %s\n",
+        logmsg(LOGMSG_INFO, "Saved version %lu for table %s\n",
                flibc_htonll(version), bdb_state->name);
     }
 
