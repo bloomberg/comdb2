@@ -125,8 +125,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
-static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid);
+static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
@@ -3863,7 +3862,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
                                    sizeof(tmpname));
 
                 if (create) {
-                    char new[100];
+                    char new[PATH_MAX];
                     print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                     unlink(bdb_trans(tmpname, new));
                 }
@@ -4002,7 +4001,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
         }
 
         if (create) {
-            char new[100];
+            char new[PATH_MAX];
             print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
             unlink(bdb_trans(tmpname, new));
         }
@@ -4093,7 +4092,7 @@ static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
             form_indexfile_name(bdb_state, tid, i, tmpname, sizeof(tmpname));
 
             if (create) {
-                char new[100];
+                char new[PATH_MAX];
 
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
@@ -4326,8 +4325,8 @@ int bdb_create_stripes_int(bdb_state_type *bdb_state, int newdtastripe,
 
         /* Add the extra stripes. */
         for (strnum = numstripes; strnum < newdtastripe; strnum++) {
-            char tmpname[100];
-            char new[100];
+            char tmpname[PATH_MAX];
+            char new[PATH_MAX];
             int pagesize;
             DB *dbp = NULL;
 
@@ -6177,7 +6176,7 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
 {
     DB_ENV *dbenv;
     DB *dbp;
-    char transname[256];
+    char transname[PATH_MAX];
     char *pname = bdb_trans(filename, transname);
     int rc = 0;
 
@@ -6838,7 +6837,7 @@ static uint64_t mystat(const char *filename)
 
 uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
 {
-    char bdbname[256], physname[256];
+    char bdbname[PATH_MAX], physname[PATH_MAX];
 
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
@@ -6861,7 +6860,7 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
         numstripes = bdb_state->attr->dtastripe;
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
-        char bdbname[256], physname[256];
+        char bdbname[PATH_MAX], physname[PATH_MAX];
         form_datafile_name(bdb_state, NULL, dtanum, stripenum, bdbname,
                            sizeof(bdbname));
         bdb_trans(bdbname, physname);
@@ -6922,7 +6921,7 @@ uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
 
     while (bb_readdir(dh, dirent_buf, &result) == 0 && result) {
         if (strncmp(result->d_name, extent_prefix, prefix_len) == 0) {
-            char path[256];
+            char path[PATH_MAX];
             snprintf(path, sizeof(path), "%s/%s", bdb_env->txndir,
                      result->d_name);
             total += mystat(path);
@@ -6968,7 +6967,7 @@ uint64_t bdb_logs_size(bdb_state_type *bdb_state, unsigned *num_logs)
                 if (!isdigit(result->d_name[ii]))
                     break;
             if (ii == 14) {
-                char path[256];
+                char path[PATH_MAX];
                 snprintf(path, sizeof(path), "%s/%s", bdb_env->txndir,
                          result->d_name);
                 total += mystat(path);
