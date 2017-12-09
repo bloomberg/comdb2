@@ -71,7 +71,7 @@ int opt_cachesz = 300;
 int opt_dbnum = 0;
 int opt_remote = 0;
 char *opt_dbname = 0;    /* database+table name */
-char opt_maindbname[64]; /* database name */
+char opt_maindbname[MAX_DBNAME_LENGTH]; /* database name */
 char opt_tblname[64];    /* table name */
 int opt_verbose;         /* 0=don't use verbose comments in .h */
 int opt_copycsc;         /* 0=don't copy .csc to .inc */
