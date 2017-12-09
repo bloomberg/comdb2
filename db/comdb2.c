@@ -1437,8 +1437,7 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
 
-    sleep(1);
-    logmsg(LOGMSG_ERROR, "goodbye\n");
+    logmsg(LOGMSG_WARN, "goodbye\n");
 
     exit(0);
 }
