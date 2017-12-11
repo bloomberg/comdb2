@@ -107,7 +107,6 @@ message CDB2_DBINFORESPONSE {
     required nodeinfo master = 1;
     repeated nodeinfo nodes  = 2;     // These are slave nodes, we need to parse through these only.
     optional bool require_ssl = 3;
-    optional int32 flags = 4; 
 }
 
 message CDB2_EFFECTS {
