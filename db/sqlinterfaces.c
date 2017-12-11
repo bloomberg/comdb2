@@ -6415,6 +6415,11 @@ static inline int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    if (clnt.argv0) {
+        free(clnt.argv0);
+        clnt.argv0 = NULL;
+    }
+
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
@@ -8311,11 +8316,6 @@ done:
             cdb2__query__free_unpacked(clnt.query, &pb_alloc);
             clnt.query = NULL;
         }
-    }
-
-    if (clnt.argv0) {
-        free(clnt.argv0);
-        clnt.argv0 = NULL;
     }
 
     /* XXX free logical tran?  */
