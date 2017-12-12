@@ -66,6 +66,7 @@ typedef struct stmt_hash_entry {
     struct schema *params_to_bind;
     struct stmt_hash_entry *prev;
     struct stmt_hash_entry *next;
+    LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
 /* Thread specific sql state */
@@ -86,9 +87,11 @@ struct sqlthdstate {
 
     hash_t *stmt_table;
 
+    LISTC_T(stmt_hash_entry_type) param_stmt_list;
     stmt_hash_entry_type *param_stmt_head;
     stmt_hash_entry_type *param_stmt_tail;
 
+    LISTC_T(stmt_hash_entry_type) noparam_stmt_list;
     stmt_hash_entry_type *noparam_stmt_head;
     stmt_hash_entry_type *noparam_stmt_tail;
 
