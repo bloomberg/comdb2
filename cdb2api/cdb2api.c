@@ -153,10 +153,10 @@ static char *ibm_getargv0(void)
     pid_t idx = _PID;
     int rc;
 
-    if (1 == (rc = getprocs(&p,sizeof(p),NULL,0,&idx,1)) &&
+    if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
         _PID == p.pi_pid) {
         strncpy(argv0, p.pi_comm, PATH_MAX);
-        argv0[PATH_MAX - 1]='\0';
+        argv0[PATH_MAX - 1] = '\0';
     } else {
         fprintf(stderr, "%s getprocs returns %d for pid %d\n", __func__, _PID);
         return NULL;
