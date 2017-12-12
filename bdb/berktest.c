@@ -16,8 +16,6 @@
 static DB_ENV *dbenv = NULL;
 static u_int32_t commit_delay_ms = 2;
 
-char *bdb_trans(const char infile[], char outfile[]);
-
 /* Common among tables */
 typedef struct globalopts {
     u_int8_t checksums;
@@ -90,7 +88,7 @@ static int create_and_open(berktable_t *table)
 static void close_tables(berktable_t *tables, int tablecount)
 {
     int i, rc;
-    char new[100];
+    char new[PATH_MAX];
     berktable_t *table;
 
     for (i = 0; i < tablecount; i++) {
@@ -110,7 +108,7 @@ static berktable_t *create_tables(int *tablecount)
 {
     berktable_t *tables = calloc(sizeof(berktable_t), 2), *table;
     u_int32_t uniq = getpid() * random();
-    char new[100];
+    char new[PATH_MAX];
     int count, rc;
 
     /* Index */

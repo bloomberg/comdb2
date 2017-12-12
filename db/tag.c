@@ -4735,7 +4735,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
         if (!found) {
             int allow_null = !(fnew->flags & NO_NULL);
             if (SERVER_VUTF8 == fnew->type &&
-                fnew->in_default_len >= (fnew->len - 5)) {
+                fnew->in_default_len > (fnew->len - 5)) {
                 rc = SC_TAG_CHANGE;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s -- dbstore "
