@@ -1,0 +1,9 @@
+This tests that when replicant dies after sending the block processor
+commands to master, and client will reconnect to a new node attempting
+to replay and the replay will be caught by master blkseq and will return
+success/failure code from the first time it ran the transaction.
+
+The reason this works is because we now send client generated cnonce 
+to uniquely identify transactions in blkseq, and replicant failing does
+not cause duplicate inserts when client retries because master will find
+result of the original insert in blockseq, and simply return the rc.

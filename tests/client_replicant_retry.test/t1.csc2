@@ -1,0 +1,9 @@
+schema
+{
+   int  id
+   int  sum
+}
+keys
+{
+   "ID"  = id
+}
