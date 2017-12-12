@@ -3663,7 +3663,7 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
         char *argv0 = clnt->sql_query->client_info->argv0;
         thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d argv0: %s sql: %s",
                       info_nvreplays, clnt->sql_query->client_info->pid,
-                      clnt->sql_query->client_info->host_id, 
+                      clnt->sql_query->client_info->host_id,
                       argv0 ? argv0 : "(unset)", clnt->sql);
     } else {
         thrman_wheref(thd->thr_self, "%s sql: %s", info_nvreplays, clnt->sql);

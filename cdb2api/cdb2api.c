@@ -124,13 +124,13 @@ static char *proc_cmdline_getargv0(void)
     snprintf(procname, sizeof(procname), "/proc/self/cmdline");
     FILE *f = fopen(procname, "r");
     if (f == NULL) {
-        fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname, 
+        fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
                 strerror(errno));
         return NULL;
     }
 
     if (fgets(argv0, PATH_MAX, f) == NULL) {
-        fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname, 
+        fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname,
                 strerror(errno));
         fclose(f);
         return NULL;
@@ -153,9 +153,10 @@ static char *ibm_getargv0(void)
     pid_t idx = _PID;
     int rc;
 
-    if (1 == (rc = getprocs(&p,sizeof(p),NULL,0,&idx,1)) && _PID == p.pi_pid) {
+    if (1 == (rc = getprocs(&p,sizeof(p),NULL,0,&idx,1)) &&
+        _PID == p.pi_pid) {
         strncpy(argv0, p.pi_comm, PATH_MAX);
-        argv0[PATH_MAX-1]='\0';
+        argv0[PATH_MAX - 1]='\0';
     } else {
         fprintf(stderr, "%s getprocs returns %d for pid %d\n", __func__, _PID);
         return NULL;
@@ -167,11 +168,11 @@ static char *ibm_getargv0(void)
 
 static char *getargv0(void)
 {
-#if defined (_LINUX_SOURCE) || defined(_SUN_SOURCE)
+#if defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
     return proc_cmdline_getargv0();
-#elif defined (_IBM_SOURCE)
+#elif defined(_IBM_SOURCE)
     return ibm_getargv0();
-#elif defined (__APPLE__)
+#elif defined(__APPLE__)
     return apple_getargv0();
 #else
     fprintf(stderr, "%s unsupported architecture\n", __func__);
@@ -2155,7 +2156,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     CDB2QUERY query = CDB2__QUERY__INIT;
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
 
-    // This should be sent once right after we connect, not with every query 
+    // This should be sent once right after we connect, not with every query
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
     if (!hndl->sent_client_info) {
