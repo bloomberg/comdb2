@@ -6459,9 +6459,9 @@ static inline int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
-    if (clnt.argv0) {
-        free(clnt.argv0);
-        clnt.argv0 = NULL;
+    if (clnt->argv0) {
+        free(clnt->argv0);
+        clnt->argv0 = NULL;
     }
 
     if (clnt->saved_errstr) {
