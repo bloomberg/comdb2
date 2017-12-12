@@ -118,12 +118,12 @@ __dbreg_rem_dbentry(dblp, ndx)
  */
 void
 __ufid_sanity_check(dbenv, fnp)
-    DB_ENV *dbenv;
-    FNAME *fnp;
+	DB_ENV *dbenv;
+	FNAME *fnp;
 {
-    if (memcmp(fnp->ufid, fnp->ufid_chk, DB_FILE_ID_LEN)) {
-        abort();
-    }
+	if (memcmp(fnp->ufid, fnp->ufid_chk, DB_FILE_ID_LEN)) {
+		abort();
+	}
 }
 
 
@@ -168,7 +168,7 @@ __dbreg_open_files_int(dbenv, flags)
 		}
 		memset(&fid_dbt, 0, sizeof(fid_dbt));
 
-        __ufid_sanity_check(dbenv, fnp);
+		__ufid_sanity_check(dbenv, fnp);
 
 		fid_dbt.data = fnp->ufid;
 		fid_dbt.size = DB_FILE_ID_LEN;
@@ -517,7 +517,7 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 		 * completely broken ;(
 		 */
 
-        __ufid_sanity_check(dbenv, fname);
+		__ufid_sanity_check(dbenv, fname);
 
 		if ((ret = __dbreg_do_open(dbenv, txn, dblp,
 		    fname->ufid, name, fname->s_type,
@@ -679,9 +679,9 @@ __dbreg_fid_to_fname(dblp, fid, have_lock, fnamep)
 	if (!have_lock)
 		MUTEX_LOCK(dbenv, &lp->fq_mutex);
 	for (fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
-	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+		fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
 
-        __ufid_sanity_check(dbenv, fnp);
+		__ufid_sanity_check(dbenv, fnp);
 
 		if (memcmp(fnp->ufid, fid, DB_FILE_ID_LEN) == 0) {
 			*fnamep = fnp;
