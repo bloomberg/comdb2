@@ -1214,7 +1214,7 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
     assert(gbl_tunables);
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &name))) {
-        logmsg(LOGMSG_DEBUG, "Non-registered tunable '%s'.\n", name);
+        //logmsg(LOGMSG_DEBUG, "Non-registered tunable '%s'.\n", name);
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
@@ -1262,7 +1262,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     tok = &buf[0];
 
     if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
-        logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
+        //logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
         return TUNABLE_ERR_INVALID_TUNABLE;
     }
 
