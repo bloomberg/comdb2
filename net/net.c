@@ -5222,25 +5222,37 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
 {
     struct sockaddr_in lcl_addr_inet;
     size_t lcl_len = sizeof(lcl_addr_inet);
-    struct hostent *he;
-    int hlen;
-    char *subnet;
+    struct hostent *he = NULL;
 
-    if (!getsockname(host_node_ptr->fd, &lcl_addr_inet,
-                     (socklen_t *)&lcl_len)) {
-        he = gethostbyaddr(&lcl_addr_inet.sin_addr,
-                           sizeof lcl_addr_inet.sin_addr, AF_INET);
-        /*if (gbl_verbose_net)*/
-        fprintf(stderr, "Incoming connection from name: %s (%s:%u)\n",
-                (he && he->h_name) ? he->h_name : "unknown",
+    int ret = getsockname(host_node_ptr->fd, &lcl_addr_inet,
+                     (socklen_t *)&lcl_len);
+    if (ret != 0) {
+        logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",
+               host_node_ptr->fd);
+        return;
+    }
+    
+    char host[NI_MAXHOST], service[NI_MAXSERV];
+    int s = getnameinfo((struct sockaddr *) &lcl_addr_inet,
+            lcl_len, host, NI_MAXHOST,
+            service, NI_MAXSERV, NI_NUMERICSERV);
+
+    if (s != 0) {
+        logmsg(LOGMSG_ERROR, "Error from getaddrinfo: %s\n", gai_strerror(s));
+        logmsg(LOGMSG_INFO, "Incoming connection from name: %s (%s:%u)\n",
                 inet_ntoa(lcl_addr_inet.sin_addr),
                 (unsigned)ntohs(lcl_addr_inet.sin_port));
+        return;
     }
 
-    hlen = strlen(host_node_ptr->netinfo_ptr->myhostname);
-    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, he->h_name, hlen) ==
+    logmsg(LOGMSG_INFO, "Incoming connection from name: %s (%s:%u)\n",
+            host, inet_ntoa(lcl_addr_inet.sin_addr),
+            (unsigned)ntohs(lcl_addr_inet.sin_port));
+
+    int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
+    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) ==
         0) {
-        subnet = &he->h_name[hlen];
+        char *subnet = &host[myh_len];
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
     }
