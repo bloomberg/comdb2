@@ -621,17 +621,19 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     int type = 0;
     buf_get(&type, sizeof(type), rpl, rpl + rplen);
     if (type == OSQL_SCHEMACHANGE) iq->tranddl = 1;
+    const char *tablename = NULL;
     if (type == OSQL_USEDB) {
         const char *get_tablename_from_rpl(const char *rpl);
-        const char *tablename = get_tablename_from_rpl(rpl);
+        tablename = get_tablename_from_rpl(rpl);
         assert(tablename); //table or queue name
-        iq->usedb = NULL;
         if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
             iq->usedb = get_dbtable_by_name(tablename);
             printf("AZ: tablename='%s' idx=%d\n", tablename, iq->usedb->dbs_idx);
+            assert(iq->usedb);
         }
     }
-    assert(iq->usedb); /* must be set */
+    if (!iq->usedb) 
+        printf("AZ: usedb not set for type=%d, tablename='%s'\n", type, tablename);
 
 #if 0
     printf("Saving done bplog rqid=%llx type=%d (%s) tmp=%llu seq=%d\n",
@@ -641,8 +643,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     if (type == OSQL_DONE_SNAP || type == OSQL_DONE || 
         type == OSQL_DONE_STATS)
         key.tbl_idx = INT_MAX;
-    else
+    else if (iq->usedb)
         key.tbl_idx = iq->usedb->dbs_idx;
+    else
+        key.tbl_idx = INT_MAX;
     key.rqid = rqid;
     key.seq = seq;
     comdb2uuidcpy(key.uuid, uuid);
