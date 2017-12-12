@@ -1114,8 +1114,8 @@ uint64_t bdb_dump_freepage_info_table(bdb_state_type *bdb_state, FILE *out)
 {
     int stripe, blobno, ix;
     int fd = -1;
-    char fname[512];
-    char tmpname[512];
+    char fname[PATH_MAX];
+    char tmpname[PATH_MAX];
     int numstripes, numblobs;
     int bdberr;
     unsigned int npages;
@@ -1933,8 +1933,8 @@ static void bdb_queue_extent_info(FILE *out, bdb_state_type *bdb_state,
     char **names;
     int rc;
     int i;
-    char qname[4096];
-    char tran_name[128];
+    char qname[PATH_MAX];
+    char tran_name[PATH_MAX];
 
     snprintf(tran_name, sizeof(tran_name), "XXX.%s.queue", name);
 

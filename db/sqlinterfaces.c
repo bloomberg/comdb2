@@ -4160,9 +4160,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         rc = FSQL_PREPARE;
     }
     if (gbl_fingerprint_queries) {
-        unsigned char fingerprint[FINGERPRINTSZ];
-        sqlite3_fingerprint(thd->sqldb, (char *)fingerprint);
-        reqlog_set_fingerprint(thd->logger, (char *)fingerprint);
+        reqlog_set_fingerprint(thd->logger, sqlite3_fingerprint(thd->sqldb),
+                               sqlite3_fingerprint_size(thd->sqldb));
     }
     if (rc) {
         _prepare_error(thd, clnt, rec, rc, err);

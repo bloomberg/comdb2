@@ -1074,7 +1074,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	if (max_lsn != NULL ||dbenv->tx_timestamp != 0)
 		stop_lsn = ((DB_TXNHEAD *)txninfo)->maxlsn;
 
-	logmsg(LOGMSG_INFO, "running forward pass from %u:%u -> %u:%u\n",
+	logmsg(LOGMSG_WARN, "running forward pass from %u:%u -> %u:%u\n",
 	    lsn.file, lsn.offset, stop_lsn.file, stop_lsn.offset);
 	for (ret = __log_c_get(logc, &lsn, &data, DB_NEXT);
 	    ret == 0; ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {

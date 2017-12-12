@@ -2899,8 +2899,9 @@ static int new_master_callback(void *bdb_handle, char *host)
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
-        if (oldmaster != host)
+        if (oldmaster != host && !gbl_create_mode) {
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
+        }
         /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
     }
 
@@ -3032,6 +3033,9 @@ static int electsettings_callback(void *bdb_handle, int *elect_time_microsecs)
 /*status of sync subsystem */
 void backend_sync_stat(struct dbenv *dbenv)
 {
+    if (gbl_create_mode) {
+        return;
+    }
     if (dbenv->log_sync)
         logmsg(LOGMSG_USER, "FULL TRANSACTION LOG SYNC ENABLED\n");
 
