@@ -2161,7 +2161,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
 
     if (!hndl->sent_client_info) {
         cinfo.pid = _PID;
-        cinfo.th_id = (int)pthread_self();
+        cinfo.th_id = pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
         sqlquery.client_info = &cinfo;
