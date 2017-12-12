@@ -122,6 +122,7 @@ __ufid_sanity_check(dbenv, fnp)
 	FNAME *fnp;
 {
 	if (memcmp(fnp->ufid, fnp->ufid_chk, DB_FILE_ID_LEN)) {
+		logmsg(LOGMSG_ERROR, "%s: critical error: ufid has changed\n");
 		abort();
 	}
 }
