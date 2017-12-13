@@ -97,7 +97,6 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
 
-
 #if defined(__APPLE__)
 #include <libproc.h>
 
@@ -112,7 +111,6 @@ static char *apple_getargv0(void)
     return argv0;
 }
 #endif
-
 
 #if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
 
