@@ -49,6 +49,8 @@ static hash_t *trigger_hash;
 
 #define GET_BDB_STATE(x) GET_BDB_STATE_CAST(x, int)
 
+static int trigger_thread_memory = (1048576 * 2);
+
 static inline int trigger_register_int(trigger_reg_t *t)
 {
     GET_BDB_STATE(bdb_state);
@@ -151,6 +153,7 @@ static void *trigger_start_int(void *name_)
     printf("%s waiting for %s elect_cookie:%d trigger_cookie:0x%" PRIu64 "\n",
            __func__, name, ntohl(reg->elect_cookie), reg->trigger_cookie);
     int rc, retry = 10;
+    thread_memcreate(trigger_thread_memory);
     while (--retry > 0) {
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
         rc = trigger_register_req(reg);
