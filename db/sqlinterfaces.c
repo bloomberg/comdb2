@@ -2680,9 +2680,14 @@ static inline void init_stmt_table(hash_t **stmt_table)
  */
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
+    if (hash_find(thd->stmt_table, entry->sql) != NULL)
+        return -1; //already there, dont add again
+
     int ret = hash_add(thd->stmt_table, entry);
     if (ret != 0)
         return ret;
+
+    assert(hash_find(thd->stmt_table, entry->sql) == entry);
 
     void *list = NULL;
     if (entry->params_to_bind) {
@@ -2692,8 +2697,6 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
     }
 
     listc_atl(list, entry);
-
-    assert(hash_find(thd->stmt_table, entry->sql) == entry);
     return ret;
 }
 
@@ -3861,9 +3864,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         return 1;
     }
     if (rec->stmt_entry != NULL) {
-        if (hash_find(thd->stmt_table, rec->stmt_entry->sql) == NULL)
-            requeue_stmt_entry(thd, rec->stmt_entry);
-        else
+        if (requeue_stmt_entry(thd, rec->stmt_entry))
             cleanup_stmt_entry(rec->stmt_entry);
 
         return 0;
