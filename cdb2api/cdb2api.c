@@ -2157,13 +2157,14 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     // This should be sent once right after we connect, not with every query
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    if (!hndl->sent_client_info) {
+    if (!hndl || !hndl->sent_client_info) {
         cinfo.pid = _PID;
         cinfo.th_id = pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
         sqlquery.client_info = &cinfo;
-        hndl->sent_client_info = 1;
+        if (hndl)
+            hndl->sent_client_info = 1;
     }
     sqlquery.dbname = dbname;
     while (isspace(*sql))
