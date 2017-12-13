@@ -3,4 +3,3 @@ sqlenginepool mint 0
 sqlenginepool linger 0
 appsockpool mint 0
 appsockpool linger 0
-#enable_sql_stmt_caching none

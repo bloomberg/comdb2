@@ -2691,10 +2691,23 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
         list = &thd->noparam_stmt_list;
     }
 
-    assert(hash_find(thd->stmt_table, entry->sql) == entry);
     listc_atl(list, entry);
 
+    assert(hash_find(thd->stmt_table, entry->sql) == entry);
     return ret;
+}
+
+static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+{
+    if (entry->query && gbl_debug_temptables) {
+        free(entry->query);
+        entry->query = NULL;
+    }
+    sqlite3_finalize(entry->stmt);
+    if (entry->params_to_bind) {
+        free_tag_schema(entry->params_to_bind);
+    }
+    sqlite3_free(entry);
 }
 
 static void delete_last_stmt_entry(struct sqlthdstate *thd,
@@ -2708,20 +2721,9 @@ static void delete_last_stmt_entry(struct sqlthdstate *thd,
     }
 
     stmt_hash_entry_type *entry = listc_rbl(list);
-
-    if (entry->query && gbl_debug_temptables) {
-        free(entry->query);
-        entry->query = NULL;
-    }
-    sqlite3_finalize(entry->stmt);
-    if (entry->params_to_bind) {
-        free_tag_schema(entry->params_to_bind);
-    }
-
-    assert(thd->stmt_table);
     int rc = hash_del(thd->stmt_table, entry);
     assert(rc == 0);
-    sqlite3_free(entry);
+    cleanup_stmt_entry(entry);
 }
 
 /*
@@ -2744,19 +2746,6 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     int rc = hash_del(thd->stmt_table, entry->sql);
     assert(rc == 0);
     listc_rfl(list, entry);
-}
-
-static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
-{
-    if (entry->query && gbl_debug_temptables) {
-        free(entry->query);
-        entry->query = NULL;
-    }
-    sqlite3_finalize(entry->stmt);
-    if (entry->params_to_bind) {
-        free_tag_schema(entry->params_to_bind);
-    }
-    sqlite3_free(entry);
 }
 
 /* On error will return non zero and
