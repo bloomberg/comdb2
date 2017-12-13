@@ -1844,6 +1844,7 @@ char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr);
 int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr);
 void llmeta_list_tablename_alias(void);
 
+int bdb_cleanup_private_blkseq(bdb_state_type *bdb_state);
 int bdb_create_private_blkseq(bdb_state_type *bdb_state);
 int bdb_blkseq_clean(bdb_state_type *bdb_state, uint8_t stripe);
 int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
@@ -1949,11 +1950,11 @@ int bdb_llmeta_del_lua_afunc(char *, int *bdberr);
 /* IO smoke test */
 int bdb_watchdog_test_io(bdb_state_type *bdb_state);
 
-int bdb_add_versioned_sp(char *name, char *version, char *src);
+int bdb_add_versioned_sp(tran_type *, char *name, char *version, char *src);
 int bdb_get_versioned_sp(char *name, char *version, char **src);
 int bdb_del_versioned_sp(char *name, char *version);
 
-int bdb_set_default_versioned_sp(char *name, char *version);
+int bdb_set_default_versioned_sp(tran_type *, char *name, char *version);
 int bdb_get_default_versioned_sp(char *name, char **version);
 int bdb_del_default_versioned_sp(tran_type *tran, char *name);
 
@@ -1984,6 +1985,7 @@ struct bias_info {
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
+void bdb_cleanup_fld_hints(bdb_state_type *bdb_state);
 void rename_bdb_state(bdb_state_type *bdb_state, const char *newname);
 
 #endif

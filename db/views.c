@@ -199,6 +199,9 @@ int timepart_is_timepart(const char *name, int lock)
 
    rc = 0;
 
+   if (!views)
+       return 0;
+
    if(lock)
        pthread_rwlock_rdlock(&views_lk);
 

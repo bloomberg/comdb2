@@ -1,0 +1,31 @@
+#!/bin/sh
+bash -n "$0" | exit 1
+
+set -e
+dbnm=$1
+
+# Make sure we talk to the same host
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()"`
+
+if [ "$mach" = "" ]; then
+   echo could not retrieve hostname >&2
+   exit 1
+fi
+
+# Setting long request threshold to 0 so we can easily get queries in longreqs.
+rm -rf `pwd`/longreqs
+touch `pwd`/longreqs
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longreqfile "`pwd`"/longreqs')"
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
+cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
+
+# Run queries
+cdb2sql --host $mach $dbnm "SELECT 1" >/dev/null
+cdb2sql --host $mach $dbnm "SELECT 1+1" >/dev/null
+
+# Compare results with pre-calculated hashes
+grep '57d3bf4a162583e33381d79f2deac343' `pwd`/longreqs # SELECT 1
+grep 'fdf53d1d2812dbce0f56bf5b10369c1a' `pwd`/longreqs # SELECT 1+1
+
+echo "Passed."
+exit 0 

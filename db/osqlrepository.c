@@ -185,7 +185,7 @@ retry:
     if (sess_chk) {
         theosql_pthread_rwlock_unlock(&theosql->hshlck);
         char *p = (char *)alloca(64);
-        p = util_tohex(p, uuid, 16);
+        p = util_tohex(p, (char *)uuid, 16);
 
         logmsg(LOGMSG_ERROR, "%s: trying to add another session with the same "
                 "rqid, rqid=%llx uuid=%s retry=%d, waited %u msec\n",
@@ -239,7 +239,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     int rc = 0;
 
     if (lock) {
-        if (rc = pthread_rwlock_wrlock(&theosql->hshlck)) {
+        if ((rc = pthread_rwlock_wrlock(&theosql->hshlck)) != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_wrlock error code %d\n",
                     __func__, rc);
             return -1;
@@ -262,7 +262,7 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
 
     if (rc) {
         char *p = alloca(64);
-        p = (char *)util_tohex(p, sess->uuid, 16);
+        p = (char *)util_tohex(p, (char *)sess->uuid, 16);
         logmsg(LOGMSG_ERROR, "%s: Unable to hash the new request\n", __func__); 
         for (int i=0; i<MAX_UUID_LIST;i++) {
 
@@ -373,7 +373,7 @@ int osql_repository_put(osql_sess_t *sess, int release_repository_lock)
     ret = osql_sess_remclient(sess);
 
     if (release_repository_lock) {
-        if (rc = theosql_pthread_rwlock_unlock(&theosql->hshlck)) {
+        if ((rc = theosql_pthread_rwlock_unlock(&theosql->hshlck)) != 0) {
             logmsg(LOGMSG_ERROR, "%s:pthread_rwlock_unlock error code %d\n",
                     __func__, rc);
             return -1;
@@ -410,6 +410,7 @@ int osql_repository_printcrtsessions(void)
     osql_repository_t *stat = theosql;
     osql_sess_t *rq = NULL;
     int rc = 0;
+    int maxops = 0;
 
     if (!stat) {
         if (gbl_ready) {
@@ -419,6 +420,9 @@ int osql_repository_printcrtsessions(void)
 
         return 0;
     }
+
+    maxops = get_osql_maxtransfer();
+    logmsg(LOGMSG_USER, "Maximum transaction size: %d bplog entries\n", maxops);
 
     if ((rc = pthread_rwlock_rdlock_check(&stat->hshlck, __func__, __LINE__))) {
         logmsg(LOGMSG_ERROR, "pthread_rwlock_rdlock: error code %d\n", rc);

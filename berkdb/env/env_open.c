@@ -36,6 +36,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
+#include "bb_oscompat.h"
 
 #include "logmsg.h"
 
@@ -1285,8 +1286,8 @@ int
 __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 {
 	int ret = 0;
-	char buf[256];
-	char fname[256];
+	char buf[PATH_MAX];
+	char fname[PATH_MAX];
 	const char *pbuf;
 	struct __db_checkpoint ckpt = { 0 };
 	int niop = 0;

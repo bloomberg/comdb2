@@ -2733,6 +2733,7 @@ static void *dispatch_lua_thread(void *lt)
     clnt.sql = l_thread->sql;
     clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
+    clnt.trans_has_sp = 1;
     pthread_mutex_init(&clnt.wait_mutex, NULL);
     pthread_cond_init(&clnt.wait_cond, NULL);
     pthread_mutex_init(&clnt.write_lock, NULL);

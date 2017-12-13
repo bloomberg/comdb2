@@ -710,6 +710,7 @@ struct dbtable {
     signed char ix_nullsallowed[MAXINDEX];
     signed char ix_disabled[MAXINDEX];
     struct ireq *iq; /* iq used at sc time */
+    int has_datacopy_ix; /* set to 1 if we have datacopy indexes */
     int ix_partial;  /* set to 1 if we have partial indexes */
     int ix_expr;     /* set to 1 if we have indexes on expressions */
     int ix_blob;     /* set to 1 if blobs are involved in indexes */
@@ -1195,8 +1196,10 @@ typedef struct snap_uid {
     uuid_t uuid; /* wait for the reply */
     int rqtype;  /* add/check */
     struct query_effects effects;
-    int keylen;
-    char key[MAX_SNAP_KEY_LEN];
+    uint16_t unused;
+    uint8_t replicant_can_retry; /* verifyretry on && !snapshot_iso or higer */
+    uint8_t keylen;
+    char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
 enum { SNAP_UID_LENGTH = 8 + 4 + (4 * 5) + 4 + 64 };
@@ -2893,7 +2896,7 @@ int reqlog_truncate();
 void reqlog_set_truncate(int val);
 void reqlog_set_vreplays(struct reqlogger *logger, int replays);
 void reqlog_set_queue_time(struct reqlogger *logger, uint64_t timeus);
-void reqlog_set_fingerprint(struct reqlogger *logger, char fingerprint[16]);
+void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_request(struct reqlogger *logger, CDB2SQLQUERY *q);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
@@ -2902,6 +2905,9 @@ void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
+/* Convert raw fingerprint to hex string, and write at most `n' characters of
+   the result to `hexstr'. Return the number of characters written. */
+int reqlog_fingerprint_to_hex(struct reqlogger *logger, char *hexstr, size_t n);
 
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
@@ -3614,6 +3620,7 @@ extern comdb2bma blobmem; // blobmem for db layer
 extern size_t gbl_blobmem_cap;
 extern unsigned gbl_blob_sz_thresh_bytes;
 extern int gbl_large_str_idx_find;
+extern int gbl_mifid2_datetime_range;
 
 /* Query fingerprinting */
 extern int gbl_fingerprint_queries;

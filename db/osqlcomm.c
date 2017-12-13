@@ -75,6 +75,7 @@ extern int gbl_goslow;
 
 extern int gbl_partial_indexes;
 
+extern int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
 
 typedef struct osql_blknds {
@@ -1213,6 +1214,10 @@ static const uint8_t *snap_uid_put(const snap_uid_t *snap_info, uint8_t *p_buf,
                     sizeof(snap_info->effects.num_deleted), p_buf, p_buf_end);
     p_buf = buf_put(&(snap_info->effects.num_inserted),
                     sizeof(snap_info->effects.num_inserted), p_buf, p_buf_end);
+    p_buf = buf_put(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&(snap_info->replicant_can_retry),
+                    sizeof(snap_info->replicant_can_retry), p_buf, p_buf_end);
     p_buf = buf_put(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_put(&(snap_info->key), sizeof(snap_info->key), p_buf,
@@ -1241,6 +1246,10 @@ static const uint8_t *snap_uid_get(snap_uid_t *snap_info, const uint8_t *p_buf,
                     sizeof(snap_info->effects.num_deleted), p_buf, p_buf_end);
     p_buf = buf_get(&(snap_info->effects.num_inserted),
                     sizeof(snap_info->effects.num_inserted), p_buf, p_buf_end);
+    p_buf = buf_get(&(snap_info->unused), sizeof(snap_info->unused), p_buf,
+                    p_buf_end);
+    p_buf = buf_get(&(snap_info->replicant_can_retry),
+                    sizeof(snap_info->replicant_can_retry), p_buf, p_buf_end);
     p_buf = buf_get(&(snap_info->keylen), sizeof(snap_info->keylen), p_buf,
                     p_buf_end);
     p_buf = buf_no_net_get(&(snap_info->key), sizeof(snap_info->key), p_buf,
@@ -3305,7 +3314,7 @@ int osql_comm_is_done(char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
             if((p_buf = osqlcomm_done_type_get(&dt, p_buf, p_buf_end)) == NULL)
                 abort();
 
-            p_buf_end = rpl + rpllen;
+            p_buf_end = (const uint8_t *)rpl + rpllen;
 
             if ((p_buf = snap_uid_get(&iq->snap_info, p_buf, p_buf_end)) == NULL)
                 abort();
@@ -5576,7 +5585,7 @@ static void *osql_heartbeat_thread(void *arg)
 
     thread_started("osql heartbeat");
 
-    while (1) {
+    while (!db_is_stopped()) {
         uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN],
             *p_buf = buf, *p_buf_end = (buf + OSQLCOMM_HBEAT_TYPE_LEN);
 
@@ -5749,7 +5758,6 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
 
         /* remote send */
         while (rc) {
-            int rc2;
 #if 0
          printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
 #endif
@@ -5764,7 +5772,7 @@ static int offload_net_send(char *host, int usertype, void *data, int datalen,
                     return -1;
                 }
 
-                if (rc2 = osql_comm_check_bdb_lock()) {
+                if (osql_comm_check_bdb_lock() != 0) {
                     logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
                             __LINE__, host);
                     return rc;
@@ -6404,7 +6412,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
-            assert(iq->have_snap_info == 1); // was assigned in fast pass
+            if (!gbl_disable_cnonce_blkseq)
+                assert(iq->have_snap_info == 1); // was assigned in fast pass
             snap_uid_t snap_info;
             p_buf_end = (const uint8_t *)msg + msglen;
             p_buf = snap_uid_get(&snap_info, p_buf, p_buf_end);
@@ -7648,7 +7657,7 @@ int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         comdb2uuidstr(uuid, us);
         type = rpl.type;
         id = rpl.sid;
-        comdb2uuid_clear(us);
+        comdb2uuid_clear((unsigned char *)us);
     }
 
     if (!logsb) {

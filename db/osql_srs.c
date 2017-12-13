@@ -86,7 +86,7 @@ int srs_tran_create(struct sqlclntstate *clnt)
 
     osql->history = (srs_tran_t *)calloc(1, sizeof(srs_tran_t));
     if (!osql->history) {
-        fprintf(stderr, "malloc %d\n", sizeof(srs_tran_t));
+        fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_t));
         return -1;
     }
 #if 0
@@ -203,7 +203,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     if (clnt->query) {
         item = (srs_tran_query_t *)malloc(sizeof(srs_tran_query_t) + qlen);
         if (!item) {
-            fprintf(stderr, "malloc %d\n", sizeof(srs_tran_query_t) + qlen);
+            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
             return -1;
         }
         item->tag = NULL;
@@ -225,7 +225,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
             clnt->numnullbits + total_blob_length);
 
         if (!item) {
-            fprintf(stderr, "malloc %d\n", sizeof(srs_tran_query_t) + qlen);
+            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
             return -1;
         }
 
@@ -266,7 +266,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     } else {
         item = (srs_tran_query_t *)malloc(sizeof(srs_tran_query_t) + qlen);
         if (!item) {
-            fprintf(stderr, "malloc %d\n", sizeof(srs_tran_query_t) + qlen);
+            fprintf(stderr, "malloc %zu\n", sizeof(srs_tran_query_t) + qlen);
             return -1;
         }
         item->tag = NULL;
