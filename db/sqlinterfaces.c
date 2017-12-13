@@ -2698,8 +2698,10 @@ static void delete_stmt_table(hash_t *stmt_table)
 
 static inline void init_stmt_lists(struct sqlthdstate *thd)
 {
-    listc_init(&thd->param_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
-    listc_init(&thd->noparam_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
+    listc_init(&thd->param_stmt_list,
+               offsetof(struct stmt_hash_entry, stmtlist_linkv));
+    listc_init(&thd->noparam_stmt_list,
+               offsetof(struct stmt_hash_entry, stmtlist_linkv));
 }
 
 static inline void init_stmt_table(hash_t **stmt_table)
@@ -2710,7 +2712,6 @@ static inline void init_stmt_table(hash_t **stmt_table)
     assert(*stmt_table && "hash_init_user: can not init");
 }
 
-
 /*
  * Reque a stmt that was previously removed from the queues
  * by calling remove_stmt_entry().
@@ -2719,13 +2720,13 @@ static inline void init_stmt_table(hash_t **stmt_table)
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
     if (hash_find(thd->stmt_table, entry->sql) != NULL)
-        return -1; //already there, dont add again
+        return -1; // already there, dont add again
 
     int ret = hash_add(thd->stmt_table, entry);
     if (ret != 0)
         return ret;
 
-    sqlite3_reset(entry->stmt); //reset vdbe when adding to hash tbl
+    sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
     assert(hash_find(thd->stmt_table, entry->sql) == entry);
 
     void *list = NULL;

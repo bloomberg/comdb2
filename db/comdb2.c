@@ -472,7 +472,7 @@ int gbl_enable_sock_fstsnd = 1;
 u_int gbl_blk_pq_shmkey = 0;
 #endif
 int gbl_enable_position_apis = 0;
-int gbl_enable_sql_stmt_caching = 0; //comming soon: STMT_CACHE_ALL;
+int gbl_enable_sql_stmt_caching = 0; // comming soon: STMT_CACHE_ALL;
 
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
