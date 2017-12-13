@@ -117,6 +117,7 @@ if [[ -z $SKIPSSL ]] ; then
     cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
 ssl_client_mode REQUIRE
 ssl_cert_path $TESTDIR
+enable_sql_stmt_caching all
 EOPTIONS
 fi
 

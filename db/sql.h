@@ -64,8 +64,6 @@ typedef struct stmt_hash_entry {
     sqlite3_stmt *stmt;
     char *query;
     struct schema *params_to_bind;
-    struct stmt_hash_entry *prev;
-    struct stmt_hash_entry *next;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 

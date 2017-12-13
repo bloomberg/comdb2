@@ -2687,6 +2687,7 @@ int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
     if (ret != 0)
         return ret;
 
+    sqlite3_reset(entry->stmt); //reset vdbe when adding to hash tbl
     assert(hash_find(thd->stmt_table, entry->sql) == entry);
 
     void *list = NULL;
@@ -2746,9 +2747,9 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
     } else {
         list = &thd->noparam_stmt_list;
     }
+    listc_rfl(list, entry);
     int rc = hash_del(thd->stmt_table, entry->sql);
     assert(rc == 0);
-    listc_rfl(list, entry);
 }
 
 /* On error will return non zero and
@@ -3870,7 +3871,6 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         return 0;
     }
 
-    //TODO: IS THIS NEEDEDb sqlite3_reset(stmt);
     const char *sqlptr = clnt->sql;
     if (rec->sql)
         sqlptr = rec->sql;
@@ -8833,9 +8833,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr)
 {
 
-    int rc = SQLITE_OK;
-
-    rc = sqlite3_reset(stmt);
+    int rc = sqlite3_reset(stmt);
 
     switch (rc) {
     case 0:
