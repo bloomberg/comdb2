@@ -88,15 +88,7 @@ struct sqlthdstate {
     hash_t *stmt_table;
 
     LISTC_T(stmt_hash_entry_type) param_stmt_list;
-    stmt_hash_entry_type *param_stmt_head;
-    stmt_hash_entry_type *param_stmt_tail;
-
     LISTC_T(stmt_hash_entry_type) noparam_stmt_list;
-    stmt_hash_entry_type *noparam_stmt_head;
-    stmt_hash_entry_type *noparam_stmt_tail;
-
-    int param_cache_entries;
-    int noparam_cache_entries;
 
     int dbopen_gen;
     int analyze_gen;

@@ -2658,6 +2658,12 @@ static void delete_stmt_table(hash_t *stmt_table)
     hash_free(stmt_table);
 }
 
+static inline void init_stmt_lists(struct sqlthdstate *thd)
+{
+    listc_init(&thd->param_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
+    listc_init(&thd->noparam_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
+}
+
 static inline void init_stmt_table(hash_t **stmt_table)
 {
     *stmt_table = hash_init_user(
@@ -2666,21 +2672,6 @@ static inline void init_stmt_table(hash_t **stmt_table)
     assert(*stmt_table && "hash_init_user: can not init");
 }
 
-static inline void add_at_front_of_list(stmt_hash_entry_type **head,
-                                        stmt_hash_entry_type **tail,
-                                        stmt_hash_entry_type *entry)
-{
-    entry->prev = NULL;
-    entry->next = (*head);
-    if ((*head) == NULL) {
-        assert((*tail) == NULL);
-        (*tail) = entry;
-    } else {
-        assert((*head)->prev == NULL);
-        (*head)->prev = entry;
-    }
-    (*head) = entry;
-}
 
 /*
  * Reque a stmt that was previously removed from the queues
@@ -2689,73 +2680,48 @@ static inline void add_at_front_of_list(stmt_hash_entry_type **head,
  */
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
-    stmt_hash_entry_type **head = NULL;
-    stmt_hash_entry_type **tail = NULL;
-    int *cache_entries_counter_ptr;
-
-    if (entry->params_to_bind) {
-        cache_entries_counter_ptr = &thd->param_cache_entries;
-        head = &thd->param_stmt_head;
-        tail = &thd->param_stmt_tail;
-    } else {
-        cache_entries_counter_ptr = &thd->noparam_cache_entries;
-        head = &thd->noparam_stmt_head;
-        tail = &thd->noparam_stmt_tail;
-    }
-
     int ret = hash_add(thd->stmt_table, entry);
-    if (ret == 0) {
-        assert(hash_find(thd->stmt_table, entry->sql) == entry);
-        add_at_front_of_list(head, tail, entry);
-        (*cache_entries_counter_ptr)++;
+    if (ret != 0)
+        return ret;
+
+    void *list = NULL;
+    if (entry->params_to_bind) {
+        list = &thd->param_stmt_list;
+    } else {
+        list = &thd->noparam_stmt_list;
     }
+
+    assert(hash_find(thd->stmt_table, entry->sql) == entry);
+    listc_atl(list, entry);
+
     return ret;
 }
 
 static void delete_last_stmt_entry(struct sqlthdstate *thd,
                                    struct schema *params_to_bind)
 {
-    stmt_hash_entry_type **head = NULL;
-    stmt_hash_entry_type **tail = NULL;
-    int *cache_entries_counter_ptr;
+    void *list = NULL;
     if (params_to_bind) {
-        head = &thd->param_stmt_head;
-        tail = &thd->param_stmt_tail;
-        cache_entries_counter_ptr = &thd->param_cache_entries;
+        list = &thd->param_stmt_list;
     } else {
-        head = &thd->noparam_stmt_head;
-        tail = &thd->noparam_stmt_tail;
-        cache_entries_counter_ptr = &thd->noparam_cache_entries;
+        list = &thd->noparam_stmt_list;
     }
 
-    if ((*tail)->query && gbl_debug_temptables) {
-        free((*tail)->query);
-        (*tail)->query = NULL;
+    stmt_hash_entry_type *entry = listc_rbl(list);
+
+    if (entry->query && gbl_debug_temptables) {
+        free(entry->query);
+        entry->query = NULL;
     }
-    sqlite3_finalize((*tail)->stmt);
-    if ((*tail)->params_to_bind) {
-        free_tag_schema((*tail)->params_to_bind);
+    sqlite3_finalize(entry->stmt);
+    if (entry->params_to_bind) {
+        free_tag_schema(entry->params_to_bind);
     }
 
     assert(thd->stmt_table);
-    stmt_hash_entry_type *tmp = hash_find(thd->stmt_table, (*tail)->sql);
-
-    assert(*tail == tmp);
-    int rc = hash_del(thd->stmt_table, *tail);
+    int rc = hash_del(thd->stmt_table, entry);
     assert(rc == 0);
-    assert(hash_find(thd->stmt_table, (*tail)->sql) == NULL);
-
-    stmt_hash_entry_type *prev = (*tail)->prev;
-    sqlite3_free(*tail);
-    *tail = prev;
-    (*cache_entries_counter_ptr)--;
-
-    if (*tail)
-        (*tail)->next = NULL;
-    else {
-        assert((*cache_entries_counter_ptr) == 0);
-        (*head) = NULL;
-    }
+    sqlite3_free(entry);
 }
 
 /*
@@ -2768,37 +2734,16 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
                               stmt_hash_entry_type *entry)
 {
     assert(entry);
-    stmt_hash_entry_type **head = NULL;
-    stmt_hash_entry_type **tail = NULL;
-    int *cache_entries_counter_ptr;
 
+    void *list = NULL;
     if (entry->params_to_bind) {
-        head = &thd->param_stmt_head;
-        tail = &thd->param_stmt_tail;
-        cache_entries_counter_ptr = &thd->param_cache_entries;
+        list = &thd->param_stmt_list;
     } else {
-        head = &thd->noparam_stmt_head;
-        tail = &thd->noparam_stmt_tail;
-        cache_entries_counter_ptr = &thd->noparam_cache_entries;
+        list = &thd->noparam_stmt_list;
     }
-
-    stmt_hash_entry_type *prev_entry = entry->prev;
-    stmt_hash_entry_type *next_entry = entry->next;
-    assert(next_entry == NULL || next_entry);
-    assert(prev_entry == NULL || prev_entry);
-
-    if (prev_entry)
-        prev_entry->next = next_entry;
-    if (next_entry)
-        next_entry->prev = prev_entry;
-
-    if (*tail == entry)
-        *tail = prev_entry;
-    if (*head == entry)
-        *head = next_entry;
-
-    hash_del(thd->stmt_table, entry->sql);
-    (*cache_entries_counter_ptr)--;
+    int rc = hash_del(thd->stmt_table, entry->sql);
+    assert(rc == 0);
+    listc_rfl(list, entry);
 }
 
 static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
@@ -2832,14 +2777,15 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
         return -1;
     }
 
-    int *cache_entries_counter_ptr;
-    if (params_to_bind)
-        cache_entries_counter_ptr = &thd->param_cache_entries;
-    else
-        cache_entries_counter_ptr = &thd->noparam_cache_entries;
+    void *list = NULL;
+    if (params_to_bind) {
+        list = &thd->param_stmt_list;
+    } else {
+        list = &thd->noparam_stmt_list;
+    }
 
     /* remove older entries */
-    if (gbl_max_sqlcache <= (*cache_entries_counter_ptr))
+    if (gbl_max_sqlcache <= listc_size(list))
         delete_last_stmt_entry(thd, params_to_bind);
 
     stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
@@ -3284,14 +3230,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
     if (thd->stmt_table) {
         delete_stmt_table(thd->stmt_table);
         init_stmt_table(&thd->stmt_table);
-        listc_init(&thd->param_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
-        listc_init(&thd->noparam_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
-        thd->param_stmt_head = NULL;
-        thd->param_stmt_tail = NULL;
-        thd->noparam_stmt_head = NULL;
-        thd->noparam_stmt_tail = NULL;
-        thd->param_cache_entries = 0;
-        thd->noparam_cache_entries = 0;
+        init_stmt_lists(thd);
     }
 }
 
@@ -5811,9 +5750,8 @@ check_version:
         }
     }
     if (gbl_enable_sql_stmt_caching && (thd->stmt_table == NULL)) {
-        thd->param_cache_entries = 0;
-        thd->noparam_cache_entries = 0;
         init_stmt_table(&thd->stmt_table);
+        init_stmt_lists(thd);
     }
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
@@ -6350,12 +6288,6 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->offsets = NULL;
     thd->sqldb = NULL;
     thd->stmt_table = NULL;
-    thd->param_stmt_head = NULL;
-    thd->param_stmt_tail = NULL;
-    thd->noparam_stmt_head = NULL;
-    thd->noparam_stmt_tail = NULL;
-    thd->param_cache_entries = 0;
-    thd->noparam_cache_entries = 0;
 
     start_sql_thread();
 
@@ -8387,12 +8319,6 @@ int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
     thd.sqldb = NULL;
     // thd.stmt = NULL;
     thd.stmt_table = NULL;
-    thd.param_stmt_head = NULL;
-    thd.param_stmt_tail = NULL;
-    thd.noparam_stmt_head = NULL;
-    thd.noparam_stmt_tail = NULL;
-    thd.param_cache_entries = 0;
-    thd.noparam_cache_entries = 0;
 
     /* appsock threads aren't sql threads so for appsock pool threads
      * thd.sqlthd will be NULL */
