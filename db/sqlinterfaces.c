@@ -5739,6 +5739,8 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int outrc;
     int rc;
 
+    fprintf(stderr, "clnt is %p, sql is %s\n", clnt, clnt->sql);
+
     /* access control */
     rc = check_sql_access(clnt);
     if (rc)
