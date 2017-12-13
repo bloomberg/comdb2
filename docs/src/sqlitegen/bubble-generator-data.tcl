@@ -533,15 +533,20 @@ set all_graphs {
       stack
       {line CREATE TABLE {opt IF NOT EXISTS}}
       {line {opt db-name .} table-name}
-      {line (
+      {stack
+          {line ( }
           {loop
               {line column-name column-type
                   {opt {loop { column-constraint } { , } } } }
               { , }
           }
+          {opt
+              {loop
+                  {line , table-constraint }
+              }
+          }
           {line ) }
       }
-      {loop {line table-constraint } { , } }
       {line {opt table-options }}
   }
 
