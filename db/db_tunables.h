@@ -430,7 +430,7 @@ REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("enable_sql_stmt_caching",
                  "Enable caching of query plans. If followed by \"all\" will "
                  "cache all queries, including those without parameters. "
-                 "(Default: off)",
+                 "(Default: on)",
                  TUNABLE_ENUM, &gbl_enable_sql_stmt_caching, READONLY | NOARG,
                  enable_sql_stmt_caching_value, NULL,
                  enable_sql_stmt_caching_update, NULL);

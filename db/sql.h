@@ -64,8 +64,7 @@ typedef struct stmt_hash_entry {
     sqlite3_stmt *stmt;
     char *query;
     struct schema *params_to_bind;
-    struct stmt_hash_entry *prev;
-    struct stmt_hash_entry *next;
+    LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
 /* Thread specific sql state */
@@ -86,14 +85,8 @@ struct sqlthdstate {
 
     hash_t *stmt_table;
 
-    stmt_hash_entry_type *param_stmt_head;
-    stmt_hash_entry_type *param_stmt_tail;
-
-    stmt_hash_entry_type *noparam_stmt_head;
-    stmt_hash_entry_type *noparam_stmt_tail;
-
-    int param_cache_entries;
-    int noparam_cache_entries;
+    LISTC_T(stmt_hash_entry_type) param_stmt_list;
+    LISTC_T(stmt_hash_entry_type) noparam_stmt_list;
 
     int dbopen_gen;
     int analyze_gen;
@@ -101,12 +94,6 @@ struct sqlthdstate {
     int ncols;
     int started_backend;
 };
-
-int find_stmt_table(hash_t *stmt_table, const char *sql,
-                    stmt_hash_entry_type **entry);
-void touch_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry);
-int add_stmt_table(struct sqlthdstate *, const char *sql, char *actual_sql,
-                   sqlite3_stmt *, struct schema *params_to_bind);
 
 typedef struct osqltimings {
     unsigned long long query_received; /* query received, in need of dispatch */
