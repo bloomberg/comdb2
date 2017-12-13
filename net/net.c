@@ -5224,6 +5224,7 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
     size_t lcl_len = sizeof(lcl_addr_inet);
     struct hostent *he = NULL;
 
+    /* get local address of connection */
     int ret =
         getsockname(host_node_ptr->fd, &lcl_addr_inet, (socklen_t *)&lcl_len);
     if (ret != 0) {
@@ -5234,20 +5235,21 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
 
     char host[NI_MAXHOST], service[NI_MAXSERV];
     int s = getnameinfo((struct sockaddr *)&lcl_addr_inet, lcl_len, host,
-                        NI_MAXHOST, service, NI_MAXSERV, NI_NUMERICSERV);
+                        NI_MAXHOST, service, NI_MAXSERV, 0);
 
     if (s != 0) {
         logmsg(LOGMSG_ERROR, "Error from getaddrinfo: %s\n", gai_strerror(s));
-        logmsg(LOGMSG_INFO, "Incoming connection from unknown (%s:%u)\n",
+        logmsg(LOGMSG_WARN, "Incoming connection into unknown (%s:%u)\n",
                inet_ntoa(lcl_addr_inet.sin_addr),
                (unsigned)ntohs(lcl_addr_inet.sin_port));
         return;
     }
 
-    logmsg(LOGMSG_INFO, "Incoming connection from name: %s (%s:%u)\n", host,
+    logmsg(LOGMSG_WARN, "Incoming connection into name: %s (%s:%u)\n", host,
            inet_ntoa(lcl_addr_inet.sin_addr),
            (unsigned)ntohs(lcl_addr_inet.sin_port));
 
+    /* extract the suffix of subnet ex. '_n3' in name node1_n3 */
     int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
     if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
         char *subnet = &host[myh_len];
