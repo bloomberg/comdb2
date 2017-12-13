@@ -5224,34 +5224,32 @@ static void get_subnet_incomming_syn(host_node_type *host_node_ptr)
     size_t lcl_len = sizeof(lcl_addr_inet);
     struct hostent *he = NULL;
 
-    int ret = getsockname(host_node_ptr->fd, &lcl_addr_inet,
-                     (socklen_t *)&lcl_len);
+    int ret =
+        getsockname(host_node_ptr->fd, &lcl_addr_inet, (socklen_t *)&lcl_len);
     if (ret != 0) {
         logmsg(LOGMSG_ERROR, "Failed to getsockname() for fd=%d\n",
                host_node_ptr->fd);
         return;
     }
-    
+
     char host[NI_MAXHOST], service[NI_MAXSERV];
-    int s = getnameinfo((struct sockaddr *) &lcl_addr_inet,
-            lcl_len, host, NI_MAXHOST,
-            service, NI_MAXSERV, NI_NUMERICSERV);
+    int s = getnameinfo((struct sockaddr *)&lcl_addr_inet, lcl_len, host,
+                        NI_MAXHOST, service, NI_MAXSERV, NI_NUMERICSERV);
 
     if (s != 0) {
         logmsg(LOGMSG_ERROR, "Error from getaddrinfo: %s\n", gai_strerror(s));
-        logmsg(LOGMSG_INFO, "Incoming connection from name: %s (%s:%u)\n",
-                inet_ntoa(lcl_addr_inet.sin_addr),
-                (unsigned)ntohs(lcl_addr_inet.sin_port));
+        logmsg(LOGMSG_INFO, "Incoming connection from unknown (%s:%u)\n",
+               inet_ntoa(lcl_addr_inet.sin_addr),
+               (unsigned)ntohs(lcl_addr_inet.sin_port));
         return;
     }
 
-    logmsg(LOGMSG_INFO, "Incoming connection from name: %s (%s:%u)\n",
-            host, inet_ntoa(lcl_addr_inet.sin_addr),
-            (unsigned)ntohs(lcl_addr_inet.sin_port));
+    logmsg(LOGMSG_INFO, "Incoming connection from name: %s (%s:%u)\n", host,
+           inet_ntoa(lcl_addr_inet.sin_addr),
+           (unsigned)ntohs(lcl_addr_inet.sin_port));
 
     int myh_len = host_node_ptr->netinfo_ptr->myhostname_len;
-    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) ==
-        0) {
+    if (strncmp(host_node_ptr->netinfo_ptr->myhostname, host, myh_len) == 0) {
         char *subnet = &host[myh_len];
         if (subnet[0])
             strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
