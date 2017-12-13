@@ -681,7 +681,7 @@ static inline int verify_sqlresponse_error_code(int error_code,
         logmsg(LOGMSG_ERROR, "%s line %d returning non-standard "
                              "sqlresponse.error_code %d\n",
                func, line, error_code);
-        cheap_stack_trace();
+        //cheap_stack_trace();
         break;
     }
     return error_code;
