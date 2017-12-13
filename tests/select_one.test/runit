@@ -20,7 +20,7 @@ failexit()
 
 echo "create t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (a int) "
-MAX=50000
+MAX=100000
 
 if [[ ${DEBUGGER} == callgrind ]]; then 
    DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.cdb2sql.callgrind"
@@ -39,8 +39,5 @@ echo "Finished doing $MAX queries"
 #while [ $SECONDS -lt $((TEST_TIMEOUT-5)) ] ; do
    #echo 'select 1' 
 #done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> output2.txt
-
-#for i in `seq 1 $MAX` ; do echo "select $i"; done > input2.txt
-#time $DEBUG_PREFIX cdb2sql -s ${CDB2_OPTIONS} -f input2.txt $dbnm default &> output2.txt
 
 echo "Success"
