@@ -3870,7 +3870,7 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         return 0;
     }
 
-    sqlite3_reset(stmt);
+    //TODO: IS THIS NEEDEDb sqlite3_reset(stmt);
     const char *sqlptr = clnt->sql;
     if (rec->sql)
         sqlptr = rec->sql;
