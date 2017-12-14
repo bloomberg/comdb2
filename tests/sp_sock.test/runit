@@ -13,4 +13,3 @@ if (( $rc != 0 )) ; then
 fi
 
 echo "SOCKSQL SUCCESS"
-return 0
