@@ -678,6 +678,7 @@ static int sql_tranlevel_default_update(void *context, void *value)
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
         logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
+        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
