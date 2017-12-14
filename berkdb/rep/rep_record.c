@@ -2706,9 +2706,12 @@ gap_check:		max_lsn_dbtp = NULL;
 					    rep->committed_gen);
 				}
 
+//				if (dbenv->num_recovery_processor_threads &&
+//				    dbenv->num_recovery_worker_threads && 
+//                    !bdb_the_lock_desired())
+
 				if (dbenv->num_recovery_processor_threads &&
-				    dbenv->num_recovery_worker_threads && 
-                    !bdb_the_lock_desired())
+				    dbenv->num_recovery_worker_threads)
 					ret =
 					    __rep_process_txn_concurrent(dbenv,
 					    rp, rec, &ltrans, rp->lsn, max_lsn,
