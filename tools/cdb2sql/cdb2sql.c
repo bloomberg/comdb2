@@ -1151,8 +1151,6 @@ int main(int argc, char *argv[])
 
     sighold(SIGPIPE);
 
-    replace_args(argc, argv);
-
     static struct option long_options[] = {
         {"pause",      no_argument,       &pausemode,         1},
         {"binary",     no_argument,       &printmode,         BINARY},

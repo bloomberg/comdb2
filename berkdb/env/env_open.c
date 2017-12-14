@@ -586,6 +586,7 @@ foundlsn:
 		thdpool_set_linger(dbenv->recovery_workers, 30);
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
 		pthread_mutex_init(&dbenv->recover_lk, NULL);
+        pthread_cond_init(&dbenv->recover_cond, NULL);
 		pthread_rwlock_init(&dbenv->ser_lk, NULL);
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));

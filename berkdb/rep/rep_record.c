@@ -2067,6 +2067,9 @@ err:
 #undef ERR
 
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
+
+int bdb_the_lock_desired(void);
+
 /*
  * __rep_apply --
  *
@@ -2704,7 +2707,8 @@ gap_check:		max_lsn_dbtp = NULL;
 				}
 
 				if (dbenv->num_recovery_processor_threads &&
-				    dbenv->num_recovery_worker_threads)
+				    dbenv->num_recovery_worker_threads && 
+                    !bdb_the_lock_desired())
 					ret =
 					    __rep_process_txn_concurrent(dbenv,
 					    rp, rec, &ltrans, rp->lsn, max_lsn,
@@ -2988,6 +2992,8 @@ logical_record_file_affinity(int rectype)
 
 #include <stdlib.h>
 
+int gbl_processor_thd_poll;
+
 static void
 processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 {
@@ -3149,6 +3155,10 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	if ((dbenv->flags & DB_ENV_ROWLOCKS) && listc_size(&queues) > 1) {
 		gbl_rep_rowlocks_multifile++;
 	}
+
+    /* Sleep here if the user has asked us to */
+    if (gbl_processor_thd_poll > 0)
+        poll(0, 0, gbl_processor_thd_poll);
 
 	/* Handle inline. */
 	if (listc_size(&queues) <= 1) {
@@ -3318,6 +3328,8 @@ err:
 	pthread_mutex_lock(&dbenv->recover_lk);
 	listc_rfl(&dbenv->inflight_transactions, rp);
 	listc_abl(&dbenv->inactive_transactions, rp);
+	if (listc_size(&dbenv->inflight_transactions) == 0)
+		pthread_cond_broadcast(&dbenv->recover_cond);
 	pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {
@@ -6341,6 +6353,30 @@ err:
 
 	return (ret);
 }
+
+int __rep_block_on_inflight_transactions(DB_ENV *dbenv)
+{
+	struct timespec ts;
+	int rc;
+
+	pthread_mutex_lock(&dbenv->recover_lk);
+	while (listc_size(&dbenv->inflight_transactions) > 0) {
+
+		clock_gettime(CLOCK_REALTIME, &ts);
+
+		ts.tv_sec++;
+
+		pthread_cond_timedwait(&dbenv->recover_cond, &dbenv->recover_lk, &ts);
+		if (listc_size(&dbenv->inflight_transactions) > 0) {
+			logmsg(LOGMSG_ERROR, "%s: waiting for %d processor threads "
+					"to exit\n", __func__, 
+                    listc_size(&dbenv->inflight_transactions));
+		}
+	}
+	pthread_mutex_unlock(&dbenv->recover_lk);
+	return 0;
+}
+
 
 // PUBLIC: int __rep_inflight_txns_older_than_lsn __P((DB_ENV *, DB_LSN *));
 int
