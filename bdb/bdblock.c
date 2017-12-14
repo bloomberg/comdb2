@@ -414,7 +414,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
 #endif
 
         /* Wait until all rep_processor threads have exited */
-        __rep_block_on_inflight_transactions(lock_handle->dbenv);
+        //__rep_block_on_inflight_transactions(lock_handle->dbenv);
 
         rc = pthread_rwlock_trywrlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
