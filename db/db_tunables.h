@@ -1317,5 +1317,8 @@ REGISTER_TUNABLE("always_send_cnonce",
                  "Always send cnonce to master. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("processor_thd_poll", "Poll before dispatching worker thds. "
+                 "(Default: 0ms)", TUNABLE_INTEGER, &gbl_processor_thd_poll, 
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

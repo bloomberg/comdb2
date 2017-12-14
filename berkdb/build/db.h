@@ -2418,6 +2418,7 @@ struct __db_env {
 	LISTC_T(struct __recovery_processor) inflight_transactions;
 	LISTC_T(struct __recovery_processor) inactive_transactions;
 	pthread_mutex_t recover_lk;
+	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
 	pthread_rwlock_t ser_lk;
 	int lsn_chain;

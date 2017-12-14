@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# export debug=1
+[[ "$debug" == 1 ]] && set -x
+
+needcluster=1
+db=$1
+
+if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED installation."
+    exit 1
+fi
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
+}
+
+function insert_sync
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    fname=insert.sql
+
+    echo "BEGIN" > $fname
+    set i=0
+
+    while [[ $i -lt 1000 ]]; do
+        echo "INSERT INTO t1 VALUES ($i)" >> $fname
+        set i=i+1
+    done
+
+    echo "COMMIT" >> $fname
+
+    set i=0
+    while [[ $i -lt 10 ]]; do
+        cdb2sql ${CDB2_OPTIONS} $db $stage - < $fname 2>/dev/null
+        set i=i+1
+    done
+
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    # Create a file for lots of inserts
+    fname=insert.sql
+
+    echo "BEGIN" > $fname
+    set i=0
+
+    while [[ $i -lt 1000 ]]; do
+        echo "INSERT INTO t1 VALUES ($i)" >> $fname
+    done
+
+    echo "COMMIT" >> $fname
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage
+
+}
+
+createtables
+runtest
+
+echo "Success"
+exit 0
