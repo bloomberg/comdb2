@@ -391,9 +391,6 @@ tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R).
 tcons ::= KEY nm_opt(I) LP sortlist(X) RP onconf(R).
                                  {comdb2AddIndex(pParse,&I,X,R,
                                    SQLITE_IDXTYPE_DUPKEY);}
-%type nm_opt {Token}
-nm_opt(A) ::= .      {A.z=0; A.n=0;}
-nm_opt(A) ::= nm(X). {A = X;}
 
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CHECK LP expr(E) RP onconf.
@@ -2122,4 +2119,9 @@ rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= . {D=0;}
+
+%type nm_opt {Token}
+nm_opt(A) ::= .      {A.z=0; A.n=0;}
+nm_opt(A) ::= nm(X). {A = X;}
+
 /* vim: set ft=lemon: */
