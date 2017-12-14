@@ -1,0 +1,4 @@
+schema
+{
+	vutf8 str[32]
+}
