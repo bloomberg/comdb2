@@ -1485,7 +1485,7 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     sbuf2flush(ss);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] == 0) {
+    if (res[0] != '0') {
         sbuf2close(ss);
         return -1;
     }
