@@ -279,6 +279,7 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
 int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
                     int *bdberr)
 {
+    printf("AZ: bdb_llog_scdone\n");
     ++gbl_dbopen_gen;
     return do_llog(bdb_state, type, bdb_state->name, wait, bdberr);
 }

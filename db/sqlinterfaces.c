@@ -2658,20 +2658,17 @@ static void delete_stmt_table(hash_t *stmt_table)
     hash_free(stmt_table);
 }
 
-static inline void init_stmt_lists(struct sqlthdstate *thd)
+/* initialize stmt table and lists */
+static inline void init_stmt_caching(struct sqlthdstate *thd)
 {
+    thd->stmt_table = hash_init_user(
+        (hashfunc_t *)strhashfunc_stmt, (cmpfunc_t *)strcmpfunc_stmt,
+        offsetof(stmt_hash_entry_type, sql), MAX_HASH_SQL_LENGTH);
+
+    assert(thd->stmt_table && "hash_init_user: can not init");
     listc_init(&thd->param_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
     listc_init(&thd->noparam_stmt_list, offsetof(struct stmt_hash_entry, stmtlist_linkv));
 }
-
-static inline void init_stmt_table(hash_t **stmt_table)
-{
-    *stmt_table = hash_init_user(
-        (hashfunc_t *)strhashfunc_stmt, (cmpfunc_t *)strcmpfunc_stmt,
-        offsetof(stmt_hash_entry_type, sql), MAX_HASH_SQL_LENGTH);
-    assert(*stmt_table && "hash_init_user: can not init");
-}
-
 
 /*
  * Reque a stmt that was previously removed from the queues
@@ -2680,6 +2677,7 @@ static inline void init_stmt_table(hash_t **stmt_table)
  */
 int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
 {
+    printf("AZ: requeue_stmt_entry sql=%s\n", entry->sql);
     if (hash_find(thd->stmt_table, entry->sql) != NULL)
         return -1; //already there, dont add again
 
@@ -2788,6 +2786,7 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
         entry->query = strdup(actual_sql);
     else
         entry->query = NULL;
+    printf("AZ: add_stmt_table sql=%s\n", entry->sql);
 
     return requeue_stmt_entry(thd, entry);
 }
@@ -2809,6 +2808,7 @@ static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
         return -1;
 
     remove_stmt_entry(thd, *entry); // will add again when done
+    printf("AZ: find_stmt_table sql=%s\n", (*entry)->sql);
 
     return 0;
 }
@@ -3217,12 +3217,11 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return rc;
 }
 
-static void delete_prepared_stmts(struct sqlthdstate *thd)
+static inline void delete_prepared_stmts(struct sqlthdstate *thd)
 {
     if (thd->stmt_table) {
         delete_stmt_table(thd->stmt_table);
-        init_stmt_table(&thd->stmt_table);
-        init_stmt_lists(thd);
+        init_stmt_caching(thd);
     }
 }
 
@@ -5740,8 +5739,7 @@ check_version:
         }
     }
     if (gbl_enable_sql_stmt_caching && (thd->stmt_table == NULL)) {
-        init_stmt_table(&thd->stmt_table);
-        init_stmt_lists(thd);
+        init_stmt_caching(thd);
     }
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */

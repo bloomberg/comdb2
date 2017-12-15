@@ -6774,7 +6774,7 @@ static int get_data_int(BtCursor *pCur, struct schema *sc, uint8_t *in,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "get_data_int: unhandled type %d\n", f->type);
         break;
     }
 
@@ -11834,7 +11834,7 @@ static int get_data_from_ondisk(struct schema *sc, uint8_t *in,
 
         break;
     default:
-        logmsg(LOGMSG_ERROR, "unhandled type %d\n", f->type);
+        logmsg(LOGMSG_ERROR, "get_data_from_ondisk: unhandled type %d\n", f->type);
         break;
     }
 
