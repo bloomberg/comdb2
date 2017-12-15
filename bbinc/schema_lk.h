@@ -24,6 +24,7 @@
 #include <logmsg.h>
 
 extern pthread_rwlock_t schema_lk;
+#define VERBOSE_SCHEMA_LK 1
 
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
 static inline void rdlock_schema_int(const char *file, const char *func,
