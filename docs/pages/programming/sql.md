@@ -274,31 +274,31 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ### CREATE TABLE
 
-CREATE TABLE (I):
+**CREATE TABLE (I):**
 
 ![CREATE TABLE](images/create-table.gif)
 
-CREATE TABLE (II, **Version R7 and above**):
+**CREATE TABLE (II, Version R7 and above):**
 
 ![CREATE TABLE](images/create-table-ddl.gif)
 
-Column list:
+**Column list:**
 
 ![COLUMN LIST](images/column-list.gif)
 
-Column constraint:
+**Column constraint:**
 
 ![COLUMN CONSTRAINT](images/column-constraint.gif)
 
-Table constraint:
+**Table constraint:**
 
 ![TABLE CONSTRAINT](images/table-constraint.gif)
 
-Foreign key definition:
+**Foreign key definition:**
 
 ![FOREIGN KEY DEFINITION](images/foreign-key-def.gif)
 
-Table options:
+**Table options:**
 
 ![TABLE OPTIONS](images/table-options.gif)
 
@@ -310,7 +310,7 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in version R7, follows the usual standard data
+The second approach, added in **version R7**, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using ```CREATE TABLE (II)``` implicitly creates a
 ```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
@@ -368,11 +368,11 @@ will no longer be callable from SQL.
 
 ### ALTER TABLE
 
-ALTER TABLE (I):
+**ALTER TABLE (I):**
 
 ![ALTER](images/alter-table.gif)
 
-ALTER TABLE (II, **Version R7 and above**):
+**ALTER TABLE (II, Version R7 and above):**
 
 ![ALTER](images/alter-table-ddl.gif)
 
@@ -401,7 +401,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in version R7, supports the usual standard data
+The second approach, added in **version R7**, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
