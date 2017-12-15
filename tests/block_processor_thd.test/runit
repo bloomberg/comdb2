@@ -6,6 +6,16 @@ export debug=1
 needcluster=1
 db=$1
 
+insert_granularity=1000
+insert_count=10
+insert_loops=100
+insert_sleep=1
+
+update_granularity=1000
+update_count=10
+update_loops=100
+update_sleep=1
+
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
     exit 1
@@ -23,57 +33,96 @@ function createtables
     cdb2sql ${CDB2_OPTIONS} $db $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
 }
 
-function insert_records
+function update_records_loop
 {
     [[ "$debug" == 1 ]] && set -x
     iters=$1
+    sleeptime=$2
 
+    j=0
+    while [[ $j -lt $iters ]]; do
+        cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where 1 limit $update_granularity"
+        sleep $sleeptime
+        let j=j+1
+    done
+
+}
+
+function insert_records_loop
+{
+    [[ "$debug" == 1 ]] && set -x
+    fname=$1
+    iters=$2
+    sleeptime=$3
+
+    j=0
+    while [[ $j -lt $iters ]]; do
+        cdb2sql ${CDB2_OPTIONS} $db $stage - < $fname 2>/dev/null
+        sleep $sleeptime
+        let j=j+1
+    done
+
+}
+
+function bounce_master
+{
+    [[ "$debug" == 1 ]] && set -x
+    master=`cdb2sql -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
     fname=insert.sql
 
     echo "BEGIN" > $fname
     i=0
 
-    while [[ $i -lt 1000 ]]; do
+    while [[ $i -lt $insert_granularity ]]; do
         echo "INSERT INTO t1 (id) VALUES (1)" >> $fname
         let i=i+1
     done
 
     echo "COMMIT" >> $fname
 
-    j=0
-    while [[ $j -lt $iters ]]; do
-        cdb2sql ${CDB2_OPTIONS} $db $stage - < $fname 2>/dev/null
-        let j=j+1
+    # Insert a bunch of records
+    i=0
+    while [[ $i -lt $insert_count ]]; do
+        insert_records_loop $fname $insert_loops $insert_sleep &
+        let i=i+1
     done
-    rm $fname
-}
 
-function runtest
-{
-    [[ "$debug" == 1 ]] && set -x
-
-    # Insert a bunch of records inline
-    insert_records 10
+    # Update a bunch of records
+    i=0
+    while [[ $i -lt $update_count ]]; do
+        update_records_loop $update_loops $update_sleep &
+        let i=i+1
+    done
 
     # Poll for 10 seconds in the processor thread 
     for node in $CLUSTER; do
         cdb2sql ${CDB2_OPTIONS} $db default --host $node "PUT TUNABLE processor_thd_poll 10000"
     done
 
-    insert_records 4
-
-    # Sleep a bit then downgrade in a loop
-    sleep 20
-
     let j=0
 
     while [[ $j -lt 20 ]] ; do 
+
+        bouncemaster
+        # Poll for 10 seconds in the processor thread 
+        for node in $CLUSTER; do
+            cdb2sql ${CDB2_OPTIONS} $db default --host $node "PUT TUNABLE processor_thd_poll 10000"
+        done
+
+
+
         master=`cdb2sql -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
-        sleep 10
+        sleep 1
         let j=j+1
     done
 
     wait
+    rm $fname
 
     err=0
 
