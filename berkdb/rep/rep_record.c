@@ -2706,11 +2706,6 @@ gap_check:		max_lsn_dbtp = NULL;
 					    rep->committed_gen);
 				}
 
-//				THE REAL CODE
-//				if (dbenv->num_recovery_processor_threads &&
-//				    dbenv->num_recovery_worker_threads && 
-//                    !bdb_the_lock_desired())
-
 				if (dbenv->num_recovery_processor_threads &&
 				    dbenv->num_recovery_worker_threads)
 					ret =
@@ -3160,9 +3155,9 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		gbl_rep_rowlocks_multifile++;
 	}
 
-    /* Sleep here if the user has asked us to */
-    if (gbl_processor_thd_poll > 0)
-        poll(0, 0, gbl_processor_thd_poll);
+	/* Sleep here if the user has asked us to */
+	if (gbl_processor_thd_poll > 0)
+		poll(0, 0, gbl_processor_thd_poll);
 
 	/* Handle inline. */
 	if (listc_size(&queues) <= 1) {
@@ -3985,6 +3980,8 @@ reset_recovery_processor(rp)
 	return ret;
 }
 
+extern int gbl_force_serial_on_writelock;
+
 static inline int
 __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
     commit_gen, prev_commit_lsn)
@@ -4340,7 +4337,9 @@ bad_resize:	;
 	/* If we had any log records in this transaction that may affect the next transaction, 
 	 * process this transaction inline */
 
-	if (had_serializable_records) {
+	if (had_serializable_records ||
+			(gbl_force_serial_on_writelock &&
+			 bdb_the_lock_desired())) {
 
 		if (txn_args)
 			__os_free(dbenv, txn_args);
@@ -6353,16 +6352,13 @@ int __rep_block_on_inflight_transactions(DB_ENV *dbenv)
 
 	pthread_mutex_lock(&dbenv->recover_lk);
 	while (listc_size(&dbenv->inflight_transactions) > 0) {
-
 		clock_gettime(CLOCK_REALTIME, &ts);
-
 		ts.tv_sec++;
-
 		pthread_cond_timedwait(&dbenv->recover_cond, &dbenv->recover_lk, &ts);
 		if (listc_size(&dbenv->inflight_transactions) > 0) {
 			logmsg(LOGMSG_ERROR, "%s: waiting for %d processor threads "
-					"to exit\n", __func__, 
-                    listc_size(&dbenv->inflight_transactions));
+					"to exit\n", __func__,
+					listc_size(&dbenv->inflight_transactions));
 		}
 	}
 	pthread_mutex_unlock(&dbenv->recover_lk);

@@ -10,3 +10,9 @@ nowatch
 
 # We will change this inside of the test
 processor_thd_poll 0
+
+# Disable this to make sure I can reproduce
+force_serial_on_writelock 0
+
+# Disable statment caching
+enable_sql_stmt_caching NONE
