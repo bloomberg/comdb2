@@ -6,15 +6,23 @@ export debug=1
 needcluster=1
 db=$1
 
-insert_granularity=1000
+# insert metrics
+insert_granularity=10000
 insert_count=10
-insert_loops=100
-insert_sleep=1
+insert_loops=10
+insert_sleep=.5
 
-update_granularity=1000
+# update metrics
+update_granularity=10000
 update_count=10
-update_loops=100
-update_sleep=1
+update_loops=10
+update_sleep=.5
+
+# number of master bounces
+master_bounces=20
+
+# 
+stop_file=./testcase.done
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
@@ -25,7 +33,6 @@ if [[ -z "$stage" ]]; then
     echo "Setting stage to 'default' (set 'stage' var to override)."
     stage="default"
 fi
-
 
 function createtables
 {
@@ -39,40 +46,48 @@ function update_records_loop
     iters=$1
     sleeptime=$2
 
-    j=0
-    while [[ $j -lt $iters ]]; do
+    while [[ ! -f $stop_file ]]; do
         cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where 1 limit $update_granularity"
         sleep $sleeptime
-        let j=j+1
     done
-
 }
 
 function insert_records_loop
 {
     [[ "$debug" == 1 ]] && set -x
     fname=$1
-    iters=$2
-    sleeptime=$3
+    sleeptime=$2
 
-    j=0
-    while [[ $j -lt $iters ]]; do
+    while [[ ! -f $stop_file ]]; do
         cdb2sql ${CDB2_OPTIONS} $db $stage - < $fname 2>/dev/null
         sleep $sleeptime
-        let j=j+1
     done
-
 }
 
 function bounce_master
 {
     [[ "$debug" == 1 ]] && set -x
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
+    PARAMS="$db --no-global-lrl"
+    CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+    if [[ -n "$master" ]]; then
+        if [ $master == $(hostname) ]; then
+            (
+                kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
+            ) &
+        else
+            kill -9 $(cat ${TMPDIR}/${db}.${master}.pid)
+            ssh -o StrictHostKeyChecking=no -tt $master ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${db}.${master}.db) &
+            echo $! > ${TMPDIR}/${db}.${master}.pid
+        fi
+    fi
 }
 
 function runtest
 {
     [[ "$debug" == 1 ]] && set -x
+
     fname=insert.sql
 
     echo "BEGIN" > $fname
@@ -85,17 +100,19 @@ function runtest
 
     echo "COMMIT" >> $fname
 
+    rm $stop_file
+
     # Insert a bunch of records
     i=0
     while [[ $i -lt $insert_count ]]; do
-        insert_records_loop $fname $insert_loops $insert_sleep &
+        insert_records_loop $fname $insert_sleep &
         let i=i+1
     done
 
     # Update a bunch of records
     i=0
     while [[ $i -lt $update_count ]]; do
-        update_records_loop $update_loops $update_sleep &
+        update_records_loop $update_sleep &
         let i=i+1
     done
 
@@ -106,20 +123,19 @@ function runtest
 
     let j=0
 
-    while [[ $j -lt 20 ]] ; do 
+    while [[ $j -lt $master_bounces ]] ; do 
 
-        bouncemaster
-        # Poll for 10 seconds in the processor thread 
+        bounce_master
+
         for node in $CLUSTER; do
             cdb2sql ${CDB2_OPTIONS} $db default --host $node "PUT TUNABLE processor_thd_poll 10000"
         done
 
-
-
-        master=`cdb2sql -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
         sleep 1
         let j=j+1
     done
+
+    touch $stop_file
 
     wait
     rm $fname
@@ -142,8 +158,33 @@ function runtest
     fi
 }
 
+function exitdatabase
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+        done
+    else
+        kill -9 $(cat ${TMPDIR}/${db}.pid)
+    fi
+}
+
+function checkforcorruption
+{
+    egrep -i "Log sequence error" $TESTDIR/logs/*db
+    if [[ $? == 0 ]]; then
+        echo "CORRUPTED DATABASE, TEST FAILED"
+        exit 1
+    fi
+}
+
+
 createtables
 runtest
+exitdatabase
+checkforcorruption
 
 echo "Success"
 exit 0
