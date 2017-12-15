@@ -2155,6 +2155,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
+        rec_ptr->sql = sqlite3_sql(*stmt);
     } else if (sp->rc == SQLITE_SCHEMA) {
         return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
@@ -6496,6 +6497,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if ((rc = commit_sp(L, &err)) != 0) return rc;
 
     // dbthread_join() performs clean-up
+    lua_gc(L, LUA_GCCOLLECT, 0);
     return rc;
 }
 

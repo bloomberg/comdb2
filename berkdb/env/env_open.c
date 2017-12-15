@@ -22,6 +22,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include <stdarg.h>
 #endif
 #include <unistd.h>
+#include <limits.h>
 
 #include <plhash.h>
 #include "db_int.h"
@@ -36,7 +37,6 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
-#include "bb_oscompat.h"
 
 #include "logmsg.h"
 

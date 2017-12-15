@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 [[ -n "$3" ]] && exec >$3 2>&1
 cdb2sql $SP_OPTIONS - <<'EOF'
 create table t {
@@ -1227,6 +1228,31 @@ local function main()
 end}$$
 put default procedure nested_json 'sptest'
 exec procedure nested_json()
+
+drop table if exists vsc
+create table vsc(i int)$$
+insert into vsc select * from generate_series(1,10)
+create procedure verify_stmt_caching version 'sptest' {
+local function main()
+	local stmt1 = db:prepare("select * from vsc")
+	local stmt2 = db:prepare("select * from vsc")
+
+    for i = 1, 5 do
+        stmt1:fetch()
+    end
+
+    local c = 0
+    local row = stmt2:fetch()
+    while row do
+        row = stmt2:fetch()
+        c = c + 1
+    end
+    db:emit(c)
+end}$$
+put default procedure verify_stmt_caching 'sptest'
+exec procedure verify_stmt_caching()
+exec procedure verify_stmt_caching()
+
 EOF
 
 wait
