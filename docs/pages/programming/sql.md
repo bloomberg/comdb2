@@ -278,7 +278,7 @@ CREATE TABLE (I):
 
 ![CREATE TABLE](images/create-table.gif)
 
-CREATE TABLE (II):
+CREATE TABLE (II, **Version R7 and above**):
 
 ![CREATE TABLE](images/create-table-ddl.gif)
 
@@ -310,7 +310,7 @@ Comdb2 supports two variants of ```CREATE TABLE``` syntax. In the first approach
 the schema definition defines all keys and constraints (more information can be
 found on the [table schema](table_schema.html) page).
 
-The second approach, added in version 7.0, follows the usual standard data
+The second approach, added in version R7, follows the usual standard data
 definition language syntax supported by other relational database systems.
 A primary key created using ```CREATE TABLE (II)``` implicitly creates a
 ```UNIQUE``` index named ```COMDB2_PK``` with all key columns marked
@@ -372,7 +372,7 @@ ALTER TABLE (I):
 
 ![ALTER](images/alter-table.gif)
 
-ALTER TABLE (II):
+ALTER TABLE (II, **Version R7 and above**):
 
 ![ALTER](images/alter-table-ddl.gif)
 
@@ -401,7 +401,7 @@ be added or removed. See the [Schema definition](table_schema.html) section for
 details on the table schema definition syntax. See the [table options](#table-options)
 section a list of options that may be set for a table.
 
-The second approach, added in version 7.0, supports the usual standard data
+The second approach, added in version R7, supports the usual standard data
 definition language, like other relational database systems. This syntax can
 be used to ```ADD``` a new column or ```DROP``` an existing column from the
 table. Multiple ADD/DROP operations can be used in the same command. In case of
