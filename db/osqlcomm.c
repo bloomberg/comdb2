@@ -7193,6 +7193,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int debug = 0;
     struct ireq *iq;
     uuid_t uuid;
+    int replaced = 0;
 
     /* grab the request */
     if (nettype >= NET_OSQL_UUID_REQUEST_MIN &&
@@ -7273,7 +7274,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
        added session have sess->iq set
        to avoid racing against signal_rtoff code */
     sess = osql_sess_create_sock(sqlret, sqllenret, req.tzname, type, req.rqid,
-                                 uuid, fromhost, iq);
+                                 uuid, fromhost, iq, &replaced);
+    if (replaced) {
+        assert(sess == NULL);
+        destroy_ireq(thedb, iq);
+        free(malcd);
+        return 0;
+    }
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new request\n", __func__);
         rc = -4;

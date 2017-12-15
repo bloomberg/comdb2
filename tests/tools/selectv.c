@@ -88,6 +88,8 @@ void *schedule_thd(void *arg)
     if ((ret = cdb2_open(&sqlh, c->dbname, "default", 0)) != 0) {
         fprintf(f, "%s:%d Error getting sql handle, ret=%d\n", __func__,
                 __LINE__, ret);
+        fprintf(stderr, "%s:%d Error getting sql handle, ret=%d\n", __func__,
+                __LINE__, ret);
         exit(1);
     }
 
@@ -95,6 +97,8 @@ void *schedule_thd(void *arg)
         snprintf(sql, sizeof(sql), "set transaction read committed");
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
             fprintf(f, "%s:%d Error setting transaction level ret=%d.\n",
+                    __func__, __LINE__, ret);
+            fprintf(stderr, "%s:%d Error setting transaction level ret=%d.\n",
                     __func__, __LINE__, ret);
             exit(1);
         }
@@ -111,7 +115,10 @@ void *schedule_thd(void *arg)
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
             fprintf(f, "%s:%d error in begin, ret=%d.\n", __func__, __LINE__,
                     ret);
-            exit(1);
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
+            continue;
         }
         fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
         do {
@@ -123,7 +130,14 @@ void *schedule_thd(void *arg)
                  "limit 15");
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
             fprintf(f, "%s:%d error selecting record.\n", __func__, __LINE__);
-            exit(1);
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
+            cdb2_run_statement(sqlh, "rollback");
+            do {
+                ret = cdb2_next_record(sqlh);
+            } while (ret == CDB2_OK);
+            continue;
         }
         fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
 
@@ -138,6 +152,9 @@ void *schedule_thd(void *arg)
                     instid = *ll;
                 } else {
                     fprintf(f,
+                            "%s:%d Unexpected type from cdb2_next_record, %d\n",
+                            __func__, __LINE__, type);
+                    fprintf(stderr,
                             "%s:%d Unexpected type from cdb2_next_record, %d\n",
                             __func__, __LINE__, type);
                     exit(1);
@@ -155,7 +172,14 @@ void *schedule_thd(void *arg)
                 if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
                     fprintf(f, "%s:%d error selectv record.\n", __func__,
                             __LINE__);
-                    exit(1);
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    cdb2_run_statement(sqlh, "rollback");
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    continue;
                 }
                 fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
                 do {
@@ -174,11 +198,15 @@ void *schedule_thd(void *arg)
 
             fprintf(f, "WON %d JOBS\n", n);
 
+retry_add:
             snprintf(sql, sizeof(sql), "begin");
             if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
                 fprintf(f, "%s:%d error in begin, ret=%d.\n", __func__,
                         __LINE__, ret);
-                exit(1);
+                do {
+                    ret = cdb2_next_record(sqlh);
+                } while (ret == CDB2_OK);
+                goto retry_add;
             }
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
             do {
@@ -192,9 +220,16 @@ void *schedule_thd(void *arg)
                          "values(%ld, %d, %ld)",
                          ids[i], 1, host);
                 if ((ret = cdb2_run_statement(sqlh, sql)) != 0) {
-                    fprintf(f, "%s:%d error selectv record.\n", __func__,
+                    fprintf(f, "%s:%d error insert record.\n", __func__,
                             __LINE__);
-                    exit(1);
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    cdb2_run_statement(sqlh, "rollback");
+                    do {
+                        ret = cdb2_next_record(sqlh);
+                    } while (ret == CDB2_OK);
+                    goto retry_add;
                 }
                 fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
                 do {
@@ -204,7 +239,10 @@ void *schedule_thd(void *arg)
             snprintf(sql, sizeof(sql), "commit");
             ret = cdb2_run_statement(sqlh, sql);
             fprintf(f, "sql: %s, ret = %d.\n", sql, ret);
-            if (ret) {
+            if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
+                fprintf(f, "FAILED TO INSERT: RET %d, ERR %s\n", ret,
+                        cdb2_errstr(sqlh));
+            } else if (ret) {
                 fprintf(f, "BUG: FAILED TO INSERT: RET %d, ERR %s\n", ret,
                         cdb2_errstr(sqlh));
                 fprintf(stderr, "BUG in thread %ld: FAILED TO INSERT\n", host);
@@ -214,12 +252,18 @@ void *schedule_thd(void *arg)
             fprintf(f, "LOST TO ANOTHER THREAD\n");
         } else if (c->occ) {
             fprintf(f, "LOST TO ANOTHER THREAD, rc %d\n", ret);
+        } else if (ret == 210 /*NOT_DURABLE*/ || ret == -1) {
+            fprintf(f, "FAILED TO UPDATE: RET %d, ERR %s\n", ret,
+                    cdb2_errstr(sqlh));
         } else {
-            fprintf(f, "BUG: FAILED TO UPDATE: RET %d, ERR %s\n", ret,
+			fprintf(f, "BUG: FAILED TO UPDATE: RET %d, ERR %s\n", ret,
                     cdb2_errstr(sqlh));
             fprintf(stderr, "BUG in thread %ld: FAILED TO UPDATE\n", host);
             exit(1);
         }
+        do {
+            ret = cdb2_next_record(sqlh);
+        } while (ret == CDB2_OK);
     }
 
     cdb2_close(sqlh);
