@@ -134,6 +134,8 @@ static int permissionsColumn(
   int i
 ){
   permissions_cursor *pCur = (permissions_cursor*)cur;
+  if pCur->nUsers == 0)
+      return SQLITE_OK;
   char *tbl = pCur->ppTables[pCur->iTable];
   char *usr = pCur->ppUsers[pCur->iUser];
   switch( i ){

@@ -7758,12 +7758,14 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 sqlstr += 4;
                 sqlstr = cdb2_skipws(sqlstr);
                 clnt->have_user = 1;
-                strncpy(clnt->user, sqlstr, sizeof(clnt->user));
+                strncpy(clnt->user, sqlstr, sizeof(clnt->user) - 1);
+                clnt->user[sizeof(clnt->user) - 1] = '\0';
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = cdb2_skipws(sqlstr);
                 clnt->have_password = 1;
-                strncpy(clnt->password, sqlstr, sizeof(clnt->password));
+                strncpy(clnt->password, sqlstr, sizeof(clnt->password) - 1);
+                clnt->password[sizeof(clnt->password) - 1] = '\0';
                 sqlite3Dequote(clnt->password);
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;

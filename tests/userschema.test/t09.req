@@ -1,0 +1,14 @@
+select * from test
+select * from comdb2_tablepermissions order by tablename
+
+set user dcba
+set password dcba
+
+select * from test
+select * from comdb2_tablepermissions order by tablename
+
+set user abcdefghijklmnopqrstuvzy
+set password abcdefghijklmnopqrstuvzy
+
+select * from test
+select * from comdb2_tablepermissions order by tablename
