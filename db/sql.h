@@ -55,6 +55,8 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
+#define MAX_USERNAME_LEN 17
+#define MAX_PASSWORD_LEN 19
 
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
@@ -83,7 +85,7 @@ struct sqlthdstate {
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
 
-    char lastuser[17];  //last user to use this sqlthd
+    char lastuser[MAX_USERNAME_LEN];  //last user to use this sqlthd
     hash_t *stmt_table; //statement cache table: caches vdbe engines
 
     LISTC_T(stmt_hash_entry_type) param_stmt_list;   //list of cached stmts
@@ -386,10 +388,10 @@ struct sqlclntstate {
     struct query_effects log_effects;
 
     int have_user;
-    char user[17];
+    char user[MAX_USERNAME_LEN];
 
     int have_password;
-    char password[19];
+    char password[MAX_PASSWORD_LEN];
 
     int have_endian;
     int endian;
