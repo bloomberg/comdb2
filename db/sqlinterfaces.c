@@ -3884,13 +3884,18 @@ static void clear_parameters_to_bind(struct sql_state *rec)
     }
 }
 
-static int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
+/* This is called at the time of put_prepared_stmt_int()
+ * to determine whether the given sql should be cached.
+ * We should not cache ddl stmts, analyze commands, 
+ * rebuild commands, truncate commands, explain commands.
+ * Ddl stmts and explain commands should not get to 
+ * put_prepared_stmt_int() so are not handled in this function.
+ */
+static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
 {
-    //if (clnt->ddlflag) return 1;
-    if (strncmp(sql, "analyze", 7) == 0) return 1;
-    if (strncmp(sql, "explain", 7) == 0) return 1;
-    if (strncmp(sql, "rebuild", 7) == 0) return 1;
-    if (strncmp(sql, "truncate", 7) == 0) return 1;
+    if (strncasecmp(sql, "analyze", 7) == 0) return 1;
+    if (strncasecmp(sql, "rebuild", 7) == 0) return 1;
+    if (strncasecmp(sql, "truncate", 8) == 0) return 1;
     return 0;
 }
 
