@@ -1664,19 +1664,9 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
 }
 
 /* skip spaces and tabs, requires at least one space */
-static char *skipws(char *str)
+static inline char *skipws(char *str)
 {
     if (str && *str && isspace(*str)) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
-
-/* skip spaces and tabs if present. */
-static char *cdb2_skipws(char *str)
-{
-    if (*str && isspace(*str)) {
         while (*str && isspace(*str))
             str++;
     }
@@ -1699,7 +1689,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
             }
 
             if (str && *str) {
-                /* Alex wants "as of" */
+                /* handle "as of" */
                 if (!strncasecmp(str, "as", 2)) {
                     str += 2;
                     str = skipws(str);
@@ -7513,10 +7503,7 @@ retry_read:
         return NULL;
     }
 
-    CDB2QUERY *query;
-
     char *p;
-
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
@@ -7557,6 +7544,7 @@ retry_read:
         }
     }
 
+    CDB2QUERY *query;
     while (1) {
         query = cdb2__query__unpack(&pb_alloc, bytes, p);
 
@@ -7677,7 +7665,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
     num_commands = sql_query->n_set_flags;
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
-        sqlstr = cdb2_skipws(sqlstr);
+        sqlstr = skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
             if (gbl_extended_sql_debug_trace) {
                 logmsg(LOGMSG_ERROR,
@@ -7685,16 +7673,16 @@ static int process_set_commands(struct sqlclntstate *clnt)
                        pthread_self(), __func__, __LINE__, sqlstr);
             }
             sqlstr += 3;
-            sqlstr = cdb2_skipws(sqlstr);
+            sqlstr = skipws(sqlstr);
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 clnt->dbtran.mode = TRANLEVEL_INVALID;
                 set_high_availability(clnt, 0);
                 // clnt->high_availability = 0;
                 if (strncasecmp(sqlstr, "read", 4) == 0) {
                     sqlstr += 4;
-                    sqlstr = cdb2_skipws(sqlstr);
+                    sqlstr = skipws(sqlstr);
                     if (strncasecmp(sqlstr, "committed", 4) == 0) {
                         clnt->dbtran.mode = TRANLEVEL_RECOM;
                     }
@@ -7721,7 +7709,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     rc = ii + 1;
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 int notimeout = disable_server_sql_timeouts();
                 sbuf2settimeout(clnt->sb, 0, notimeout ? 0 : timeout);
@@ -7735,33 +7723,33 @@ static int process_set_commands(struct sqlclntstate *clnt)
                         watcher_warning_function);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
                 sqlstr += 12;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 if (timeout >= 0)
                     clnt->query_timeout = timeout;
             } else if (strncasecmp(sqlstr, "timezone", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 strncpy(clnt->tzname, sqlstr, sizeof(clnt->tzname));
             } else if (strncasecmp(sqlstr, "datetime", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
 
                 if (strncasecmp(sqlstr, "precision", 9) == 0) {
                     sqlstr += 9;
-                    sqlstr = cdb2_skipws(sqlstr);
+                    sqlstr = skipws(sqlstr);
                     DTTZ_TEXT_TO_PREC(sqlstr, clnt->dtprec, 0, return -1);
                 } else {
                     rc = ii + 1;
                 }
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 clnt->have_user = 1;
                 strncpy(clnt->user, sqlstr, sizeof(clnt->user));
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 clnt->have_password = 1;
                 strncpy(clnt->password, sqlstr, sizeof(clnt->password));
                 sqlite3Dequote(clnt->password);
@@ -7770,7 +7758,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 free(clnt->spversion.version_str);
                 clnt->spversion.version_str = NULL;
                 sqlstr += 9;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 char *spname = sqlstr;
                 while (!isspace(*sqlstr)) {
                     ++sqlstr;
@@ -7784,7 +7772,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
                 ++sqlstr;
 
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int ver = strtol(sqlstr, &endp, 10);
                 if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
                     if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
@@ -7800,7 +7788,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->is_readonly = 0;
                 } else {
@@ -7808,7 +7796,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
                 sqlstr += 6;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->is_expert = 0;
                 } else {
@@ -7816,7 +7804,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "sptrace", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->want_stored_procedure_trace = 0;
                 } else {
@@ -7824,11 +7812,11 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "cursordebug", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
             } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->want_stored_procedure_debug = 0;
                 } else {
@@ -7836,7 +7824,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "HASQL", 5) == 0) {
                 sqlstr += 5;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->hasql_on = 1;
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
@@ -7862,7 +7850,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->verifyretry_off = 0;
                 } else {
@@ -7870,7 +7858,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "queryeffects", 12) == 0) {
                 sqlstr += 12;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "statement", 9) == 0) {
                     clnt->statement_query_effects = 1;
                 }
@@ -7879,7 +7867,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
                 sqlstr += 6;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
 
                 int rc = fdb_access_control_create(clnt, sqlstr);
                 if (rc) {
@@ -7890,7 +7878,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 rc = ii + 1;
             } else if (strncasecmp(sqlstr, "getcost", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->get_cost = 1;
                 } else {
@@ -7898,7 +7886,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "explain", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->is_explain = 1;
                 } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
@@ -7928,7 +7916,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
 #endif
             } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
                 sqlstr += 15;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->ignore_coherency = 1;
                 } else {
@@ -8158,7 +8146,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         assert(query->sqlquery);
         sql_query = query->sqlquery;
         clnt.sql_query = sql_query;
-        clnt.sql = sql_query->sql_query;
+        clnt.sql = skipws(sql_query->sql_query);
         clnt.query = query;
         clnt.added_to_hist = 0;
 
@@ -9723,3 +9711,4 @@ static int send_dummy(struct sqlclntstate *clnt)
         return newsql_send_dummy_resp(clnt, __func__, __LINE__);
     return 0;
 }
+
