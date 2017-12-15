@@ -731,10 +731,14 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
 
     rc = bdb_close_only(old_bdb_handle, &bdberr);
     if (rc) {
-        sc_errf(s, "Failed closing new db, bdberr\n", bdberr);
+        sc_errf(s, "Failed closing old db, bdberr\n", bdberr);
         goto failed;
-    } else
-        sc_printf(s, "Close new db ok\n");
+    } 
+    sc_printf(s, "Close old db ok\n");
+
+    int delay = BDB_ATTR_GET(thedb->bdb_attr, SC_DELAY_AFTER_BDB_CLOSE);
+    if (delay > 0) 
+        usleep(delay);
 
     bdb_handle_reset_tran(new_bdb_handle, transac);
 
