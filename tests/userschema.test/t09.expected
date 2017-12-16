@@ -11,9 +11,17 @@
 (tablename='test@dcba', username='dcba', READ='Y', WRITE='Y', DDL='Y')
 (tablename='test@dcba', username='default', READ='N', WRITE='N', DDL='N')
 (tablename='test@dcba', username='mohit', READ='Y', WRITE='Y', DDL='Y')
-[select * from test] failed with rc -3 Invalid set command 'user 12345678901234567'
-[select * from comdb2_tablepermissions order by tablename] failed with rc -3 Invalid set command 'user 12345678901234567'
-[select * from test] failed with rc -3 Invalid set command 'password 1234567890123456789'
-[select * from comdb2_tablepermissions order by tablename] failed with rc -3 Invalid set command 'password 1234567890123456789'
+[select * from test] failed with rc -106 access denied
+[select * from comdb2_tablepermissions order by tablename] failed with rc -106 access denied
+[select * from test] failed with rc -3 set user: '12345678901234567' exceeds 16 characters
+[select * from comdb2_tablepermissions order by tablename] failed with rc -3 set user: '12345678901234567' exceeds 16 characters
+[select * from test] failed with rc -3 set password: '1234567890123456789' exceeds 18 characters
+[select * from comdb2_tablepermissions order by tablename] failed with rc -3 set password: '1234567890123456789' exceeds 18 characters
+[select * from test] failed with rc -106 access denied
+[select * from comdb2_tablepermissions order by tablename] failed with rc -106 access denied
+[select * from test] failed with rc -3 set user: '12345678901234567' exceeds 16 characters
+[select * from comdb2_tablepermissions order by tablename] failed with rc -3 set user: '12345678901234567' exceeds 16 characters
+[select * from test] failed with rc -3 set password: '1234567890123456789' exceeds 18 characters
+[select * from comdb2_tablepermissions order by tablename] failed with rc -3 set password: '1234567890123456789' exceeds 18 characters
 [select * from test] failed with rc -106 access denied
 [select * from comdb2_tablepermissions order by tablename] failed with rc -106 access denied

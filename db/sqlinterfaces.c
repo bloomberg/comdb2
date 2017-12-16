@@ -7679,6 +7679,8 @@ static int process_set_commands(struct sqlclntstate *clnt)
         sqlstr = sql_query->set_flags[ii];
         sqlstr = cdb2_skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
+            char err[256]; 
+            err[0] = '\0';
             if (gbl_extended_sql_debug_trace) {
                 logmsg(LOGMSG_ERROR,
                        "td %lu %s line %d processing set command '%s'\n",
@@ -7758,11 +7760,11 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 char *savptr = sqlstr;
                 sqlstr += 4;
                 sqlstr = cdb2_skipws(sqlstr);
+                sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                    snprintf(err, sizeof(err), "set user: '%s' exceeds %d characters",
+                           sqlstr, sizeof(clnt->user) - 1);
                     sqlstr = savptr;
-                    logmsg(LOGMSG_USER,
-                           "set user parameter can not exceed length of %d "
-                           "characters\n", sizeof(clnt->user) - 1);
                     rc = ii + 1;
                 } else {
                     clnt->have_user = 1;
@@ -7773,17 +7775,16 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 char *savptr = sqlstr;
                 sqlstr += 8;
                 sqlstr = cdb2_skipws(sqlstr);
+                sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                    snprintf(err, sizeof(err), "set password: '%s' exceeds %d characters",
+                           sqlstr, sizeof(clnt->password) - 1);
                     sqlstr = savptr;
-                    logmsg(LOGMSG_USER,
-                           "set password parameter can not exceed length of %d "
-                           "characters\n", sizeof(clnt->password) - 1);
                     rc = ii + 1;
                 } else {
                     clnt->have_password = 1;
                     strncpy(clnt->password, sqlstr, sizeof(clnt->password) - 1);
                     clnt->password[sizeof(clnt->password) - 1] = '\0';
-                    sqlite3Dequote(clnt->password);
                 }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;
@@ -7862,7 +7863,6 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
                         clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                         set_high_availability(clnt, 1);
-                        // clnt->high_availability = 1;
                         if (gbl_extended_sql_debug_trace) {
                             logmsg(
                                 LOGMSG_USER,
@@ -7873,7 +7873,6 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->hasql_on = 0;
                     set_high_availability(clnt, 0);
-                    // clnt->high_availability = 0;
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER,
                                "td %lu %s line %d clearing high_availability\n",
@@ -7959,9 +7958,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
             }
 
             if (rc) {
-                char err[256];
-                snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
-                         sqlstr);
+                if (err[0] == '\0')
+                    snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
+                             sqlstr);
                 send_prepare_error(clnt, err, 0);
             }
         }
