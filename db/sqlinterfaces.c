@@ -3884,6 +3884,24 @@ static void clear_parameters_to_bind(struct sql_state *rec)
     }
 }
 
+/* This is called at the time of put_prepared_stmt_int()
+ * to determine whether the given sql should be cached.
+ * We should not cache ddl stmts, analyze commands,
+ * rebuild commands, truncate commands, explain commands.
+ * Ddl stmts and explain commands should not get to
+ * put_prepared_stmt_int() so are not handled in this function.
+ */
+static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
+{
+    if (strncasecmp(sql, "analyze", 7) == 0)
+        return 1;
+    if (strncasecmp(sql, "rebuild", 7) == 0)
+        return 1;
+    if (strncasecmp(sql, "truncate", 8) == 0)
+        return 1;
+    return 0;
+}
+
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
                                  struct sql_state *rec, int outrc)
@@ -3914,6 +3932,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->sql)
         sqlptr = rec->sql;
 
+    if (dont_cache_sql(clnt, sqlptr)) {
+        return 1;
+    }
+
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
@@ -3940,8 +3962,6 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     int rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
     if (rc != 0 && rec->stmt) {
-        // delete_stmt_entry(thd, rec->stmt); //will finalize and remove from
-        // hash and queue
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
     }
@@ -5721,14 +5741,21 @@ errors:
     goto done;
 }
 
-static int check_sql_access(struct sqlclntstate *clnt)
+static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     struct fsqlresp resp;
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
-    return check_user_password(clnt, &resp);
+    int rc = check_user_password(clnt, &resp);
+    if (rc == 0) {
+        if (strcmp(thd->lastuser, clnt->user) != 0) {
+            delete_prepared_stmts(thd);
+            strcpy(thd->lastuser, clnt->user);
+        }
+    }
+    return rc;
 }
 
 /**
@@ -5740,7 +5767,7 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int rc;
 
     /* access control */
-    rc = check_sql_access(clnt);
+    rc = check_sql_access(thd, clnt);
     if (rc)
         return rc;
 
@@ -6514,7 +6541,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* reset the password */
     clnt->have_password = 0;
-    bzero(clnt->password, sizeof(clnt->user));
+    bzero(clnt->password, sizeof(clnt->password));
 
     /* reset endianess */
     clnt->have_endian = 0;
