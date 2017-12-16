@@ -85,11 +85,11 @@ struct sqlthdstate {
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
 
-    char lastuser[MAX_USERNAME_LEN];  //last user to use this sqlthd
-    hash_t *stmt_table; //statement cache table: caches vdbe engines
+    char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
+    hash_t *stmt_table; // statement cache table: caches vdbe engines
 
-    LISTC_T(stmt_hash_entry_type) param_stmt_list;   //list of cached stmts
-    LISTC_T(stmt_hash_entry_type) noparam_stmt_list; //list of cached stmts
+    LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
+    LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
 
     int dbopen_gen;
     int analyze_gen;
