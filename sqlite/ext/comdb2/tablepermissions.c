@@ -98,6 +98,8 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   bdb_user_get_all(&pCur->ppUsers, &pCur->nUsers);
   unlock_schema_lk();
   *ppCursor = &pCur->base;
+  if (pCur->nUsers == 0)
+      return SQLITE_EMPTY;
   return SQLITE_OK;
 }
 
@@ -134,8 +136,6 @@ static int permissionsColumn(
   int i
 ){
   permissions_cursor *pCur = (permissions_cursor*)cur;
-  if pCur->nUsers == 0)
-      return SQLITE_OK;
   char *tbl = pCur->ppTables[pCur->iTable];
   char *usr = pCur->ppUsers[pCur->iUser];
   switch( i ){
