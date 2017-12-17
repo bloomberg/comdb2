@@ -7761,8 +7761,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 sqlstr = cdb2_skipws(sqlstr);
                 sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->user)) {
-                    snprintf(err, sizeof(err), "set user: '%s' exceeds %d characters",
-                           sqlstr, sizeof(clnt->user) - 1);
+                    snprintf(err, sizeof(err),
+                             "set user: '%s' exceeds %d characters", sqlstr,
+                             sizeof(clnt->user) - 1);
                     rc = ii + 1;
                 } else {
                     clnt->have_user = 1;
@@ -7773,8 +7774,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 sqlstr = cdb2_skipws(sqlstr);
                 sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->password)) {
-                    snprintf(err, sizeof(err), "set password: '%s' exceeds %d characters",
-                           sqlstr, sizeof(clnt->password) - 1);
+                    snprintf(err, sizeof(err),
+                             "set password: '%s' exceeds %d characters", sqlstr,
+                             sizeof(clnt->password) - 1);
                     rc = ii + 1;
                 } else {
                     clnt->have_password = 1;
