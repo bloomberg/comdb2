@@ -98,8 +98,6 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   bdb_user_get_all(&pCur->ppUsers, &pCur->nUsers);
   unlock_schema_lk();
   *ppCursor = &pCur->base;
-  if (pCur->nUsers == 0)
-      return SQLITE_EMPTY;
   return SQLITE_OK;
 }
 
@@ -175,6 +173,8 @@ static int permissionsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 
 static int permissionsEof(sqlite3_vtab_cursor *cur){
   permissions_cursor *pCur = (permissions_cursor*)cur;
+  if (pCur->nUsers == 0)
+      return 1;
   return pCur->iTable >= pCur->nTables;
 }
 

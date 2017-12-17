@@ -1,4 +1,3 @@
-[select * from comdb2_tablepermissions] failed with rc -5 table contains no data
 [put authentication on] failed with rc -3 User does not have OP credentials
 (tablename='dummy', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='sqlite_stat1', username='mohit', READ='Y', WRITE='Y', DDL='Y')

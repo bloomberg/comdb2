@@ -7679,7 +7679,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
         sqlstr = sql_query->set_flags[ii];
         sqlstr = cdb2_skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
-            char err[256]; 
+            char err[256];
             err[0] = '\0';
             if (gbl_extended_sql_debug_trace) {
                 logmsg(LOGMSG_ERROR,
@@ -7757,34 +7757,28 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     rc = ii + 1;
                 }
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
-                char *savptr = sqlstr;
                 sqlstr += 4;
                 sqlstr = cdb2_skipws(sqlstr);
                 sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->user)) {
                     snprintf(err, sizeof(err), "set user: '%s' exceeds %d characters",
                            sqlstr, sizeof(clnt->user) - 1);
-                    sqlstr = savptr;
                     rc = ii + 1;
                 } else {
                     clnt->have_user = 1;
-                    strncpy(clnt->user, sqlstr, sizeof(clnt->user) - 1);
-                    clnt->user[sizeof(clnt->user) - 1] = '\0';
+                    strcpy(clnt->user, sqlstr);
                 }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
-                char *savptr = sqlstr;
                 sqlstr += 8;
                 sqlstr = cdb2_skipws(sqlstr);
                 sqlite3Dequote(sqlstr);
                 if (strlen(sqlstr) >= sizeof(clnt->password)) {
                     snprintf(err, sizeof(err), "set password: '%s' exceeds %d characters",
                            sqlstr, sizeof(clnt->password) - 1);
-                    sqlstr = savptr;
                     rc = ii + 1;
                 } else {
                     clnt->have_password = 1;
-                    strncpy(clnt->password, sqlstr, sizeof(clnt->password) - 1);
-                    clnt->password[sizeof(clnt->password) - 1] = '\0';
+                    strcpy(clnt->password, sqlstr);
                 }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;
