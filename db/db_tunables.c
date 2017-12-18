@@ -143,6 +143,7 @@ extern int gbl_rep_verify_will_recover_trace;
 extern int gbl_max_wr_rows_per_txn;
 extern int gbl_force_serial_on_writelock;
 extern int gbl_processor_thd_poll;
+extern int gbl_get_bdblock_from_processor_thd;
 
 extern long long sampling_threshold;
 
