@@ -261,7 +261,7 @@ static int _fdb_set_affinity_node(struct sqlclntstate *clnt, const fdb_t *fdb,
                                   char *host, int status);
 void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt);
 
-static int _get_protocol_flags(int version, void *trans);
+static int _get_protocol_flags(struct sqlclntstate *clnt, int version, int *flags);
 
 /**************  FDB OPERATIONS ***************/
 
@@ -2421,7 +2421,9 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
         ent = NULL;
     }
 
-    flags = _get_protocol_flags(fdb->server_version, trans);
+    if (_get_protocol_flags(clnt, fdb->server_version, &flags)) {
+        goto done;
+    }
 
     /* NOTE: R5 used to send source_rootpage for open cursor case;
      *  we will change that in R5 to a magic value that we detect to
@@ -2440,7 +2442,7 @@ fdb_cursor_if_t *fdb_cursor_open(struct sqlclntstate *clnt, BtCursor *pCur,
             clnt->fdb_state.xerr.errval = FDB_ERR_BUG;
             snprintf(clnt->fdb_state.xerr.errstr,
                      sizeof(clnt->fdb_state.xerr.errstr),
-                     "%s: unable to find rootpage %d\n", __func__, rootpage);
+                     "failed to open fdb cursor for stats");
 
             goto done;
         }
@@ -4718,24 +4720,30 @@ void _fdb_clear_clnt_node_affinities(struct sqlclntstate *clnt)
  * Convert the protocol version in an appropriate cursor open flag
  *
  */
-static int _get_protocol_flags(int version, void *trans)
+static int _get_protocol_flags(struct sqlclntstate *clnt, int version, int *flags)
 {
-    switch (version) {
-    case FDB_VER_WR_NAMES:
-    case FDB_VER_SOURCE_ID:
-        return FDB_MSG_CURSOR_OPEN_SQL_SID;
 
-    case FDB_VER_CODE_VERSION:
-        /* untransactional cursors don't have seq */
-        if (trans)
-            return FDB_MSG_CURSOR_OPEN_SQL_TRAN;
-        else
-            return FDB_MSG_CURSOR_OPEN_SQL;
-
-    case FDB_VER_LEGACY:
-    default:
-        return FDB_MSG_CURSOR_OPEN_SQL;
+    if (version<FDB_VER_SSL) {
+        *flags = FDB_MSG_CURSOR_OPEN_SQL_SID;
+#if WITH_SSL
+        if (sslio_has_ssl(clnt->sb)) {
+            /* Client has SSL, but remote doesn't support SSL */
+            clnt->fdb_state.preserve_err = 1;
+            clnt->fdb_state.xerr.errval = FDB_ERR_SSL;
+            snprintf(clnt->fdb_state.xerr.errstr,
+                    sizeof(clnt->fdb_state.xerr.errstr),
+                    "client uses SSL but remote db does not support it");
+            return -1;
+        }
+#endif
+    } else {
+        *flags = FDB_MSG_CURSOR_OPEN_SQL_SSL;
+#if WITH_SSL
+        if (sslio_has_ssl(clnt->sb))
+            *flags |= FDB_MSG_CURSOR_OPEN_SQL_SSL;
+#endif
     }
+    return 0;
 }
 
 /**
