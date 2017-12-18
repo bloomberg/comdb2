@@ -2173,6 +2173,8 @@ struct Index {
 #define SQLITE_IDXTYPE_APPDEF      0   /* Created using CREATE INDEX */
 #define SQLITE_IDXTYPE_UNIQUE      1   /* Implements a UNIQUE constraint */
 #define SQLITE_IDXTYPE_PRIMARYKEY  2   /* Is the PRIMARY KEY for the table */
+/* COMDB2 MODIFICATION */
+#define SQLITE_IDXTYPE_DUPKEY      3   /* Is the DUPLICATE KEY for the table */
 
 /* Return true if index X is a PRIMARY KEY index */
 #define IsPrimaryKeyIndex(X)  ((X)->idxType==SQLITE_IDXTYPE_PRIMARYKEY)

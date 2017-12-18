@@ -318,8 +318,10 @@ ccons ::= NULL onconf.           {comdb2AddNull(pParse);}
 ccons ::= NOT NULL onconf(R).    {comdb2AddNotNull(pParse, R);}
 ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
                                  {comdb2AddPrimaryKey(pParse,0,R,I,Z);}
-ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,R,
+ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,0,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
+ccons ::= KEY onconf(R).         {comdb2AddIndex(pParse,0,0,R,
+                                   SQLITE_IDXTYPE_DUPKEY);}
 %ifdef COMDB2_UNSUPPORTED
 ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
 %endif
@@ -383,9 +385,13 @@ tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 %endif
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
                                  {comdb2AddPrimaryKey(pParse,X,R,I,0);}
-tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
-                                 {comdb2AddIndex(pParse,X,R,
+tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R).
+                                 {comdb2AddIndex(pParse,&I,X,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
+tcons ::= KEY nm_opt(I) LP sortlist(X) RP onconf(R).
+                                 {comdb2AddIndex(pParse,&I,X,R,
+                                   SQLITE_IDXTYPE_DUPKEY);}
+
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E.pExpr);}
@@ -2113,4 +2119,9 @@ rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= . {D=0;}
+
+%type nm_opt {Token}
+nm_opt(A) ::= .      {A.z=0; A.n=0;}
+nm_opt(A) ::= nm(X). {A = X;}
+
 /* vim: set ft=lemon: */
