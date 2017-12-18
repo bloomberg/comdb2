@@ -3874,6 +3874,24 @@ static void clear_parameters_to_bind(struct sql_state *rec)
     }
 }
 
+/* This is called at the time of put_prepared_stmt_int()
+ * to determine whether the given sql should be cached.
+ * We should not cache ddl stmts, analyze commands,
+ * rebuild commands, truncate commands, explain commands.
+ * Ddl stmts and explain commands should not get to
+ * put_prepared_stmt_int() so are not handled in this function.
+ */
+static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
+{
+    if (strncasecmp(sql, "analyze", 7) == 0)
+        return 1;
+    if (strncasecmp(sql, "rebuild", 7) == 0)
+        return 1;
+    if (strncasecmp(sql, "truncate", 8) == 0)
+        return 1;
+    return 0;
+}
+
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sqlclntstate *clnt,
                                  struct sql_state *rec, int outrc)
@@ -3904,6 +3922,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->sql)
         sqlptr = rec->sql;
 
+    if (dont_cache_sql(clnt, sqlptr)) {
+        return 1;
+    }
+
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
@@ -3930,8 +3952,6 @@ void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 {
     int rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
     if (rc != 0 && rec->stmt) {
-        // delete_stmt_entry(thd, rec->stmt); //will finalize and remove from
-        // hash and queue
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
     }
@@ -5711,14 +5731,21 @@ errors:
     goto done;
 }
 
-static int check_sql_access(struct sqlclntstate *clnt)
+static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     struct fsqlresp resp;
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
-    return check_user_password(clnt, &resp);
+    int rc = check_user_password(clnt, &resp);
+    if (rc == 0) {
+        if (strcmp(thd->lastuser, clnt->user) != 0) {
+            delete_prepared_stmts(thd);
+            strcpy(thd->lastuser, clnt->user);
+        }
+    }
+    return rc;
 }
 
 /**
@@ -5730,7 +5757,7 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int rc;
 
     /* access control */
-    rc = check_sql_access(clnt);
+    rc = check_sql_access(thd, clnt);
     if (rc)
         return rc;
 
@@ -6504,7 +6531,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* reset the password */
     clnt->have_password = 0;
-    bzero(clnt->password, sizeof(clnt->user));
+    bzero(clnt->password, sizeof(clnt->password));
 
     /* reset endianess */
     clnt->have_endian = 0;
@@ -7667,6 +7694,8 @@ static int process_set_commands(struct sqlclntstate *clnt)
         sqlstr = sql_query->set_flags[ii];
         sqlstr = skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
+            char err[256];
+            err[0] = '\0';
             if (gbl_extended_sql_debug_trace) {
                 logmsg(LOGMSG_ERROR,
                        "td %lu %s line %d processing set command '%s'\n",
@@ -7745,14 +7774,29 @@ static int process_set_commands(struct sqlclntstate *clnt)
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;
                 sqlstr = skipws(sqlstr);
-                clnt->have_user = 1;
-                strncpy(clnt->user, sqlstr, sizeof(clnt->user));
+                sqlite3Dequote(sqlstr);
+                if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                    snprintf(err, sizeof(err),
+                             "set user: '%s' exceeds %d characters", sqlstr,
+                             sizeof(clnt->user) - 1);
+                    rc = ii + 1;
+                } else {
+                    clnt->have_user = 1;
+                    strcpy(clnt->user, sqlstr);
+                }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
                 sqlstr = skipws(sqlstr);
-                clnt->have_password = 1;
-                strncpy(clnt->password, sqlstr, sizeof(clnt->password));
-                sqlite3Dequote(clnt->password);
+                sqlite3Dequote(sqlstr);
+                if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                    snprintf(err, sizeof(err),
+                             "set password: '%s' exceeds %d characters", sqlstr,
+                             sizeof(clnt->password) - 1);
+                    rc = ii + 1;
+                } else {
+                    clnt->have_password = 1;
+                    strcpy(clnt->password, sqlstr);
+                }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;
                 free(clnt->spversion.version_str);
@@ -7830,7 +7874,6 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
                         clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                         set_high_availability(clnt, 1);
-                        // clnt->high_availability = 1;
                         if (gbl_extended_sql_debug_trace) {
                             logmsg(
                                 LOGMSG_USER,
@@ -7841,7 +7884,6 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->hasql_on = 0;
                     set_high_availability(clnt, 0);
-                    // clnt->high_availability = 0;
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER,
                                "td %lu %s line %d clearing high_availability\n",
@@ -7927,9 +7969,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
             }
 
             if (rc) {
-                char err[256];
-                snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
-                         sqlstr);
+                if (err[0] == '\0')
+                    snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
+                             sqlstr);
                 send_prepare_error(clnt, err, 0);
             }
         }
