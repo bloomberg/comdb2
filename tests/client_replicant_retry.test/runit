@@ -14,6 +14,9 @@ fi
 function getmaster {
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
+function getnonmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | tail -1 | cut -f1 -d":" | tr -d '[:space:]'
+}
 
 failexit()
 {
@@ -91,21 +94,17 @@ for node in $cluster ; do
 done
 
 master=`getmaster`
-while [ "$master" == "`hostname`" ] ; do
-    echo 'send downgrade so master is not localhost'
-    cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('downgrade')"
-    sleep 2
-    master=`getmaster`
-done
-
 # get a replicant
-node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
+node=`getnonmaster`
+if [ $node == $master ] ; then
+    failexit "$node is the master, need to talk to a different node"
+fi
 
 # store 100 in account with id 1
 cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1 values (1, 100)"
 
 
-#set master commit_delay to X seconds
+#set master commit_delay to X seconds so we have time to kill the replicant
 cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('bdb setattr commitdelay 3000')"
 
 cdb2sql --debug-trace ${CDB2_OPTIONS} $dbnm --host $node "update t1 set sum=sum + 10 where id = 1" &> upd.out & 
