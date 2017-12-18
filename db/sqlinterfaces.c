@@ -1666,7 +1666,7 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
 /* skip spaces and tabs, requires at least one space */
 static inline char *skipws(char *str)
 {
-    if (str && *str && isspace(*str)) {
+    if (str) {
         while (*str && isspace(*str))
             str++;
     }
@@ -9711,4 +9711,3 @@ static int send_dummy(struct sqlclntstate *clnt)
         return newsql_send_dummy_resp(clnt, __func__, __LINE__);
     return 0;
 }
-
