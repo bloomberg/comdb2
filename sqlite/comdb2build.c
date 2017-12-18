@@ -2290,7 +2290,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
         if (current_key->schema == 0) continue;
 
         /*
-          Generate a key name if its has not been explicitly provided in
+          Generate a key name if it has not been explicitly provided in
           the command.
         */
         if (current_key->schema->csctag == 0) {
@@ -3216,16 +3216,20 @@ cleanup:
 
 void comdb2AddIndex(
     Parse *pParse,   /* All information about this parse */
+    Token *pName,    /* Index name (Optional) */
     ExprList *pList, /* A list of columns to be indexed */
     int onError,     /* OE_Abort, OE_Ignore, OE_Replace, or OE_None */
     u8 idxType       /* The index type */
-    )
+)
 {
     struct schema *key;
     struct field *member;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    char *keyname;
+
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
+        assert(idxType != SQLITE_IDXTYPE_DUPKEY);
         sqlite3CreateIndex(pParse, 0, 0, 0, pList, onError, 0, 0, 0, 0,
                            idxType);
         return;
@@ -3241,13 +3245,35 @@ void comdb2AddIndex(
         return;
     }
 
+    if (pName && pName->n > 0) {
+        keyname = comdb2_strndup(ctx->mem, pName->z, pName->n);
+        if (keyname == 0)
+            goto oom;
+        sqlite3Dequote(keyname);
+
+        if (is_pk(keyname)) {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "Invalid key name.");
+            goto cleanup;
+        }
+    } else {
+        keyname = 0;
+    }
+
     key = comdb2_calloc(ctx->mem, 1, sizeof(struct schema));
     if (key == 0) goto oom;
 
+    key->csctag = keyname;
     key->flags = SCHEMA_INDEX;
 
+    if (idxType == SQLITE_IDXTYPE_DUPKEY) {
+        key->flags |= SCHEMA_DUP;
+    } else {
+        assert(idxType == SQLITE_IDXTYPE_UNIQUE);
+    }
+
     /*
-      pList == 0 imples that the UNIQUE key was specified in the column
+      pList == 0 imples that the UNIQUE/DUP key was specified in the column
       definition.
     */
     if (pList == 0) {
@@ -3384,6 +3410,7 @@ void comdb2CreateIndex(
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "Index '%s' already exists.", keyname);
         } else {
+            /* Do not report this as an error. */
             logmsg(LOGMSG_DEBUG, "Index '%s' already exists.", keyname);
         }
         goto cleanup;

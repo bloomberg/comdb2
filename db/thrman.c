@@ -406,7 +406,8 @@ char *thrman_describe(struct thr_handle *thr, char *buf, size_t szbuf)
             struct sockaddr_in peeraddr;
             int len = sizeof(peeraddr);
             char addrstr[64];
-            if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0)
+            if (getpeername(fd, (struct sockaddr *)&peeraddr,
+                            (socklen_t *)&len) < 0)
                 pos +=
                     snprintf(buf + pos, szbuf - pos, ", fd %d (getpeername:%s)",
                              fd, strerror(errno));

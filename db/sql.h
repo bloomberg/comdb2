@@ -55,6 +55,8 @@ enum transaction_level {
  * of appsock threads with small stacks. */
 
 #define MAX_HASH_SQL_LENGTH 8192
+#define MAX_USERNAME_LEN 17
+#define MAX_PASSWORD_LEN 19
 
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
@@ -64,8 +66,6 @@ typedef struct stmt_hash_entry {
     sqlite3_stmt *stmt;
     char *query;
     struct schema *params_to_bind;
-    struct stmt_hash_entry *prev;
-    struct stmt_hash_entry *next;
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
@@ -85,10 +85,11 @@ struct sqlthdstate {
     struct thr_handle *thr_self;
     sqlite3 *sqldb;
 
-    hash_t *stmt_table;
+    char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
+    hash_t *stmt_table; // statement cache table: caches vdbe engines
 
-    LISTC_T(stmt_hash_entry_type) param_stmt_list;
-    LISTC_T(stmt_hash_entry_type) noparam_stmt_list;
+    LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
+    LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
 
     int dbopen_gen;
     int analyze_gen;
@@ -276,6 +277,7 @@ struct stored_proc;
 struct lua_State;
 
 enum early_verify_error { EARLY_ERR_VERIFY = 1, EARLY_ERR_SELECTV = 2 };
+#define FINGERPRINTSZ 16
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -386,10 +388,10 @@ struct sqlclntstate {
     struct query_effects log_effects;
 
     int have_user;
-    char user[17];
+    char user[MAX_USERNAME_LEN];
 
     int have_password;
-    char password[19];
+    char password[MAX_PASSWORD_LEN];
 
     int have_endian;
     int endian;
@@ -493,7 +495,7 @@ struct sqlclntstate {
     int8_t gen_changed;
     uint8_t skip_peer_chk;
 
-    char fingerprint[16];
+    char fingerprint[FINGERPRINTSZ];
     int ncontext;
     char **context;
 
@@ -724,6 +726,8 @@ struct sql_thread {
     char *error;
     struct master_entry *rootpages;
     int rootpage_nentries;
+    CDB2SQLRESPONSE__Column **columns;
+    int columns_count;
     unsigned char had_temptables;
     unsigned char had_tablescans;
 };

@@ -48,6 +48,7 @@ public class Driver implements java.sql.Driver {
     public static final String PROPERTY_SSL_CATYPE = "trust_store_type";
     public static final String PROPERTY_PMUX_RTE = "allow_pmux_route";
     public static final String PROPERTY_STMT_EFFECTS = "statement_query_effects";
+    public static final String PROPERTY_VERIFY_RETRY = "verify_retry";
 
     /**
      * Register our driver statically.
@@ -100,6 +101,7 @@ public class Driver implements java.sql.Driver {
         String sslcatype = null;
         String pmuxrte = null;
         String stmteffects = null;
+        String verifyretry = null;
         String attributes = null;
 
         String policy = null;
@@ -206,6 +208,8 @@ public class Driver implements java.sql.Driver {
                         pmuxrte = keyval[1];
                     else if (PROPERTY_STMT_EFFECTS.equalsIgnoreCase(keyval[0]))
                         stmteffects = keyval[1];
+                    else if (PROPERTY_VERIFY_RETRY.equalsIgnoreCase(keyval[0]))
+                        verifyretry = keyval[1];
                 }
             }
         }
@@ -264,6 +268,8 @@ public class Driver implements java.sql.Driver {
             pmuxrte = info.getProperty(PROPERTY_PMUX_RTE);
         if (stmteffects == null)
             stmteffects = info.getProperty(PROPERTY_STMT_EFFECTS);
+        if (verifyretry == null)
+            verifyretry = info.getProperty(PROPERTY_VERIFY_RETRY);
 
         try {
             if (port != null) {
@@ -394,6 +400,11 @@ public class Driver implements java.sql.Driver {
             if (stmteffects != null) {
                 logger.log(Level.FINE, String.format("Setting statement query effects to %s\n", stmteffects));
                 ret.setStatementQueryEffects(stmteffects);
+            }
+
+            if (verifyretry != null) {
+                logger.log(Level.FINE, String.format("Setting verifyretry to %s\n", verifyretry));
+                ret.setVerifyRetry(verifyretry);
             }
         } catch (NumberFormatException e1) {
             logger.log(Level.WARNING, "Incorrect configuration in: " + url, e1);

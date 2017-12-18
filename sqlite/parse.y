@@ -318,8 +318,10 @@ ccons ::= NULL onconf.           {comdb2AddNull(pParse);}
 ccons ::= NOT NULL onconf(R).    {comdb2AddNotNull(pParse, R);}
 ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
                                  {comdb2AddPrimaryKey(pParse,0,R,I,Z);}
-ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,R,
+ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,0,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
+ccons ::= KEY onconf(R).         {comdb2AddIndex(pParse,0,0,R,
+                                   SQLITE_IDXTYPE_DUPKEY);}
 %ifdef COMDB2_UNSUPPORTED
 ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
 %endif
@@ -383,9 +385,13 @@ tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 %endif
 tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
                                  {comdb2AddPrimaryKey(pParse,X,R,I,0);}
-tcons ::= UNIQUE LP sortlist(X) RP onconf(R).
-                                 {comdb2AddIndex(pParse,X,R,
+tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R).
+                                 {comdb2AddIndex(pParse,&I,X,R,
                                    SQLITE_IDXTYPE_UNIQUE);}
+tcons ::= KEY nm_opt(I) LP sortlist(X) RP onconf(R).
+                                 {comdb2AddIndex(pParse,&I,X,R,
+                                   SQLITE_IDXTYPE_DUPKEY);}
+
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E.pExpr);}
@@ -798,9 +804,8 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W)
         orderby_opt(O) limit_opt(L). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
-  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "DELETE");
   sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
-  sqlite3DeleteFrom(pParse,X,W.pExpr);
+  sqlite3DeleteFrom(pParse,X,W.pExpr,O,L.pLimit,L.pOffset);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -808,7 +813,7 @@ cmd ::= with(C) DELETE FROM fullname(X) indexed_opt(I) where_opt(W). {
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3FingerprintDelete(pParse->db, X, W.pExpr);
-  sqlite3DeleteFrom(pParse,X,W.pExpr);
+  sqlite3DeleteFrom(pParse,X,W.pExpr,0,0,0);
 }
 %endif
 
@@ -826,9 +831,8 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3WithPush(pParse, C, 1);
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
-  W.pExpr = sqlite3LimitWhere(pParse, X, W.pExpr, O, L.pLimit, L.pOffset, "UPDATE");
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,O,L.pLimit,L.pOffset);
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -838,7 +842,7 @@ cmd ::= with(C) UPDATE orconf(R) fullname(X) indexed_opt(I) SET setlist(Y)
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
   sqlite3FingerprintUpdate(pParse->db, X, Y, W.pExpr, R);
-  sqlite3Update(pParse,X,Y,W.pExpr,R);
+  sqlite3Update(pParse,X,Y,W.pExpr,R,0,0,0);
 }
 %endif
 
@@ -1324,7 +1328,6 @@ nexprlist(A) ::= expr(Y).
 paren_exprlist(A) ::= .   {A = 0;}
 paren_exprlist(A) ::= LP exprlist(X) RP.  {A = X;}
 %endif SQLITE_OMIT_SUBQUERY
-
 
 ///////////////////////////// The CREATE INDEX command ///////////////////////
 //
@@ -2116,4 +2119,9 @@ rename_comdb2table ::= dryrun(D) ALTER TABLE nm(X) RENAME TO nm(Y). {
 %type dryrun {int}
 dryrun(D) ::= DRYRUN.  {D=1;}
 dryrun(D) ::= . {D=0;}
+
+%type nm_opt {Token}
+nm_opt(A) ::= .      {A.z=0; A.n=0;}
+nm_opt(A) ::= nm(X). {A = X;}
+
 /* vim: set ft=lemon: */

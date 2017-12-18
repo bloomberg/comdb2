@@ -45,6 +45,7 @@ enum CDB2_ErrorCode {
 
     NOMASTER                = -101;
     NOTSERIAL               =  230;
+    SCHEMACHANGE            =  240;
     UNTAGGED_DATABASE       = -102;
     CONSTRAINTS             = -103;
     DEADLOCK                =  203;
@@ -65,10 +66,11 @@ enum CDB2_ErrorCode {
     MALLOC                  = 115;
     NOTSUPPORTED            = 116;
 
-    DUPLICATE               =  299;
-    TZNAME_FAIL             =  401;
-    CHANGENODE              =  402;
-    UNKNOWN                 =  300;
+    TRAN_TOO_BIG            = 202;
+    DUPLICATE               = 299;
+    TZNAME_FAIL             = 401;
+    CHANGENODE              = 402;
+    UNKNOWN                 = 300;
 }
 
 enum ResponseHeader {

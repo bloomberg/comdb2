@@ -120,6 +120,8 @@ ssl_cert_path $TESTDIR
 EOPTIONS
 fi
 
+echo "enable_sql_stmt_caching all" >> ${LRL}
+
 if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
     cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
 fi
@@ -152,6 +154,7 @@ fi
 
 # Configure client SSL
 echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
+echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
 myhostname=`hostname`
 set +e

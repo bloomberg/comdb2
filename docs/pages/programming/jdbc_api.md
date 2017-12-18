@@ -242,6 +242,11 @@ The parameters are as follows:
 
       Allow connection forwarding via `pmux`. The default is `false`.
         
+    * _verify_retry_=Boolean
+
+      Toggle verifyretry. The default is `false`. See also [optimistic concurrency control](transaction_model.html#optimistic-concurrency-control).
+
+        
     \* _To define multiple options, separate them by ampersands._
 
 ### Issuing a Query and Browsing the Result

@@ -575,8 +575,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	DIR *d;
 	int filenum = 0;
 	struct dirent *ent;
-	char dir[512];
-
+	char dir[PATH_MAX];
 	bdb_trans(dbenv->db_home, dir);
 
 	pthread_mutex_lock(&verifylk);

@@ -80,8 +80,8 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
 
 static int allow_pmux_route = 0;
 
-static __thread int _PID;
-static __thread int _MACHINE_ID;
+static int _PID;
+static int _MACHINE_ID;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
@@ -1485,7 +1485,7 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     sbuf2flush(ss);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] == 0) {
+    if (res[0] != '0') {
         sbuf2close(ss);
         return -1;
     }
@@ -2467,12 +2467,12 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 #endif
 
-    free(hndl);
-
-done:
     if (log_calls)
         fprintf(stderr, "%p> cdb2_close(%p) = %d\n", (void *)pthread_self(),
                 hndl, rc);
+    free(hndl);
+
+done:
     return 0;
 }
 

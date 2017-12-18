@@ -124,7 +124,7 @@ static void async_enqueue(void *buf, int bufsz)
 
     pthread_mutex_lock(&sql_log_lk);
 
-    if (sqllog_async_maxsize && async_size + bufsz > sqllog_async_maxsize ||
+    if ((sqllog_async_maxsize && (async_size + bufsz > sqllog_async_maxsize)) ||
         gbl_log_all_sql == 0) {
         async_ndrops++;
         pthread_mutex_unlock(&sql_log_lk);

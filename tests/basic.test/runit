@@ -226,12 +226,12 @@ for node in $cluster ; do
 
     port=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_port()"`
     echo "connect to db with direct port info"
-    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm @$node:port=$port "select comdb2_dbname()"`
+    res=`cdb2sql --tabs $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
 
     echo "connect with wrong db name"
     set +e
-    cdb2sql --tabs ${CDB2_OPTIONS} badname @$node:port=$port "select comdb2_dbname()" &> out.txt
+    cdb2sql --tabs badname @$node:port=$port "select comdb2_dbname()" &> out.txt
     echo "[select comdb2_dbname()] failed with rc -1 DB name mismatch query:badname actual:$dbnm" > out.exp
     rc=$?
     set -e

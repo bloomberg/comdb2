@@ -1080,8 +1080,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         util_tohex(printkey, fstseqnum, seqlen);
     }
 
-    logmsg(LOGMSG_ERROR, "%s from line %d replay returns %d for fstblk %s!\n", __func__, line, 
-            outrc, printkey);
+    logmsg(LOGMSG_ERROR,
+           "%s from line %d replay returns %d for fstblk %s, cnonce %*s!\n",
+           __func__, line, outrc, printkey, iq->snap_info.keylen,
+           iq->snap_info.key);
     free(printkey);
     
     /* If the latest commit is durable, then the blkseq commit must be durable.  
@@ -2654,9 +2656,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             void *replay_data = NULL;
             int replay_len = 0;
             int findout;
-
-            if ((findout = bdb_blkseq_find(thedb->bdb_env, parent_trans, iq->snap_info.key,
-                        iq->snap_info.keylen, &replay_data, &replay_len)) == 0) {
+            findout = bdb_blkseq_find(thedb->bdb_env, parent_trans,
+                                      iq->snap_info.key, iq->snap_info.keylen,
+                                      &replay_data, &replay_len);
+            if (findout == 0) {
                 logmsg(LOGMSG_WARN, "early snapinfo blocksql replay detected\n");
                 outrc = do_replay_case(iq, iq->snap_info.key,
                                        iq->snap_info.keylen, num_reqs, 0,
@@ -5418,12 +5421,19 @@ add_blkseq:
         }
 
         if (!rowlocks) {
-            int t = time_epoch();
-            memcpy(p_buf_fstblk, &t, sizeof(int));
-            rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
-                                   bskeylen, buf_fstblk,
-                                   p_buf_fstblk - buf_fstblk + sizeof(int),
-                                   &replay_data, &replay_len);
+            extern int gbl_always_send_cnonce;
+            // if RC_INTERNAL_RETRY && replicant_can_retry don't add to blkseq
+            if (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY &&
+                (iq->have_snap_info && iq->snap_info.replicant_can_retry)) {
+                /* do nothing */
+            } else {
+                int t = time_epoch();
+                memcpy(p_buf_fstblk, &t, sizeof(int));
+                rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
+                                       bskeylen, buf_fstblk,
+                                       p_buf_fstblk - buf_fstblk + sizeof(int),
+                                       &replay_data, &replay_len);
+            }
 
             if (iq->seqlen == sizeof(uuid_t)) {
                 uuidstr_t us;

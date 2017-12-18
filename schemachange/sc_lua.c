@@ -208,7 +208,21 @@ static int show_versioned_sp_src(struct schema_change_type *sc)
 }
 static int add_versioned_sp(struct schema_change_type *sc)
 {
-    return bdb_add_versioned_sp(sc->table, sc->fname, sc->newcsc2);
+    int rc, bdberr;
+    char *spname = sc->table;
+    char *version = sc->fname;
+    int default_ver_num = bdb_get_sp_get_default_version(spname, &bdberr);
+    char *default_ver_str = NULL;
+    bdb_get_default_versioned_sp(spname, &default_ver_str);
+    free(default_ver_str);
+
+    tran_type *tran = sc->tran;
+    rc = bdb_add_versioned_sp(tran, spname, version, sc->newcsc2);
+    if (default_ver_num <= 0 && default_ver_str == NULL) {
+        // first version - set it default as well
+        return bdb_set_default_versioned_sp(tran, spname, version);
+    }
+    return rc;
 }
 static int chk_versioned_sp(char *name, char *version, struct ireq *iq)
 {
@@ -233,7 +247,7 @@ static int default_versioned_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     int rc;
     if ((rc = chk_versioned_sp(sc->table, sc->fname, iq)) != 0) return rc;
-    return bdb_set_default_versioned_sp(sc->table, sc->fname);
+    return bdb_set_default_versioned_sp(sc->tran, sc->table, sc->fname);
 }
 
 // ----------------

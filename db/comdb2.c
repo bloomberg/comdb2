@@ -284,6 +284,7 @@ int gbl_prefaulthelperthreads = 0;
 int gbl_osqlpfault_threads = 0;
 int gbl_prefault_udp = 0;
 __thread int send_prefault_udp = 0;
+__thread snap_uid_t *osql_snap_info; /* contains cnonce */
 
 int gbl_starttime = 0;
 int gbl_use_sqlthrmark = 1000;
@@ -471,7 +472,7 @@ int gbl_enable_sock_fstsnd = 1;
 u_int gbl_blk_pq_shmkey = 0;
 #endif
 int gbl_enable_position_apis = 0;
-int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
+int gbl_enable_sql_stmt_caching = 0; // comming soon: STMT_CACHE_ALL;
 
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
@@ -705,6 +706,7 @@ int gbl_replicant_gather_rowlocks = 1;
 int gbl_force_old_cursors = 0;
 int gbl_track_curtran_locks = 0;
 int gbl_print_deadlock_cycles = 0;
+int gbl_always_send_cnonce = 1;
 int gbl_dump_page_on_byteswap_error = 0;
 int gbl_dump_after_byteswap = 0;
 int gbl_micro_retry_on_deadlock = 1;
@@ -768,6 +770,7 @@ extern int gbl_random_get_curtran_failures;
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
 
@@ -1343,7 +1346,7 @@ int clear_temp_tables(void)
     while (dirp) {
         errno = 0;
         if ((dp = readdir(dirp)) != NULL) {
-            char filepath[256];
+            char filepath[PATH_MAX];
             if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
                 continue;
             snprintf(filepath, sizeof(filepath) - 1, "%s/%s", path, dp->d_name);
@@ -1370,8 +1373,16 @@ void clean_exit(void)
 
     thedb->exiting = 1;
     stop_threads(thedb);
-
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
+    sleep(4);
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    free_tzdir();
+    tz_hash_free();
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
+
     rc = backend_close(thedb);
     if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
 
@@ -1393,7 +1404,6 @@ void clean_exit(void)
             free(indicator_file);
         }
     }
-
     eventlog_stop();
 
     indicator_file = comdb2_location("marker", "%s.done", thedb->envname);
@@ -1401,24 +1411,36 @@ void clean_exit(void)
     if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
+    cleanup_file_locations();
 
     /*
       Wait for other threads to exit by themselves.
       TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
       them to quit.
     */
-    sleep(4);
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
-    cleanup_q_vars();
-    cleanup_switches();
-    free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
     cleanup_sqlite_master();
+    for (ii = thedb->num_dbs - 1; ii >= 0; ii--) {
+        struct dbtable *tbl = thedb->dbs[ii];
+        delete_schema(tbl->tablename); // tags hash
+        delete_db(tbl->tablename);     // will free db
+        bdb_cleanup_fld_hints(tbl->handle);
+        freedb(tbl);
+    }
+    if (thedb->db_hash) {
+        hash_clear(thedb->db_hash);
+        hash_free(thedb->db_hash);
+        thedb->db_hash = NULL;
+    }
+    cleanup_interned_strings();
+    cleanup_peer_hash();
 
-    logmsg(LOGMSG_WARN, "goodbye\n");
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+    }
+    logmsg(LOGMSG_USER, "goodbye\n");
 
     exit(0);
 }
@@ -1620,6 +1642,8 @@ struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
                     ii, tblname);
             cleanup_newdb(tbl);
             return NULL;
+        } else if (tbl->ix_datacopy[ii]) {
+            tbl->has_datacopy_ix = 1;
         }
 
         tbl->ix_nullsallowed[ii] = 0;
@@ -2059,6 +2083,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname)
         free(tblnames[i++]);
 
     return rc;
+}
+
+int llmeta_load_timepart(struct dbenv *dbenv)
+{
+    /* We need to do this before resuming schema chabge , if any */
+    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
+    dbenv->timepart_views = timepart_views_init(dbenv);
+
+    return thedb->timepart_views ? 0 : -1;
 }
 
 /* replace the table names and dbnums saved in the low level meta table with the
@@ -2656,7 +2689,7 @@ int appsock_repopnewlrl(SBUF2 *sb, int *keepsocket)
     return 0;
 }
 
-int llmeta_open(void)
+static int llmeta_open(void)
 {
     /* now that we have bdb_env open, we can get at llmeta */
     char llmetaname[256];
@@ -2672,8 +2705,8 @@ int llmeta_open(void)
     if (bdb_llmeta_open(llmetaname, thedb->basedir, thedb->bdb_env,
                         0 /*create_override*/, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
-        logmsg(LOGMSG_ERROR, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
+        logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
+               bdberr);
         return -1;
     }
     return 0;
@@ -2747,16 +2780,21 @@ static int purge_extents(void *obj, void *arg)
             logmsg(LOGMSG_ERROR, "mkdir(%s): %s\n", savdir, strerror(errno));
         }
         while (j < i) {
+            int qlen, slen;
             char qfile[PATH_MAX], sfile[PATH_MAX];
-            snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, txndir,
-                     q->name, nums[j]);
-            snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64, savdir,
-                     q->name, nums[j]);
+            qlen = snprintf(qfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            txndir, q->name, nums[j]);
+            slen = snprintf(sfile, PATH_MAX, "%s/__dbq.%s.queue.%" PRIu64,
+                            savdir, q->name, nums[j]);
+            if (qlen >= sizeof(qfile) || slen >= sizeof(sfile)) {
+                logmsg(LOGMSG_ERROR, "Truncated paths %s and %s\n", qfile,
+                       sfile);
+            }
             if (rename(qfile, sfile) == 0) {
                 logmsg(LOGMSG_INFO, "%s -> %s\n", qfile, sfile);
             } else {
                 logmsg(LOGMSG_ERROR, "%s -> %s failed:%s\n", qfile, sfile,
-                        strerror(errno));
+                       strerror(errno));
             }
             ++j;
         }
@@ -3516,8 +3554,6 @@ static int init(int argc, char **argv)
 
     /* open the table */
     if (llmeta_open()) {
-        logmsg(LOGMSG_FATAL, "Failed to open low level meta table, rc: %d\n",
-                bdberr);
         return -1;
     }
 
@@ -3551,11 +3587,32 @@ static int init(int argc, char **argv)
     }
     /* we will load the tables from the llmeta table */
     else {
+        int waitfileopen =
+            bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_FILE_OPEN);
+        if (waitfileopen) {
+            logmsg(LOGMSG_INFO, "Waiting to open file\n");
+            poll(NULL, 0, waitfileopen);
+            logmsg(LOGMSG_INFO, "Done waiting\n");
+        }
+
+        /* we would like to open the files under schema lock, so that
+           we don't race with a schema change from master (at this point
+           environment is opened, but files are not !*/
+        pthread_rwlock_wrlock(&schema_lk);
+
         if (llmeta_load_tables(thedb, dbname)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
+            pthread_rwlock_unlock(&schema_lk);
             return -1;
         }
+
+        if (llmeta_load_timepart(thedb)) {
+            logmsg(LOGMSG_ERROR, "could not load time partitions\n");
+            pthread_rwlock_unlock(&schema_lk);
+            return -1;
+        }
+        pthread_rwlock_unlock(&schema_lk);
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
@@ -3886,8 +3943,6 @@ static int init(int argc, char **argv)
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
-        if (gbl_create_mode)
-           logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
         clean_exit();
     }
 
@@ -4827,8 +4882,6 @@ static void register_all_int_switches()
                         &gbl_noenv_messages);
     register_int_switch("track_curtran_locks", "Print curtran lockinfo",
                         &gbl_track_curtran_locks);
-    register_int_switch("print_deadlock_cycles", "Print all deadlock cycles",
-                        &gbl_print_deadlock_cycles);
     register_int_switch("replicate_rowlocks", "Replicate rowlocks",
                         &gbl_replicate_rowlocks);
     register_int_switch("gather_rowlocks_on_replicant",
@@ -5003,6 +5056,9 @@ static void register_all_int_switches()
     register_int_switch("new_indexes",
                         "Let replicants send indexes values to master",
                         &gbl_new_indexes);
+    register_int_switch("mifid2_datetime_range",
+                        "Extend datetime range to meet mifid2 requirements",
+                        &gbl_mifid2_datetime_range);
 }
 
 static void getmyid(void)
@@ -5043,14 +5099,8 @@ void create_marker_file()
     if (tmpfd != -1) close(tmpfd);
 }
 
-static void set_timepart_and_handle_resume_sc()
+static void handle_resume_sc()
 {
-    /* We need to do this before resuming schema chabge , if any */
-    logmsg(LOGMSG_INFO, "Reloading time partitions\n");
-    thedb->timepart_views = timepart_views_init(thedb);
-    if (!thedb->timepart_views)
-        abort();
-
     /* if there is an active schema changes, resume it, this is automatically
      * done every time the master changes, but on startup the low level meta
      * table wasn't open yet so we couldn't check to see if a schema change was
@@ -5222,7 +5272,7 @@ int main(int argc, char **argv)
     */
     gbl_tunables->freeze = 1;
 
-    set_timepart_and_handle_resume_sc();
+    handle_resume_sc();
 
     /* Creating a server context wipes out the db #'s dbcommon entries.
      * Recreate them. */
@@ -5510,6 +5560,11 @@ int comdb2_is_standalone(void *dbenv)
 const char *comdb2_get_dbname(void)
 {
     return thedb->envname;
+}
+
+int sc_ready(void)
+{
+    return thedb->timepart_views != 0;
 }
 
 #define QUOTE_(x) #x

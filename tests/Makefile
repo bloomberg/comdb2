@@ -69,6 +69,8 @@ basicops_nokey:
 
 basicops: basicops_nokey
 	$(shell TESTDIR="${TESTDIR}" CLUSTER="${CLUSTER}" SKIPSSL="${SKIPSSL}" tools/keygen.sh)
+	$(shell TOTAL="${TOTAL}" tools/smalldelay.sh)
+
 
 .PHONY: tools
 

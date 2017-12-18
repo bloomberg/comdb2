@@ -256,6 +256,16 @@ public class Comdb2Connection implements Connection {
             hndl.setStatementQueryEffects(false);
     }
 
+    public void setVerifyRetry(String val) {
+        if ("true".equalsIgnoreCase(val)
+                || "1".equalsIgnoreCase(val)
+                || "T".equalsIgnoreCase(val)
+                || "on".equalsIgnoreCase(val))
+            hndl.setVerifyRetry(true);
+        else
+            hndl.setVerifyRetry(false);
+    }
+
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
         return hndl.getDbHosts();
     }

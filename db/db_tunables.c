@@ -128,6 +128,8 @@ extern int gbl_abort_on_unset_ha_flag;
 extern int gbl_write_dummy_trace;
 extern int gbl_abort_on_incorrect_upgrade;
 extern int gbl_poll_in_pg_free_recover;
+extern int gbl_print_deadlock_cycles;
+extern int gbl_always_send_cnonce;
 extern int gbl_rep_badgen_trace;
 extern int gbl_dump_zero_coherency_timestamp;
 extern int gbl_allow_incoherent_sql;
@@ -777,11 +779,15 @@ int free_gbl_tunables()
         free_tunable(gbl_tunables->array[i]);
         free(gbl_tunables->array[i]);
     }
-    hash_free(gbl_tunables->hash);
+    if (gbl_tunables->hash) {
+        hash_clear(gbl_tunables->hash);
+        hash_free(gbl_tunables->hash);
+        gbl_tunables->hash = NULL;
+    }
     free(gbl_tunables->array);
     pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
-    gbl_tunables = 0;
+    gbl_tunables = NULL;
     return 0;
 }
 
@@ -821,14 +827,15 @@ int register_tunable(comdb2_tunable tunable)
         free_tunable(t);
 
         already_exists = 1;
-    } else if (!(t = malloc(sizeof(comdb2_tunable))))
+    } else if ((t = malloc(sizeof(comdb2_tunable))) == NULL)
         goto oom_err;
 
     if (!tunable.name) {
         logmsg(LOGMSG_ERROR, "%s: Tunable must have a name.\n", __func__);
         goto err;
     }
-    if (!(t->name = strdup(tunable.name))) goto oom_err;
+    if ((t->name = strdup(tunable.name)) == NULL)
+        goto oom_err;
     /* Keep tunable names in lower case (to be consistent). */
     tunable_tolower(t->name);
 

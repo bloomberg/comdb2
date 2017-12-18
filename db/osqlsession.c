@@ -164,7 +164,7 @@ static int clear_messages(osql_sess_t *sess)
     char *tmp = NULL;
     int cnt = 0;
 
-    while (tmp = queue_next(sess->que)) {
+    while ((tmp = queue_next(sess->que)) != NULL) {
         free(tmp);
         cnt++;
     }
@@ -197,7 +197,7 @@ int osql_sess_addclient(osql_sess_t *sess)
 {
     int rc = 0;
 
-    if (rc = pthread_mutex_lock(&sess->clients_mtx)) {
+    if ((rc = pthread_mutex_lock(&sess->clients_mtx)) != 0) {
         fprintf(stderr, "%s: pthread_mutex_lock failed rc = %d\n", __func__,
                 rc);
         abort();
@@ -212,7 +212,7 @@ int osql_sess_addclient(osql_sess_t *sess)
 
     sess->clients++;
 
-    if (rc = pthread_mutex_unlock(&sess->clients_mtx)) {
+    if ((rc = pthread_mutex_unlock(&sess->clients_mtx)) != 0) {
         fprintf(stderr, "%s: pthread_mutex_unlock failed rc = %d\n", __func__,
                 rc);
         return -1;
@@ -231,7 +231,7 @@ int osql_sess_remclient(osql_sess_t *sess)
 
     int rc = 0;
 
-    if (rc = pthread_mutex_lock(&sess->clients_mtx)) {
+    if ((rc = pthread_mutex_lock(&sess->clients_mtx)) != 0) {
         fprintf(stderr, "%s: pthread_mutex_lock failed rc = %d\n", __func__,
                 rc);
         // this is happening for me
@@ -255,7 +255,7 @@ int osql_sess_remclient(osql_sess_t *sess)
                 __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
 
-    if (rc = pthread_mutex_unlock(&sess->clients_mtx)) {
+    if ((rc = pthread_mutex_unlock(&sess->clients_mtx)) != 0) {
         fprintf(stderr, "%s: pthread_mutex_unlock failed rc = %d\n", __func__,
                 rc);
         return -1;
@@ -539,7 +539,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
             !bdb_attr_get(thedb->bdb_attr,
                           BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
             /* release the session */
-            if (rc = osql_repository_put(sess, is_msg_done)) {
+            if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
                 fprintf(stderr, "%s: rc =%d\n", __func__, rc);
             }
 
@@ -577,7 +577,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, void *data,
         }
 
         /* release the session */
-        if (rc = osql_repository_put(sess, is_msg_done)) {
+        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
             fprintf(stderr, "%s: rc =%d\n", __func__, rc);
         }
 
@@ -629,7 +629,7 @@ int osql_session_testterminate(void *obj, void *arg)
 
     if (!node || sess->offhost == node) {
 
-        if (rc = pthread_mutex_lock(&sess->mtx)) {
+        if ((rc = pthread_mutex_lock(&sess->mtx)) != 0) {
             fprintf(stderr, "pthread_mutex_lock: error code %d\n", rc);
             return rc;
         }
@@ -656,7 +656,7 @@ int osql_session_testterminate(void *obj, void *arg)
 
         /* wake up the block processor waiting for this request */
 
-        if (rc = pthread_mutex_unlock(&sess->mtx)) {
+        if ((rc = pthread_mutex_unlock(&sess->mtx)) != 0) {
             fprintf(stderr, "pthread_mutex_unlock: error code %d\n", rc);
             return rc;
         }
@@ -791,7 +791,7 @@ osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
     /* alloc object */
     sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
     if (!sess) {
-        fprintf(stderr, "%s:unable to allocate %d bytes\n", __func__,
+        fprintf(stderr, "%s:unable to allocate %zu bytes\n", __func__,
                 sizeof(*sess));
         return NULL;
     }
