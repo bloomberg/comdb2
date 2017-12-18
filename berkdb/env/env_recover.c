@@ -1067,11 +1067,10 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	    ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
 #if 0
 		progress = 34 + (int)(33 * (__lsn_diff(&first_lsn,
-			&last_lsn, &lsn, log_size, 0) / nfiles));
 #else
 		progress = (int)(100 * (__lsn_diff(&first_lsn,
-			&last_lsn, &lsn, log_size, 0) / nfiles));
 #endif
+			&last_lsn, &lsn, log_size, 0) / nfiles));
 		log_recovery_progress(2, progress);
 
 		if (dbenv->db_feedback != NULL) {
@@ -1130,11 +1129,10 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 			break;
 #if 0
 		progress = 67 + (int)(33 * (__lsn_diff(&first_lsn,
-			&last_lsn, &lsn, log_size, 1) / nfiles));
 #else
 		progress = (int)(100 * (__lsn_diff(&first_lsn,
-			&last_lsn, &lsn, log_size, 1) / nfiles));
 #endif
+			&last_lsn, &lsn, log_size, 1) / nfiles));
 		log_recovery_progress(3, progress);
 
 		if (dbenv->db_feedback != NULL) {
@@ -1679,11 +1677,10 @@ __env_openfiles(dbenv, logc, txninfo,
 			DB_ASSERT(last_lsn != NULL);
 #if 0
 			progress = (int)(33 * (__lsn_diff(open_lsn,
-				last_lsn, &lsn, log_size, 1) / nfiles));
 #else
 			progress = (int)(100 * (__lsn_diff(open_lsn,
-				last_lsn, &lsn, log_size, 1) / nfiles));
 #endif
+				last_lsn, &lsn, log_size, 1) / nfiles));
 			log_recovery_progress(1, progress);
 
 			if (dbenv->db_feedback != NULL) {
