@@ -1022,58 +1022,6 @@ static int dbtype_valid(char *type)
     return 0;
 }
 
-static void replace_args(int argc, char *argv[])
-{
-    int ii;
-
-    for (ii = 1; ii < argc; ii++) {
-        if (argv[ii][0] != '-')
-            continue;
-        if (!strcmp(argv[ii], "-pause"))
-            argv[ii] = "--pause";
-        else if (!strcmp(argv[ii], "-binary"))
-            argv[ii] = "--binary";
-        else if (!strcmp(argv[ii], "-tabs"))
-            argv[ii] = "--tabs";
-        else if (!strcmp(argv[ii], "-strblobs"))
-            argv[ii] = "--strblobs";
-        else if (!strcmp(argv[ii], "-debug"))
-            argv[ii] = "--debug";
-        else if (!strcmp(argv[ii], "-debugtrace"))
-            argv[ii] = "--debugtrace";
-        else if (!strcmp(argv[ii], "-showports"))
-            argv[ii] = "--showports";
-        else if (!strcmp(argv[ii], "-showeffects"))
-            argv[ii] = "--showeffects";
-        else if (!strcmp(argv[ii], "-cost"))
-            argv[ii] = "--cost";
-        else if (!strcmp(argv[ii], "-exponent"))
-            argv[ii] = "--exponent";
-        else if (!strcmp(argv[ii], "-isatty"))
-            argv[ii] = "--isatty";
-        else if (!strcmp(argv[ii], "-isnotatty"))
-            argv[ii] = "--isnotatty";
-        else if (!strcmp(argv[ii], "-help"))
-            argv[ii] = "--help";
-        else if (!strcmp(argv[ii], "-script"))
-            argv[ii] = "--script";
-        else if (!strcmp(argv[ii], "-maxretries"))
-            argv[ii] = "--maxretries";
-        else if (!strcmp(argv[ii], "-precision"))
-            argv[ii] = "--precision";
-        else if (!strcmp(argv[ii], "-cdb2cfg"))
-            argv[ii] = "--cdb2cfg";
-        else if (!strcmp(argv[ii], "-file"))
-            argv[ii] = "--file";
-        else if (!strcmp(argv[ii], "-gensql"))
-            argv[ii] = "--gensql";
-        else if (!strcmp(argv[ii], "-type"))
-            argv[ii] = "--type";
-        else if (!strcmp(argv[ii], "-host"))
-            argv[ii] = "--host";
-    }
-}
-
 void send_cancel_cnonce(const char *cnonce)
 {
     if (!gbl_in_stmt) return;
