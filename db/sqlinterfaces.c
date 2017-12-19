@@ -3893,6 +3893,8 @@ static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
         return 1;
     if (strncasecmp(sql, "truncate", 8) == 0)
         return 1;
+    if (strncasecmp(sql, "put", 3) == 0)
+        return 1;
     return 0;
 }
 
