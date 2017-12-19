@@ -635,3 +635,100 @@ keys
 [CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
 (rows inserted=1)
 (i=1, f1=1.100000, f2=1.100000, f3=1.100000)
+[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name.
+[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG 'DUP' FOR INDICES 1 AND 0!
+[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG 'XXXX' FOR INDICES 1 AND 0!
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', keyname='$KEY_6E29884F', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='$KEY_DC0D8A36', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='DUP1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='DUP2', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t3', keyname='$KEY_FA6CEBB6', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t3', keyname='$KEY_4848E9CF', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t4', keyname='UNIQ1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t4', keyname='UNIQ2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='$KEY_3AE602D4', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='$KEY_F5B8CA59', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='$KEY_FEE19704', keynumber=2, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='DUP_KEY', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='UNIQUE_KEY', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_6E29884F" = i + j 
+		dup "$KEY_DC0D8A36" = j + i 
+	}
+')
+(type='index', name='$$KEY_6E29884F_6E29884F', tbl_name='t1', rootpage=5, sql='create index "$$KEY_6E29884F_6E29884F" on "t1" (i, j);', csc2=NULL)
+(type='index', name='$$KEY_DC0D8A36_DC0D8A36', tbl_name='t1', rootpage=6, sql='create index "$$KEY_DC0D8A36_DC0D8A36" on "t1" (j, i);', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=7, sql='create table "t2"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "dup1" = i + j 
+		dup "dup2" = j + i 
+	}
+')
+(type='index', name='$DUP1_E8BDFAE1', tbl_name='t2', rootpage=8, sql='create index "$DUP1_E8BDFAE1" on "t2" (i, j);', csc2=NULL)
+(type='index', name='$DUP2_5A99F898', tbl_name='t2', rootpage=9, sql='create index "$DUP2_5A99F898" on "t2" (j, i);', csc2=NULL)
+(type='table', name='t3', tbl_name='t3', rootpage=10, sql='create table "t3"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_FA6CEBB6" = i + j 
+		"$KEY_4848E9CF" = j + i 
+	}
+')
+(type='index', name='$$KEY_FA6CEBB6_FA6CEBB6', tbl_name='t3', rootpage=11, sql='create index "$$KEY_FA6CEBB6_FA6CEBB6" on "t3" (i, j);', csc2=NULL)
+(type='index', name='$$KEY_4848E9CF_4848E9CF', tbl_name='t3', rootpage=12, sql='create index "$$KEY_4848E9CF_4848E9CF" on "t3" (j, i);', csc2=NULL)
+(type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"uniq1" = i + j 
+		"uniq2" = j + i 
+	}
+')
+(type='index', name='$UNIQ1_FF23FD33', tbl_name='t4', rootpage=14, sql='create index "$UNIQ1_FF23FD33" on "t4" (i, j);', csc2=NULL)
+(type='index', name='$UNIQ2_4D07FF4A', tbl_name='t4', rootpage=15, sql='create index "$UNIQ2_4D07FF4A" on "t4" (j, i);', csc2=NULL)
+(type='table', name='t5', tbl_name='t5', rootpage=16, sql='create table "t5"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		"$KEY_3AE602D4" = i 
+		dup "$KEY_F5B8CA59" = i + j 
+		"$KEY_FEE19704" = i + j 
+		dup "dup_key" = i + j 
+		"unique_key" = j + i 
+	}
+')
+(type='index', name='$$KEY_3AE602D4_3AE602D4', tbl_name='t5', rootpage=17, sql='create index "$$KEY_3AE602D4_3AE602D4" on "t5" (i);', csc2=NULL)
+(type='index', name='$$KEY_F5B8CA59_F5B8CA59', tbl_name='t5', rootpage=18, sql='create index "$$KEY_F5B8CA59_F5B8CA59" on "t5" (i, j);', csc2=NULL)
+(type='index', name='$$KEY_FEE19704_FEE19704', tbl_name='t5', rootpage=19, sql='create index "$$KEY_FEE19704_FEE19704" on "t5" (i, j);', csc2=NULL)
+(type='index', name='$DUP_KEY_F5B8CA59', tbl_name='t5', rootpage=20, sql='create index "$DUP_KEY_F5B8CA59" on "t5" (i, j);', csc2=NULL)
+(type='index', name='$UNIQUE_KEY_4CC5957D', tbl_name='t5', rootpage=21, sql='create index "$UNIQUE_KEY_4CC5957D" on "t5" (j, i);', csc2=NULL)
