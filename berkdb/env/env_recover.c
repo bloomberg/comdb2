@@ -599,7 +599,7 @@ void log_recovery_progress(int stage, int progress)
 
 	/* End-of-stage marker */
 	if (last_stage == stage && progress == -1) {
-		logmsg(LOGMSG_WARN, " .. done\n", last_stage);
+		logmsg(LOGMSG_WARN, " .. done\n");
 		return;
 	}
 
