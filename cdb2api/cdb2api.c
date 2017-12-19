@@ -108,6 +108,7 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
+    srandom(time(0));
 }
 
 static int is_sql_read(const char *sqlstr)
