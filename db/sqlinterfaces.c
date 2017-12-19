@@ -3751,8 +3751,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
     if (rec->stmt) {
-        // save expanded query
-        rec->sql = sqlite3_sql(rec->stmt);
+        rec->sql = sqlite3_sql(rec->stmt); // save expanded query
+        int rc = sqlite3LockStmtTables(rec->stmt);
+        if (rc) {
+            cleanup_stmt_entry(rec->stmt_entry);
+            rec->stmt = NULL;
+        }
     }
 }
 
