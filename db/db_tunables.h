@@ -1314,7 +1314,7 @@ REGISTER_TUNABLE("print_deadlock_cycles",
                  "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_send_cnonce",
-                 "Always send cnonce to master. (Default: off)",
+                 "Always send cnonce to master. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG, NULL, NULL,
                  NULL, NULL);
 
