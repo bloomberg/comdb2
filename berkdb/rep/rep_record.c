@@ -3375,11 +3375,8 @@ err:
 	pthread_mutex_lock(&dbenv->recover_lk);
 	listc_rfl(&dbenv->inflight_transactions, rp);
 	listc_abl(&dbenv->inactive_transactions, rp);
-	if (listc_size(&dbenv->inflight_transactions) == 0) {
-		logmsg(LOGMSG_ERROR, "%s broadcasting 0 inflight_transactions\n",
-				__func__);
+	if (listc_size(&dbenv->inflight_transactions) == 0)
 		pthread_cond_broadcast(&dbenv->recover_cond);
-	}
 	pthread_mutex_unlock(&dbenv->recover_lk);
 
 	if (!dbenv->lsn_chain) {

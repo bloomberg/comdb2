@@ -1,8 +1,9 @@
 #!/bin/bash
 
-export debug=1
+#export debug=1
 [[ "$debug" == 1 ]] && set -x
 
+# test requires a cluster
 needcluster=1
 db=$1
 
@@ -22,7 +23,7 @@ master_bounces=5
 # length of processor thread poll
 processor_thd_polltime_ms=3000
 
-# 
+# writer threads will stop when they see this file
 stop_file=./testcase.done
 
 if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
@@ -161,6 +162,11 @@ function runtest
 
         sleep 1
         let j=j+1
+    done
+
+    block_until_connected 100
+    for node in $CLUSTER; do
+        cdb2sql ${CDB2_OPTIONS} $db default --host $node "PUT TUNABLE processor_thd_poll 0"
     done
 
     touch $stop_file
