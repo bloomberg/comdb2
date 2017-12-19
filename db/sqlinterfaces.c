@@ -8096,9 +8096,6 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         allow_master_exec == 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s line %d td %u new query on master, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
         return 1;
