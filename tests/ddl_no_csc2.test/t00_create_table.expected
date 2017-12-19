@@ -297,9 +297,9 @@ keys
 (tablename='t6', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t7', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t8', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t6', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t8', keyname='COMDB2_PK', foreigntablename='t7', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t6', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_919A0CAB', tablename='t8', keyname='COMDB2_PK', foreigntablename='t7', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
@@ -504,10 +504,10 @@ constraints
 (tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t4', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t5', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
-(tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
-(tablename='t5', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
+(name='$CONSTRAINT_C6A17957', tablename='t5', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 

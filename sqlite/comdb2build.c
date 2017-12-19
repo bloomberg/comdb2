@@ -21,6 +21,7 @@
 #include <views.h>
 #include <logmsg.h>
 #include <str0.h>
+#include "crc32c/crc32c.h"
 
 #define INCLUDE_KEYWORDHASH_H
 #define INCLUDE_FINALKEYWORD_H
@@ -2234,21 +2235,100 @@ static char *format_csc2(struct comdb2_ddl_context *ctx, int nconstraints,
     return str;
 }
 
+#define COMDB2_PK "COMDB2_PK"
+#define GEN_KEY_PREFIX "KEY"
+#define GEN_CONS_PREFIX "CONSTRAINT"
+
 /* Generate a key name for the specified key. */
-static char *gen_key_name(struct comdb2_ddl_context *ctx, const char *tabname,
-                          struct schema *key)
+static void gen_key_name(const char *tabname, struct schema *key, char *buf,
+                         size_t size)
 {
-    char buf[53];
-    char *keyname;
-
-    form_new_style_name(buf, sizeof(buf), key, "KEY", tabname);
-
-    keyname = comdb2_strdup(ctx->mem, buf);
-
-    return keyname;
+    form_new_style_name(buf, size, key, GEN_KEY_PREFIX, tabname);
 }
 
-#define COMDB2_PK "COMDB2_PK"
+/*
+  Form the constraint name using crc32 over :
+      - child key column(s),
+      - parent table name, and
+      - parent key column(s).
+*/
+static int gen_constraint_name_int(struct constraint *constraint, char *buf,
+                                   size_t size)
+{
+    unsigned long crc = 0;
+
+    assert(constraint);
+
+    for (int i = 0; i < constraint->ncols; i++) {
+        crc = crc32(crc, (unsigned char *)constraint->column[i],
+                    strlen(constraint->column[i]));
+    }
+
+    crc = crc32(crc, (unsigned char *)constraint->referenced_table,
+                strlen(constraint->referenced_table));
+
+    for (int i = 0; i < constraint->ncols; i++) {
+        crc = crc32(crc, (unsigned char *)constraint->referenced_column[i],
+                    strlen(constraint->referenced_column[i]));
+    }
+
+    snprintf(buf, size, "$%s_%X", GEN_CONS_PREFIX, crc);
+
+    return 0;
+}
+
+int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *buf,
+                        size_t size)
+{
+    struct constraint constraint;
+    struct dbtable *table;
+    struct schema *key;
+    int found;
+
+    /* Child key columns */
+    found = 0;
+    for (int i = 0; i < pConstraint->lcltable->schema->nix; i++) {
+        if (strcmp(pConstraint->lclkeyname,
+                   pConstraint->lcltable->schema->ix[i]->csctag) == 0) {
+            found = 1;
+            key = pConstraint->lcltable->schema->ix[i];
+
+            for (int j = 0; j < key->nmembers; j++) {
+                constraint.column[j] = key->member[j].name;
+            }
+            constraint.ncols = key->nmembers;
+            constraint.flags = 0; /* Safety */
+            break;
+        }
+    }
+    assert(found);
+
+    /* Parent table name */
+    constraint.referenced_table = pConstraint->table[parent_idx];
+
+    /* Parent key columns */
+    table = get_dbtable_by_name(constraint.referenced_table);
+    /* TODO: check for error */
+    assert(table);
+    found = 0;
+    for (int i = 0; i < table->schema->nix; i++) {
+        if (strcmp(pConstraint->keynm[parent_idx],
+                   table->schema->ix[i]->csctag) == 0) {
+            found = 1;
+            key = table->schema->ix[i];
+
+            for (int j = 0; j < key->nmembers; j++) {
+                constraint.referenced_column[j] = key->member[j].name;
+            }
+            break;
+        }
+    }
+    assert(found);
+
+    gen_constraint_name_int(&constraint, buf, size);
+
+    return 0;
+}
 
 static int is_pk(const char *key)
 {
@@ -2297,8 +2377,12 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           the command.
         */
         if (current_key->schema->csctag == 0) {
-            current_key->schema->csctag =
-                gen_key_name(ctx, ctx->name, current_key->schema);
+            current_key->schema->csctag = comdb2_malloc(ctx->mem, 60);
+            if (current_key->schema->csctag == 0)
+                goto oom;
+
+            gen_key_name(ctx->name, current_key->schema,
+                         current_key->schema->csctag, 60);
             if (current_key->schema->csctag == 0) goto oom;
         }
 
@@ -3217,12 +3301,23 @@ cleanup:
     return;
 }
 
+void comdb2DropPrimaryKey(Parse *pParse /* Parsing context */
+)
+{
+    Token t = {COMDB2_PK, sizeof(COMDB2_PK) - 1};
+    comdb2AlterDropIndex(pParse, &t);
+    return;
+}
+
 void comdb2AddIndex(
-    Parse *pParse,   /* All information about this parse */
-    Token *pName,    /* Index name (Optional) */
-    ExprList *pList, /* A list of columns to be indexed */
-    int onError,     /* OE_Abort, OE_Ignore, OE_Replace, or OE_None */
-    u8 idxType       /* The index type */
+    Parse *pParse,      /* All information about this parse */
+    Token *pName,       /* Index name (Optional) */
+    ExprList *pList,    /* A list of columns to be indexed */
+    int onError,        /* OE_Abort, OE_Ignore, OE_Replace, or OE_None */
+    ExprSpan *pPIWhere, /* WHERE clause for partial indices */
+    int sortOrder,      /* Sort order of primary key when pList==NULL */
+    u8 idxType,         /* The index type */
+    int withOpts        /* WITH options (DATACOPY) */
 )
 {
     struct schema *key;
@@ -3275,6 +3370,10 @@ void comdb2AddIndex(
         assert(idxType == SQLITE_IDXTYPE_UNIQUE);
     }
 
+    if (withOpts == 1) {
+        key->flags |= SCHEMA_DATACOPY;
+    }
+
     /*
       pList == 0 imples that the UNIQUE/DUP key was specified in the column
       definition.
@@ -3305,6 +3404,13 @@ void comdb2AddIndex(
                 member->flags |= INDEX_DESCEND;
             }
         }
+    }
+
+    if (pPIWhere && pPIWhere->pExpr != 0) {
+        assert((pPIWhere->zEnd - pPIWhere->zStart - 2) > 0);
+        key->where = comdb2_strndup(ctx->mem, pPIWhere->zStart + 1,
+                                    pPIWhere->zEnd - pPIWhere->zStart - 2);
+        if (key->where == 0) goto oom;
     }
 
     struct comdb2_schema *entry =
@@ -3547,6 +3653,7 @@ static int check_constraint_action(Parse *pParse, int *flags)
     return 0;
 }
 
+/* TODO: Check for duplicate FKs */
 void comdb2CreateForeignKey(
     Parse *pParse,      /* Parsing context */
     ExprList *pFromCol, /* Columns in this table that point to other table */
@@ -3680,6 +3787,64 @@ void comdb2DeferForeignKey(Parse *pParse, int isDeferred)
         return;
     }
     return;
+}
+
+void comdb2DropForeignKey(Parse *pParse, /* Parser context */
+                          Token *pName   /* Foreign key name */
+)
+{
+    char *name;
+    int fk_found = 0;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct comdb2_constraint *current;
+    char constraint_name[60];
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    assert(pParse->db->init.busy == 0);
+
+    name = comdb2_strndup(ctx->mem, pName->z, pName->n);
+    if (name == 0)
+        goto oom;
+    sqlite3Dequote(name);
+
+    /* Check whether the FK exists. */
+    LISTC_FOR_EACH(&ctx->constraint_list, current, lnk)
+    {
+        /* Ignore the dropped constraints. */
+        if (current->constraint == 0)
+            continue;
+
+        gen_constraint_name_int(current->constraint, constraint_name,
+                                sizeof(constraint_name));
+
+        if ((strncmp(name, constraint_name, pName->n)) == 0) {
+            /* Mark FK as dropped. */
+            current->constraint = 0;
+            fk_found = 1;
+            break;
+        }
+    }
+
+    if (fk_found == 0) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Foreign key '%s' not found.", name);
+        goto cleanup;
+    }
+
+    /* Foreign key marked for removal. */
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    free_ddl_context(pParse);
 }
 
 /*
@@ -3854,7 +4019,7 @@ static void comdb2DropIndexInt(Parse *pParse, struct dbtable *table,
         if ((strcasecmp(current_key->schema->csctag, idx_name)) == 0) {
             found = 1;
 
-            /* Also drop the constraints associated with this key.  */
+            /* First, drop the constraints associated with this key.  */
             drop_dependent_cons(ctx, current_key->schema);
 
             /* Mark the key as deleted. */
@@ -4012,6 +4177,70 @@ void comdb2DropIndexExtn(Parse *pParse, Token *idxName, Token *tabName,
 
     comdb2DropIndexInt(pParse, table, index_name);
 
+    return;
+}
+
+/*
+  ALTER TABLE [..] DROP INDEX ..
+*/
+void comdb2AlterDropIndex(Parse *pParse, Token *pName)
+{
+    struct comdb2_schema *current_key;
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    char *keyname;
+    int key_found = 0;
+    size_t len;
+
+    assert(pName->n);
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & COMDB2_DDL_CTX_FLAG_NOOP) != 0) {
+        return;
+    }
+
+    keyname = comdb2_strndup(ctx->mem, pName->z, pName->n);
+    if (keyname == 0)
+        goto oom;
+    sqlite3Dequote(keyname);
+    len = strlen(keyname);
+
+    /* Check if a "non-dropped" index exists with this name. */
+    LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
+    {
+        /* Key has been dropped. */
+        if (current_key->schema == 0)
+            continue;
+
+        if (strncasecmp(current_key->schema->csctag, keyname, len) == 0) {
+            key_found = 1;
+            break;
+        }
+    }
+
+    if (key_found == 0) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Key '%s' not found.", keyname);
+        goto cleanup;
+    } else {
+        /* First, drop the constraints associated with this key.  */
+        drop_dependent_cons(ctx, current_key->schema);
+
+        /* Mark the key as deleted. */
+        current_key->schema = 0;
+    }
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    free_ddl_context(pParse);
     return;
 }
 
