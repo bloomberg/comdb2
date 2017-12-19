@@ -7,6 +7,8 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
+export DBNAME:=reallylongtestnametomakesurethatthedbworksfinewithlongname
+
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller
 
