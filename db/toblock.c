@@ -47,6 +47,7 @@
 #include <lockmacro.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "tag.h"
@@ -5771,6 +5772,9 @@ add_blkseq:
                     iq->corigin, iq->cost, iq->__limits.maxcost_warn);
         }
     }
+    int tsleep = 0;
+    if ((tsleep = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_AFTER_TOBLOCK_COMMIT)) != 0)
+        usleep(1000*tsleep);
 
 cleanup:
     bdb_checklock(thedb->bdb_env);

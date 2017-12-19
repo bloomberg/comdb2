@@ -59,18 +59,18 @@ kill_restart_node()
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
         sleep $delay
         if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         else
-            $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
         fi
     else
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
         sleep $delay
         echo "$DBNAME: starting single node"
-        echo "$comdb2task $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $comdb2task $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
     fi
 
     popd
@@ -94,30 +94,43 @@ for node in $cluster ; do
 done
 
 master=`getmaster`
+while [ "$master" == "`hostname`" ] ; do
+    echo 'send downgrade so master is not localhost'
+    cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('downgrade')"
+    sleep 2
+    master=`getmaster`
+done
+
 # get a replicant
-node=`getnonmaster`
-if [ $node == $master ] ; then
-    failexit "$node is the master, need to talk to a different node"
-fi
+node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
 
 # store 100 in account with id 1
-cdb2sql ${CDB2_OPTIONS} $dbnm --host $node "insert into t1 values (1, 100)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)"
 
 
 #set master commit_delay to X seconds so we have time to kill the replicant
-cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('bdb setattr commitdelay 3000')"
+cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('bdb setattr delay_after_toblock_commit 3000')"
 
-cdb2sql --debug-trace ${CDB2_OPTIONS} $dbnm --host $node "update t1 set sum=sum + 10 where id = 1" &> upd.out & 
+#commands:
+#select comdb2_host()
+#set HASQL on
+#update > in.sql
+cdb2sql --debugtrace ${CDB2_OPTIONS} $dbnm default "update t1 set sum=sum + 10 where id = 1" &>> upd.out & 
 upid=$!
 
-#kill replicant
+sleep 1
+echo "killing replicant" >> upd.out
 kill_restart_node $node
+echo "killed replicant, waiting for update" >> upd.out
 
 wait $upid
+echo "done waiting for update" >> upd.out
+set +e
+set -e
 
 #allow time for cdb2sql to retry
 
-cnt=`cdb2sql ${CDB2_OPTIONS} $dbnm default "select sum from t1 where id = 1"`
+cnt=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select sum from t1 where id = 1"`
 
 if [ $cnt != 110 ]; then
     failexit "sum is $cnt instead of 110"
