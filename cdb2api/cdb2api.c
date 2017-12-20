@@ -4300,7 +4300,6 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
             return -1;
 
         if (!allow_pmux_route) {
-tryget:
             if (!port) {
                 port = cdb2portmux_get(host, "comdb2", "replication", dbname, hndl->debug_trace);
                 if (hndl->debug_trace)
@@ -4314,7 +4313,6 @@ tryget:
                                    dbname, hndl->debug_trace);
             if (hndl->debug_trace)
                 fprintf(stderr, "cdb2portmux_route fd=%d'\n", fd);
-                goto tryget;
         }
         if (fd < 0)
             return -1;

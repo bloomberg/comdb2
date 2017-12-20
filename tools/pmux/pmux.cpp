@@ -516,6 +516,7 @@ static int route_to_instance(char *svc, int fd)
 {
     int routefd = get_fd(svc);
     if (routefd > 0) {
+        syslog(LOG_WARNING, "route_to_instance svc='%s', fd=%d\n", svc, fd);
         const char *msg = "pmux";
         return send_fd(routefd, msg, size_t(strlen(msg)), fd);
     } else {

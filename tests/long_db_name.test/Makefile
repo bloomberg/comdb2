@@ -8,8 +8,8 @@ ifeq ($(TEST_TIMEOUT),)
 endif
 
 LOCRAND=$(shell echo $RANDOM | md5sum | cut -f1 -d' ')
-#export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
-export DBNAME=reallylongnametotestfunctioning
+export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
+#export DBNAME=reallylongnametotestfunctioning
 #export PMUXPORT=12345
 
 stop:
