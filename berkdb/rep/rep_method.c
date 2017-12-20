@@ -1347,9 +1347,10 @@ __rep_get_eid(dbenv, eid_out)
  *	Fetch replication statistics.
  */
 int
-__rep_get_master(dbenv, master_out)
+__rep_get_master(dbenv, master_out, egen)
 	DB_ENV *dbenv;
 	char **master_out;
+	u_int32_t *egen;
 {
 	char *master = db_eid_invalid;
 	DB_REP *db_rep;
@@ -1386,6 +1387,8 @@ __rep_get_master(dbenv, master_out)
 #endif
 
 	master = rep->master_id;
+	if (egen)
+		*egen = rep->egen;
 
 #if 0
 	if (dolock) {

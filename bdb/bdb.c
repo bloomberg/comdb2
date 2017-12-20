@@ -157,6 +157,12 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return NULL;
 }
 
+int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
+                       uint32_t *egen)
+{
+    return bdb_state->dbenv->get_rep_master(bdb_state->dbenv, master_out, egen);
+}
+
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,
                       const char *nodes[REPMAX])
 {

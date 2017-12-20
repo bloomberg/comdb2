@@ -249,8 +249,8 @@ int osql_session_testterminate(void *obj, void *arg);
  */
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
-                                   uuid_t uuid, char *fromhost,
-                                   struct ireq *iq);
+                                   uuid_t uuid, char *fromhost, struct ireq *iq,
+                                   int *replaced);
 
 char *osql_sess_tag(osql_sess_t *sess);
 void *osql_sess_tagbuf(osql_sess_t *sess);
@@ -287,4 +287,11 @@ int osql_session_is_sorese(osql_sess_t *sess);
 int osql_session_set_ireq(osql_sess_t *sess, struct ireq *iq);
 struct ireq *osql_session_get_ireq(osql_sess_t *sess);
 
+/**
+ * Terminate a session if the session is not yet completed/dispatched
+ * Return 0 if session is successfully terminated,
+ *        -1 for errors,
+ *        1 otherwise (if session was already processed)
+ */
+int osql_sess_try_terminate(osql_sess_t *sess);
 #endif
