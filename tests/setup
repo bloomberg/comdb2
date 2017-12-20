@@ -206,7 +206,7 @@ copy_files_to_cluster()
 
 # restart pmux only once on localhost -- noclobber ensures atomicity
 set -o noclobber 
-{ > ${TMPDIR}/restarted_pmux.log ; } &> /dev/null
+{ > ${TMPDIR}/started_pmux_${pmux_port}.log ; } &> /dev/null
 if [ $? -eq 0 ] ; then
     if [ -n "$PMUXPORT" ] ; then
         eval $stop_pmux
@@ -214,7 +214,6 @@ if [ $? -eq 0 ] ; then
     echo start pmux on local host if not running
     COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd
 fi
-
 
 # if CLUSTER is length is nonzero, and file does not exist, copy to cluster
 if [ -n "$CLUSTER" ] ; then 
