@@ -8,12 +8,13 @@ ifeq ($(TEST_TIMEOUT),)
 endif
 
 LOCRAND=$(shell echo $RANDOM | md5sum | cut -f1 -d' ')
-export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
-export PMUXPORT=12345
+#export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
+export DBNAME=reallylongnametotestfunctioning
+#export PMUXPORT=12345
 
 stop:
 	@$(TESTSROOTDIR)/unsetup
-	#shutdown pmux LOCRAND=$(shell echo $RANDOM | md5sum | cut -f1 -d' ')
+	#shutdown pmux $(shell exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )
 
 
 tool:

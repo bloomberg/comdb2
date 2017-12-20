@@ -1491,7 +1491,7 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     }
     sbuf2printf(ss, "rte %s\n", name);
     sbuf2flush(ss);
-    res[0] = 0;
+    res[0] = '\0';
     sbuf2gets(res, sizeof(res), ss);
     if (debug) fprintf(stderr, "rte '%s' returns res='%s'\n", name, res);
     if (res[0] != '0') { // character '0' is indication of success
@@ -1626,11 +1626,11 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
     }
     sbuf2printf(ss, "get %s\n", name);
     sbuf2flush(ss);
-    res[0] = 0;
+    res[0] = '\0';
     sbuf2gets(res, sizeof(res), ss);
     sbuf2close(ss);
     if (debug) fprintf(stderr, "get '%s' returns res='%s'\n", name, res);
-    if (res[0] == 0) {
+    if (res[0] == '\0') {
         return -1;
     }
     port = atoi(res);
@@ -4300,6 +4300,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
             return -1;
 
         if (!allow_pmux_route) {
+tryget:
             if (!port) {
                 port = cdb2portmux_get(host, "comdb2", "replication", dbname, hndl->debug_trace);
                 if (hndl->debug_trace)
@@ -4313,6 +4314,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
                                    dbname, hndl->debug_trace);
             if (hndl->debug_trace)
                 fprintf(stderr, "cdb2portmux_route fd=%d'\n", fd);
+                goto tryget;
         }
         if (fd < 0)
             return -1;
