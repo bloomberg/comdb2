@@ -7,7 +7,7 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-LOCRAND=$(shell echo $RANDOM | md5sum | cut -f1 -d' ')
+LOCRAND=$(shell echo $(TESTID) | md5sum | cut -f1 -d' ')
 export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
 #export DBNAME=reallylongnametotestfunctioning
 #export PMUXPORT=12345
