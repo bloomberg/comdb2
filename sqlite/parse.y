@@ -1415,8 +1415,8 @@ collate(C) ::= COLLATE ids.   {C = 1;}
 
 ///////////////////////////// The DROP INDEX command /////////////////////////
 //
-cmd ::= DROP INDEX ifexists(E) fullname(X).   {comdb2DropIndex(pParse, X, E);}
-cmd ::= DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndexExtn(pParse, &X, &Y, E);}
+cmd ::= DROP INDEX ifexists(E) nm(X).          {comdb2DropIndex(pParse, &X, 0, E);}
+cmd ::= DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndex(pParse, &X, &Y, E);}
 
 ///////////////////////////// The VACUUM command /////////////////////////////
 //
