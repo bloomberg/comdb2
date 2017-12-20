@@ -283,7 +283,7 @@ if [[ -z "$CLUSTER" ]]; then
     # wait until we can query it
     echo "!$TESTCASE: waiting until ready"
     while [[ "$out" != "1" ]]; do
-        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2>/dev/null)
+        out=$($CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> waitingtillready.out)
         sleep 1
     done
 else

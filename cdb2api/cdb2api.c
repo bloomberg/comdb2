@@ -1475,6 +1475,11 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
                     app, service, instance);
         return -1;
     }
+
+    if (debug)
+        fprintf(stderr, "td %d %s line %d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
     if (fd < 0)
@@ -1488,7 +1493,8 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     sbuf2flush(ss);
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] != '0') {
+    if (debug) fprintf(stderr, "rte '%s' returns res='%s'\n", name, res);
+    if (res[0] != '0') { // character '0' is indication of success
         sbuf2close(ss);
         return -1;
     }
@@ -1623,8 +1629,8 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
     res[0] = 0;
     sbuf2gets(res, sizeof(res), ss);
     sbuf2close(ss);
+    if (debug) fprintf(stderr, "get '%s' returns res='%s'\n", name, res);
     if (res[0] == 0) {
-        if (debug) fprintf(stderr, "get '%s' returns res[0]=0'\n", name);
         return -1;
     }
     port = atoi(res);
@@ -4273,6 +4279,10 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     char newsql_typestr[128];
     SBUF2 *sb = NULL;
 
+    if (hndl->debug_trace)
+        fprintf(stderr, "td %d %s line %d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+
     int rc = snprintf(newsql_typestr, sizeof(newsql_typestr), "comdb2/%s/%s/newsql/%s",
              dbname, type, hndl->policy);
     if (rc < 1 || rc >= sizeof(newsql_typestr)) {
@@ -4301,6 +4311,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
         } else {
             fd = cdb2portmux_route(host, "comdb2", "replication",
                                    dbname, hndl->debug_trace);
+            if (hndl->debug_trace)
+                fprintf(stderr, "cdb2portmux_route fd=%d'\n", fd);
         }
         if (fd < 0)
             return -1;
@@ -4413,6 +4425,10 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     int comdb2db_num = COMDB2DB_NUM;
     char comdb2db_name[32] = COMDB2DB;
 
+    if (hndl->debug_trace)
+        fprintf(stderr, "td %d %s line %d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+
     /* Try dbinfo query without any host info. */
     if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
                           hndl->hosts, hndl->ports, &hndl->master,
@@ -4470,7 +4486,7 @@ retry:
         rc = 0;
     }
     if (hndl->debug_trace)
-        fprintf(stderr, "td %d %s line %d: get blah num_retry=%d\n",
+        fprintf(stderr, "td %d %s line %d: num_retry=%d\n",
                 (uint32_t)pthread_self(), __func__, __LINE__, num_retry);
 
     if (hndl->num_hosts == 0) {

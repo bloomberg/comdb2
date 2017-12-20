@@ -7,7 +7,14 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 
-export DBNAME:=reallylongtestnametomakesurethatthedbworksfinewithlongname
+LOCRAND=$(shell echo $RANDOM | md5sum | cut -f1 -d' ')
+export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
+export PMUXPORT=12345
+
+stop:
+	@$(TESTSROOTDIR)/unsetup
+	#shutdown pmux LOCRAND=$(shell echo $RANDOM | md5sum | cut -f1 -d' ')
+
 
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller
