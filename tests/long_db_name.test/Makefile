@@ -9,13 +9,11 @@ endif
 
 LOCRAND=$(shell echo $(TESTID) | md5sum | cut -f1 -d' ')
 export DBNAME=reallylongnametotestfunctioning$(LOCRAND)
-#export DBNAME=reallylongnametotestfunctioning
-#export PMUXPORT=12345
+export PMUXPORT=12345
 
 stop:
-	@$(TESTSROOTDIR)/unsetup
-	#shutdown pmux $(shell exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )
-
+	# shutdown pmux that was started for us at port $PMUXPORT
+	$(shell $(TESTSROOTDIR)/tools/send_msg_port.sh "exit" $(PMUXPORT) )
 
 tool:
 	make -skC $(TESTSROOTDIR)/tools cdb2api_caller

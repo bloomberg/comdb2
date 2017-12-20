@@ -127,7 +127,6 @@ static int alloc_fd(const char *svc, int fd)
 {
     std::lock_guard<std::mutex> l(fdmap_mutex);
     std::pair<std::string, int> kv(svc, fd);
-    syslog(LOG_WARNING, "insert svc='%s', fd=%d\n", svc, fd);
     fd_map.insert(kv);
     return 0;
 }
@@ -176,7 +175,6 @@ int client_func(int fd)
 #endif
     char *sav;
     char *cmd = strtok_r(service + 4, " \n", &sav);
-    syslog(LOG_WARNING, "service '%s' request from %s\n", service, cmd);
     if (strncasecmp(service, "reg", 3) == 0) {
         {
             std::lock_guard<std::mutex> l(active_services_mutex);
@@ -518,7 +516,6 @@ static int route_to_instance(char *svc, int fd)
 {
     int routefd = get_fd(svc);
     if (routefd > 0) {
-        syslog(LOG_WARNING, "route_to_instance svc='%s', fd=%d\n", svc, fd);
         const char *msg = "pmux";
         return send_fd(routefd, msg, size_t(strlen(msg)), fd);
     } else {
