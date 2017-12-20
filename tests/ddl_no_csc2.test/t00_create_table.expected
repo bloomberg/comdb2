@@ -391,7 +391,7 @@ constraints
 (tablename='t2', columnname='d', type='datetime', size=11, sqltype='datetime', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t3', columnname='t', type='vutf8', size=105, sqltype='varchar', varinlinesize=100, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t4', columnname='t', type='u_short', size=3, sqltype='smallint', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t5', columnname='c', type='cstring', size=100, sqltype='char(99)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='c', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t7', columnname='v', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t8', columnname='v', type='cstring', size=101, sqltype='char(100)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t9', columnname='d', type='decimal64', size=13, sqltype='decimal', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -421,9 +421,9 @@ constraints
 		u_short t null = yes 
 	}
 ')
-(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("c" char(99));', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("c" char(100));', csc2='schema
 	{
-		cstring c[100] null = yes 
+		cstring c[101] null = yes 
 	}
 ')
 (type='table', name='t7', tbl_name='t7', rootpage=9, sql='create table "t7"("v" char(100));', csc2='schema
@@ -732,3 +732,15 @@ keys
 (type='index', name='$$KEY_FEE19704_FEE19704', tbl_name='t5', rootpage=19, sql='create index "$$KEY_FEE19704_FEE19704" on "t5" (i, j);', csc2=NULL)
 (type='index', name='$DUP_KEY_F5B8CA59', tbl_name='t5', rootpage=20, sql='create index "$DUP_KEY_F5B8CA59" on "t5" (i, j);', csc2=NULL)
 (type='index', name='$UNIQUE_KEY_4CC5957D', tbl_name='t5', rootpage=21, sql='create index "$UNIQUE_KEY_4CC5957D" on "t5" (j, i);', csc2=NULL)
+(tablename='t1', columnname='c1', type='cstring', size=3, sqltype='char(2)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='c2', type='cstring', size=2, sqltype='char(1)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='c3', type='cstring', size=3, sqltype='char(2)', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='c4', type='vutf8', size=5, sqltype='varchar', varinlinesize='0', defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("c1" char(2), "c2" char(1), "c3" char(2), "c4" varchar);', csc2='schema
+	{
+		cstring c1[3] null = yes 
+		cstring c2[2] null = yes 
+		cstring c3[3] null = yes 
+		vutf8 c4 null = yes 
+	}
+')
