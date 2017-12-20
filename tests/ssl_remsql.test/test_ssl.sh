@@ -11,15 +11,7 @@ cdb2cfg1=$2
 db2=$3
 cdb2cfg1=$4
 
-a_remcdb2config=$2
-a_dbname=$3
-a_dbdir=$4
-a_testdir=$5
-
 output=run.out
-
-
-#TEST1 test conflicts between V1 and V2 (see README)
 
 # populate table on remote
 cdb2sql -s --cdb2cfg $cdb2cfg1 $db1 default - < remdata.req > $output 2>&1

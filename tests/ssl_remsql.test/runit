@@ -47,6 +47,7 @@ cdb2cfg2=${db2}/comdb2db.cfg
 setup_db $db2
 
 echo ./test_ssl.sh $db1 $cdb2cfg1 $db2 $cdb2cfg2
+exit 1
 ./test_ssl.sh $db1 $cdb2cfg1 $db2 $cdb2cfg2
 result=$?
 

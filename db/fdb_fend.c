@@ -892,8 +892,8 @@ static int fdb_num_entries(fdb_t *fdb)
  *
  * NOTE:
  */
-int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                    fdb_tbl_ent_t **found_ent)
+static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
+                           fdb_tbl_ent_t **found_ent)
 {
     BtCursor *cur;
     int rc = FDB_NOERR;
@@ -974,13 +974,17 @@ run:
     if (rc != IX_FND && rc != IX_FNDMORE) {
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
-        /* retry new version */
-        case FDB_ERR_FDB_VERSION:
+        case FDB_ERR_SSL:
+            /* remote needs sql */
             fdb_cursor_close_on_open(cur, 0);
-            irc = 0;
+            goto done;
+
+        case FDB_ERR_FDB_VERSION:
+            /* retry new version */
+            fdb_cursor_close_on_open(cur, 0);
+            rc = FDB_NOERR;
             goto run;
 
-        /* errors */
         case IX_EMPTY:
             rc =
                 FDB_NOERR; /* no operational error, but a syntax issue probably
@@ -1192,7 +1196,8 @@ static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->sqlclntstate;
 
-    logmsg(LOGMSG_WARN, "%s: %s for db \"%s\"\n", __func__, prefix, dbname);
+
+    logmsg(LOGMSG_WARN, "Error \"%s\" for db \"%s\"\n", prefix, dbname);
 
     if (clnt->fdb_state.xerr.errval && clnt->fdb_state.preserve_err) {
         logmsg(LOGMSG_ERROR, "Ignored error rc=%d str=\"%s\", got new rc=%d new prefix=\"%s\"\n",
@@ -1219,7 +1224,7 @@ static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
  *
  */
 int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
-                           int *version, int in_analysis_load)
+        int *version, int in_analysis_load)
 {
     fdb_t *fdb;
     int rc = FDB_NOERR;
@@ -1294,9 +1299,10 @@ retry_fdb_creation:
             /* fdb deleted from under us by creator thread */
             goto retry_fdb_creation;
         }
-
-        logmsg(LOGMSG_ERROR, "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
-                __func__, dbname, table, rc);
+    
+        if (rc != FDB_ERR_SSL)
+            logmsg(LOGMSG_ERROR, "%s: failed to add foreign table \"%s:%s\" rc=%d\n",
+                    __func__, dbname, table, rc);
 
         switch (rc) {
         case FDB_ERR_FDB_TBL_NOTFOUND: {
@@ -1318,6 +1324,10 @@ retry_fdb_creation:
         }
         case FDB_ERR_EXPRIDX_DISABLED: {
             perrstr = "expressions indexes disabled locally";
+            break;
+        }
+        case FDB_ERR_SSL: {
+            perrstr = "remote db requires SSL";
             break;
         }
 
@@ -3004,8 +3014,9 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 
                     pCur->bt->fdb->server_version = protocol_version;
                 } else {
-                    logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
-                        __func__, rc, errstr);
+                    if (rc != FDB_ERR_SSL)
+                        logmsg(LOGMSG_ERROR, "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
+                                __func__, rc, errstr);
                 }
 
                 return rc;
@@ -3188,9 +3199,10 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else {
-                    logmsg(LOGMSG_ERROR, 
-                        "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
-                        __func__, rc, errstr);
+                    if (rc != FDB_ERR_SSL)
+                        logmsg(LOGMSG_ERROR, 
+                                "%s: failed to retrieve streaming row rc=%d \"%s\"\n",
+                                __func__, rc, errstr);
                 }
 
                 return rc;

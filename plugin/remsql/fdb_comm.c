@@ -853,14 +853,6 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
     int isuuid = 0;
     int recv_dk = 0;
 
-#if WITH_SSL
-    if (gbl_client_ssl_mode >= SSL_REQUIRE && !gbl_ssl_allow_remsql) {
-        logmsg(LOGMSG_ERROR,
-               "Remote SQL is forbidden because client SSL is required.");
-        return -1;
-    }
-#endif
-
     /* clean previous message */
     fdb_msg_clean_message(msg);
 
