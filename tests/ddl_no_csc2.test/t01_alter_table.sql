@@ -91,6 +91,7 @@ CREATE TABLE t3(i INT, j INT) $$
 ALTER TABLE t1 ADD INDEX idx (i,j) $$
 ALTER TABLE t2 ADD INDEX idx (i,j) $$
 ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
+ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
 ALTER TABLE t3 ADD PRIMARY KEY (i,j) $$
 
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';

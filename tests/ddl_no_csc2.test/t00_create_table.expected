@@ -76,7 +76,7 @@
 	}
 ')
 [DROP TABLE t2] failed with rc -3 no such table: t2
-[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc -3 Multiple primary key definitions.
+[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc -3 Index 'COMDB2_PK' already exists.
 [CREATE TABLE t4(i INT, i INT)] failed with rc -3 Duplicate column name 'i'.
 [CREATE TABLE t7(i INTt)] failed with rc -3 Invalid type specified.
 [CREATE TABLE t8(INT i)] failed with rc -3 Invalid type specified.
@@ -173,7 +173,7 @@ keys
 [DROP TABLE t4] failed with rc -3 no such table: t4
 [DROP TABLE t7] failed with rc -3 no such table: t7
 [DROP TABLE t8] failed with rc -3 no such table: t8
-[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc -3 Index '$KEY_F9E83FD8' already exists.
 (tablename='t2')
 (tablename='t3')
 (tablename='t4')
@@ -635,9 +635,9 @@ keys
 [CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
 (rows inserted=1)
 (i=1, f1=1.100000, f2=1.100000, f3=1.100000)
-[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name.
-[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG 'DUP' FOR INDICES 1 AND 0!
-[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG 'XXXX' FOR INDICES 1 AND 0!
+[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name 'COMDB2_PK'.
+[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc -3 Index 'dup' already exists.
+[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc -3 Index 'xxxx' already exists.
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')

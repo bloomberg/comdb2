@@ -2336,6 +2336,25 @@ static int is_pk(const char *key)
                                                                         : 0);
 }
 
+static struct comdb2_schema *find_idx_by_name(struct comdb2_ddl_context *ctx,
+                                              const char *idx)
+{
+    struct comdb2_schema *current_key;
+
+    LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
+    {
+        /* Ignore the dropped key(s). */
+        if (current_key->schema == 0)
+            continue;
+
+        if (current_key->schema->csctag &&
+            (strcasecmp(current_key->schema->csctag, idx) == 0)) {
+            return current_key;
+        }
+    }
+    return 0;
+}
+
 static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 {
     char *csc2;
@@ -2377,13 +2396,22 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           the command.
         */
         if (current_key->schema->csctag == 0) {
-            current_key->schema->csctag = comdb2_malloc(ctx->mem, 60);
-            if (current_key->schema->csctag == 0)
+            char *new_keyname = comdb2_malloc(ctx->mem, 60);
+            if (new_keyname == 0)
                 goto oom;
 
-            gen_key_name(ctx->name, current_key->schema,
-                         current_key->schema->csctag, 60);
-            if (current_key->schema->csctag == 0) goto oom;
+            gen_key_name(ctx->name, current_key->schema, new_keyname, 60);
+            if (new_keyname == 0)
+                goto oom;
+
+            /* Check if a key already exists with the same name. */
+            if (find_idx_by_name(ctx, new_keyname)) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Index '%s' already exists.",
+                                new_keyname);
+                goto cleanup;
+            }
+            current_key->schema->csctag = new_keyname;
         }
 
         /*
@@ -2919,7 +2947,8 @@ void comdb2CreateTableStart(
     int noErr      /* Do nothing if table already exists */
     )
 {
-    if (isTemp || isView || isVirtual || pParse->db->init.busy || pParse->db->isExpert || IN_DECLARE_VTAB) {
+    if (isTemp || isView || isVirtual || pParse->db->init.busy ||
+        pParse->db->isExpert || IN_DECLARE_VTAB) {
         pParse->comdb2_ddl_ctx = 0;
         sqlite3StartTable(pParse, pName1, pName2, isTemp, isView, isVirtual,
                           noErr);
@@ -3237,24 +3266,6 @@ find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
     return 0;
 }
 
-static struct comdb2_schema *find_idx_by_name(struct comdb2_ddl_context *ctx,
-                                              const char *idx)
-{
-    struct comdb2_schema *current_key;
-
-    LISTC_FOR_EACH(&ctx->key_list, current_key, lnk)
-    {
-        /* Ignore the dropped key(s). */
-        if (current_key->schema == 0)
-            continue;
-
-        if (strcasecmp(current_key->schema->csctag, idx) == 0) {
-            return current_key;
-        }
-    }
-    return 0;
-}
-
 static void comdb2AddIndexInt(
     Parse *pParse,      /* All information about this parse */
     char *keyname,      /* Index name (Optional) */
@@ -3289,14 +3300,19 @@ static void comdb2AddIndexInt(
     }
 
     if (keyname) {
-        if (is_pk(keyname)) {
+        if (idxType != SQLITE_IDXTYPE_PRIMARYKEY && is_pk(keyname)) {
             pParse->rc = SQLITE_ERROR;
-            sqlite3ErrorMsg(pParse, "Invalid key name.");
+            sqlite3ErrorMsg(pParse, "Invalid key name '%s'.", keyname);
             goto cleanup;
         }
 
-        /* Also check if a key already exists with the same name. */
-        if (find_idx_by_name(ctx, keyname)) {
+        /*
+          Also check if a key already exists with the same name. For indices
+          created via CREATE INDEX (SQLITE_IDXTYPE_APPDEF) this check has
+          already been done to address IF NOT EXISTS.
+        */
+        if (idxType != SQLITE_IDXTYPE_APPDEF &&
+            find_idx_by_name(ctx, keyname)) {
             pParse->rc = SQLITE_ERROR;
             sqlite3ErrorMsg(pParse, "Index '%s' already exists.", keyname);
             goto cleanup;
@@ -3313,8 +3329,11 @@ static void comdb2AddIndexInt(
 
     if (idxType == SQLITE_IDXTYPE_DUPKEY) {
         key->flags |= SCHEMA_DUP;
-    } else {
-        assert(idxType == SQLITE_IDXTYPE_UNIQUE);
+    } else if (idxType == SQLITE_IDXTYPE_APPDEF) {
+        /* For CREATE INDEX, we need to check onError */
+        if (onError != OE_Abort) {
+            key->flags |= SCHEMA_DUP;
+        }
     }
 
     if (withOpts == 1) {
@@ -3409,7 +3428,7 @@ void comdb2AddPrimaryKey(
     if (keyname == 0) goto oom;
 
     comdb2AddIndexInt(pParse, keyname, pList, onError, 0, sortOrder,
-                      SQLITE_IDXTYPE_UNIQUE, 0);
+                      SQLITE_IDXTYPE_PRIMARYKEY, 0);
     if (pParse->rc)
         goto cleanup;
 
@@ -3423,8 +3442,7 @@ cleanup:
     return;
 }
 
-void comdb2DropPrimaryKey(Parse *pParse /* Parsing context */
-)
+void comdb2DropPrimaryKey(Parse *pParse /* Parsing context */)
 {
     Token t = {COMDB2_PK, sizeof(COMDB2_PK) - 1};
     comdb2AlterDropIndex(pParse, &t);
@@ -4074,8 +4092,8 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 
         for (int i = 0; i < thedb->num_dbs; i++) {
             for (int j = 0; j < thedb->dbs[i]->schema->nix; j++) {
-                if ((strncasecmp(thedb->dbs[i]->schema->ix[j]->csctag,
-                                 pName1->z, pName1->n)) == 0) {
+                if ((strcasecmp(thedb->dbs[i]->schema->ix[j]->csctag,
+                                idx_name)) == 0) {
                     table = thedb->dbs[i];
                     index_count++;
                 }

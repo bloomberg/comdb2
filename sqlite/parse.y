@@ -387,23 +387,25 @@ tconscomma ::= .
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 %endif
-tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
-                                 {comdb2AddPrimaryKey(pParse,X,R,I,0);}
-tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R). {
-    comdb2AddIndex(pParse, &I, X, R, 0, SQLITE_SO_ASC,
-                   SQLITE_IDXTYPE_UNIQUE, 0);
+tcons ::= tconspk.
+tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
+    comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE,
+                   O);
 }
-tcons ::= KEY nm_opt(I) LP sortlist(X) RP onconf(R). {
-    comdb2AddIndex(pParse, &I, X, R, 0, SQLITE_SO_ASC,
-                   SQLITE_IDXTYPE_DUPKEY, 0);
+tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
+    comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY,
+                   O);
 }
-
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E.pExpr);}
 %endif
-tcons ::= FOREIGN KEY LP eidlist(FA) RP
-          REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
+tcons ::= tconsfk.
+tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
+    comdb2AddPrimaryKey(pParse, X, R, I, 0);
+}
+tconsfk ::= FOREIGN KEY LP eidlist(FA) RP
+            REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
     comdb2CreateForeignKey(pParse, FA, &T, TA, R);
     comdb2DeferForeignKey(pParse, D);
 }
@@ -2122,18 +2124,12 @@ alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
 alter_table_drop_index ::= DROP INDEX nm(I). {
     comdb2AlterDropIndex(pParse, &I);
 }
-alter_table_add_pk ::= ADD PRIMARY KEY LP sortlist(X) autoinc(I) RP
-    onconf(R). {
-    comdb2AddPrimaryKey(pParse, X, R, I, 0);
-}
+
+alter_table_add_pk ::= ADD tconspk.
 alter_table_drop_pk ::= DROP PRIMARY KEY. {
     comdb2DropPrimaryKey(pParse);
 }
-alter_table_add_fk ::= ADD FOREIGN KEY LP eidlist(FA) RP
-    REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
-    comdb2CreateForeignKey(pParse, FA, &T, TA, R);
-    comdb2DeferForeignKey(pParse, D);
-}
+alter_table_add_fk ::= ADD tconsfk.
 alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
     comdb2DropForeignKey(pParse, &Y);
 }

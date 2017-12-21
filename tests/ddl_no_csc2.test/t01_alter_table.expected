@@ -190,6 +190,7 @@ constraints
 	}
 ')
 (type='index', name='$IDX1_FBAE8181', tbl_name='t2', rootpage=11, sql='create index "$IDX1_FBAE8181" on "t2" (i, j);', csc2=NULL)
+[ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j)] failed with rc -3 Constraint '$CONSTRAINT_95177019' already exists.
 (tablename='t1')
 (tablename='t2')
 (tablename='t3')
