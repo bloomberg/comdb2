@@ -557,14 +557,23 @@ set all_graphs {
       {line NOT NULL }
       {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
       {line UNIQUE }
+      {line KEY }
       {line foreign-key-def }
       {line WITH DBPAD = signed-number }
   }
 
   table-constraint {
       or
+      {line
+          {stack
+              {line {or {line UNIQUE } {line KEY } }
+                  {opt index-name }
+                  {line ( {loop {line column-name } { , } } ) }
+              }
+              {line {opt WITH DATACOPY } {opt WHERE expr } }
+          }
+      }
       {line PRIMARY KEY ( column-list ) }
-      {line UNIQUE ( column-list ) }
       {line FOREIGN KEY ( column-list ) foreign-key-def}
   }
 
@@ -598,16 +607,28 @@ set all_graphs {
       {line ALTER TABLE {opt db-name .} table-name }
       {opt 
           {or
+              {line RENAME TO new-table-name}
               {loop
                   {or
                       {line ADD column-name column-type
                           {opt {loop {line column-constraint } { , } } }
                       }
                       {line DROP {opt COLUMN} column-name }
+                      {stack
+                          {line
+                              {line ADD {opt UNIQUE } INDEX index-name }
+                              {line ( {loop {line column-name } { , } } ) }
+                          }
+                          {line {opt WITH DATACOPY } {opt WHERE expr } }
+                      }
+                      {line DROP INDEX index-name }
+                      {line ADD PRIMARY KEY ( column-list ) }
+                      {line DROP PRIMARY KEY }
+                      {line ADD FOREIGN KEY ( column-list ) foreign-key-def }
+                      {line DROP FOREIGN KEY constraint-name }
                   }
                   { , }
               }
-              {line RENAME TO new-table-name}
            }
        }
   }
@@ -615,8 +636,8 @@ set all_graphs {
   create-index {
       stack
       {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
-      {line {opt db-name } index-name ON table-name
-          ( {loop {line column-name } { , } } ) }
+      {line {opt db-name } index-name ON table-name }
+      {line ( {loop {line column-name } { , } } ) }
       {line {opt WITH DATACOPY } {opt WHERE expr } }
   }
 
