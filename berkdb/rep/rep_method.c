@@ -1536,6 +1536,8 @@ __rep_lockout(dbenv, db_rep, rep, msg_th)
 	REP *rep;
 	u_int32_t msg_th;
 {
+    return;
+
 	int wait_cnt;
 
 	/* Phase 1: set REP_F_READY and wait for op_cnt to go to 0. */
