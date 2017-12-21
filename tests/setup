@@ -350,4 +350,4 @@ else
     done
 fi
 
-exit 0
+echo 'setup successful'
