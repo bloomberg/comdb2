@@ -21,6 +21,7 @@
 #include <views.h>
 #include <logmsg.h>
 #include <str0.h>
+#include "cdb2_constants.h"
 #include "crc32c/crc32c.h"
 
 #define INCLUDE_KEYWORDHASH_H
@@ -2396,11 +2397,12 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
           the command.
         */
         if (current_key->schema->csctag == 0) {
-            char *new_keyname = comdb2_malloc(ctx->mem, 60);
+            char *new_keyname = comdb2_malloc(ctx->mem, MAXGENKEYLEN);
             if (new_keyname == 0)
                 goto oom;
 
-            gen_key_name(ctx->name, current_key->schema, new_keyname, 60);
+            gen_key_name(ctx->name, current_key->schema, new_keyname,
+                         MAXGENKEYLEN);
             if (new_keyname == 0)
                 goto oom;
 
@@ -3246,7 +3248,7 @@ static struct comdb2_constraint *
 find_cons_by_name(struct comdb2_ddl_context *ctx, const char *cons)
 {
     struct comdb2_constraint *current;
-    char constraint_name[60];
+    char constraint_name[MAXGENCONSLEN];
 
     LISTC_FOR_EACH(&ctx->constraint_list, current, lnk)
     {
@@ -3674,7 +3676,7 @@ void comdb2CreateForeignKey(
 {
     struct constraint *constraint;
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
-    char constraint_name[60];
+    char constraint_name[MAXGENCONSLEN];
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);

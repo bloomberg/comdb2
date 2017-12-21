@@ -147,15 +147,14 @@ static int systblConstraintsColumn(
   switch( i ){
     case STCON_NAME: {
         int rc;
-        /* TODO: find the right size to store the generated constraint name. */
-        char *constraint_name = sqlite3_malloc(60);
+        char *constraint_name = sqlite3_malloc(MAXGENCONSLEN);
         if (constraint_name == 0)
             return SQLITE_NOMEM;
         /* Forward declaration */
         int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
                                 char *buf, size_t size);
         rc = gen_constraint_name(pConstraint, pCur->iRuleid, constraint_name,
-                                 60);
+                                 MAXGENCONSLEN);
         if (rc)
             return SQLITE_INTERNAL;
         sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
