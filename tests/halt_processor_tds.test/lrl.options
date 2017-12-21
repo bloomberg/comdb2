@@ -17,12 +17,8 @@ enable_sql_stmt_caching NONE
 # Allow the master to handle requests
 master_reject_requests OFF
 
-# Huh?  It's not starting up now?
-#verbose_send_cohlease ON
+# Enabing this causes setup failures from time to time (??)
+make_slow_replicants_incoherent OFF
 
-# Gotta see this something weird is happening
-#verbose_master_req ON
-
-# Enable these to make sure I can reproduce corruption
+# Disable this to make sure I can reproduce corruption
 #force_serial_on_writelock 0
-#get_bdblock_from_processor_thd OFF
