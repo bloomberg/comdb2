@@ -1327,9 +1327,5 @@ REGISTER_TUNABLE("force_serial_on_writelock", "Disable parallel rep on "
 REGISTER_TUNABLE("processor_thd_poll", "Poll before dispatching worker thds. "
                  "(Default: 0ms)", TUNABLE_INTEGER, &gbl_processor_thd_poll, 
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("get_bdblock_from_processor_thd", "Get the bdblock in the "
-                 "processor thread.  (Default: on)",  TUNABLE_BOOLEAN,
-                 &gbl_get_bdblock_from_processor_thd, EXPERIMENTAL | INTERNAL, 
-                 NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

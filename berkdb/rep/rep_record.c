@@ -3021,7 +3021,7 @@ logical_record_file_affinity(int rectype)
 
 int gbl_processor_thd_poll;
 
-int gbl_get_bdblock_from_processor_thd = 1;
+/* On second thought i think this is wrong if i have the order correct */
 
 static void
 processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
@@ -3053,11 +3053,19 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	/* Get the bdblock in read mode */
 	void *bdb_state = dbenv->app_private;
-	int get_bdblock = gbl_get_bdblock_from_processor_thd;
 
-	if (get_bdblock) {
-		bdb_thread_event(bdb_state, 3 /* start rdwr */);
-		BDB_READLOCK("processor_thd");
+    bdb_thread_event(bdb_state, 3 /* start rdwr */);
+
+	/* Sleep here if the user has asked us to & if we are coherent */
+	if ((polltm = gbl_processor_thd_poll) > 0 && 
+			bdb_am_i_coherent(dbenv->app_private)) {
+		int lsize;
+		pthread_mutex_lock(&dbenv->recover_lk);
+		lsize = listc_size(&dbenv->inflight_transactions);
+		pthread_mutex_unlock(&dbenv->recover_lk);
+		logmsg(LOGMSG_ERROR, "Polling for %d in processor_thd, there are %d "
+				"processor thds outstanding\n", polltm, lsize);
+		poll(0, 0, polltm);
 	}
 
 	/* sanity check */
@@ -3193,18 +3201,6 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 
 	if ((dbenv->flags & DB_ENV_ROWLOCKS) && listc_size(&queues) > 1) {
 		gbl_rep_rowlocks_multifile++;
-	}
-
-	/* Sleep here if the user has asked us to & if we are coherent */
-	if ((polltm = gbl_processor_thd_poll) > 0 && 
-			bdb_am_i_coherent(dbenv->app_private)) {
-		int lsize;
-		pthread_mutex_lock(&dbenv->recover_lk);
-		lsize = listc_size(&dbenv->inflight_transactions);
-		pthread_mutex_unlock(&dbenv->recover_lk);
-		logmsg(LOGMSG_ERROR, "Polling for %d in processor_thd, there are %d "
-				"processor thds outstanding\n", polltm, lsize);
-		poll(0, 0, polltm);
 	}
 
 	/* Handle inline. */
@@ -3383,10 +3379,7 @@ err:
 		pthread_rwlock_unlock(&dbenv->ser_lk);
 	}
 
-	if (get_bdblock) {
-		BDB_RELLOCK();
-		bdb_thread_event(bdb_state, 2 /* done rdwr */);
-	}
+    bdb_thread_event(bdb_state, 2 /* done rdwr */);
 }
 
 static void
