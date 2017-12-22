@@ -44,13 +44,13 @@ keys
 		dup "idx7" = i 
 	}
 ')
-(type='index', name='$IDX1_4DE4D8DB', tbl_name='t1', rootpage=5, sql='create index "$IDX1_4DE4D8DB" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX2_5E8AC7D0', tbl_name='t1', rootpage=6, sql='create index "$IDX2_5E8AC7D0" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX3_4DE4D8DB', tbl_name='t1', rootpage=7, sql='create index "$IDX3_4DE4D8DB" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX4_4DE4D8DB', tbl_name='t1', rootpage=8, sql='create index "$IDX4_4DE4D8DB" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX5_4DE4D8DB', tbl_name='t1', rootpage=9, sql='create index "$IDX5_4DE4D8DB" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX6_4DE4D8DB', tbl_name='t1', rootpage=10, sql='create index "$IDX6_4DE4D8DB" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX7_4DE4D8DB', tbl_name='t1', rootpage=11, sql='create index "$IDX7_4DE4D8DB" on "t1" (i);', csc2=NULL)
+(type='index', name='$IDX1_4DE4D8DB', tbl_name='t1', rootpage=5, sql='create index "$IDX1_4DE4D8DB" on "t1"("i");', csc2=NULL)
+(type='index', name='$IDX2_5E8AC7D0', tbl_name='t1', rootpage=6, sql='create index "$IDX2_5E8AC7D0" on "t1"("i");', csc2=NULL)
+(type='index', name='$IDX3_4DE4D8DB', tbl_name='t1', rootpage=7, sql='create index "$IDX3_4DE4D8DB" on "t1"("i");', csc2=NULL)
+(type='index', name='$IDX4_4DE4D8DB', tbl_name='t1', rootpage=8, sql='create index "$IDX4_4DE4D8DB" on "t1"("i");', csc2=NULL)
+(type='index', name='$IDX5_4DE4D8DB', tbl_name='t1', rootpage=9, sql='create index "$IDX5_4DE4D8DB" on "t1"("i");', csc2=NULL)
+(type='index', name='$IDX6_4DE4D8DB', tbl_name='t1', rootpage=10, sql='create index "$IDX6_4DE4D8DB" on "t1"("i");', csc2=NULL)
+(type='index', name='$IDX7_4DE4D8DB', tbl_name='t1', rootpage=11, sql='create index "$IDX7_4DE4D8DB" on "t1"("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=12, sql='create table "t2"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -63,9 +63,9 @@ keys
 		dup "idx4" = i + j 
 	}
 ')
-(type='index', name='$IDX1_A44A20B', tbl_name='t2', rootpage=13, sql='create index "$IDX1_A44A20B" on "t2" (i);', csc2=NULL)
-(type='index', name='$IDX3_E8BDFAE1', tbl_name='t2', rootpage=14, sql='create index "$IDX3_E8BDFAE1" on "t2" (i, j);', csc2=NULL)
-(type='index', name='$IDX4_E8BDFAE1', tbl_name='t2', rootpage=15, sql='create index "$IDX4_E8BDFAE1" on "t2" (i, j);', csc2=NULL)
+(type='index', name='$IDX1_A44A20B', tbl_name='t2', rootpage=13, sql='create index "$IDX1_A44A20B" on "t2"("i");', csc2=NULL)
+(type='index', name='$IDX3_E8BDFAE1', tbl_name='t2', rootpage=14, sql='create index "$IDX3_E8BDFAE1" on "t2"("i", "j");', csc2=NULL)
+(type='index', name='$IDX4_E8BDFAE1', tbl_name='t2', rootpage=15, sql='create index "$IDX4_E8BDFAE1" on "t2"("i", "j");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=16, sql='create table "t3"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -77,8 +77,8 @@ keys
 		dup datacopy "idx2" = i { where j > 10 } 
 	}
 ')
-(type='index', name='$IDX1_19767DE4', tbl_name='t3', rootpage=17, sql='create index "$IDX1_19767DE4" on "t3" (i, "j" collate DATACOPY);', csc2=NULL)
-(type='index', name='$IDX2_19767DE4', tbl_name='t3', rootpage=18, sql='create index "$IDX2_19767DE4" on "t3" (i, "j" collate DATACOPY) where (j > 10 );', csc2=NULL)
+(type='index', name='$IDX1_19767DE4', tbl_name='t3', rootpage=17, sql='create index "$IDX1_19767DE4" on "t3"("i", "j" collate DATACOPY);', csc2=NULL)
+(type='index', name='$IDX2_19767DE4', tbl_name='t3', rootpage=18, sql='create index "$IDX2_19767DE4" on "t3"("i", "j" collate DATACOPY) where (j > 10 );', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=19, sql='create table "t4"("i" int);', csc2='schema
 	{
 		int i null = yes 

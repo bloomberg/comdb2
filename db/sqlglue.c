@@ -1584,17 +1584,9 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
     strbuf *sql = strbuf_new();
     strbuf_clear(sql);
-    strbuf_append(sql, "create table ");
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, tbl->tablename);
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, "(");
+    strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename);
 
     for (field = 0; field < schema->nmembers; field++) {
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, schema->member[field].name);
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, " ");
         char *type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
             logmsg(LOGMSG_ERROR, "Unsupported type in schema: column '%s' [%d] "
@@ -1603,15 +1595,14 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
             strbuf_free(sql);
             return -1;
         }
-        strbuf_append(sql, type);
+        strbuf_appendf(sql, "\"%s\" %s", schema->member[field].name, type);
         /* add defaults for write sql */
         if (schema->member[field].in_default) {
             strbuf_append(sql, " DEFAULT");
             char *dstr = sql_field_default_trans(&schema->member[field], 0);
 
             if (dstr) {
-                strbuf_append(sql, " ");
-                strbuf_append(sql, dstr);
+                strbuf_appendf(sql, " %s", dstr);
                 sqlite3_free(dstr);
             } else {
                 logmsg(LOGMSG_ERROR,
@@ -1672,20 +1663,15 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
 #if 0
       if (schema->flags & SCHEMA_DUP) {
-         strbuf_append(sql, "create index \"");
+         strbuf_append(sql, "create index ");
       } else {
-         strbuf_append(sql, "create unique index \"");
+         strbuf_append(sql, "create unique index ");
       }
 #else
-        strbuf_append(sql, "create index \"");
+        strbuf_append(sql, "create index ");
 #endif
 
-        strbuf_append(sql, namebuf);
-        strbuf_append(sql, "\" on ");
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, tbl->tablename);
-        strbuf_append(sql, "\"");
-        strbuf_append(sql, " (");
+        strbuf_appendf(sql, "\"%s\" on \"%s\"(", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {
             if (field > 0)
                 strbuf_append(sql, ", ");
@@ -1699,11 +1685,10 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                     strbuf_free(sql);
                     return -1;
                 }
-                strbuf_append(sql, "(");
+                strbuf_appendf(sql, "(%s)", schema->member[field].name);
+            } else {
+                strbuf_appendf(sql, "\"%s\"", schema->member[field].name);
             }
-            strbuf_append(sql, schema->member[field].name);
-            if (schema->member[field].isExpr)
-                strbuf_append(sql, ")");
             if (schema->member[field].flags & INDEX_DESCEND)
                 strbuf_append(sql, " DESC");
         }
@@ -1729,9 +1714,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                 if (skip)
                     continue;
 
-                strbuf_append(sql, ", \"");
-                strbuf_append(sql, ondisk_field->name);
-                strbuf_append(sql, "\"");
+                strbuf_appendf(sql, ", \"%s\"", ondisk_field->name);
                 /* stop optimizer by adding dummy collation */
                 if (datacopy_pos == 0) {
                     strbuf_append(sql, " collate DATACOPY");
@@ -1761,9 +1744,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                 strbuf_free(sql);
                 return -1;
             }
-            strbuf_append(sql, " where (");
-            strbuf_append(sql, schema->where + 6);
-            strbuf_append(sql, ")");
+            strbuf_appendf(sql, " where (%s)", schema->where + 6);
         }
         strbuf_append(sql, ";");
         if (tbl->ixsql[ixnum])
@@ -12076,27 +12057,19 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
         else {
             int exist = 0;
             strbuf_clear(sql);
-            strbuf_append(sql, "WITH ");
-            strbuf_append(sql, "\"");
-            strbuf_append(sql, is_alter ? temp_newdb_name : db->tablename);
-            strbuf_append(sql, "\"");
-            strbuf_append(sql, "(");
-            strbuf_append(sql, sc->member[0].name);
+            strbuf_appendf(sql, "WITH \"%s\"(\"%s\"",
+                           is_alter ? temp_newdb_name : db->tablename,
+                           sc->member[0].name);
             for (i = 1; i < sc->nmembers; i++) {
-                strbuf_append(sql, ", ");
-                strbuf_append(sql, sc->member[i].name);
+                strbuf_appendf(sql, ", \"%s\"", sc->member[i].name);
             }
-            strbuf_append(sql, ") AS (SELECT @");
-            strbuf_append(sql, sc->member[0].name);
+            strbuf_appendf(sql, ") AS (SELECT @%s", sc->member[0].name);
             for (i = 1; i < sc->nmembers; i++) {
-                strbuf_append(sql, ", @");
-                strbuf_append(sql, sc->member[i].name);
+                strbuf_appendf(sql, ", @%s", sc->member[i].name);
             }
-            strbuf_append(sql, ") SELECT 1 FROM ");
-            strbuf_append(sql, "\"");
-            strbuf_append(sql, is_alter ? temp_newdb_name : db->tablename);
-            strbuf_append(sql, "\" ");
-            strbuf_append(sql, db->ixschema[ixnum]->where);
+            strbuf_appendf(sql, ") SELECT 1 FROM \"%s\" %s",
+                           is_alter ? temp_newdb_name : db->tablename,
+                           db->ixschema[ixnum]->where);
             rc = run_verify_indexes_query((char *)strbuf_buf(sql), sc, m, NULL,
                                           &exist);
             if (rc) {
@@ -12124,28 +12097,15 @@ static inline void build_indexes_expressions_query(strbuf *sql,
 {
     int i;
     strbuf_clear(sql);
-    strbuf_append(sql, "WITH ");
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, tblname);
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, "(");
-    strbuf_append(sql, sc->member[0].name);
+    strbuf_appendf(sql, "WITH \"%s\"(\"%s\"", tblname, sc->member[0].name);
     for (i = 1; i < sc->nmembers; i++) {
-        strbuf_append(sql, ", ");
-        strbuf_append(sql, sc->member[i].name);
+        strbuf_appendf(sql, ", \"%s\"", sc->member[i].name);
     }
-    strbuf_append(sql, ") AS (SELECT @");
-    strbuf_append(sql, sc->member[0].name);
+    strbuf_appendf(sql, ") AS (SELECT @%s", sc->member[0].name);
     for (i = 1; i < sc->nmembers; i++) {
-        strbuf_append(sql, ", @");
-        strbuf_append(sql, sc->member[i].name);
+        strbuf_appendf(sql, ", @%s", sc->member[i].name);
     }
-    strbuf_append(sql, ") SELECT (");
-    strbuf_append(sql, expr);
-    strbuf_append(sql, ") FROM ");
-    strbuf_append(sql, "\"");
-    strbuf_append(sql, tblname);
-    strbuf_append(sql, "\"");
+    strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"", expr, tblname);
 }
 
 char *indexes_expressions_unescape(char *expr)
