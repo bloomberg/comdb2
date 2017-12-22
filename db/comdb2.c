@@ -3185,8 +3185,8 @@ static int init(int argc, char **argv)
     dbname = argv[optind++];
     int namelen = strlen(dbname);
     if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
-       logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n", 
-                MAX_DBNAME_LENGTH);
+        logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
+               MAX_DBNAME_LENGTH);
         return -1;
     }
     strcpy(gbl_dbname, dbname);

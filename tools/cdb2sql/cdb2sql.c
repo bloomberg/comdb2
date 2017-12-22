@@ -111,7 +111,11 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
-#define verbose_print(...) { if (verbose) printf (__VA_ARGS__); }
+#define verbose_print(...)                                                     \
+    {                                                                          \
+        if (verbose)                                                           \
+            printf(__VA_ARGS__);                                               \
+    }
 
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
@@ -1249,7 +1253,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
         return 1;
     }
-    if (verbose) debug_trace = 1;
+    if (verbose)
+        debug_trace = 1;
 
     dbname = argv[optind];
     optind++;
