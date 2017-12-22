@@ -681,7 +681,7 @@ static inline int verify_sqlresponse_error_code(int error_code,
         logmsg(LOGMSG_ERROR, "%s line %d returning non-standard "
                              "sqlresponse.error_code %d\n",
                func, line, error_code);
-        cheap_stack_trace();
+        //cheap_stack_trace();
         break;
     }
     return error_code;
@@ -3656,9 +3656,11 @@ static void setup_reqlog_new_sql(struct sqlthdstate *thd,
                  clnt->verify_retries);
 
     if (clnt->sql_query && clnt->sql_query->client_info) {
-        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d sql: %s",
+        char *argv0 = clnt->sql_query->client_info->argv0;
+        thrman_wheref(thd->thr_self, "%s pid: %d host_id: %d argv0: %s sql: %s",
                       info_nvreplays, clnt->sql_query->client_info->pid,
-                      clnt->sql_query->client_info->host_id, clnt->sql);
+                      clnt->sql_query->client_info->host_id,
+                      argv0 ? argv0 : "(unset)", clnt->sql);
     } else {
         thrman_wheref(thd->thr_self, "%s sql: %s", info_nvreplays, clnt->sql);
     }
@@ -6446,6 +6448,11 @@ static inline int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    if (clnt->argv0) {
+        free(clnt->argv0);
+        clnt->argv0 = NULL;
+    }
+
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
@@ -8238,6 +8245,13 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
             }
             clnt.conninfo.pid = sql_query->client_info->pid;
             clnt.conninfo.node = sql_query->client_info->host_id;
+            if (clnt.argv0) {
+                free(clnt.argv0);
+                clnt.argv0 = NULL;
+            }
+            if (sql_query->client_info->argv0) {
+                clnt.argv0 = strdup(sql_query->client_info->argv0);
+            }
         }
 
         if (process_set_commands(&clnt))

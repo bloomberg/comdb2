@@ -82,6 +82,7 @@ static int allow_pmux_route = 0;
 
 static int _PID;
 static int _MACHINE_ID;
+static char *_ARGV0;
 
 #define DB_TZNAME_DEFAULT "America/New_York"
 
@@ -96,6 +97,87 @@ pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static int log_calls = 0;
 
+#if defined(__APPLE__)
+#include <libproc.h>
+
+static char *apple_getargv0(void)
+{
+    static char argv0[PATH_MAX];
+    int ret = proc_pidpath(_PID, argv0, sizeof(argv0));
+    if (ret <= 0) {
+        fprintf(stderr, "%s proc_pidpath returns %d\n", __func__, ret);
+        return NULL;
+    }
+    return argv0;
+}
+#endif
+
+#if defined(_SUN_SOURCE) || defined(_LINUX_SOURCE)
+
+static char *proc_cmdline_getargv0(void)
+{
+    char procname[64];
+    static char argv0[PATH_MAX];
+
+    snprintf(procname, sizeof(procname), "/proc/self/cmdline");
+    FILE *f = fopen(procname, "r");
+    if (f == NULL) {
+        fprintf(stderr, "%s cannot open %s, %s\n", __func__, procname,
+                strerror(errno));
+        return NULL;
+    }
+
+    if (fgets(argv0, PATH_MAX, f) == NULL) {
+        fprintf(stderr, "%s error reading from %s, %s\n", __func__, procname,
+                strerror(errno));
+        fclose(f);
+        return NULL;
+    }
+
+    fclose(f);
+    return argv0;
+}
+#endif
+
+#if defined(_IBM_SOURCE)
+
+#include <sys/procfs.h>
+#include <procinfo.h>
+
+static char *ibm_getargv0(void)
+{
+    struct procsinfo p;
+    static char argv0[PATH_MAX];
+    pid_t idx = _PID;
+    int rc;
+
+    if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
+        _PID == p.pi_pid) {
+        strncpy(argv0, p.pi_comm, PATH_MAX);
+        argv0[PATH_MAX - 1] = '\0';
+    } else {
+        fprintf(stderr, "%s getprocs returns %d for pid %d\n", __func__, _PID);
+        return NULL;
+    }
+
+    return argv0;
+}
+#endif
+
+static char *getargv0(void)
+{
+#if defined(_LINUX_SOURCE) || defined(_SUN_SOURCE)
+    return proc_cmdline_getargv0();
+#elif defined(_IBM_SOURCE)
+    return ibm_getargv0();
+#elif defined(__APPLE__)
+    return apple_getargv0();
+#else
+    fprintf(stderr, "%s unsupported architecture\n", __func__);
+    return NULL;
+#endif
+}
+
 static void do_init_once(void)
 {
     char *do_log = getenv("CDB2_LOG_CALLS");
@@ -108,6 +190,7 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
+    _ARGV0 = getargv0();
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -675,6 +758,7 @@ struct cdb2_hndl {
 #endif
     struct context_messages context_msgs;
     char *env_tz;
+    int sent_client_info;
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -1271,6 +1355,11 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
 
 /* SOCKPOOL CODE ENDS */
 
+static inline int cdb2_hostid()
+{
+    return _MACHINE_ID;
+}
+
 static int send_reset(SBUF2 *sb)
 {
     int rc = 0;
@@ -1503,7 +1592,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
         fprintf(stderr, "td %u %s line %d newsql_connect\n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
-    int fd = -1;
+    int fd = -1, rc;
     SBUF2 *sb = NULL;
     snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
              "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type, hndl->policy);
@@ -1551,6 +1640,7 @@ retry_newsql_connect:
     sbuf2settimeout(sb, 5000, 5000);
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
+    hndl->sent_client_info = 0;
     return 0;
 }
 
@@ -1979,11 +2069,6 @@ retry_read:
     return 0;
 }
 
-static inline int cdb2_hostid()
-{
-    return _MACHINE_ID;
-}
-
 static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            char *sql, int n_set_commands,
                            int n_set_commands_sent, char **set_commands,
@@ -1995,13 +2080,19 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
     CDB2SQLQUERY sqlquery = CDB2__SQLQUERY__INIT;
+
+    // This should be sent once right after we connect, not with every query
     CDB2SQLQUERY__Cinfo cinfo = CDB2__SQLQUERY__CINFO__INIT;
 
-    cinfo.pid = _PID;
-    cinfo.th_id = (int)pthread_self();
-    cinfo.host_id = cdb2_hostid();
-
-    sqlquery.client_info = &cinfo;
+    if (!hndl || !hndl->sent_client_info) {
+        cinfo.pid = _PID;
+        cinfo.th_id = pthread_self();
+        cinfo.host_id = cdb2_hostid();
+        cinfo.argv0 = _ARGV0;
+        sqlquery.client_info = &cinfo;
+        if (hndl)
+            hndl->sent_client_info = 1;
+    }
     sqlquery.dbname = dbname;
     while (isspace(*sql))
         sql++;
