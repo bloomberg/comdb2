@@ -53,13 +53,26 @@ function verify_hello_reuse
         ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
         dbpid=$!
 
-        let i=i+1
-
         t=0
+        started=0
         while [[ $t -lt $start_timeout ]]; do
+            cdb2sql --cdb2cfg $CDB2_CONFIG $db default "select 1" >/dev/null 2>&1
+            if [[ $? == 0 ]]; then
+                started=1
+            else
+                started=0
+                sleep 1
+            fi
         done
-    done
+        kill -9 $dbpid
 
+        if [[ $started == 0 ]]; then
+            echo "${FUNCNAME[0]} pmux hello-test failed on iteration $i"
+            exit 1
+        fi
+
+        let i=i+1
+    done
 }
 
 function runtest
