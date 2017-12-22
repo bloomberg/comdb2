@@ -2,87 +2,15 @@
 
 debug=1
 [[ "$debug" == 1 ]] && set -x
+
 db=$1
 COMDB2_PMUX_PORT=19500
+COMDB2_PMUX_FILE=./pmux.sqlite
 
 if [[ -z "$stage" ]]; then
     echo "Setting stage to 'default' (set 'stage' var to override)."
     stage="default"
 fi
-
-function block_until_connected
-{
-    [[ "$debug" == 1 ]] && echo "START ${FUNCNAME[0]}" && set -x
-    timeout=$1
-    starttime=$(date +%s)
-    err=1
-    while [ $err -ne 0 ] ; do 
-        err=0
-        for node in $CLUSTER ; do
-            cdb2sql ${CDB2_OPTIONS} $db default --host $node "select 1"
-            if [[ $? != 0 ]]; then 
-                err=1
-            fi
-        done
-        sleep 1
-        nowtime=$(date +%s)
-        if (( nowtime - starttime >= timeout )) ; then
-            echo "${FUNCNAME[0]} timed out"
-            return 1
-        fi
-    done
-}
-
-function bounce_node
-{
-    [[ "$debug" == 1 ]] && echo "START ${FUNCNAME[0]}" && set -x
-    node=$1
-    PARAMS="$db --no-global-lrl"
-    CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
-    if [ $node == $(hostname) ]; then
-        (
-        kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-        ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
-        ) &
-    else
-        kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-        ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${db}.${node}.db) &
-        echo $! > ${TMPDIR}/${db}.${node}.pid
-    fi
-}
-
-function bounce_cluster
-{
-    [[ "$debug" == 1 ]] && echo "START ${FUNCNAME[0]}" && set -x
-    for node in $CLUSTER; do
-        bounce_node $node
-    done
-}
-
-function exitdatabase
-{
-    [[ "$debug" == 1 ]] && echo "START ${FUNCNAME[0]}" && set -x
-    if [[ -n "$CLUSTER" ]]; then
-        for node in $CLUSTER; do
-            kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-        done
-    else
-        kill -9 $(cat ${TMPDIR}/${db}.pid)
-    fi
-}
-
-function runtest
-{
-    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
-    pidlist="" 
-    for node in $CLUSTER ; do 
-        { ( echo used | nc $node 5105 >/dev/null ) & } 
-        pidlist="$pidlist $!" 
-    done 
-    sleep 1 
-    kill -9 $pidlist 
-    wait $pidlist
-}
 
 function empty_used_list_crash
 {
@@ -98,11 +26,50 @@ function empty_used_list_crash
         echo "${FUNCNAME[0]} test failed: empty used list killed pmux"
         exit 1
     fi
-    kill -9 $pid
+}
+
+function verify_hello_reuse
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    iters=20
+    start_timeout=30
+
+    # Create a db
+    DBDIR=$(pwd)/$db
+    ${TESTSROOTDIR}/../comdb2 $db --create --dir $DBDIR
+
+    # Modify our config file
+    echo "comdb2_config:portmuxport=$COMDB2_PMUX_PORT" >> $CDB2_CONFIG
+    echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
+
+    # Tweak lrl
+    DBLRL=$DBDIR/${db}.lrl
+    echo "portmux_port ${COMDB2_PMUX_PORT}" >> $DBLRL
+    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+
+    # Start the test
+    i=0
+    while [[ $i -lt $iters ]]; do
+        ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
+        dbpid=$!
+
+        let i=i+1
+
+        t=0
+        while [[ $t -lt $start_timeout ]]; do
+        done
+    done
+
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    empty_used_list_crash
+    verify_hello_reuse
 }
 
 runtest
-exitdatabase
 
 echo "Success"
 exit 0
