@@ -111,10 +111,7 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
-static inline void verbose_print(const char *str)
-{
-    if (verbose) printf(str);
-}
+#define verbose_print(...) { if (verbose) printf (__VA_ARGS__); }
 
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
