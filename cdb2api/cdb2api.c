@@ -108,7 +108,6 @@ static void do_init_once(void)
     }
     _PID = getpid();
     _MACHINE_ID = gethostid();
-    srandom(time(0));
 }
 
 static int is_sql_read(const char *sqlstr)
@@ -1630,6 +1629,33 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
 
+/* combine hashes similar to hash_combine from boost library */
+static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+{
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+}
+
+static int cdb2_random_int() {
+    static __thread unsigned short rand_state[3] = {0};
+    if (rand_state[0] == 0) {
+       struct timeval tv;
+       gettimeofday(&tv, NULL);
+        /* Initialize rand_state once per thread
+         * _PID will ensure that cnonce will be different accross processes
+
+         * Get the initial random state by using thread id and time info. */
+        uint32_t tmp[2];
+        tmp[0] = tv.tv_sec;
+        tmp[1] = tv.tv_usec;
+        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
+        rand_state[0] = hash;
+        rand_state[1] = hash >> 16;
+        rand_state[2] = hash >> 32;
+    }
+    return nrand48(rand_state);
+}
+
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
     if (hndl->sb) {
@@ -1646,10 +1672,10 @@ retry_connect:
     }
 
     if ((hndl->flags & CDB2_RANDOM) && (hndl->node_seq == 0)) {
-        hndl->node_seq = random() % hndl->num_hosts;
+        hndl->node_seq = cdb2_random_int() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = random() % hndl->num_hosts_sameroom;
+        hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* First try on same room. */
         for (i = 0; i < hndl->num_hosts_sameroom; i++) {
             int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
@@ -2478,13 +2504,6 @@ done:
 }
 
 
-/* combine hashes similar to hash_combine from boost library */
-uint64_t val_combine(uint64_t lhs, uint64_t rhs)
-{
-    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
-    return lhs;
-}
-
 /* make_random_str() will return a randomly generated string
  * this is used to get a cnonce, composed of four components:
  * the first part is the id of this host machine
@@ -2494,28 +2513,15 @@ uint64_t val_combine(uint64_t lhs, uint64_t rhs)
  */
 static void make_random_str(char *str, size_t max_len, int *len)
 {
-    static __thread unsigned short rand_state[3] = {0};
     static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
     static __thread size_t cached_portion_len = 0;
-
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    if (rand_state[0] == 0) {
-        /* Initialize rand_state once per thread
-         * _PID will ensure that cnonce will be different accross processes
-
-         * Get the initial random state by using thread id and time info. */
-        uint32_t tmp[2];
-        tmp[0] = tv.tv_sec;
-        tmp[1] = tv.tv_usec;
-        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
-        rand_state[0] = hash;
-        rand_state[1] = hash >> 16;
-        rand_state[2] = hash >> 32;
+    if (cached_portion_len == 0) {
         cached_portion_len = snprintf(cached_portion, sizeof(cached_portion),
                                       "%d-%d-", cdb2_hostid(), _PID);
     }
-    int randval = nrand48(rand_state);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int randval = cdb2_random_int();
     strncpy(str, cached_portion, cached_portion_len);
     *len = cached_portion_len;
     *len += snprintf(str + cached_portion_len, max_len - cached_portion_len,
