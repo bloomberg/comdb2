@@ -1636,11 +1636,12 @@ static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
     return lhs;
 }
 
-static int cdb2_random_int() {
+static int cdb2_random_int()
+{
     static __thread unsigned short rand_state[3] = {0};
     if (rand_state[0] == 0) {
-       struct timeval tv;
-       gettimeofday(&tv, NULL);
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
         /* Initialize rand_state once per thread
          * _PID will ensure that cnonce will be different accross processes
 
