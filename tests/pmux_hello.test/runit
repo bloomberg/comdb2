@@ -91,6 +91,8 @@ function runtest
 
     empty_used_list_crash
     verify_hello_reuse
+
+    kill -9 $pmux_pid
 }
 
 runtest
