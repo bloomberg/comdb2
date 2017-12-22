@@ -679,7 +679,8 @@ again:
 done:
     // schedule to write later when it won't block (ok to do even if we didn't
     // write anything)
-    fd.events |= POLLOUT;
+    if (!c.out.empty())
+        fd.events |= POLLOUT;
     fd.revents = 0;
 
     return 0;
