@@ -1829,6 +1829,8 @@ struct comdb2_ddl_context {
 enum {
     FLAG_ALLOW_ARRAY = 1 << 0,
     FLAG_QUOTE_DEFAULT = 1 << 1,
+    /* cstring types need an extra byte for NULL-terminator. */
+    FLAG_EXTRA_BYTE = 1 << 2,
 };
 
 #define COMDB2_TYPE(A, B, C)                                                   \
@@ -1872,8 +1874,10 @@ struct comdb2_type_mapping {
     COMDB2_TYPE("double", "double", 0),
 
     /* Additional types mapped to a Comdb2 type. */
-    COMDB2_TYPE("varchar", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
-    COMDB2_TYPE("char", "cstring", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
+    COMDB2_TYPE("varchar", "cstring",
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE),
+    COMDB2_TYPE("char", "cstring",
+                FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT | FLAG_EXTRA_BYTE),
     COMDB2_TYPE("text", "vutf8", FLAG_ALLOW_ARRAY | FLAG_QUOTE_DEFAULT),
     COMDB2_TYPE("integer", "int", 0),
     COMDB2_TYPE("smallint", "short", 0),
@@ -1985,9 +1989,8 @@ static int comdb2_parse_sql_type(const char *type, int *size)
             *size =
                 strtol(type + type_mapping[i].sql_type_len + 1, &endptr, 10);
 
-            /* Correction: cstring requires an additional byte. */
-            if ((strncasecmp(type_mapping[i].sql_type, "varchar",
-                             type_mapping[i].sql_type_len)) == 0) {
+            /* Correction: cstring types require an additional byte. */
+            if ((type_mapping[i].flag & FLAG_EXTRA_BYTE) != 0) {
                 (*size)++;
             }
 

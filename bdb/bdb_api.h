@@ -976,6 +976,9 @@ int bdb_amimaster(bdb_state_type *bdb_handle);
 /* returns nodeid of master, -1 if there is no master */
 char *bdb_whoismaster(bdb_state_type *bdb_handle);
 
+int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
+                       uint32_t *egen);
+
 /* get current sanc list.  pass in size of array.  returns number of sanc
  * nodes (may be > passed in list length). */
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,

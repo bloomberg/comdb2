@@ -965,18 +965,16 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		goto err;
 	}
 
-	if (1) {
-		if (last_lsn.file == first_lsn.file)
-			nfiles = (double)
-			    (last_lsn.offset - first_lsn.offset) / log_size;
-		else
-			nfiles = (double)(last_lsn.file - first_lsn.file) +
-			    (double)(log_size - first_lsn.offset +
-			    last_lsn.offset) / log_size;
-		/* We are going to divide by nfiles; make sure it isn't 0. */
-		if (nfiles == 0)
-			nfiles = (double)0.001;
-	}
+	if (last_lsn.file == first_lsn.file)
+		nfiles = (double)
+		    (last_lsn.offset - first_lsn.offset) / log_size;
+	else
+		nfiles = (double)(last_lsn.file - first_lsn.file) +
+		    (double)(log_size - first_lsn.offset +
+		    last_lsn.offset) / log_size;
+	/* We are going to divide by nfiles; make sure it isn't 0. */
+	if (nfiles == 0)
+		nfiles = (double)0.001;
 
 	/* Find a low txnid. */
 	ret = 0;

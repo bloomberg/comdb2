@@ -264,3 +264,8 @@ DROP TABLE t2
 DROP TABLE t3;
 DROP TABLE t4;
 DROP TABLE t5;
+
+CREATE TABLE t1(c1 CHAR(2), c2 CSTRING(2), c3 VARCHAR(2), c4 TEXT) $$
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
