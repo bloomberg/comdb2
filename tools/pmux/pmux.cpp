@@ -489,6 +489,7 @@ static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
     connections[fd].fd = fd;
     connections[fd].writable = is_local(addr);
     connections[fd].addr = addr;
+    connections[fd].is_hello = false;
     return 0;
 }
 
