@@ -269,3 +269,22 @@ CREATE TABLE t1(c1 CHAR(2), c2 CSTRING(2), c3 VARCHAR(2), c4 TEXT) $$
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 DROP TABLE t1;
+
+CREATE TABLE t1(i INT UNIQUE ASC) $$
+CREATE TABLE t1(i INT UNIQUE DESC) $$
+CREATE TABLE t1(i INT KEY ASC) $$
+CREATE TABLE t1(i INT KEY DESC) $$
+CREATE TABLE t1(i INT PRIMARY KEY ASC) $$
+CREATE TABLE t2(i INT PRIMARY KEY DESC) $$
+CREATE TABLE t3(i INT UNIQUE) $$
+CREATE TABLE t4(i INT KEY) $$
+CREATE TABLE t5(i INT, j INT, KEY(j DESC, i ASC)) $$
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;

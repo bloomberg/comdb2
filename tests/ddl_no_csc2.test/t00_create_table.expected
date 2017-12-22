@@ -76,7 +76,7 @@
 	}
 ')
 [DROP TABLE t2] failed with rc -3 no such table: t2
-[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc -3 Multiple primary key definitions.
+[CREATE TABLE t3(i INT PRIMARY KEY, j INT PRIMARY KEY)] failed with rc -3 Index 'COMDB2_PK' already exists.
 [CREATE TABLE t4(i INT, i INT)] failed with rc -3 Duplicate column name 'i'.
 [CREATE TABLE t7(i INTt)] failed with rc -3 Invalid type specified.
 [CREATE TABLE t8(INT i)] failed with rc -3 Invalid type specified.
@@ -173,7 +173,7 @@ keys
 [DROP TABLE t4] failed with rc -3 no such table: t4
 [DROP TABLE t7] failed with rc -3 no such table: t7
 [DROP TABLE t8] failed with rc -3 no such table: t8
-[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG '$KEY_F9E83FD8' FOR INDICES 1 AND 0!
+[CREATE TABLE t1(i INT, j INT, UNIQUE(i, j), UNIQUE(i, j))] failed with rc -3 Index '$KEY_F9E83FD8' already exists.
 (tablename='t2')
 (tablename='t3')
 (tablename='t4')
@@ -297,9 +297,9 @@ keys
 (tablename='t6', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t7', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t8', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t6', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t8', keyname='COMDB2_PK', foreigntablename='t7', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t6', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_919A0CAB', tablename='t8', keyname='COMDB2_PK', foreigntablename='t7', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
@@ -504,10 +504,10 @@ constraints
 (tablename='t3', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t4', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (tablename='t5', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
-(tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
-(tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
-(tablename='t5', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t2', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t3', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='N')
+(name='$CONSTRAINT_C6A17957', tablename='t4', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='Y', iscascadingupdate='Y')
+(name='$CONSTRAINT_C6A17957', tablename='t5', keyname='COMDB2_PK', foreigntablename='t1', foreignkeyname='COMDB2_PK', iscascadingdelete='N', iscascadingupdate='N')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i 
@@ -635,9 +635,9 @@ keys
 [CREATE TABLE t1(i INT, b BLOB(100) DEFAULT 'xxxxx')] failed with rc 240 Error at line   4: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS
 (rows inserted=1)
 (i=1, f1=1.100000, f2=1.100000, f3=1.100000)
-[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name.
-[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG 'DUP' FOR INDICES 1 AND 0!
-[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc 240 Error at line   9: CANT HAVE SAME TAG 'XXXX' FOR INDICES 1 AND 0!
+[CREATE TABLE t6(i INT, KEY COMDB2_PK(i))] failed with rc -3 Invalid key name 'COMDB2_PK'.
+[CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j))] failed with rc -3 Index 'dup' already exists.
+[CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j))] failed with rc -3 Index 'xxxx' already exists.
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
@@ -744,3 +744,69 @@ keys
 		vutf8 c4 null = yes 
 	}
 ')
+[CREATE TABLE t1(i INT UNIQUE ASC)] failed with rc -3 near "ASC": syntax error
+[CREATE TABLE t1(i INT UNIQUE DESC)] failed with rc -3 near "DESC": syntax error
+[CREATE TABLE t1(i INT KEY ASC)] failed with rc -3 near "ASC": syntax error
+[CREATE TABLE t1(i INT KEY DESC)] failed with rc -3 near "DESC": syntax error
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N')
+(tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t5', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='COMDB2_PK', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t3', keyname='$KEY_6CBCA552', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t4', keyname='$KEY_850457AB', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t5', keyname='$KEY_3FDDB096', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = i 
+	}
+')
+(type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" (i);', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
+	{
+		int i 
+	}
+keys
+	{
+		"COMDB2_PK" = <DESCEND> i 
+	}
+')
+(type='index', name='$COMDB2_PK_44BF0620', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_44BF0620" on "t2" (i DESC);', csc2=NULL)
+(type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		"$KEY_6CBCA552" = i 
+	}
+')
+(type='index', name='$$KEY_6CBCA552_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$$KEY_6CBCA552_6CBCA552" on "t3" (i);', csc2=NULL)
+(type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "$KEY_850457AB" = i 
+	}
+')
+(type='index', name='$$KEY_850457AB_850457AB', tbl_name='t4', rootpage=11, sql='create index "$$KEY_850457AB_850457AB" on "t4" (i);', csc2=NULL)
+(type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int, "j" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+	}
+keys
+	{
+		dup "$KEY_3FDDB096" = <DESCEND> j + i 
+	}
+')
+(type='index', name='$$KEY_3FDDB096_3FDDB096', tbl_name='t5', rootpage=13, sql='create index "$$KEY_3FDDB096_3FDDB096" on "t5" (j DESC, i);', csc2=NULL)
