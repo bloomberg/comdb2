@@ -1425,7 +1425,6 @@ void reqlog_new_request(struct ireq *iq)
         return;
     }
 
-    reqlog_reset_logger(logger);
     logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
@@ -1451,7 +1450,6 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     if (!logger) {
         return;
     }
-    reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = time_epochus();
@@ -1717,9 +1715,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     int long_request_thresh;
 
-    if (!logger || !logger->in_request) {
+    if (!logger)
         return;
-    }
+    if (!logger->in_request)
+        goto out;
 
     if (logger->sqlrows > 0) {
         reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
@@ -1940,9 +1939,12 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
         osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
     }
-    logger->have_id = 0;
-    logger->have_fingerprint = 0;
-    logger->error_code = 0;
+out:
+    reqlog_reset_logger(logger); //will reset which bzeros much of logger
+    assert(logger->have_id == 0);
+    assert(logger->have_fingerprint == 0);
+    assert(logger->error_code == 0);
+    assert(logger->path == 0);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if

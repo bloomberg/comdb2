@@ -4236,7 +4236,7 @@ void *statthd(void *p)
         reqlog_diffstat_init(statlogger);
     }
 
-    for (;;) {
+    while (!dbenv->exiting && !dbenv->stopped) {
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;
@@ -4251,14 +4251,9 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
-        if (!dbenv->exiting && !dbenv->stopped) {
-            bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
-            diff_deadlocks = ndeadlocks - last_ndeadlocks;
-            diff_lockwaits = nlockwaits - last_nlockwaits;
-        } else {
-            reqlog_free(statlogger);
-            return NULL;
-        }
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        diff_deadlocks = ndeadlocks - last_ndeadlocks;
+        diff_lockwaits = nlockwaits - last_nlockwaits;
 
         diff_qtrap = nqtrap - last_qtrap;
         diff_fstrap = nfstrap - last_fstrap;
@@ -4576,6 +4571,9 @@ void *statthd(void *p)
         ++count;
         sleep(1);
     }
+
+    reqlog_free(statlogger);
+    return NULL;
 }
 
 void create_stat_thread(struct dbenv *dbenv)

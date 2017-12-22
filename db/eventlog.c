@@ -369,8 +369,9 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
         cson_object *obj = cson_value_get_object(component);
         struct client_query_path_component *c;
         c = &logger->path->path_stats[i];
-        cson_object_set(obj, "table",
-                        cson_value_new_string(c->table, strlen(c->table)));
+        if (c->table)
+            cson_object_set(obj, "table",
+                            cson_value_new_string(c->table, strlen(c->table)));
         if (c->ix != -1) cson_object_set(obj, "index", cson_new_int(c->ix));
         if (c->nfind) cson_object_set(obj, "find", cson_new_int(c->nfind));
         if (c->nnext) cson_object_set(obj, "next", cson_new_int(c->nnext));
