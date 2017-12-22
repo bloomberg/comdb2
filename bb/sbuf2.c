@@ -994,6 +994,7 @@ void SBUF2_FUNC(cleanup_peer_hash)()
         hash_clear(peer_hash);
         hash_free(peer_hash);
         peer_hash = NULL;
+        printf("AZ: cleanup_peer_hash()");
     }
 #endif
 }

@@ -1095,6 +1095,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         s = realloc(s, len);
         if (!s) {
             fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            free(s);
             return -1;
         }
         len = vsnprintf(s, len, fmt, args_c);
@@ -1114,6 +1115,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         event = malloc(sizeof(struct push_prefix_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->length = len;
@@ -1204,6 +1206,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         if (!s) {
             logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             va_end(args_c);
+            free(s);
             return -1;
         }
         len = vsnprintf(s, len, fmt, args_c);
@@ -1222,6 +1225,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         event = malloc(sizeof(struct print_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->event_flag = event_flag;

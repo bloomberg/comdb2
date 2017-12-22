@@ -4936,7 +4936,7 @@ void *watcher_thread(void *arg)
 
     bdb_state->repinfo->disable_watcher = 0;
 
-    while (1) {
+    while (!db_is_stopped(bdb_state)) {
         time_now = time_epoch();
         time_then = bdb_state->repinfo->disable_watcher;
 

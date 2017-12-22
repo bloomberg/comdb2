@@ -1524,11 +1524,27 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state->dir);
     free(bdb_state->txndir);
     free(bdb_state->tmpdir);
+
+    free(bdb_state->seqnum_info->seqnums);
+    free(bdb_state->last_downgrade_time);
+    free(bdb_state->master_lease);
+    free(bdb_state->coherent_state);
+    free(bdb_state->seqnum_info->waitlist);
+    free(bdb_state->seqnum_info->trackpool);
+    free(bdb_state->seqnum_info->time_10seconds);
+    free(bdb_state->seqnum_info->time_minute);
+    free(bdb_state->seqnum_info->expected_udp_count);
+    free(bdb_state->seqnum_info->incomming_udp_count);
+    free(bdb_state->seqnum_info->udp_average_counter);
+    free(bdb_state->seqnum_info->filenum);
+    
+    free(bdb_state->repinfo->appseqnum);
+
     /* We can not free bdb_state because other threads get READLOCK
      * and it does not work well doing so on freed memory, so don't:
-     * memset(bdb_state, 0xff, sizeof(bdb_state));
-     * free(bdb_state);
      */
+    memset(bdb_state, 0xff, sizeof(bdb_state));
+    free(bdb_state);
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;
