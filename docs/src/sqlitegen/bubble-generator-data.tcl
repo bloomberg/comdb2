@@ -567,19 +567,17 @@ set all_graphs {
       {line
           {stack
               {line {or {line UNIQUE } {line KEY } }
-                  {opt index-name }
-                  {line ( {loop {line column-name } { , } } ) }
-              }
+                  {opt index-name } ( index-column-list ) }
               {line {opt WITH DATACOPY } {opt WHERE expr } }
           }
       }
-      {line PRIMARY KEY ( column-list ) }
-      {line FOREIGN KEY ( column-list ) foreign-key-def}
+      {line PRIMARY KEY ( index-column-list ) }
+      {line FOREIGN KEY ( index-column-list ) foreign-key-def}
   }
 
   foreign-key-def {
       stack
-      {line REFERENCES ref-table-name ( ref-column-name ) }
+      {line REFERENCES table-name ( index-column-list ) }
       {opt
           {loop
               {line ON
@@ -596,7 +594,7 @@ set all_graphs {
       }
   }
 
-  column-list {
+  index-column-list {
       loop
       {line column-name {opt {or {line ASC } {line DESC } } } }
       { , }
@@ -615,16 +613,14 @@ set all_graphs {
                       }
                       {line DROP {opt COLUMN} column-name }
                       {stack
-                          {line
-                              {line ADD {opt UNIQUE } INDEX index-name }
-                              {line ( {loop {line column-name } { , } } ) }
-                          }
+                          {line ADD {opt UNIQUE } INDEX index-name
+                              ( index-column-list ) }
                           {line {opt WITH DATACOPY } {opt WHERE expr } }
                       }
                       {line DROP INDEX index-name }
-                      {line ADD PRIMARY KEY ( column-list ) }
+                      {line ADD PRIMARY KEY ( index-column-list ) }
                       {line DROP PRIMARY KEY }
-                      {line ADD FOREIGN KEY ( column-list ) foreign-key-def }
+                      {line ADD FOREIGN KEY ( index-column-list ) foreign-key-def }
                       {line DROP FOREIGN KEY constraint-name }
                   }
                   { , }
@@ -636,8 +632,7 @@ set all_graphs {
   create-index {
       stack
       {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
-      {line {opt db-name } index-name ON table-name }
-      {line ( {loop {line column-name } { , } } ) }
+      {line {opt db-name } index-name ON table-name ( index-column-list ) }
       {line {opt WITH DATACOPY } {opt WHERE expr } }
   }
 
