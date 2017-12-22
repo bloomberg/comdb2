@@ -3343,8 +3343,8 @@ static void comdb2AddIndexInt(
     }
 
     /*
-      pList == 0 imples that the UNIQUE/DUP key was specified in the column
-      definition.
+      pList == 0 imples that the PRIMARY/UNIQUE/DUP key was specified in the
+      column definition.
     */
     if (pList == 0) {
         key->nmembers = 1;
@@ -3356,6 +3356,10 @@ static void comdb2AddIndexInt(
             ctx->mem,
             ((struct comdb2_field *)LISTC_BOT(&ctx->column_list))->field->name);
         if (member->name == 0) goto oom;
+        if (sortOrder == SQLITE_SO_DESC) {
+            assert(idxType == SQLITE_IDXTYPE_PRIMARYKEY);
+            member->flags |= INDEX_DESCEND;
+        }
     } else {
         key->nmembers = pList->nExpr;
         key->member =
