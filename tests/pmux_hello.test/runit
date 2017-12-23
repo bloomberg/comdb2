@@ -8,6 +8,10 @@ export COMDB2_PMUX_PORT=19500
 export COMDB2_PMUX_FILE=./pmux.sqlite
 export CDB2SQL=${TESTSROOTDIR}/../cdb2sql
 export pmux_pid=0
+export start_iters=10
+export start_sleep=5
+export CDB2_CONFIG=./cdb2config.cfg
+export dbpidfile=./database.pid
 
 if [[ -z "$stage" ]]; then
     echo "Setting stage to 'default' (set 'stage' var to override)."
@@ -27,6 +31,29 @@ function empty_used_list_crash
     fi
 }
 
+function start_database
+{
+    DBLRL=$1
+
+    jj=0
+
+    while [[ $jj -lt $start_iters ]]; do
+        ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
+        dbpid=$!
+        echo $dbpid > $dbpidfile
+        sleep $start_sleep
+        kill -0 $dbpid
+        if [[ $? == 0 ]]; then
+            echo "Database started"
+            return 0
+        fi
+        let jj=jj+1
+    done
+    echo "Couldn't start the database"
+    kill -9 $pmux_pid
+    exit 1
+}
+
 function verify_hello_reuse
 {
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
@@ -36,8 +63,6 @@ function verify_hello_reuse
     # Create a db
     DBDIR=$(pwd)/$db
     ${TESTSROOTDIR}/../comdb2 $db --create --dir $DBDIR
-
-    CDB2_CONFIG=./cdb2config.cfg
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
@@ -53,8 +78,8 @@ function verify_hello_reuse
     # Start the test
     i=0
     while [[ $i -lt $iters ]]; do
-        ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
-        dbpid=$!
+        start_database $DBLRL
+        dbpid=$(cat $dbpidfile)
 
         t=0
         started=0
@@ -75,6 +100,7 @@ function verify_hello_reuse
             kill -9 $pmux_pid
             exit 1
         fi
+        sleep 1
 
         let i=i+1
     done
@@ -87,6 +113,7 @@ function runtest
     # Start pmux
     ${TESTSROOTDIR}/../pmux -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
     pmux_pid=$!
+
     sleep 5
 
     empty_used_list_crash
