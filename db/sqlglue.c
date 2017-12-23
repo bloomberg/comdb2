@@ -1671,7 +1671,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         strbuf_append(sql, "create index ");
 #endif
 
-        strbuf_appendf(sql, "\"%s\" on \"%s\"(", namebuf, tbl->tablename);
+        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
         for (field = 0; field < schema->nmembers; field++) {
             if (field > 0)
                 strbuf_append(sql, ", ");
