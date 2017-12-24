@@ -1092,12 +1092,13 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
             free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
         len = strlen(s);
@@ -1202,13 +1203,14 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             va_end(args_c);
             free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
         len = strlen(s);
