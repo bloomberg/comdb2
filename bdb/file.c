@@ -1537,7 +1537,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     free(bdb_state->seqnum_info->incomming_udp_count);
     free(bdb_state->seqnum_info->udp_average_counter);
     free(bdb_state->seqnum_info->filenum);
-    
+
     free(bdb_state->repinfo->appseqnum);
 
     /* We can not free bdb_state because other threads get READLOCK

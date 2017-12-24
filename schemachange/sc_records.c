@@ -451,7 +451,7 @@ static int convert_record(struct convert_record_data *data)
     }
     pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
-        reqlog_new_request(&data->iq); //TODO: cleanup (reset) logger
+        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
     }
 
