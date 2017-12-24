@@ -1440,8 +1440,7 @@ void clean_exit(void)
     }
     cleanup_interned_strings();
     cleanup_peer_hash();
-    sleep(1);
-    comdb2ma_exit();
+    //TODO: would be nice but other threads need to exit first: comdb2ma_exit();
 
     logmsg(LOGMSG_USER, "goodbye\n");
 

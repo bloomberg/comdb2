@@ -1542,9 +1542,9 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     /* We can not free bdb_state because other threads get READLOCK
      * and it does not work well doing so on freed memory, so don't:
-     */
     memset(bdb_state, 0xff, sizeof(bdb_state));
     free(bdb_state);
+     */
 
     /* DO NOT RELEASE the write lock.  just let it be. */
     return 0;

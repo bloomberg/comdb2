@@ -373,6 +373,7 @@ void *logdelete_thread(void *arg)
 
 extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
+extern int db_is_stopped();
 
 void *checkpoint_thread(void *arg)
 {
@@ -478,6 +479,7 @@ void *checkpoint_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
     bdb_thread_event(bdb_state, 0);
+    return NULL;
 }
 
 int bdb_get_checkpoint_time(bdb_state_type *bdb_state)
