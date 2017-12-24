@@ -403,7 +403,7 @@ void *checkpoint_thread(void *arg)
 
     bdb_thread_event(bdb_state, 1);
 
-    while (1) {
+    while (!db_is_stopped()) {
         BDB_READLOCK("checkpoint_thread");
         checkpointtime = bdb_state->attr->checkpointtime;
         checkpointrand = bdb_state->attr->checkpointrand;
@@ -413,14 +413,6 @@ void *checkpoint_thread(void *arg)
         if (broken) {
             logmsg(LOGMSG_ERROR, "%s failed in log_get_last_lsn rc=%d\n", __func__,
                     broken);
-        }
-
-        if (db_is_stopped()) {
-            logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
         }
 
         /* can't call checkpoint until llmeta is open if we are using rowlocks
@@ -483,6 +475,9 @@ void *checkpoint_thread(void *arg)
             } while (crt_time_msec < end_sleep_time_msec);
         }
     }
+
+    logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
+    bdb_thread_event(bdb_state, 0);
 }
 
 int bdb_get_checkpoint_time(bdb_state_type *bdb_state)

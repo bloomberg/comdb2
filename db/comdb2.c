@@ -1418,7 +1418,10 @@ void clean_exit(void)
     if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
+    extern char *gbl_portmux_unix_socket;
+    free(gbl_portmux_unix_socket);
     cleanup_file_locations();
+    ctrace_closelog();
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
@@ -1437,6 +1440,7 @@ void clean_exit(void)
     }
     cleanup_interned_strings();
     cleanup_peer_hash();
+    sleep(1);
     comdb2ma_exit();
 
     logmsg(LOGMSG_USER, "goodbye\n");

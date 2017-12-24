@@ -365,7 +365,7 @@ DEF_ATTR_2(
 DEF_ATTR(PAGEDEADLOCK_MAXPOLL, pagedeadlock_maxpoll, QUANTITY, 5,
          "If retrying on deadlock (see pagedeadlock_retries), poll up to this "
          "many ms on each retry.")
-DEF_ATTR(ENABLE_TEMPTABLE_CLEAN_EXIT, temp_table_clean_exit, BOOLEAN, 0,
+DEF_ATTR(ENABLE_TEMPTABLE_CLEAN_EXIT, temp_table_clean_exit, BOOLEAN, 1,
          "On exit, clean up temptables (they are deleted on next startup "
          "regardless).")
 DEF_ATTR(MAX_SQL_IDLE_TIME, max_sql_idle_time, QUANTITY, 3600,
