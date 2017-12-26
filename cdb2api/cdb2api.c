@@ -621,8 +621,7 @@ struct cdb2_hndl {
     int in_trans;
     int temp_trans;
     int is_retry;
-    char newsql_typestr[64];
-    char dbinfo_typestr[64];
+    char newsql_typestr[128];
     char policy[24];
     int master;
     int connected_host;
@@ -1462,16 +1461,26 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 #endif
 
 static int cdb2portmux_route(const char *remote_host, char *app, char *service,
-                             const char *instance)
+                             const char *instance, int debug)
 {
-    char name[64];
+    char name[128];
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd;
     bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
-    if (rc < 1 || rc >= sizeof(name))
+    if (rc < 1 || rc >= sizeof(name)) {
+        if (debug)
+            fprintf(stderr,
+                    "ERROR: can not fit entire string into name '%s/%s/%s'\n",
+                    app, service, instance);
         return -1;
+    }
+
+    if (debug)
+        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
+                __func__, __LINE__);
+
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
     if (fd < 0)
@@ -1483,9 +1492,11 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     }
     sbuf2printf(ss, "rte %s\n", name);
     sbuf2flush(ss);
-    res[0] = 0;
+    res[0] = '\0';
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] != '0') {
+    if (debug)
+        fprintf(stderr, "rte '%s' returns res='%s'\n", name, res);
+    if (res[0] != '0') { // character '0' is indication of success
         sbuf2close(ss);
         return -1;
     }
@@ -1505,8 +1516,14 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
     }
     int fd = -1;
     SBUF2 *sb = NULL;
-    snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
-             "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type, hndl->policy);
+    int rc = snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
+                      "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type,
+                      hndl->policy);
+    if ((rc < 1 || rc >= sizeof(hndl->newsql_typestr)) && hndl->debug_trace) {
+        fprintf(stderr, "ERROR: can not fit entire string into "
+                        "'comdb2/%s/%s/newsql/%s' only %s\n",
+                hndl->dbname, hndl->type, hndl->policy, hndl->newsql_typestr);
+    }
 retry_newsql_connect:
     fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL);
 
@@ -1518,7 +1535,8 @@ retry_newsql_connect:
             if (fd < 0)
                 return -1;
         } else {
-            fd = cdb2portmux_route(host, "comdb2", "replication", hndl->dbname);
+            fd = cdb2portmux_route(host, "comdb2", "replication", hndl->dbname,
+                                   hndl->debug_trace);
             if (fd < 0)
                 return -1;
         }
@@ -1583,37 +1601,48 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 
 /* returns port number, or -1 for error*/
 static int cdb2portmux_get(const char *remote_host, char *app, char *service,
-                           const char *instance)
+                           const char *instance, int debug)
 {
-    char name[64];
+    char name[128]; /* app/service/dbname */
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd, port;
     bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
-    if (rc < 1 || rc >= sizeof(name))
+    if (rc < 1 || rc >= sizeof(name)) {
+        if (debug)
+            fprintf(stderr,
+                    "ERROR: can not fit entire string into name '%s/%s/%s'\n",
+                    app, service, instance);
         return -1;
+    }
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
-    if (fd < 0)
+    if (fd < 0) {
+        if (debug)
+            fprintf(stderr, "cdb2_tcpconnecth_to returns fd=%d'\n", fd);
         return -1;
+    }
     ss = sbuf2open(fd, 0);
     if (ss == 0) {
         close(fd);
+        if (debug)
+            fprintf(stderr, "sbuf2open returned 0\n");
         return -1;
     }
     sbuf2printf(ss, "get %s\n", name);
     sbuf2flush(ss);
-    res[0] = 0;
+    res[0] = '\0';
     sbuf2gets(res, sizeof(res), ss);
-    if (res[0] == 0) {
-        sbuf2close(ss);
+    sbuf2close(ss);
+    if (debug)
+        fprintf(stderr, "get '%s' returns res='%s'\n", name, res);
+    if (res[0] == '\0') {
         return -1;
     }
     port = atoi(res);
     if (port <= 0)
         port = -1;
-    sbuf2close(ss);
     return port;
 }
 
@@ -1673,8 +1702,9 @@ retry_connect:
         for (i = 0; i < hndl->num_hosts; i++) {
             if (hndl->ports[i] <= 0) {
                 if (!allow_pmux_route) {
-                    hndl->ports[i] = cdb2portmux_get(
-                        hndl->hosts[i], "comdb2", "replication", hndl->dbname);
+                    hndl->ports[i] =
+                        cdb2portmux_get(hndl->hosts[i], "comdb2", "replication",
+                                        hndl->dbname, hndl->debug_trace);
                 } else {
                     hndl->ports[i] = CDB2_PORTMUXPORT;
                 }
@@ -1731,8 +1761,9 @@ retry_connect:
         int found_a_port = 0;
         for (i = 0; i < hndl->num_hosts; i++) {
             if (hndl->ports[i] <= 0) {
-                hndl->ports[i] = cdb2portmux_get(hndl->hosts[i], "comdb2",
-                                                 "replication", hndl->dbname);
+                hndl->ports[i] =
+                    cdb2portmux_get(hndl->hosts[i], "comdb2", "replication",
+                                    hndl->dbname, hndl->debug_trace);
                 if (hndl->ports[i] > 0) {
                     found_a_port = 1;
                     break;
@@ -4096,7 +4127,6 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
                                 char *cluster, int *dbnum, int num_retries)
 {
     char sql_query[256];
-    int rc = 0;
     *dbnum = 0;
     int n_bindvars = 3;
     sprintf(sql_query, "select M.name, D.dbnum, M.room from machines M join "
@@ -4135,17 +4165,24 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
     bindvars[0] = bind_dbname;
     bindvars[1] = bind_cluster;
     bindvars[2] = bind_room;
-    char newsql_typestr[64];
+    char newsql_typestr[128];
     int is_sockfd = 1;
-    snprintf(newsql_typestr, sizeof(newsql_typestr), "comdb2/%s/%s/newsql/%s",
-             comdb2db_name, cluster, hndl->policy);
+    int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
+                      "comdb2/%s/%s/newsql/%s", comdb2db_name, cluster,
+                      hndl->policy);
+    if ((rc < 1 || rc >= sizeof(newsql_typestr)) && hndl->debug_trace) {
+        fprintf(stderr,
+                "ERROR: can not fit entire string 'comdb2/%s/%s/newsql/%s'\n",
+                comdb2db_name, cluster, hndl->policy);
+    }
+
     int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL);
     if (fd < 0) {
         if (!allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
         } else {
-            fd =
-                cdb2portmux_route(host, "comdb2", "replication", comdb2db_name);
+            fd = cdb2portmux_route(host, "comdb2", "replication", comdb2db_name,
+                                   hndl->debug_trace);
         }
         is_sockfd = 0;
     }
@@ -4250,28 +4287,46 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
                              int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
 {
-    char newsql_typestr[64];
+    char newsql_typestr[128];
     SBUF2 *sb = NULL;
 
-    snprintf(newsql_typestr, sizeof(newsql_typestr), "comdb2/%s/%s/newsql/%s",
-             dbname, type, hndl->policy);
+    if (hndl->debug_trace)
+        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
+                __func__, __LINE__);
+
+    int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
+                      "comdb2/%s/%s/newsql/%s", dbname, type, hndl->policy);
+    if (rc < 1 || rc >= sizeof(newsql_typestr)) {
+        if (hndl->debug_trace)
+            fprintf(
+                stderr,
+                "ERROR: can not fit entire string 'comdb2/%s/%s/newsql/%s'\n",
+                dbname, type, hndl->policy);
+        return -1;
+    }
     int port = 0;
     int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL);
     if (hndl->debug_trace)
-        fprintf(stderr, "dbinfo fd %d\n", fd);
+        fprintf(stderr, "cdb2_socket_pool_get fd %d, host '%s'\n", fd, host);
     if (fd < 0) {
         if (host == NULL)
             return -1;
 
         if (!allow_pmux_route) {
             if (!port) {
-                port = cdb2portmux_get(host, "comdb2", "replication", dbname);
+                port = cdb2portmux_get(host, "comdb2", "replication", dbname,
+                                       hndl->debug_trace);
+                if (hndl->debug_trace)
+                    fprintf(stderr, "cdb2portmux_get port=%d'\n", port);
             }
             if (port < 0)
                 return -1;
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
         } else {
-            fd = cdb2portmux_route(host, "comdb2", "replication", dbname);
+            fd = cdb2portmux_route(host, "comdb2", "replication", dbname,
+                                   hndl->debug_trace);
+            if (hndl->debug_trace)
+                fprintf(stderr, "cdb2portmux_route fd=%d'\n", fd);
         }
         if (fd < 0)
             return -1;
@@ -4314,7 +4369,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     sbuf2flush(sb);
     free(buf);
 
-    int rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
+    rc = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
     if (rc != sizeof(hdr)) {
         sbuf2close(sb);
         return -1;
@@ -4384,6 +4439,10 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     int comdb2db_num = COMDB2DB_NUM;
     char comdb2db_name[32] = COMDB2DB;
 
+    if (hndl->debug_trace)
+        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
+                __func__, __LINE__);
+
     /* Try dbinfo query without any host info. */
     if (cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, NULL,
                           hndl->hosts, hndl->ports, &hndl->master,
@@ -4416,8 +4475,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (strcasecmp(hndl->cluster, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
-        hndl->ports[0] =
-            cdb2portmux_get("localhost", "comdb2", "replication", hndl->dbname);
+        hndl->ports[0] = cdb2portmux_get("localhost", "comdb2", "replication",
+                                         hndl->dbname, hndl->debug_trace);
         hndl->flags |= CDB2_DIRECT_CPU;
     } else {
         rc = get_comdb2db_hosts(
@@ -4432,13 +4491,18 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     }
 
 retry:
-    if (rc && num_retry < MAX_RETRIES) {
+    if (rc) {
+        if (num_retry >= MAX_RETRIES)
+            return rc;
+
         num_retry++;
         poll(NULL, 0, 250); // Sleep for 250ms everytime and total of 5 seconds
         rc = 0;
-    } else if (rc) {
-        return rc;
     }
+    if (hndl->debug_trace)
+        fprintf(stderr, "td %d %s line %d: num_retry=%d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, num_retry);
+
     if (hndl->num_hosts == 0) {
         int i = 0;
         if (master == -1) {
@@ -4955,8 +5019,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             hndl->ports[0] = atoi(p + 1);
         } else {
             if (!allow_pmux_route) {
-                hndl->ports[0] =
-                    cdb2portmux_get(type, "comdb2", "replication", dbname);
+                hndl->ports[0] = cdb2portmux_get(type, "comdb2", "replication",
+                                                 dbname, hndl->debug_trace);
             } else {
                 hndl->ports[0] = CDB2_PORTMUXPORT;
             }
