@@ -21,6 +21,11 @@ set(libs
 if(WITH_SSL)
   list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endif()
+
+if(WITH_CDB2OPEN_STACK)
+    list(APPEND libs ${UNWIND_LIBRARY})
+endif()
+
 target_link_libraries(pmux ${libs})
 if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")

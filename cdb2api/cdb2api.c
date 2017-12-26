@@ -90,6 +90,10 @@ static char *_ARGV0;
 #define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
 #define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
+#if WITH_CDB2OPEN_STACK
+#define MAX_STACK 512 /* Size of call-stack which opened the handle */
+#endif
+
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #include <netdb.h>
@@ -152,7 +156,7 @@ static char *ibm_getargv0(void)
     int rc;
 
     if (1 == (rc = getprocs(&p, sizeof(p), NULL, 0, &idx, 1)) &&
-        _PID == p.pi_pid) {
+            _PID == p.pi_pid) {
         strncpy(argv0, p.pi_comm, PATH_MAX);
         argv0[PATH_MAX - 1] = '\0';
     } else {
@@ -758,6 +762,9 @@ struct cdb2_hndl {
     struct context_messages context_msgs;
     char *env_tz;
     int sent_client_info;
+#if WITH_CDB2OPEN_STACK
+    char stack[MAX_STACK];
+#endif
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -2162,6 +2169,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         cinfo.th_id = pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
+#if WITH_CDB2OPEN_STACK
+        cinfo.stack = hndl->stack;
+#endif
         sqlquery.client_info = &cinfo;
         if (hndl)
             hndl->sent_client_info = 1;
@@ -5162,6 +5172,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
+#if WITH_CDB2OPEN_STACK
+    int comdb2_cheapstack_char_array(char *str, int maxln);
+    comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
+#endif
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
