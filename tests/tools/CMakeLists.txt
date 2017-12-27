@@ -30,7 +30,8 @@ add_executable(utf8 utf8.c)
 add_executable(insert insert.c nemesis.c testutil.c)
 add_executable(register register.c nemesis.c testutil.c)
 add_executable(breakloop breakloop.c nemesis.c testutil.c)
-foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop)
+add_executable(cdb2_open cdb2_open.c)
+foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_open)
   target_link_libraries(${executable} cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endforeach()
 
@@ -53,7 +54,7 @@ target_link_libraries(recom cdb2api ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} $
 target_link_libraries(stepper cdb2api mem dlmalloc bb ${OPENSSL_LIBRARIES} ${PROTOBUF_C_LIBRARY} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 
 if(WITH_CDB2OPEN_STACK)
-    foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest comdb2_sqltest ptrantest recom stepper)
+    foreach(executable blob bound cdb2api_caller cdb2bind comdb2_blobtest insert_lots_mt leakcheck localrep overflow_blobtest selectv serial sicountbug sirace simple_ssl utf8 insert register breakloop cdb2_client hatest comdb2_sqltest ptrantest recom stepper cdb2_open)
 
         target_link_libraries(${executable} ${UNWIND_LIBRARY})
     endforeach()
