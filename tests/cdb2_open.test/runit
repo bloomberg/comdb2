@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+[[ $debug == 1 ]] && set -x
+export db=$1
+export cdb2_open=${TESTSROOTDIR}/tools/cdb2_open
+
+
+
+$cdb2_open -d $db
+
+echo "Test Successful"
+exit 0
