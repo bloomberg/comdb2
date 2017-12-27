@@ -78,7 +78,7 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
 #endif
 
-static int allow_pmux_route = 0;
+static int cdb2_allow_pmux_route = 0;
 
 static int _PID;
 static int _MACHINE_ID;
@@ -908,13 +908,13 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_cache_ssl_sess = !!atoi(tok);
-            } else if (strcasecmp("allow_pmux_route", tok) == 0) {
+            } else if (strcasecmp("cdb2_allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
                     if (strncasecmp(tok, "true", 4) == 0) {
-                        allow_pmux_route = 1;
+                        cdb2_allow_pmux_route = 1;
                     } else {
-                        allow_pmux_route = 0;
+                        cdb2_allow_pmux_route = 0;
                     }
                 }
 #endif
@@ -1533,7 +1533,7 @@ retry_newsql_connect:
     if (hndl->debug_trace)
         fprintf(stderr, "fd %d\n", fd);
     if (fd < 0) {
-        if (!allow_pmux_route) {
+        if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
             if (fd < 0)
                 return -1;
@@ -1659,8 +1659,6 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
     }
 }
 
-static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
-
 static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
 {
     for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
@@ -1699,6 +1697,22 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
     return -1;
 }
 
+static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
+
+static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
+{
+    for (int i = 0; i < hndl->num_hosts; i++) {
+        if (hndl->ports[i] <= 0) {
+            hndl->ports[i] = cdb2portmux_get(hndl->hosts[i], "comdb2",
+                    "replication", hndl->dbname, hndl->debug_trace);
+            if (hndl->ports[i] > 0) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
     if (hndl->sb) {
@@ -1725,9 +1739,9 @@ retry_connect:
 
     /* have hosts but no ports?  try to resolve ports */
     if (hndl->flags & CDB2_DIRECT_CPU) {
-        for (i = 0; i < hndl->num_hosts; i++) {
+        for (int i = 0; i < hndl->num_hosts; i++) {
             if (hndl->ports[i] <= 0) {
-                if (!allow_pmux_route) {
+                if (!cdb2_allow_pmux_route) {
                     hndl->ports[i] =
                         cdb2portmux_get(hndl->hosts[i], "comdb2", "replication",
                                         hndl->dbname, hndl->debug_trace);
@@ -1762,37 +1776,19 @@ retry_connect:
     }
 
     /* have hosts but no ports?  try to resolve ports */
-    if (hndl->flags & CDB2_DIRECT_CPU) {
-        int found_a_port = 0;
-        for (i = 0; i < hndl->num_hosts; i++) {
-            if (hndl->ports[i] <= 0) {
-                hndl->ports[i] =
-                    cdb2portmux_get(hndl->hosts[i], "comdb2", "replication",
-                                    hndl->dbname, hndl->debug_trace);
-                if (hndl->ports[i] > 0) {
-                    found_a_port = 1;
-                    break;
-                }
-            }
-        }
-        if (found_a_port) {
-            requery_done = 1;
-            goto retry_connect;
-        }
+    if (hndl->flags & CDB2_DIRECT_CPU && cdb2_try_resolve_ports(hndl) == 1) {
+        requery_done = 1;
+        goto retry_connect;
     }
 
-    /* Can't connect to any of the nodes.
-       Re-check information about db. */
-    if (!(hndl->flags & CDB2_DIRECT_CPU)) {
-        if (requery_done == 0) {
-            if (cdb2_get_dbhosts(hndl) == 0) {
-                requery_done = 1;
-                goto retry_connect;
-            }
-        }
+    /* Can't connect to any of the nodes, re-check information about db. */
+    if (!(hndl->flags & CDB2_DIRECT_CPU) && requery_done == 0 &&
+        cdb2_get_dbhosts(hndl) == 0) {
+        requery_done = 1;
+        goto retry_connect;
     }
+
     hndl->connected_host = -1;
-
     return -1;
 }
 
@@ -2286,17 +2282,16 @@ retry_next_record:
         PRINT_RETURN_OK(-1);
     }
 
-    if (hndl->last_buf != NULL) {
-        if (hndl->lastresponse)
-            cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
-
-        hndl->lastresponse =
-            cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
-    } else {
+    if (hndl->last_buf == NULL) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         sprintf(hndl->errstr, "%s: No response from server", __func__);
         PRINT_RETURN_OK(-1);
     }
+
+    if (hndl->lastresponse)
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+
+    hndl->lastresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
 
     if (hndl->lastresponse->snapshot_info &&
         hndl->lastresponse->snapshot_info->file) {
@@ -4183,7 +4178,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
 
     int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL);
     if (fd < 0) {
-        if (!allow_pmux_route) {
+        if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
         } else {
             fd = cdb2portmux_route(host, "comdb2", "replication", comdb2db_name,
@@ -4317,7 +4312,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
         if (host == NULL)
             return -1;
 
-        if (!allow_pmux_route) {
+        if (!cdb2_allow_pmux_route) {
             if (!port) {
                 port = cdb2portmux_get(host, "comdb2", "replication", dbname,
                                        hndl->debug_trace);
@@ -5023,7 +5018,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             *p = '\0';
             hndl->ports[0] = atoi(p + 1);
         } else {
-            if (!allow_pmux_route) {
+            if (!cdb2_allow_pmux_route) {
                 hndl->ports[0] = cdb2portmux_get(type, "comdb2", "replication",
                                                  dbname, hndl->debug_trace);
             } else {
