@@ -6732,7 +6732,6 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
         ATOMIC_ADD(gbl_masterrejects, 1);
-        pthread_mutex_unlock(&gbl_sql_lock);
         goto done;
     }
 
@@ -6785,7 +6784,6 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
         if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
             !clnt->intrans) {
             ATOMIC_ADD(gbl_masterrejects, 1);
-            pthread_mutex_unlock(&gbl_sql_lock);
             goto done;
         }
 
@@ -8097,7 +8095,6 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         allow_master_exec == 0) {
         ATOMIC_ADD(gbl_masterrejects, 1);
-        pthread_mutex_unlock(&gbl_sql_lock);
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
         return 1;
