@@ -1661,7 +1661,7 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
 
-static int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
+static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
 {
     for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
         int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
@@ -1680,6 +1680,24 @@ static int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
     return -1;
 }
 
+/* try to connect to range of hosts starting at begin stopping at end */
+static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
+{
+    for (int i = begin; i < end; i++) {
+        hndl->node_seq = i + 1;
+        if (i == hndl->master || hndl->ports[i] <= 0 ||
+            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
+            continue;
+        int ret = newsql_connect(hndl, hndl->hosts[i], hndl->ports[i],
+                                 0, 100, i);
+        if (ret != 0)
+            continue;
+        hndl->connected_host = i;
+        hndl->hosts_connected[i] = 1;
+        return 0;
+    }
+    return -1;
+}
 
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
@@ -1687,7 +1705,6 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
         newsql_disconnect(hndl, hndl->sb, __LINE__);
     }
 
-    int i = 0;
     int requery_done = 0;
 
 retry_connect:
@@ -1706,8 +1723,6 @@ retry_connect:
             return 0;
     }
 
-    int start_seq = hndl->node_seq;
-
     /* have hosts but no ports?  try to resolve ports */
     if (hndl->flags & CDB2_DIRECT_CPU) {
         for (i = 0; i < hndl->num_hosts; i++) {
@@ -1723,33 +1738,12 @@ retry_connect:
         }
     }
 
-    for (i = start_seq; i < hndl->num_hosts; i++) {
-        hndl->node_seq = i + 1;
-        if (i == hndl->master || hndl->ports[i] <= 0 ||
-            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
-            continue;
-        int ret = newsql_connect(hndl, hndl->hosts[i], hndl->ports[i],
-                                 0, 100, i);
-        if (ret != 0)
-            continue;
-        hndl->connected_host = i;
-        hndl->hosts_connected[i] = 1;
+    int start_seq = hndl->node_seq;
+    if (0 == cdb2_try_connect_range(hndl, start_seq, hndl->num_hosts))
         return 0;
-    }
 
-    for (i = 0; i < start_seq; i++) {
-        hndl->node_seq = i + 1;
-        if (i == hndl->master || hndl->ports[i] <= 0 ||
-            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
-            continue;
-        int ret = newsql_connect(hndl, hndl->hosts[i],
-                                 hndl->ports[i], 0, 100, i);
-        if (ret != 0)
-            continue;
-        hndl->connected_host = i;
-        hndl->hosts_connected[i] = 1;
+    if (0 == cdb2_try_connect_range(hndl, 0, start_seq))
         return 0;
-    }
 
     if (hndl->sb == NULL) {
         /* Can't connect to any of the non-master nodes, try connecting to
@@ -1802,7 +1796,7 @@ retry_connect:
     return -1;
 }
 
-static void ack(cdb2_hndl_tp *hndl)
+static inline void ack(cdb2_hndl_tp *hndl)
 {
     hndl->ack = 0;
     struct newsqlheader hdr = {0};
