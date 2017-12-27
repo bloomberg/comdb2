@@ -78,7 +78,7 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
 #endif
 
-static int allow_pmux_route = 0;
+static int cdb2_allow_pmux_route = 0;
 
 static int _PID;
 static int _MACHINE_ID;
@@ -912,9 +912,9 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
                     if (strncasecmp(tok, "true", 4) == 0) {
-                        allow_pmux_route = 1;
+                        cdb2_allow_pmux_route = 1;
                     } else {
-                        allow_pmux_route = 0;
+                        cdb2_allow_pmux_route = 0;
                     }
                 }
 #endif
@@ -1011,53 +1011,50 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
 
     if (comdb2db_found || dbname_found) {
         return 0;
+    } 
+
+    int ret = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
+                                *comdb2db_num, NULL, comdb2db_hosts,
+                                comdb2db_ports, master, num_hosts, NULL);
+    if (ret == 0) 
+        return 0;
+
+    char tmp[8192];
+    int tmplen = 8192;
+    int herr;
+    struct hostent hostbuf, *hp = NULL;
+    char dns_name[256];
+
+    if (cdb2_default_cluster[0] == '\0') {
+        snprintf(dns_name, 256, "%s.%s", comdb2db_name, cdb2_dnssuffix);
     } else {
-        int ret = cdb2_dbinfo_query(hndl, cdb2_default_cluster, comdb2db_name,
-                                    *comdb2db_num, NULL, comdb2db_hosts,
-                                    comdb2db_ports, master, num_hosts, NULL);
-        if (ret != 0) {
-            char tmp[8192];
-            int tmplen = 8192;
-            int herr;
-            struct hostent hostbuf, *hp = NULL;
-
-            char dns_name[256];
-
-            if (cdb2_default_cluster[0] == '\0') {
-                snprintf(dns_name, 256, "%s.%s", comdb2db_name, cdb2_dnssuffix);
-            } else {
-                snprintf(dns_name, 256, "%s-%s.%s", cdb2_default_cluster,
-                         comdb2db_name, cdb2_dnssuffix);
-            }
+        snprintf(dns_name, 256, "%s-%s.%s", cdb2_default_cluster,
+                 comdb2db_name, cdb2_dnssuffix);
+    }
 #ifdef __APPLE__
-            hp = gethostbyname(dns_name);
+    hp = gethostbyname(dns_name);
 #elif _LINUX_SOURCE
-            gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &hp, &herr);
+    gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &hp, &herr);
 #elif _SUN_SOURCE
-            hp = gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &herr);
+    hp = gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &herr);
 #else
-            hp = gethostbyname(dns_name);
+    hp = gethostbyname(dns_name);
 #endif
-            if (hp) {
-                int rc = -1;
-                int i = 0;
-                struct in_addr **addr_list = (struct in_addr **)hp->h_addr_list;
-                for (i = 0; addr_list[i] != NULL; i++) {
-                    strcpy(comdb2db_hosts[i], inet_ntoa(*addr_list[i]));
-                    (*num_hosts)++;
-                    rc = 0;
-                }
-                return rc;
-            }
-            fprintf(stderr, "%s:gethostbyname(%s): errno=%d err=%s\n", __func__,
-                    dns_name, errno, strerror(errno));
-            return -1;
-        } else {
-            return 0;
-        }
+    if (!hp) {
+        fprintf(stderr, "%s:gethostbyname(%s): errno=%d err=%s\n", __func__,
+                dns_name, errno, strerror(errno));
         return -1;
     }
-    return -1;
+
+    int rc = -1;
+    int i = 0;
+    struct in_addr **addr_list = (struct in_addr **)hp->h_addr_list;
+    for (i = 0; addr_list[i] != NULL; i++) {
+        strcpy(comdb2db_hosts[i], inet_ntoa(*addr_list[i]));
+        (*num_hosts)++;
+        rc = 0;
+    }
+    return rc;
 }
 
 /* SOCKPOOL CODE START */
@@ -1159,14 +1156,9 @@ void cdb2_disable_sockpool()
     pthread_mutex_unlock(&cdb2_sockpool_mutex);
 }
 
-/* Get the file descriptor of a socket matching the given type string from
- * the pool.  Returns -1 if none is available or the file descriptor on
- * success. */
-int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
+//cdb2_socket_pool_get_ll: lockless
+static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
 {
-    int fd = -1;
-
-    pthread_mutex_lock(&cdb2_sockpool_mutex);
     if (sockpool_enabled == 0) {
         time_t current_time = time(NULL);
         /* Check every 10 seconds. */
@@ -1174,56 +1166,66 @@ int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
             sockpool_enabled = 1;
         }
     }
-    if (sockpool_enabled == 1) {
+
+    if (sockpool_enabled != 1) {
+        return -1;
+    }
+
+    if (sockpool_fd == -1) {
+        sockpool_fd = open_sockpool_ll();
         if (sockpool_fd == -1) {
-            sockpool_fd = open_sockpool_ll();
-            if (sockpool_fd == -1) {
-                sockpool_enabled = 0;
-                sockpool_fail_time = time(NULL);
-                pthread_mutex_unlock(&cdb2_sockpool_mutex);
-                return -1;
-            }
-        }
-        if (sockpool_fd != -1) {
-            struct sockpool_msg_vers0 msg;
-            int rc;
-
-            /* Please may I have a file descriptor */
-            bzero(&msg, sizeof(msg));
-            msg.request = SOCKPOOL_REQUEST;
-            msg.dbnum = dbnum;
-            strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
-
-            errno = 0;
-            rc = send_fd(sockpool_fd, &msg, sizeof(msg), -1);
-            if (rc != PASSFD_SUCCESS) {
-                fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
-                        errno, strerror(errno));
-                close(sockpool_fd);
-                sockpool_fd = -1;
-                fd = -1;
-            } else {
-                /* Read reply from server.  It can legitimately not send
-                 * us a file descriptor. */
-                errno = 0;
-                rc = recv_fd(sockpool_fd, &msg, sizeof(msg), &fd);
-                if (rc != PASSFD_SUCCESS) {
-                    fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__,
-                            rc, errno, strerror(errno));
-                    close(sockpool_fd);
-                    sockpool_fd = -1;
-                    fd = -1;
-                }
-                if (fd == -1 && port) {
-                    short gotport;
-                    memcpy((char *)&gotport, (char *)&msg.padding[1], 2);
-                    *port = ntohs(gotport);
-                }
-            }
+            sockpool_enabled = 0;
+            sockpool_fail_time = time(NULL);
+            return -1;
         }
     }
-    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+
+    struct sockpool_msg_vers0 msg;
+    /* Please may I have a file descriptor */
+    bzero(&msg, sizeof(msg));
+    msg.request = SOCKPOOL_REQUEST;
+    msg.dbnum = dbnum;
+    strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
+
+    errno = 0;
+    int rc = send_fd(sockpool_fd, &msg, sizeof(msg), -1);
+    if (rc != PASSFD_SUCCESS) {
+        fprintf(stderr, "%s: send_fd rc %d errno %d %s\n", __func__, rc,
+                errno, strerror(errno));
+        close(sockpool_fd);
+        sockpool_fd = -1;
+        return -1;
+    } 
+
+    int fd;
+    /* Read reply from server.  It can legitimately not send
+     * us a file descriptor. */
+    errno = 0;
+    rc = recv_fd(sockpool_fd, &msg, sizeof(msg), &fd);
+    if (rc != PASSFD_SUCCESS) {
+        fprintf(stderr, "%s: recv_fd rc %d errno %d %s\n", __func__, rc, 
+                errno, strerror(errno));
+        close(sockpool_fd);
+        sockpool_fd = -1;
+        fd = -1;
+    }
+    if (fd == -1 && port) {
+        short gotport;
+        memcpy((char *)&gotport, (char *)&msg.padding[1], 2);
+        *port = ntohs(gotport);
+    }
     return fd;
+}
+
+/* Get the file descriptor of a socket matching the given type string from
+ * the pool.  Returns -1 if none is available or the file descriptor on
+ * success. */
+int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
+{
+    pthread_mutex_lock(&cdb2_sockpool_mutex);
+    int rc = cdb2_socket_pool_get_ll(typestr, dbnum, port);
+    pthread_mutex_unlock(&cdb2_sockpool_mutex);
+    return rc;
 }
 
 void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
@@ -1241,6 +1243,7 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
                 fprintf(stderr, "\n Sockpool not present");
             }
         }
+
         if (sockpool_fd != -1) {
             struct sockpool_msg_vers0 msg;
             int rc;
@@ -1425,16 +1428,16 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
                 hndl->sess_list = NULL;
                 cdb2_cache_ssl_sess = 0;
                 return 0;
-            } else {
-                /* move store to the last element. */
-                for (store = &cdb2_ssl_sess_cache; store->next != NULL;
-                     store = store->next) {
-                    /* right, blank. */
-                };
-                hndl->sess_list->next = NULL;
-                store->next = hndl->sess_list;
-                pthread_mutex_unlock(&cdb2_ssl_sess_lock);
-            }
+            } 
+
+            /* move store to the last element. */
+            for (store = &cdb2_ssl_sess_cache; store->next != NULL;
+                 store = store->next) {
+                /* right, blank. */
+            };
+            hndl->sess_list->next = NULL;
+            store->next = hndl->sess_list;
+            pthread_mutex_unlock(&cdb2_ssl_sess_lock);
         }
 
         if (hndl->sess_list->list == NULL) {
@@ -1530,7 +1533,7 @@ retry_newsql_connect:
     if (hndl->debug_trace)
         fprintf(stderr, "fd %d\n", fd);
     if (fd < 0) {
-        if (!allow_pmux_route) {
+        if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
             if (fd < 0)
                 return -1;
@@ -1656,7 +1659,59 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
     }
 }
 
+static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
+{
+    for (int i = 0; i < hndl->num_hosts_sameroom; i++) {
+        int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
+        if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
+            try_node == hndl->connected_host ||
+            hndl->hosts_connected[i] == 1)
+            continue;
+        int ret = newsql_connect(hndl, hndl->hosts[try_node],
+                                 hndl->ports[try_node], 0, 100, i);
+        if (ret != 0)
+            continue;
+        hndl->hosts_connected[try_node] = 1;
+        hndl->connected_host = try_node;
+        return 0;
+    }
+    return -1;
+}
+
+/* try to connect to range of hosts starting at begin stopping at end */
+static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
+{
+    for (int i = begin; i < end; i++) {
+        hndl->node_seq = i + 1;
+        if (i == hndl->master || hndl->ports[i] <= 0 ||
+            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
+            continue;
+        int ret = newsql_connect(hndl, hndl->hosts[i], hndl->ports[i],
+                                 0, 100, i);
+        if (ret != 0)
+            continue;
+        hndl->connected_host = i;
+        hndl->hosts_connected[i] = 1;
+        return 0;
+    }
+    return -1;
+}
+
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
+
+static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
+{
+    for (int i = 0; i < hndl->num_hosts; i++) {
+        if (hndl->ports[i] <= 0) {
+            hndl->ports[i] = cdb2portmux_get(hndl->hosts[i], "comdb2",
+                    "replication", hndl->dbname, hndl->debug_trace);
+            if (hndl->ports[i] > 0) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
 
 static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 {
@@ -1664,7 +1719,6 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
         newsql_disconnect(hndl, hndl->sb, __LINE__);
     }
 
-    int i = 0;
     int requery_done = 0;
 
 retry_connect:
@@ -1679,29 +1733,15 @@ retry_connect:
                (hndl->num_hosts_sameroom > 0)) {
         hndl->node_seq = random() % hndl->num_hosts_sameroom;
         /* First try on same room. */
-        for (i = 0; i < hndl->num_hosts_sameroom; i++) {
-            int try_node = (hndl->node_seq + i) % hndl->num_hosts_sameroom;
-            if (try_node == hndl->master || hndl->ports[try_node] <= 0 ||
-                try_node == hndl->connected_host ||
-                hndl->hosts_connected[i] == 1)
-                continue;
-            int ret = newsql_connect(hndl, hndl->hosts[try_node],
-                                     hndl->ports[try_node], 0, 100, i);
-            if (ret != 0)
-                continue;
-            hndl->hosts_connected[try_node] = 1;
-            hndl->connected_host = try_node;
+        if(0 == cdb2_try_on_same_room(hndl)) 
             return 0;
-        }
     }
-
-    int start_seq = hndl->node_seq;
 
     /* have hosts but no ports?  try to resolve ports */
     if (hndl->flags & CDB2_DIRECT_CPU) {
-        for (i = 0; i < hndl->num_hosts; i++) {
+        for (int i = 0; i < hndl->num_hosts; i++) {
             if (hndl->ports[i] <= 0) {
-                if (!allow_pmux_route) {
+                if (!cdb2_allow_pmux_route) {
                     hndl->ports[i] =
                         cdb2portmux_get(hndl->hosts[i], "comdb2", "replication",
                                         hndl->dbname, hndl->debug_trace);
@@ -1712,33 +1752,12 @@ retry_connect:
         }
     }
 
-    for (i = start_seq; i < hndl->num_hosts; i++) {
-        hndl->node_seq = i + 1;
-        if (i == hndl->master || hndl->ports[i] <= 0 ||
-            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
-            continue;
-        int ret = newsql_connect(hndl, hndl->hosts[i], hndl->ports[i],
-                                 0, 100, i);
-        if (ret != 0)
-            continue;
-        hndl->connected_host = i;
-        hndl->hosts_connected[i] = 1;
+    int start_seq = hndl->node_seq;
+    if (0 == cdb2_try_connect_range(hndl, start_seq, hndl->num_hosts))
         return 0;
-    }
 
-    for (i = 0; i < start_seq; i++) {
-        hndl->node_seq = i + 1;
-        if (i == hndl->master || hndl->ports[i] <= 0 ||
-            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
-            continue;
-        int ret = newsql_connect(hndl, hndl->hosts[i],
-                                 hndl->ports[i], 0, 100, i);
-        if (ret != 0)
-            continue;
-        hndl->connected_host = i;
-        hndl->hosts_connected[i] = 1;
+    if (0 == cdb2_try_connect_range(hndl, 0, start_seq))
         return 0;
-    }
 
     if (hndl->sb == NULL) {
         /* Can't connect to any of the non-master nodes, try connecting to
@@ -1757,41 +1776,23 @@ retry_connect:
     }
 
     /* have hosts but no ports?  try to resolve ports */
-    if (hndl->flags & CDB2_DIRECT_CPU) {
-        int found_a_port = 0;
-        for (i = 0; i < hndl->num_hosts; i++) {
-            if (hndl->ports[i] <= 0) {
-                hndl->ports[i] =
-                    cdb2portmux_get(hndl->hosts[i], "comdb2", "replication",
-                                    hndl->dbname, hndl->debug_trace);
-                if (hndl->ports[i] > 0) {
-                    found_a_port = 1;
-                    break;
-                }
-            }
-        }
-        if (found_a_port) {
-            requery_done = 1;
-            goto retry_connect;
-        }
+    if (hndl->flags & CDB2_DIRECT_CPU && cdb2_try_resolve_ports(hndl) == 1) {
+        requery_done = 1;
+        goto retry_connect;
     }
 
-    /* Can't connect to any of the nodes.
-       Re-check information about db. */
-    if (!(hndl->flags & CDB2_DIRECT_CPU)) {
-        if (requery_done == 0) {
-            if (cdb2_get_dbhosts(hndl) == 0) {
-                requery_done = 1;
-                goto retry_connect;
-            }
-        }
+    /* Can't connect to any of the nodes, re-check information about db. */
+    if (!(hndl->flags & CDB2_DIRECT_CPU) && requery_done == 0 &&
+        cdb2_get_dbhosts(hndl) == 0) {
+        requery_done = 1;
+        goto retry_connect;
     }
+
     hndl->connected_host = -1;
-
     return -1;
 }
 
-static void ack(cdb2_hndl_tp *hndl)
+static inline void ack(cdb2_hndl_tp *hndl)
 {
     hndl->ack = 0;
     struct newsqlheader hdr = {0};
@@ -2281,17 +2282,16 @@ retry_next_record:
         PRINT_RETURN_OK(-1);
     }
 
-    if (hndl->last_buf != NULL) {
-        if (hndl->lastresponse)
-            cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
-
-        hndl->lastresponse =
-            cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
-    } else {
+    if (hndl->last_buf == NULL) {
         newsql_disconnect(hndl, hndl->sb, __LINE__);
         sprintf(hndl->errstr, "%s: No response from server", __func__);
         PRINT_RETURN_OK(-1);
     }
+
+    if (hndl->lastresponse)
+        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+
+    hndl->lastresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
 
     if (hndl->lastresponse->snapshot_info &&
         hndl->lastresponse->snapshot_info->file) {
@@ -2509,7 +2509,7 @@ done:
 
 
 /* combine hashes similar to hash_combine from boost library */
-uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+static inline uint64_t val_combine(uint64_t lhs, uint64_t rhs)
 {
     lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
     return lhs;
@@ -4178,7 +4178,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
 
     int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL);
     if (fd < 0) {
-        if (!allow_pmux_route) {
+        if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
         } else {
             fd = cdb2portmux_route(host, "comdb2", "replication", comdb2db_name,
@@ -4312,7 +4312,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
         if (host == NULL)
             return -1;
 
-        if (!allow_pmux_route) {
+        if (!cdb2_allow_pmux_route) {
             if (!port) {
                 port = cdb2portmux_get(host, "comdb2", "replication", dbname,
                                        hndl->debug_trace);
@@ -5018,7 +5018,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             *p = '\0';
             hndl->ports[0] = atoi(p + 1);
         } else {
-            if (!allow_pmux_route) {
+            if (!cdb2_allow_pmux_route) {
                 hndl->ports[0] = cdb2portmux_get(type, "comdb2", "replication",
                                                  dbname, hndl->debug_trace);
             } else {
