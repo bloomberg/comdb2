@@ -364,6 +364,8 @@ long long gbl_nsql_steps;
 unsigned int gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
+unsigned int gbl_masterrejects = 0;
+
 volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
