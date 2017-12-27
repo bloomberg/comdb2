@@ -1673,7 +1673,8 @@ retry_connect:
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
 
-    if ((hndl->flags & CDB2_RANDOM) && (hndl->node_seq == 0)) {
+    if ((hndl->node_seq == 0) && ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
+         (hndl->num_hosts_sameroom == 0)))) {
         hndl->node_seq = random() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
@@ -4124,7 +4125,7 @@ done:
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
                                 int comdb2db_num, char *host, int port,
                                 char hosts[][64], int *num_hosts, char *dbname,
-                                char *cluster, int *dbnum, int num_retries)
+                                char *cluster, int *dbnum, int *num_same_room, int num_retries)
 {
     char sql_query[256];
     *dbnum = 0;
@@ -4167,6 +4168,10 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
     bindvars[2] = bind_room;
     char newsql_typestr[128];
     int is_sockfd = 1;
+
+    if (num_same_room)
+        *num_same_room = 1;
+
     int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
                       "comdb2/%s/%s/newsql/%s", comdb2db_name, cluster,
                       hndl->policy);
@@ -4267,6 +4272,10 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
                    (const char *)sqlresponse->value[0]->value.data);
             if (*dbnum == 0) {
                 *dbnum = *((long long *)sqlresponse->value[1]->value.data);
+            }
+            if (num_same_room && sqlresponse->value[2]->value.data
+                && strcasecmp(cdb2_machine_room, sqlresponse->value[2]->value.data)== 0) {
+                (*num_same_room)++;
             }
             (*num_hosts)++;
         }
@@ -4530,7 +4539,7 @@ retry:
             rc = comdb2db_get_dbhosts(
                 hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[i],
                 comdb2db_ports[i], hndl->hosts, &hndl->num_hosts, hndl->dbname,
-                hndl->cluster, &hndl->dbnum, num_retry);
+                hndl->cluster, &hndl->dbnum, &hndl->num_hosts_sameroom, num_retry);
             if (rc == 0) {
                 break;
             }
@@ -4539,7 +4548,7 @@ retry:
             rc = comdb2db_get_dbhosts(
                 hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master],
                 comdb2db_ports[master], hndl->hosts, &hndl->num_hosts,
-                hndl->dbname, hndl->cluster, &hndl->dbnum, num_retry);
+                hndl->dbname, hndl->cluster, &hndl->dbnum,  &hndl->num_hosts_sameroom, num_retry);
         }
 
         if (rc != 0) {
@@ -4559,9 +4568,27 @@ retry:
 
     rc = -1;
     int i = 0;
+    int node_seq = 0;
+    if ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) && (hndl->num_hosts_sameroom == 0))) {
+        node_seq = random() % hndl->num_hosts;
+    } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->num_hosts_sameroom > 0)) {
+        node_seq = random() % hndl->num_hosts_sameroom;
+        /* Try dbinfo on same room first */
+        for (i=0; i < hndl->num_hosts_sameroom; i++) {
+          int try_node = (node_seq+i)% hndl->num_hosts_sameroom;
+          rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum, hndl->hosts[try_node], hndl->hosts, hndl->ports,
+                             &hndl->master, &hndl->num_hosts, &hndl->num_hosts_sameroom);
+          if (rc == 0) {
+              goto done;
+          }
+        }
+    }
+
+    /* Try everything now */
     for (i = 0; i < hndl->num_hosts; i++) {
+        int try_node = (node_seq+i)% hndl->num_hosts;
         rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
-                               hndl->hosts[i], hndl->hosts, hndl->ports,
+                               hndl->hosts[try_node], hndl->hosts, hndl->ports,
                                &hndl->master, &hndl->num_hosts,
                                &hndl->num_hosts_sameroom);
         if (rc == 0) {
@@ -4569,6 +4596,7 @@ retry:
         }
     }
 
+done:
     if (rc != 0) {
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",
