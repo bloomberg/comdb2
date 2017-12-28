@@ -55,9 +55,10 @@ int main(int argc, char *argv[])
         cdb2_close(cdb2);
     }
     end = gettimeofday_ms();
+    int tot = end - start;
     int secs = (end - start) / 1000;
 
     printf("Open/closed %d times in %d ms, %d per second\n",
-            iterations, end - start, secs ? iterations / secs : 0);
+            iterations, tot, secs ? iterations / secs : 0);
     return 0;
 }

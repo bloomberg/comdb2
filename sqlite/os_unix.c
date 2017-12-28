@@ -7597,11 +7597,7 @@ int sqlite3_os_init(void){
   /* Double-check that the aSyscall[] array has been constructed
   ** correctly.  See ticket [bb3a86e890c8e96ab] */
 /* COMDB2 */
-#ifndef _IBM_SOURCE
   assert( ArraySize(aSyscall)==28 );
-#else
-  assert( ArraySize(aSyscall)==24 );
-#endif
 
   /* Register all VFSes defined in the aVfs[] array */
   for(i=0; i<(sizeof(aVfs)/sizeof(sqlite3_vfs)); i++){
