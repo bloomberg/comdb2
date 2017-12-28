@@ -876,7 +876,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                               int *num_hosts, int *comdb2db_num, char *dbname,
                               char db_hosts[][64], int *num_db_hosts,
                               int *dbnum, int *dbname_found,
-                              int *comdb2db_found)
+                              int *comdb2db_found, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
     int len = 0;
@@ -956,6 +956,15 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     strcpy(cdb2_dnssuffix, tok);
+            } else if (strcasecmp("stack_at_open", tok) == 0 && stack_at_open) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok) {
+                    if (strncasecmp(tok, "true", 4) == 0) {
+                        *stack_at_open = 1;
+                    } else {
+                        *stack_at_open = 0;
+                    }
+                }
 #if WITH_SSL
             } else if (strcasecmp("ssl_mode", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
@@ -1058,7 +1067,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
         read_comdb2db_cfg(NULL, NULL, comdb2db_name, CDB2DBCONFIG_BUF,
                           comdb2db_hosts, num_hosts, comdb2db_num, dbname,
                           db_hosts, num_db_hosts, dbnum, &dbname_found,
-                          &comdb2db_found);
+                          &comdb2db_found, hndl?(&hndl->send_stack):NULL);
         fallback_on_bb_bin = 0;
     }
 
@@ -1066,7 +1075,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (fp != NULL) {
         read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
+                          hndl?(&hndl->send_stack):NULL);
         fclose(fp);
         fallback_on_bb_bin = 0;
     }
@@ -1082,7 +1092,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
             read_comdb2db_cfg(NULL, fp, comdb2db_name, NULL, comdb2db_hosts,
                               num_hosts, comdb2db_num, dbname, db_hosts,
                               num_db_hosts, dbnum, &dbname_found,
-                              &comdb2db_found);
+                              &comdb2db_found, hndl?(&hndl->send_stack):NULL);
             fclose(fp);
         }
     }
@@ -1091,7 +1101,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     if (fp != NULL) {
         read_comdb2db_cfg(hndl, fp, comdb2db_name, NULL, comdb2db_hosts,
                           num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found);
+                          num_db_hosts, dbnum, &dbname_found, &comdb2db_found,
+                          hndl?(&hndl->send_stack):NULL);
         fclose(fp);
     }
 
@@ -5007,12 +5018,7 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
-    if(getenv("CDB2_DISABLE_STACK")) {
-        hndl->send_stack = 0;
-    } else {
-        comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
-        hndl->send_stack = 1;
-    }
+    hndl->send_stack = 1;
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
@@ -5077,6 +5083,9 @@ done:
     if (rc == 0)
         rc = set_up_ssl_params(hndl);
 #endif
+
+    if (hndl->send_stack)
+        comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
 
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "

@@ -11,7 +11,7 @@ static char *argv0 = NULL;
 
 void usage(void)
 {
-    fprintf(stderr, "Usage: %s -d <dbname> [-i <iter> ] [-c <config>]\n");
+    fprintf(stderr, "Usage: %s -d <dbname> [-i <iter> ] [-c <config>]\n", argv0);
     exit(1);
 }
 
