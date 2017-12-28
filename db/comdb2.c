@@ -472,7 +472,7 @@ int gbl_enable_sock_fstsnd = 1;
 u_int gbl_blk_pq_shmkey = 0;
 #endif
 int gbl_enable_position_apis = 0;
-int gbl_enable_sql_stmt_caching = 0;
+int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
 
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
@@ -3183,9 +3183,10 @@ static int init(int argc, char **argv)
         exit(1);
     }
     dbname = argv[optind++];
-    if (strlen(dbname) == 0 || strlen(dbname) >= MAX_DBNAME_LENGTH) {
-       logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n", 
-                MAX_DBNAME_LENGTH - 1);
+    int namelen = strlen(dbname);
+    if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
+        logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
+               MAX_DBNAME_LENGTH);
         return -1;
     }
     strcpy(gbl_dbname, dbname);
@@ -4236,7 +4237,7 @@ void *statthd(void *p)
         reqlog_diffstat_init(statlogger);
     }
 
-    for (;;) {
+    while (!dbenv->exiting && !dbenv->stopped) {
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;
@@ -4251,14 +4252,9 @@ void *statthd(void *p)
         bdb_get_bpool_counters(thedb->bdb_env, (int64_t *)&bpool_hits,
                                (int64_t *)&bpool_misses);
 
-        if (!dbenv->exiting && !dbenv->stopped) {
-            bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
-            diff_deadlocks = ndeadlocks - last_ndeadlocks;
-            diff_lockwaits = nlockwaits - last_nlockwaits;
-        } else {
-            reqlog_free(statlogger);
-            return NULL;
-        }
+        bdb_get_lock_counters(thedb->bdb_env, &ndeadlocks, &nlockwaits);
+        diff_deadlocks = ndeadlocks - last_ndeadlocks;
+        diff_lockwaits = nlockwaits - last_nlockwaits;
 
         diff_qtrap = nqtrap - last_qtrap;
         diff_fstrap = nfstrap - last_fstrap;
@@ -4576,6 +4572,9 @@ void *statthd(void *p)
         ++count;
         sleep(1);
     }
+
+    reqlog_free(statlogger);
+    return NULL;
 }
 
 void create_stat_thread(struct dbenv *dbenv)

@@ -405,7 +405,7 @@ static int maxq_update(void *context, void *value)
 
     /* Can't be more than swapinit! */
     if ((val < 1) || (val > 1000)) {
-        logmsg(LOGMSG_ERROR, "Invalid value for tunable '%s'.", tunable->name);
+        logmsg(LOGMSG_ERROR, "Invalid value for tunable '%s'\n", tunable->name);
         return 1;
     }
 
@@ -450,7 +450,7 @@ static int lk_verify(void *context, void *value)
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
     if ((*(int *)value <= 0) || (*(int *)value > 2048)) {
-        logmsg(LOGMSG_ERROR, "Invalid value for '%s'. (range: 1-2048)",
+        logmsg(LOGMSG_ERROR, "Invalid value for '%s'. (range: 1-2048)\n",
                tunable->name);
         return 1;
     }
@@ -462,7 +462,7 @@ static int memnice_update(void *context, void *value)
     int nicerc;
     nicerc = comdb2ma_nice(*(int *)value);
     if (nicerc != 0) {
-        logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d.\n",
+        logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d\n",
                nicerc);
         return 1;
     }
@@ -1296,7 +1296,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
             t->flags |= EMPTY;
         } else {
             logmsg(LOGMSG_ERROR,
-                   "An argument must be specified for tunable '%s'", t->name);
+                   "An argument must be specified for tunable '%s'\n", t->name);
             return TUNABLE_ERR_INVALID_VALUE; /* Error */
         }
     } else {

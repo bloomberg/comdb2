@@ -5120,7 +5120,7 @@ void *watcher_thread(void *arg)
         }
 
         master_host = bdb_state->repinfo->master_host;
-        bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &rep_master);
+        bdb_get_rep_master(bdb_state, &rep_master, NULL);
 
         if (bdb_state->caught_up) {
             /* periodically send info too all nodes about our curresnt LSN and

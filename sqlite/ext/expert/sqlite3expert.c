@@ -1642,7 +1642,7 @@ static int idxPopulateStat1(sqlite3expert *p, char **pzErr){
     "  pragma_index_list(s.name) AS l "
     "WHERE s.type = 'table'";
   const char *zIndexXInfo = 
-    "SELECT name, coll FROM pragma_index_xinfo(?) WHERE key";
+    "SELECT name, coll FROM pragma_index_xinfo(?) WHERE \"key\"";
   const char *zWrite = "INSERT INTO sqlite_stat1 VALUES(?, ?, ?)";
 
   /* If iSample==0, no sqlite_stat1 data is required. */

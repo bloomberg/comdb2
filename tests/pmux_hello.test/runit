@@ -1,0 +1,128 @@
+#!/bin/bash
+
+debug=1
+[[ "$debug" == 1 ]] && set -x
+
+db=$1
+export COMDB2_PMUX_PORT=19500
+export COMDB2_PMUX_FILE=./pmux.sqlite
+export CDB2SQL=${TESTSROOTDIR}/../cdb2sql
+export pmux_pid=0
+export start_iters=10
+export start_sleep=5
+export CDB2_CONFIG=./cdb2config.cfg
+export dbpidfile=./database.pid
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function empty_used_list_crash
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    echo "del pmux" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    echo "used" | nc -w 1 localhost ${COMDB2_PMUX_PORT}
+    sleep 1
+    kill -0 $pmux_pid
+    if [[ $? != 0 ]]; then
+        echo "${FUNCNAME[0]} test failed: empty used list killed pmux"
+        exit 1
+    fi
+}
+
+function start_database
+{
+    DBLRL=$1
+
+    jj=0
+
+    while [[ $jj -lt $start_iters ]]; do
+        ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
+        dbpid=$!
+        echo $dbpid > $dbpidfile
+        sleep $start_sleep
+        kill -0 $dbpid
+        if [[ $? == 0 ]]; then
+            echo "Database started"
+            return 0
+        fi
+        let jj=jj+1
+    done
+    echo "Couldn't start the database"
+    kill -9 $pmux_pid
+    exit 1
+}
+
+function verify_hello_reuse
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+    iters=20
+    start_timeout=30
+
+    # Create a db
+    DBDIR=$(pwd)/$db
+    ${TESTSROOTDIR}/../comdb2 $db --create --dir $DBDIR
+
+    # Create config file
+    echo "$db 0 localhost" > $CDB2_CONFIG
+    echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
+    echo "comdb2_config:portmuxport=$COMDB2_PMUX_PORT" >> $CDB2_CONFIG
+    echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
+
+    # Tweak lrl
+    DBLRL=$DBDIR/${db}.lrl
+    echo "portmux_port ${COMDB2_PMUX_PORT}" >> $DBLRL
+    echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+
+    # Start the test
+    i=0
+    while [[ $i -lt $iters ]]; do
+        start_database $DBLRL
+        dbpid=$(cat $dbpidfile)
+
+        t=0
+        started=0
+        while [[ $t -lt $start_timeout ]]; do
+            $CDB2SQL --cdb2cfg $CDB2_CONFIG $db default "select 1" >/dev/null 2>&1
+            if [[ $? == 0 ]]; then
+                started=1
+            else
+                started=0
+                sleep 1
+            fi
+            let t=t+1
+        done
+        kill -9 $dbpid
+
+        if [[ $started == 0 ]]; then
+            echo "${FUNCNAME[0]} pmux hello-test failed on iteration $i"
+            kill -9 $pmux_pid
+            exit 1
+        fi
+        sleep 1
+
+        let i=i+1
+    done
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
+
+    # Start pmux
+    ${TESTSROOTDIR}/../pmux -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
+    pmux_pid=$!
+
+    sleep 5
+
+    empty_used_list_crash
+    verify_hello_reuse
+
+    kill -9 $pmux_pid
+}
+
+runtest
+
+echo "Success"
+exit 0

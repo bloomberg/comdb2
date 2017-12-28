@@ -69,6 +69,7 @@ public class Comdb2Handle extends AbstractConnection {
     int age = 180; /* default max age 180 seconds */
     boolean pmuxrte = false;
     boolean statement_effects = false;
+    boolean verifyretry = false;
 
     private boolean in_retry = false;
     private boolean temp_trans = false;
@@ -175,6 +176,11 @@ public class Comdb2Handle extends AbstractConnection {
         if (statement_effects)
             sets.add("set queryeffects statement");
 
+        if (verifyretry)
+            sets.add("set verifyretry on");
+        else
+            sets.add("set verifyretry off");
+
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
@@ -241,9 +247,24 @@ public class Comdb2Handle extends AbstractConnection {
         if (val)
             sets.add("set queryeffects statement");
         else
-            sets.clear();
+            sets.remove("set queryeffects statement");
 
         statement_effects = val;
+    }
+
+    public void setVerifyRetry(boolean val) {
+        if (val == verifyretry)
+            return;
+
+        if (val) {
+            sets.remove("set verifyretry off");
+            sets.add("set verifyretry on");
+        } else {
+            sets.remove("set verifyretry on");
+            sets.add("set verifyretry off");
+        }
+
+        verifyretry = val;
     }
 
     void addHosts(List<String> hosts) {

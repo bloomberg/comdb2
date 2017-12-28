@@ -1664,19 +1664,9 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
 }
 
 /* skip spaces and tabs, requires at least one space */
-static char *skipws(char *str)
+static inline char *skipws(char *str)
 {
-    if (str && *str && isspace(*str)) {
-        while (*str && isspace(*str))
-            str++;
-    }
-    return str;
-}
-
-/* skip spaces and tabs if present. */
-static char *cdb2_skipws(char *str)
-{
-    if (*str && isspace(*str)) {
+    if (str) {
         while (*str && isspace(*str))
             str++;
     }
@@ -1699,7 +1689,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
             }
 
             if (str && *str) {
-                /* Alex wants "as of" */
+                /* handle "as of" */
                 if (!strncasecmp(str, "as", 2)) {
                     str += 2;
                     str = skipws(str);
@@ -2689,151 +2679,168 @@ static int finalize_stmt_hash(void *stmt_entry, void *args)
 
 static void delete_stmt_table(hash_t *stmt_table)
 {
+    assert(stmt_table);
     /* parse through hash table and finalize all the statements */
     hash_for(stmt_table, finalize_stmt_hash, NULL);
     hash_clear(stmt_table);
     hash_free(stmt_table);
 }
 
-static void init_stmt_table(hash_t **stmt_table)
+static inline void init_stmt_lists(struct sqlthdstate *thd)
 {
-    *stmt_table =
-        hash_init_user((hashfunc_t *)strhashfunc_stmt,
-                       (cmpfunc_t *)strcmpfunc_stmt, 0, MAX_HASH_SQL_LENGTH);
+    listc_init(&thd->param_stmt_list,
+               offsetof(struct stmt_hash_entry, stmtlist_linkv));
+    listc_init(&thd->noparam_stmt_list,
+               offsetof(struct stmt_hash_entry, stmtlist_linkv));
 }
 
-void touch_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
+static inline void init_stmt_table(hash_t **stmt_table)
 {
-    stmt_hash_entry_type **tail = NULL;
-    stmt_hash_entry_type **head = NULL;
+    *stmt_table = hash_init_user(
+        (hashfunc_t *)strhashfunc_stmt, (cmpfunc_t *)strcmpfunc_stmt,
+        offsetof(stmt_hash_entry_type, sql), MAX_HASH_SQL_LENGTH);
+    assert(*stmt_table && "hash_init_user: can not init");
+}
 
+/*
+ * Reque a stmt that was previously removed from the queues
+ * by calling remove_stmt_entry().
+ * Similar to add_stmt_table() but does not need to allocate.
+ */
+int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
+{
+    if (hash_find(thd->stmt_table, entry->sql) != NULL)
+        return -1; // already there, dont add again
+
+    int ret = hash_add(thd->stmt_table, entry);
+    if (ret != 0)
+        return ret;
+
+    sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
+    assert(hash_find(thd->stmt_table, entry->sql) == entry);
+
+    void *list = NULL;
     if (entry->params_to_bind) {
-        tail = &thd->param_stmt_tail;
-        head = &thd->param_stmt_head;
+        list = &thd->param_stmt_list;
     } else {
-        tail = &thd->noparam_stmt_tail;
-        head = &thd->noparam_stmt_head;
+        list = &thd->noparam_stmt_list;
     }
 
-    stmt_hash_entry_type *prev_entry = entry->prev;
-    stmt_hash_entry_type *next_entry = entry->next;
+    listc_atl(list, entry);
+    return ret;
+}
 
-    if (prev_entry != NULL) {
-        prev_entry->next = next_entry;
-    } else {
-        /* This is already the first entry. */
-        return;
+static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
+{
+    if (entry->query && gbl_debug_temptables) {
+        free(entry->query);
+        entry->query = NULL;
     }
-
-    if (next_entry != NULL) {
-        next_entry->prev = prev_entry;
-    } else {
-        /* This means this is the end of list.
-            set the new tail. */
-        (*tail) = prev_entry;
+    sqlite3_finalize(entry->stmt);
+    if (entry->params_to_bind) {
+        free_tag_schema(entry->params_to_bind);
     }
-    entry->next = (*head);
-    entry->prev = NULL;
-    (*head)->prev = entry;
-    (*head) = entry;
+    sqlite3_free(entry);
 }
 
 static void delete_last_stmt_entry(struct sqlthdstate *thd,
                                    struct schema *params_to_bind)
 {
-    stmt_hash_entry_type **tail = NULL;
+    void *list = NULL;
     if (params_to_bind) {
-        tail = &thd->param_stmt_tail;
+        list = &thd->param_stmt_list;
     } else {
-        tail = &thd->noparam_stmt_tail;
+        list = &thd->noparam_stmt_list;
     }
-    int has_params = 0;
+
+    stmt_hash_entry_type *entry = listc_rbl(list);
+    int rc = hash_del(thd->stmt_table, entry);
+    assert(rc == 0);
+    cleanup_stmt_entry(entry);
+}
+
+/*
+ * Remove from queue and stmt_table this entry so that
+ * subsequent finds of the same sql will not find it but
+ * rather create a new stmt (to avoid having stmt vdbe
+ * used by two sql at the same time).
+ */
+static void remove_stmt_entry(struct sqlthdstate *thd,
+                              stmt_hash_entry_type *entry)
+{
+    assert(entry);
+
+    void *list = NULL;
+    if (entry->params_to_bind) {
+        list = &thd->param_stmt_list;
+    } else {
+        list = &thd->noparam_stmt_list;
+    }
+    listc_rfl(list, entry);
+    int rc = hash_del(thd->stmt_table, entry->sql);
+    assert(rc == 0);
+}
+
+/* On error will return non zero and
+ * caller will need to finalize_stmt() in that case
+ */
+static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
+                          char *actual_sql, sqlite3_stmt *stmt,
+                          struct schema *params_to_bind)
+{
+    if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
+        return -1;
+    }
+
+    assert(thd->stmt_table);
+    /* stored procedure can call same stmt a lua thread more than once
+     * so we should not add stmt that exists already */
+    if (hash_find(thd->stmt_table, sql) != NULL) {
+        return -1;
+    }
+
+    void *list = NULL;
+    if (params_to_bind) {
+        list = &thd->param_stmt_list;
+    } else {
+        list = &thd->noparam_stmt_list;
+    }
+
+    /* remove older entries */
+    if (gbl_max_sqlcache <= listc_size(list))
+        delete_last_stmt_entry(thd, params_to_bind);
+
+    stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
+    strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
+    entry->stmt = stmt;
+    entry->params_to_bind = params_to_bind;
+    if (actual_sql && gbl_debug_temptables)
+        entry->query = strdup(actual_sql);
+    else
+        entry->query = NULL;
+
+    return requeue_stmt_entry(thd, entry);
+}
+
+static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
+                                  stmt_hash_entry_type **entry)
+{
+    assert(thd);
     hash_t *stmt_table = thd->stmt_table;
-    stmt_hash_entry_type *entry = (*tail)->prev;
-    if ((*tail)->query && gbl_debug_temptables) {
-        free((*tail)->query);
-        (*tail)->query = NULL;
-    }
-    sqlite3_finalize((*tail)->stmt);
-    if ((*tail)->params_to_bind) {
-        has_params = 1;
-        free_tag_schema((*tail)->params_to_bind);
-    }
-    hash_del(stmt_table, (*tail)->sql);
-    entry->next = NULL;
-    sqlite3_free(*tail);
-    *tail = entry;
-    if (has_params) {
-        thd->param_cache_entries--;
-    } else {
-        thd->noparam_cache_entries--;
-    }
-}
+    if (stmt_table == NULL)
+        return -1;
 
-int add_stmt_table(struct sqlthdstate *thd, const char *sql, char *actual_sql,
-                   sqlite3_stmt *stmt, struct schema *params_to_bind)
-{
-    int ret = -1;
-    int len = strlen(sql);
+    if (strlen(sql) >= MAX_HASH_SQL_LENGTH)
+        return -1;
 
-    stmt_hash_entry_type **tail = NULL;
-    stmt_hash_entry_type **head = NULL;
-    if (params_to_bind) {
-        if (thd->param_cache_entries > gbl_max_sqlcache)
-            delete_last_stmt_entry(thd, params_to_bind);
-        tail = &thd->param_stmt_tail;
-        head = &thd->param_stmt_head;
-    } else {
-        if (thd->noparam_cache_entries > gbl_max_sqlcache)
-            delete_last_stmt_entry(thd, params_to_bind);
-        tail = &thd->noparam_stmt_tail;
-        head = &thd->noparam_stmt_head;
-    }
+    *entry = hash_find(stmt_table, sql);
 
-    if (len < MAX_HASH_SQL_LENGTH) {
-        stmt_hash_entry_type *entry =
-            sqlite3_malloc(sizeof(stmt_hash_entry_type));
-        strcpy(entry->sql, sql);
-        entry->stmt = stmt;
-        entry->params_to_bind = params_to_bind;
-        if (actual_sql && gbl_debug_temptables)
-            entry->query = strdup(actual_sql);
-        else
-            entry->query = NULL;
-        ret = hash_add(thd->stmt_table, entry);
-        if (ret == 0) {
-            if ((*head) == NULL) {
-                entry->prev = NULL;
-                entry->next = NULL;
-                (*head) = entry;
-                (*tail) = entry;
-            } else {
-                (*head)->prev = entry;
-                entry->next = (*head);
-                entry->prev = NULL;
-                (*head) = entry;
-            }
-            if (params_to_bind) {
-                thd->param_cache_entries++;
-            } else {
-                thd->noparam_cache_entries++;
-            }
-        }
-    } else {
-        sqlite3_finalize(stmt);
-    }
-    return ret;
-}
+    if (*entry == NULL)
+        return -1;
 
-int find_stmt_table(hash_t *stmt_table, const char *sql,
-                    stmt_hash_entry_type **entry)
-{
-    if (strlen(sql) < MAX_HASH_SQL_LENGTH) {
-        *entry = hash_find(stmt_table, sql);
-        if (*entry)
-            return 0;
-    }
-    return -1;
+    remove_stmt_entry(thd, *entry); // will add again when done
+
+    return 0;
 }
 
 static const char *osqlretrystr(int i)
@@ -3245,12 +3252,7 @@ static void delete_prepared_stmts(struct sqlthdstate *thd)
     if (thd->stmt_table) {
         delete_stmt_table(thd->stmt_table);
         init_stmt_table(&thd->stmt_table);
-        thd->param_stmt_head = NULL;
-        thd->param_stmt_tail = NULL;
-        thd->noparam_stmt_head = NULL;
-        thd->noparam_stmt_tail = NULL;
-        thd->param_cache_entries = 0;
-        thd->noparam_cache_entries = 0;
+        init_stmt_lists(thd);
     }
 }
 
@@ -3552,7 +3554,7 @@ static int check_sql(struct sqlclntstate *clnt, int *sp)
 /* if userpassword does not match this function
  * will write error response and return a non 0 rc
  */
-inline static int check_user_password(struct sqlclntstate *clnt,
+static inline int check_user_password(struct sqlclntstate *clnt,
                                       struct fsqlresp *resp)
 {
     int password_rc = 0;
@@ -3728,8 +3730,7 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         int hint_len = sizeof(rec->cache_hint);
         if (extract_sqlcache_hint(rec->sql, rec->cache_hint, &hint_len)) {
             rec->status = CACHE_HAS_HINT;
-            if (find_stmt_table(thd->stmt_table, rec->cache_hint,
-                                &rec->stmt_entry) == 0) {
+            if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
                 rec->status |= CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
                 rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
@@ -3743,16 +3744,19 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                 }
             }
         } else {
-            if (find_stmt_table(thd->stmt_table, rec->sql, &rec->stmt_entry) ==
-                0) {
+            if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) == 0) {
                 rec->status = CACHE_FOUND_STMT;
                 rec->stmt = rec->stmt_entry->stmt;
             }
         }
     }
     if (rec->stmt) {
-        // save expanded query
-        rec->sql = sqlite3_sql(rec->stmt);
+        rec->sql = sqlite3_sql(rec->stmt); // save expanded query
+        int rc = sqlite3LockStmtTables(rec->stmt);
+        if (rc) {
+            cleanup_stmt_entry(rec->stmt_entry);
+            rec->stmt = NULL;
+        }
     }
 }
 
@@ -3767,19 +3771,25 @@ static void get_cached_params(struct sqlthdstate *thd,
     rec->status = CACHE_DISABLED;
     rec->sql = clnt->sql;
 
-    if ((gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM) && clnt->tag) {
+    if (gbl_enable_sql_stmt_caching == STMT_CACHE_ALL ||
+        (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM && clnt->tag)) {
         hint_len = sizeof(rec->cache_hint);
         if (extract_sqlcache_hint(clnt->sql, rec->cache_hint, &hint_len)) {
             rec->status = CACHE_HAS_HINT;
-            if (find_stmt_table(thd->stmt_table, rec->cache_hint,
-                                &rec->stmt_entry) == 0) {
+            if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
                 rec->status |= CACHE_FOUND_STMT;
+                rec->stmt = rec->stmt_entry->stmt;
                 rec->parameters_to_bind = rec->stmt_entry->params_to_bind;
             } else {
                 if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql,
                                         &(clnt->tag)) == 0) {
                     rec->status |= CACHE_FOUND_STR;
                 }
+            }
+        } else {
+            if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) == 0) {
+                rec->status = CACHE_FOUND_STMT;
+                rec->stmt = rec->stmt_entry->stmt;
             }
         }
     }
@@ -3860,12 +3870,32 @@ static int get_prepared_bound_param(struct sqlthdstate *thd,
     return 0;
 }
 
-static void clear_stmt_record(struct sql_state *rec)
+static void clear_parameters_to_bind(struct sql_state *rec)
 {
     if (rec->parameters_to_bind) {
         free_tag_schema(rec->parameters_to_bind);
         rec->parameters_to_bind = NULL;
     }
+}
+
+/* This is called at the time of put_prepared_stmt_int()
+ * to determine whether the given sql should be cached.
+ * We should not cache ddl stmts, analyze commands,
+ * rebuild commands, truncate commands, explain commands.
+ * Ddl stmts and explain commands should not get to
+ * put_prepared_stmt_int() so are not handled in this function.
+ */
+static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
+{
+    if (strncasecmp(sql, "analyze", 7) == 0)
+        return 1;
+    if (strncasecmp(sql, "rebuild", 7) == 0)
+        return 1;
+    if (strncasecmp(sql, "truncate", 8) == 0)
+        return 1;
+    if (strncasecmp(sql, "put", 3) == 0)
+        return 1;
+    return 0;
 }
 
 static int put_prepared_stmt_int(struct sqlthdstate *thd,
@@ -3887,29 +3917,35 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         sqlite3_stmt_has_remotes(stmt)) {
         return 1;
     }
-    if (outrc) {
+    if (rec->stmt_entry != NULL) {
+        if (requeue_stmt_entry(thd, rec->stmt_entry))
+            cleanup_stmt_entry(rec->stmt_entry);
+
+        return 0;
+    }
+
+    const char *sqlptr = clnt->sql;
+    if (rec->sql)
+        sqlptr = rec->sql;
+
+    if (dont_cache_sql(clnt, sqlptr)) {
         return 1;
     }
-    if (rec->stmt_entry == NULL) {
-        touch_stmt_entry(thd, rec->stmt_entry);
-    }
+
     if (rec->status & CACHE_HAS_HINT) {
-        if (add_stmt_table(thd, rec->cache_hint,
-                           (char *)(gbl_debug_temptables ? rec->sql : NULL),
-                           stmt, rec->parameters_to_bind) == 0) {
-            rec->parameters_to_bind = NULL;
-        }
+        sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
             add_sql_hint_table(rec->cache_hint, clnt->sql, clnt->tag);
         }
-    } else {
-        if (add_stmt_table(thd, clnt->sql,
-                           (char *)(gbl_debug_temptables ? rec->sql : NULL),
-                           stmt, rec->parameters_to_bind) == 0) {
-            rec->parameters_to_bind = NULL;
-        }
     }
-    return 0;
+
+    int rc = add_stmt_table(thd, sqlptr,
+                            (char *)(gbl_debug_temptables ? rec->sql : NULL),
+                            stmt, rec->parameters_to_bind);
+    if (rc == 0) {
+        rec->parameters_to_bind = NULL;
+    }
+    return rc;
 }
 
 /**
@@ -3920,13 +3956,12 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
 void put_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                        struct sql_state *rec, int outrc)
 {
-    if (put_prepared_stmt_int(thd, clnt, rec, outrc) != 0) {
-        if (rec->stmt) {
-            sqlite3_finalize(rec->stmt);
-            rec->stmt = NULL;
-        }
+    int rc = put_prepared_stmt_int(thd, clnt, rec, outrc);
+    if (rc != 0 && rec->stmt) {
+        sqlite3_finalize(rec->stmt);
+        rec->stmt = NULL;
     }
-    clear_stmt_record(rec);
+    clear_parameters_to_bind(rec);
     if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
         char *k = rec->cache_hint;
         pthread_mutex_lock(&gbl_sql_lock);
@@ -4358,7 +4393,6 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
 {
     int rc;
-    int stored_proc;
     int flush_resp = need_flush(clnt);
 
     sql_update_usertran_state(clnt);
@@ -4386,7 +4420,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     }
 
     /* additional non-sqlite requests */
-    stored_proc = 0;
+    int stored_proc = 0;
     if ((rc = check_sql(clnt, &stored_proc)) != 0) {
         // TODO: set this: outrc = rc;
         return rc;
@@ -5548,7 +5582,7 @@ static void handle_sqlite_error(struct sqlthdstate *thd,
         thd->sqlthd->nmove = thd->sqlthd->nfind = thd->sqlthd->nwrite =
             thd->sqlthd->ntmpread = thd->sqlthd->ntmpwrite = 0;
 
-    clear_stmt_record(rec);
+    clear_parameters_to_bind(rec);
 
     if (clnt->want_query_effects) {
         clnt->had_errors = 1;
@@ -5703,14 +5737,21 @@ errors:
     goto done;
 }
 
-static int check_sql_access(struct sqlclntstate *clnt)
+static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     struct fsqlresp resp;
     if (gbl_check_access_controls) {
         check_access_controls(thedb);
         gbl_check_access_controls = 0;
     }
-    return check_user_password(clnt, &resp);
+    int rc = check_user_password(clnt, &resp);
+    if (rc == 0) {
+        if (strcmp(thd->lastuser, clnt->user) != 0) {
+            delete_prepared_stmts(thd);
+            strcpy(thd->lastuser, clnt->user);
+        }
+    }
+    return rc;
 }
 
 /**
@@ -5722,7 +5763,7 @@ int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int rc;
 
     /* access control */
-    rc = check_sql_access(clnt);
+    rc = check_sql_access(thd, clnt);
     if (rc)
         return rc;
 
@@ -5773,9 +5814,8 @@ check_version:
         }
     }
     if (gbl_enable_sql_stmt_caching && (thd->stmt_table == NULL)) {
-        thd->param_cache_entries = 0;
-        thd->noparam_cache_entries = 0;
         init_stmt_table(&thd->stmt_table);
+        init_stmt_lists(thd);
     }
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
@@ -6321,12 +6361,6 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->offsets = NULL;
     thd->sqldb = NULL;
     thd->stmt_table = NULL;
-    thd->param_stmt_head = NULL;
-    thd->param_stmt_tail = NULL;
-    thd->noparam_stmt_head = NULL;
-    thd->noparam_stmt_tail = NULL;
-    thd->param_cache_entries = 0;
-    thd->noparam_cache_entries = 0;
 
     start_sql_thread();
 
@@ -6503,7 +6537,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     /* reset the password */
     clnt->have_password = 0;
-    bzero(clnt->password, sizeof(clnt->user));
+    bzero(clnt->password, sizeof(clnt->password));
 
     /* reset endianess */
     clnt->have_endian = 0;
@@ -7502,10 +7536,7 @@ retry_read:
         return NULL;
     }
 
-    CDB2QUERY *query;
-
     char *p;
-
     if (bytes <= gbl_blob_sz_thresh_bytes)
         p = malloc(bytes);
     else
@@ -7546,6 +7577,7 @@ retry_read:
         }
     }
 
+    CDB2QUERY *query;
     while (1) {
         query = cdb2__query__unpack(&pb_alloc, bytes, p);
 
@@ -7666,24 +7698,26 @@ static int process_set_commands(struct sqlclntstate *clnt)
     num_commands = sql_query->n_set_flags;
     for (int ii = 0; ii < num_commands && rc == 0; ii++) {
         sqlstr = sql_query->set_flags[ii];
-        sqlstr = cdb2_skipws(sqlstr);
+        sqlstr = skipws(sqlstr);
         if (strncasecmp(sqlstr, "set", 3) == 0) {
+            char err[256];
+            err[0] = '\0';
             if (gbl_extended_sql_debug_trace) {
                 logmsg(LOGMSG_ERROR,
                        "td %lu %s line %d processing set command '%s'\n",
                        pthread_self(), __func__, __LINE__, sqlstr);
             }
             sqlstr += 3;
-            sqlstr = cdb2_skipws(sqlstr);
+            sqlstr = skipws(sqlstr);
             if (strncasecmp(sqlstr, "transaction", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 clnt->dbtran.mode = TRANLEVEL_INVALID;
                 set_high_availability(clnt, 0);
                 // clnt->high_availability = 0;
                 if (strncasecmp(sqlstr, "read", 4) == 0) {
                     sqlstr += 4;
-                    sqlstr = cdb2_skipws(sqlstr);
+                    sqlstr = skipws(sqlstr);
                     if (strncasecmp(sqlstr, "committed", 4) == 0) {
                         clnt->dbtran.mode = TRANLEVEL_RECOM;
                     }
@@ -7710,7 +7744,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                     rc = ii + 1;
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 int notimeout = disable_server_sql_timeouts();
                 sbuf2settimeout(clnt->sb, 0, notimeout ? 0 : timeout);
@@ -7724,42 +7758,57 @@ static int process_set_commands(struct sqlclntstate *clnt)
                         watcher_warning_function);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
                 sqlstr += 12;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
                 if (timeout >= 0)
                     clnt->query_timeout = timeout;
             } else if (strncasecmp(sqlstr, "timezone", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 strncpy(clnt->tzname, sqlstr, sizeof(clnt->tzname));
             } else if (strncasecmp(sqlstr, "datetime", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
 
                 if (strncasecmp(sqlstr, "precision", 9) == 0) {
                     sqlstr += 9;
-                    sqlstr = cdb2_skipws(sqlstr);
+                    sqlstr = skipws(sqlstr);
                     DTTZ_TEXT_TO_PREC(sqlstr, clnt->dtprec, 0, return -1);
                 } else {
                     rc = ii + 1;
                 }
             } else if (strncasecmp(sqlstr, "user", 4) == 0) {
                 sqlstr += 4;
-                sqlstr = cdb2_skipws(sqlstr);
-                clnt->have_user = 1;
-                strncpy(clnt->user, sqlstr, sizeof(clnt->user));
+                sqlstr = skipws(sqlstr);
+                sqlite3Dequote(sqlstr);
+                if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                    snprintf(err, sizeof(err),
+                             "set user: '%s' exceeds %d characters", sqlstr,
+                             sizeof(clnt->user) - 1);
+                    rc = ii + 1;
+                } else {
+                    clnt->have_user = 1;
+                    strcpy(clnt->user, sqlstr);
+                }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
-                clnt->have_password = 1;
-                strncpy(clnt->password, sqlstr, sizeof(clnt->password));
-                sqlite3Dequote(clnt->password);
+                sqlstr = skipws(sqlstr);
+                sqlite3Dequote(sqlstr);
+                if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                    snprintf(err, sizeof(err),
+                             "set password: '%s' exceeds %d characters", sqlstr,
+                             sizeof(clnt->password) - 1);
+                    rc = ii + 1;
+                } else {
+                    clnt->have_password = 1;
+                    strcpy(clnt->password, sqlstr);
+                }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
                 clnt->spversion.version_num = 0;
                 free(clnt->spversion.version_str);
                 clnt->spversion.version_str = NULL;
                 sqlstr += 9;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 char *spname = sqlstr;
                 while (!isspace(*sqlstr)) {
                     ++sqlstr;
@@ -7773,7 +7822,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
                 ++sqlstr;
 
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 int ver = strtol(sqlstr, &endp, 10);
                 if (*sqlstr == '\'' || *sqlstr == '"') { // looks like a str
                     if (strlen(sqlstr) < MAX_SPVERSION_LEN) {
@@ -7789,7 +7838,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "readonly", 8) == 0) {
                 sqlstr += 8;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->is_readonly = 0;
                 } else {
@@ -7797,7 +7846,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "expert", 6) == 0) {
                 sqlstr += 6;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->is_expert = 0;
                 } else {
@@ -7805,7 +7854,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "sptrace", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->want_stored_procedure_trace = 0;
                 } else {
@@ -7813,11 +7862,11 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "cursordebug", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 bdb_osql_trak(sqlstr, &clnt->bdb_osql_trak);
             } else if (strncasecmp(sqlstr, "spdebug", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
                     clnt->want_stored_procedure_debug = 0;
                 } else {
@@ -7825,13 +7874,12 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "HASQL", 5) == 0) {
                 sqlstr += 5;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->hasql_on = 1;
                     if (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
                         clnt->dbtran.mode == TRANLEVEL_SNAPISOL) {
                         set_high_availability(clnt, 1);
-                        // clnt->high_availability = 1;
                         if (gbl_extended_sql_debug_trace) {
                             logmsg(
                                 LOGMSG_USER,
@@ -7842,7 +7890,6 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 } else {
                     clnt->hasql_on = 0;
                     set_high_availability(clnt, 0);
-                    // clnt->high_availability = 0;
                     if (gbl_extended_sql_debug_trace) {
                         logmsg(LOGMSG_USER,
                                "td %lu %s line %d clearing high_availability\n",
@@ -7851,7 +7898,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "verifyretry", 11) == 0) {
                 sqlstr += 11;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->verifyretry_off = 0;
                 } else {
@@ -7859,7 +7906,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "queryeffects", 12) == 0) {
                 sqlstr += 12;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "statement", 9) == 0) {
                     clnt->statement_query_effects = 1;
                 }
@@ -7868,7 +7915,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "remote", 6) == 0) {
                 sqlstr += 6;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
 
                 int rc = fdb_access_control_create(clnt, sqlstr);
                 if (rc) {
@@ -7879,7 +7926,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 rc = ii + 1;
             } else if (strncasecmp(sqlstr, "getcost", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->get_cost = 1;
                 } else {
@@ -7887,7 +7934,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
                 }
             } else if (strncasecmp(sqlstr, "explain", 7) == 0) {
                 sqlstr += 7;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->is_explain = 1;
                 } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
@@ -7917,7 +7964,7 @@ static int process_set_commands(struct sqlclntstate *clnt)
 #endif
             } else if (strncasecmp(sqlstr, "ignorecoherency", 15) == 0) {
                 sqlstr += 15;
-                sqlstr = cdb2_skipws(sqlstr);
+                sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->ignore_coherency = 1;
                 } else {
@@ -7928,9 +7975,9 @@ static int process_set_commands(struct sqlclntstate *clnt)
             }
 
             if (rc) {
-                char err[256];
-                snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
-                         sqlstr);
+                if (err[0] == '\0')
+                    snprintf(err, sizeof(err) - 1, "Invalid set command '%s'",
+                             sqlstr);
                 send_prepare_error(clnt, err, 0);
             }
         }
@@ -8049,9 +8096,6 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         allow_master_exec == 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s line %d td %u new query on master, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
         return 1;
@@ -8147,7 +8191,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         assert(query->sqlquery);
         sql_query = query->sqlquery;
         clnt.sql_query = sql_query;
-        clnt.sql = sql_query->sql_query;
+        clnt.sql = skipws(sql_query->sql_query);
         clnt.query = query;
         clnt.added_to_hist = 0;
 
@@ -8368,12 +8412,6 @@ int handle_fastsql_requests(struct thr_handle *thr_self, SBUF2 *sb,
     thd.sqldb = NULL;
     // thd.stmt = NULL;
     thd.stmt_table = NULL;
-    thd.param_stmt_head = NULL;
-    thd.param_stmt_tail = NULL;
-    thd.noparam_stmt_head = NULL;
-    thd.noparam_stmt_tail = NULL;
-    thd.param_cache_entries = 0;
-    thd.noparam_cache_entries = 0;
 
     /* appsock threads aren't sql threads so for appsock pool threads
      * thd.sqlthd will be NULL */
@@ -8898,9 +8936,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
                      sqlite3_stmt *stmt, const char **errstr)
 {
 
-    int rc = SQLITE_OK;
-
-    rc = sqlite3_reset(stmt);
+    int rc = sqlite3_reset(stmt);
 
     switch (rc) {
     case 0:
