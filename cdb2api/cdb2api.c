@@ -765,6 +765,7 @@ struct cdb2_hndl {
     int sent_client_info;
 #if WITH_CDB2OPEN_STACK
     char stack[MAX_STACK];
+    int send_stack;
 #endif
 };
 
@@ -2097,7 +2098,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
 #if WITH_CDB2OPEN_STACK
-        cinfo.stack = hndl->stack;
+        if (hndl && hndl->send_stack)
+            cinfo.stack = hndl->stack;
 #endif
         sqlquery.client_info = &cinfo;
         if (hndl)
@@ -5011,7 +5013,12 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->connected_host = -1;
 #if WITH_CDB2OPEN_STACK
     int comdb2_cheapstack_char_array(char *str, int maxln);
-    comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
+    if(getenv("CDB2_DISABLE_STACK")) {
+        hndl->send_stack = 0;
+    } else {
+        comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
+        hndl->send_stack = 1;
+    }
 #endif
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
