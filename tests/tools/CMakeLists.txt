@@ -4,6 +4,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/mem
+  ${SQLITE3_INCLUDE_DIR}
 )
 add_executable(blob blob.c)
 add_executable(bound bound.cpp)

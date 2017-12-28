@@ -6,7 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-#include <getopt.h>
+//#include <getopt.h>
 
 /* Global argv0 */
 static char *argv0=NULL;
