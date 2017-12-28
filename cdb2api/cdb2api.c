@@ -1080,7 +1080,7 @@ struct sockpool_msg_vers0 {
     char padding[3];
     int dbnum;
     int timeout;
-    char typestr[48];
+    char typestr[128];
 };
 
 enum { SOCKPOOL_DONATE = 0, SOCKPOOL_REQUEST = 1 };
