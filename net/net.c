@@ -177,16 +177,6 @@ static int connection_refresh(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-/* my very own malloc */
-static void *mymalloc(size_t size)
-{
-    if (size > 100000) {
-        logmsg(LOGMSG_INFO, "net mymalloc: size = %d\n", (int)size);
-    }
-
-    return (malloc(size));
-}
-
 extern void myfree(void *ptr);
 
 /* Help me build the test program... - Sam J */
@@ -1434,7 +1424,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
         if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
-    data = mymalloc(datasz);
+    data = malloc(datasz);
     memset(data, 0, datasz);
 
     p_buf = (uint8_t *)data;
@@ -1522,7 +1512,7 @@ static int write_hello_reply(netinfo_type *netinfo_ptr,
         if (tmp_host_ptr->hostname_len >= HOSTNAME_LEN)
             datasz += tmp_host_ptr->hostname_len;
     }
-    data = mymalloc(datasz);
+    data = malloc(datasz);
     memset(data, 0, datasz);
 
     p_buf = (uint8_t *)data;
@@ -1603,7 +1593,7 @@ static seq_data *add_seqnum_to_waitlist(host_node_type *host_node_ptr,
                                         int seqnum)
 {
     seq_data *new_seq_node, *seq_list_ptr;
-    new_seq_node = mymalloc(sizeof(seq_data));
+    new_seq_node = malloc(sizeof(seq_data));
     new_seq_node->seqnum = seqnum;
     new_seq_node->ack = 0;
     new_seq_node->outrc = 0;
@@ -2538,7 +2528,7 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = mymalloc(sizeof(host_node_type));
+    ptr = malloc(sizeof(host_node_type));
     if (!ptr)
         abort();
 
@@ -3121,7 +3111,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     netinfo_node_t *netinfo_node;
     int rc;
 
-    netinfo_ptr = mymalloc(sizeof(netinfo_type));
+    netinfo_ptr = malloc(sizeof(netinfo_type));
     memset(netinfo_ptr, 0, sizeof(netinfo_type));
 
     listc_init(&(netinfo_ptr->watchlist), offsetof(watchlist_node_type, lnk));
@@ -3257,7 +3247,7 @@ static netinfo_type *create_netinfo_int(char myhostname[], int myportnum,
     }
     netinfo_ptr->myfd = myfd;
 
-    netinfo_node = mymalloc(sizeof(netinfo_node_t));
+    netinfo_node = malloc(sizeof(netinfo_node_t));
     if (netinfo_node == NULL) {
         logmsg(LOGMSG_ERROR, "create_netinfo: malloc failed. memstat on this "
                         "netinfo will not be tracked\n");
@@ -3391,7 +3381,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
         return 1;
     }
 
-    data = mymalloc(datasz);
+    data = malloc(datasz);
     p_buf = (uint8_t *)data;
     p_buf_end = ((uint8_t *)data + datasz);
 
@@ -3414,7 +3404,7 @@ static int read_hostlist(netinfo_type *netinfo_ptr, SBUF2 *sb, char *hosts[],
 
     /* copy out the hosts, make sure the strings are \0 terminated */
     for (i = 0; i < *numhosts; i++) {
-        hosts[i] = mymalloc(HOSTNAME_LEN + 1);
+        hosts[i] = malloc(HOSTNAME_LEN + 1);
         p_buf =
             (uint8_t *)buf_no_net_get(hosts[i], HOSTNAME_LEN, p_buf, p_buf_end);
         hosts[i][HOSTNAME_LEN] = '\0';
@@ -3482,7 +3472,7 @@ static int read_user_data(host_node_type *host_node_ptr, int *type, int *seqnum,
             *data = host_node_ptr->user_data_buf;
             *malloced = 0;
         } else {
-            *data = mymalloc(*datalen);
+            *data = malloc(*datalen);
             *malloced = 1;
         }
 
@@ -3587,7 +3577,7 @@ static int process_payload_ack(netinfo_type *netinfo_ptr,
     if (p_net_ack_message_payload.paylen > 1024)
         return -1;
 
-    payload = mymalloc(p_net_ack_message_payload.paylen);
+    payload = malloc(p_net_ack_message_payload.paylen);
     rc = read_stream(netinfo_ptr, host_node_ptr, host_node_ptr->sb, payload,
                      p_net_ack_message_payload.paylen);
 
@@ -3718,7 +3708,7 @@ static int process_user_message(netinfo_type *netinfo_ptr,
         (usertype >= 0 && usertype <= MAX_USER_TYPE &&
          netinfo_ptr->userfuncs[usertype] != NULL)) {
         if (needack) {
-            ack_state = mymalloc(sizeof(ack_state_type));
+            ack_state = malloc(sizeof(ack_state_type));
             ack_state->seqnum = seqnum;
             ack_state->needack = needack;
             ack_state->fromhost = host_node_ptr->host;
@@ -6289,7 +6279,7 @@ static sanc_node_type *add_to_sanctioned_nolock(netinfo_type *netinfo_ptr,
         return ptr;
     }
 
-    ptr = mymalloc(sizeof(sanc_node_type));
+    ptr = malloc(sizeof(sanc_node_type));
     bzero(ptr, sizeof(sanc_node_type));
 
     ptr->next = netinfo_ptr->sanctioned_list;
