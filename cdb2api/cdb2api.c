@@ -1976,14 +1976,14 @@ retry_read:
         hndl->sb = NULL;
         return -1;
     }
-
+    error_code = hndl->firstresponse->error_code;
     if (type ==
         RESPONSE_HEADER__SQL_RESPONSE) { /* This might be the error that
                                             happened within transaction. */
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
         hndl->error_in_trans =
-            cdb2_convert_error_code(hndl->firstresponse->error_code);
+            cdb2_convert_error_code(error_code);
         strcpy(hndl->errstr, hndl->firstresponse->error_string);
         goto retry_read;
     }
@@ -1998,16 +1998,12 @@ retry_read:
         return -1;
     }
 
-    if (hndl->first_buf != NULL) {
-        hndl->firstresponse =
-            cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
-    } else {
+    if (hndl->first_buf == NULL) {
         fprintf(stderr, "td %u %s: Can't read response from the db\n",
                 (uint32_t)pthread_self(), __func__);
-        free((void *)hndl->first_buf);
-        hndl->first_buf = NULL;
         return -1;
-    }
+    } 
+    hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     return 0;
 }
 
