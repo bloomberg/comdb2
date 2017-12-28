@@ -20,9 +20,7 @@ if(WITH_SSL)
   list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endif()
 
-if(WITH_CDB2OPEN_STACK)
-  list(APPEND libs ${UNWIND_LIBRARY})
-endif()
+list(APPEND libs ${UNWIND_LIBRARY})
 
 target_link_libraries(cdb2sql ${libs})
 install(TARGETS cdb2sql RUNTIME DESTINATION bin)

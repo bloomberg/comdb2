@@ -90,9 +90,7 @@ static char *_ARGV0;
 #define MAX_CONTEXTS 10 /* Maximum stack size for storing context messages */
 #define MAX_CONTEXT_LEN 100 /* Maximum allowed length of a context message */
 
-#if WITH_CDB2OPEN_STACK
 #define MAX_STACK 512 /* Size of call-stack which opened the handle */
-#endif
 
 pthread_mutex_t cdb2_sockpool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -763,10 +761,8 @@ struct cdb2_hndl {
     struct context_messages context_msgs;
     char *env_tz;
     int sent_client_info;
-#if WITH_CDB2OPEN_STACK
     char stack[MAX_STACK];
     int send_stack;
-#endif
 };
 
 void cdb2_set_min_retries(int min_retries)
@@ -2097,10 +2093,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         cinfo.th_id = pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
-#if WITH_CDB2OPEN_STACK
         if (hndl && hndl->send_stack)
             cinfo.stack = hndl->stack;
-#endif
         sqlquery.client_info = &cinfo;
         if (hndl)
             hndl->sent_client_info = 1;
@@ -4996,6 +4990,8 @@ int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
 }
 #endif /* !WITH_SSL */
 
+int comdb2_cheapstack_char_array(char *str, int maxln);
+
 int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
               int flags)
 {
@@ -5011,15 +5007,12 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->flags = flags;
     hndl->dbnum = 1;
     hndl->connected_host = -1;
-#if WITH_CDB2OPEN_STACK
-    int comdb2_cheapstack_char_array(char *str, int maxln);
     if(getenv("CDB2_DISABLE_STACK")) {
         hndl->send_stack = 0;
     } else {
         comdb2_cheapstack_char_array(hndl->stack, MAX_STACK);
         hndl->send_stack = 1;
     }
-#endif
 #if WITH_SSL
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
