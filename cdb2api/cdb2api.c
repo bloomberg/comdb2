@@ -1180,11 +1180,15 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         }
     }
 
-    struct sockpool_msg_vers0 msg;
+    struct sockpool_msg_vers0 msg = {0};
     /* Please may I have a file descriptor */
-    bzero(&msg, sizeof(msg));
     msg.request = SOCKPOOL_REQUEST;
     msg.dbnum = dbnum;
+    if (strlen(typestr) >= sizeof(msg.typestr)) {
+        //fprintf(stderr, "%s: length of typestr %d is larger than buffer %d\n", 
+                //__func__, strlen(typestr), sizeof(msg.typestr));
+        return -1;
+    }
     strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
     errno = 0;
@@ -1245,9 +1249,8 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
         }
 
         if (sockpool_fd != -1) {
-            struct sockpool_msg_vers0 msg;
+            struct sockpool_msg_vers0 msg = {0};
             int rc;
-            bzero(&msg, sizeof(msg));
             msg.request = SOCKPOOL_DONATE;
             msg.dbnum = dbnum;
             msg.timeout = ttl;
@@ -1470,7 +1473,6 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd;
-    bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
         if (debug)
@@ -1481,8 +1483,8 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     }
 
     if (debug)
-        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
-                __func__, __LINE__);
+        fprintf(stderr, "td %d %s name %s\n", (uint32_t)pthread_self(),
+                __func__, name);
 
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
@@ -1531,7 +1533,8 @@ retry_newsql_connect:
     fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL);
 
     if (hndl->debug_trace)
-        fprintf(stderr, "fd %d\n", fd);
+        fprintf(stderr, "cdb2_socket_pool_get(%s,%d): fd %d\n", 
+                hndl->newsql_typestr, hndl->dbnum, fd);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
@@ -1610,7 +1613,6 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd, port;
-    bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
         if (debug)
@@ -1619,6 +1621,11 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
                     app, service, instance);
         return -1;
     }
+
+    if (debug)
+        fprintf(stderr, "td %d %s name %s\n", (uint32_t)pthread_self(),
+            __func__, name);
+
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
     if (fd < 0) {

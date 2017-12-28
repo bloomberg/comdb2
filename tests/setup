@@ -152,7 +152,7 @@ fi
 
 # Configure client SSL
 echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
-echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
+#echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
 myhostname=`hostname`
 set +e
@@ -336,6 +336,7 @@ else
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         done
         set -e
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &> $TESTDIR/logs/${DBNAME}.${node}.conn
         out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
         if [ "$out" != "$node" ] ; then
             echo "comdb2_host() '$out' != expected '$node'"

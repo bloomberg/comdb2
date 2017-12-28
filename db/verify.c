@@ -30,6 +30,7 @@
 #include "segstr.h"
 
 #include <bdb_api.h>
+#include <bdb/locks.h>
 
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
@@ -268,17 +269,34 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
              int attempt_fix, 
              int (*lua_callback)(void *, const char *), void *lua_params)
 {
-    struct dbtable *db;
-    blob_buffer_t blob_buf[MAXBLOBS];
     int rc = 0;
 
-    db = get_dbtable_by_name(table);
-    bzero(blob_buf, sizeof(blob_buf));
+    struct dbtable *db = get_dbtable_by_name(table);
     if (db == NULL) {
-        if (sb) sbuf2printf(sb, "?Unknown table %s\nFAILED\n", table);
+        if (sb) sbuf2printf(sb, "?Unknown table %s\n", table);
         rc = 1;
-    } else {
-        rc = bdb_verify(
+        goto done;
+    } 
+
+    int bdberr;
+    void *tran = bdb_tran_begin(db->handle, NULL, &bdberr);
+    if (!tran) {
+        fprintf(stderr, "verify_table: bdb_trans_start err %d\n", bdberr);
+        if (sb) sbuf2printf(sb, "?bdb_trans_start rc %d\n", bdberr);
+        rc = 1;
+        goto done;
+    }
+
+    rc = bdb_lock_table_read(db->handle, tran);
+    if (rc) {
+        if (sb) sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
+        rc = 1;
+        goto done;
+    } 
+
+    blob_buffer_t blob_buf[MAXBLOBS] = {0};
+
+    rc = bdb_verify(
             sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
             (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
             verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
@@ -286,12 +304,14 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
             db, lua_callback, lua_params,
             blob_buf, progress_report_seconds,
             attempt_fix);
-        if (rc) {
-            printf("verify rc %d\n", rc);
-            if(sb) sbuf2printf(sb, "FAILED\n");
-        } else if (sb) 
-            sbuf2printf(sb, "SUCCESS\n");
-    }
+    bdb_tran_abort(db->handle, tran, &bdberr);
+done:
+    if (rc) {
+        printf("verify rc %d\n", rc);
+        if(sb) sbuf2printf(sb, "FAILED\n");
+    } else if (sb) 
+        sbuf2printf(sb, "SUCCESS\n");
+
     sbuf2flush(sb);
     return rc;
 }
