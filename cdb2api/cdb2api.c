@@ -1980,8 +1980,8 @@ retry_read:
                                             happened within transaction. */
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
-        int error_code = hndl->firstresponse->error_code;
-        hndl->error_in_trans = cdb2_convert_error_code(error_code);
+        hndl->error_in_trans = 
+            cdb2_convert_error_code(hndl->firstresponse->error_code);
         strcpy(hndl->errstr, hndl->firstresponse->error_string);
         goto retry_read;
     }
