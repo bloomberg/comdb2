@@ -1999,7 +1999,7 @@ retry_read:
         fprintf(stderr, "td %u %s: Can't read response from the db\n",
                 (uint32_t)pthread_self(), __func__);
         return -1;
-    } 
+    }
     hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     return 0;
 }
@@ -2350,7 +2350,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
         hndl->first_record_read = 1;
         if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
             rc = hndl->lastresponse->error_code;
-        } else if (hndl->lastresponse->response_type == RESPONSE_TYPE__LAST_ROW) {
+        } else if (hndl->lastresponse->response_type ==
+                   RESPONSE_TYPE__LAST_ROW) {
             if (hndl->num_set_commands) {
                 hndl->num_set_commands_sent = hndl->num_set_commands;
             }
