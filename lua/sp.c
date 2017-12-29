@@ -3227,6 +3227,14 @@ static int dbthread_join(Lua lua1)
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
+        if (bdb_lock_desired(thedb->bdb_env)) {
+            int rc;
+            if ((rc = recover_deadlock(thedb->bdb_env, lt->sp->thd->sqlthd, NULL, 0)) !=
+                    0) {
+                luabb_error(lua1, lt->sp, "recover deadlock failed");
+                return -3;
+            }
+        }
         pthread_cond_timedwait(&lt->lua_thread_cond, &lt->lua_thread_mutex,
                                &ts);
     }
