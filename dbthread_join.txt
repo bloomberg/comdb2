@@ -1,0 +1,26 @@
+Thread 36 (Thread 0x7fd6356da700 (LWP 14005)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008a0257 in dbthread_join (lua1=0x61a3240) at /home/ubuntu/comdb2/lua/sp.c:3229
+#2  0x00000000008b3def in luaD_precall (L=0x61a3240, func=0x6e99c18, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#3  0x00000000008cac03 in luaV_execute (L=0x61a3240, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#4  0x00000000008b4094 in luaD_call (L=0x61a3240, func=0x61a3640, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#5  0x00000000008aea08 in f_call (L=0x61a3240, ud=0x7fd6356d95f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#6  0x00000000008b3029 in luaD_rawrunprotected (L=0x61a3240, f=0x8ae9d3 <f_call>, ud=0x7fd6356d95f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#7  0x00000000008b448e in luaD_pcall (L=0x61a3240, func=0x8ae9d3 <f_call>, u=0x7fd6356d95f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#8  0x00000000008aeac7 in lua_pcall (L=0x61a3240, nargs=2, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#9  0x00000000008a8c8e in run_sp_int (clnt=0x6338ae0, argcnt=2, err=0x7fd6356d97c8) at /home/ubuntu/comdb2/lua/sp.c:5907
+#10 0x00000000008a8dbe in run_sp (clnt=0x6338ae0, argcnt=2, err=0x7fd6356d97c8) at /home/ubuntu/comdb2/lua/sp.c:5932
+#11 0x00000000008aab3d in exec_procedure_int (s=0x6342a4a ")", err=0x7fd6356d97c8, thd=0x7fd6356d9ab0, params=0x0, clnt=0x6338ae0)
+    at /home/ubuntu/comdb2/lua/sp.c:6535
+#12 0x00000000008aba95 in exec_procedure (s=0x6342a28 "exec procedure gen('foraudit', 500)", err=0x7fd6356d97c8, thd=0x7fd6356d9ab0, params=0x0,
+    clnt=0x6338ae0) at /home/ubuntu/comdb2/lua/sp.c:6802
+#13 0x00000000005b488c in handle_stored_proc (thd=0x7fd6356d9ab0, clnt=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5623
+#14 0x00000000005b1115 in handle_non_sqlite_requests (thd=0x7fd6356d9ab0, clnt=0x6338ae0, outrc=0x7fd6356d9a00) at /home/ubuntu/comdb2/db/sqlinterfaces.c:4410
+#15 0x00000000005b4d7a in execute_sql_query (thd=0x7fd6356d9ab0, clnt=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5743
+#16 0x00000000005b59cb in sqlengine_work_appsock (thddata=0x7fd6356d9ab0, work=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6049
+#17 0x00000000005b5b0f in sqlengine_work_appsock_pp (pool=0x611c010, work=0x6338ae0, thddata=0x7fd6356d9ab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6082
+#18 0x000000000071dc05 in thdpool_thd (voidarg=0x6340248) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#19 0x0000000000703390 in thr_func (arg=0x6136050) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#20 0x00007fd6435416ba in start_thread (arg=0x7fd6356da700) at pthread_create.c:333
+#21 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109

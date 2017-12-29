@@ -1,0 +1,854 @@
+COMMAND   PID   USER   FD   TYPE             DEVICE SIZE/OFF     NODE NAME
+sshd    24501 ubuntu  cwd    DIR              202,1     4096        2 /
+sshd    24501 ubuntu  rtd    DIR              202,1     4096        2 /
+sshd    24501 ubuntu  txt    REG              202,1   799216     7106 /usr/sbin/sshd
+sshd    24501 ubuntu  DEL    REG                0,5          73579128 /dev/zero
+sshd    24501 ubuntu  mem    REG              202,1    14520   396898 /lib/x86_64-linux-gnu/security/pam_env.so
+sshd    24501 ubuntu  mem    REG              202,1    22944   396908 /lib/x86_64-linux-gnu/security/pam_limits.so
+sshd    24501 ubuntu  mem    REG              202,1    10376   396912 /lib/x86_64-linux-gnu/security/pam_mail.so
+sshd    24501 ubuntu  mem    REG              202,1    10408   396914 /lib/x86_64-linux-gnu/security/pam_motd.so
+sshd    24501 ubuntu  mem    REG              202,1    14640   396853 /lib/x86_64-linux-gnu/libpam_misc.so.0.82.0
+sshd    24501 ubuntu  mem    REG              202,1   274376   396927 /lib/x86_64-linux-gnu/security/pam_systemd.so
+sshd    24501 ubuntu  mem    REG              202,1    10432   396933 /lib/x86_64-linux-gnu/security/pam_umask.so
+sshd    24501 ubuntu  mem    REG              202,1    10344   396906 /lib/x86_64-linux-gnu/security/pam_keyinit.so
+sshd    24501 ubuntu  mem    REG              202,1    10392   396911 /lib/x86_64-linux-gnu/security/pam_loginuid.so
+sshd    24501 ubuntu  mem    REG              202,1    18800   396922 /lib/x86_64-linux-gnu/security/pam_selinux.so
+sshd    24501 ubuntu  mem    REG              202,1    10328   396916 /lib/x86_64-linux-gnu/security/pam_nologin.so
+sshd    24501 ubuntu  mem    REG              202,1     6168   396917 /lib/x86_64-linux-gnu/security/pam_permit.so
+sshd    24501 ubuntu  mem    REG              202,1     6000   396896 /lib/x86_64-linux-gnu/security/pam_deny.so
+sshd    24501 ubuntu  mem    REG              202,1    60336   396934 /lib/x86_64-linux-gnu/security/pam_unix.so
+sshd    24501 ubuntu  mem    REG              202,1    47600   424087 /lib/x86_64-linux-gnu/libnss_files-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1    47648   424090 /lib/x86_64-linux-gnu/libnss_nis-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1    35688   424096 /lib/x86_64-linux-gnu/libnss_compat-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1    80496   396821 /lib/x86_64-linux-gnu/libgpg-error.so.0.17.0
+sshd    24501 ubuntu  mem    REG              202,1   101200   424098 /lib/x86_64-linux-gnu/libresolv-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1    14256   396829 /lib/x86_64-linux-gnu/libkeyutils.so.1.5
+sshd    24501 ubuntu  mem    REG              202,1    43664     5352 /usr/lib/x86_64-linux-gnu/libkrb5support.so.0.1
+sshd    24501 ubuntu  mem    REG              202,1   186872     5349 /usr/lib/x86_64-linux-gnu/libk5crypto.so.3.1
+sshd    24501 ubuntu  mem    REG              202,1   138696   424089 /lib/x86_64-linux-gnu/libpthread-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1   919168   395912 /lib/x86_64-linux-gnu/libgcrypt.so.20.0.5
+sshd    24501 ubuntu  mem    REG              202,1   137400   396833 /lib/x86_64-linux-gnu/liblzma.so.5.0.0
+sshd    24501 ubuntu  mem    REG              202,1    31712   424092 /lib/x86_64-linux-gnu/librt-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1   456632   396858 /lib/x86_64-linux-gnu/libpcre.so.3.13.2
+sshd    24501 ubuntu  mem    REG              202,1    14608   424095 /lib/x86_64-linux-gnu/libdl-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1    93128   424075 /lib/x86_64-linux-gnu/libnsl-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1  1868984   424106 /lib/x86_64-linux-gnu/libc-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1    14648   396803 /lib/x86_64-linux-gnu/libcom_err.so.2.1
+sshd    24501 ubuntu  mem    REG              202,1   860392     5351 /usr/lib/x86_64-linux-gnu/libkrb5.so.3.3
+sshd    24501 ubuntu  mem    REG              202,1   301376     5329 /usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2.2
+sshd    24501 ubuntu  mem    REG              202,1    39224   424088 /lib/x86_64-linux-gnu/libcrypt-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1   104824   396889 /lib/x86_64-linux-gnu/libz.so.1.2.8
+sshd    24501 ubuntu  mem    REG              202,1    10656   424099 /lib/x86_64-linux-gnu/libutil-2.23.so
+sshd    24501 ubuntu  mem    REG              202,1  2361856   394923 /lib/x86_64-linux-gnu/libcrypto.so.1.0.0
+sshd    24501 ubuntu  mem    REG              202,1   130224   396872 /lib/x86_64-linux-gnu/libselinux.so.1
+sshd    24501 ubuntu  mem    REG              202,1    55904   396852 /lib/x86_64-linux-gnu/libpam.so.0.83.1
+sshd    24501 ubuntu  mem    REG              202,1   117288   396796 /lib/x86_64-linux-gnu/libaudit.so.1.0.0
+sshd    24501 ubuntu  mem    REG              202,1    36632   396887 /lib/x86_64-linux-gnu/libwrap.so.0.7.6
+sshd    24501 ubuntu  mem    REG              202,1   162632   424084 /lib/x86_64-linux-gnu/ld-2.23.so
+sshd    24501 ubuntu  DEL    REG                0,5          73578231 /dev/zero
+sshd    24501 ubuntu  mem    REG              202,1   536520   396878 /lib/x86_64-linux-gnu/libsystemd.so.0.14.0
+sshd    24501 ubuntu    0u   CHR                1,3      0t0        6 /dev/null
+sshd    24501 ubuntu    1u   CHR                1,3      0t0        6 /dev/null
+sshd    24501 ubuntu    2u   CHR                1,3      0t0        6 /dev/null
+sshd    24501 ubuntu    3u  IPv4           73579735      0t0      TCP m5:ssh->c1:58624 (ESTABLISHED)
+sshd    24501 ubuntu    4u  unix 0xffff8800ca38cc00      0t0 73579132 type=DGRAM
+sshd    24501 ubuntu    5u  unix 0xffff8800ca38b000      0t0 73579141 type=STREAM
+sshd    24501 ubuntu    6r  FIFO               0,10      0t0 73579751 pipe
+sshd    24501 ubuntu    7w  FIFO               0,19      0t0      423 /run/systemd/sessions/171501.ref
+sshd    24501 ubuntu    8w  FIFO               0,10      0t0 73579751 pipe
+
+Thread 68 (Thread 0x7fd63956b700 (LWP 14000)):
+#0  0x00007fd64354a51d in read () at ../sysdeps/unix/syscall-template.S:84
+#1  0x0000000000715209 in SERVER_sbuf2unbufferedread (sb=0x6306810, cc=0x7fd63956a980 "m3", len=52) at /home/ubuntu/comdb2/bb/sbuf2.c:620
+#2  0x00000000008e6db8 in read_stream (netinfo_ptr=0x6165070, host_node_ptr=0x7fd642d3a6f0, sb=0x6306810, inptr=0x7fd63956a980, maxbytes=52)
+    at /home/ubuntu/comdb2/net/net.c:823
+#3  0x00000000008e7fef in read_message_header (netinfo_ptr=0x6165070, host_node_ptr=0x7fd642d3a6f0, wire_header=0x7fd63956aa00, fromhost=0x7fd63956aa40 "m3", 
+    tohost=0x7fd63956ab40 "m5") at /home/ubuntu/comdb2/net/net.c:1350
+#4  0x00000000008ef0f1 in reader_thread (arg=0x7fd642d3a6f0) at /home/ubuntu/comdb2/net/net.c:4538
+#5  0x00007fd6435416ba in start_thread (arg=0x7fd63956b700) at pthread_create.c:333
+#6  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 67 (Thread 0x7fd6395ac700 (LWP 13998)):
+#0  0x00007fd64354a51d in read () at ../sysdeps/unix/syscall-template.S:84
+#1  0x0000000000715209 in SERVER_sbuf2unbufferedread (sb=0x61b5360, cc=0x7fd6395ab980 "m4", len=52) at /home/ubuntu/comdb2/bb/sbuf2.c:620
+#2  0x00000000008e6db8 in read_stream (netinfo_ptr=0x6165070, host_node_ptr=0x7fd642d3a378, sb=0x61b5360, inptr=0x7fd6395ab980, maxbytes=52)
+    at /home/ubuntu/comdb2/net/net.c:823
+#3  0x00000000008e7fef in read_message_header (netinfo_ptr=0x6165070, host_node_ptr=0x7fd642d3a378, wire_header=0x7fd6395aba00, fromhost=0x7fd6395aba40 "m4", 
+    tohost=0x7fd6395abb40 "m5") at /home/ubuntu/comdb2/net/net.c:1350
+#4  0x00000000008ef0f1 in reader_thread (arg=0x7fd642d3a378) at /home/ubuntu/comdb2/net/net.c:4538
+#5  0x00007fd6435416ba in start_thread (arg=0x7fd6395ac700) at pthread_create.c:333
+#6  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 66 (Thread 0x7fd639ec0700 (LWP 13996)):
+#0  0x00007fd64354a51d in read () at ../sysdeps/unix/syscall-template.S:84
+#1  0x0000000000715209 in SERVER_sbuf2unbufferedread (sb=0x61d61d0, cc=0x7fd639ebf980 "m1", len=52) at /home/ubuntu/comdb2/bb/sbuf2.c:620
+#2  0x00000000008e6db8 in read_stream (netinfo_ptr=0x6165070, host_node_ptr=0x7fd642d3aa68, sb=0x61d61d0, inptr=0x7fd639ebf980, maxbytes=52)
+    at /home/ubuntu/comdb2/net/net.c:823
+#3  0x00000000008e7fef in read_message_header (netinfo_ptr=0x6165070, host_node_ptr=0x7fd642d3aa68, wire_header=0x7fd639ebfa00, fromhost=0x7fd639ebfa40 "m1", 
+    tohost=0x7fd639ebfb40 "m5") at /home/ubuntu/comdb2/net/net.c:1350
+#4  0x00000000008ef0f1 in reader_thread (arg=0x7fd642d3aa68) at /home/ubuntu/comdb2/net/net.c:4538
+#5  0x00007fd6435416ba in start_thread (arg=0x7fd639ec0700) at pthread_create.c:333
+#6  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 65 (Thread 0x7fd644db5700 (LWP 13857)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x000000000070304c in free_stack_thr (unused=0x0) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:104
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd644db5700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 64 (Thread 0x7fd635ede700 (LWP 13957)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x000000000071fa30 in timer_thread (p=0x0) at /home/ubuntu/comdb2/bb/timers.c:224
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd635ede700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 63 (Thread 0x7fd6362df700 (LWP 13956)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000005fd668 in _cron_runner (arg=0x7fd644ee9bf8) at /home/ubuntu/comdb2/db/views_cron.c:272
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd6362df700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 62 (Thread 0x7fd639cbc700 (LWP 13955)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x0000000000501186 in osql_heartbeat_thread (arg=0x0) at /home/ubuntu/comdb2/db/osqlcomm.c:5607
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd639cbc700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 61 (Thread 0x7fd62f55c700 (LWP 14380)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x7e6b7b0, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x7e6b7b0, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63b9d5000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63b9d5000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63b9d5000, thd=0x7e6b7b0, tzname=0x7fd63b9d50a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63b9d5000, thd=0x7e6b7b0, tzname=0x7fd63b9d50a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62f55bab0, clnt=0x7fd63b9d5000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x7f7d410, rc=0x7fd62f55b214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x7f7d410) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x7f7d410, func=0x7f9d818, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x7f7d410, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x7f7d410, func=0x7f7d810, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x7f7d410, ud=0x7fd62f55b8f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x7f7d410, f=0x8ae9d3 <f_call>, ud=0x7fd62f55b8f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x7f7d410, func=0x8ae9d3 <f_call>, u=0x7fd62f55b8f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x7f7d410, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63b9d5000, argcnt=3, err=0x7fd62f55b9e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63b9d5000, argcnt=3, err=0x7fd62f55b9e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62f55bab0, clnt=0x7fd63b9d5000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62f55bab0, clnt=0x7fd63b9d5000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62f55bab0, work=0x7fd63b9d5000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63b9d5000, thddata=0x7fd62f55bab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7e60240) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x6136158) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62f55c700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 60 (Thread 0x7fd62e236700 (LWP 14389)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x8272d90, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x8272d90, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63b9c5000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63b9c5000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63b9c5000, thd=0x8272d90, tzname=0x7fd63b9c50a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63b9c5000, thd=0x8272d90, tzname=0x7fd63b9c50a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62e235ab0, clnt=0x7fd63b9c5000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x80aa600, rc=0x7fd62e235214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x80aa600) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x80aa600, func=0x8191aa8, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x80aa600, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x80aa600, func=0x80aaa00, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x80aa600, ud=0x7fd62e2358f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x80aa600, f=0x8ae9d3 <f_call>, ud=0x7fd62e2358f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x80aa600, func=0x8ae9d3 <f_call>, u=0x7fd62e2358f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x80aa600, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63b9c5000, argcnt=3, err=0x7fd62e2359e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63b9c5000, argcnt=3, err=0x7fd62e2359e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62e235ab0, clnt=0x7fd63b9c5000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62e235ab0, clnt=0x7fd63b9c5000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62e235ab0, work=0x7fd63b9c5000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63b9c5000, thddata=0x7fd62e235ab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e7bc00) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x61362b8) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62e236700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 59 (Thread 0x7fd62fa67700 (LWP 14379)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x7d83660, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x7d83660, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd644da4000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd644da4000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd644da4000, thd=0x7d83660, tzname=0x7fd644da40a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd644da4000, thd=0x7d83660, tzname=0x7fd644da40a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62fa66ab0, clnt=0x7fd644da4000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x61bfa30, rc=0x7fd62fa66214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x61bfa30) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x61bfa30, func=0x7d623c8, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x61bfa30, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x61bfa30, func=0x61bfe30, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x61bfa30, ud=0x7fd62fa668f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x61bfa30, f=0x8ae9d3 <f_call>, ud=0x7fd62fa668f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x61bfa30, func=0x8ae9d3 <f_call>, u=0x7fd62fa668f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x61bfa30, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd644da4000, argcnt=3, err=0x7fd62fa669e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd644da4000, argcnt=3, err=0x7fd62fa669e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62fa66ab0, clnt=0x7fd644da4000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62fa66ab0, clnt=0x7fd644da4000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62fa66ab0, work=0x7fd644da4000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd644da4000, thddata=0x7fd62fa66ab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e69cd8) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x6136100) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62fa67700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 58 (Thread 0x7fd639873700 (LWP 13954)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f2d10 in heartbeat_check_thread (arg=0x6165070) at /home/ubuntu/comdb2/net/net.c:6170
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd639873700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 57 (Thread 0x7fd6396ef700 (LWP 13999)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008eea56 in writer_thread (args=0x7fd642d3a378) at /home/ubuntu/comdb2/net/net.c:4350
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd6396ef700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 56 (Thread 0x7fd63c2b1700 (LWP 13862)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f244d in heartbeat_send_thread (arg=0x610b450) at /home/ubuntu/comdb2/net/net.c:5917
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c2b1700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 55 (Thread 0x7fd63b9ae700 (LWP 14394)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63b9ad000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e9a888) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63b9ae700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 54 (Thread 0x7fd638ae4700 (LWP 13942)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00000000006fa2bd in checkpoint_thread (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/threads.c:469
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd638ae4700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 53 (Thread 0x7fd62ec4c700 (LWP 14384)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x7faaa50, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x7faaa50, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63c2bc000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63c2bc000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63c2bc000, thd=0x7faaa50, tzname=0x7fd63c2bc0a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63c2bc000, thd=0x7faaa50, tzname=0x7fd63c2bc0a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62ec4bab0, clnt=0x7fd63c2bc000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x7e74300, rc=0x7fd62ec4b214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x7e74300) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x7e74300, func=0x7eb76e8, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x7e74300, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x7e74300, func=0x7e74700, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x7e74300, ud=0x7fd62ec4b8f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x7e74300, f=0x8ae9d3 <f_call>, ud=0x7fd62ec4b8f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x7e74300, func=0x8ae9d3 <f_call>, u=0x7fd62ec4b8f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x7e74300, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63c2bc000, argcnt=3, err=0x7fd62ec4b9e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63c2bc000, argcnt=3, err=0x7fd62ec4b9e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62ec4bab0, clnt=0x7fd63c2bc000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62ec4bab0, clnt=0x7fd63c2bc000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62ec4bab0, work=0x7fd63c2bc000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63c2bc000, thddata=0x7fd62ec4bab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e76bf8) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x6136208) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62ec4c700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 52 (Thread 0x7fd63952a700 (LWP 13951)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x0000000000485692 in purge_old_files_thread (arg=0x7fd644ea0030) at /home/ubuntu/comdb2/db/comdb2.c:1192
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63952a700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 51 (Thread 0x7fd63b9b6700 (LWP 14392)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63b9b5000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e9a618) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63b9b6700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 50 (Thread 0x7fd63c16c700 (LWP 13868)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d39360) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c16c700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 49 (Thread 0x7fd62fe6c700 (LWP 14377)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x6eb2f80, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x6eb2f80, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd644dac000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd644dac000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd644dac000, thd=0x6eb2f80, tzname=0x7fd644dac0a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd644dac000, thd=0x6eb2f80, tzname=0x7fd644dac0a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62fe6bab0, clnt=0x7fd644dac000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x61bda10, rc=0x7fd62fe6b214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x61bda10) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x61bda10, func=0x7d42348, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x61bda10, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x61bda10, func=0x61bde10, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x61bda10, ud=0x7fd62fe6b8f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x61bda10, f=0x8ae9d3 <f_call>, ud=0x7fd62fe6b8f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x61bda10, func=0x8ae9d3 <f_call>, u=0x7fd62fe6b8f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x61bda10, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd644dac000, argcnt=3, err=0x7fd62fe6b9e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd644dac000, argcnt=3, err=0x7fd62fe6b9e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62fe6bab0, clnt=0x7fd644dac000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62fe6bab0, clnt=0x7fd644dac000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62fe6bab0, work=0x7fd644dac000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd644dac000, thddata=0x7fd62fe6bab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e69110) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x61360a8) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62fe6c700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 48 (Thread 0x7fd639832700 (LWP 13953)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f244d in heartbeat_send_thread (arg=0x6165070) at /home/ubuntu/comdb2/net/net.c:5917
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd639832700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 47 (Thread 0x7fd63b9be700 (LWP 14390)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63b9bd000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e9a4c0) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63b9be700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 46 (Thread 0x7fd62d820700 (LWP 14393)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x84f2080, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x84f2080, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63b9b5000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63b9b5000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63b9b5000, thd=0x84f2080, tzname=0x7fd63b9b50a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63b9b5000, thd=0x84f2080, tzname=0x7fd63b9b50a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62d81fab0, clnt=0x7fd63b9b5000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x8359970, rc=0x7fd62d81f214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x8359970) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x8359970, func=0x842cdc8, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x8359970, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x8359970, func=0x8359d70, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x8359970, ud=0x7fd62d81f8f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x8359970, f=0x8ae9d3 <f_call>, ud=0x7fd62d81f8f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x8359970, func=0x8ae9d3 <f_call>, u=0x7fd62d81f8f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x8359970, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63b9b5000, argcnt=3, err=0x7fd62d81f9e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63b9b5000, argcnt=3, err=0x7fd62d81f9e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62d81fab0, clnt=0x7fd63b9b5000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62d81fab0, clnt=0x7fd63b9b5000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62d81fab0, work=0x7fd63b9b5000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63b9b5000, thddata=0x7fd62d81fab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e7c060) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x6136368) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62d820700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 45 (Thread 0x7fd639c7b700 (LWP 13947)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000005fd668 in _cron_runner (arg=0x7fd644ed0108) at /home/ubuntu/comdb2/db/views_cron.c:272
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd639c7b700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 44 (Thread 0x7fd637ae2700 (LWP 13944)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00000000006f9e06 in coherency_lease_thread (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/threads.c:328
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd637ae2700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 43 (Thread 0x7fd63c2bd700 (LWP 14382)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63c2bc000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e98e18) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c2bd700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 42 (Thread 0x7fd63c12b700 (LWP 13869)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d39060) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c12b700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 41 (Thread 0x7fd63c1ee700 (LWP 13866)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d39960) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c1ee700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 40 (Thread 0x7fd6382e3700 (LWP 13943)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64326dd54 in usleep (useconds=<optimized out>) at ../sysdeps/posix/usleep.c:32
+#2  0x00000000006f97f2 in memp_trickle_thread (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/threads.c:155
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd6382e3700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 39 (Thread 0x7fd644d9d700 (LWP 14381)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd644d9c000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x61a37b0) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd644d9d700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 38 (Thread 0x7fd63b9c6700 (LWP 14388)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63b9c5000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e9a368) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63b9c6700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 37 (Thread 0x7fd6392e5700 (LWP 13941)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00000000006f960f in udpbackup_and_autoanalyze_thd (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/threads.c:96
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd6392e5700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 36 (Thread 0x7fd6356da700 (LWP 14005)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008a0257 in dbthread_join (lua1=0x61a3240) at /home/ubuntu/comdb2/lua/sp.c:3229
+#2  0x00000000008b3def in luaD_precall (L=0x61a3240, func=0x6e99c18, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#3  0x00000000008cac03 in luaV_execute (L=0x61a3240, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#4  0x00000000008b4094 in luaD_call (L=0x61a3240, func=0x61a3640, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#5  0x00000000008aea08 in f_call (L=0x61a3240, ud=0x7fd6356d95f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#6  0x00000000008b3029 in luaD_rawrunprotected (L=0x61a3240, f=0x8ae9d3 <f_call>, ud=0x7fd6356d95f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#7  0x00000000008b448e in luaD_pcall (L=0x61a3240, func=0x8ae9d3 <f_call>, u=0x7fd6356d95f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#8  0x00000000008aeac7 in lua_pcall (L=0x61a3240, nargs=2, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#9  0x00000000008a8c8e in run_sp_int (clnt=0x6338ae0, argcnt=2, err=0x7fd6356d97c8) at /home/ubuntu/comdb2/lua/sp.c:5907
+#10 0x00000000008a8dbe in run_sp (clnt=0x6338ae0, argcnt=2, err=0x7fd6356d97c8) at /home/ubuntu/comdb2/lua/sp.c:5932
+#11 0x00000000008aab3d in exec_procedure_int (s=0x6342a4a ")", err=0x7fd6356d97c8, thd=0x7fd6356d9ab0, params=0x0, clnt=0x6338ae0)
+    at /home/ubuntu/comdb2/lua/sp.c:6535
+#12 0x00000000008aba95 in exec_procedure (s=0x6342a28 "exec procedure gen('foraudit', 500)", err=0x7fd6356d97c8, thd=0x7fd6356d9ab0, params=0x0, 
+    clnt=0x6338ae0) at /home/ubuntu/comdb2/lua/sp.c:6802
+#13 0x00000000005b488c in handle_stored_proc (thd=0x7fd6356d9ab0, clnt=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5623
+#14 0x00000000005b1115 in handle_non_sqlite_requests (thd=0x7fd6356d9ab0, clnt=0x6338ae0, outrc=0x7fd6356d9a00) at /home/ubuntu/comdb2/db/sqlinterfaces.c:4410
+#15 0x00000000005b4d7a in execute_sql_query (thd=0x7fd6356d9ab0, clnt=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5743
+#16 0x00000000005b59cb in sqlengine_work_appsock (thddata=0x7fd6356d9ab0, work=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6049
+#17 0x00000000005b5b0f in sqlengine_work_appsock_pp (pool=0x611c010, work=0x6338ae0, thddata=0x7fd6356d9ab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6082
+#18 0x000000000071dc05 in thdpool_thd (voidarg=0x6340248) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#19 0x0000000000703390 in thr_func (arg=0x6136050) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#20 0x00007fd6435416ba in start_thread (arg=0x7fd6356da700) at pthread_create.c:333
+#21 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 35 (Thread 0x633a700 (LWP 14004)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000005b6247 in dispatch_sql_query (clnt=0x6338ae0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6262
+#2  0x00000000005bbfae in handle_newsql_requests (thr_self=0x633d850, sb=0x61b6600) at /home/ubuntu/comdb2/db/sqlinterfaces.c:8281
+#3  0x000000000047b544 in thd_appsock_int (sb=0x61b6600, keepsocket=0x6339ac4, thr_self=0x633d850) at /home/ubuntu/comdb2/db/appsock_handler.c:525
+#4  0x000000000047c29c in appsock_work (pool=0x611be48, work=0x61b6600, thddata=0x6339b30) at /home/ubuntu/comdb2/db/appsock_handler.c:793
+#5  0x000000000047c35a in appsock_work_pp (pool=0x611be48, work=0x61b6600, thddata=0x6339b30, op=0) at /home/ubuntu/comdb2/db/appsock_handler.c:810
+#6  0x000000000071dc05 in thdpool_thd (voidarg=0x6308850) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#7  0x0000000000703390 in thr_func (arg=0x6135040) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#8  0x00007fd6435416ba in start_thread (arg=0x633a700) at pthread_create.c:333
+#9  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 34 (Thread 0x7fd63b9ce700 (LWP 14386)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63b9cd000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e9a210) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63b9ce700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 33 (Thread 0x7fd639f01700 (LWP 13929)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d3aa68) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd639f01700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 32 (Thread 0x7fd63c270700 (LWP 13863)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f2d10 in heartbeat_check_thread (arg=0x610b450) at /home/ubuntu/comdb2/net/net.c:6170
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c270700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 31 (Thread 0x7fd639d7e700 (LWP 14001)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008eea56 in writer_thread (args=0x7fd642d3a6f0) at /home/ubuntu/comdb2/net/net.c:4350
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd639d7e700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 30 (Thread 0x7fd63b9d6700 (LWP 14385)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd63b9d5000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e98f70) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63b9d6700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 29 (Thread 0x7fd63b4d0700 (LWP 13879)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00000000006e75b6 in watcher_thread (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/rep.c:5374
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd63b4d0700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 28 (Thread 0x7fd6396ae700 (LWP 13950)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000004850d9 in purge_old_blkseq_thread (arg=0x7fd644ea0030) at /home/ubuntu/comdb2/db/comdb2.c:1043
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd6396ae700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 27 (Thread 0x7fd644dad700 (LWP 14376)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd644dac000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x6e955a8) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd644dad700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 26 (Thread 0x7fd62e63b700 (LWP 14387)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x8166be0, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x8166be0, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63b9cd000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63b9cd000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63b9cd000, thd=0x8166be0, tzname=0x7fd63b9cd0a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63b9cd000, thd=0x8166be0, tzname=0x7fd63b9cd0a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62e63aab0, clnt=0x7fd63b9cd000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x7e973b0, rc=0x7fd62e63a214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x7e973b0) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x7e973b0, func=0x80818d8, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x7e973b0, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x7e973b0, func=0x7e977b0, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x7e973b0, ud=0x7fd62e63a8f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x7e973b0, f=0x8ae9d3 <f_call>, ud=0x7fd62e63a8f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x7e973b0, func=0x8ae9d3 <f_call>, u=0x7fd62e63a8f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x7e973b0, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63b9cd000, argcnt=3, err=0x7fd62e63a9e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63b9cd000, argcnt=3, err=0x7fd62e63a9e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62e63aab0, clnt=0x7fd63b9cd000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62e63aab0, clnt=0x7fd63b9cd000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62e63aab0, work=0x7fd63b9cd000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63b9cd000, thddata=0x7fd62e63aab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e7b9d0) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x6136260) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62e63b700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 25 (Thread 0x7fd63bc60700 (LWP 13872)):
+#0  0x00007fd643546730 in futex_wait (private=<optimized out>, expected=0, futex_word=0x6109bac) at ../sysdeps/unix/sysv/linux/futex-internal.h:61
+#1  futex_wait_simple (private=<optimized out>, expected=0, futex_word=0x6109bac) at ../sysdeps/nptl/futex-internal.h:135
+#2  __pthread_rwlock_wrlock_slow (rwlock=0x6109ba0) at pthread_rwlock_wrlock.c:67
+#3  0x0000000000657dc9 in bdb_get_writelock_int (bdb_state=0x6165d80, idstr=0xa5257d "upgrade", funcname=0xa53788 <__func__.35669> "process_berkdb", 
+    line=3769, abort_waiters=1) at /home/ubuntu/comdb2/bdb/bdblock.c:434
+#4  0x0000000000657fe6 in bdb_get_writelock_abort_waiters (bdb_state=0x6165d80, idstr=0xa5257d "upgrade", 
+    funcname=0xa53788 <__func__.35669> "process_berkdb", line=3769) at /home/ubuntu/comdb2/bdb/bdblock.c:492
+#5  0x00000000006e3b5c in process_berkdb (bdb_state=0x6165d80, host=0x610def8 "m5", control=0x7fd63bc5f890, rec=0x7fd63bc5f860)
+    at /home/ubuntu/comdb2/bdb/rep.c:3769
+#6  0x00000000006e5e0e in berkdb_receive_rtn_int (ack_handle=0x0, usr_ptr=0x6165d80, from_node=0x6127938 "m1", usertype=1, dta=0x7fd642bb8030, dtalen=84, 
+    is_tcp=1 '\001') at /home/ubuntu/comdb2/bdb/rep.c:4757
+#7  0x00000000006e619c in berkdb_receive_rtn (ack_handle=0x0, usr_ptr=0x6165d80, from_host=0x6127938 "m1", usertype=1, dta=0x7fd642bb8030, dtalen=84, 
+    is_tcp=1 '\001') at /home/ubuntu/comdb2/bdb/rep.c:4858
+#8  0x00000000008ed3d9 in process_user_message (netinfo_ptr=0x610b450, host_node_ptr=0x7fd642d39060) at /home/ubuntu/comdb2/net/net.c:3751
+#9  0x00000000008ef388 in reader_thread (arg=0x7fd642d39060) at /home/ubuntu/comdb2/net/net.c:4603
+#10 0x00007fd6435416ba in start_thread (arg=0x7fd63bc60700) at pthread_create.c:333
+#11 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 24 (Thread 0x7fd62f051700 (LWP 14383)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x7f879a0, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x7f879a0, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd644d9c000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd644d9c000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd644d9c000, thd=0x7f879a0, tzname=0x7fd644d9c0a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd644d9c000, thd=0x7f879a0, tzname=0x7fd644d9c0a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62f050ab0, clnt=0x7fd644d9c000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x7d790d0, rc=0x7fd62f050214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x7d790d0) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x7d790d0, func=0x7e55558, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x7d790d0, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x7d790d0, func=0x7d794d0, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x7d790d0, ud=0x7fd62f0508f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x7d790d0, f=0x8ae9d3 <f_call>, ud=0x7fd62f0508f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x7d790d0, func=0x8ae9d3 <f_call>, u=0x7fd62f0508f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x7d790d0, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd644d9c000, argcnt=3, err=0x7fd62f0509e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd644d9c000, argcnt=3, err=0x7fd62f0509e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62f050ab0, clnt=0x7fd644d9c000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62f050ab0, clnt=0x7fd644d9c000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62f050ab0, work=0x7fd644d9c000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd644d9c000, thddata=0x7fd62f050ab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e76b38) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x61361b0) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62f051700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 23 (Thread 0x7fd639326700 (LWP 13997)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008eea56 in writer_thread (args=0x7fd642d3aa68) at /home/ubuntu/comdb2/net/net.c:4350
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd639326700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 22 (Thread 0x7fd636ae0700 (LWP 13946)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000006f9fb4 in logdelete_thread (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/threads.c:366
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd636ae0700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 21 (Thread 0x7fd63bea5700 (LWP 13871)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008eea56 in writer_thread (args=0x7fd642d39960) at /home/ubuntu/comdb2/net/net.c:4350
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd63bea5700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 20 (Thread 0x7fd62d315700 (LWP 14395)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x85e71d0, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x85e71d0, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63b9ad000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63b9ad000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63b9ad000, thd=0x85e71d0, tzname=0x7fd63b9ad0a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63b9ad000, thd=0x85e71d0, tzname=0x7fd63b9ad0a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62d314ab0, clnt=0x7fd63b9ad000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x8445ae0, rc=0x7fd62d314214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x8445ae0) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x8445ae0, func=0x851bf38, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x8445ae0, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x8445ae0, func=0x8445ee0, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x8445ae0, ud=0x7fd62d3148f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x8445ae0, f=0x8ae9d3 <f_call>, ud=0x7fd62d3148f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x8445ae0, func=0x8ae9d3 <f_call>, u=0x7fd62d3148f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x8445ae0, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63b9ad000, argcnt=3, err=0x7fd62d3149e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63b9ad000, argcnt=3, err=0x7fd62d3149e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62d314ab0, clnt=0x7fd63b9ad000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62d314ab0, clnt=0x7fd63b9ad000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62d314ab0, work=0x7fd63b9ad000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63b9ad000, thddata=0x7fd62d314ab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e7c290) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x61363c0) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62d315700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 19 (Thread 0x7fd639429700 (LWP 13952)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x000000000048ee1e in statthd (p=0x7fd644ea0030) at /home/ubuntu/comdb2/db/comdb2.c:4577
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd639429700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 18 (Thread 0x7fd62dd2b700 (LWP 14391)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000059d1ee in recover_deadlock_int (bdb_state=0x6165d80, thd=0x836bf10, bdbcur=0x0, sleepms=2000, ptrace=1)
+    at /home/ubuntu/comdb2/db/sqlglue.c:9055
+#2  0x000000000059d50c in recover_deadlock (bdb_state=0x6165d80, thd=0x836bf10, bdbcur=0x0, sleepms=0) at /home/ubuntu/comdb2/db/sqlglue.c:9142
+#3  0x000000000051684c in osql_sock_restart (clnt=0x7fd63b9bd000, maxretries=1, keep_session=1) at /home/ubuntu/comdb2/db/osqlsqlthr.c:551
+#4  0x0000000000516f69 in osql_sock_commit (clnt=0x7fd63b9bd000, type=7) at /home/ubuntu/comdb2/db/osqlsqlthr.c:768
+#5  0x00000000005c2456 in rese_commit (clnt=0x7fd63b9bd000, thd=0x836bf10, tzname=0x7fd63b9bd0a8 "America/New_York", osqlreq_type=7, is_distrib_tran=0)
+    at /home/ubuntu/comdb2/db/sqloffload.c:414
+#6  0x00000000005c26d0 in snapisol_commit (clnt=0x7fd63b9bd000, thd=0x836bf10, tzname=0x7fd63b9bd0a8 "America/New_York")
+    at /home/ubuntu/comdb2/db/sqloffload.c:495
+#7  0x00000000005ab362 in handle_sql_commitrollback (thd=0x7fd62dd2aab0, clnt=0x7fd63b9bd000, sendresponse=0) at /home/ubuntu/comdb2/db/sqlinterfaces.c:2297
+#8  0x000000000089decb in db_commit_int (L=0x825d7f0, rc=0x7fd62dd2a214) at /home/ubuntu/comdb2/lua/sp.c:2648
+#9  0x000000000089dbb8 in db_commit (L=0x825d7f0) at /home/ubuntu/comdb2/lua/sp.c:2598
+#10 0x00000000008b3def in luaD_precall (L=0x825d7f0, func=0x833fc68, nresults=0) at /home/ubuntu/comdb2/lua/ldo.c:327
+#11 0x00000000008cac03 in luaV_execute (L=0x825d7f0, nexeccalls=1) at /home/ubuntu/comdb2/lua/lvm.c:653
+#12 0x00000000008b4094 in luaD_call (L=0x825d7f0, func=0x825dbf0, nResults=-1) at /home/ubuntu/comdb2/lua/ldo.c:385
+#13 0x00000000008aea08 in f_call (L=0x825d7f0, ud=0x7fd62dd2a8f0) at /home/ubuntu/comdb2/lua/lapi.c:800
+#14 0x00000000008b3029 in luaD_rawrunprotected (L=0x825d7f0, f=0x8ae9d3 <f_call>, ud=0x7fd62dd2a8f0) at /home/ubuntu/comdb2/lua/ldo.c:117
+#15 0x00000000008b448e in luaD_pcall (L=0x825d7f0, func=0x8ae9d3 <f_call>, u=0x7fd62dd2a8f0, old_top=16, ef=0) at /home/ubuntu/comdb2/lua/ldo.c:471
+#16 0x00000000008aeac7 in lua_pcall (L=0x825d7f0, nargs=3, nresults=-1, errfunc=0) at /home/ubuntu/comdb2/lua/lapi.c:821
+#17 0x00000000008a8c8e in run_sp_int (clnt=0x7fd63b9bd000, argcnt=3, err=0x7fd62dd2a9e0) at /home/ubuntu/comdb2/lua/sp.c:5907
+#18 0x00000000008a8dbe in run_sp (clnt=0x7fd63b9bd000, argcnt=3, err=0x7fd62dd2a9e0) at /home/ubuntu/comdb2/lua/sp.c:5932
+#19 0x00000000008aa8f3 in exec_thread_int (thd=0x7fd62dd2aab0, clnt=0x7fd63b9bd000) at /home/ubuntu/comdb2/lua/sp.c:6494
+#20 0x00000000008aba0f in exec_thread (thd=0x7fd62dd2aab0, clnt=0x7fd63b9bd000) at /home/ubuntu/comdb2/lua/sp.c:6792
+#21 0x00000000005b548a in sqlengine_work_lua_thread (thddata=0x7fd62dd2aab0, work=0x7fd63b9bd000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:5922
+#22 0x00000000005b5afa in sqlengine_work_appsock_pp (pool=0x611c010, work=0x7fd63b9bd000, thddata=0x7fd62dd2aab0, op=0)
+    at /home/ubuntu/comdb2/db/sqlinterfaces.c:6080
+#23 0x000000000071dc05 in thdpool_thd (voidarg=0x7fd644e7be30) at /home/ubuntu/comdb2/bb/thdpool.c:708
+#24 0x0000000000703390 in thr_func (arg=0x6136310) at /home/ubuntu/comdb2/bb/comdb2_pthread_create.c:235
+#25 0x00007fd6435416ba in start_thread (arg=0x7fd62dd2b700) at pthread_create.c:333
+#26 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 17 (Thread 0x7fd63c1ad700 (LWP 13867)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d39660) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63c1ad700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 16 (Thread 0x7fd63a043700 (LWP 13928)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d3a6f0) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63a043700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 15 (Thread 0x7fd644da5700 (LWP 14378)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000005b6505 in dispatch_sql_query (clnt=0x7fd644da4000) at /home/ubuntu/comdb2/db/sqlinterfaces.c:6299
+#2  0x000000000089e4d8 in dispatch_lua_thread (lt=0x61a3658) at /home/ubuntu/comdb2/lua/sp.c:2751
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd644da5700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 14 (Thread 0x7fd639e7f700 (LWP 13948)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000005fddb0 in watchdog_thread (arg=0x7fd644ea0030) at /home/ubuntu/comdb2/db/watchdog.c:178
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd639e7f700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 13 (Thread 0x7fd630e71700 (LWP 14373)):
+#0  0x00007fd643546730 in futex_wait (private=<optimized out>, expected=0, futex_word=0x6109bac) at ../sysdeps/unix/sysv/linux/futex-internal.h:61
+#1  futex_wait_simple (private=<optimized out>, expected=0, futex_word=0x6109bac) at ../sysdeps/nptl/futex-internal.h:135
+#2  __pthread_rwlock_wrlock_slow (rwlock=0x6109ba0) at pthread_rwlock_wrlock.c:67
+#3  0x0000000000657dc9 in bdb_get_writelock_int (bdb_state=0x6165d80, idstr=0xa462e2 "upgrade", 
+    funcname=0xa47820 <__func__.33774> "bdb_upgrade_downgrade_reopen_wrap", line=4795, abort_waiters=0) at /home/ubuntu/comdb2/bdb/bdblock.c:434
+#4  0x0000000000657faf in bdb_get_writelock (bdb_state=0x6165d80, idstr=0xa462e2 "upgrade", 
+    funcname=0xa47820 <__func__.33774> "bdb_upgrade_downgrade_reopen_wrap", line=4795) at /home/ubuntu/comdb2/bdb/bdblock.c:483
+#5  0x000000000068bd98 in bdb_upgrade_downgrade_reopen_wrap (bdb_state=0x6165d80, op=1, timeout=30, done=0x7fd630e70aa0)
+    at /home/ubuntu/comdb2/bdb/file.c:4795
+#6  0x000000000068c0cc in bdb_upgrade (bdb_state=0x6165d80, done=0x7fd630e70aa0) at /home/ubuntu/comdb2/bdb/file.c:4889
+#7  0x00000000006dcef5 in elect_thread (args=0x7fd631a76b48) at /home/ubuntu/comdb2/bdb/rep.c:1370
+#8  0x00007fd6435416ba in start_thread (arg=0x7fd630e71700) at pthread_create.c:333
+#9  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 12 (Thread 0x7fd63c22f700 (LWP 13864)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x000000000071259e in portmux_poll_v (fds=0x7fd63c22eab8, nfds=1, timeoutms=-1, accept_hndl=0x0, user_data=0x0)
+    at /home/ubuntu/comdb2/bb/portmuxusr.c:1383
+#2  0x0000000000711f7d in portmux_poll (fds=0x61aa010, timeoutms=-1, accept_hndl=0x0, user_data=0x0) at /home/ubuntu/comdb2/bb/portmuxusr.c:1059
+#3  0x0000000000712d6e in portmux_accept (fds=0x61aa010, timeoutms=-1) at /home/ubuntu/comdb2/bb/portmuxusr.c:1598
+#4  0x00000000008f1996 in accept_thread (arg=0x610b450) at /home/ubuntu/comdb2/net/net.c:5649
+#5  0x00007fd6435416ba in start_thread (arg=0x7fd63c22f700) at pthread_create.c:333
+#6  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 11 (Thread 0x7fd63a248700 (LWP 13924)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d39df0) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00000000008f11f8 in accept_handle_new_host (netinfo_ptr=0x6165070, hostname=0x6127980 "m2", portnum=19145, new_fd=25, sb=0x61c9c10, addr=...)
+    at /home/ubuntu/comdb2/net/net.c:5461
+#4  0x00000000008f15cc in connect_and_accept (arg=0x61cb868) at /home/ubuntu/comdb2/net/net.c:5547
+#5  0x00007fd6435416ba in start_thread (arg=0x7fd63a248700) at pthread_create.c:333
+#6  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 10 (Thread 0x7fd63a084700 (LWP 13927)):
+#0  0x00007fd64323c30d in nanosleep () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00007fd64323c25a in __sleep (seconds=0) at ../sysdeps/posix/sleep.c:55
+#2  0x00000000008f06b4 in connect_thread (arg=0x7fd642d3a378) at /home/ubuntu/comdb2/net/net.c:5129
+#3  0x00007fd6435416ba in start_thread (arg=0x7fd63a084700) at pthread_create.c:333
+#4  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 9 (Thread 0x7fd6372e1700 (LWP 13945)):
+#0  0x00007fd64326b70d in poll () at ../sysdeps/unix/syscall-template.S:84
+#1  0x00000000006f9af8 in master_lease_thread (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/threads.c:251
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd6372e1700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 8 (Thread 0x7fd63b713700 (LWP 13877)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008eea56 in writer_thread (args=0x7fd642d39660) at /home/ubuntu/comdb2/net/net.c:4350
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd63b713700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 7 (Thread 0x7fd63b5d1700 (LWP 13878)):
+#0  0x00007fd64354a8f3 in recvfrom () at ../sysdeps/unix/syscall-template.S:84
+#1  0x0000000000642733 in udp_reader (arg=0x6165d80) at /home/ubuntu/comdb2/bdb/bdb_net.c:516
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd63b5d1700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 6 (Thread 0x7fd63accf700 (LWP 13923)):
+#0  pthread_cond_wait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_wait.S:185
+#1  0x00000000007f77d6 in mempsync_thd (p=0x6177288) at /home/ubuntu/comdb2/berkdb/mp/mp_sync.c:235
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd63accf700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 5 (Thread 0x7fd63bb1d700 (LWP 13874)):
+#0  pthread_cond_timedwait@@GLIBC_2.3.2 () at ../sysdeps/unix/sysv/linux/x86_64/pthread_cond_timedwait.S:225
+#1  0x00000000008eea56 in writer_thread (args=0x7fd642d39060) at /home/ubuntu/comdb2/net/net.c:4350
+#2  0x00007fd6435416ba in start_thread (arg=0x7fd63bb1d700) at pthread_create.c:333
+#3  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 4 (Thread 0x7fd63b795700 (LWP 13875)):
+#0  0x00007fd643546730 in futex_wait (private=<optimized out>, expected=0, futex_word=0x6109bac) at ../sysdeps/unix/sysv/linux/futex-internal.h:61
+#1  futex_wait_simple (private=<optimized out>, expected=0, futex_word=0x6109bac) at ../sysdeps/nptl/futex-internal.h:135
+#2  __pthread_rwlock_wrlock_slow (rwlock=0x6109ba0) at pthread_rwlock_wrlock.c:67
+#3  0x0000000000657dc9 in bdb_get_writelock_int (bdb_state=0x6165d80, idstr=0xa5257d "upgrade", funcname=0xa53788 <__func__.35669> "process_berkdb", 
+    line=3769, abort_waiters=1) at /home/ubuntu/comdb2/bdb/bdblock.c:434
+#4  0x0000000000657fe6 in bdb_get_writelock_abort_waiters (bdb_state=0x6165d80, idstr=0xa5257d "upgrade", 
+    funcname=0xa53788 <__func__.35669> "process_berkdb", line=3769) at /home/ubuntu/comdb2/bdb/bdblock.c:492
+#5  0x00000000006e3b5c in process_berkdb (bdb_state=0x6165d80, host=0x610def8 "m5", control=0x7fd63b794890, rec=0x7fd63b794860)
+    at /home/ubuntu/comdb2/bdb/rep.c:3769
+#6  0x00000000006e5e0e in berkdb_receive_rtn_int (ack_handle=0x0, usr_ptr=0x6165d80, from_node=0x61279c8 "m3", usertype=1, dta=0x7fd642c38060, dtalen=84, 
+    is_tcp=1 '\001') at /home/ubuntu/comdb2/bdb/rep.c:4757
+#7  0x00000000006e619c in berkdb_receive_rtn (ack_handle=0x0, usr_ptr=0x6165d80, from_host=0x61279c8 "m3", usertype=1, dta=0x7fd642c38060, dtalen=84, 
+    is_tcp=1 '\001') at /home/ubuntu/comdb2/bdb/rep.c:4858
+#8  0x00000000008ed3d9 in process_user_message (netinfo_ptr=0x610b450, host_node_ptr=0x7fd642d39660) at /home/ubuntu/comdb2/net/net.c:3751
+#9  0x00000000008ef388 in reader_thread (arg=0x7fd642d39660) at /home/ubuntu/comdb2/net/net.c:4603
+#10 0x00007fd6435416ba in start_thread (arg=0x7fd63b795700) at pthread_create.c:333
+#11 0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 3 (Thread 0x7fd63bee6700 (LWP 13870)):
+#0  0x00007fd64354a51d in read () at ../sysdeps/unix/syscall-template.S:84
+#1  0x0000000000715209 in SERVER_sbuf2unbufferedread (sb=0x61b0640, cc=0x7fd63bee5980 "`\231\323B\326\177", len=52) at /home/ubuntu/comdb2/bb/sbuf2.c:620
+#2  0x00000000008e6db8 in read_stream (netinfo_ptr=0x610b450, host_node_ptr=0x7fd642d39960, sb=0x61b0640, inptr=0x7fd63bee5980, maxbytes=52)
+    at /home/ubuntu/comdb2/net/net.c:823
+#3  0x00000000008e7fef in read_message_header (netinfo_ptr=0x610b450, host_node_ptr=0x7fd642d39960, wire_header=0x7fd63bee5a00, fromhost=0x7fd63bee5a40 "m4", 
+    tohost=0x7fd63bee5b40 "m5") at /home/ubuntu/comdb2/net/net.c:1350
+#4  0x00000000008ef0f1 in reader_thread (arg=0x7fd642d39960) at /home/ubuntu/comdb2/net/net.c:4538
+#5  0x00007fd6435416ba in start_thread (arg=0x7fd63bee6700) at pthread_create.c:333
+#6  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
+
+Thread 2 (Thread 0x7fd644f81a00 (LWP 13855)):
+#0  0x00007fd64354298d in pthread_join (threadid=140558004512512, thread_return=0x7ffc70a64ea8) at pthread_join.c:90
+#1  0x000000000049042e in main (argc=7, argv=0x7ffc70a66068) at /home/ubuntu/comdb2/db/comdb2.c:5330
+
+Thread 1 (Thread 0x7fd6397f1700 (LWP 13949)):
+#0  0x00007fd6431a5428 in __GI_raise (sig=sig@entry=6) at ../sysdeps/unix/sysv/linux/raise.c:54
+#1  0x00007fd6431a702a in __GI_abort () at abort.c:89
+#2  0x00000000005fe4a3 in comdb2_die (aborat=1) at /home/ubuntu/comdb2/db/watchdog.c:413
+#3  0x00000000005fe520 in watchdog_watcher_thread (arg=0x7fd644ea0030) at /home/ubuntu/comdb2/db/watchdog.c:440
+#4  0x00007fd6435416ba in start_thread (arg=0x7fd6397f1700) at pthread_create.c:333
+#5  0x00007fd6432773dd in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:109
