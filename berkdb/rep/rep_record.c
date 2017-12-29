@@ -4006,6 +4006,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int had_serializable_records = 0;
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
+    int got_schema_lk = 0;
 
 	pthread_mutex_lock(&dbenv->recover_lk);
 	rp = listc_rtl(&dbenv->inactive_transactions);
@@ -4160,10 +4161,11 @@ bad_resize:	;
 		lt->last_lsn = rctl->lsn;
 		*ltrans = rp->ltrans = lt;
 
-		if (!dontlock) {
-			if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+        if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
+            if (!dontlock) {
 				wrlock_schema_lk();
 			}
+            got_schema_lk = 1;
 		}
 		prev_lsn = txn_rl_args->prev_lsn;
 		lock_dbt = &txn_rl_args->locks;
@@ -4324,7 +4326,17 @@ bad_resize:	;
 	/* If we had any log records in this transaction that may affect the next transaction, 
 	 * process this transaction inline */
 
-	if (had_serializable_records) {
+    /* Force anything which gets the schema lock to be serial.  The problem is that the 
+     * pthread_rwlock_wrlock API is too nanny-esque: we rely on the processor thread 
+     * (a different thread) to unlock the schema lock if we've gotten it.  If the next 
+     * regop also wants us to grab the schema-lock, we'd like this thread to block on 
+     * itself until the processor thread unlocks it.  Instead, the pthread_rwlock_wrlock 
+     * api can choose to return 'DEADLOCK'- apparently checking the tid of holding thread  
+     * against the tid of the thread which wants the lock.  FTR, this is dumb.
+     *
+     * The solution: we grab the schema-lock rarely: just serialize for those cases.
+     * */
+	if (had_serializable_records || got_schema_lk) {
 
 		if (txn_args)
 			__os_free(dbenv, txn_args);
