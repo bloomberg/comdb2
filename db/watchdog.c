@@ -421,12 +421,22 @@ static void *watchdog_watcher_thread(void *arg)
     int failed_once = 0;
 
     while (!thedb->exiting) {
-        sleep(10);
-        if (gbl_nowatch)
-            continue;
-
-        int tmstmp = time_epoch();
-        if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
+        if (!gbl_nowatch) {
+            int tmstmp = time_epoch();
+            if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
+                /*
+                  In order to handle situations where the watchdog is assumed
+                  dead once the system suspends, and wakes back up after more
+                  than gbl_watchdog_time secs, we need to wait for an additional
+                  cycle before making a decision to abort.
+                */
+                if (failed_once == 0) {
+                    failed_once++;
+                    continue;
+                }
+                logmsg(LOGMSG_FATAL, "watchdog thread stuck, exiting\n");
+                comdb2_die(1);
+            }
             /*
               In order to handle situations where the watchdog is assumed
               dead once the system suspends, and wakes back up after more
@@ -452,6 +462,7 @@ static void *watchdog_watcher_thread(void *arg)
             logmsg(LOGMSG_FATAL, "rep watcher thread stuck, exiting\n");
             comdb2_die(1);
         }
+        sleep(10);
     }
     return NULL;
 }
