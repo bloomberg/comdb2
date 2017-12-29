@@ -52,6 +52,7 @@ test:: tool unit
 	@mkdir -p ${TESTDIR}/
 	echo "Working from dir `pwd`" >> $(TESTDIR)/test.log
 	$(TESTSROOTDIR)/runtestcase
+	$(MAKE) stop
 
 clean::
 	rm -f *.res
@@ -62,8 +63,6 @@ setup: tool
 	@echo Ready to run
 
 stop:
-	@$(TESTSROOTDIR)/unsetup
-
 
 tool:
 

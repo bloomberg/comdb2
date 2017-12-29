@@ -526,8 +526,10 @@ int do_default_sp(struct schema_change_type *sc, struct ireq *iq)
     do {                                                                       \
         for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \
             free(thedb->lua_##pfx##funcs[i]);                                  \
+            thedb->lua_##pfx##funcs[i] = NULL;                                 \
         }                                                                      \
         free(thedb->lua_##pfx##funcs);                                         \
+        thedb->lua_##pfx##funcs = NULL;                                        \
         return llmeta_load_lua_##pfx##funcs();                                 \
     } while (0)
 

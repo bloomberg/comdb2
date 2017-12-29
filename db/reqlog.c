@@ -1092,11 +1092,13 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             fprintf(stderr, "%s:realloc(%d) failed\n", __func__, len);
+            free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
         len = strlen(s);
@@ -1114,6 +1116,7 @@ int reqlog_pushprefixv(struct reqlogger *logger, const char *fmt, va_list args)
         event = malloc(sizeof(struct push_prefix_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->length = len;
@@ -1200,12 +1203,14 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
     nchars = vsnprintf(s, len, fmt, args);
     if (nchars >= len && reqltruncate == 0) {
         len = nchars + 1;
-        s = realloc(s, len);
-        if (!s) {
+        char *news = realloc(s, len);
+        if (!news) {
             logmsg(LOGMSG_ERROR, "%s:realloc(%d) failed\n", __func__, len);
             va_end(args_c);
+            free(s);
             return -1;
         }
+        s = news;
         len = vsnprintf(s, len, fmt, args_c);
     } else {
         len = strlen(s);
@@ -1222,6 +1227,7 @@ static int reqlog_logv_int(struct reqlogger *logger, unsigned event_flag,
         event = malloc(sizeof(struct print_event));
         if (!event) {
             logmsg(LOGMSG_ERROR, "%s:malloc failed\n", __func__);
+            free(s);
             return -1;
         }
         event->event_flag = event_flag;
@@ -1425,7 +1431,6 @@ void reqlog_new_request(struct ireq *iq)
         return;
     }
 
-    reqlog_reset_logger(logger);
     logger->startus = iq->nowus;
     logger->iq = iq;
     logger->opcode = iq->opcode;
@@ -1451,7 +1456,6 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     if (!logger) {
         return;
     }
-    reqlog_reset_logger(logger);
     logger->request_type = "sql_request";
     logger->opcode = OP_SQL;
     logger->startus = time_epochus();
@@ -1717,9 +1721,10 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     int long_request_thresh;
 
-    if (!logger || !logger->in_request) {
+    if (!logger)
         return;
-    }
+    if (!logger->in_request)
+        goto out;
 
     if (logger->sqlrows > 0) {
         reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
@@ -1940,9 +1945,12 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
         osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
     }
-    logger->have_id = 0;
-    logger->have_fingerprint = 0;
-    logger->error_code = 0;
+out:
+    reqlog_reset_logger(logger); //will reset which bzeros much of logger
+    assert(logger->have_id == 0);
+    assert(logger->have_fingerprint == 0);
+    assert(logger->error_code == 0);
+    assert(logger->path == 0);
 }
 
 /* this is meant to be called by only 1 thread, will need locking if

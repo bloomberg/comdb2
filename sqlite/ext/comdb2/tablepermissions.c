@@ -173,6 +173,8 @@ static int permissionsRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
 
 static int permissionsEof(sqlite3_vtab_cursor *cur){
   permissions_cursor *pCur = (permissions_cursor*)cur;
+  if (pCur->nUsers == 0)
+      return 1;
   return pCur->iTable >= pCur->nTables;
 }
 

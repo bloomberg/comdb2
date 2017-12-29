@@ -430,7 +430,7 @@ REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("enable_sql_stmt_caching",
                  "Enable caching of query plans. If followed by \"all\" will "
                  "cache all queries, including those without parameters. "
-                 "(Default: off)",
+                 "(Default: on)",
                  TUNABLE_ENUM, &gbl_enable_sql_stmt_caching, READONLY | NOARG,
                  enable_sql_stmt_caching_value, NULL,
                  enable_sql_stmt_caching_update, NULL);
@@ -1314,8 +1314,7 @@ REGISTER_TUNABLE("print_deadlock_cycles",
                  "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_send_cnonce",
-                 "Always send cnonce to master. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG, NULL, NULL,
-                 NULL, NULL);
+                 "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_always_send_cnonce, NOARG, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

@@ -246,3 +246,56 @@ CREATE TABLE t1(i INT, f1 FLOAT DEFAULT '1.1', f2 FLOAT DEFAULT "1.1" ,f3 FLOAT 
 INSERT INTO t1(i) VALUES (1);
 SELECT * FROM t1;
 DROP TABLE t1;
+
+CREATE TABLE t1(i INT, j INT, KEY(i,j), KEY (j,i))$$
+CREATE TABLE t2(i INT, j INT, KEY 'dup1'(i,j), KEY dup2(j,i))$$
+CREATE TABLE t3(i INT, j INT, UNIQUE(i,j), UNIQUE(j,i))$$
+CREATE TABLE t4(i INT, j INT, UNIQUE 'uniq1'(i,j), UNIQUE 'uniq2'(j,i))$$
+CREATE TABLE t5(i INT UNIQUE, j INT, KEY(i,j), UNIQUE(i,j), KEY dup_key(i,j), UNIQUE 'unique_key'(j,i))$$
+CREATE TABLE t6(i INT, KEY COMDB2_PK(i)) $$
+CREATE TABLE t6(i INT, j INT, KEY 'dup'(i), KEY 'dup'(j)) $$
+CREATE TABLE t6(i INT, j INT, KEY 'xxxx'(i), UNIQUE 'xxxx'(j)) $$
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;
+
+CREATE TABLE t1(c1 CHAR(2), c2 CSTRING(2), c3 VARCHAR(2), c4 TEXT) $$
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+
+CREATE TABLE t1(i INT UNIQUE ASC) $$
+CREATE TABLE t1(i INT UNIQUE DESC) $$
+CREATE TABLE t1(i INT KEY ASC) $$
+CREATE TABLE t1(i INT KEY DESC) $$
+CREATE TABLE t1(i INT PRIMARY KEY ASC) $$
+CREATE TABLE t2(i INT PRIMARY KEY DESC) $$
+CREATE TABLE t3(i INT UNIQUE) $$
+CREATE TABLE t4(i INT KEY) $$
+CREATE TABLE t5(i INT, j INT, KEY(j DESC, i ASC)) $$
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;
+
+CREATE TABLE t1(unique INT UNIQUE) $$
+CREATE TABLE t1(key INT KEY) $$
+CREATE TABLE t1('unique' INT UNIQUE) $$
+CREATE TABLE t2('key' INT KEY) $$
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;
