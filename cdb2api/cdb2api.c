@@ -1181,12 +1181,12 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     }
 
     struct sockpool_msg_vers0 msg = {0};
-    /* Please may I have a file descriptor */
-    msg.request = SOCKPOOL_REQUEST;
-    msg.dbnum = dbnum;
     if (strlen(typestr) >= sizeof(msg.typestr)) {
         return -1;
     }
+    /* Please may I have a file descriptor */
+    msg.request = SOCKPOOL_REQUEST;
+    msg.dbnum = dbnum;
     strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
 
     errno = 0;
@@ -1246,8 +1246,8 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
             }
         }
 
-        if (sockpool_fd != -1) {
-            struct sockpool_msg_vers0 msg = {0};
+        struct sockpool_msg_vers0 msg = {0};
+        if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr)) ) {
             int rc;
             msg.request = SOCKPOOL_DONATE;
             msg.dbnum = dbnum;
