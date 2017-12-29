@@ -70,7 +70,8 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
         snprintf(tag, sizeof(tag), ".ONDISK_IX_%d", ix);
         rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, tag, key, NULL);
         if (rc) {
-            logmsg(LOGMSG_INFO, "dump_record_by_rrn:stag_to_stag_buf rrn %d genid %016llx "
+            logmsg(LOGMSG_INFO,
+                   "dump_record_by_rrn:stag_to_stag_buf rrn %d genid %016llx "
                    "failed\n",
                    rrn, genid);
             free(key);
@@ -102,13 +103,15 @@ void purge_by_genid(struct dbtable *db, unsigned long long *genid)
 
     /* genid can be NULL in which case we do an auto purge */
     if (genid)
-        logmsg(LOGMSG_INFO, "Purging genid %016llx from table %s\n", *genid, db->tablename);
+        logmsg(LOGMSG_INFO, "Purging genid %016llx from table %s\n", *genid,
+               db->tablename);
 retry:
     tran = bdb_tran_begin(db->handle, NULL, &bdberr);
 
     if (!tran) {
         logmsg(LOGMSG_ERROR, "purge_by_genid: bdb_trans_start failed - err %d\n"
-                        "Please try again.\n", bdberr);
+                             "Please try again.\n",
+               bdberr);
         return;
     }
 
@@ -264,28 +267,30 @@ static unsigned long long verify_indexes_callback(void *parm, void *dta,
     return verify_indexes(parm, dta, blob_parm, MAXBLOBS, 0);
 }
 
-
 // call this with schema lock
-static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb, 
-        struct dbtable **db, void **tran)
+static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
+                                    struct dbtable **db, void **tran)
 {
     int bdberr;
     struct dbtable *locdb = get_dbtable_by_name(table);
     if (locdb == NULL) {
-        if (sb) sbuf2printf(sb, "?Unknown table name '%s'\n", table);
+        if (sb)
+            sbuf2printf(sb, "?Unknown table name '%s'\n", table);
         return -1;
-    } 
+    }
 
-    void *loctran = bdb_tran_begin(locdb->handle, NULL, &bdberr);
+    void *loctran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
     if (!loctran) {
-        logmsg(LOGMSG_ERROR, "verify_table: bdb_trans_start bdberr %d\n", bdberr);
-        if (sb) sbuf2printf(sb, "?Error starting transaction rc %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "verify_table: bdb_trans_start bdberr %d\n",
+               bdberr);
+        if (sb)
+            sbuf2printf(sb, "?Error starting transaction rc %d\n", bdberr);
         return -1;
     }
 
     *db = locdb;
     *tran = loctran;
-    return bdb_lock_table_read(locdb->handle, loctran);
+    return bdb_lock_tablename_read(thedb->bdb_env, table, loctran);
 }
 
 int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
@@ -302,27 +307,29 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     unlock_schema_lk();
 
     if (rc) {
-        if (sb) sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
+        if (sb)
+            sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
         rc = 1;
     } else {
         assert(tran && "tran is null but should not be");
         assert(db && "db is null but should not be");
         blob_buffer_t blob_buf[MAXBLOBS] = {0};
         rc = bdb_verify(
-                sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
-                (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
-                verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
-                verify_indexes_callback, db, lua_callback, lua_params,
-                blob_buf, progress_report_seconds, attempt_fix);
+            sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
+            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+            verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
+            verify_indexes_callback, db, lua_callback, lua_params, blob_buf,
+            progress_report_seconds, attempt_fix);
     }
 
-    if(tran)
-        bdb_tran_abort(db->handle, tran, &bdberr);
+    if (tran)
+        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if(sb) sbuf2printf(sb, "FAILED\n");
-    } else if (sb) 
+        if (sb)
+            sbuf2printf(sb, "FAILED\n");
+    } else if (sb)
         sbuf2printf(sb, "SUCCESS\n");
 
     sbuf2flush(sb);

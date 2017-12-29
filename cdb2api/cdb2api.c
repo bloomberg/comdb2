@@ -1247,7 +1247,7 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
         }
 
         struct sockpool_msg_vers0 msg = {0};
-        if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr)) ) {
+        if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr))) {
             int rc;
             msg.request = SOCKPOOL_DONATE;
             msg.dbnum = dbnum;
@@ -1531,7 +1531,7 @@ retry_newsql_connect:
     fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL);
 
     if (hndl->debug_trace)
-        fprintf(stderr, "cdb2_socket_pool_get(%s,%d): fd %d\n", 
+        fprintf(stderr, "cdb2_socket_pool_get(%s,%d): fd %d\n",
                 hndl->newsql_typestr, hndl->dbnum, fd);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
@@ -1622,7 +1622,7 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
 
     if (debug)
         fprintf(stderr, "td %d %s name %s\n", (uint32_t)pthread_self(),
-            __func__, name);
+                __func__, name);
 
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
