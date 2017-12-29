@@ -5897,20 +5897,15 @@ static void *heartbeat_send_thread(void *arg)
     if (netinfo_ptr->start_thread_callback)
         netinfo_ptr->start_thread_callback(netinfo_ptr->callback_data);
 
-    while (1) {
-        if (netinfo_ptr->exiting)
-            break;
-
+    while (!netinfo_ptr->exiting) {
         /* netinfo lock protects the list AND the write_heartbeat call
            no need to grab rdlock */
         Pthread_rwlock_rdlock(&(netinfo_ptr->lock));
-
         for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
             if (ptr->host != netinfo_ptr->myhostname) {
                 write_heartbeat(netinfo_ptr, ptr);
             }
         }
-
         Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
         if (netinfo_ptr->exiting)
