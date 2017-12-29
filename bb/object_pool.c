@@ -310,7 +310,6 @@ int comdb2_objpool_destroy(comdb2_objpool_t op)
 
     /* clear access history */
     hash_for(op->history, hash_elem_free_wrapper, NULL);
-    hash_clear(op->history);
     hash_free(op->history);
     free(op->objs);
 
