@@ -264,47 +264,61 @@ static unsigned long long verify_indexes_callback(void *parm, void *dta,
     return verify_indexes(parm, dta, blob_parm, MAXBLOBS, 0);
 }
 
+
+// call this with schema lock
+static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb, 
+        struct dbtable **db, void **tran)
+{
+    int bdberr;
+    struct dbtable *locdb = get_dbtable_by_name(table);
+    if (locdb == NULL) {
+        if (sb) sbuf2printf(sb, "?Unknown table name '%s'\n", table);
+        return -1;
+    } 
+
+    void *loctran = bdb_tran_begin(locdb->handle, NULL, &bdberr);
+    if (!loctran) {
+        logmsg(LOGMSG_ERROR, "verify_table: bdb_trans_start bdberr %d\n", bdberr);
+        if (sb) sbuf2printf(sb, "?Error starting transaction rc %d\n", bdberr);
+        return -1;
+    }
+
+    *db = locdb;
+    *tran = loctran;
+    return bdb_lock_table_read(locdb->handle, loctran);
+}
+
 int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
              int attempt_fix, 
              int (*lua_callback)(void *, const char *), void *lua_params)
 {
-    int rc = 0;
-
-    struct dbtable *db = get_dbtable_by_name(table);
-    if (db == NULL) {
-        if (sb) sbuf2printf(sb, "?Unknown table %s\n", table);
-        rc = 1;
-        goto done;
-    } 
-
     int bdberr;
-    void *tran = bdb_tran_begin(db->handle, NULL, &bdberr);
-    if (!tran) {
-        logmsg(LOGMSG_ERROR, "verify_table: bdb_trans_start err %d\n", bdberr);
-        if (sb) sbuf2printf(sb, "?bdb_trans_start rc %d\n", bdberr);
-        rc = 1;
-        goto done;
-    }
+    int rc;
+    void *tran = NULL;
+    struct dbtable *db = NULL;
 
-    rc = bdb_lock_table_read(db->handle, tran);
+    rdlock_schema_lk();
+    rc = get_tbl_and_lock_in_tran(table, sb, &db, &tran);
+    unlock_schema_lk();
+
     if (rc) {
         if (sb) sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
         rc = 1;
-        goto done;
-    } 
+    } else {
+        assert(tran && "tran is null but should not be");
+        assert(db && "db is null but should not be");
+        blob_buffer_t blob_buf[MAXBLOBS] = {0};
+        rc = bdb_verify(
+                sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
+                (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+                verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
+                verify_indexes_callback, db, lua_callback, lua_params,
+                blob_buf, progress_report_seconds, attempt_fix);
+    }
 
-    blob_buffer_t blob_buf[MAXBLOBS] = {0};
+    if(tran)
+        bdb_tran_abort(db->handle, tran, &bdberr);
 
-    rc = bdb_verify(
-            sb, db->handle, verify_formkey_callback, verify_blobsizes_callback,
-            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
-            verify_add_blob_buffer_callback, verify_free_blob_buffer_callback,
-            verify_indexes_callback, 
-            db, lua_callback, lua_params,
-            blob_buf, progress_report_seconds,
-            attempt_fix);
-    bdb_tran_abort(db->handle, tran, &bdberr);
-done:
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
         if(sb) sbuf2printf(sb, "FAILED\n");
