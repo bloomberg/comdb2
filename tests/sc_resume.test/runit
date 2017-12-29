@@ -511,13 +511,14 @@ let TSTOP=$SECONDS+$REBUILD_DELAY
 j=800
 get_schemachange_status $master
 in_schema_change=$?   # SC may not have restarted yet 
-while [ $SECONDS -lt $TSTOP ] ; do 
+while true ; do
     let j=j+1
     echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
     read -t 0.2 -ru ${COPROC[0]} out
     if [ "$out" != "(rows inserted=1)" ] ; then
         echo "out is $out at t=$SECONDS"
     fi
+    sleep 1
     get_schemachange_status $master
     rc=$?
     if [ $in_schema_change -eq 1 ] && [ $rc -ne 1 ] ; then

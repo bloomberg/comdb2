@@ -27,6 +27,7 @@
 #include "sc_util.h"
 #include "sc_logic.h"
 #include "sc_records.h"
+#include "comdb2_atomic.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct dbtable *db, struct dbtable *newdb,
@@ -523,6 +524,9 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     db->sc_from = s->db = db;
     db->sc_to = s->newdb = newdb;
     pthread_rwlock_unlock(&sc_live_rwlock);
+    if (s->resume && s->alteronly && !s->finalize_only) {
+        ATOMIC_ADD(gbl_sc_resume_start, -1);
+    }
     gbl_sc_resume_start = 0; // for resuming SC/toblock_main: pointers are set
     MEMORY_SYNC;
 

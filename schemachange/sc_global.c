@@ -156,14 +156,10 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
 
     pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (thedb->master == gbl_mynode) {
-        if (running && gbl_schema_change_in_progress) {
+        if (running && gbl_schema_change_in_progress && seed != sc_seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            if (seed == sc_seed)
-                return 0;
-            else {
-                logmsg(LOGMSG_INFO, "schema change already in progress\n");
-                return -1;
-            }
+            logmsg(LOGMSG_INFO, "schema change already in progress\n");
+            return -1;
         } else if (!running && seed != sc_seed && seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_ERROR,
@@ -171,21 +167,31 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
             return -1;
         }
     }
-    gbl_schema_change_in_progress = running;
+    if (!running && gbl_schema_change_in_progress && seed && seed == sc_seed)
+        gbl_schema_change_in_progress--;
     if (running) {
-        sc_seed = seed;
-        sc_host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
-        sc_time = time;
-    } else {
+        gbl_schema_change_in_progress++;
+        if (gbl_schema_change_in_progress == 1) {
+            sc_seed = seed;
+            sc_host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
+            sc_time = time;
+        }
+    } else if (gbl_schema_change_in_progress == 0 || (!running && !seed)) {
         sc_seed = 0;
         sc_host = 0;
         sc_time = 0;
         gbl_sc_resume_start = 0;
+        gbl_schema_change_in_progress = 0;
     }
-    ctrace("sc_set_running: running=%d seed=0x%llx\n", running,
-           (unsigned long long)seed);
-    logmsg(LOGMSG_INFO, "sc_set_running: running=%d seed=0x%llx\n", running,
-           (unsigned long long)seed);
+    ctrace("sc_set_running(running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",
+           running, (unsigned long long)seed, gbl_schema_change_in_progress,
+           (unsigned long long)sc_seed, (unsigned)sc_host);
+    logmsg(LOGMSG_INFO,
+           "sc_set_running(running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",
+           running, (unsigned long long)seed, gbl_schema_change_in_progress,
+           (unsigned long long)sc_seed, (unsigned)sc_host);
     pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
