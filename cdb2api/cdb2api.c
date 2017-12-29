@@ -5211,12 +5211,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
                 hndl->ports[0] = CDB2_PORTMUXPORT;
             }
         }
-        if (hndl && hndl->debug_trace)
-            fprintf(stderr, "td %u %s:%d host %s port %d\n",
-                    (uint32_t)pthread_self(), __func__, __LINE__,
-                    hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
-        rc = configure_from_literal(hndl, type);
+        configure_from_literal(hndl, type);
     } else {
         rc = cdb2_get_dbhosts(hndl);
     }
