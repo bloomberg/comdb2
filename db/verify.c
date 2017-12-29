@@ -49,34 +49,34 @@ void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long ge
     dtasz = getdatsize(db);
     dta = malloc(dtasz);
     if (dta == NULL) {
-        printf("dump_record_by_rrn_genid: malloc failed\n");
+        logmsg(LOGMSG_INFO, "dump_record_by_rrn_genid: malloc failed\n");
         return;
     }
 
     rc = ix_find_by_rrn_and_genid(&iq, 2, genid, dta, &fndlen, dtasz);
     if (rc) {
-        printf("rrn %d genid 0x%llx not found\n", rrn, genid);
+        logmsg(LOGMSG_INFO, "rrn %d genid 0x%llx not found\n", rrn, genid);
         return;
     }
-    printf("rrn %d genid 0x%016llx\n", rrn, genid);
+    logmsg(LOGMSG_INFO, "rrn %d genid 0x%016llx\n", rrn, genid);
     dump_tagged_buf(db->tablename, ".ONDISK", (unsigned char *)dta);
     for (ix = 0; ix < db->nix; ix++) {
         key = malloc(getkeysize(db, ix));
         if (key == NULL) {
-            printf("dump_record_by_rrn_genid: malloc failed\n");
+            logmsg(LOGMSG_INFO, "dump_record_by_rrn_genid: malloc failed\n");
             free(dta);
             return;
         }
         snprintf(tag, sizeof(tag), ".ONDISK_IX_%d", ix);
         rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, tag, key, NULL);
         if (rc) {
-            printf("dump_record_by_rrn:stag_to_stag_buf rrn %d genid %016llx "
+            logmsg(LOGMSG_INFO, "dump_record_by_rrn:stag_to_stag_buf rrn %d genid %016llx "
                    "failed\n",
                    rrn, genid);
             free(key);
             break;
         }
-        printf("ix %d:\n", ix);
+        logmsg(LOGMSG_INFO, "ix %d:\n", ix);
         dump_tagged_buf(db->tablename, tag, (unsigned char *)key);
         free(key);
     }
@@ -102,14 +102,13 @@ void purge_by_genid(struct dbtable *db, unsigned long long *genid)
 
     /* genid can be NULL in which case we do an auto purge */
     if (genid)
-        printf("Purging genid %016llx from table %s\n", *genid, db->tablename);
+        logmsg(LOGMSG_INFO, "Purging genid %016llx from table %s\n", *genid, db->tablename);
 retry:
     tran = bdb_tran_begin(db->handle, NULL, &bdberr);
 
     if (!tran) {
-        fprintf(stderr, "purge_by_genid: bdb_trans_start failed - err %d\n"
-                        "Please try again.\n",
-                bdberr);
+        logmsg(LOGMSG_ERROR, "purge_by_genid: bdb_trans_start failed - err %d\n"
+                        "Please try again.\n", bdberr);
         return;
     }
 
@@ -281,7 +280,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     int bdberr;
     void *tran = bdb_tran_begin(db->handle, NULL, &bdberr);
     if (!tran) {
-        fprintf(stderr, "verify_table: bdb_trans_start err %d\n", bdberr);
+        logmsg(LOGMSG_ERROR, "verify_table: bdb_trans_start err %d\n", bdberr);
         if (sb) sbuf2printf(sb, "?bdb_trans_start rc %d\n", bdberr);
         rc = 1;
         goto done;
@@ -307,7 +306,7 @@ int verify_table(const char *table, SBUF2 *sb, int progress_report_seconds,
     bdb_tran_abort(db->handle, tran, &bdberr);
 done:
     if (rc) {
-        printf("verify rc %d\n", rc);
+        logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
         if(sb) sbuf2printf(sb, "FAILED\n");
     } else if (sb) 
         sbuf2printf(sb, "SUCCESS\n");

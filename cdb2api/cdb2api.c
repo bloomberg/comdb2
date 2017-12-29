@@ -1185,8 +1185,6 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
     msg.request = SOCKPOOL_REQUEST;
     msg.dbnum = dbnum;
     if (strlen(typestr) >= sizeof(msg.typestr)) {
-        //fprintf(stderr, "%s: length of typestr %d is larger than buffer %d\n", 
-                //__func__, strlen(typestr), sizeof(msg.typestr));
         return -1;
     }
     strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
@@ -1199,7 +1197,7 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         close(sockpool_fd);
         sockpool_fd = -1;
         return -1;
-    } 
+    }
 
     int fd;
     /* Read reply from server.  It can legitimately not send

@@ -152,7 +152,7 @@ fi
 
 # Configure client SSL
 echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
-#echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
+echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
 myhostname=`hostname`
 set +e
