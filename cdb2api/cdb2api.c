@@ -793,6 +793,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
     int len = 0;
     int line_no = 0;
 
+    if (hndl && hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d \n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
     while (read_line((char *)&line, &len, sizeof(line), fp, buf, &line_no) != -1) {
         if (len >= sizeof(line))
             return;
@@ -943,6 +947,7 @@ static int get_config_file(const char *dbname, char *f, size_t s)
         return -1;
     return 0;
 }
+
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               int *comdb2db_ports, int *master,
                               char *comdb2db_name, int *num_hosts,
@@ -955,6 +960,11 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     int comdb2db_found = 0;
     int dbname_found = 0;
     int fallback_on_bb_bin = 1;
+
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %u %s line %d \n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
 
     if (get_config_file(dbname, filename, sizeof(filename)) != 0)
         return -1; // set error string?
@@ -1087,19 +1097,16 @@ enum { SOCKPOOL_DONATE = 0, SOCKPOOL_REQUEST = 1 };
 
 static int open_sockpool_ll(void)
 {
-
-    struct sockaddr_sun addr;
-    int fd;
     struct sockpool_hello hello;
     const char *ptr;
     size_t bytesleft;
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd == -1) {
         fprintf(stderr, "%s:socket: %d %s\n", __func__, errno, strerror(errno));
         return -1;
     }
 
-    bzero(&addr, sizeof(addr));
+    struct sockaddr_sun addr = {0};
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, SOCKPOOL_SOCKET_NAME, sizeof(addr.sun_path));
 
@@ -4497,9 +4504,8 @@ retry:
                 (uint32_t)pthread_self(), __func__, __LINE__, num_retry);
 
     if (hndl->num_hosts == 0) {
-        int i = 0;
         if (master == -1) {
-            for (i = 0; i < num_comdb2db_hosts; i++) {
+            for (int i = 0; i < num_comdb2db_hosts; i++) {
                 rc = cdb2_dbinfo_query(
                     hndl, cdb2_default_cluster, comdb2db_name, comdb2db_num,
                     comdb2db_hosts[i], comdb2db_hosts, comdb2db_ports, &master,
@@ -4508,16 +4514,15 @@ retry:
                     break;
                 }
             }
-        }
-
-        if (rc != 0) {
-            sprintf(hndl->errstr, "cdb2_get_dbhosts: can't do dbinfo "
-                                  "query on comdb2db hosts.");
-            goto retry;
+            if (rc != 0) {
+                sprintf(hndl->errstr, "cdb2_get_dbhosts: can't do dbinfo "
+                                      "query on comdb2db hosts.");
+                goto retry;
+            }
         }
 
         rc = -1;
-        for (i = 0; i < num_comdb2db_hosts; i++) {
+        for (int i = 0; i < num_comdb2db_hosts; i++) {
             if (i == master)
                 continue;
             rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num,
@@ -4654,6 +4659,9 @@ static int our_dc_first(const void *mp1, const void *mp2)
         return 0;
 }
 
+/* wll configure comdb2 hosts based on cmdline parameters eg: 
+ *   @machine:port=123:dc=ZONE1,machine2:port=456:dc=ZONE2
+ */
 static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
 {
     char *s = strdup(type);
@@ -4664,8 +4672,6 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     char *dc;
     struct machine m[MAX_NODES];
     int num_hosts = 0;
-
-    // eg: @machine:port=123:dc=ZONE1,machine2:port=456:dc=ZONE2
 
     get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                        NULL, NULL, NULL, 1);
@@ -5011,8 +5017,11 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
 
     cdb2_init_context_msgs(hndl);
 
-    if (getenv("CDB2_DEBUG"))
+    if (getenv("CDB2_DEBUG")) {
         hndl->debug_trace = 1;
+        fprintf(stderr, "td %u %s debug trace enabled \n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
+    }
 
     if (hndl->flags & CDB2_RANDOM) {
         strcpy(hndl->policy, "random");
