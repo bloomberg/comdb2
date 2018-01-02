@@ -13,6 +13,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <alloca.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include <unistd.h>
