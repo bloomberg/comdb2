@@ -504,11 +504,15 @@ int do_schema_change_tran(sc_arg_t *arg)
 
     if (rc == SC_MASTER_DOWNGRADE) {
         if (s && s->newdb && s->newdb->handle) {
-            /* start new event; some functions above end event on return */
             int bdberr;
-            backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-            bdb_close_only(s->newdb->handle, &bdberr);
-            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+            if (!trans) {
+                /* start new event; some functions above end event on return */
+                backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+                bdb_close_only(s->newdb->handle, &bdberr);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+            } else {
+                bdb_close_only(s->newdb->handle, &bdberr);
+            }
         }
     }
     reset_sc_thread(oldtype, s);

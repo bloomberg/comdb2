@@ -305,6 +305,7 @@ static inline void wait_to_resume(struct schema_change_type *s)
 }
 
 int gbl_test_scindex_deadlock = 0;
+int gbl_test_sc_resume_race = 0;
 
 int do_alter_table(struct ireq *iq, tran_type *tran)
 {
@@ -525,6 +526,11 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
     db->sc_to = s->newdb = newdb;
     pthread_rwlock_unlock(&sc_live_rwlock);
     if (s->resume && s->alteronly && !s->finalize_only) {
+        if (gbl_test_sc_resume_race) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
         ATOMIC_ADD(gbl_sc_resume_start, -1);
     }
     gbl_sc_resume_start = 0; // for resuming SC/toblock_main: pointers are set
@@ -718,7 +724,7 @@ int finalize_alter_table(struct ireq *iq, tran_type *transac)
     /* artificial sleep to aid testing */
     if (s->commit_sleep) {
         sc_printf(s, "artificially sleeping for %d...\n", s->commit_sleep);
-        logmsg(LOGMSG_DEBUG, "artificially sleeping for %d...\n",
+        logmsg(LOGMSG_INFO, "artificially sleeping for %d...\n",
                s->commit_sleep);
         sleep(s->commit_sleep);
         sc_printf(s, "...slept for %d\n", s->commit_sleep);

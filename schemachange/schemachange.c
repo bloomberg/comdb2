@@ -35,6 +35,7 @@
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
+extern int gbl_test_sc_resume_race;
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -244,6 +245,11 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->iq = iq;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
+        if (gbl_test_sc_resume_race) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
         ATOMIC_ADD(gbl_sc_resume_start, 1);
     }
     /*

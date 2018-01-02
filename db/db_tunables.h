@@ -1122,6 +1122,10 @@ REGISTER_TUNABLE("test_scindex_deadlock",
                  "Test index on expressions schema change deadlock",
                  TUNABLE_BOOLEAN, &gbl_test_scindex_deadlock, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("test_sc_resume_race",
+                 "Test race between schemachange resume and blockprocessor",
+                 TUNABLE_BOOLEAN, &gbl_test_sc_resume_race, READONLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("throttlesqloverlog",
                  "On a full queue of SQL requests, dump the current thread "
                  "pool this often (in secs). (Default: 5sec)",
