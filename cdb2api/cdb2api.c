@@ -1180,9 +1180,11 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
         }
     }
 
-    struct sockpool_msg_vers0 msg;
+    struct sockpool_msg_vers0 msg = {0};
+    if (strlen(typestr) >= sizeof(msg.typestr)) {
+        return -1;
+    }
     /* Please may I have a file descriptor */
-    bzero(&msg, sizeof(msg));
     msg.request = SOCKPOOL_REQUEST;
     msg.dbnum = dbnum;
     strncpy(msg.typestr, typestr, sizeof(msg.typestr) - 1);
@@ -1244,10 +1246,9 @@ void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
             }
         }
 
-        if (sockpool_fd != -1) {
-            struct sockpool_msg_vers0 msg;
+        struct sockpool_msg_vers0 msg = {0};
+        if (sockpool_fd != -1 && (strlen(typestr) < sizeof(msg.typestr))) {
             int rc;
-            bzero(&msg, sizeof(msg));
             msg.request = SOCKPOOL_DONATE;
             msg.dbnum = dbnum;
             msg.timeout = ttl;
@@ -1470,7 +1471,6 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd;
-    bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
         if (debug)
@@ -1481,8 +1481,8 @@ static int cdb2portmux_route(const char *remote_host, char *app, char *service,
     }
 
     if (debug)
-        fprintf(stderr, "td %d %s line %d\n", (uint32_t)pthread_self(),
-                __func__, __LINE__);
+        fprintf(stderr, "td %d %s name %s\n", (uint32_t)pthread_self(),
+                __func__, name);
 
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
@@ -1531,7 +1531,8 @@ retry_newsql_connect:
     fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL);
 
     if (hndl->debug_trace)
-        fprintf(stderr, "fd %d\n", fd);
+        fprintf(stderr, "cdb2_socket_pool_get(%s,%d): fd %d\n",
+                hndl->newsql_typestr, hndl->dbnum, fd);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
             fd = cdb2_tcpconnecth_to(host, port, 0, CDB2_CONNECT_TIMEOUT);
@@ -1610,7 +1611,6 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
     char res[32];
     SBUF2 *ss = NULL;
     int rc, fd, port;
-    bzero(name, sizeof(name));
     rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name)) {
         if (debug)
@@ -1619,6 +1619,11 @@ static int cdb2portmux_get(const char *remote_host, char *app, char *service,
                     app, service, instance);
         return -1;
     }
+
+    if (debug)
+        fprintf(stderr, "td %d %s name %s\n", (uint32_t)pthread_self(),
+                __func__, name);
+
     fd = cdb2_tcpconnecth_to(remote_host, CDB2_PORTMUXPORT, 0,
                              CDB2_CONNECT_TIMEOUT);
     if (fd < 0) {
@@ -1698,6 +1703,34 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int end)
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl);
 
+/* combine hashes similar to hash_combine from boost library */
+static uint64_t val_combine(uint64_t lhs, uint64_t rhs)
+{
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+}
+
+static int cdb2_random_int()
+{
+    static __thread unsigned short rand_state[3] = {0};
+    if (rand_state[0] == 0) {
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        /* Initialize rand_state once per thread
+         * _PID will ensure that cnonce will be different accross processes
+
+         * Get the initial random state by using thread id and time info. */
+        uint32_t tmp[2];
+        tmp[0] = tv.tv_sec;
+        tmp[1] = tv.tv_usec;
+        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
+        rand_state[0] = hash;
+        rand_state[1] = hash >> 16;
+        rand_state[2] = hash >> 32;
+    }
+    return nrand48(rand_state);
+}
+
 static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
 {
     for (int i = 0; i < hndl->num_hosts; i++) {
@@ -1727,11 +1760,13 @@ retry_connect:
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
 
-    if ((hndl->flags & CDB2_RANDOM) && (hndl->node_seq == 0)) {
-        hndl->node_seq = random() % hndl->num_hosts;
+    if ((hndl->node_seq == 0) &&
+        ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
+                                         (hndl->num_hosts_sameroom == 0)))) {
+        hndl->node_seq = cdb2_random_int() % hndl->num_hosts;
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq = random() % hndl->num_hosts_sameroom;
+        hndl->node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
         /* First try on same room. */
         if (0 == cdb2_try_on_same_room(hndl))
             return 0;
@@ -1936,7 +1971,6 @@ static int cdb2_effects_request(cdb2_hndl_tp *hndl)
     if (hndl->error_in_trans)
         return -1;
 
-    int error_code = 0;
     clear_responses(hndl);
     CDB2QUERY query = CDB2__QUERY__INIT;
     CDB2DBINFO dbinfoquery = CDB2__DBINFO__INIT;
@@ -1976,21 +2010,19 @@ retry_read:
         hndl->sb = NULL;
         return -1;
     }
-    error_code = hndl->firstresponse->error_code;
     if (type ==
         RESPONSE_HEADER__SQL_RESPONSE) { /* This might be the error that
                                             happened within transaction. */
         hndl->firstresponse =
             cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
-        hndl->error_in_trans =
-            cdb2_convert_error_code(error_code);
+        hndl->error_in_trans = 
+            cdb2_convert_error_code(hndl->firstresponse->error_code);
         strcpy(hndl->errstr, hndl->firstresponse->error_string);
         goto retry_read;
     }
 
-    if (type == RESPONSE_HEADER__SQL_EFFECTS && error_code) {
+    if (type == RESPONSE_HEADER__SQL_EFFECTS && hndl->error_in_trans)
         return -1;
-    }
 
     if (type != RESPONSE_HEADER__SQL_EFFECTS) {
         free((void *)hndl->first_buf);
@@ -2002,7 +2034,7 @@ retry_read:
         fprintf(stderr, "td %u %s: Can't read response from the db\n",
                 (uint32_t)pthread_self(), __func__);
         return -1;
-    } 
+    }
     hndl->firstresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->first_buf);
     return 0;
 }
@@ -2353,7 +2385,8 @@ int cdb2_next_record(cdb2_hndl_tp *hndl)
         hndl->first_record_read = 1;
         if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
             rc = hndl->lastresponse->error_code;
-        } else if (hndl->lastresponse->response_type == RESPONSE_TYPE__LAST_ROW) {
+        } else if (hndl->lastresponse->response_type ==
+                   RESPONSE_TYPE__LAST_ROW) {
             if (hndl->num_set_commands) {
                 hndl->num_set_commands_sent = hndl->num_set_commands;
             }
@@ -2482,14 +2515,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-
-/* combine hashes similar to hash_combine from boost library */
-static inline uint64_t val_combine(uint64_t lhs, uint64_t rhs)
-{
-    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
-    return lhs;
-}
-
 /* make_random_str() will return a randomly generated string
  * this is used to get a cnonce, composed of four components:
  * the first part is the id of this host machine
@@ -2499,28 +2524,15 @@ static inline uint64_t val_combine(uint64_t lhs, uint64_t rhs)
  */
 static void make_random_str(char *str, size_t max_len, int *len)
 {
-    static __thread unsigned short rand_state[3] = {0};
     static __thread char cached_portion[23] = {0}; // 2*10 digits + 2 '-' + '\n'
     static __thread size_t cached_portion_len = 0;
-
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    if (rand_state[0] == 0) {
-        /* Initialize rand_state once per thread
-         * _PID will ensure that cnonce will be different accross processes
-
-         * Get the initial random state by using thread id and time info. */
-        uint32_t tmp[2];
-        tmp[0] = tv.tv_sec;
-        tmp[1] = tv.tv_usec;
-        uint64_t hash = val_combine(*(uint64_t *)tmp, (uint64_t)pthread_self());
-        rand_state[0] = hash;
-        rand_state[1] = hash >> 16;
-        rand_state[2] = hash >> 32;
+    if (cached_portion_len == 0) {
         cached_portion_len = snprintf(cached_portion, sizeof(cached_portion),
                                       "%d-%d-", cdb2_hostid(), _PID);
     }
-    int randval = nrand48(rand_state);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int randval = cdb2_random_int();
     strncpy(str, cached_portion, cached_portion_len);
     *len = cached_portion_len;
     *len += snprintf(str + cached_portion_len, max_len - cached_portion_len,
@@ -4095,7 +4107,8 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
                                 int comdb2db_num, char *host, int port,
                                 char hosts[][64], int *num_hosts, char *dbname,
-                                char *cluster, int *dbnum, int num_retries)
+                                char *cluster, int *dbnum, int *num_same_room,
+                                int num_retries)
 {
     char sql_query[256];
     *dbnum = 0;
@@ -4138,6 +4151,10 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
     bindvars[2] = bind_room;
     char newsql_typestr[128];
     int is_sockfd = 1;
+
+    if (num_same_room)
+        *num_same_room = 1;
+
     int rc = snprintf(newsql_typestr, sizeof(newsql_typestr),
                       "comdb2/%s/%s/newsql/%s", comdb2db_name, cluster,
                       hndl->policy);
@@ -4238,6 +4255,11 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, char *comdb2db_name,
                    (const char *)sqlresponse->value[0]->value.data);
             if (*dbnum == 0) {
                 *dbnum = *((long long *)sqlresponse->value[1]->value.data);
+            }
+            if (num_same_room && sqlresponse->value[2]->value.data &&
+                strcasecmp(cdb2_machine_room,
+                           sqlresponse->value[2]->value.data) == 0) {
+                (*num_same_room)++;
             }
             (*num_hosts)++;
         }
@@ -4498,10 +4520,11 @@ retry:
         for (i = 0; i < num_comdb2db_hosts; i++) {
             if (i == master)
                 continue;
-            rc = comdb2db_get_dbhosts(
-                hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[i],
-                comdb2db_ports[i], hndl->hosts, &hndl->num_hosts, hndl->dbname,
-                hndl->cluster, &hndl->dbnum, num_retry);
+            rc = comdb2db_get_dbhosts(hndl, comdb2db_name, comdb2db_num,
+                                      comdb2db_hosts[i], comdb2db_ports[i],
+                                      hndl->hosts, &hndl->num_hosts,
+                                      hndl->dbname, hndl->cluster, &hndl->dbnum,
+                                      &hndl->num_hosts_sameroom, num_retry);
             if (rc == 0) {
                 break;
             }
@@ -4510,7 +4533,8 @@ retry:
             rc = comdb2db_get_dbhosts(
                 hndl, comdb2db_name, comdb2db_num, comdb2db_hosts[master],
                 comdb2db_ports[master], hndl->hosts, &hndl->num_hosts,
-                hndl->dbname, hndl->cluster, &hndl->dbnum, num_retry);
+                hndl->dbname, hndl->cluster, &hndl->dbnum,
+                &hndl->num_hosts_sameroom, num_retry);
         }
 
         if (rc != 0) {
@@ -4530,9 +4554,31 @@ retry:
 
     rc = -1;
     int i = 0;
+    int node_seq = 0;
+    if ((hndl->flags & CDB2_RANDOM) ||
+        ((hndl->flags & CDB2_RANDOMROOM) && (hndl->num_hosts_sameroom == 0))) {
+        node_seq = cdb2_random_int() % hndl->num_hosts;
+    } else if ((hndl->flags & CDB2_RANDOMROOM) &&
+               (hndl->num_hosts_sameroom > 0)) {
+        node_seq = cdb2_random_int() % hndl->num_hosts_sameroom;
+        /* Try dbinfo on same room first */
+        for (i = 0; i < hndl->num_hosts_sameroom; i++) {
+            int try_node = (node_seq + i) % hndl->num_hosts_sameroom;
+            rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
+                                   hndl->hosts[try_node], hndl->hosts,
+                                   hndl->ports, &hndl->master, &hndl->num_hosts,
+                                   &hndl->num_hosts_sameroom);
+            if (rc == 0) {
+                goto done;
+            }
+        }
+    }
+
+    /* Try everything now */
     for (i = 0; i < hndl->num_hosts; i++) {
+        int try_node = (node_seq + i) % hndl->num_hosts;
         rc = cdb2_dbinfo_query(hndl, hndl->type, hndl->dbname, hndl->dbnum,
-                               hndl->hosts[i], hndl->hosts, hndl->ports,
+                               hndl->hosts[try_node], hndl->hosts, hndl->ports,
                                &hndl->master, &hndl->num_hosts,
                                &hndl->num_hosts_sameroom);
         if (rc == 0) {
@@ -4540,6 +4586,7 @@ retry:
         }
     }
 
+done:
     if (rc != 0) {
         sprintf(hndl->errstr,
                 "cdb2_get_dbhosts: can't do dbinfo query on %s hosts.",

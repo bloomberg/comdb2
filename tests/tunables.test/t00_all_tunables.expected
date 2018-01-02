@@ -336,7 +336,7 @@
 (name='heartbeat_send_time', description='Send heartbeats this often. (Default: 5secs)', type='INTEGER', value='0', read_only='Y')
 (name='hostile_takeover_retries', description='Attempt to take over mastership if the master machine is marked offline, and the current machine is online.', type='INTEGER', value='0', read_only='N')
 (name='hostname', description='', type='STRING', value='***', read_only='Y')
-(name='i_am_master', description='', type='BOOLEAN', value='ON', read_only='N')
+(name='i_am_master', description='', type='BOOLEAN', value='***', read_only='N')
 (name='ignore_datetime_cast_failures', description='ignore_datetime_cast_failures', type='BOOLEAN', value='OFF', read_only='N')
 (name='ignore_extra_blobs', description='ignore_extra_blobs', type='BOOLEAN', value='OFF', read_only='N')
 (name='ilock_step', description='Stepup for preallocated ilock-latches', type='INTEGER', value='2048', read_only='N')
