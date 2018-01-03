@@ -37,6 +37,7 @@
 #include "sc_rename_table.h"
 #include "analyze.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 /**** Utility functions */
 
@@ -391,8 +392,10 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq, tran_type *tran,
     }
     if (rc) {
         mark_schemachange_over_tran(s->table, NULL); // non-tran ??
+        broadcast_sc_end(0);
     } else if (s->finalize) {
         rc = do_finalize(post, iq, tran, type);
+        broadcast_sc_end(sc_seed);
     } else {
         rc = SC_COMMIT_PENDING;
     }
@@ -400,7 +403,6 @@ end:
     s->sc_rc = rc;
     if (type != alter)
         unlock_schema_lk();
-    broadcast_sc_end(sc_seed);
     return rc;
 }
 
@@ -502,11 +504,15 @@ int do_schema_change_tran(sc_arg_t *arg)
 
     if (rc == SC_MASTER_DOWNGRADE) {
         if (s && s->newdb && s->newdb->handle) {
-            /* start new event; some functions above end event on return */
             int bdberr;
-            backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-            bdb_close_only(s->newdb->handle, &bdberr);
-            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+            if (!trans) {
+                /* start new event; some functions above end event on return */
+                backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
+                bdb_close_only(s->newdb->handle, &bdberr);
+                backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+            } else {
+                bdb_close_only(s->newdb->handle, &bdberr);
+            }
         }
     }
     reset_sc_thread(oldtype, s);
@@ -1161,5 +1167,6 @@ int backout_schema_change(struct ireq *iq)
         reload_db_tran(s->db, NULL);
         sc_del_unused_files(s->db);
     }
+    broadcast_sc_end(sc_seed);
     return 0;
 }
