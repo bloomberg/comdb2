@@ -533,7 +533,6 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
         }
         ATOMIC_ADD(gbl_sc_resume_start, -1);
     }
-    gbl_sc_resume_start = 0; // for resuming SC/toblock_main: pointers are set
     MEMORY_SYNC;
 
     reset_sc_stat();

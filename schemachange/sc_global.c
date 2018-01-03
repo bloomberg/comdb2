@@ -167,8 +167,6 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
             return -1;
         }
     }
-    if (!running && gbl_schema_change_in_progress && seed && seed == sc_seed)
-        gbl_schema_change_in_progress--;
     if (running) {
         gbl_schema_change_in_progress++;
         if (gbl_schema_change_in_progress == 1) {
@@ -176,12 +174,16 @@ int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
             sc_host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
             sc_time = time;
         }
-    } else if (gbl_schema_change_in_progress == 0 || (!running && !seed)) {
-        sc_seed = 0;
-        sc_host = 0;
-        sc_time = 0;
-        gbl_sc_resume_start = 0;
-        gbl_schema_change_in_progress = 0;
+    } else { /* not running */
+        if (gbl_schema_change_in_progress && seed && seed == sc_seed)
+            gbl_schema_change_in_progress--;
+        if (gbl_schema_change_in_progress == 0 || !seed) {
+            sc_seed = 0;
+            sc_host = 0;
+            sc_time = 0;
+            gbl_sc_resume_start = 0;
+            gbl_schema_change_in_progress = 0;
+        }
     }
     ctrace("sc_set_running(running=%d seed=0x%llx): "
            "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",

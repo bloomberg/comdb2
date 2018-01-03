@@ -784,7 +784,7 @@ done:
         }
     }
 
-    sc_set_running(0 /*running*/, sc_seed, NULL, 0);
+    sc_set_running(0 /*running*/, 0 /*seed*/, NULL, 0);
     return rc; /* success */
 }
 
