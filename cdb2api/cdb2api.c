@@ -961,7 +961,7 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     int dbname_found = 0;
     int fallback_on_bb_bin = 1;
 
-    if (hndl->debug_trace) {
+    if (hndl && hndl->debug_trace) {
         fprintf(stderr, "td %u %s line %d \n",
                 (uint32_t)pthread_self(), __func__, __LINE__);
     }
