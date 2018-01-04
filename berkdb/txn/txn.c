@@ -853,9 +853,6 @@ int bdb_transfer_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
     unsigned long long context);
 int __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid, u_int32_t lockid);
 
-void bdb_osql_trn_repo_lock(void);
-void bdb_osql_trn_repo_unlock(void);
-
 /*
  * __txn_commit --
  *	Commit a transaction.
