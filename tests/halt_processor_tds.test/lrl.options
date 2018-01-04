@@ -20,5 +20,5 @@ master_reject_requests OFF
 # Enabing this causes setup failures from time to time (??)
 make_slow_replicants_incoherent OFF
 
-# Disabling 'force_serial_on_writelock' should reproduce corruption
-#force_serial_on_writelock OFF
+# 'force_serial_on_writelock OFF' should reproduce corruption
+# force_serial_on_writelock OFF
