@@ -2180,8 +2180,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
 
     int rc = sbuf2flush(sb);
 
-    if (rc < 0)
+    if (rc < 0) {
+        free(buf);
         return -1;
+    }
 
     if (hndl && hndl->in_trans && do_append) {
         /* Retry number of transaction is different from that of query.*/
