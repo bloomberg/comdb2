@@ -1122,6 +1122,10 @@ REGISTER_TUNABLE("test_scindex_deadlock",
                  "Test index on expressions schema change deadlock",
                  TUNABLE_BOOLEAN, &gbl_test_scindex_deadlock, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("test_sc_resume_race",
+                 "Test race between schemachange resume and blockprocessor",
+                 TUNABLE_BOOLEAN, &gbl_test_sc_resume_race, READONLY, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("throttlesqloverlog",
                  "On a full queue of SQL requests, dump the current thread "
                  "pool this often (in secs). (Default: 5sec)",
@@ -1314,9 +1318,8 @@ REGISTER_TUNABLE("print_deadlock_cycles",
                  "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_send_cnonce",
-                 "Always send cnonce to master. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_always_send_cnonce, NOARG, NULL, NULL,
-                 NULL, NULL);
+                 "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_always_send_cnonce, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("force_serial_on_writelock", "Disable parallel rep on "
                 "upgrade.  (Default: on)", TUNABLE_BOOLEAN,
                 &gbl_force_serial_on_writelock, EXPERIMENTAL | INTERNAL, NULL,

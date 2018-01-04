@@ -3893,6 +3893,8 @@ static inline int dont_cache_sql(struct sqlclntstate *clnt, const char *sql)
         return 1;
     if (strncasecmp(sql, "truncate", 8) == 0)
         return 1;
+    if (strncasecmp(sql, "put", 3) == 0)
+        return 1;
     return 0;
 }
 
@@ -6729,7 +6731,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
-        logmsg(LOGMSG_INFO, "new query on master, dropping socket\n");
+        ATOMIC_ADD(gbl_masterrejects, 1);
         goto done;
     }
 
@@ -6781,9 +6783,7 @@ static int handle_fastsql_requests_io_loop(struct sqlthdstate *thd,
 
         if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
             !clnt->intrans) {
-            logmsg(LOGMSG_USER, 
-                    "%s line %d td %u: new query on master, dropping socket\n",
-                    __func__, __LINE__, (uint32_t)pthread_self());
+            ATOMIC_ADD(gbl_masterrejects, 1);
             goto done;
         }
 
@@ -8094,9 +8094,7 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
 
     if (do_master_check && bdb_master_should_reject(thedb->bdb_env) &&
         allow_master_exec == 0) {
-        logmsg(LOGMSG_ERROR,
-               "%s line %d td %u new query on master, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
+        ATOMIC_ADD(gbl_masterrejects, 1);
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
         return 1;

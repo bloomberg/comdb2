@@ -236,7 +236,7 @@ columnname(A) ::= nm(A) typetoken(Y). {comdb2AddColumn(pParse,&A,&Y);}
   ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
   CONFLICT DATABASE DEFERRED DESC DETACH EACH END EXCLUSIVE EXPLAIN FAIL
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
-  QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW
+  QUERY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW
   ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
@@ -318,10 +318,14 @@ ccons ::= NULL onconf.           {comdb2AddNull(pParse);}
 ccons ::= NOT NULL onconf(R).    {comdb2AddNotNull(pParse, R);}
 ccons ::= PRIMARY KEY sortorder(Z) onconf(R) autoinc(I).
                                  {comdb2AddPrimaryKey(pParse,0,R,I,Z);}
-ccons ::= UNIQUE onconf(R).      {comdb2AddIndex(pParse,0,0,R,
-                                   SQLITE_IDXTYPE_UNIQUE);}
-ccons ::= KEY onconf(R).         {comdb2AddIndex(pParse,0,0,R,
-                                   SQLITE_IDXTYPE_DUPKEY);}
+ccons ::= UNIQUE onconf(R).      {
+    comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
+                   SQLITE_IDXTYPE_UNIQUE, 0);
+}
+ccons ::= KEY onconf(R).         {
+    comdb2AddIndex(pParse, 0, 0, R, 0, SQLITE_SO_ASC,
+                   SQLITE_IDXTYPE_DUPKEY, 0);
+}
 %ifdef COMDB2_UNSUPPORTED
 ccons ::= CHECK LP expr(X) RP.   {sqlite3AddCheckConstraint(pParse,X.pExpr);}
 %endif
@@ -383,21 +387,25 @@ tconscomma ::= .
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CONSTRAINT nm(X).      {pParse->constraintName = X;}
 %endif
-tcons ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R).
-                                 {comdb2AddPrimaryKey(pParse,X,R,I,0);}
-tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP onconf(R).
-                                 {comdb2AddIndex(pParse,&I,X,R,
-                                   SQLITE_IDXTYPE_UNIQUE);}
-tcons ::= KEY nm_opt(I) LP sortlist(X) RP onconf(R).
-                                 {comdb2AddIndex(pParse,&I,X,R,
-                                   SQLITE_IDXTYPE_DUPKEY);}
-
+tcons ::= tconspk.
+tcons ::= UNIQUE nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
+    comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_UNIQUE,
+                   O);
+}
+tcons ::= KEY nm_opt(I) LP sortlist(X) RP with_opt(O) where_opt(W). {
+    comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC, SQLITE_IDXTYPE_DUPKEY,
+                   O);
+}
 %ifdef COMDB2_UNSUPPORTED
 tcons ::= CHECK LP expr(E) RP onconf.
                                  {sqlite3AddCheckConstraint(pParse,E.pExpr);}
 %endif
-tcons ::= FOREIGN KEY LP eidlist(FA) RP
-          REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
+tcons ::= tconsfk.
+tconspk ::= PRIMARY KEY LP sortlist(X) autoinc(I) RP onconf(R). {
+    comdb2AddPrimaryKey(pParse, X, R, I, 0);
+}
+tconsfk ::= FOREIGN KEY LP eidlist(FA) RP
+            REFERENCES nm(T) LP eidlist(TA) RP refargs(R) defer_subclause_opt(D). {
     comdb2CreateForeignKey(pParse, FA, &T, TA, R);
     comdb2DeferForeignKey(pParse, D);
 }
@@ -1409,8 +1417,8 @@ collate(C) ::= COLLATE ids.   {C = 1;}
 
 ///////////////////////////// The DROP INDEX command /////////////////////////
 //
-cmd ::= DROP INDEX ifexists(E) fullname(X).   {comdb2DropIndex(pParse, X, E);}
-cmd ::= DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndexExtn(pParse, &X, &Y, E);}
+cmd ::= DROP INDEX ifexists(E) nm(X).          {comdb2DropIndex(pParse, &X, 0, E);}
+cmd ::= DROP INDEX ifexists(E) nm(X) ON nm(Y). {comdb2DropIndex(pParse, &X, &Y, E);}
 
 ///////////////////////////// The VACUUM command /////////////////////////////
 //
@@ -2096,10 +2104,34 @@ alter_table_action_list ::= alter_table_action.
 
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
+alter_table_action ::= alter_table_add_index.
+alter_table_action ::= alter_table_drop_index.
+alter_table_action ::= alter_table_add_pk.
+alter_table_action ::= alter_table_drop_pk.
+alter_table_action ::= alter_table_add_fk.
+alter_table_action ::= alter_table_drop_fk.
 
 alter_table_add_column ::= ADD kwcolumn_opt columnname carglist.
 alter_table_drop_column ::= DROP kwcolumn_opt nm(Y) . {
   comdb2DropColumn(pParse, &Y);
+}
+alter_table_add_index ::= ADD uniqueflag(U) INDEX nm(I) LP sortlist(X) RP
+    with_opt(O) where_opt(W). {
+  comdb2AddIndex(pParse, &I, X, 0, &W, SQLITE_SO_ASC,
+                 (U == OE_Abort) ? SQLITE_IDXTYPE_UNIQUE :
+                 SQLITE_IDXTYPE_DUPKEY, O);
+}
+alter_table_drop_index ::= DROP INDEX nm(I). {
+    comdb2AlterDropIndex(pParse, &I);
+}
+
+alter_table_add_pk ::= ADD tconspk.
+alter_table_drop_pk ::= DROP PRIMARY KEY. {
+    comdb2DropPrimaryKey(pParse);
+}
+alter_table_add_fk ::= ADD tconsfk.
+alter_table_drop_fk ::= DROP FOREIGN KEY nm(Y). {
+    comdb2DropForeignKey(pParse, &Y);
 }
 
 %ifdef SQLITE_OMIT_ALTERTABLE

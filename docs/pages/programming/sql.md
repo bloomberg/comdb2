@@ -282,9 +282,9 @@ Stored procedure calls are [immediate](transaction_model.html#immediate-and-defe
 
 ![CREATE TABLE](images/create-table-ddl.gif)
 
-**Column list:**
+**Index column list:**
 
-![COLUMN LIST](images/column-list.gif)
+![INDEX COLUMN LIST](images/index-column-list.gif)
 
 **Column constraint:**
 

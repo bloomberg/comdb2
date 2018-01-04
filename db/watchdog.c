@@ -421,8 +421,6 @@ static void *watchdog_watcher_thread(void *arg)
     int failed_once = 0;
 
     while (!thedb->exiting) {
-        sleep(10);
-
         if (!gbl_nowatch) {
             int tmstmp = time_epoch();
             if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
@@ -452,6 +450,7 @@ static void *watchdog_watcher_thread(void *arg)
                 comdb2_die(1);
             }
         }
+        sleep(10);
     }
     return NULL;
 }

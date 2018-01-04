@@ -187,7 +187,7 @@ function kill_restart_node
 {
     node=$1
     pushd $DBDIR
-    cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
+    # cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
 
     if [ -n "$CLUSTER" ] ; then
         kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
@@ -511,13 +511,14 @@ let TSTOP=$SECONDS+$REBUILD_DELAY
 j=800
 get_schemachange_status $master
 in_schema_change=$?   # SC may not have restarted yet 
-while [ $SECONDS -lt $TSTOP ] ; do 
+while true ; do
     let j=j+1
     echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" >&${COPROC[1]}
     read -t 0.2 -ru ${COPROC[0]} out
     if [ "$out" != "(rows inserted=1)" ] ; then
         echo "out is $out at t=$SECONDS"
     fi
+    sleep 1
     get_schemachange_status $master
     rc=$?
     if [ $in_schema_change -eq 1 ] && [ $rc -ne 1 ] ; then
@@ -539,6 +540,69 @@ fi
 assert_vers t1 5
 do_verify
 
+if [ ! -n "$CLUSTER" ] ; then
+    echo "Success"
+    exit 0
+fi
 
+echo "TESTING KILLING MASTER WHILE PERFORMING ALTER AND UPDATE (CLUSTER ONLY)"
+echo 'alter to t1_1, then to t1_2 again'
+
+master=`getmaster`
+echo "master node now $master"
+kill_restart_node $master
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
+
+echo "version should now be 6"
+assert_vers t1 6
+do_verify
+
+sleep 5
+
+master=`getmaster`
+echo "master node now $master"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > pre.out 2>&1
+
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 0')"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 60"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 60"
+
+sleep 5
+
+(cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" &> alter22.out || touch alter22.failed) &
+
+sleep 30
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c = c + 100000 where 1" > update.out 2>&1 &
+
+sleep 5
+
+echo "kill master node $master in the middle of alter"
+kill_restart_node $master
+
+master=`getmaster`
+echo "master node now $master"
+
+while true ; do
+    get_schemachange_status $master
+    if [ $? -ne 1 ] ; then
+        echo "break out since sc was done"
+        break;
+    fi
+    sleep 5
+done
+
+assert_vers t1 7
+assert_schema t1 t1_2.csc2
+do_verify
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > post.out 2>&1
+diff pre.out post.out > /dev/null
+if [[ $? == 0 ]]; then
+    failexit "expected updated column c"
+fi
 
 echo "Success"
