@@ -4820,9 +4820,6 @@ static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
     struct machine m[MAX_NODES];
     int num_hosts = 0;
 
-    assert(type_copy[0] == '@');
-    char *s = type_copy + 1; // advance past the '@'
-
     get_comdb2db_hosts(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                        NULL, NULL, NULL, 1);
 
