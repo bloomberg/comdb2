@@ -3051,7 +3051,11 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
 
-	/* Get the bdblock in read mode */
+	/*  rep_process_message adds to the inflight-txn list while holding the bdblock
+     *  We are executing here, so the inflight-txn list-size is greater than 0
+     *  get_writelock code blocks after attaining the writelock until the in-flight
+     *  txn list is 0
+     *  ... so we should NOT need to get the bdb readlock here */
 	void *bdb_state = dbenv->app_private;
 
     bdb_thread_event(bdb_state, 3 /* start rdwr */);
@@ -4400,11 +4404,6 @@ bad_resize:	;
 	if (had_serializable_records || got_schema_lk ||
 			(desired = (gbl_force_serial_on_writelock &&
 			 bdb_the_lock_desired()))) {
-
-		if (desired) {
-			logmsg(LOGMSG_ERROR, "%s XXX test trace, forcing serial because lock is desired\n", 
-					__func__);
-		}
 
 		if (txn_args)
 			__os_free(dbenv, txn_args);
