@@ -780,13 +780,13 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     if (!lk) {
         logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
         return;
-    } 
+    }
 
     if (lk->lockref != 0) {
         logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
         logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
-                locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-                lk->lockref);
+               locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
+               lk->lockref);
         abort_lk(lk);
     }
 

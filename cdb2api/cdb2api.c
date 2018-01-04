@@ -794,8 +794,8 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, FILE *fp, char *comdb2db_name,
     int line_no = 0;
 
     if (hndl && hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d \n",
-                (uint32_t)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td %u %s line %d \n", (uint32_t)pthread_self(),
+                __func__, __LINE__);
     }
     while (read_line((char *)&line, &len, sizeof(line), fp, buf, &line_no) != -1) {
         if (len >= sizeof(line))
@@ -962,8 +962,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
     int fallback_on_bb_bin = 1;
 
     if (hndl && hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d \n",
-                (uint32_t)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td %u %s line %d \n", (uint32_t)pthread_self(),
+                __func__, __LINE__);
     }
 
     if (get_config_file(dbname, filename, sizeof(filename)) != 0)
@@ -4659,7 +4659,7 @@ static int our_dc_first(const void *mp1, const void *mp2)
         return 0;
 }
 
-/* wll configure comdb2 hosts based on cmdline parameters eg: 
+/* wll configure comdb2 hosts based on cmdline parameters eg:
  *   @machine:port=123:dc=ZONE1,machine2:port=456:dc=ZONE2
  */
 static int configure_from_literal(cdb2_hndl_tp *hndl, const char *type)
