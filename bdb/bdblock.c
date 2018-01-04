@@ -746,40 +746,39 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
 
     if (lk) {
         logmsg(LOGMSG_WARN, "%s: redundant thread start!\n", __func__);
-    } else {
-        lk = malloc(sizeof(thread_lock_info_type));
-        if (!lk) {
+        return;
+    }
+
+    lk = calloc(1, sizeof(thread_lock_info_type));
+    if (!lk) {
+        logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
+        exit(1);
+    }
+
+    lk->threadid = pthread_self();
+
+    if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
+        lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
+        if (!lk->stack) {
             logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
+            free(lk);
             exit(1);
         }
-
-        bzero(lk, sizeof(thread_lock_info_type));
-        lk->threadid = pthread_self();
-
-        if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
-            lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
-            if (!lk->stack) {
-                logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
-                free(lk);
-                exit(1);
-            }
-            rc =
-                stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
-            if (rc) {
+        rc = stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+        if (rc) {
 #ifndef _LINUX_SOURCE
-                logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
+            logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
 #endif
-                free(lk->stack);
-                lk->stack = NULL;
-            }
+            free(lk->stack);
+            lk->stack = NULL;
         }
-
-        pthread_setspecific(lock_key, lk);
-
-        Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
-        listc_atl(&bdb_state->thread_lock_info_list, lk);
-        Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
     }
+
+    pthread_setspecific(lock_key, lk);
+
+    Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
+    listc_atl(&bdb_state->thread_lock_info_list, lk);
+    Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
 }
 
 /* Free the current thread's lock info struct. */
@@ -788,24 +787,25 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     if (!lk) {
         logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
-    } else {
-        if (lk->lockref != 0) {
-            logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
-            logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
-                    locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-                    lk->lockref);
-            abort_lk(lk);
-        }
-
-        Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
-        listc_rfl(&bdb_state->thread_lock_info_list, lk);
-        Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
-
-        if (lk->stack)
-            free(lk->stack);
-        free(lk);
-        pthread_setspecific(lock_key, NULL);
+        return;
     }
+
+    if (lk->lockref != 0) {
+        logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
+        logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
+               locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
+               lk->lockref);
+        abort_lk(lk);
+    }
+
+    Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
+    listc_rfl(&bdb_state->thread_lock_info_list, lk);
+    Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
+
+    if (lk->stack)
+        free(lk->stack);
+    free(lk);
+    pthread_setspecific(lock_key, NULL);
 }
 
 void bdb_stripe_get(bdb_state_type *bdb_state)
