@@ -334,6 +334,7 @@ else
         while  [[ "$out" != "1" ]]; do
             sleep 2
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+            $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
         done
         set -e
         $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &> $TESTDIR/logs/${DBNAME}.${node}.conn
