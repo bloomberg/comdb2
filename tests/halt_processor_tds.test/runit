@@ -1,7 +1,6 @@
 #!/bin/bash
 
-export debug=1
-export debug_test=1
+#export debug=1
 [[ "$debug" == 1 ]] && set -x
 
 # test requires a cluster
@@ -22,7 +21,7 @@ update_sleep=.5
 master_bounces=5
 
 # length of processor thread poll
-processor_thd_polltime_ms=3000
+processor_thd_polltime_ms=700
 
 # writer threads will stop when they see this file
 stop_file=./testcase.done
@@ -46,14 +45,12 @@ function createtables
 function exitdatabase
 {
     [[ "$debug" == 1 ]] && echo "START ${FUNCNAME[0]}" && set -x
-    if [[ "$debug_test" != 1 ]]; then
-        if [[ -n "$CLUSTER" ]]; then
-            for node in $CLUSTER; do
-                kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-            done
-        else
-            kill -9 $(cat ${TMPDIR}/${db}.pid)
-        fi
+    if [[ -n "$CLUSTER" ]]; then
+        for node in $CLUSTER; do
+            kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
+        done
+    else
+        kill -9 $(cat ${TMPDIR}/${db}.pid)
     fi
 }
 
@@ -168,7 +165,7 @@ function runtest
 
     while [[ $j -lt $master_bounces ]] ; do 
 
-        block_until_connected 20
+        block_until_connected 10
         bounce_master
 
         for node in $CLUSTER; do
@@ -225,21 +222,24 @@ function checkforcorruption
     egrep -i "Log sequence error" $TESTDIR/logs/*db
     if [[ $? == 0 ]]; then
         echo "CORRUPTED DATABASE, LOG SEQUENCE ERROR.  TEST FAILED"
-        exitdatabase
         exit 1
     fi
 
     egrep -i "Recovery function" $TESTDIR/logs/*db | egrep -i failed
     if [[ $? == 0 ]]; then
         echo "RECOVERY FUNCTION FAILED.  TEST FAILED"
-        exitdatabase
+        exit 1
+    fi
+
+    egrep -i "transaction failed at" $TESTDIR/logs/*db | egrep -i failed
+    if [[ $? == 0 ]]; then
+        echo "WORKER THREAD FAILED.  TEST FAILED"
         exit 1
     fi
 }
 
 createtables
 runtest
-debug_test=0
 exitdatabase
 checkforcorruption
 
