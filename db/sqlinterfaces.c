@@ -5793,6 +5793,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     struct errstat xerr;
     int rc;
     int got_views_lock = 0;
+    int got_curtran = 0;
 
     /* Do this here, before setting up Btree structures!
        so we can get back at our "session" information */
@@ -5821,6 +5822,19 @@ check_version:
         /* need to refresh things; we need to grab views lock */
         if (!got_views_lock) {
             unlock_schema_lk();
+
+            if (!clnt->dbtran.cursor_tran) {
+                rc = get_curtran(thedb->bdb_env, clnt);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, 
+                            "%s: unable to get a CURSOR transaction, rc = %d!\n",
+                            __func__, rc);
+                }
+                else {
+                    got_curtran = 1;
+                }
+            }
+
             views_lock();
             rdlock_schema_lk();
             got_views_lock = 1;
@@ -5843,16 +5857,7 @@ check_version:
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
-        int got_curtran = rc = 0;
-        if (!clnt->dbtran.cursor_tran) {
-            got_curtran = 1;
-            rc = get_curtran(thedb->bdb_env, clnt);
-        }
-        if (rc) {
-            logmsg(LOGMSG_ERROR, 
-                    "%s: unable to get a CURSOR transaction, rc = %d!\n",
-                    __func__, rc);
-        } else {
+        if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
                 int saved_has_cnonce;
                 if (clnt && clnt->sql_query) {
@@ -5875,16 +5880,17 @@ check_version:
 
             /* save the views generation number */
             thd->views_gen = gbl_views_gen;
-
-            if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
-                logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                        __func__);
-            }
         }
     }
     if (got_views_lock) {
         views_unlock();
     }
+
+    if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
+        logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
+                __func__);
+    }
+
     return rc;
 }
 
