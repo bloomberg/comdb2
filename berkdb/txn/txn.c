@@ -1530,7 +1530,7 @@ __txn_discard(txnp, flags)
 		__os_free(dbenv, freep);
 	}
 
-	if ((ret = pthread_setspecific(txn_key, NULL)) != 0)
+	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
 		return (ret);
 
 	return (0);
@@ -1874,7 +1874,7 @@ __txn_end(txnp, is_commit)
 		(void)__txn_checkpoint(dbenv, 0, 0, DB_FORCE);
 	}
 
-	if ((ret = pthread_setspecific(txn_key, NULL)) != 0)
+	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
 		return (ret);
 
 	return (0);
