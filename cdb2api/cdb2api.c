@@ -1931,9 +1931,9 @@ retry:
             sbuf2write((char *)buf, len, hndl->sb);
 
             int rc = sbuf2flush(hndl->sb);
+            free(buf);
             if (rc < 0)
                 return -1;
-            free(buf);
         }
         goto retry;
     }
@@ -2002,9 +2002,9 @@ static int cdb2_effects_request(cdb2_hndl_tp *hndl)
     sbuf2write((char *)buf, len, hndl->sb);
 
     int rc = sbuf2flush(hndl->sb);
+    free(buf);
     if (rc < 0)
         return -1;
-    free(buf);
 
     int type;
 
