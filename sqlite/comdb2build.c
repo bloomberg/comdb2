@@ -2396,8 +2396,8 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
 
     /* Child key columns and sort orders */
     for (int i = 0; i < pConstraint->lcltable->schema->nix; i++) {
-        if (strcmp(pConstraint->lclkeyname,
-                   pConstraint->lcltable->schema->ix[i]->csctag) == 0) {
+        if (strcasecmp(pConstraint->lclkeyname,
+                       pConstraint->lcltable->schema->ix[i]->csctag) == 0) {
             found = 1;
             key = pConstraint->lcltable->schema->ix[i];
 
@@ -2429,8 +2429,8 @@ int gen_constraint_name(constraint_t *pConstraint, int parent_idx, char *out,
     /* Parent key columns and sort orders */
     found = 0;
     for (int i = 0; i < table->schema->nix; i++) {
-        if (strcmp(pConstraint->keynm[parent_idx],
-                   table->schema->ix[i]->csctag) == 0) {
+        if (strcasecmp(pConstraint->keynm[parent_idx],
+                       table->schema->ix[i]->csctag) == 0) {
             found = 1;
             key = table->schema->ix[i];
 
@@ -4083,7 +4083,7 @@ void comdb2CreateForeignKey(
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_column, lnk)
         {
             int sort_order =
-                (parent_table->schema->ix[i]->member[i].flags & INDEX_DESCEND)
+                (parent_table->schema->ix[i]->member[j].flags & INDEX_DESCEND)
                     ? INDEX_ORDER_DESC
                     : 0;
             if ((strcasecmp(idx_column->name,
