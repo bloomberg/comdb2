@@ -21,6 +21,7 @@
 #include <views.h>
 #include <logmsg.h>
 #include <str0.h>
+#include <zlib.h>
 #include "cdb2_constants.h"
 
 #define INCLUDE_KEYWORDHASH_H
@@ -2322,9 +2323,6 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
 #define COMDB2_PK "COMDB2_PK"
 #define GEN_KEY_PREFIX "KEY"
 #define GEN_CONS_PREFIX "CONSTRAINT"
-
-/* Forward declaration */
-unsigned long crc32(unsigned long crc, unsigned char *buf, size_t size);
 
 /* Generate a key name for the specified key. */
 static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
