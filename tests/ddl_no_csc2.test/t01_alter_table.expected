@@ -27,7 +27,6 @@
 (tablename='t7', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t8', columnname='i', type='blob', size=5, sqltype='blob', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
 (tablename='t8', columnname='j', type='blob', size=105, sqltype='blob', varinlinesize='100', defaultvalue=NULL, dbload=NULL, isnullable='Y')
-(tablename='t4', keyname='$KEY_FF23FD33', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "l" int, "m" int DEFAULT 1, "n" int DEFAULT 1, "o" int);', csc2='schema
 	{
 		int i null = yes 
@@ -53,31 +52,26 @@
 		int j null = yes 
 		int k null = yes 
 	}
-keys
-	{
-		"$KEY_FF23FD33" = j 
-	}
 ')
-(type='index', name='$$KEY_FF23FD33_BAF4622F', tbl_name='t4', rootpage=8, sql='create index "$$KEY_FF23FD33_BAF4622F" on "t4" ("j");', csc2=NULL)
-(type='table', name='t5', tbl_name='t5', rootpage=9, sql='create table "t5"("i" int, "j" int DEFAULT 1);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("i" int, "j" int DEFAULT 1);', csc2='schema
 	{
 		int i null = yes 
 		int j dbstore = 1 null = yes 
 	}
 ')
-(type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='schema
+(type='table', name='t6', tbl_name='t6', rootpage=9, sql='create table "t6"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
 		int j null = yes 
 	}
 ')
-(type='table', name='t7', tbl_name='t7', rootpage=11, sql='create table "t7"("i" int, "j" int);', csc2='schema
+(type='table', name='t7', tbl_name='t7', rootpage=10, sql='create table "t7"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
 		int j null = yes 
 	}
 ')
-(type='table', name='t8', tbl_name='t8', rootpage=12, sql='create table "t8"("i" blob, "j" blob);', csc2='schema
+(type='table', name='t8', tbl_name='t8', rootpage=11, sql='create table "t8"("i" blob, "j" blob);', csc2='schema
 	{
 		blob i null = yes 
 		blob j[100] null = yes 
