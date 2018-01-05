@@ -2181,12 +2181,16 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
     char *str;
     /* Buffer to store CSC2 representation */
     struct strbuf *csc2;
+    struct comdb2_column *column;
+    struct comdb2_key *key;
+    struct comdb2_constraint *constraint;
+    int nkeys = 0;
+    int nconstraints = 0;
 
     csc2 = strbuf_new();
 
     /* Schema (columns) section */
     strbuf_append(csc2, "schema\n\t{");
-    struct comdb2_column *column;
     LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
     {
         if (column->flags & COLUMN_DELETED)
@@ -2231,87 +2235,81 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
     strbuf_append(csc2, "\n\t}\n");
 
     /* Keys section */
-    struct comdb2_key *key;
-    int nkeys = 0;
-
     LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
     {
-        if ((key->flags & KEY_DELETED) == 0)
-            ++nkeys;
-    }
+        if (key->flags & KEY_DELETED)
+            continue;
 
-    if (nkeys > 0) {
-        strbuf_append(csc2, "keys\n\t{");
-        LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
-        {
-            if (key->flags & KEY_DELETED)
-                continue;
+        ++nkeys;
 
-            strbuf_append(csc2, "\n\t\t");
+        /* Opening keys section. */
+        if (nkeys == 1)
+            strbuf_append(csc2, "keys\n\t{");
 
-            if ((key->flags & KEY_DUP) != 0) {
-                strbuf_append(csc2, "dup ");
-            }
+        strbuf_append(csc2, "\n\t\t");
 
-            if ((key->flags & KEY_DATACOPY) != 0) {
-                strbuf_append(csc2, "datacopy ");
-            }
-
-            strbuf_appendf(csc2, "\"%s\" = ", key->name);
-
-            int added = 0;
-            struct comdb2_index_column *idx_column;
-            LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
-            {
-                assert((idx_column->column->flags & COLUMN_DELETED) == 0);
-
-                if (added > 0) {
-                    strbuf_append(csc2, "+ ");
-                }
-                strbuf_appendf(
-                    csc2, "%s%s ",
-                    (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> " : "",
-                    idx_column->column->name);
-                added++;
-            }
-
-            if (key->where != 0) {
-                strbuf_appendf(csc2, "{ %s } ", key->where);
-            }
+        if ((key->flags & KEY_DUP) != 0) {
+            strbuf_append(csc2, "dup ");
         }
-        strbuf_append(csc2, "\n\t}\n");
+
+        if ((key->flags & KEY_DATACOPY) != 0) {
+            strbuf_append(csc2, "datacopy ");
+        }
+
+        strbuf_appendf(csc2, "\"%s\" = ", key->name);
+
+        int added = 0;
+        struct comdb2_index_column *idx_column;
+        LISTC_FOR_EACH(&key->idx_col_list, idx_column, lnk)
+        {
+            assert((idx_column->column->flags & COLUMN_DELETED) == 0);
+
+            if (added > 0) {
+                strbuf_append(csc2, "+ ");
+            }
+            strbuf_appendf(
+                csc2, "%s%s ",
+                (idx_column->flags & INDEX_ORDER_DESC) ? "<DESCEND> " : "",
+                idx_column->column->name);
+            added++;
+        }
+
+        if (key->where != 0) {
+            strbuf_appendf(csc2, "{ %s } ", key->where);
+        }
     }
+
+    /* Closing keys section. */
+    if (nkeys)
+        strbuf_append(csc2, "\n\t}\n");
 
     /* Constraints section */
-    struct comdb2_constraint *constraint;
-    int nconstraints = 0;
-
     LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
     {
-        if ((constraint->flags & CONS_DELETED) == 0)
-            ++nconstraints;
-    }
+        if (constraint->flags & CONS_DELETED)
+            continue;
 
-    if (nconstraints > 0) {
-        strbuf_append(csc2, "constraints\n\t{");
-        LISTC_FOR_EACH(&ctx->schema->constraint_list, constraint, lnk)
-        {
-            if (constraint->flags & CONS_DELETED)
-                continue;
+        ++nconstraints;
 
-            strbuf_appendf(csc2, "\n\t\t\"%s\" -> ", constraint->child->name);
-            strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
-                           constraint->parent_key);
+        /* Opening constraints section. */
+        if (nconstraints == 1)
+            strbuf_append(csc2, "constraints\n\t{");
 
-            if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
-                strbuf_append(csc2, "on update cascade ");
-            }
-            if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
-                strbuf_append(csc2, "on delete cascade ");
-            }
+        strbuf_appendf(csc2, "\n\t\t\"%s\" -> ", constraint->child->name);
+        strbuf_appendf(csc2, "<\"%s\":\"%s\"> ", constraint->parent_table,
+                       constraint->parent_key);
+
+        if ((constraint->flags & CONS_UPD_CASCADE) != 0) {
+            strbuf_append(csc2, "on update cascade ");
         }
-        strbuf_append(csc2, "\n\t}\n");
+        if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
+            strbuf_append(csc2, "on delete cascade ");
+        }
     }
+
+    /* Closing constraints section. */
+    if (nconstraints)
+        strbuf_append(csc2, "\n\t}\n");
 
     str = strdup((char *)strbuf_buf(csc2));
     strbuf_free(csc2);
