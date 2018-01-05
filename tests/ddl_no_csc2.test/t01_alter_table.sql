@@ -115,3 +115,21 @@ SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
+
+# Test the cascading effect of deleting a column.
+CREATE TABLE t1(i INT, j INT, k int, PRIMARY KEY (i,j,k)) $$
+CREATE TABLE t2(i INT, j INT, k int, PRIMARY KEY (j,k), UNIQUE idx (j)) $$
+ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j) $$
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+ALTER TABLE t2 DROP COLUMN j $$
+SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
+DROP TABLE t1;
+DROP TABLE t2;

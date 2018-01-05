@@ -3588,9 +3588,7 @@ static void comdb2AddIndexInt(
             if (idx_column == 0)
                 goto oom;
 
-            /* TODO: dequote column name? */
             column = find_column_by_name(ctx, pList->a[i].pExpr->u.zToken);
-
             if (column == 0) {
                 pParse->rc = SQLITE_ERROR;
                 sqlite3ErrorMsg(pParse, "Unknown column '%s'.",
@@ -4240,6 +4238,9 @@ static void drop_dependent_keys(struct comdb2_ddl_context *ctx,
         LISTC_FOR_EACH(&key->idx_col_list, idx_col, lnk)
         {
             if (strcasecmp(idx_col->name, column) == 0) {
+                /* Also drop the dependent constraints */
+                drop_dependent_cons(ctx, key);
+
                 /* Mark the key as deleted. */
                 key->flags |= KEY_DELETED;
             }
