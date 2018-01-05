@@ -334,3 +334,85 @@ keys
 		int k 
 	}
 ')
+(type='table', name='sqlite_stat1', tbl_name='sqlite_stat1', rootpage=2, sql='create table sqlite_stat1(tbl,idx,stat);', csc2='tag ondisk {     cstring tbl[64]     cstring idx[64] null=yes     cstring stat[4096] }  keys {     "0" = tbl + idx } ')
+(type='table', name='sqlite_stat4', tbl_name='sqlite_stat4', rootpage=3, sql='create table sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);', csc2='tag ondisk {     cstring tbl[64]     cstring idx[64]     int     samplelen     byte    sample[1024] /* entire record in sqlite format */ }  keys {     dup "0" = tbl + idx } ')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		"idx1" = i + j + k 
+		"idx2" = <DESCEND> i + <DESCEND> j + <DESCEND> k 
+	}
+')
+(type='index', name='$IDX1_8093E584', tbl_name='t1', rootpage=5, sql='create index "$IDX1_8093E584" on "t1" ("i", "j", "k");', csc2=NULL)
+(type='index', name='$IDX2_4266ACC', tbl_name='t1', rootpage=6, sql='create index "$IDX2_4266ACC" on "t1" ("i" DESC, "j" DESC, "k" DESC);', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=7, sql='create table "t2"("i" int, "j" int, "k" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		dup "$KEY_E8BDFAE1" = i + j 
+		dup "$KEY_2BFFFCF4" = <DESCEND> i + <DESCEND> j 
+	}
+constraints
+	{
+		"$KEY_E8BDFAE1" -> <"t1":"IDX1"> 
+		"$KEY_2BFFFCF4" -> <"t1":"IDX2"> 
+	}
+')
+(type='index', name='$$KEY_E8BDFAE1_E8BDFAE1', tbl_name='t2', rootpage=8, sql='create index "$$KEY_E8BDFAE1_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_2BFFFCF4_2BFFFCF4', tbl_name='t2', rootpage=9, sql='create index "$$KEY_2BFFFCF4_2BFFFCF4" on "t2" ("i" DESC, "j" DESC);', csc2=NULL)
+(name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_9C9BDEA4', tablename='t2', keyname='$KEY_2BFFFCF4', foreigntablename='t1', foreignkeyname='IDX2', iscascadingdelete='N', iscascadingupdate='N')
+(tablename='t1')
+(tablename='t2')
+(tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t2', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y')
+(tablename='t1', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='$KEY_E8BDFAE1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(tablename='t2', keyname='$KEY_2BFFFCF4', keynumber=1, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL)
+(name='$CONSTRAINT_6C9CE8ED', tablename='t2', keyname='$KEY_E8BDFAE1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N')
+(type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		"idx1" = i + j + k 
+		"idx2" = <DESCEND> i + <DESCEND> j + <DESCEND> k 
+	}
+')
+(type='index', name='$IDX1_8093E584', tbl_name='t1', rootpage=5, sql='create index "$IDX1_8093E584" on "t1" ("i", "j", "k");', csc2=NULL)
+(type='index', name='$IDX2_4266ACC', tbl_name='t1', rootpage=6, sql='create index "$IDX2_4266ACC" on "t1" ("i" DESC, "j" DESC, "k" DESC);', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=7, sql='create table "t2"("i" int, "j" int, "k" int);', csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		dup "$KEY_E8BDFAE1" = i + j 
+		dup "$KEY_2BFFFCF4" = <DESCEND> i + <DESCEND> j 
+	}
+constraints
+	{
+		"$KEY_E8BDFAE1" -> <"t1":"IDX1"> 
+	}
+')
+(type='index', name='$$KEY_E8BDFAE1_E8BDFAE1', tbl_name='t2', rootpage=8, sql='create index "$$KEY_E8BDFAE1_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_2BFFFCF4_2BFFFCF4', tbl_name='t2', rootpage=9, sql='create index "$$KEY_2BFFFCF4_2BFFFCF4" on "t2" ("i" DESC, "j" DESC);', csc2=NULL)
