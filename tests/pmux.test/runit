@@ -81,4 +81,8 @@ fi
 
 echo "At start had $atstart fds, during run had $atrun fds, gone at end"
 
+#delete testdb{i} dir now that test is successful
+for i in $(seq 1 10); do 
+    rm -rf testdb${i}
+done
 exit 0
