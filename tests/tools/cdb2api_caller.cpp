@@ -227,7 +227,6 @@ int main(int argc, char *argv[])
         }
         time_t t = 1386783296; //2013-12-11T123456
         cdb2_client_datetime_t datetime = {0};
-        struct tm *ttm = (struct tm *)&datetime.tm;
         gmtime_r(&t, (struct tm *)&datetime.tm); //corrupts memory past the tm member
         datetime.msec = 123; // should not be larger than 999
         datetime.tzname[0] = '\0';
