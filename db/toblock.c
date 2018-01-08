@@ -5773,8 +5773,10 @@ add_blkseq:
         }
     }
     int tsleep = 0;
-    if ((tsleep = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_AFTER_TOBLOCK_COMMIT)) != 0)
+    if ((tsleep = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAY_AFTER_TOBLOCK_COMMIT)) != 0) {
+        logmsg(LOGMSG_WARN, "delaying toblock_main_int %dms\n", tsleep);
         usleep(1000*tsleep);
+    }
 
 cleanup:
     bdb_checklock(thedb->bdb_env);

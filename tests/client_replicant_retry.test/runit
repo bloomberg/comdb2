@@ -1,7 +1,7 @@
 #!/bin/bash
 bash -n "$0" | exit 1
 
-set -e
+#set -e
 set -x
 
 dbnm=$1
@@ -82,9 +82,25 @@ kill_restart_node()
     while [[ "$out" != "1" ]]; do
         sleep 2
         out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
+        cdb2sql -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' &> restart_db.out
     done
     set -e
 }
+
+function assertcnt 
+{
+    target=$1
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count is now $cnt but should be $target"
+    fi
+}
+
 
 
 
@@ -106,7 +122,8 @@ node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
 
 # store 100 in account with id 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)"
-
+assertcnt 1
+sleep 1
 
 #set master commit_delay to X seconds so we have time to kill the replicant
 cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('bdb setattr delay_after_toblock_commit 3000')"
@@ -115,25 +132,26 @@ cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send
 #select comdb2_host()
 #set HASQL on
 #update > in.sql
-cdb2sql --debugtrace ${CDB2_OPTIONS} $dbnm default "update t1 set sum=sum + 10 where id = 1" &>> upd.out & 
+cdb2sql -v ${CDB2_OPTIONS} $dbnm default "update t1 set b=b + 10 where id = 1" 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &>> upd.out & 
 upid=$!
 
 sleep 1
-echo "killing replicant" >> upd.out
+echo "killing replicant" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
 kill_restart_node $node
-echo "killed replicant, waiting for update" >> upd.out
+echo "killed replicant, waiting for update" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
 
 wait $upid
-echo "done waiting for update" >> upd.out
+echo "done waiting for update" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
 set +e
 set -e
 
 #allow time for cdb2sql to retry
 
-cnt=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select sum from t1 where id = 1"`
+cdb2sql -v -tabs ${CDB2_OPTIONS} $dbnm default "select b from t1 where id = 1" &> last_sel.out
+cnt=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select b from t1 where id = 1"`
 
-if [ $cnt != 110 ]; then
-    failexit "sum is $cnt instead of 110"
+if [ "$cnt" != "110" ]; then
+    failexit "b is $cnt instead of 110"
 fi
 
 echo "Testcase passed."
