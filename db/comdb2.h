@@ -2521,6 +2521,7 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);
+int toblock(struct ireq *iq);
 void count_table_in_thread(const char *table);
 int findkl_enable_blob_verify(void);
 void sltdbt_get_stats(int *n_reqs, int *l_reqs);
