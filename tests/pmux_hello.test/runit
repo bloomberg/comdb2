@@ -111,6 +111,20 @@ function verify_hello_reuse
 
 test_basic_actions()
 {
+    cat <<EOF > help.expected
+get [/echo] service     : discover port for service
+reg service             : obtain/discover port for new service
+del service             : forget port assignment for service
+use service port        : set specific port registration for service
+stat                    : dump some stats
+used                    : dump active port assignments
+rte                     : get route to instance service/port
+hello service           : keep active connection
+active                  : list active connections
+exit                    : shutdown pmux (may be restarted by system)
+
+EOF
+
     ${TESTSROOTDIR}/tools/send_msg_port.sh "help" ${COMDB2_PMUX_PORT} &> help.out
     if ! diff help.expected help.out ; then
         failexit "differing help.expected help.out"
