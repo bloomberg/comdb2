@@ -562,7 +562,7 @@ int do_alter_table(struct ireq *iq, tran_type *tran)
 
     if (s->convert_sleep > 0) {
         sc_printf(s, "Sleeping after conversion for %d...\n", s->convert_sleep);
-        logmsg(LOGMSG_DEBUG, "Sleeping after conversion for %d...\n",
+        logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
                s->convert_sleep);
         sleep(s->convert_sleep);
         sc_printf(s, "...slept for %d\n", s->convert_sleep);

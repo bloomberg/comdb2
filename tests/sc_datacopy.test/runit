@@ -43,7 +43,7 @@ function update_t1
     typeset out
 
     id=$(( RANDOM % (maxt1) ))
-    cdb2sql ${CDB2_OPTIONS} $dbnm "update t1 set time = `echo $(($(date +%s%N)/1000000))` where id = $id" >> update.log
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set time = `echo $(($(date +%s%N)/1000000))` where id = $id" >> update.log
     if [[ $? != 0 ]]; then
         errquit "update failed, see update.log"
     fi
@@ -69,7 +69,7 @@ create table t1 {
 }$$
 EOF
 
-cdb2sql ${CDB2_OPTIONS} $dbnm "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT $maxt1) insert into t1(id, time) SELECT x, `echo $(($(date +%s%N)/1000000))` FROM cnt"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT $maxt1) insert into t1(id, time) SELECT x, `echo $(($(date +%s%N)/1000000))` FROM cnt"
 if [[ $? != 0 ]]; then
     echo "initial insert failed"
     exit 1
