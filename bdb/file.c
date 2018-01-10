@@ -7626,6 +7626,7 @@ int bdb_osql_check_table_version(bdb_state_type *bdb_state, tran_type *tran,
     Pthread_mutex_unlock(&(bdb_state->children_lock));
 
     if ((i >= 0) && (i < tran->table_version_cache_sz) &&
+        (tran->table_version_cache[i] != 0) &&
         (tran->table_version_cache[i] == bdb_state->version_num)) {
         /*printf("OK %s [%d] %llx vs %llx\n", bdb_state->name, i,
          * tran->table_version_cache[i], bdb_state->version_num);*/

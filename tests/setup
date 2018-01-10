@@ -120,6 +120,8 @@ ssl_cert_path $TESTDIR
 EOPTIONS
 fi
 
+echo "logmsg level info" >> ${LRL}
+
 if [[ -f ${TESTSROOTDIR}/${TESTCASE}.test/lrl ]]; then
     cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl >> ${LRL}
 fi
@@ -288,9 +290,6 @@ else
             loc_comdb2md5sum=`md5sum $COMDB2_EXE | cut -d ' ' -f1`
             compare_md5_sum $loc_comdb2md5sum
             continue        # no copying to self
-        else 
-            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $COMDB2_EXE" < /dev/null | cut -d ' ' -f1`
-            compare_md5_sum $loc_comdb2md5sum
         fi
         $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
         if [[ $? -ne 0 ]]; then
@@ -298,6 +297,8 @@ else
             echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "
             exit 1
         fi
+        loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $COMDB2_EXE" < /dev/null | cut -d ' ' -f1`
+        compare_md5_sum $loc_comdb2md5sum
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
