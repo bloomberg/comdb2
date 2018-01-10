@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+# Grab my database name.
+dbnm=$1
+
+# Verify that the user at least supplied a dbname
+if [[ -z "$dbnm" ]]; then
+    echo "Testcase requires <dbname> argument."
+    exit 1
+fi
+
+function getmaster {
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+}
+
+function failexit
+{
+    echo "Failed $1"
+    exit -1
+}
+
+function do_verify
+{
+    tbl=$1
+    typeset cnt=0
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
+
+    if ! grep succeeded verify.out > /dev/null ; then
+        failexit "verify $tbl failed"
+    fi
+}
+
+function assertcnt 
+{
+    tbl=$1
+    target=$2
+    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
+    if [ $? -ne 0 ] ; then
+        echo "assertcnt: select error"
+    fi
+
+    #echo "count is now $cnt"
+    if [[ $cnt != $target ]] ; then
+        failexit "count of $tbl is now $cnt but should be $target"
+    fi
+}
+
+function assert_vers 
+{
+    tbl=$1
+    target=$2
+    newver=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select table_version('$tbl')")
+    if [[ $newver != $target ]] ; then
+        failexit "newver is now $newver but should be $target"
+    fi
+}
+
+
+function assert_schema 
+{
+    tbl=$1
+    schema=$2
+
+    echo "make sure that the current schema is $schema"
+    out=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select csc2 from sqlite_master where type = 'table' and name='$tbl'" 2>&1)
+
+    if [ "$out" != "$schema" ]; then 
+        cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
+        failexit "final schema is not same as $schema: got $out"
+    fi
+}
+
+master=`getmaster`
+echo "master node now $master"
+
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "create table t1 {schema {int a}}"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t1 {schema {int a} keys {dup \"IDX\" = (int)\"a * 2\"}}" &
+sleep 5
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "insert into t1 values (1)"
+
+wait
+
+assertcnt t1 1
+assert_vers t1 1
+assert_schema t1 "schema {int a} keys {dup \"IDX\" = (int)\"a * 2\"}"
+do_verify t1
+
+
+echo "Success"
+exit 0

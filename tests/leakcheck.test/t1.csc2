@@ -9,6 +9,7 @@ schema
     byte        objid[12]                        //Object id 
     blob        data                             //Update information    
     longlong    timestamp                        //This is going to change
+    int         i             null=yes
 }
 
 

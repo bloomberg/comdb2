@@ -152,7 +152,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
     data->cmembers->nlockwaits = nlockwaits;
     logmsg(
         LOGMSG_INFO,
-        "%s: diff_deadlocks=%lld, diff_lockwaits=%lld, maxthr=%d, currthr=%d\n",
+        "%s: diff_deadlocks=%ld, diff_lockwaits=%ld, maxthr=%d, currthr=%d\n",
         __func__, diff_deadlocks, diff_lockwaits, data->cmembers->maxthreads,
         data->cmembers->thrcount);
     increase_max_threads(
@@ -194,7 +194,7 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
     if (!s->resume) {
         /* if we may have to resume this schema change, clear the progress in
          * llmeta */
-        if (bdb_clear_high_genid(NULL /*input_trans*/, db->dbname,
+        if (bdb_clear_high_genid(NULL /*input_trans*/, db->tablename,
                                  db->dtastripe, &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR, "init_sc_genids: failed to clear high "
@@ -224,7 +224,7 @@ int init_sc_genids(struct dbtable *db, struct schema_change_type *s)
                                        dtalen, &sc_genids[stripe], &ver,
                                        &bdberr);
         else
-            rc = bdb_get_high_genid(db->dbname, stripe, &sc_genids[stripe],
+            rc = bdb_get_high_genid(db->tablename, stripe, &sc_genids[stripe],
                                     &bdberr);
         if (rc < 0 || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "init_sc_genids: failed to find newest genid for "
@@ -418,7 +418,7 @@ static int convert_record(struct convert_record_data *data)
     void *dta = NULL;
 
     if (gbl_sc_thd_failed) {
-        if (!data->s->retry_bad_genids == 1)
+        if (!data->s->retry_bad_genids)
             sc_errf(data->s, "Stoping work on stripe %d because the thread for "
                              "stripe %d failed\n",
                     data->stripe, gbl_sc_thd_failed - 1);
@@ -451,7 +451,7 @@ static int convert_record(struct convert_record_data *data)
     }
     pthread_mutex_unlock(&gbl_sc_lock);
     if (data->iq.debug) {
-        reqlog_new_request(&data->iq);
+        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
         reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
     }
 
@@ -511,7 +511,7 @@ static int convert_record(struct convert_record_data *data)
             rc = 0;
             if (usellmeta && !is_dta_being_rebuilt(data->to->plan)) {
                 int bdberr;
-                rc = bdb_set_high_genid_stripe(NULL, data->to->dbname,
+                rc = bdb_set_high_genid_stripe(NULL, data->to->tablename,
                                                data->stripe, -1ULL, &bdberr);
                 if (rc != 0) rc = -1; // convert_record expects -1
             }
@@ -646,7 +646,7 @@ static int convert_record(struct convert_record_data *data)
             return -2;
         }
         rc = check_and_repair_blob_consistency(
-            &data->iq, data->iq.usedb->dbname, ".ONDISK", &data->blb, dta);
+            &data->iq, data->iq.usedb->tablename, ".ONDISK", &data->blb, dta);
 
         if (data->s->force_rebuild || data->s->use_old_blobs_on_rebuild) {
             for (int ii = 0; ii < data->from->numblobs; ii++) {
@@ -694,7 +694,7 @@ static int convert_record(struct convert_record_data *data)
         /* convert current.  this converts blob fields, but we need to make sure
          * we add the right blobs separately. */
         rc = convert_server_record_cachedmap(
-            data->to->dbname, data->tagmap, dta, data->rec->recbuf, data->s,
+            data->to->tablename, data->tagmap, dta, data->rec->recbuf, data->s,
             data->from->schema, data->to->schema, data->wrblb,
             sizeof(data->wrblb) / sizeof(data->wrblb[0]));
         if (rc) {
@@ -825,7 +825,8 @@ static int convert_record(struct convert_record_data *data)
         (data->nrecs %
          BDB_ATTR_GET(thedb->bdb_attr, INDEXREBUILD_SAVE_EVERY_N)) == 0) {
         int bdberr;
-        rc = bdb_set_high_genid(data->trans, data->to->dbname, genid, &bdberr);
+        rc = bdb_set_high_genid(data->trans, data->to->tablename, genid,
+                                &bdberr);
         if (rc != 0) {
             if (bdberr == BDBERR_DEADLOCK)
                 rc = RC_INTERNAL_RETRY;
@@ -977,7 +978,7 @@ void *convert_records_thd(struct convert_record_data *data)
     data->outrc = -1;
     data->curkey = data->key1;
     data->lastkey = data->key2;
-    data->rec = allocate_db_record(data->to->dbname, ".NEW..ONDISK");
+    data->rec = allocate_db_record(data->to->tablename, ".NEW..ONDISK");
     data->dta_buf = malloc(data->from->lrl);
     if (!data->dta_buf) {
         sc_errf(data->s, "convert_records_thd: ran out of memory trying to "
@@ -1017,7 +1018,7 @@ void *convert_records_thd(struct convert_record_data *data)
             release_rebuild_thr(&data->cmembers->thrcount);
 
         if (stopsc) { // set from downgrade
-            data->outrc = rc;
+            data->outrc = SC_MASTER_DOWNGRADE;
             goto cleanup_no_msg;
         }
     }
@@ -1130,17 +1131,18 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
         for (ii = 0; ii < data.blb.numcblobs; ii++) {
             data.blb.cblob_disk_ixs[ii] = ii;
             data.blb.cblob_tag_ixs[ii] =
-                get_schema_blob_field_idx(data.from->dbname, ".ONDISK", ii);
+                get_schema_blob_field_idx(data.from->tablename, ".ONDISK", ii);
         }
         for (ii = 0; ii < data.to->numblobs; ii++) {
             int map;
-            map = tbl_blob_no_to_tbl_blob_no(data.to->dbname, ".NEW..ONDISK",
-                                             ii, data.from->dbname, ".ONDISK");
+            map =
+                tbl_blob_no_to_tbl_blob_no(data.to->tablename, ".NEW..ONDISK",
+                                           ii, data.from->tablename, ".ONDISK");
             if (map < 0 && map != -3) {
                 sc_errf(data.s,
                         "convert_all_records: error mapping blob %d "
                         "from %s:%s to %s:%s blob_no_to_blob_no rcode %d\n",
-                        ii, data.from->dbname, ".ONDISK", data.to->dbname,
+                        ii, data.from->tablename, ".ONDISK", data.to->tablename,
                         ".NEW..ONDISK", map);
                 return -1;
             }

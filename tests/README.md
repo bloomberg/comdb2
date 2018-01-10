@@ -18,7 +18,7 @@ is stored in `cdb2api.test`.
 Tests run on the current machine.  Databases are brought up locally by default.
 To test against a clustered database, export a CLUSTER variable to contain a
 list of machines to use, eg: `CLUSTER="m1 m2 m3"` make cdb2api will build a
-cluster on m1/m2/m3/m4/m5 and run the test there. Make can take argumests so
+cluster on m1/m2/m3 and run the test there. Make can take argumests so
 the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
 are torn down after the test is over.
 
@@ -28,7 +28,7 @@ are torn down after the test is over.
 1. Create `testname.test` directory in the tests directory.  All your test files
    (`Makefile`, `runit`, any testcases, etc.) go there.
 2. Create a `Makefile`.  The following minimal makefile is sufficient for most
-   tests: `include ../testcase.mk`
+   tests: `include $(TESTSROOTDIR)/testcase.mk`
 3. Create a script called `runit`.  This should `exit 0` if the test succeeded,
    `exit 1` if it failed. The test script will get one argument passed to it:
    the name of the database it should use.  Output from each test run will go
@@ -37,7 +37,7 @@ are torn down after the test is over.
 
    Example `runit` file:
    ```sh
-   #!/bin/bash
+   #!/usr/bin/env bash
    # Here's some information about what we're testing for.
 
    dbname=$1
@@ -62,22 +62,26 @@ are torn down after the test is over.
 4. To help you write the test, you can start the db in iterative mode by doing
    ```sh
       cd testname.test
-      echo "export TESTSROOTDIR?=$(shell readlink -f $(PWD)/..)" > Makefile
-      echo "include ../testcase.mk" >> Makefile
-      make setup TESTID=1234 TESTSROOTDIR=\`readlink -f ${PWD}/..\`
+      echo ' 
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
+' > Makefile
+
+      make setup
    ```
    
    if you want to have test directories in a particular location, set TESTDIR:
    ```sh
-      make setup TESTID=1234 TESTSROOTDIR=\`readlink -f ${PWD}/..\=\` TESTDIR=/tmp/somedirfortest
+      make setup TESTDIR=/tmp/somedirfortest
    ```
 
 
-For reference, if you already have the test directory properly populated, and
-you can run make setup as follows:
-```sh
-    make setup TESTID=1234 TESTSROOTDIR=$(readlink -f $PWD/..)
-```
+If you already have the test directory properly populated, and
+you can run `make` to run the test case. 
+If you want to run the commands manually, you can type `make setup`,
 then follow the instructions printed by the above command.
 
 

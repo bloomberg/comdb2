@@ -1,0 +1,86 @@
+/*
+Copyright 2015 Bloomberg Finance L.P.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+repositories {
+    mavenCentral()
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.3'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'com.google.protobuf'
+
+[compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+group = 'com.bloomberg.comdb2'
+version = '2.0.0'
+
+dependencies {
+    compile 'log4j:log4j:1.2.17'
+    compile 'com.google.protobuf:protobuf-java:3.2.0'
+    testCompile 'junit:junit:4.11'
+}
+
+sourceSets {
+    pquery {
+        proto {
+            srcDir '../protobuf/'
+            exclude 'sqlresponse.proto'
+            exclude 'bpfunc.proto'
+        }
+    }
+    
+    presponse {
+        proto {
+            srcDir '../protobuf/'
+            exclude 'sqlquery.proto'
+            exclude 'bpfunc.proto'
+        }
+    }
+}
+
+task copyProto(type: Copy) {
+    from 'build/generated-sources/pquery/'
+    from 'build/generated-sources/presponse/'
+    into 'build/generated-sources/main/'
+}
+
+compileJava.dependsOn copyProto
+
+protobuf {
+    protoc {
+        artifact = 'com.google.protobuf:protoc:3.2.0'
+    }
+    
+    generatedFilesBaseDir = "$projectDir/build/generated-sources"
+
+    generateProtoTasks {
+        ofSourceSet('pquery').each {
+            copyProto.dependsOn it
+        }
+        ofSourceSet('presponse').each {
+            copyProto.dependsOn it
+        }
+    }
+}

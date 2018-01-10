@@ -1,4 +1,4 @@
-#include <db.h>
+#include <build/db.h>
 #include "bdb_int.h"
 #include <unistd.h>
 #include <stdlib.h>
@@ -15,8 +15,6 @@
 
 static DB_ENV *dbenv = NULL;
 static u_int32_t commit_delay_ms = 2;
-
-char *bdb_trans(const char infile[], char outfile[]);
 
 /* Common among tables */
 typedef struct globalopts {
@@ -90,7 +88,7 @@ static int create_and_open(berktable_t *table)
 static void close_tables(berktable_t *tables, int tablecount)
 {
     int i, rc;
-    char new[100];
+    char new[PATH_MAX];
     berktable_t *table;
 
     for (i = 0; i < tablecount; i++) {
@@ -110,7 +108,7 @@ static berktable_t *create_tables(int *tablecount)
 {
     berktable_t *tables = calloc(sizeof(berktable_t), 2), *table;
     u_int32_t uniq = getpid() * random();
-    char new[100];
+    char new[PATH_MAX];
     int count, rc;
 
     /* Index */
@@ -228,8 +226,9 @@ static void run_test(berktable_t *tables, int tablecount, int txnsize,
     end = gettimeofday_ms();
 
     persecond = (1000 * totalrecs) / (end - start);
-    logmsg(LOGMSG_USER, "%llu records per second for txnsize %d, commit-delay %d "
-           "iterations: %d total time %llu\n",
+    logmsg(LOGMSG_USER,
+           "%lu records per second for txnsize %d, commit-delay %d "
+           "iterations: %d total time %lu\n",
            persecond, txnsize, commit_delay_ms, iterations, end - start);
     fflush(stdout);
 }

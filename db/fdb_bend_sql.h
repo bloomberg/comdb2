@@ -75,22 +75,24 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
  * Insert a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_insert(struct sqlclntstate *clnt, int rootpage, int version,
-                          unsigned long long genid, char *data, int datalen,
-                          int seq);
+int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version, unsigned long long genid,
+                          char *data, int datalen, int seq);
 
 /**
  * Delete a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_delete(struct sqlclntstate *clnt, int rootpage, int version,
-                          unsigned long long genid, int seq);
+int fdb_svc_cursor_delete(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version, unsigned long long genid,
+                          int seq);
 
 /**
  * Update a sqlite row in the local transaction
  *
  */
-int fdb_svc_cursor_update(struct sqlclntstate *clnt, int rootpage, int version,
+int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
+                          int rootpage, int version,
                           unsigned long long oldgenid, unsigned long long genid,
                           char *data, int datalen, int seq);
 

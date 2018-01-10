@@ -80,8 +80,10 @@ static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
 static const char *gbl_portmux_unix_socket_default = "/tmp/portmux.socket";
 char *gbl_portmux_unix_socket;
 
+static int (*reconnect_callback)(void *) = NULL;
+static void *reconnect_callback_arg;
+
 /*make these private for now*/
-static int get_portmux_port(void);
 static int portmux_register_route(const char *app, const char *service,
                                   const char *instance, int *port,
                                   uint32_t options);
@@ -204,7 +206,7 @@ int portmux_register(const char *app, const char *service, const char *instance)
 int portmux_deregister(const char *app, const char *service,
                        const char *instance)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd;
@@ -237,7 +239,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
                            const char *app, const char *service,
                            const char *instance, int timeout_ms)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     int rc = snprintf(name, sizeof(name), "%s/%s/%s", app, service, instance);
     if (rc < 1 || rc >= sizeof(name))
         return -1;
@@ -295,7 +297,7 @@ static int portmux_get_int(const struct in_addr *in, const char *remote_host,
     }
 
     /* Read back result and close the connection, it's not needed any more. */
-    char res[NAMELEN + 32];
+    char res[NAMELEN * 2];
     sbuf2gets(res, sizeof(res), ss);
     sbuf2close(ss);
 
@@ -338,7 +340,7 @@ int portmux_get(const char *remote_host, const char *app, const char *service,
         return portmux_get_int(NULL, remote_host, app, service, instance,
                                portmux_default_timeout);
     }
-    char name[64];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd, port;
@@ -375,7 +377,7 @@ int portmux_geti(struct in_addr in, const char *app, const char *service,
         return portmux_get_int(&in, NULL, app, service, instance,
                                portmux_default_timeout);
     }
-    char name[64];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, fd, port;
@@ -424,7 +426,7 @@ static int portmux_register_route(const char *app, const char *service,
                                   const char *instance, int *port,
                                   uint32_t options)
 {
-    char name[NAMELEN];
+    char name[NAMELEN * 2];
     char res[32];
     SBUF2 *ss;
     int rc, listenfd;
@@ -564,7 +566,7 @@ static int portmux_route_to(struct in_addr in, const char *app,
                             const char *service, const char *instance,
                             int timeoutms)
 {
-    char cmd[69]; /* space for command + 64 char app/svc/inst string */
+    char cmd[NAMELEN * 2]; /* space for command + 64 char app/svc/inst string */
     char res[2];
     int rc, fd, len;
 
@@ -1205,6 +1207,12 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
         return 1;
     }
 
+    /* See if we can connect to pmux. */
+    if (reconnect_callback) {
+        rc = reconnect_callback(reconnect_callback_arg);
+        if (rc) return rc;
+    }
+
     fds->nretries += 1;
     fds->last_recover_time = now;
 
@@ -1224,7 +1232,7 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
 
     if (fds->listenfd >= 0) {
         /*recovered unix socket connection*/
-        logmsg(LOGMSG_ERROR,
+        logmsg(LOGMSG_WARN,
                "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n", __func__,
                __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
@@ -1759,7 +1767,7 @@ const char *portmux_fds_get_instance(portmux_fd_t *fds)
     return fds->instance;
 }
 
-static int get_portmux_port(void)
+int get_portmux_port(void)
 {
     return portmux_port;
 }
@@ -1767,6 +1775,11 @@ static int get_portmux_port(void)
 void set_portmux_port(int port)
 {
     portmux_port = port;
+}
+
+char *get_portmux_bind_path(void)
+{
+    return gbl_portmux_unix_socket;
 }
 
 int set_portmux_bind_path(const char *path)
@@ -1783,12 +1796,14 @@ int set_portmux_bind_path(const char *path)
     return -1;
 }
 
-int portmux_hello(char *host, char *name)
+int portmux_hello(char *host, char *name, int *fdout)
 {
     struct in_addr addr;
     int port;
     int fd;
     int rc;
+
+    if (fdout) *fdout = -1;
 
     rc = tcpresolve(host, &addr, &port);
     if (rc) return rc;
@@ -1801,8 +1816,19 @@ int portmux_hello(char *host, char *name)
     sbuf2printf(sb, "hello %s\n", name);
     rc = sbuf2flush(sb);
     if (rc < 0) return 2;
+    char line[10];
+    /* The reponse is always ok. We read it to make sure
+     * pmux had a chance to register us. */
+    sbuf2gets(line, sizeof(line), sb);
     sbuf2close(sb);
+    if (fdout) *fdout = fd;
     return 0;
+}
+
+void portmux_register_reconnect_callback(int (*callback)(void *), void *arg)
+{
+    reconnect_callback = callback;
+    reconnect_callback_arg = arg;
 }
 
 #ifdef PORTMUXUSR_TESTSUITE

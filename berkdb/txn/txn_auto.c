@@ -459,8 +459,10 @@ __txn_regop_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\tlocks: \n");
     DB_LSN ignored;
-    int pglogs, keycnt;
-    __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
+    int pglogs;
+    u_int32_t keycnt;
+    __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, 
+            &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	(void)printf("\n");
     if(argp->locks.size >= 8)
     {
@@ -2472,7 +2474,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	    (u_long)argp->prev_lsn.offset);
 	(void)printf("\topcode: %lu\n", (u_long)argp->opcode);
 	fflush(stdout);
-	(void)printf("\tltranid: %llx\n", argp->ltranid);
+	(void)printf("\tltranid: %"PRIx64"\n", argp->ltranid);
 	fflush(stdout);
 	(void)printf("\tbegin_lsn: [%lu][%lu]\n",
 	    (u_long)argp->begin_lsn.file, (u_long)argp->begin_lsn.offset);
@@ -2480,7 +2482,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tlast_commit_lsn: [%lu][%lu]\n",
 	    (u_long)argp->last_commit_lsn.file, (u_long)argp->last_commit_lsn.offset);
 	fflush(stdout);
-	(void)printf("\tcontext: %llx\n", argp->context);
+	(void)printf("\tcontext: %lx\n", argp->context);
 	fflush(stdout);
     time_t timestamp = argp->timestamp;
 	lt = localtime((time_t *)&timestamp);
@@ -2509,7 +2511,8 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	fflush(stdout);
 	(void)printf("\tlocks: \n");
     DB_LSN ignored;
-    int pglogs, keycnt;
+    int pglogs;
+    u_int32_t keycnt;
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 	fflush(stdout);
 	(void)printf("\trowlocks: \n");
@@ -2909,10 +2912,10 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
     int *flipptr = (int *)&flipcontext;
     flipptr[0] = htonl(fliporig[1]);
     flipptr[1] = htonl(fliporig[0]);
-	fflush(stdout);
-	(void)printf("\tcontext: %016llx %016llx\n", argp->context, flipcontext);
-	fflush(stdout);
-	lt = localtime((time_t *)&argp->timestamp);
+    fflush(stdout);
+    (void)printf("\tcontext: %016lx %016llx\n", argp->context, flipcontext);
+    fflush(stdout);
+    lt = localtime((time_t *)&argp->timestamp);
     if (lt)
     {
         (void)printf(
@@ -2930,7 +2933,8 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tlocks: \n");
 
     DB_LSN ignored;
-    int pglogs, keycnt;
+    int pglogs;
+    u_int32_t keycnt;
     __lock_get_list(dbenv, 0, LOCK_GET_LIST_PRINTLOCK, DB_LOCK_WRITE, &argp->locks, &ignored, (void **)&pglogs, &keycnt, stdout);
 
 	//fsnapf(stdout, argp->locks.data, argp->locks.size);

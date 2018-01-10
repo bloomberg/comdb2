@@ -22,6 +22,7 @@ static const char revid[] = "$Id: env_open.c,v 11.144 2003/09/13 18:39:34 bostic
 #include <stdarg.h>
 #endif
 #include <unistd.h>
+#include <limits.h>
 
 #include <plhash.h>
 #include "db_int.h"
@@ -635,7 +636,7 @@ foundlsn:
 	if (rep_check)
 		__env_rep_exit(dbenv);
 
-	if (ret = __lc_cache_init(dbenv, 0))
+	if ((ret = __lc_cache_init(dbenv, 0)) != 0)
 		goto err;
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
@@ -1285,8 +1286,8 @@ int
 __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 {
 	int ret = 0;
-	char buf[256];
-	char fname[256];
+	char buf[PATH_MAX];
+	char fname[PATH_MAX];
 	const char *pbuf;
 	struct __db_checkpoint ckpt = { 0 };
 	int niop = 0;

@@ -7,6 +7,7 @@
 
 #include "db_config.h"
 #include "dbinc/db_swap.h"
+#include "logmsg.h"
 
 #ifndef lint
 static const char revid[] = "$Id: rep_util.c,v 1.103 2003/11/14 05:32:32 ubell Exp $";
@@ -79,6 +80,8 @@ __rep_check_alloc(dbenv, r, n)
 	return (0);
 }
 
+int gbl_verbose_master_req;
+
 /*
  * __rep_send_message --
  *	This is a wrapper for sending a message.  It takes care of constructing
@@ -107,6 +110,21 @@ __rep_send_message(dbenv, eid, rtype, lsnp, dbtp, flags, usr_ptr)
 
 	db_rep = dbenv->rep_handle;
 	rep = db_rep->region;
+
+	if (gbl_verbose_master_req) {
+		switch (rtype) {
+			case REP_MASTER_REQ:
+				logmsg(LOGMSG_ERROR, "%s sending REP_MASTER_REQ to %s\n",
+					__func__, eid);
+				break;
+			case REP_NEWMASTER:
+				logmsg(LOGMSG_ERROR, "%s sending REP_NEWMASTER to %s\n",
+					__func__, eid);
+				break;
+			default: 
+				break;
+		}
+	}
 
 	/* Set up control structure. */
 	memset(&cntrl, 0, sizeof(cntrl));
@@ -274,6 +292,8 @@ __rep_print_logmsg(dbenv, logdbt, lsnp)
  * PUBLIC: int __rep_new_master __P((DB_ENV *, REP_CONTROL *, char *));
  */
 
+int gbl_abort_on_incorrect_upgrade;
+
 int
 __rep_new_master(dbenv, cntrl, eid)
 	DB_ENV *dbenv;
@@ -294,13 +314,32 @@ __rep_new_master(dbenv, cntrl, eid)
 	ret = 0;
 	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
 	__rep_elect_done(dbenv, rep);
-	change = rep->gen != cntrl->gen || rep->master_id != eid;
-	if (change) {
+
+        /* This should never happen: we are calling new-master against a
+           network message with a lower generation.  I believe this is the
+           election bug that I've been tracking down: this node's generation
+           can change from when we initially checked it at the top of
+           process_message. */
+        logmsg(LOGMSG_USER, "%s: my-gen=%u ctl-gen=%u rep-master=%s new=%s\n",
+               __func__, rep->gen, cntrl->gen, rep->master_id, eid);
+        if (rep->gen > cntrl->gen) {
+            logmsg(LOGMSG_USER,
+                   "%s: rep-gen (%u) > cntrl->gen (%u): ignoring upgrade\n",
+                   __func__, rep->gen, cntrl->gen);
+
+            if (gbl_abort_on_incorrect_upgrade) abort();
+
+            MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
+            rep->stat.st_msgs_badgen++;
+            return 0;
+        }
+
+        change = rep->gen < cntrl->gen || rep->master_id != eid;
+        if (change) {
 #ifdef DIAGNOSTIC
-		if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
-			__db_err(dbenv,
-			    "Updating gen from %lu to %lu from master %d",
-			    (u_long)rep->gen, (u_long)cntrl->gen, eid);
+            if (FLD_ISSET(dbenv->verbose, DB_VERB_REPLICATION))
+                __db_err(dbenv, "Updating gen from %lu to %lu from master %d",
+                         (u_long)rep->gen, (u_long)cntrl->gen, eid);
 #endif
 		rep->gen = cntrl->gen;
 		if (rep->egen <= rep->gen)
@@ -682,31 +721,6 @@ void
 __env_rep_enter(dbenv)
 	DB_ENV *dbenv;
 {
-#ifndef STUB_REP_ENTER
-	DB_REP *db_rep;
-	REP *rep;
-	int cnt;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return;
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	for (cnt = 0; rep->in_recovery;) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		(void)__os_sleep(dbenv, 1, 0);
-		MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-		if (++cnt % 60 == 0)
-			__db_err(dbenv,
-    "DB_ENV handle waiting %d minutes for replication recovery to complete",
-			    cnt / 60);
-	}
-	rep->handle_cnt++;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 }
 
 /*
@@ -720,21 +734,6 @@ void
 __env_rep_exit(dbenv)
 	DB_ENV *dbenv;
 {
-#ifndef STUB_REP_ENTER
-	DB_REP *db_rep;
-	REP *rep;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return;
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	rep->handle_cnt--;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 }
 
 /*
@@ -752,50 +751,6 @@ __db_rep_enter(dbp, checkgen, return_now)
 	DB *dbp;
 	int checkgen, return_now;
 {
-#ifndef STUB_REP_ENTER
-	DB_ENV *dbenv;
-	DB_REP *db_rep;
-	REP *rep;
-	void *bdb_state;
-	static time_t last = 0;
-	time_t now;
-
-	dbenv = dbp->dbenv;
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return (0);
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-	bdb_state = dbenv->app_private;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	if (F_ISSET(rep, REP_F_READY)) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-		if (!return_now)
-			(void)__os_sleep(dbenv, 5, 0);
-		return (DB_LOCK_DEADLOCK);
-	}
-
-	if (checkgen && dbp->timestamp != rep->timestamp) {
-		MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-
-		now = time(NULL);
-
-		if (last != now) {
-			__db_err(dbenv, 
-		"replication recovery unrolled committed transactions;"
-		"open DB and DBcursor handles must be closed");
-			last = now;
-		}
-
-		bdb_set_rep_handle_dead(bdb_state);
-
-		return (DB_REP_HANDLE_DEAD);
-	}
-	rep->handle_cnt++;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 	return (0);
 }
 
@@ -809,21 +764,6 @@ void
 __db_rep_exit(dbenv)
 	DB_ENV *dbenv;
 {
-#ifndef STUB_REP_ENTER
-	DB_REP *db_rep;
-	REP *rep;
-
-	/* Check if locks have been globally turned off. */
-	if (F_ISSET(dbenv, DB_ENV_NOLOCKING))
-		return;
-
-	db_rep = dbenv->rep_handle;
-	rep = db_rep->region;
-
-	MUTEX_LOCK(dbenv, db_rep->rep_mutexp);
-	rep->handle_cnt--;
-	MUTEX_UNLOCK(dbenv, db_rep->rep_mutexp);
-#endif
 }
 
 /*

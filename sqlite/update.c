@@ -95,7 +95,10 @@ void sqlite3Update(
   SrcList *pTabList,     /* The table in which we should change things */
   ExprList *pChanges,    /* Things to be changed */
   Expr *pWhere,          /* The WHERE clause.  May be null */
-  int onError            /* How to handle constraint errors */
+  int onError,           /* How to handle constraint errors */
+  ExprList *pOrderBy,    /* ORDER BY clause. May be null */
+  Expr *pLimit,          /* LIMIT clause. May be null */
+  Expr *pOffset          /* OFFSET clause. May be null */
 ){
   int i, j;              /* Loop counters */
   Table *pTab;           /* The table to be updated */
@@ -173,6 +176,16 @@ void sqlite3Update(
 #ifdef SQLITE_OMIT_VIEW
 # undef isView
 # define isView 0
+#endif
+
+#ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+  if( !isView ){
+    pWhere = sqlite3LimitWhere(
+        pParse, pTabList, pWhere, pOrderBy, pLimit, pOffset, "UPDATE"
+    );
+    pOrderBy = 0;
+    pLimit = pOffset = 0;
+  }
 #endif
 
   if( sqlite3ViewGetColumnNames(pParse, pTab) ){
@@ -310,7 +323,12 @@ void sqlite3Update(
   /*
    * Comdb2 modification: create our updCols array.
    */
-  sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  if(isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
+                       strlen("__hidden__rowid")+1) == 0){
+          sqlite3CreateUpdCols(v, db, pTab->nCol-1, aXRef+1);
+  } else {
+    sqlite3CreateUpdCols(v, db, pTab->nCol, aXRef);
+  }
 
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, 1, iDb);
@@ -340,7 +358,11 @@ void sqlite3Update(
   */
 #if !defined(SQLITE_OMIT_VIEW) && !defined(SQLITE_OMIT_TRIGGER)
   if( isView ){
-    sqlite3MaterializeView(pParse, pTab, pWhere, iDataCur);
+    sqlite3MaterializeView(pParse, pTab,
+        pWhere, pOrderBy, pLimit, pOffset, iDataCur
+    );
+    pOrderBy = 0;
+    pLimit = pOffset = 0;
   }
 #endif
 
@@ -717,6 +739,11 @@ update_cleanup:
   sqlite3SrcListDelete(db, pTabList);
   sqlite3ExprListDelete(db, pChanges);
   sqlite3ExprDelete(db, pWhere);
+#if defined(SQLITE_ENABLE_UPDATE_DELETE_LIMIT) 
+  sqlite3ExprListDelete(db, pOrderBy);
+  sqlite3ExprDelete(db, pLimit);
+  sqlite3ExprDelete(db, pOffset);
+#endif
   return;
 }
 /* Make sure "isView" and other macros defined above are undefined. Otherwise

@@ -67,9 +67,9 @@
 (tablename='t3', keyname='UUID1', columnnumber=0, columnname='uuid', isdescending='N')
 (tablename='t4', keyname='UUID1', columnnumber=0, columnname='uuid', isdescending='N')
 [select * from comdb2_keycomponents order by tablename] rc 0
-(tablename='t2', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='N')
-(tablename='t3', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='Y', iscascadingupdate='N')
-(tablename='t4', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='Y')
+(name='$CONSTRAINT_54A220D', tablename='t2', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='N')
+(name='$CONSTRAINT_54A220D', tablename='t3', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='Y', iscascadingupdate='N')
+(name='$CONSTRAINT_54A220D', tablename='t4', keyname='UUID1', foreigntablename='t1', foreignkeyname='UUID', iscascadingdelete='N', iscascadingupdate='Y')
 [select * from comdb2_constraints order by tablename] rc 0
 (tablename='alltypes', bytes=2162688)
 (tablename='dummy', bytes=65536)
@@ -81,16 +81,17 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=184)
+(KEYWORDS_COUNT=185)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
-(RESERVED_KW=107)
+(RESERVED_KW=110)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=77)
+(NONRESERVED_KW=75)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ABORT', reserved='Y')
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
 (name='ANALYZE', reserved='Y')
+(name='ANALYZEEXPERT', reserved='Y')
 (name='ANALYZESQLITE', reserved='Y')
 (name='AND', reserved='Y')
 (name='AS', reserved='Y')
@@ -167,9 +168,11 @@
 (name='PRIMARY', reserved='Y')
 (name='QUERY', reserved='Y')
 (name='RECURSIVE', reserved='Y')
+(name='REFERENCES', reserved='Y')
 (name='REGEXP', reserved='Y')
 (name='REINDEX', reserved='Y')
 (name='RELEASE', reserved='Y')
+(name='RENAME', reserved='Y')
 (name='REPLACE', reserved='Y')
 (name='RIGHT', reserved='Y')
 (name='ROLLBACK', reserved='Y')
@@ -247,8 +250,6 @@
 (name='READ', reserved='N')
 (name='REBUILD', reserved='N')
 (name='REC', reserved='N')
-(name='REFERENCES', reserved='N')
-(name='RENAME', reserved='N')
 (name='RESERVED', reserved='N')
 (name='RESTRICT', reserved='N')
 (name='RETENTION', reserved='N')
@@ -274,7 +275,7 @@
 (name='ZLIB', reserved='N')
 [SELECT * FROM comdb2_keywords WHERE reserved = 'N' ORDER BY name] rc 0
 (name='COMDB2_MAX_RECORD_SIZE', description='Maximum record size', value=16384)
-(name='MAXBLOBLENGTH', description='Maximum blob length', value=268435456)
+(name='MAXBLOBLENGTH', description='Maximum blob length', value=267386880)
 (name='MAXBLOBS', description='Maximum number of blobs', value=15)
 (name='MAXCOLNAME', description='Maximum column name length', value=99)
 (name='MAXCOLUMNS', description='Maximum columns in a table', value=1024)

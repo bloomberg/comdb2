@@ -26,7 +26,7 @@
 #include <assert.h>
 #include <openssl/rand.h>
 
-#include <db.h> /* berk db.h */
+#include <build/db.h> /* berk db.h */
 #include <net.h>
 #include <sbuf2.h>
 #include "bdb_int.h"
@@ -45,6 +45,14 @@
 
 #include "locks.h"
 #include "bdb_int.h"
+
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern void backtrace_symbols_fd(void *const *, int, int);
+#else
+#define backtrace(A, B) 1
+#define backtrace_symbols_fd(A, B, C)
+#endif
 
 extern char *gbl_crypto;
 
@@ -342,8 +350,10 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     if (gbl_crypto) {
         // generate random password for temp tables
-        char passwd[64];
-        RAND_bytes(passwd, 63);
+        char passwd[64]; passwd[0] = 0;
+        while (passwd[0] == 0) {
+            RAND_bytes((unsigned char *)passwd, 63);
+        }
         passwd[63] = 0;
         if ((rc = dbenv_temp->set_encrypt(dbenv_temp, passwd,
                                           DB_ENCRYPT_AES)) != 0) {
@@ -1193,7 +1203,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
 
     LISTC_FOR_EACH_SAFE(&tbl->cursors, cur, temp, lnk)
     {
-        if (rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr))
+        if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) != 0)
             return rc;
     }
 

@@ -113,7 +113,8 @@ enum comdb2_cstrt_rc {
     COMDB2_CSTRT_RC_DUP = 10709,         /**< detected duplicate key */
     COMDB2_CSTRT_RC_CASCADE = 10710,     /**< error applying CASCADE */
     COMDB2_CSTRT_RC_INVL_TAG = 10711,    /**< invalid tag detected */
-    COMDB2_CSTRT_RC_INTL_ERR = 10712     /**< internal error from berk */
+    COMDB2_CSTRT_RC_INTL_ERR = 10712,    /**< internal error from berk */
+    COMDB2_CSTRT_RC_TRN_TOO_BIG = 10713, /**< transaction too large */
 };
 
 enum comdb2_qadd_rc {

@@ -146,7 +146,7 @@ static int systblKeysColumn(
 
   switch( i ){
     case STKEY_TABLE: {
-      sqlite3_result_text(ctx, pDb->dbname, -1, NULL);
+      sqlite3_result_text(ctx, pDb->tablename, -1, NULL);
       break;
     }
     case STKEY_KEY: {

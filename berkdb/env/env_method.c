@@ -58,7 +58,7 @@ static int __dbenv_set_feedback __P((DB_ENV *, void (*)(DB_ENV *, int, int)));
 static void __dbenv_map_flags __P((DB_ENV *, u_int32_t *, u_int32_t *));
 static int __dbenv_get_flags __P((DB_ENV *, u_int32_t *));
 static int __dbenv_set_rpc_server_noclnt
-__P((DB_ENV *, void *, const char *, long, long, u_int32_t));
+	__P((DB_ENV *, void *, const char *, long, long, u_int32_t));
 static int __dbenv_get_shm_key __P((DB_ENV *, long *));
 static int __dbenv_get_tas_spins __P((DB_ENV *, u_int32_t *));
 static int __dbenv_get_tmp_dir __P((DB_ENV *, const char **));
@@ -67,47 +67,30 @@ static int __dbenv_get_concurrent __P((DB_ENV *, int *));
 static int __dbenv_set_lsn_chaining __P((DB_ENV *, int));
 static int __dbenv_get_lsn_chaining __P((DB_ENV *, int *));
 static int __dbenv_set_bulk_stops_on_page __P((DB_ENV *, int));
-static int __dbenv_memp_dump_bufferpool_info __P((DB_ENV *dbenv, FILE *));
-static int __dbenv_set_deadlock_override __P((DB_ENV *dbenv, u_int32_t opt));
-static int __dbenv_set_tran_lowpri __P((DB_ENV *dbenv, u_int32_t opt));
-
-static int __dbenv_set_num_recovery_processor_threads __P((DB_ENV *dbenv,
-	int num));
-static int __dbenv_set_num_recovery_worker_threads __P((DB_ENV *dbenv,
-	int num));
-
-static void __dbenv_set_recovery_memsize __P((DB_ENV *dbenv, int sz));
-static int __dbenv_get_recovery_memsize __P((DB_ENV *dbenv));
-static int __dbenv_get_rep_master(DB_ENV *dbenv, char **master);
-static int __dbenv_get_rep_eid(DB_ENV *dbenv, char **eid);
-static int __dbenv_get_page_extent_size(DB_ENV *dbenv);
-static void __dbenv_set_page_extent_size(DB_ENV *dbenv, u_int32_t);
-static int __dbenv_set_recovery_lsn __P((DB_ENV *dbenv, DB_LSN *lsn));
+static int __dbenv_memp_dump_bufferpool_info __P((DB_ENV *, FILE *));
+static int __dbenv_set_deadlock_override __P((DB_ENV *, u_int32_t));
+static int __dbenv_set_tran_lowpri __P((DB_ENV *, u_int32_t));
+static int __dbenv_set_num_recovery_processor_threads __P((DB_ENV *, int));
+static int __dbenv_set_num_recovery_worker_threads __P((DB_ENV *, int));
+static void __dbenv_set_recovery_memsize __P((DB_ENV *, int));
+static int __dbenv_get_recovery_memsize __P((DB_ENV *));
+static int __dbenv_get_rep_master __P((DB_ENV *, char **, u_int32_t *));
+static int __dbenv_get_rep_eid __P((DB_ENV *, char **));
+static int __dbenv_get_page_extent_size __P((DB_ENV *));
+static void __dbenv_set_page_extent_size __P((DB_ENV *, u_int32_t));
+static int __dbenv_set_recovery_lsn __P((DB_ENV *, DB_LSN *));
 static void __dbenv_get_rep_verify_lsn __P((DB_ENV *, DB_LSN *, DB_LSN *));
-void __dbenv_set_durable_lsn __P((DB_ENV *, DB_LSN *, uint32_t gen));
-void __dbenv_get_durable_lsn __P((DB_ENV *, DB_LSN *, uint32_t * gen));
-
-static int __dbenv_blobmem_yield __P((DB_ENV *dbenv));
-static  int __dbenv_set_comdb2_dirs(dbenv, data_dir, txn_dir, tmp_dir)
-     DB_ENV *dbenv;
-     char *data_dir;
-     char *txn_dir;
-     char *tmp_dir;
-{
-	dbenv->comdb2_dirs.data_dir = strdup(data_dir);
-	dbenv->comdb2_dirs.txn_dir = strdup(txn_dir);
-	dbenv->comdb2_dirs.tmp_dir = strdup(tmp_dir);
-
-	return 0;
-}
-
-static int __dbenv_set_is_tmp_tbl __P((DB_ENV *dbenv, int));
-static int __dbenv_set_use_sys_malloc __P((DB_ENV *dbenv, int));
-
-int __dbenv_setattr __P((DB_ENV *dbenv, char *attr, char *val, int ival));
-int __dbenv_getattr __P((DB_ENV *dbenv, char *attr, char **val, int *ival));
-int __dbenv_dumpattrs __P((DB_ENV *dbenv, FILE *out));
-void __dbenv_attr_init __P((DB_ENV *dbenv));
+static void __dbenv_set_durable_lsn __P((DB_ENV *, DB_LSN *, uint32_t));
+static void __dbenv_get_durable_lsn __P((DB_ENV *, DB_LSN *, uint32_t *));
+static int __dbenv_blobmem_yield __P((DB_ENV *));
+static int __dbenv_set_comdb2_dirs __P((DB_ENV *, char *, char *, char *));
+static int __dbenv_set_is_tmp_tbl __P((DB_ENV *, int));
+static int __dbenv_set_use_sys_malloc __P((DB_ENV *, int));
+static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
+	pthread_cond_t **, pthread_mutex_t **, const uint8_t **));
+static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
+static int __dbenv_trigger_open __P((DB_ENV *, const char *));
+static int __dbenv_trigger_close __P((DB_ENV *, const char *));
 
 /*
  * db_env_create --
@@ -176,7 +159,7 @@ __dbenv_init(dbenv)
 	DB_ENV *dbenv;
 {
 	int ret;
-    extern unsigned gbl_blob_sz_thresh_bytes;
+	extern unsigned gbl_blob_sz_thresh_bytes;
 
 	/*
 	 * !!!
@@ -329,6 +312,11 @@ __dbenv_init(dbenv)
 
 	dbenv->set_is_tmp_tbl = __dbenv_set_is_tmp_tbl;
 	dbenv->set_use_sys_malloc = __dbenv_set_use_sys_malloc;
+
+	dbenv->trigger_subscribe = __dbenv_trigger_subscribe;
+	dbenv->trigger_unsubscribe = __dbenv_trigger_unsubscribe;
+	dbenv->trigger_open = __dbenv_trigger_open;
+	dbenv->trigger_close = __dbenv_trigger_close;
 
 	return (0);
 }
@@ -1122,11 +1110,12 @@ __dbenv_get_rep_eid(dbenv, eid)
 
 
 static int
-__dbenv_get_rep_master(dbenv, master)
+__dbenv_get_rep_master(dbenv, master, egen)
 	DB_ENV *dbenv;
 	char **master;
+	u_int32_t *egen;
 {
-	return __rep_get_master(dbenv, master);
+	return __rep_get_master(dbenv, master, egen);
 }
 
 static int
@@ -1191,35 +1180,44 @@ __dbenv_set_deadlock_override(dbenv, opt)
 	return 0;
 }
 
-static int __dbenv_set_tran_lowpri
-__P((DB_ENV *dbenv, u_int32_t txnid))
+static int
+__dbenv_set_tran_lowpri(dbenv, txnid)
+	DB_ENV *dbenv;
+	u_int32_t txnid;
 {
 	return __lock_locker_set_lowpri(dbenv, txnid);
 }
 
-static void __dbenv_set_recovery_memsize
-__P((DB_ENV *dbenv, int sz))
+static void
+__dbenv_set_recovery_memsize(dbenv, sz)
+	DB_ENV *dbenv;
+	int sz;
 {
 	dbenv->recovery_memsize = sz;
 }
 
-static int __dbenv_get_recovery_memsize
-__P((DB_ENV *dbenv))
+static int
+__dbenv_get_recovery_memsize(dbenv)
+	DB_ENV *dbenv;
 {
 	return dbenv->recovery_memsize;
 }
 
-
 /* TODO: return int and return error if attempted after open? */
-static int __dbenv_set_recovery_lsn
-__P((DB_ENV *dbenv, DB_LSN *lsn))
+static int
+__dbenv_set_recovery_lsn(dbenv, lsn)
+	DB_ENV *dbenv;
+	DB_LSN *lsn;
 {
 	dbenv->recovery_start_lsn = *lsn;
 	return 0;
 }
 
-static void __dbenv_get_rep_verify_lsn
-__P((DB_ENV *dbenv, DB_LSN *current_lsn, DB_LSN *start_lsn))
+static void
+__dbenv_get_rep_verify_lsn(dbenv, current_lsn, start_lsn)
+	DB_ENV *dbenv;
+	DB_LSN *current_lsn;
+	DB_LSN *start_lsn;
 {
 	if (dbenv->newest_rep_verify_tran_time) {
 		*current_lsn = dbenv->rep_verify_current_lsn;
@@ -1230,8 +1228,8 @@ __P((DB_ENV *dbenv, DB_LSN *current_lsn, DB_LSN *start_lsn))
 	}
 }
 
-static int __dbenv_set_is_tmp_tbl
-__P((dbenv, is_tmp_tbl))
+static int
+__dbenv_set_is_tmp_tbl(dbenv, is_tmp_tbl)
 	DB_ENV *dbenv;
 	int is_tmp_tbl;
 {
@@ -1239,8 +1237,8 @@ __P((dbenv, is_tmp_tbl))
 	return 0;
 }
 
-static int __dbenv_set_use_sys_malloc
-__P((dbenv, use_sys_malloc))
+static int
+__dbenv_set_use_sys_malloc(dbenv, use_sys_malloc)
 	DB_ENV *dbenv;
 	int use_sys_malloc;
 {
@@ -1248,72 +1246,159 @@ __P((dbenv, use_sys_malloc))
 	return 0;
 }
 
-static int __dbenv_blobmem_yield __P((dbenv))
-    DB_ENV *dbenv;
+static int
+__dbenv_blobmem_yield(dbenv)
+	DB_ENV *dbenv;
 {
 	return comdb2bma_yield(dbenv->bma);
 }
 
-void __dbenv_set_durable_lsn __P((dbenv, lsnp, generation))
-    DB_ENV *dbenv;
-    DB_LSN *lsnp;
-    uint32_t generation;
+static int
+__dbenv_set_comdb2_dirs(dbenv, data_dir, txn_dir, tmp_dir)
+	DB_ENV *dbenv;
+	char *data_dir;
+	char *txn_dir;
+	char *tmp_dir;
+{
+	dbenv->comdb2_dirs.data_dir = strdup(data_dir);
+	dbenv->comdb2_dirs.txn_dir = strdup(txn_dir);
+	dbenv->comdb2_dirs.tmp_dir = strdup(tmp_dir);
+	return 0;
+}
+
+
+static void
+__dbenv_set_durable_lsn(dbenv, lsnp, generation)
+	DB_ENV *dbenv;
+	DB_LSN *lsnp;
+	uint32_t generation;
 {
 	DB_REP *db_rep;
 
 	db_rep = dbenv->rep_handle;
 	extern int gbl_durable_set_trace;
 
-    if (lsnp->file == 2147483647) {
-        logmsg(LOGMSG_FATAL, "huh? setting file to 2147483647?\n");
-        abort();
-    }
+	if (lsnp->file == 2147483647) {
+		logmsg(LOGMSG_FATAL, "huh? setting file to 2147483647?\n");
+		abort();
+	}
 
 	pthread_mutex_lock(&dbenv->durable_lsn_lk);
 
-    if (dbenv->durable_generation < generation || 
-            log_compare(&dbenv->durable_lsn, lsnp) <= 0) {
+	if (generation > dbenv->durable_generation &&
+	    log_compare(lsnp, &dbenv->durable_lsn) < 0) {
+		logmsg(LOGMSG_FATAL, "Aborting on reversing durable lsn\n");
+		abort();
+	}
 
-        dbenv->durable_generation = generation;
-        dbenv->durable_lsn = *lsnp;
+	if (dbenv->durable_generation < generation ||
+	    log_compare(&dbenv->durable_lsn, lsnp) <= 0) {
 
-        if (gbl_durable_set_trace) {
-            logmsg(LOGMSG_USER, 
-                    "Set durable lsn to [%d][%d] generation %u\n",
-                    dbenv->durable_lsn.file, dbenv->durable_lsn.offset,
-                    dbenv->durable_generation);
-        }
+		dbenv->durable_generation = generation;
+		dbenv->durable_lsn = *lsnp;
 
-        if (lsnp->file == 0) {
-            logmsg(LOGMSG_FATAL, "Aborting on attempt to set durable lsn file to 0\n");
-            abort();
-        }
-    }
-    else {
-        /* This can happen if two commit threads can race against each other */
-        if (gbl_durable_set_trace) {
-            logmsg(LOGMSG_USER, "Blocked attempt to set durable lsn from "
-                    "[%d][%d] gen %d to [%d][%d] gen %d\n", 
-                    dbenv->durable_lsn.file, dbenv->durable_lsn.offset,
-                    dbenv->durable_generation, lsnp->file, lsnp->offset,
-                    generation);
-        }
-    }
+		if (gbl_durable_set_trace) {
+			logmsg(LOGMSG_USER,
+			       "Set durable lsn to [%d][%d] generation %u\n",
+			       dbenv->durable_lsn.file,
+			       dbenv->durable_lsn.offset,
+			       dbenv->durable_generation);
+		}
+
+		if (lsnp->file == 0) {
+			logmsg(LOGMSG_FATAL, "Aborting on attempt to set "
+					     "durable lsn file to 0\n");
+			abort();
+		}
+	} else {
+		/* This can happen if two commit threads can race against each
+		 * other */
+		if (gbl_durable_set_trace) {
+			logmsg(LOGMSG_USER,
+			       "Blocked attempt to set durable lsn from "
+			       "[%d][%d] gen %d to [%d][%d] gen %d\n",
+			       dbenv->durable_lsn.file,
+			       dbenv->durable_lsn.offset,
+			       dbenv->durable_generation, lsnp->file,
+			       lsnp->offset, generation);
+		}
+	}
 
 	pthread_mutex_unlock(&dbenv->durable_lsn_lk);
 }
 
-void __dbenv_get_durable_lsn __P((dbenv, lsnp, generation))
-    DB_ENV *dbenv;
-    DB_LSN *lsnp;
-    uint32_t *generation;
+static void
+__dbenv_get_durable_lsn(dbenv, lsnp, generation)
+	DB_ENV *dbenv;
+	DB_LSN *lsnp;
+	uint32_t *generation;
 {
-	DB_REP *db_rep;
-
-	db_rep = dbenv->rep_handle;
-
+	DB_REP *db_rep = dbenv->rep_handle;
 	pthread_mutex_lock(&dbenv->durable_lsn_lk);
 	*lsnp = dbenv->durable_lsn;
 	*generation = dbenv->durable_generation;
 	pthread_mutex_unlock(&dbenv->durable_lsn_lk);
+}
+
+static int
+__dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
+	DB_ENV *dbenv;
+	const char *fname;
+	pthread_cond_t **cond;
+	pthread_mutex_t **lock;
+	const uint8_t **open;
+{
+	int rc = 1;
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	pthread_mutex_lock(&t->lock);
+	if (t->open) {
+		t->active = 1;
+		*cond = &t->cond;
+		*lock = &t->lock;
+		*open = &t->open;
+		rc = 0;
+	}
+	pthread_mutex_unlock(&t->lock);
+	return rc;
+}
+
+static int
+__dbenv_trigger_unsubscribe(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	/* trigger_lock should be held by caller */
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	t->active = 0;
+	return 0;
+}
+
+static int
+__dbenv_trigger_open(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	pthread_mutex_lock(&t->lock);
+	t->open = 1;
+	pthread_cond_signal(&t->cond);
+	pthread_mutex_unlock(&t->lock);
+	return 0;
+}
+
+static int
+__dbenv_trigger_close(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	pthread_mutex_lock(&t->lock);
+	t->open = 0;
+	pthread_cond_signal(&t->cond);
+	pthread_mutex_unlock(&t->lock);
+	return 0;
 }

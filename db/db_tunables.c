@@ -27,6 +27,7 @@
 #include "util.h"
 #include "analyze.h"
 #include "intern_strings.h"
+#include "portmuxapi.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -59,7 +60,6 @@ extern int gbl_enable_sock_fstsnd;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_spstrictassignments;
 extern int gbl_early;
-extern int gbl_enque_flush_interval_signal;
 extern int gbl_enque_reorder_lookahead;
 extern int gbl_exit_alarm_sec;
 extern int gbl_fdb_track;
@@ -77,15 +77,14 @@ extern int gbl_loghist;
 extern int gbl_loghist_verbose;
 extern int gbl_master_retry_poll_ms;
 extern int gbl_master_swing_osql_verbose;
+extern int gbl_master_swing_sock_restart_sleep;
 extern int gbl_max_lua_instructions;
 extern int gbl_max_sqlcache;
 extern int __gbl_max_mpalloc_sleeptime;
 extern int gbl_mem_nice;
 extern int gbl_netbufsz;
-extern int gbl_netbufsz_signal;
 extern int gbl_net_lmt_upd_incoherent_nodes;
 extern int gbl_net_max_mem;
-extern int gbl_net_max_queue_signal;
 extern int gbl_net_throttle_percent;
 extern int gbl_nice;
 extern int gbl_notimeouts;
@@ -107,6 +106,8 @@ extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
 extern int gbl_survive_n_master_swings;
 extern int gbl_test_blob_race;
+extern int gbl_test_scindex_deadlock;
+extern int gbl_test_sc_resume_race;
 extern int gbl_berkdb_track_locks;
 extern int gbl_udp;
 extern int gbl_update_delete_limit;
@@ -122,6 +123,24 @@ extern int diffstat_thresh;
 extern int reqltruncate;
 extern int analyze_max_comp_threads;
 extern int analyze_max_table_threads;
+extern int gbl_block_set_commit_genid_trace;
+extern int gbl_debug_high_availability_flag;
+extern int gbl_abort_on_unset_ha_flag;
+extern int gbl_write_dummy_trace;
+extern int gbl_abort_on_incorrect_upgrade;
+extern int gbl_poll_in_pg_free_recover;
+extern int gbl_print_deadlock_cycles;
+extern int gbl_always_send_cnonce;
+extern int gbl_rep_badgen_trace;
+extern int gbl_dump_zero_coherency_timestamp;
+extern int gbl_allow_incoherent_sql;
+extern int gbl_rep_process_msg_print_rc;
+extern int gbl_verbose_master_req;
+extern int gbl_verbose_send_coherency_lease;
+extern int gbl_reset_on_unelectable_cluster;
+extern int gbl_rep_verify_always_grab_writelock;
+extern int gbl_rep_verify_will_recover_trace;
+extern int gbl_max_wr_rows_per_txn;
 
 extern long long sampling_threshold;
 
@@ -179,15 +198,6 @@ static int ctrace_gzip;
   special treatment.
   =========================================================
 */
-
-static int dir_verify(void *context, void *basedir)
-{
-    if (!gooddir((char *)basedir)) {
-        logmsg(LOGMSG_ERROR, "bad directory %s in lrl\n", (char *)basedir);
-        return 1;
-    }
-    return 0;
-}
 
 static void *init_with_compr_value(void *context)
 {
@@ -396,7 +406,7 @@ static int maxq_update(void *context, void *value)
 
     /* Can't be more than swapinit! */
     if ((val < 1) || (val > 1000)) {
-        logmsg(LOGMSG_ERROR, "Invalid value for tunable '%s'.", tunable->name);
+        logmsg(LOGMSG_ERROR, "Invalid value for tunable '%s'\n", tunable->name);
         return 1;
     }
 
@@ -441,7 +451,7 @@ static int lk_verify(void *context, void *value)
     comdb2_tunable *tunable = (comdb2_tunable *)context;
 
     if ((*(int *)value <= 0) || (*(int *)value > 2048)) {
-        logmsg(LOGMSG_ERROR, "Invalid value for '%s'. (range: 1-2048)",
+        logmsg(LOGMSG_ERROR, "Invalid value for '%s'. (range: 1-2048)\n",
                tunable->name);
         return 1;
     }
@@ -453,7 +463,7 @@ static int memnice_update(void *context, void *value)
     int nicerc;
     nicerc = comdb2ma_nice(*(int *)value);
     if (nicerc != 0) {
-        logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d.\n",
+        logmsg(LOGMSG_ERROR, "Failed to change mem niceness: rc = %d\n",
                nicerc);
         return 1;
     }
@@ -644,6 +654,42 @@ static void *sql_tranlevel_default_value()
     }
 }
 
+static int sql_tranlevel_default_update(void *context, void *value)
+{
+    char *line;
+    char *tok;
+    int st = 0;
+    int llen;
+    int ltok;
+
+    line = (char *)value;
+    llen = strlen(line);
+
+    tok = segtok(line, llen, &st, &ltok);
+    if (tok == NULL) {
+        logmsg(LOGMSG_USER, "expected transaction level\n");
+        return 1;
+    } else if (tokcmp(tok, ltok, "blocksock") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+    } else if (tokcmp(tok, ltok, "recom") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_RECOM;
+    } else if (tokcmp(tok, ltok, "snapisol") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+    } else if (tokcmp(tok, ltok, "serial") == 0) {
+        gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
+    } else {
+        logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
+        return 1;
+    }
+    gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
+    logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
+           (char *)sql_tranlevel_default_value());
+    return 0;
+}
+
+/* Routines for the tunable system itself - tunable-specific
+ * routines belong above */
+
 static void tunable_tolower(char *str)
 {
     char *tmp = str;
@@ -734,10 +780,15 @@ int free_gbl_tunables()
         free_tunable(gbl_tunables->array[i]);
         free(gbl_tunables->array[i]);
     }
-    hash_free(gbl_tunables->hash);
+    if (gbl_tunables->hash) {
+        hash_clear(gbl_tunables->hash);
+        hash_free(gbl_tunables->hash);
+        gbl_tunables->hash = NULL;
+    }
+    free(gbl_tunables->array);
     pthread_mutex_destroy(&gbl_tunables->mu);
     free(gbl_tunables);
-    gbl_tunables = 0;
+    gbl_tunables = NULL;
     return 0;
 }
 
@@ -777,14 +828,15 @@ int register_tunable(comdb2_tunable tunable)
         free_tunable(t);
 
         already_exists = 1;
-    } else if (!(t = malloc(sizeof(comdb2_tunable))))
+    } else if ((t = malloc(sizeof(comdb2_tunable))) == NULL)
         goto oom_err;
 
     if (!tunable.name) {
         logmsg(LOGMSG_ERROR, "%s: Tunable must have a name.\n", __func__);
         goto err;
     }
-    if (!(t->name = strdup(tunable.name))) goto oom_err;
+    if ((t->name = strdup(tunable.name)) == NULL)
+        goto oom_err;
     /* Keep tunable names in lower case (to be consistent). */
     tunable_tolower(t->name);
 
@@ -1245,7 +1297,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
             t->flags |= EMPTY;
         } else {
             logmsg(LOGMSG_ERROR,
-                   "An argument must be specified for tunable '%s'", t->name);
+                   "An argument must be specified for tunable '%s'\n", t->name);
             return TUNABLE_ERR_INVALID_VALUE; /* Error */
         }
     } else {

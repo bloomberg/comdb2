@@ -37,7 +37,7 @@
 #include <stddef.h>
 #include <str0.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -51,12 +51,14 @@
 #include <autoanalyze.h>
 #include <logmsg.h>
 
+int db_is_stopped(void);
+
 void *udp_backup(void *arg)
 {
     unsigned pollms = 500; // factor of 1000
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    while (!(bdb_state->exiting)) {
+    while (!db_is_stopped()) {
         if (repinfo->master_host != repinfo->myhost && gbl_udp) {
             send_myseqnum_to_master(bdb_state, 1);
         }
@@ -78,7 +80,7 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     unsigned count = 0;
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    while (!(bdb_state->exiting)) {
+    while (!db_is_stopped()) {
         ++count;
         if (repinfo->master_host != repinfo->myhost) { // not master
             if (gbl_udp)
@@ -123,7 +125,7 @@ void *memp_trickle_thread(void *arg)
 
         BDB_READLOCK("memp_trickle_thread");
 
-        if (bdb_state->exiting) {
+        if (db_is_stopped()) {
             logmsg(LOGMSG_DEBUG, "memp_trickle_thread: exiting\n");
 
             BDB_RELLOCK();
@@ -185,7 +187,7 @@ void *deadlockdetect_thread(void *arg)
         if (bdb_state->attr->deadlock_youngest_ever)
             policy = DB_LOCK_YOUNGEST_EVER;
 
-        if (bdb_state->exiting) {
+        if (db_is_stopped()) {
             logmsg(LOGMSG_DEBUG, "deadlockdetect_thread: exiting\n");
 
             BDB_RELLOCK();
@@ -235,7 +237,8 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (lease_time = bdb_state->attr->master_lease) {
+    while (!db_is_stopped() &&
+           (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
             int send_myseqnum_to_master_udp(bdb_state_type * bdb_state);
             send_myseqnum_to_master_udp(bdb_state);
@@ -282,25 +285,31 @@ void *coherency_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (lease_time = bdb_state->attr->coherency_lease) {
+    while (!db_is_stopped() &&
+           (lease_time = bdb_state->attr->coherency_lease)) {
         inc_wait = 0;
         uint32_t current_gen, durable_gen;
         DB_LSN durable_lsn;
-
+        BDB_READLOCK(__func__);
+        if (db_is_stopped()) {
+            BDB_RELLOCK();
+            break;
+        }
         if (repinfo->master_host == repinfo->myhost) {
             send_coherency_leases(bdb_state, lease_time, &inc_wait);
 
-            /* See if master has written a durable LSN */
-            bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
-            bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv, &durable_lsn,
-                                              &durable_gen);
+            if (bdb_state->attr->durable_lsns) {
+                /* See if master has written a durable LSN */
+                bdb_state->dbenv->get_rep_gen(bdb_state->dbenv, &current_gen);
+                bdb_state->dbenv->get_durable_lsn(bdb_state->dbenv,
+                                                  &durable_lsn, &durable_gen);
 
-            /* Insert a record if it hasn't */
-            if (durable_gen != current_gen) {
-                inc_wait = 1;
+                /* Insert a record if it hasn't */
+                if (durable_gen != current_gen) {
+                    inc_wait = 1;
+                }
             }
         }
-
         now = time(NULL);
         if (inc_wait && (add_interval = bdb_state->attr->add_record_interval)) {
             if ((now - last_add_record) >= add_interval) {
@@ -310,7 +319,7 @@ void *coherency_lease_thread(void *arg)
                 last_add_record = now;
             }
         }
-
+        BDB_RELLOCK();
         pollms = ((renew = bdb_state->attr->lease_renew_interval) &&
                   renew < lease_time)
                      ? renew
@@ -330,10 +339,7 @@ void *coherency_lease_thread(void *arg)
 
 void *logdelete_thread(void *arg)
 {
-    bdb_state_type *bdb_state;
-
-    bdb_state = (bdb_state_type *)arg;
-
+    bdb_state_type *bdb_state = (bdb_state_type *)arg;
     if (bdb_state->parent) bdb_state = bdb_state->parent;
 
     while (!bdb_state->after_llmeta_init_done)
@@ -344,31 +350,30 @@ void *logdelete_thread(void *arg)
     thread_started("bdb logdelete");
 
     bdb_thread_event(bdb_state, 1);
+    time_t last_run_time = 0;
 
-    while (1) {
-        int sleeptime;
-        BDB_READLOCK("logdelete_thread");
+    while (!db_is_stopped()) {
+        time_t now = time(NULL);
+        int run_interval = bdb_state->attr->logdelete_run_interval;
+        run_interval = (run_interval <= 0 ? 30 : run_interval);
 
-        if (bdb_state->exiting) {
-            logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
-
+        if ((now - last_run_time) >= run_interval) {
+            BDB_READLOCK("logdelete_thread");
+            delete_log_files(bdb_state);
             BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
+            last_run_time = now;
         }
-
-        delete_log_files(bdb_state);
-
-        BDB_RELLOCK();
-        sleeptime = bdb_state->attr->logdelete_run_interval;
-        sleeptime = (sleeptime <= 0 ? 30 : sleeptime);
-
-        sleep(sleeptime);
+        sleep(1);
     }
+
+    logmsg(LOGMSG_DEBUG, "logdelete_thread: exiting\n");
+    bdb_thread_event(bdb_state, 0);
+    return NULL;
 }
 
 extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
+extern int db_is_stopped();
 
 void *checkpoint_thread(void *arg)
 {
@@ -399,7 +404,7 @@ void *checkpoint_thread(void *arg)
 
     bdb_thread_event(bdb_state, 1);
 
-    while (1) {
+    while (!db_is_stopped()) {
         BDB_READLOCK("checkpoint_thread");
         checkpointtime = bdb_state->attr->checkpointtime;
         checkpointrand = bdb_state->attr->checkpointrand;
@@ -409,14 +414,6 @@ void *checkpoint_thread(void *arg)
         if (broken) {
             logmsg(LOGMSG_ERROR, "%s failed in log_get_last_lsn rc=%d\n", __func__,
                     broken);
-        }
-
-        if (bdb_state->exiting) {
-            logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
-
-            BDB_RELLOCK();
-            bdb_thread_event(bdb_state, 0);
-            pthread_exit(NULL);
         }
 
         /* can't call checkpoint until llmeta is open if we are using rowlocks
@@ -479,6 +476,10 @@ void *checkpoint_thread(void *arg)
             } while (crt_time_msec < end_sleep_time_msec);
         }
     }
+
+    logmsg(LOGMSG_DEBUG, "checkpoint_thread: exiting\n");
+    bdb_thread_event(bdb_state, 0);
+    return NULL;
 }
 
 int bdb_get_checkpoint_time(bdb_state_type *bdb_state)

@@ -1,23 +1,26 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 set -e
 
 COPYDIR=$DBDIR/copy
 mkdir $COPYDIR
-copycomdb2 -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
+$COPYCOMDB2_EXE -s ${DBDIR}/${DBNAME}.lrl $COPYDIR
 cd $COPYDIR
-grep -v name ${DBNAME}.lrl > tmp && mv tmp ${DBNAME}.lrl
+grep -v name ${DBNAME}.lrl | grep -v "cluster nodes" > tmp && mv tmp ${DBNAME}.lrl
 NEWNAME="qcopy$$test"
 echo "name $NEWNAME" >> ${DBNAME}.lrl
-$comdb2task $NEWNAME --create --lrl ${DBNAME}.lrl
-$comdb2task $NEWNAME --lrl ${DBNAME}.lrl &
+$COMDB2_EXE $NEWNAME --create --lrl ${DBNAME}.lrl
+$COMDB2_EXE $NEWNAME --lrl ${DBNAME}.lrl &
 
-trap "cdb2sql $NEWNAME \"exec procedure sys.cmd.send('exit')\"" EXIT
+trap "$CDB2SQL_EXE $NEWNAME \"exec procedure sys.cmd.send('exit')\"" EXIT
 
 while :; do 
-    out=$(cdb2sql -tabs $NEWNAME local 'select 1') ||
+    # cdb2sql may fail if the db isn't up yet
+    set +e
+    out=$($CDB2SQL_EXE -tabs $NEWNAME local 'select 1') ||
     [[ "$out" = "1" ]] && break
+    set -e
     sleep 1
 done
 

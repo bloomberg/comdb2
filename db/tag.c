@@ -1141,7 +1141,9 @@ static void dumpval(char *buf, int type, int len)
         }
         case CLIENT_DATETIME: {
             cdb2_client_datetime_t dt;
-            client_datetime_get(&dt, buf, buf + sizeof(cdb2_client_datetime_t));
+            client_datetime_get(&dt, (uint8_t *)buf,
+                                (uint8_t *)buf +
+                                    sizeof(cdb2_client_datetime_t));
             logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.msec, dt.tzname);
@@ -1150,8 +1152,9 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_DATETIMEUS: {
             cdb2_client_datetimeus_t dt;
-            client_datetimeus_get(&dt, buf,
-                                  buf + sizeof(cdb2_client_datetimeus_t));
+            client_datetimeus_get(&dt, (uint8_t *)buf,
+                                  (uint8_t *)buf +
+                                      sizeof(cdb2_client_datetimeus_t));
             logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.usec, dt.tzname);
@@ -1160,14 +1163,16 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_INTVYM: {
             cdb2_client_intv_ym_t ym;
-            client_intv_ym_get(&ym, buf, buf + sizeof(cdb2_client_intv_ym_t));
+            client_intv_ym_get(&ym, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(cdb2_client_intv_ym_t));
             logmsg(LOGMSG_USER, "%s%u-%u", (ym.sign < 0) ? "- " : "", ym.years, ym.months);
             break;
         }
 
         case CLIENT_INTVDS: {
             cdb2_client_intv_ds_t ds;
-            client_intv_ds_get(&ds, buf, buf + sizeof(cdb2_client_intv_ds_t));
+            client_intv_ds_get(&ds, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(cdb2_client_intv_ds_t));
             logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.msec);
             break;
@@ -1175,8 +1180,9 @@ static void dumpval(char *buf, int type, int len)
 
         case CLIENT_INTVDSUS: {
             cdb2_client_intv_dsus_t ds;
-            client_intv_dsus_get(&ds, buf,
-                                 buf + sizeof(cdb2_client_intv_dsus_t));
+            client_intv_dsus_get(&ds, (uint8_t *)buf,
+                                 (uint8_t *)buf +
+                                     sizeof(cdb2_client_intv_dsus_t));
             logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%6.6u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.usec);
             break;
@@ -1261,32 +1267,37 @@ static void dumpval(char *buf, int type, int len)
             break;
         case SERVER_DATETIME: {
             server_datetime_t dt;
-            server_datetime_get(&dt, buf, buf + sizeof(server_datetime_t));
+            server_datetime_get(&dt, (uint8_t *)buf,
+                                (uint8_t *)buf + sizeof(server_datetime_t));
             logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.msec);
             break;
         }
         case SERVER_DATETIMEUS: {
             server_datetimeus_t dt;
-            server_datetimeus_get(&dt, buf, buf + sizeof(server_datetimeus_t));
-            logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.usec);
+            server_datetimeus_get(&dt, (uint8_t *)buf,
+                                  (uint8_t *)buf + sizeof(server_datetimeus_t));
+            logmsg(LOGMSG_USER, "%llu.%u", dt.sec, dt.usec);
             break;
         }
         case SERVER_INTVYM: {
             server_intv_ym_t si;
-            server_intv_ym_get(&si, buf, buf + sizeof(server_intv_ym_t));
+            server_intv_ym_get(&si, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(server_intv_ym_t));
             logmsg(LOGMSG_USER, "%d", si.months);
             break;
         }
         case SERVER_INTVDS: {
             server_intv_ds_t ds;
-            server_intv_ds_get(&ds, buf, buf + sizeof(server_intv_ds_t));
+            server_intv_ds_get(&ds, (uint8_t *)buf,
+                               (uint8_t *)buf + sizeof(server_intv_ds_t));
             logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.msec);
             break;
         }
         case SERVER_INTVDSUS: {
             server_intv_dsus_t ds;
-            server_intv_dsus_get(&ds, buf, buf + sizeof(server_intv_dsus_t));
-            logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.usec);
+            server_intv_dsus_get(&ds, (uint8_t *)buf,
+                                 (uint8_t *)buf + sizeof(server_intv_dsus_t));
+            logmsg(LOGMSG_USER, "%lld.%u", ds.sec, ds.usec);
             break;
         }
         case SERVER_VUTF8:
@@ -1474,7 +1485,6 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
-    add_tag_schema(table, to);
     to->nmembers = from->nmembers;
     to->member = calloc(to->nmembers, sizeof(struct field));
     to->flags = from->flags;
@@ -1508,7 +1518,6 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
                     to->member[i].in_default_len = 0;
                 }
             }
-            del_tag_schema(table, to->tag);
             free(to->tag);
             free(to);
             return -1;
@@ -1521,6 +1530,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
+    add_tag_schema(table, to);
     return 0;
 }
 
@@ -1542,7 +1552,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
     char *expr;
     int rc;
     int ascdesc;
-    char *dbname = db->dbname;
+    char *dbname = db->tablename;
     struct schema *s;
 
     /* keys not reqd for ver temp table; just ondisk tag */
@@ -1727,8 +1737,7 @@ static int create_key_schema(struct dbtable *db, struct schema *schema, int alt)
         if (rc == 0 && (strcasecmp(schema->tag, ".ONDISK") == 0 ||
                         strcasecmp(schema->tag, ".NEW..ONDISK") == 0)) {
             if (alt == 0) {
-                char *tmp_altname = strdup(altname);
-                add_tag_alias(dbname, s, tmp_altname);
+                add_tag_alias(dbname, s, altname);
             } else {
                 snprintf(tmptagname, sizeof(tmptagname), ".NEW.%s", altname);
                 add_tag_alias(dbname, s, tmptagname);
@@ -2017,6 +2026,9 @@ void convert_failure_reason_str(const struct convert_failure *reason,
     case CONVERT_FAILED_BAD_BLOB_PROGRAMMER:
         str = "bad blob programming";
         break;
+    case CONVERT_FAILED_BLOB_SIZE:
+        str = "blob size exceeds max";
+        break;
     case CONVERT_OK:
         str = "no error";
         break;
@@ -2079,8 +2091,8 @@ void print_verbose_convert_failure(struct ireq *iq,
     if (!iq->debug || fail_reason == NULL || fail_reason->reason == CONVERT_OK)
         return;
 
-    convert_failure_reason_str(fail_reason, iq->usedb->dbname, fromtag, totag,
-                               str, sizeof(str));
+    convert_failure_reason_str(fail_reason, iq->usedb->tablename, fromtag,
+                               totag, str, sizeof(str));
     reqprintf(iq, "convert: %s\n", str);
     return;
 }
@@ -2215,7 +2227,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
      * if we're doing an update. */
     if ((plan->fail_reason.reason != CONVERT_OK) && !(flags & CONVERT_UPDATE)) {
         if (fail_reason) {
-            memcpy(fail_reason, &plan->fail_reason, sizeof(fail_reason));
+            memcpy(fail_reason, &plan->fail_reason, sizeof(*fail_reason));
         }
         return -1;
     }
@@ -2264,7 +2276,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (to_field->blob_index >= maxblobs) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->reason = CONVERT_FAILED_BAD_BLOB_PROGRAMMER;
                 }
@@ -2324,7 +2336,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
                     if (from_field->blob_index >= maxblobs) {
                         if (fail_reason) {
                             memcpy(fail_reason, &plan->fail_reason,
-                                   sizeof(fail_reason));
+                                   sizeof(*fail_reason));
                             fail_reason->target_field_idx = to_field_idx;
                             fail_reason->source_field_idx = from_field_idx;
                             fail_reason->reason =
@@ -2362,7 +2374,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
                     if (!CLIENT_TYPE_CAN_BE_PARTIAL(from_field->type)) {
                         if (fail_reason) {
                             memcpy(fail_reason, &plan->fail_reason,
-                                   sizeof(fail_reason));
+                                   sizeof(*fail_reason));
                             fail_reason->target_field_idx = to_field_idx;
                             fail_reason->source_field_idx = from_field_idx;
                             fail_reason->reason =
@@ -2421,7 +2433,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (to_field->flags & NO_NULL) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->source_field_idx = from_field_idx;
                     fail_reason->reason =
@@ -2505,7 +2517,7 @@ static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
             if (rc != 0) {
                 if (fail_reason) {
                     memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(fail_reason));
+                           sizeof(*fail_reason));
                     fail_reason->target_field_idx = to_field_idx;
                     fail_reason->source_field_idx = from_field_idx;
                     fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
@@ -3102,8 +3114,8 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
 
     /* version sanity check */
     if (unlikely(ver == 0)) {
-        logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__, __func__,
-               db->dbname, ver, db->version);
+        logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
+               __func__, db->tablename, ver, db->version);
         cheap_stack_trace();
         exit(1);
     }
@@ -3115,7 +3127,8 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
     /* fix dbstore values */
     to_schema = db->schema;
     if (to_schema == NULL) {
-        logmsg(LOGMSG_FATAL, "could not get to_schema for .ONDISK in %s\n", db->dbname);
+        logmsg(LOGMSG_FATAL, "could not get to_schema for .ONDISK in %s\n",
+               db->tablename);
         exit(1);
     }
 
@@ -3132,10 +3145,10 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
          * smaller of the two buffers */
         /* find schema for older version */
         snprintf(ver_tag, sizeof ver_tag, "%s%d", gbl_ondisk_ver, ver);
-        from_schema = find_tag_schema(db->dbname, ver_tag);
+        from_schema = find_tag_schema(db->tablename, ver_tag);
         if (unlikely(from_schema == NULL)) {
-            logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__, __func__,
-                   db->dbname, ver, db->version);
+            logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
+                   __func__, db->tablename, ver, db->version);
             cheap_stack_trace();
             exit(1);
         }
@@ -3150,13 +3163,13 @@ int vtag_to_ondisk_vermap(struct dbtable *db, uint8_t *rec, int *len, uint8_t ve
 
         /* call new cached version instead of stag_to_stag_buf_flags() */
         rc = stag_to_stag_buf_cachedmap(
-            db->versmap[ver], from_schema, to_schema, inbuf, rec,
+            (int *)db->versmap[ver], from_schema, to_schema, inbuf, (char *)rec,
             CONVERT_NULL_NO_ERROR, &reason, NULL, 0);
 
         if (rc) {
             char err[1024];
-            convert_failure_reason_str(&reason, db->dbname, ver_tag, ".ONDISK",
-                                       err, sizeof(err));
+            convert_failure_reason_str(&reason, db->tablename, ver_tag,
+                                       ".ONDISK", err, sizeof(err));
             logmsg(LOGMSG_ERROR, "%s: %s -> %s failed: %s\n", __func__, ver_tag,
                     ".ONDISK", err);
             return 0;
@@ -3210,8 +3223,8 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
 
     /* version sanity check */
     if (unlikely(ver == 0)) {
-        logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__, __func__,
-               db->dbname, ver, db->version);
+        logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
+               __func__, db->tablename, ver, db->version);
         cheap_stack_trace();
         exit(1);
     }
@@ -3231,10 +3244,10 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
 
     /* find schema for older version */
     snprintf(ver_tag, sizeof ver_tag, "%s%d", gbl_ondisk_ver, ver);
-    from_schema = find_tag_schema(db->dbname, ver_tag);
+    from_schema = find_tag_schema(db->tablename, ver_tag);
     if (unlikely(from_schema == NULL)) {
-        logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__, __func__,
-               db->dbname, ver, db->version);
+        logmsg(LOGMSG_FATAL, "%s:%d %s() %s %d -> %d\n", __FILE__, __LINE__,
+               __func__, db->tablename, ver, db->version);
         cheap_stack_trace();
         exit(1);
     }
@@ -3251,14 +3264,16 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     }
     memcpy(from, rec, from_schema->recsize);
 
-    // rc = stag_to_stag_buf(db->dbname, ver_tag, from, ".ONDISK", (char *)rec,
+    // rc = stag_to_stag_buf(db->tablename, ver_tag, from, ".ONDISK", (char
+    // *)rec,
     // &reason);
-    rc = stag_to_stag_buf_flags(db->dbname, ver_tag, from, db->dbname,
-                                ".ONDISK", rec, CONVERT_NULL_NO_ERROR, &reason);
+    rc = stag_to_stag_buf_flags(db->tablename, ver_tag, from, db->tablename,
+                                ".ONDISK", (char *)rec, CONVERT_NULL_NO_ERROR,
+                                &reason);
     if (rc) {
         char err[1024];
-        convert_failure_reason_str(&reason, db->dbname, ver_tag, ".ONDISK", err,
-                                   sizeof(err));
+        convert_failure_reason_str(&reason, db->tablename, ver_tag, ".ONDISK",
+                                   err, sizeof(err));
         logmsg(LOGMSG_ERROR, "%s: %s -> %s failed: %s\n", __func__, ver_tag,
                 ".ONDISK", err);
         return 0;
@@ -3267,7 +3282,8 @@ int vtag_to_ondisk(struct dbtable *db, uint8_t *rec, int *len, uint8_t ver,
     /* fix dbstore values */
     to_schema = db->schema;
     if (to_schema == NULL) {
-        logmsg(LOGMSG_FATAL, "could not get to_schema for .ONDISK in %s\n", db->dbname);
+        logmsg(LOGMSG_FATAL, "could not get to_schema for .ONDISK in %s\n",
+               db->tablename);
         exit(1);
     }
     for (int i = 0; i < to_schema->nmembers; ++i) {
@@ -3519,10 +3535,10 @@ void *create_blank_record(struct dbtable *db, size_t *length)
         logmsg(LOGMSG_ERROR, "%s: out of memory for lrl %d\n", __func__, db->lrl);
         return NULL;
     }
-    schema = find_tag_schema(db->dbname, ".ONDISK");
+    schema = find_tag_schema(db->tablename, ".ONDISK");
     if (!schema) {
         logmsg(LOGMSG_ERROR, "%s: cannot find .ONDISK schema for table %s\n",
-                __func__, db->dbname);
+               __func__, db->tablename);
         free(record);
         return NULL;
     }
@@ -4682,7 +4698,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 
         if (change == SC_TAG_CHANGE) {
             if (out) {
-                logmsg(LOGMSG_USER,
+                logmsg(LOGMSG_INFO,
                        "tag %s field %d (named %s) has changed (%s)\n",
                        old->tag, oidx, fold->name, buf);
             }
@@ -4691,7 +4707,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
 
         if (change == SC_COLUMN_ADDED || change == SC_DBSTORE_CHANGE) {
             if (out) {
-                logmsg(LOGMSG_USER,
+                logmsg(LOGMSG_INFO,
                        "tag %s field %d (named %s) has changed (%s)\n",
                        old->tag, oidx, fold->name, buf);
             }
@@ -4719,22 +4735,22 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
         if (!found) {
             int allow_null = !(fnew->flags & NO_NULL);
             if (SERVER_VUTF8 == fnew->type &&
-                fnew->in_default_len >= (fnew->len - 5)) {
+                fnew->in_default_len > (fnew->len - 5)) {
                 rc = SC_TAG_CHANGE;
                 if (out) {
-                    logmsg(LOGMSG_USER, "tag %s has new field %d (named %s -- dbstore "
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s -- dbstore "
                                  "too large forcing rebuild)\n",
                             old->tag, nidx, fnew->name);
                 }
             } else if (fnew->in_default || allow_null) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
-                    logmsg(LOGMSG_USER, "tag %s has new field %d (named %s)\n",
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)\n",
                             old->tag, nidx, fnew->name);
                 }
             } else {
                 if (out) {
-                    logmsg(LOGMSG_USER, "tag %s has new field %d (named %s) without "
+                    logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s) without "
                             "dbstore or null\n",
                             old->tag, nidx, fnew->name);
                 }
@@ -4748,7 +4764,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     if (rc == SC_COLUMN_ADDED) {
         if (new->recsize < old->recsize + 2) {
             if (out) {
-                logmsg(LOGMSG_USER, "tag %s recsize %d, was %d\n", old->tag,
+                logmsg(LOGMSG_INFO, "tag %s recsize %d, was %d\n", old->tag,
                         new->recsize, old->recsize);
             }
             rc = SC_TAG_CHANGE;
@@ -4757,8 +4773,8 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
     return rc;
 }
 
-int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
-                      FILE *out, int accept_type_change)
+int has_index_changed(struct dbtable *tbl, char *keynm, int ct_check,
+                      int newkey, FILE *out, int accept_type_change)
 {
     struct schema *old, *new;
     struct field *fnew, *fold;
@@ -4768,45 +4784,47 @@ int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
     char oldtag[MAXTAGLEN + 16];
     char newtag[MAXTAGLEN + 16];
     const char *tag = ".ONDISK";
-    const char *table = NULL;
+    const char *tblname = NULL;
 
     snprintf(oldtag, sizeof(oldtag), "%s", tag);
     snprintf(newtag, sizeof(newtag), ".NEW.%s", tag);
 
-    table = db->dbname;
+    tblname = tbl->tablename;
 
-    if (table == NULL) {
-        logmsg(LOGMSG_ERROR, "Invalid table\n");
+    if (tblname == NULL) {
+        logmsg(LOGMSG_INFO, "Invalid table name\n");
         return -1;
     }
-    rc = getidxnumbyname(table, keynm, &ix);
+    rc = getidxnumbyname(tblname, keynm, &ix);
     if (rc != 0) {
-        logmsg(LOGMSG_USER, "No index %s in old schema\n", keynm);
+        logmsg(LOGMSG_INFO, "No index %s in old schema\n", keynm);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s", keynm);
-    rc = getidxnumbyname(table, ixbuf, &fidx);
+    rc = getidxnumbyname(tblname, ixbuf, &fidx);
     if (rc != 0) {
-        logmsg(LOGMSG_USER, "No index %s in new schema\n", keynm);
+        logmsg(LOGMSG_INFO, "No index %s in new schema\n", keynm);
         return 1;
     }
     if (fidx != ix) {
-        logmsg(LOGMSG_USER, "key %s maps from ix%d->ix%d\n", keynm, ix, fidx);
+        logmsg(LOGMSG_INFO, "key %s maps from ix%d->ix%d\n", keynm, ix, fidx);
         return 1;
     }
 
     /*fprintf(stderr, "key %s ix %d\n", keynm, ix);*/
 
     snprintf(ixbuf, sizeof(ixbuf), "%s_ix_%d", tag, ix);
-    old = find_tag_schema(table, ixbuf);
+    old = find_tag_schema(tblname, ixbuf);
     if (old == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n", table, ix);
+        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n",
+               tblname, ix);
         return 1;
     }
     snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s_ix_%d", tag, fidx);
-    new = find_tag_schema(table, ixbuf);
+    new = find_tag_schema(tblname, ixbuf);
     if (new == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n", table, fidx);
+        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n",
+               tblname, fidx);
         return 1;
     }
 
@@ -4927,7 +4945,7 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
  * rebuild. */
 int compare_indexes(const char *table, FILE *out)
 {
-    struct dbtable *db;
+    struct dbtable *tbl;
     struct schema *old, *new;
     struct field *fnew, *fold;
     int fidx;
@@ -4940,49 +4958,49 @@ int compare_indexes(const char *table, FILE *out)
     snprintf(oldtag, sizeof(oldtag), "%s", tag);
     snprintf(newtag, sizeof(newtag), ".NEW.%s", tag);
 
-    db = get_dbtable_by_name(table);
-    if (db == NULL) {
-        logmsg(LOGMSG_ERROR, "Invalid table %s\n", table);
+    tbl = get_dbtable_by_name(table);
+    if (tbl == NULL) {
+        logmsg(LOGMSG_INFO, "Invalid table %s\n", table);
         return 0;
     }
     old = find_tag_schema(table, oldtag);
     if (old == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for old table %s\n", table);
+        logmsg(LOGMSG_INFO, "Can't find schema for old table %s\n", table);
         return 0;
     }
     new = find_tag_schema(table, newtag);
     if (new == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't find schema for new table %s\n", table);
+        logmsg(LOGMSG_INFO, "Can't find schema for new table %s\n", table);
         return 0;
     }
 
     /* if number of indices changed, then ondisk operations are required */
     if (old->nix != new->nix) {
         if (out) {
-            logmsg(LOGMSG_USER, "indexes have been added or removed\n");
+            logmsg(LOGMSG_INFO, "indexes have been added or removed\n");
         }
         return 1;
     }
 
     /* go through indices */
-    for (ix = 0; ix < db->nix; ix++) {
+    for (ix = 0; ix < tbl->nix; ix++) {
         char descr[128];
         snprintf(ixbuf, sizeof(ixbuf), "%s_ix_%d", tag, ix);
         old = find_tag_schema(table, ixbuf);
         if (old == NULL) {
-            logmsg(LOGMSG_ERROR, "Can't find schema for old table %s index %d\n", table, ix);
+            logmsg(LOGMSG_INFO, "Can't find schema for old table %s index %d\n", table, ix);
             return 0;
         }
         snprintf(ixbuf, sizeof(ixbuf), ".NEW.%s_ix_%d", tag, ix);
         new = find_tag_schema(table, ixbuf);
         if (new == NULL) {
-            logmsg(LOGMSG_ERROR, "Can't find schema for new table %s index %d\n", table, ix);
+            logmsg(LOGMSG_INFO, "Can't find schema for new table %s index %d\n", table, ix);
             return 0;
         }
 
         if (cmp_index_int(old, new, descr, sizeof(descr)) != 0) {
             if (out)
-                logmsg(LOGMSG_USER, "index %d (%s) changed: %s\n", ix + 1, old->csctag,
+                logmsg(LOGMSG_INFO, "index %d (%s) changed: %s\n", ix + 1, old->csctag,
                         descr);
             return 1;
         }
@@ -5258,7 +5276,7 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
         schema = calloc(1, sizeof(struct schema));
         schema->tag = tag;
 
-        add_tag_schema(db->dbname, schema);
+        add_tag_schema(db->tablename, schema);
 
         schema->nmembers = dyns_get_table_field_count(rtag);
         if ((gbl_morecolumns && schema->nmembers > MAXCOLUMNS) ||
@@ -5306,11 +5324,11 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
             if (gbl_forbid_ulonglong &&
                 schema->member[field].type == CLIENT_UINT &&
                 schema->member[field].len == sizeof(unsigned long long) &&
-                strncasecmp(db->dbname, gbl_ver_temp_table,
+                strncasecmp(db->tablename, gbl_ver_temp_table,
                             strlen(gbl_ver_temp_table)) != 0) {
-                logmsg(LOGMSG_ERROR, 
-                        "Error in table %s: u_longlong is unsupported\n",
-                        db->dbname);
+                logmsg(LOGMSG_ERROR,
+                       "Error in table %s: u_longlong is unsupported\n",
+                       db->tablename);
                 return -1;
             }
 
@@ -5474,14 +5492,15 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
             schema->recsize = offset;
             if (!alt) {
                 if (side_effects)
-                    db->lrl = get_size_of_schema_by_name(db->dbname, ".ONDISK");
-                rc = clone_server_to_client_tag(db->dbname, ".ONDISK",
+                    db->lrl =
+                        get_size_of_schema_by_name(db->tablename, ".ONDISK");
+                rc = clone_server_to_client_tag(db->tablename, ".ONDISK",
                                                 ".ONDISK_CLIENT");
             } else {
                 if (side_effects)
-                    db->lrl =
-                        get_size_of_schema_by_name(db->dbname, ".NEW..ONDISK");
-                rc = clone_server_to_client_tag(db->dbname, ".NEW..ONDISK",
+                    db->lrl = get_size_of_schema_by_name(db->tablename,
+                                                         ".NEW..ONDISK");
+                rc = clone_server_to_client_tag(db->tablename, ".NEW..ONDISK",
                                                 ".NEW..ONDISK_CLIENT");
             }
 
@@ -5496,7 +5515,7 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
                         snprintf(tmptagname, sizeof(tmptagname),
                                  ".NEW..ONDISK_ix_%d", i);
                     db->ix_keylen[i] =
-                        get_size_of_schema_by_name(db->dbname, tmptagname);
+                        get_size_of_schema_by_name(db->tablename, tmptagname);
 
                     if (!alt) {
                         snprintf(sname_buf, sizeof(sname_buf), ".ONDISK_IX_%d",
@@ -5510,7 +5529,7 @@ static int add_cmacc_stmt_int(struct dbtable *db, int alt, int side_effects)
                                  ".NEW..ONDISK_CLIENT_IX_%d", i);
                     }
 
-                    clone_server_to_client_tag(db->dbname, sname_buf,
+                    clone_server_to_client_tag(db->tablename, sname_buf,
                                                cname_buf);
                 }
 
@@ -5545,12 +5564,12 @@ void fix_lrl_ixlen_tran(tran_type *tran)
 
     for (tbl = 0; tbl < thedb->num_dbs; tbl++) {
         db = thedb->dbs[tbl];
-        struct schema *s = find_tag_schema(db->dbname, ".ONDISK");
+        struct schema *s = find_tag_schema(db->tablename, ".ONDISK");
         db->lrl = get_size_of_schema(s);
         nix = s->nix;
         for (ix = 0; ix < nix; ix++) {
             snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ix);
-            s = find_tag_schema(db->dbname, namebuf);
+            s = find_tag_schema(db->tablename, namebuf);
             db->ix_keylen[ix] = get_size_of_schema(s);
         }
 
@@ -5561,9 +5580,9 @@ void fix_lrl_ixlen_tran(tran_type *tran)
 
         if (bdb_have_llmeta()) {
             int ver;
-            ver = get_csc2_version_tran(db->dbname, tran);
+            ver = get_csc2_version_tran(db->tablename, tran);
             if (ver > 0) {
-                get_csc2_file_tran(db->dbname, ver, &db->csc2_schema,
+                get_csc2_file_tran(db->tablename, ver, &db->csc2_schema,
                                    &db->csc2_schema_len, tran);
             }
         } else {
@@ -5605,19 +5624,21 @@ int have_all_schemas(void)
     }
 
     for (tbl = 0; tbl < thedb->num_dbs; tbl++) {
-        struct schema *s = find_tag_schema(thedb->dbs[tbl]->dbname, ".ONDISK");
+        struct schema *s =
+            find_tag_schema(thedb->dbs[tbl]->tablename, ".ONDISK");
         if (s == NULL) {
             logmsg(LOGMSG_ERROR, "Missing schema: table %s tag .ONDISK\n",
-                    thedb->dbs[tbl]->dbname);
+                   thedb->dbs[tbl]->tablename);
             bad = 1;
         }
 
         if (sqlite_stat1 && table_field && index_field &&
-            strcasecmp(thedb->dbs[tbl]->dbname, "sqlite_stat1")) {
-            if (strlen(thedb->dbs[tbl]->dbname) >= table_field->len ||
-                strlen(thedb->dbs[tbl]->dbname) >= index_field->len) {
-                logmsg(LOGMSG_WARN, "WARNING: table name %s too long for analyze\n",
-                       thedb->dbs[tbl]->dbname);
+            strcasecmp(thedb->dbs[tbl]->tablename, "sqlite_stat1")) {
+            int nlen = strlen(thedb->dbs[tbl]->tablename);
+            if (nlen >= table_field->len || nlen >= index_field->len) {
+                logmsg(LOGMSG_WARN,
+                       "WARNING: table name %s too long for analyze\n",
+                       thedb->dbs[tbl]->tablename);
             }
         }
 
@@ -5625,10 +5646,10 @@ int have_all_schemas(void)
 
         for (ix = 0; s && ix < thedb->dbs[tbl]->nix; ix++) {
             snprintf(namebuf, sizeof(namebuf), ".ONDISK_ix_%d", ix);
-            s = find_tag_schema(thedb->dbs[tbl]->dbname, namebuf);
+            s = find_tag_schema(thedb->dbs[tbl]->tablename, namebuf);
             if (s == NULL) {
                 logmsg(LOGMSG_ERROR, "Missing schema: table %s tag %s\n",
-                        thedb->dbs[tbl]->dbname, namebuf);
+                       thedb->dbs[tbl]->tablename, namebuf);
                 bad = 1;
             }
         }
@@ -5640,21 +5661,21 @@ int have_all_schemas(void)
         return 1;
 }
 
-int getdefaultkeysize(const struct dbtable *db, int ixnum)
+int getdefaultkeysize(const struct dbtable *tbl, int ixnum)
 {
     char tagbuf[MAXTAGLEN];
 
     snprintf(tagbuf, MAXTAGLEN, ".DEFAULT_ix_%d", ixnum);
-    struct schema *s = find_tag_schema(db->dbname, tagbuf);
+    struct schema *s = find_tag_schema(tbl->tablename, tagbuf);
     if (s == NULL)
         return -1;
     return get_size_of_schema(s);
     /* return s->member[s->nmembers-1].offset + s->member[s->nmembers-1].len; */
 }
 
-int getdefaultdatsize(const struct dbtable *db)
+int getdefaultdatsize(const struct dbtable *tbl)
 {
-    struct schema *s = find_tag_schema(db->dbname, ".DEFAULT");
+    struct schema *s = find_tag_schema(tbl->tablename, ".DEFAULT");
 
     if (s == NULL)
         return -1;
@@ -5664,7 +5685,7 @@ int getdefaultdatsize(const struct dbtable *db)
 
 int getondiskclientdatsize(const struct dbtable *db)
 {
-    struct schema *s = find_tag_schema(db->dbname, ".ONDISK_CLIENT");
+    struct schema *s = find_tag_schema(db->tablename, ".ONDISK_CLIENT");
 
     if (s == NULL)
         return -1;
@@ -5673,7 +5694,7 @@ int getondiskclientdatsize(const struct dbtable *db)
 
 int getclientdatsize(const struct dbtable *db, char *sname)
 {
-    struct schema *s = find_tag_schema(db->dbname, sname);
+    struct schema *s = find_tag_schema(db->tablename, sname);
 
     if (s == NULL)
         return -1;
@@ -6551,7 +6572,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
                     taglen, tagdescr);
             return -1;
         }
-        add_tag_schema(iq->usedb->dbname, *dynschema);
+        add_tag_schema(iq->usedb->tablename, *dynschema);
         strncpy0(tagname, (*dynschema)->tag, tagnamelen);
     } else if (taglen > 0) {
         /* static tag name */
@@ -6575,7 +6596,7 @@ int ondisk_type_is_vutf8(struct dbtable *db, const char *fieldname,
                          size_t fieldname_len)
 {
     int i;
-    struct schema *s = find_tag_schema(db->dbname, ".ONDISK");
+    struct schema *s = find_tag_schema(db->tablename, ".ONDISK");
     for (i = 0; i < s->nmembers; i++) {
         if (strncmp(s->member[i].name, fieldname, fieldname_len) == 0)
             /* TODO delme */
@@ -6596,7 +6617,7 @@ long long get_record_unique_id(struct dbtable *db, void *rec)
     int outnull;
     int sz;
 
-    struct schema *s = find_tag_schema(db->dbname, ".ONDISK");
+    struct schema *s = find_tag_schema(db->tablename, ".ONDISK");
     for (i = 0; i < s->nmembers; i++) {
         if (strcasecmp(s->member[i].name, "comdb2_seqno") == 0) {
             SERVER_BINT_to_CLIENT_INT(p + s->member[i].offset, 9, NULL, NULL,
@@ -6701,8 +6722,8 @@ void update_dbstore(struct dbtable *db)
 
     struct schema *ondisk = db->schema;
     if (ondisk == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: .ONDISK not found!! PANIC!! %s() @ %d\n", db->dbname,
-               __func__, __LINE__);
+        logmsg(LOGMSG_FATAL, "%s: .ONDISK not found!! PANIC!! %s() @ %d\n",
+               db->tablename, __func__, __LINE__);
         cheap_stack_trace();
         exit(1);
     }
@@ -6720,16 +6741,16 @@ void update_dbstore(struct dbtable *db)
         struct schema *ver;
         int position;
         snprintf(tag, sizeof tag, gbl_ondisk_ver_fmt, v);
-        ver = find_tag_schema(db->dbname, tag);
+        ver = find_tag_schema(db->tablename, tag);
         if (ver == NULL) {
-            logmsg(LOGMSG_FATAL, "%s: %s not found!! PANIC!! %s() @ %d\n", db->dbname, tag,
-                   __func__, __LINE__);
+            logmsg(LOGMSG_FATAL, "%s: %s not found!! PANIC!! %s() @ %d\n",
+                   db->tablename, tag, __func__, __LINE__);
             /* FIXME */
             cheap_stack_trace();
             abort();
         }
 
-        db->versmap[v] = get_tag_mapping(ver, ondisk);
+        db->versmap[v] = (unsigned int *)get_tag_mapping(ver, ondisk);
         db->vers_compat_ondisk[v] = 1;
         if (SC_TAG_CHANGE ==
             compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))
@@ -6744,11 +6765,12 @@ void update_dbstore(struct dbtable *db)
 
             to = get_field_position(ondisk, from->name, &position);
             if (position < 0) {
-                logmsg(LOGMSG_FATAL, "%s: %s no such field: %s in .ONDISK. but in %s!! "
+                logmsg(LOGMSG_FATAL,
+                       "%s: %s no such field: %s in .ONDISK. but in %s!! "
                        "PANIC!!\n",
-                       db->dbname, __func__, from->name, tag);
+                       db->tablename, __func__, from->name, tag);
                 /* FIXME */
-                exit(1);
+                abort();
             }
 
             if (db->versmap[v][i] != i || from->type != to->type ||
@@ -6763,10 +6785,11 @@ void update_dbstore(struct dbtable *db)
                     db->dbstore[position].len = to->len;
                     db->dbstore[position].data = calloc(1, to->len);
                     if (db->dbstore[position].data == NULL) {
-                        logmsg(LOGMSG_FATAL, "%s: %s() @ %d calloc failed!! PANIC!!\n",
-                               db->dbname, __func__, __LINE__);
+                        logmsg(LOGMSG_FATAL,
+                               "%s: %s() @ %d calloc failed!! PANIC!!\n",
+                               db->tablename, __func__, __LINE__);
                         /* FIXME */
-                        exit(1);
+                        abort();
                     }
                     rc = SERVER_to_SERVER(
                         from->in_default, from->in_default_len,
@@ -6775,11 +6798,12 @@ void update_dbstore(struct dbtable *db)
                         to->len, to->type, 0, /*flags are unused */ &outdtsz,
                         &to->convopts, NULL);
                     if (rc != 0) {
-                        logmsg(LOGMSG_FATAL, "%s: %s() @ %d: SERVER_to_SERVER failed!! "
+                        logmsg(LOGMSG_FATAL,
+                               "%s: %s() @ %d: SERVER_to_SERVER failed!! "
                                "PANIC!!\n",
-                               db->dbname, __func__, __LINE__);
+                               db->tablename, __func__, __LINE__);
                         /* FIXME */
-                        exit(1);
+                        abort();
                     }
                 }
             }
@@ -6794,7 +6818,7 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema)
     struct dbtag *dbt;
 
     lock_taglock();
-    dbt = hash_find_readonly(tags, &db->dbname);
+    dbt = hash_find_readonly(tags, &db->tablename);
     if (dbt == NULL) {
         unlock_taglock();
         return;
@@ -6813,11 +6837,11 @@ void replace_tag_schema(struct dbtable *db, struct schema *schema)
     unlock_taglock();
 }
 
-void delete_schema(const char *dbname)
+void delete_schema(const char *tblname)
 {
     struct dbtag *dbt;
     lock_taglock();
-    dbt = hash_find(tags, &dbname);
+    dbt = hash_find(tags, &tblname);
     hash_del(tags, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
@@ -6827,10 +6851,25 @@ void delete_schema(const char *dbname)
         listc_rfl(&dbt->taglist, tmp);
         freeschema(tmp);
     }
-    if (dbt->tags)
+    if (dbt->tags) {
+        hash_clear(dbt->tags);
         hash_free(dbt->tags);
+        dbt->tags = NULL;
+    }
     free(dbt->tblname);
     free(dbt);
+}
+
+void rename_schema(const char *oldname, char *newname)
+{
+    struct dbtag *dbt;
+    lock_taglock();
+    dbt = hash_find(tags, &oldname);
+    hash_del(tags, dbt);
+    free(dbt->tblname);
+    dbt->tblname = newname;
+    hash_add(tags, dbt);
+    unlock_taglock();
 }
 
 void freeschema_internals(struct schema *schema)
@@ -6872,9 +6911,12 @@ void freeschema(struct schema *schema)
 void freedb_int(struct dbtable *db, struct dbtable *replace)
 {
     int i;
+    int dbs_idx;
+
+    dbs_idx = db->dbs_idx;
 
     free(db->lrlfname);
-    free(db->dbname);
+    free(db->tablename);
     /* who frees schema/ixschema? */
     free(db->sql);
 
@@ -6907,9 +6949,10 @@ void freedb_int(struct dbtable *db, struct dbtable *replace)
         }
     }
 
-    if (replace)
+    if (replace) {
         memcpy(db, replace, sizeof(struct dbtable));
-    else
+        db->dbs_idx = dbs_idx;
+    } else
         free(db);
 }
 
@@ -6964,11 +7007,11 @@ struct schema *create_version_schema(char *csc2, int version,
     ver_schema->tag = tag;
 
     /* get rid of temp schema */
-    del_tag_schema(ver_db->dbname, s->tag);
+    del_tag_schema(ver_db->tablename, s->tag);
     freeschema(s);
 
     /* get rid of temp table */
-    delete_schema(ver_db->dbname);
+    delete_schema(ver_db->tablename);
     freedb(ver_db);
 
     return ver_schema;
@@ -6984,13 +7027,13 @@ static void clear_existing_schemas(struct dbtable *db)
     int i;
     for (i = 1; i <= db->version; ++i) {
         sprintf(tag, gbl_ondisk_ver_fmt, i);
-        schema = find_tag_schema(db->dbname, tag);
-        del_tag_schema(db->dbname, tag);
+        schema = find_tag_schema(db->tablename, tag);
+        del_tag_schema(db->tablename, tag);
         freeschema(schema);
     }
 
-    schema = find_tag_schema(db->dbname, ".ONDISK");
-    del_tag_schema(db->dbname, ".ONDISK");
+    schema = find_tag_schema(db->tablename, ".ONDISK");
+    del_tag_schema(db->tablename, ".ONDISK");
     freeschema(schema);
 }
 
@@ -7002,17 +7045,17 @@ static int load_new_versions(struct dbtable *db, tran_type *tran)
         return 0;
 
     int i;
-    int version = get_csc2_version_tran(db->dbname, tran);
+    int version = get_csc2_version_tran(db->tablename, tran);
     for (i = 1; i <= version; ++i) {
         char *csc2;
         int len;
-        get_csc2_file_tran(db->dbname, i, &csc2, &len, tran);
+        get_csc2_file_tran(db->tablename, i, &csc2, &len, tran);
         struct schema *schema = create_version_schema(csc2, i, db->dbenv);
         if (schema == NULL) {
             logmsg(LOGMSG_ERROR, "Could not create schema version: %d\n", i);
             return 1;
         }
-        add_tag_schema(db->dbname, schema);
+        add_tag_schema(db->tablename, schema);
         free(csc2);
     }
     return 0;
@@ -7023,18 +7066,18 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
     int rc;
     int bdberr;
     int foundix = db->dbs_idx;
-    int version = get_csc2_version_tran(db->dbname, tran);
+    int version = get_csc2_version_tran(db->tablename, tran);
     int len;
     char *csc2 = NULL;
 
-    rc = get_csc2_file_tran(db->dbname, version, &csc2, &len, tran);
+    rc = get_csc2_file_tran(db->tablename, version, &csc2, &len, tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
         logmsg(LOGMSG_ERROR, "rc: %d len: %d csc2:\n%s\n", rc, len, csc2);
         goto err;
     }
 
-    rc = dyns_load_schema_string(csc2, db->dbenv->envname, db->dbname);
+    rc = dyns_load_schema_string(csc2, db->dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
                 __LINE__);
@@ -7042,8 +7085,8 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
         goto err;
     }
 
-    struct dbtable *newdb =
-        newdb_from_schema(db->dbenv, db->dbname, NULL, db->dbnum, foundix, 0);
+    struct dbtable *newdb = newdb_from_schema(db->dbenv, db->tablename, NULL,
+                                              db->dbnum, foundix, 0);
     if (newdb == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -7060,13 +7103,14 @@ static int load_new_ondisk(struct dbtable *db, tran_type *tran)
 
     /* reopen db */
     newdb->handle = bdb_open_more_tran(
-        db->dbname, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
-        newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-        newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-        thedb->bdb_env, tran, &bdberr);
+        db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
+        (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
-        logmsg(LOGMSG_ERROR, "reload_schema handle %08x bdberr %d\n", newdb->handle, bdberr);
+        logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",
+               newdb->handle, bdberr);
         cheap_stack_trace();
         goto err;
     }
@@ -7107,7 +7151,7 @@ int reload_after_bulkimport(struct dbtable *db, tran_type *tran)
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
     create_sqlmaster_records(tran);
-    create_master_tables();
+    create_sqlite_master();
     return 0;
 }
 
@@ -7125,7 +7169,7 @@ int reload_db_tran(struct dbtable *db, tran_type *tran)
     db->tableversion = table_version_select(db, tran);
     update_dbstore(db);
     create_sqlmaster_records(tran);
-    create_master_tables();
+    create_sqlite_master();
     return 0;
 }
 
@@ -7265,7 +7309,7 @@ void err_print_rec(strbuf *buf, void *rec, char *table, char *tag)
         }
         case SERVER_BYTEARRAY: {
             uint8_t *b;
-            b = (char *)((uint8_t *)rec + f->offset);
+            b = (uint8_t *)rec + f->offset;
             isnull = btst(b, null_bit);
             if (isnull)
                 strbuf_appendf(buf, "null");
@@ -7431,8 +7475,8 @@ int create_key_from_ondisk_sch_blobs(
     int rc = 0;
 
     rc = _stag_to_stag_buf_flags_blobs(
-        fromsch, fromtag, inbuf, db->dbname, totag, outbuf, 0 /*flags*/, reason,
-        inblobs, NULL /*outblobs*/, maxblobs, tzname);
+        fromsch, fromtag, inbuf, db->tablename, totag, outbuf, 0 /*flags*/,
+        reason, inblobs, NULL /*outblobs*/, maxblobs, tzname);
     if (rc)
         return rc;
 
@@ -7452,6 +7496,17 @@ int create_key_from_ondisk_sch_blobs(
             }
             rc = -1; /* callers like -1 */
         } else if (tail) {
+            if ((strncmp(fromtag, ".ONDISK", 7) == 0 &&
+                 strncmp(totag, ".NEW.", 5) == 0) ||
+                (strncmp(fromtag, ".NEW.", 5) == 0 &&
+                 strncmp(totag, ".NEW.", 5) != 0)) {
+                /* Abort if new index uses old ondisk datacopy;
+                 * or if old index uses new ondisk datacopy. */
+                logmsg(LOGMSG_FATAL,
+                       "%s: BUG! BUG! Converting from tag %s to %s\n", __func__,
+                       fromtag, totag);
+                abort();
+            }
             *tail = (char *)inbuf;
             *taillen = inbuflen;
         }
@@ -7501,7 +7556,7 @@ inline int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail,
                                   struct convert_failure *reason,
                                   const char *tzname)
 {
-    struct schema *fromsch = find_tag_schema(db->dbname, fromtag);
+    struct schema *fromsch = find_tag_schema(db->tablename, fromtag);
 
     return create_key_from_ondisk_sch(db, fromsch, ixnum, tail, taillen,
                                       mangled_key, fromtag, inbuf, inbuflen,
@@ -7514,7 +7569,7 @@ inline int create_key_from_ondisk_blobs(
     char *outbuf, struct convert_failure *reason, blob_buffer_t *inblobs,
     int maxblobs, const char *tzname)
 {
-    struct schema *fromsch = find_tag_schema(db->dbname, fromtag);
+    struct schema *fromsch = find_tag_schema(db->tablename, fromtag);
 
     return create_key_from_ondisk_sch_blobs(
         db, fromsch, ixnum, tail, taillen, mangled_key, fromtag, inbuf,

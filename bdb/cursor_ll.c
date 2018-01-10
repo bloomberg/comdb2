@@ -84,7 +84,7 @@
 
 #include <thread_malloc.h>
 
-#include <db.h>
+#include <build/db.h>
 
 #include "bdb_cursor.h"
 #include "bdb_int.h"
@@ -562,7 +562,7 @@ static int bdb_berkdb_get_fileid(bdb_berkdb_t *pberkdb, void *pfileid,
     int rc;
 
     if (bt->dbc) {
-        if (rc = bt->dbc->c_get_fileid(bt->dbc, bt->fileid))
+        if ((rc = bt->dbc->c_get_fileid(bt->dbc, bt->fileid)) != 0)
             return rc;
     }
     memcpy(pfileid, bt->fileid, DB_FILE_ID_LEN);

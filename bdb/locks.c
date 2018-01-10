@@ -56,7 +56,7 @@
 #include <assert.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -340,7 +340,7 @@ int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
     memcpy(keynamebuf, name, MIN(len, SHORT_TABLENAME_LEN));
 
     if (len > SHORT_TABLENAME_LEN) {
-        cksum = crc32c(name, len);
+        cksum = crc32c((uint8_t *)name, len);
         memcpy(keynamebuf + SHORT_TABLENAME_LEN, &cksum, sizeof(u_int32_t));
     }
 
@@ -514,7 +514,7 @@ static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
 
     rc = berkdb_lock(dbenv, lid, 0, &lk, lockmode, &dblk);
 
-#ifdef DEBUG
+#ifdef DEBUG_LOCKS
     fprintf(stderr, "%llx:%s: mode %d, name %s, lid=%x\n", pthread_self(),
             __func__, how, name, lid);
 #endif
@@ -696,6 +696,16 @@ int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
     return rc;
 }
 
+int bdb_lock_tablename_read(bdb_state_type *bdb_state, const char *name,
+                            tran_type *tran)
+{
+    if (tran->parent)
+        tran = tran->parent;
+
+    return bdb_lock_table_int(bdb_state->dbenv, name, resolve_locker_id(tran),
+                              BDB_LOCK_READ);
+}
+
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;
@@ -709,13 +719,14 @@ int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
     return rc;
 }
 
-int bdb_lock_tablename_write(DB_ENV *dbenv, const char *name, tran_type *tran)
+int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
+                             tran_type *tran)
 {
     int rc;
 
     if (tran->parent) tran = tran->parent;
 
-    rc = bdb_lock_table_int(dbenv, name, resolve_locker_id(tran),
+    rc = bdb_lock_table_int(bdb_state->dbenv, name, resolve_locker_id(tran),
                             BDB_LOCK_WRITE);
     return rc;
 }

@@ -58,7 +58,7 @@ static void PrintConstant(const Proto* f, int i)
 	logmsg(LOGMSG_USER, "nil");
 	break;
   case LUA_TBOOLEAN:
-	logmsg(LOGMSG_USER, "true" : "false");
+	logmsg(LOGMSG_USER, bvalue(o) ? "true" : "false");
 	break;
   case LUA_TNUMBER:
 	logmsg(LOGMSG_USER, LUA_NUMBER_FMT, nvalue(o));

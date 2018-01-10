@@ -2005,6 +2005,28 @@ struct sqlite3_mem_methods {
 ** until after the database connection closes.
 ** </dd>
 **
+** <dt>SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE</dt>
+** <dd> Usually, when a database in wal mode is closed or detached from a 
+** database handle, SQLite checks if this will mean that there are now no 
+** connections at all to the database. If so, it performs a checkpoint 
+** operation before closing the connection. This option may be used to
+** override this behaviour. The first parameter passed to this operation
+** is an integer - non-zero to disable checkpoints-on-close, or zero (the
+** default) to enable them. The second parameter is a pointer to an integer
+** into which is written 0 or 1 to indicate whether checkpoints-on-close
+** have been disabled - 0 if they are not disabled, 1 if they are.
+** </dd>
+**
+** <dt>SQLITE_DBCONFIG_FULL_EQP</dt>
+** <dd> By default, the output of EXPLAIN QUERY PLAN commands does not 
+** include output for any operations performed by trigger programs. This
+** option is used to set or clear (the default) a flag that governs this
+** behavior. The first parameter passed to this operation is an integer -
+** non-zero to enable output for trigger programs, or zero to disable it.
+** The second parameter is a pointer to an integer into which is written 
+** 0 or 1 to indicate whether output-for-triggers has been disabled - 0 if 
+** it is not disabled, 1 if it is.  
+** </dd>
 ** </dl>
 */
 #define SQLITE_DBCONFIG_MAINDBNAME            1000 /* const char* */
@@ -2013,6 +2035,8 @@ struct sqlite3_mem_methods {
 #define SQLITE_DBCONFIG_ENABLE_TRIGGER        1003 /* int int* */
 #define SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER 1004 /* int int* */
 #define SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION 1005 /* int int* */
+#define SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE      1006 /* int int* */
+#define SQLITE_DBCONFIG_FULL_EQP              1007 /* int int* */
 
 
 /*
@@ -8057,6 +8081,22 @@ SQLITE_API int sqlite3_vtab_config(sqlite3*, int op, ...);
 SQLITE_API int sqlite3_vtab_on_conflict(sqlite3 *);
 
 /*
+** CAPI3REF: Determine The Collation For a Virtual Table Constraint
+**
+** This function may only be called from within a call to the [xBestIndex]
+** method of a [virtual table implementation]. 
+**
+** The first argument must be the database handle with which the virtual 
+** table is associated (the one passed to the [xConnect] or [xCreate] method 
+** to create the sqlite3_vtab object. The second argument must be an index
+** into the aConstraint[] array belonging to the sqlite3_index_info structure
+** passed to xBestIndex. This function returns a pointer to a buffer 
+** containing the name of the collation sequence for the corresponding
+** constraint.
+*/
+SQLITE_API SQLITE_EXPERIMENTAL const char *sqlite3_vtab_collation(sqlite3*, int);
+
+/*
 ** CAPI3REF: Conflict resolution modes
 ** KEYWORDS: {conflict resolution mode}
 **
@@ -10438,7 +10478,8 @@ struct fts5_api {
 ** END OF REGISTRATION API
 *************************************************************************/
 
-SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint(sqlite3*, char digest[16]);
+SQLITE_API const char * SQLITE_STDCALL sqlite3_fingerprint(sqlite3*);
+SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint_size(sqlite3*);
 SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint_enable(sqlite3*);
 SQLITE_API int SQLITE_STDCALL sqlite3_fingerprint_disable(sqlite3*);
 

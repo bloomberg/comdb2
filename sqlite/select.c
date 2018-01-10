@@ -141,7 +141,7 @@ static void fingerprintIdList(sqlite3 *db, MD5Context *c, IdList *l) {
 
     for (i = 0; i < l->nId; i++) {
         if (l->a[i].zName)
-            MD5Update(c, l->a[i].zName, strlen(l->a[i].zName));
+            MD5Update(c, (unsigned char *)l->a[i].zName, strlen(l->a[i].zName));
         MD5Update(c, (u8*) &l->a[i].idx, sizeof(int));
     }
 }
@@ -149,9 +149,9 @@ static void fingerprintIdList(sqlite3 *db, MD5Context *c, IdList *l) {
 static void fingerprintSrcListItem(sqlite3 *db, MD5Context *c, struct SrcList_item *src) {
     /* TODO: src->Schema - select ... from a.tbl,   select .. from tbl   are different */
     if (src->zDatabase)
-        MD5Update(c, src->zDatabase, strlen(src->zDatabase));
+        MD5Update(c, (const unsigned char *)src->zDatabase, strlen(src->zDatabase));
     if (src->zName)
-        MD5Update(c, src->zName, strlen(src->zName));
+        MD5Update(c, (const unsigned char *)src->zName, strlen(src->zName));
     /* alias part - skip?  select a as b   same as select ? */
     if (src->pSelect)
         fingerprintSelectInt(db, c, src->pSelect);
@@ -164,7 +164,7 @@ static void fingerprintSrcListItem(sqlite3 *db, MD5Context *c, struct SrcList_it
     fingerprintIdList(db, c, src->pUsing);
     fingerprintBitmask(db, c, src->colUsed);
     if (src->fg.isIndexedBy)
-        MD5Update(c, src->u1.zIndexedBy, strlen(src->u1.zIndexedBy));
+        MD5Update(c, (const unsigned char *)src->u1.zIndexedBy, strlen(src->u1.zIndexedBy));
     else if (src->fg.isTabFunc)
         fingerprintExprList(db, c, src->u1.pFuncArg);
 }
@@ -203,7 +203,7 @@ void sqlite3FingerprintSelect(sqlite3 *db, Select *p) {
 
     MD5Init(&c);
     fingerprintSelectInt(db, &c, p);
-    MD5Final(db->fingerprint, &c);
+    MD5Final((unsigned char *)db->fingerprint, &c);
 }
 
 static void fingerprintWith(sqlite3 *db, MD5Context *c, With *pWith) {
@@ -211,7 +211,7 @@ static void fingerprintWith(sqlite3 *db, MD5Context *c, With *pWith) {
     if (pWith == NULL)
         return;
     for (i = 0; i < pWith->nCte; i++) {
-        MD5Update(c, pWith->a[i].zName, strlen(pWith->a[i].zName));
+        MD5Update(c, (const unsigned char *)pWith->a[i].zName, strlen(pWith->a[i].zName));
         fingerprintExprList(db, c, pWith->a[i].pCols);
         /* we don't do pWith->a[i].pSelect - we expect fingerprintSelectInt to
            be called on the corresponding select which will point back to us */
@@ -237,7 +237,7 @@ void sqlite3FingerprintInsert(sqlite3 *db, SrcList *pTabList, Select *pSelect, I
 
     MD5Init(&c);
     fingerprintInsertInt(db, &c, pTabList, pSelect, pColumn, pWith);
-    MD5Final(db->fingerprint, &c);
+    MD5Final((unsigned char *)db->fingerprint, &c);
 }
 
 void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
@@ -249,7 +249,7 @@ void sqlite3FingerprintDelete(sqlite3 *db, SrcList *pTabList, Expr *pWhere) {
     MD5Init(&c);
     fingerprintSrcList(db, &c, pTabList);
     fingerprintExpr(db, &c, pWhere);
-    MD5Final(db->fingerprint, &c);
+    MD5Final((unsigned char *)db->fingerprint, &c);
 }
 
 void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges, Expr *pWhere, int onError) {
@@ -263,7 +263,7 @@ void sqlite3FingerprintUpdate(sqlite3 *db, SrcList *pTabList, ExprList *pChanges
     fingerprintExprList(db, &c, pChanges);
     fingerprintExpr(db, &c, pWhere);
     MD5Update(&c, (u8*) &onError, sizeof(int));
-    MD5Final(db->fingerprint, &c);
+    MD5Final((unsigned char *)db->fingerprint, &c);
 }
 
 
@@ -5044,6 +5044,110 @@ static void explainSimpleCount(
 # define explainSimpleCount(a,b,c)
 #endif
 
+#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
+/*
+** Attempt to transform a query of the form
+**
+**    SELECT count(*) FROM (SELECT x FROM t1 UNION ALL SELECT y FROM t2)
+**
+** Into this:
+**
+**    SELECT (SELECT count(*) FROM t1)+(SELECT count(*) FROM t2)
+**
+** The transformation only works if all of the following are true:
+**
+**   *  The subquery is a UNION ALL of two or more terms
+**   *  There is no WHERE or GROUP BY or HAVING clauses on the subqueries
+**   *  The outer query is a simple count(*)
+**
+** Return TRUE if the optimization is undertaken.
+*/
+static int countOfViewOptimization(Parse *pParse, Select *p){
+  Select *pSub, *pPrior;
+  Expr *pExpr;
+  Expr *pCount;
+  sqlite3 *db;
+  if( (p->selFlags & SF_Aggregate)==0 ) return 0;   /* This is an aggregate query */
+  if( p->pEList->nExpr!=1 ) return 0;               /* Single result column */
+  pExpr = p->pEList->a[0].pExpr;
+  if( pExpr->op!=TK_AGG_FUNCTION ) return 0;        /* Result is an aggregate */
+  if( sqlite3_stricmp(pExpr->u.zToken,"count") ) return 0;  /* Must be count() */
+  if( pExpr->x.pList!=0 ) return 0;                 /* Must be count(*) */
+  if( p->pSrc->nSrc!=1 ) return 0;                  /* One table in the FROM clause */
+  pSub = p->pSrc->a[0].pSelect;
+  if( pSub==0 ) return 0;                           /* The FROM is a subquery */
+  if( pSub->pPrior==0 ) return 0;                   /* Must be a compound subquery */
+  do{
+    if( pSub->op!=TK_ALL && pSub->pPrior ) return 0;  /* Must be UNION ALL */
+    if( pSub->pWhere ) return 0;                      /* No WHERE clause */
+    if( pSub->selFlags & SF_Aggregate ) return 0;     /* Not an aggregate */
+    pSub = pSub->pPrior;                              /* Repeat over compound terms */
+  }while( pSub );
+
+  /* If we reach this point, that means it is OK to perform the transformation */
+
+  db = pParse->db;
+  pCount = pExpr;
+  pExpr = 0;
+  pSub = p->pSrc->a[0].pSelect;
+  p->pSrc->a[0].pSelect = 0;
+  sqlite3SrcListDelete(db, p->pSrc);
+  p->pSrc = sqlite3DbMallocZero(pParse->db, sizeof(*p->pSrc));
+  while( pSub ){
+    Expr *pTerm;
+    pPrior = pSub->pPrior;
+    pSub->pPrior = 0;
+    pSub->pNext = 0;
+    pSub->selFlags |= SF_Aggregate;
+    pSub->selFlags &= ~SF_Compound;
+    pSub->nSelectRow = 0;
+    sqlite3ExprListDelete(db, pSub->pEList);
+    pTerm = pPrior ? sqlite3ExprDup(db, pCount, 0) : pCount;
+    pSub->pEList = sqlite3ExprListAppend(pParse, 0, pTerm);
+    pTerm = sqlite3PExpr(pParse, TK_SELECT, 0, 0, 0);
+    sqlite3PExprAddSelect(pParse, pTerm, pSub);
+    if( pExpr==0 ){
+      pExpr = pTerm;
+    }else{
+      pExpr = sqlite3PExpr(pParse, TK_PLUS, pTerm, pExpr, 0);
+    }
+    pSub = pPrior;
+  }
+  p->pEList->a[0].pExpr = pExpr;
+  p->selFlags &= ~SF_Aggregate;
+
+#if SELECTTRACE_ENABLED
+  if( sqlite3SelectTrace & 0x400 ){
+    SELECTTRACE(0x400,pParse,p,("After count-of-view optimization:\n"));
+    sqlite3TreeViewSelect(0, p, 0);
+  }
+#endif
+  return 1;
+}
+#endif /* SQLITE_COUNTOFVIEW_OPTIMIZATION */
+
+/*
+** COMDB2 MODIFICATION
+** Check list of identified source tables and check to see any of them is remote
+**
+*/
+static int sql_has_remotes(
+  Parse *pParse,       /* The parsing context */
+  SrcList *pList        /* The source list */
+) {
+  int i;
+
+  for(i=0;i<pList->nSrc; i++){
+    extern const char *comdb2_get_dbname(void);
+    char *dbname = pList->a[i].zDatabase;
+    if(dbname && strcasecmp(dbname,"main") && strcasecmp(dbname, "temp") &&
+            strcasecmp(dbname, comdb2_get_dbname())) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 /*
 ** Generate code for the SELECT statement given in the p argument.  
 **
@@ -5117,6 +5221,14 @@ int sqlite3Select(
   sSort.pOrderBy = p->pOrderBy;
   pTabList = p->pSrc;
   if( pParse->nErr || db->mallocFailed ){
+    if( pParse->checkSchema == 1 /* parsing error */ && 
+            pParse->zErrMsg && strncasecmp(pParse->zErrMsg, "no such column", 
+                strlen("no such column")) == 0){
+      extern void comdb2_set_verify_remote_schemas(void);
+      if (sql_has_remotes(pParse, p->pSrc)) {
+        comdb2_set_verify_remote_schemas();
+      }
+    }
     goto select_end;
   }
   assert( p->pEList!=0 );
@@ -5314,6 +5426,16 @@ int sqlite3Select(
   if( sqlite3SelectTrace & 0x400 ){
     SELECTTRACE(0x400,pParse,p,("After all FROM-clause analysis:\n"));
     sqlite3TreeViewSelect(0, p, 0);
+  }
+#endif
+
+#ifdef SQLITE_COUNTOFVIEW_OPTIMIZATION
+  if( OptimizationEnabled(db, SQLITE_QueryFlattener|SQLITE_CountOfView)
+   && countOfViewOptimization(pParse, p)
+  ){
+    if( db->mallocFailed ) goto select_end;
+    pEList = p->pEList;
+    pTabList = p->pSrc;
   }
 #endif
 

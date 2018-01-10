@@ -20,7 +20,7 @@ esac
 GIT_BRANCH=${GIT_BRANCH:=$(git rev-parse --abbrev-ref HEAD)}
 GIT_REMOTE=$(git config branch.$GIT_BRANCH.remote)
 GIT_URL=$(git config remote.$GIT_REMOTE.url)
-SVNINFOTAG=${SVNINFOTAG:=$(git describe)}
+SVNINFOTAG=${SVNINFOTAG:=$(git describe 2> /dev/null)}
 GIT_LOG=$(git log --pretty=%s -1 | sed -e 's:\":\\\":g')
 
 cat <<EOF
@@ -48,7 +48,7 @@ static char s20___[] = "@(#)plink [comdb2] OSARCH  : $arch";
 static char s21___[] = "@(#)plink [comdb2] OSPLATFORM: $arch";
 static char s22___[] = "@(#)plink [comdb2] OSLEVEL : $OSLEVEL";
 static char s23___[] = "@(#)plink [comdb2] RS_VERSION: ";
-static char s24___[] = "@(#)plink [comdb2] SVNINFO : git@example.com/placeholder/til/comdb2submit/fix ($GIT_BRANCH) tag $SVNINFOTAG ($(git rev-parse --short HEAD))";
+static char s24___[] = "@(#)plink [comdb2] SVNINFO : git@github.com/bloomberg/comdb2 ($GIT_BRANCH) tag $SVNINFOTAG ($(git rev-parse --short HEAD))";
 static char s25___[] = "@(#)plink [comdb2] BUILDID : ";
 static char s26___[] = "@(#)plink [comdb2] GUID    : ";
 static char s27___[] = "@(#)plink [comdb2] LOG0001 : $GIT_LOG";

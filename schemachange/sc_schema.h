@@ -27,7 +27,8 @@ int prepare_table_version_one(tran_type *, struct dbtable *db,
                               struct schema **version);
 
 int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
-                             unsigned long long *stored_sc_genid);
+                             unsigned long long *stored_sc_genid,
+                             unsigned int *stored_sc_host);
 
 int check_option_coherency(struct schema_change_type *s, struct dbtable *db,
                            struct scinfo *scinfo);
@@ -82,6 +83,7 @@ int compatible_constraint_source(struct dbtable *olddb, struct dbtable *newdb,
 
 int remove_constraint_pointers(struct dbtable *db);
 
+int rename_constraint_pointers(struct dbtable *db, const char *newname);
 void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 
 void change_schemas_recover(char *table);

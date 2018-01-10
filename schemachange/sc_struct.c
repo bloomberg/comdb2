@@ -135,7 +135,8 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->drop_table) + sizeof(s->original_master_node) +
         dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
         sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
-        sizeof(s->is_sfunc) + sizeof(s->is_afunc);
+        sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
+        sizeof(s->newtable);
 
     return s->packed_len;
 }
@@ -279,6 +280,9 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->is_sfunc, sizeof(s->is_sfunc), p_buf, p_buf_end);
     p_buf = buf_put(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
 
+    p_buf = buf_put(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
+    p_buf = buf_no_net_put(s->newtable, sizeof(s->newtable), p_buf, p_buf_end);
+
     return p_buf;
 }
 
@@ -291,17 +295,32 @@ static const void *buf_get_dests(struct schema_change_type *s,
     p_buf = (uint8_t *)buf_get(&count, sizeof(count), p_buf, p_buf_end);
 
     for (int i = 0; i < count; i++) {
-        int w_len;
+        int w_len, len;
+        int no_pfx = 0;
         p_buf = (uint8_t *)buf_get(&w_len, sizeof(w_len), p_buf, p_buf_end);
-        char pfx[] = "dest"; // dest:method:xyz -- drop 'dest:' pfx
-        if (w_len > sizeof(pfx)) {
-            p_buf = (void *)buf_no_net_get(pfx, sizeof(pfx), p_buf, p_buf_end);
-
-            int len = w_len - sizeof(pfx);
+        char pfx[] = "dest:"; // dest:method:xyz -- drop 'dest:' pfx
+        len = w_len;
+        if (w_len > strlen(pfx)) {
+            p_buf = (void *)buf_no_net_get(pfx, strlen(pfx), p_buf, p_buf_end);
+            if (strncmp(pfx, "dest:", 5) != 0) {
+                /* "dest:" was dropped already */
+                no_pfx = 1;
+            }
+            len = w_len - strlen(pfx);
+        }
+        if (len > 0) {
             struct dest *d = malloc(sizeof(struct dest));
-            d->dest = malloc(len + 1);
-            p_buf = (void *)buf_no_net_get(d->dest, len, p_buf, p_buf_end);
-            d->dest[len] = '\0';
+            char *pdest;
+            if (no_pfx) {
+                d->dest = malloc(w_len + 1);
+                strncpy(d->dest, pfx, strlen(pfx));
+                pdest = d->dest + strlen(pfx);
+                d->dest[w_len] = '\0';
+            } else {
+                pdest = d->dest = malloc(len + 1);
+                d->dest[len] = '\0';
+            }
+            p_buf = (void *)buf_no_net_get(pdest, len, p_buf, p_buf_end);
             listc_abl(&s->dests, d);
         } else {
             free_dests(s);
@@ -480,6 +499,10 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         (uint8_t *)buf_get(&s->is_sfunc, sizeof(s->is_sfunc), p_buf, p_buf_end);
     p_buf =
         (uint8_t *)buf_get(&s->is_afunc, sizeof(s->is_afunc), p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->rename, sizeof(s->rename), p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_no_net_get(s->newtable, sizeof(s->newtable), p_buf,
+                                      p_buf_end);
 
     return p_buf;
 }
@@ -701,6 +724,12 @@ void print_schemachange_info(struct schema_change_type *s, struct dbtable *db,
         sc_printf(s, "%s schema change running in parallel scan mode\n",
                   (s->live ? "Live" : "Readonly"));
         break;
+    case SCAN_STRIPES:
+        sc_printf(s, "%s schema change running in stripes scan mode\n");
+        break;
+    case SCAN_OLDCODE:
+        sc_printf(s, "%s schema change running in oldcode mode\n");
+        break;
     }
 }
 
@@ -738,7 +767,7 @@ void set_schemachange_options_tran(struct schema_change_type *s, struct dbtable 
 void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
                               struct scinfo *scinfo)
 {
-    return set_schemachange_options_tran(s, db, scinfo, NULL);
+    set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
 int print_status(struct schema_change_type *s)
@@ -873,24 +902,24 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
 
-        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->dbname,
+        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
                bdb_isopen(db->handle));
 
         /* the master doesn't tell the replicants to close the db
          * ahead of time */
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->dbname);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
         }
 
         /* reopen db */
         newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix, newdb->ix_keylen,
-            newdb->ix_dupes, newdb->ix_recnums, newdb->ix_datacopy,
-            newdb->ix_collattr, newdb->ix_nullsallowed, newdb->numblobs + 1,
-            thedb->bdb_env, tran, &bdberr);
-        logmsg(LOGMSG_DEBUG, "reload_schema handle %08x bdberr %d\n",
+            table, thedb->basedir, newdb->lrl, newdb->nix,
+            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+            newdb->numblobs + 1, thedb->bdb_env, tran, &bdberr);
+        logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
                newdb->handle, bdberr);
         if (bdberr != 0 || newdb->handle == NULL) return 1;
 
@@ -933,7 +962,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     } else {
         rc = bdb_close_only(db->handle, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->dbname);
+            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
             return 1;
         }
 
@@ -942,12 +971,12 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
          * schemas */
         /* faffing with schema required. schema can change in fastinit */
         db->handle = bdb_open_more_tran(
-            table, thedb->basedir, db->lrl, db->nix, db->ix_keylen,
+            table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
             db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran,
             &bdberr);
         logmsg(LOGMSG_DEBUG,
-               "reload_schema (fastinit case) handle %08x bdberr %d\n",
+               "reload_schema (fastinit case) handle %p bdberr %d\n",
                db->handle, bdberr);
         if (!db->handle || bdberr != 0) return 1;
 
@@ -959,7 +988,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     if (bthashsz) {
         logmsg(LOGMSG_INFO,
                "Rebuilding bthash for table %s, size %dkb per stripe\n",
-               db->dbname, bthashsz);
+               db->tablename, bthashsz);
         bdb_handle_dbp_add_hash(db->handle, bthashsz);
     }
 
@@ -976,4 +1005,51 @@ void set_sc_flgs(struct schema_change_type *s)
 int schema_change_headers(struct schema_change_type *s)
 {
     return s->header_change;
+}
+
+struct schema_change_type *
+clone_schemachange_type(struct schema_change_type *sc)
+{
+    struct schema_change_type *newsc;
+    size_t sc_len = schemachange_packed_size(sc);
+    uint8_t *p_buf, *p_buf_end, *buf;
+
+    p_buf = buf = calloc(1, sc_len);
+    if (!p_buf)
+        return NULL;
+
+    p_buf_end = p_buf + sc_len;
+
+    p_buf = buf_put_schemachange(sc, p_buf, p_buf_end);
+    if (!p_buf) {
+        free(buf);
+        return NULL;
+    }
+
+    newsc = new_schemachange_type();
+    if (!newsc) {
+        free(buf);
+        return NULL;
+    }
+
+    p_buf = buf;
+    p_buf = buf_get_schemachange(newsc, p_buf, p_buf_end);
+
+    newsc->nothrevent = sc->nothrevent;
+    newsc->pagesize = sc->pagesize;
+    newsc->showsp = sc->showsp;
+    newsc->retry_bad_genids = sc->retry_bad_genids;
+    newsc->dryrun = sc->dryrun;
+    newsc->use_new_genids = newsc->use_new_genids;
+    newsc->finalize = sc->finalize;
+    newsc->finalize_only = sc->finalize_only;
+
+    if (!p_buf) {
+        free(newsc);
+        free(buf);
+        return NULL;
+    }
+
+    free(buf);
+    return newsc;
 }

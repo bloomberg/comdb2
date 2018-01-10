@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include "comdb2ar.h"
 #include <stdio.h>
+#include <iostream>
 
 
 fdoutbuf::fdoutbuf(int fd) : m_fd(fd)

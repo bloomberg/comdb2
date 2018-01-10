@@ -1408,7 +1408,7 @@ Output:
 lua-table = db:csv_to_table(json-string, optional lua-table)
 ```
 
-Parse input json string and produce corresponding Lua table. Supports objects, arrays, null, bool, integer, double and string. There is no representation for undefined, NaN or Infinity. Additionally, JSON does not have encoding for datetime, interval or decimal values. If required, these types can be encoded as strings or numbers and converted to desired type in the procedure. Pass in a lua-table with `type-annotate=true` to process JSON string which has type hints (as produced by `db:table_to_json`)
+Parse input json string and produce corresponding Lua table. Supports objects, arrays, null, bool, integer, double and string. There is no representation for undefined, NaN or Infinity. Additionally, JSON does not have encoding for datetime, interval or decimal values. If required, these types can be encoded as strings or numbers and converted to desired type in the procedure. Pass in a lua-table with `type_annotate=true` to process JSON string which has type hints (as produced by `db:table_to_json`)
 Example pseudo-code:
 
 ```
@@ -1478,7 +1478,14 @@ sp2
 
 ## SQL Lua Functions
 
-Custom SQL functions can be implemented as stored procedures. Two categories of functions can be defined:
+Custom SQL functions can be implemented as stored procedures.
+
+Couple of limitations when using stored procedures as lua functions:
+
+1. Lua functions cannot start threads.
+2. Lua functions cannot explicitly control transactions (by calling `db:begin`, `db:commit` and `db:rollback`).
+
+Two categories of functions can be defined:
 
 ### Scalar function
 

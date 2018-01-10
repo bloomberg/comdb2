@@ -18,6 +18,7 @@
 /* COMDB2 MODIFICATION */
 #include <cheapstack.h>
 #include "tunables.h"
+#include "fwd_types.h"
 
 #undef debug_raw
 /* Special Comments:
@@ -1016,7 +1017,6 @@ typedef struct Bitvec Bitvec;
 typedef struct CollSeq CollSeq;
 typedef struct Column Column;
 typedef struct Db Db;
-typedef struct Schema Schema;
 typedef struct Expr Expr;
 typedef struct ExprList ExprList;
 typedef struct ExprSpan ExprSpan;
@@ -1050,15 +1050,16 @@ typedef struct TreeView TreeView;
 typedef struct Trigger Trigger;
 typedef struct TriggerPrg TriggerPrg;
 typedef struct TriggerStep TriggerStep;
-typedef struct UnpackedRecord UnpackedRecord;
 typedef struct VTable VTable;
 typedef struct VtabCtx VtabCtx;
 typedef struct Walker Walker;
 typedef struct WhereInfo WhereInfo;
 typedef struct With With;
+/* COMDB2 MODIFICATION */
 typedef struct Cdb2TrigEvent Cdb2TrigEvent;
 typedef struct Cdb2TrigEvents Cdb2TrigEvents;
 typedef struct Cdb2TrigTables Cdb2TrigTables;
+typedef struct comdb2_ddl_context Cdb2DDL;
 
 /*
 ** Defer sourcing vdbe.h and btree.h until after the "u8" and
@@ -1367,6 +1368,7 @@ struct sqlite3 {
   VtabCtx *pVtabCtx;            /* Context for active vtab connect/create */
   VTable **aVTrans;             /* Virtual tables with open transactions */
   VTable *pDisconnect;    /* Disconnect these in next sqlite3_prepare() */
+  void *pBestIndexCtx;          /* For sqlite3_vtab_collation() */
 #endif
   Hash aFunc;                   /* Hash table of connection functions */
   Hash aCollSeq;                /* All collating sequences */
@@ -1401,9 +1403,9 @@ struct sqlite3 {
 #endif
 
   /* COMDB2 MODIFICATION */
+  u8 isExpert;              /* If analyze is done using sqlite expert */
   u8 should_fingerprint;
   char fingerprint[16];              /* Figerprint of the last query that was prepared */
-  int force_sqlite_impl;
 };
 
 /*
@@ -1473,6 +1475,7 @@ struct sqlite3 {
 #define SQLITE_Transitive     0x0200   /* Transitive constraints */
 #define SQLITE_OmitNoopJoin   0x0400   /* Omit unused tables in joins */
 #define SQLITE_Stat34         0x0800   /* Use STAT3 or STAT4 data */
+#define SQLITE_CountOfView    0x1000   /* The count-of-view optimization */
 #define SQLITE_CursorHints    0x2000   /* Add OP_CursorHint opcodes */
 #define SQLITE_AllOpts        0xffff   /* All optimizations */
 
@@ -2170,6 +2173,8 @@ struct Index {
 #define SQLITE_IDXTYPE_APPDEF      0   /* Created using CREATE INDEX */
 #define SQLITE_IDXTYPE_UNIQUE      1   /* Implements a UNIQUE constraint */
 #define SQLITE_IDXTYPE_PRIMARYKEY  2   /* Is the PRIMARY KEY for the table */
+/* COMDB2 MODIFICATION */
+#define SQLITE_IDXTYPE_DUPKEY      3   /* Is the DUPLICATE KEY for the table */
 
 /* Return true if index X is a PRIMARY KEY index */
 #define IsPrimaryKeyIndex(X)  ((X)->idxType==SQLITE_IDXTYPE_PRIMARYKEY)
@@ -3060,7 +3065,7 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)];  /* register which cursors are recording and which not */
   With *pWithToFree;        /* Free this WITH object at the end of the parse */
   u8 write;                 /* Flag to indicate write transaction during sqlite3FinishCoding */
-  void *comdb2_ddl_ctx;     /* Context for DDL commands */
+  Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
 };
 
 /* COMDB2 MODIFICATION */
@@ -3427,7 +3432,7 @@ struct TreeView {
   int iLevel;             /* Which level of the tree we are on */
   u8  bLine[100];         /* Draw vertical in column i if bLine[i] is true */
 };
-#endif /* SQLITE_DEBUG */
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 
 /*
 ** Assuming zIn points to the first byte of a UTF-8 character,
@@ -3671,9 +3676,14 @@ u32 sqlite3ExprListFlags(const ExprList*);
 int sqlite3Init(sqlite3*, char**);
 int sqlite3InitCallback(void*, int, char**, char**);
 void sqlite3Pragma(Parse*,Token*,Token*,Token*,int);
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+Module *sqlite3PragmaVtabRegister(sqlite3*,const char *zName);
+#endif
 void sqlite3ResetAllSchemasOfConnection(sqlite3*);
 void sqlite3ResetOneSchema(sqlite3*,int);
 void sqlite3ResetOneSchemaByName(sqlite3*,const char*,const char*);
+/* COMDB2 MODIFICATIONS */
+void sqlite3ResetFdbSchemas(sqlite3 *db);
 void sqlite3CollapseDatabaseArray(sqlite3*);
 void sqlite3CommitInternalChanges(sqlite3*);
 void sqlite3DeleteColumnNames(sqlite3*,Table*);
@@ -3774,8 +3784,8 @@ void sqlite3OpenTable(Parse*, int iCur, int iDb, Table*, int);
 #if defined(SQLITE_ENABLE_UPDATE_DELETE_LIMIT) && !defined(SQLITE_OMIT_SUBQUERY)
 Expr *sqlite3LimitWhere(Parse*,SrcList*,Expr*,ExprList*,Expr*,Expr*,char*);
 #endif
-void sqlite3DeleteFrom(Parse*, SrcList*, Expr*);
-void sqlite3Update(Parse*, SrcList*, ExprList*, Expr*, int);
+void sqlite3DeleteFrom(Parse*, SrcList*, Expr*, ExprList*, Expr*, Expr*);
+void sqlite3Update(Parse*, SrcList*, ExprList*,Expr*,int,ExprList*,Expr*,Expr*);
 WhereInfo *sqlite3WhereBegin(Parse*,SrcList*,Expr*,ExprList*,ExprList*,u16,int);
 void sqlite3WhereEnd(WhereInfo*);
 LogEst sqlite3WhereOutputRowCount(WhereInfo*);
@@ -3898,7 +3908,7 @@ int sqlite3SafetyCheckSickOrOk(sqlite3*);
 void sqlite3ChangeCookie(Parse*, int);
 
 #if !defined(SQLITE_OMIT_VIEW) && !defined(SQLITE_OMIT_TRIGGER)
-void sqlite3MaterializeView(Parse*, Table*, Expr*, int);
+void sqlite3MaterializeView(Parse*, Table*, Expr*, ExprList*,Expr*,Expr*,int);
 #endif
 
 #ifndef SQLITE_OMIT_TRIGGER
@@ -4067,7 +4077,7 @@ extern int sqlite3PendingByte;
 void sqlite3RootPageMoved(sqlite3*, int, int, int);
 void sqlite3Reindex(Parse*, Token*, Token*);
 void sqlite3AlterFunctions(void);
-void sqlite3AlterRenameTable(Parse*, SrcList*, Token*);
+void sqlite3AlterRenameTable(Parse*, Token*, Token*, int dryrun);
 int sqlite3GetToken(const unsigned char *, int *);
 void sqlite3NestedParse(Parse*, const char*, ...);
 void sqlite3ExpirePreparedStatements(sqlite3*);
@@ -4196,6 +4206,13 @@ void sqlite3AutoLoadExtensions(sqlite3*);
    int sqlite3VtabSavepoint(sqlite3 *, int, int);
    void sqlite3VtabImportErrmsg(Vdbe*, sqlite3_vtab*);
    VTable *sqlite3GetVTable(sqlite3*, Table*);
+   Module *sqlite3VtabCreateModule(
+     sqlite3*,
+     const char*,
+     const sqlite3_module*,
+     void*,
+     void(*)(void*)
+   );
 #  define sqlite3VtabInSync(db) ((db)->nVTrans>0 && (db)->aVTrans==0)
 #endif
 int sqlite3VtabEponymousTableInit(Parse*,Module*);
@@ -4432,6 +4449,7 @@ extern int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname,
 extern int sqlite3UnlockTable(const char *dbname, const char *table);
 extern int comdb2_dynamic_attach(sqlite3 *db, sqlite3_context *context, sqlite3_value **argv,
       const char *zName, const char *zFile, char **pzErrDyn, int version);
+extern void comdb2_dynamic_detach(sqlite3 *db, int idx);  
 extern int comdb2_fdb_check_class(const char *dbname);
 int sqlite3InitTable(sqlite3 *db, char **pzErrMsg, const char *zName);
 extern int sqlite3UpdateMemCollAttr(BtCursor *pCur, int idx, Mem *mem);

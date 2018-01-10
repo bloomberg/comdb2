@@ -18,6 +18,7 @@
 #define _OSQL_SHADTBL_H_
 
 #include <comdb2.h>
+#include "bpfunc.pb-c.h"
 
 struct BtCursor;
 struct sql_thread;
@@ -57,6 +58,11 @@ struct shad_tbl {
 
     unsigned long long seq; /* used to generate uniq row ids */
     struct dbenv *env;
+    char tablename[MAXTABLELEN];
+    int tableversion;
+    int nix;
+    int ix_expr;
+    int ix_partial;
     struct dbtable *db; /* TODO: db has dbenv, chop it */
     int dbnum;
     int nblobs;
@@ -143,7 +149,7 @@ int osql_save_recordgenid(struct BtCursor *pCur, struct sql_thread *thd,
 /**
  * Check if a genid was recorded
  */
-int is_genid_recorded(struct sql_thread *thd, int tblnum,
+int is_genid_recorded(struct sql_thread *thd, struct BtCursor *pCur,
                       unsigned long long genid);
 
 /**
@@ -151,13 +157,20 @@ int is_genid_recorded(struct sql_thread *thd, int tblnum,
  *
  */
 int osql_save_schemachange(struct sql_thread *thd,
-                           struct schema_change_type *sc);
+                           struct schema_change_type *sc, int usedb);
+
+/**
+ * Record a schemachange for this transaction
+ *
+ */
+int osql_save_bpfunc(struct sql_thread *thd, BpfuncArg *arg);
 
 /**
  * Process shadow tables
  *
  */
-int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr);
+int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
+                         int restarting);
 
 /**
  *  Check of a shadow table transaction has cached selectv records

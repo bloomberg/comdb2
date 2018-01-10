@@ -17,6 +17,8 @@ Cdb2jdbc is a JDBC Type 4 driver, which means that the driver is a platform-inde
 
 To check out the source, please follow [the instructions](install.html#installing-from-source).
 
+#### Maven
+
 To install cdb2jdbc from source, the following additional software packages are required:
 
 *   JDK 1.6 or above
@@ -38,13 +40,33 @@ The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cd
 Another option is to build the driver inside a Docker container by running `make jdbc-docker-build` in `cdb2jdbc` (JAR files will be written
 to `cdb2jdbc/maven.m2/repository/com/bloomberg/comdb2/cdb2jdbc/2.0.0/`)
 
+#### Gradle
 
+Another way to install cdb2jdbc from source is the gradle wrapper. The following software packages are required:
+
+*   JDK 1.7 or above
+
+> Note that existing installations of gradle and protocol buffers **are not** required for the gradle build
+
+Once you check out the source and have all the required software installed on the system, change directory to cdb2jdbc under comdb2 source and type `./gradlew install` or `./gradlew.bat install` for Windows.
+
+```shell
+cd cdb2jdbc
+./gradlew install
+```
+
+> You can also use an existing install of gradle instead of the wrapper. At least version 2.12 is required.
+
+This build will install cdb2jdbc into your *local Maven* repository.
+The JAR files normally can be found in `~/.m2/repository/com/bloomberg/comdb2/cdb2jdbc/`.
 
 ## Setting up Cdb2jdbc
 
-There are 2 approaches to set up cdb2jdbc: with or without Maven.
+There are 2 approaches to set up cdb2jdbc: using build tools or setting the classpath.
 
-### With Maven
+### Build tools
+
+#### As a Maven dependency
 
 To introduce cdb2jdbc in your applications as a Maven dependency, add the following to `pom.xml`, with the version available from your Maven repository.
 
@@ -56,7 +78,21 @@ To introduce cdb2jdbc in your applications as a Maven dependency, add the follow
 </dependency>
 ```
 
-### Without Maven
+#### As a Gradle dependency
+
+If you followed the steps above to install cdb2jdbc form source, it should be in your local Maven repository. Add the following to your `build.gradle` with the version replaced to the cdb2jdbc version. 
+
+```groovy
+repositories {
+    mavenLocal()
+}
+
+dependencies {
+    compile 'com.bloomberg.comdb2:cdb2jdbc:major.minor.patch'
+}
+```
+
+### Setting the Classpath
 
 By default, an uber JAR is built along with cdb2jdbc and is named `cdb2jdbc-<version>-shaded.jar`.
 An uber JAR is a JAR file which contains all its dependencies. To use the JAR without Maven, you would include it in `CLASSPATH`.
@@ -174,9 +210,9 @@ The parameters are as follows:
 
         * REQUIRE
 
-        * VERIFY-CA
+        * VERIFY_CA
 
-        * VERIFY-HOSTNAME
+        * VERIFY_HOSTNAME
       
     * _key_store_=String
 
@@ -202,9 +238,14 @@ The parameters are as follows:
 
       Type of the trusted CA keystore. The default is `"JKS"`.
 
-    *_allow_pmux_route_=Boolean
+    * _allow_pmux_route_=Boolean
 
       Allow connection forwarding via `pmux`. The default is `false`.
+        
+    * _verify_retry_=Boolean
+
+      Toggle verifyretry. The default is `false`. See also [optimistic concurrency control](transaction_model.html#optimistic-concurrency-control).
+
         
     \* _To define multiple options, separate them by ampersands._
 

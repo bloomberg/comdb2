@@ -1,14 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 dbnm=$1
 echo adding table
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t" &> /dev/null
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t  { `cat t.csc2 ` }" > /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "drop table t" &> /dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm default "create table t  { `cat t.csc2 ` }" > /dev/null
 
 echo inserting 2000 records
-cdb2sql ${CDB2_OPTIONS} -f insert.sql $dbnm default  >/dev/null 2>&1 &
-cdb2sql ${CDB2_OPTIONS} -f insert.sql $dbnm default >/dev/null 2>&1 &
+cdb2sql -s ${CDB2_OPTIONS} -f insert.sql $dbnm default  >/dev/null 2>&1 &
+cdb2sql -s ${CDB2_OPTIONS} -f insert.sql $dbnm default >/dev/null 2>&1 &
 
 sleep 120
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select count(*) from t" >output.actual

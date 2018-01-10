@@ -54,7 +54,7 @@
 #include <bdb_api.h>
 #include <sbuf2.h>
 #include <quantize.h>
-#include <socket_pool.h>
+#include <sockpool.h>
 
 #include "comdb2.h"
 #include <comdb2_shm.h>
@@ -422,35 +422,35 @@ static void *watchdog_watcher_thread(void *arg)
 
     while (!thedb->exiting) {
         sleep(10);
+        if (gbl_nowatch)
+            continue;
 
-        if (!gbl_nowatch) {
-            int tmstmp = time_epoch();
-            if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
-                /*
-                  In order to handle situations where the watchdog is assumed
-                  dead once the system suspends, and wakes back up after more
-                  than gbl_watchdog_time secs, we need to wait for an additional
-                  cycle before making a decision to abort.
-                */
-                if (failed_once == 0) {
-                    failed_once++;
-                    continue;
-                }
+        int tmstmp = time_epoch();
+        if (tmstmp - gbl_watchdog_time > gbl_watchdog_watch_threshold) {
+            /*
+              In order to handle situations where the watchdog is assumed
+              dead once the system suspends, and wakes back up after more
+              than gbl_watchdog_time secs, we need to wait for an additional
+              cycle before making a decision to abort.
+            */
+            if (failed_once > 0) {
                 logmsg(LOGMSG_FATAL, "watchdog thread stuck, exiting\n");
                 comdb2_die(1);
             }
-            /*
-              Reset the flag to protect against abort being triggered for
-              non-successive failures.
-            */
-            failed_once = 0;
+            failed_once++;
+            continue;
+        }
+        /*
+          Reset the flag to protect against abort being triggered for
+          non-successive failures.
+        */
+        failed_once = 0;
 
-            /* I also wanna watch the bdb watcher, since that one
-               gets stuck every time there is berkdb lockdown */
-            if (tmstmp - gbl_watcher_thread_ran > 60) {
-                logmsg(LOGMSG_FATAL, "rep watcher thread stuck, exiting\n");
-                comdb2_die(1);
-            }
+        /* I also wanna watch the bdb watcher, since that one
+           gets stuck every time there is berkdb lockdown */
+        if (tmstmp - gbl_watcher_thread_ran > 60) {
+            logmsg(LOGMSG_FATAL, "rep watcher thread stuck, exiting\n");
+            comdb2_die(1);
         }
     }
     return NULL;

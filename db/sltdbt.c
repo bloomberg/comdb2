@@ -194,7 +194,8 @@ void req_stats(struct dbtable *db)
         int flag = 0;
         if (db->typcnt[ii]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
             logmsg(LOGMSG_USER, "%-20s %u\n", req2a(ii), db->typcnt[ii]);
@@ -203,24 +204,31 @@ void req_stats(struct dbtable *db)
     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
         if (db->blocktypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-16s %u\n", breq2a(jj), db->blocktypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %u\n", breq2a(jj),
+                   db->blocktypcnt[jj]);
         }
     }
     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
         if (db->blockosqltypcnt[jj]) {
             if (hdr == 0) {
-                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum, db->dbname);
+                logmsg(LOGMSG_USER, "REQUEST STATS FOR DB %d '%s'\n", db->dbnum,
+                       db->tablename);
                 hdr = 1;
             }
-            logmsg(LOGMSG_USER, "    %-16s %u\n", osql_breq2a(jj), db->blockosqltypcnt[jj]);
+            logmsg(LOGMSG_USER, "    %-20s %u\n", osql_breq2a(jj),
+                   db->blockosqltypcnt[jj]);
         }
     }
 }
 
 extern pthread_mutex_t delay_lock;
+extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
+extern int gbl_print_deadlock_cycles;
+
 int offload_net_send(int tonode, int usertype, void *data, int datalen,
                      int nodelay);
 
@@ -328,6 +336,8 @@ int handle_ireq(struct ireq *iq)
     iq->rawnodestats = get_raw_node_stats(iq->frommach);
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
+    if (gbl_print_deadlock_cycles)
+        osql_snap_info = &iq->snap_info;
 
     if (opcode_supported(iq->opcode)) {
         switch (iq->opcode) {
@@ -415,6 +425,8 @@ int handle_ireq(struct ireq *iq)
                         }
                     }
 
+                    iq->usedb = iq->origdb;
+
                     n_retries++;
                     poll(0, 0, (rand() % 25 + 1));
                     goto retry;
@@ -473,8 +485,8 @@ int handle_ireq(struct ireq *iq)
         }
 
         /* Record the dbname (aka table) for this op */
-        if (iq->usedb && iq->usedb->dbname)
-            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->dbname);
+        if (iq->usedb && iq->usedb->tablename)
+            reqlog_logl(iq->reqlogger, REQL_INFO, iq->usedb->tablename);
     } else {
         rc = ERR_BADREQ;
         iq->where = "opcode not supported";
@@ -557,9 +569,23 @@ int handle_ireq(struct ireq *iq)
                         iq->frommach, iq->rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
                 } else {
-                    sndbak_open_socket(iq->sb, iq->p_buf_out_start,
-                                       iq->p_buf_out - iq->p_buf_out_start, rc);
-                    free_bigbuf(iq->p_buf_out_start, iq->request_data);
+                    /* The tag request is handled locally.
+                       We know for sure `request_data' is a `buf_lock_t'. */
+                    struct buf_lock_t *p_slock =
+                        (struct buf_lock_t *)iq->request_data;
+                    if (pthread_mutex_lock(&p_slock->req_lock) == 0) {
+                        if (p_slock->reply_state == REPLY_STATE_DISCARD) {
+                            pthread_mutex_unlock(&p_slock->req_lock);
+                            cleanup_lock_buffer(p_slock);
+                            free_bigbuf_nosignal(iq->p_buf_out_start);
+                        } else {
+                            sndbak_open_socket(
+                                iq->sb, iq->p_buf_out_start,
+                                iq->p_buf_out - iq->p_buf_out_start, rc);
+                            free_bigbuf(iq->p_buf_out_start, iq->request_data);
+                            pthread_mutex_unlock(&p_slock->req_lock);
+                        }
+                    }
                 }
                 iq->request_data = iq->p_buf_out_start = NULL;
             } else {
@@ -593,6 +619,8 @@ int handle_ireq(struct ireq *iq)
         osql_bplog_reqlog_queries(iq);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
+    if (gbl_print_deadlock_cycles)
+        osql_snap_info = NULL;
 
     if (iq->sorese.type) {
         if (iq->p_buf_out_start) {

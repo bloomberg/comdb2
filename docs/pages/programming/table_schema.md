@@ -7,12 +7,26 @@ permalink: table_schema.html
 
 ## Overview
 
-Unlike many other relational database systems, Comdb2 does not use SQL for its data definition language.  The language it uses is
-declarative rather than imperative.  The entire schema per table is presented to the database at once.  It's up to the database to
-figure out which indices to add/remove/modify, which fields to grow, shrink, etc.  A table definition has a several sections: the 
-[constants](#constants-section), the [table definition](#schema-section), the [keys](#key-section), and the [constraints](#constraints-section). 
+Comdb2 provides two ways to define or modify a table schema. A declarative
+language (discussed here) and the standard data definition language, like
+other relational database systems. The support for latter was added in version
+7.0, discussed in [SQL language](sql.html) in more details.
 
-Comments begin with ```//``` and go until the end of the line.  There's no multi-line comments.
+In the first approach, Comdb2 supports a language that is declarative rather
+than imperative. The entire schema per table is presented to the database at
+once.  It's up to the database to figure out which indices to add/remove/modify,
+which fields to grow, shrink, etc.  A table definition has a several sections:
+
+* [Constants](#constants-section)
+
+* [Table definition](#schema-section)
+
+* [Keys](#key-section)
+
+* [Constraints](#constraints-section)
+
+Comments begin with ```//``` and go until the end of the line. Multi-line
+comments enclosed in ```/* ... */``` are also supported.
 
 ## Constants section
 
@@ -286,13 +300,13 @@ can specify ascending key pieces with the ```<ASCEND>``` keyword, but it is not 
 The constraints section is an optional section of the table definition used to specify foreign key constraints.
 It establishes a relationship between keys in the current table and keys in other (foreign) tables.
 
-The syntax is ```"LOCAL_KEYNAME" -> "REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"```
+The syntax is ```"LOCAL_KEYNAME" -> "REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"```.
 
-```LOCAL_KEYNAME``` is the name of the key in the current table  ```REFERENCED_TABLE_NAME``` is the name of the 
-table which contains the key which is being pointed at.  ```REFERENCED_KEY_NAME``` is the name of the key in 
-the foreign table.  The datatypes of the columns comprising these keys need not match, though the contents must 
-be convertible.  The local key can be a prefix of the foreign key, and the foreign key can be a prefix of the 
-local key.
+```LOCAL_KEYNAME``` is the name of the key in the current table. ```REFERENCED_TABLE_NAME```
+and ```REFERENCED_KEY_NAME``` are the names of referenced (foreign) table which contains the
+key which is being pointed at, and key in the foreign table, respectively. The data types of
+the columns comprising these keys need not match, though the contents must be convertible.
+The local key can be a prefix of the foreign key, and vice versa.
 
 A key can point at more than one key by specifying multiple ```"REFERENCED_TABLE_NAME":"REFERENCED_KEY_NAME"``` 
 items on the same line delimited by white-space.  A key can point to a key within its own table by specifying 
@@ -356,13 +370,13 @@ select * from comdb2_users
 
 set user user1
 set password user1
-create table test { tag ondisk {int t} keys { "T1" = t}}$$
+create table test { schema {int t} keys { "T1" = t}}$$
 insert into test values(1)
 (rows inserted=1)
 
 set user user2
 set password user2
-create table test { tag ondisk {int t} keys { "T1" = t}}$$
+create table test { schema {int t} keys { "T1" = t}}$$
 insert into test values(2)
 (rows inserted=1)
 

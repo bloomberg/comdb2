@@ -42,7 +42,7 @@ static int __txn_set_logical_start __P((DB_ENV *,
 static int __txn_set_logical_commit __P((DB_ENV *,
 	int (*)(DB_ENV *, void *, u_int64_t, DB_LSN *)));
 
-int gbl_use_perfect_ckp = 1;
+int gbl_use_perfect_ckp = 0;
 pthread_key_t txn_key;
 static pthread_once_t init_txn_key_once = PTHREAD_ONCE_INIT;
 
@@ -248,7 +248,7 @@ __txn_print_ltrans(dbenv, lt, f, flags)
 	FILE *f;
 	u_int32_t flags;
 {
-	logmsg(LOGMSG_USER, "LTRANID %016llx ACTIVE-TXN %4d\n", lt->ltranid,
+	logmsg(LOGMSG_USER, "LTRANID %016lx ACTIVE-TXN %4d\n", lt->ltranid,
 	    lt->active_txn_count);
 }
 

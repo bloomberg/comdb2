@@ -1,9 +1,11 @@
 # shortcut for building jdbc driver via make
 BASEDIR:=$(realpath ..)
-VERSION?=$(shell grep ^comdb2 ../deb/changelog  | sed 's/^comdb2 .//; s/-.*//g')
+VERSION?=$(shell grep ^comdb2 ../pkg/changelog  | sed 's/^comdb2 .//; s/-.*//g')
 
-.PHONY= jdbc
+.PHONY: jdbc
 MAVEN_VER := $(shell mvn -version 2>/dev/null)
+
+envSkipTests?='true'
 
 jdbc:
 ifdef MAVEN_VER
@@ -38,4 +40,7 @@ jdbc-docker-build: jdbc-docker-build-container
 		-v $(BASEDIR)/cdb2jdbc/maven.m2:/maven.m2 \
 		-w /jdbc.build \
 		jdbc-docker-builder:$(VERSION) \
-		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml clean install
+		/bin/maven/bin/mvn -f /jdbc.build/cdb2jdbc/pom.xml \
+			-Denv.skipTests=$(envSkipTests) \
+			-DargLine="-Dcdb2jdbc.test.database=$(envTestDatabase) -Dcdb2jdbc.test.cluster=$(envTestCluster)" \
+			clean install

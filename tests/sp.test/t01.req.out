@@ -263,8 +263,8 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (id='8eb31cbc-f341-433b-9110-53713e0dd257')
 (id=1)
 (testcase='SET INVALID DEFAULTS - VERSIONED SPs HAVE CHECKS')
-[put default procedure sp2000 '2000'] failed with rc 304 no such procedure sp2000:2000
-[put default procedure sp1 '2000'] failed with rc 304 no such procedure sp1:2000
+[put default procedure sp2000 '2000'] failed with rc 240 no such procedure sp2000:2000
+[put default procedure sp1 '2000'] failed with rc 240 no such procedure sp1:2000
 (testcase='SHOULD GET SAME RESULTS AS comdb2sc.tsk')
 (version='1')
 (i=0)
@@ -727,7 +727,7 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 (i=98)
 (i=99)
 (i=100)
-[exec procedure reset_test()] failed with rc -3 [row = s1:fetch()...]:53: no active stmt
+[exec procedure reset_test()] failed with rc -3 [row = s1:fetch()...]:54: no active stmt
 (expected=100, actual=100)
 (version='sptest')
 (count=50000, first=0, last=49999)
@@ -818,3 +818,10 @@ SP: exec procedure bound(@i, @u, @ll, @ull, @s, @us, @f, @d, @dt, @cstr, @ba, @b
 ($0=17.000000, $1='number', $2='2017-04-18T160323.416 America/New_York', $3='datetime', $4='2017-04-18T160323.416 America/New_York', $5='datetime')
 ($0=18.000000, $1='number', $2='0 00:01:00.000', $3='intervalds', $4='0 00:01:00.000', $5='intervalds')
 ($0=19.000000, $1='number', $2='0-10', $3='intervalym', $4='0-10', $5='intervalym')
+(version='sptest')
+(val0='0', val1='0')
+(val0='255', val1='255')
+(rows inserted=10)
+(version='sptest')
+($0=10.000000)
+($0=10.000000)

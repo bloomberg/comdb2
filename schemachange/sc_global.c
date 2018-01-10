@@ -21,6 +21,8 @@
 #include "sc_global.h"
 #include "logmsg.h"
 #include "sc_callbacks.h"
+#include "bbinc/cheapstack.h"
+#include "crc32c.h"
 
 pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -29,7 +31,7 @@ pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
 volatile int gbl_schema_change_in_progress = 0;
 volatile int gbl_lua_version = 0;
 uint64_t sc_seed;
-static char *sc_host;
+uint32_t sc_host; /* crc32 of machine name */
 static time_t sc_time;
 int gbl_default_livesc = 1;
 int gbl_default_plannedsc = 1;
@@ -80,7 +82,7 @@ int gbl_sc_thd_failed = 0;
 /* All writer threads have to grab the lock in read/write mode.  If a live
  * schema change is in progress then they have to do extra stuff. */
 int sc_live = 0;
-/*static pthread_rwlock_t sc_rwlock = PTHREAD_RWLOCK_INITIALIZER;*/
+pthread_rwlock_t sc_live_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 int schema_change = SC_NO_CHANGE; /*static int schema_change_doomed = 0;*/
 
@@ -115,8 +117,8 @@ const char *get_sc_to_name(const char *name)
 
 void wait_for_sc_to_stop(void)
 {
+    stopsc = 1;
     if (gbl_schema_change_in_progress) {
-        stopsc = 1;
         logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
         int retry = 10;
         while (gbl_schema_change_in_progress && retry--) {
@@ -125,6 +127,11 @@ void wait_for_sc_to_stop(void)
         logmsg(LOGMSG_INFO, "proceeding with downgrade (waited for: %ds)\n",
                10 - retry);
     }
+}
+
+void allow_sc_to_run(void)
+{
+    stopsc = 0;
 }
 
 /* Atomically set the schema change running status, and mark it in glm for
@@ -140,23 +147,19 @@ void wait_for_sc_to_stop(void)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(int running, uint64_t seed, char *host, time_t time)
+int sc_set_running(int running, uint64_t seed, const char *host, time_t time)
 {
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
 
     pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (thedb->master == gbl_mynode) {
-        if (running && gbl_schema_change_in_progress) {
+        if (running && gbl_schema_change_in_progress && seed != sc_seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            if (seed == sc_seed)
-                return 0;
-            else {
-                logmsg(LOGMSG_ERROR, "schema change already in progress\n");
-                return -1;
-            }
+            logmsg(LOGMSG_INFO, "schema change already in progress\n");
+            return -1;
         } else if (!running && seed != sc_seed && seed) {
             pthread_mutex_unlock(&schema_change_in_progress_mutex);
             logmsg(LOGMSG_ERROR,
@@ -164,21 +167,33 @@ int sc_set_running(int running, uint64_t seed, char *host, time_t time)
             return -1;
         }
     }
-    gbl_schema_change_in_progress = running;
     if (running) {
-        sc_seed = seed;
-        sc_host = host;
-        sc_time = time;
-    } else {
-        sc_seed = 0;
-        sc_host = NULL;
-        sc_time = 0;
-        gbl_sc_resume_start = 0;
+        gbl_schema_change_in_progress++;
+        if (gbl_schema_change_in_progress == 1) {
+            sc_seed = seed;
+            sc_host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
+            sc_time = time;
+        }
+    } else { /* not running */
+        if (gbl_schema_change_in_progress && seed && seed == sc_seed)
+            gbl_schema_change_in_progress--;
+        if (gbl_schema_change_in_progress == 0 || !seed) {
+            sc_seed = 0;
+            sc_host = 0;
+            sc_time = 0;
+            gbl_sc_resume_start = 0;
+            gbl_schema_change_in_progress = 0;
+        }
     }
-    ctrace("sc_set_running: running=%d seed=0x%llx\n", running,
-           (unsigned long long)seed);
-    logmsg(LOGMSG_INFO, "sc_set_running: running=%d seed=0x%llx\n", running,
-           (unsigned long long)seed);
+    ctrace("sc_set_running(running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",
+           running, (unsigned long long)seed, gbl_schema_change_in_progress,
+           (unsigned long long)sc_seed, (unsigned)sc_host);
+    logmsg(LOGMSG_INFO,
+           "sc_set_running(running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d, sc_seed %llx, sc_host %x\n",
+           running, (unsigned long long)seed, gbl_schema_change_in_progress,
+           (unsigned long long)sc_seed, (unsigned)sc_host);
     pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return 0;
 }
@@ -193,7 +208,7 @@ void sc_status(struct dbenv *dbenv)
         localtime_r(&timet, &tm);
 
         logmsg(LOGMSG_USER, "-------------------------\n");
-        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%llx\n",
+        logmsg(LOGMSG_USER, "Schema change in progress with seed 0x%lx\n",
                sc_seed);
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",
@@ -226,9 +241,11 @@ void reset_sc_stat()
  * change (removing temp tables etc). */
 void live_sc_off(struct dbtable *db)
 {
+    pthread_rwlock_wrlock(&sc_live_rwlock);
     db->sc_to = NULL;
     db->sc_from = NULL;
     sc_live = 0;
+    pthread_rwlock_unlock(&sc_live_rwlock);
 }
 
 int reload_lua()

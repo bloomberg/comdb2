@@ -182,7 +182,6 @@ int tcpresolve(const char *host, struct in_addr *in, int *port)
     in_addr_t inaddr;
 
     int len;
-    struct hostent *hp;
     char tok[128], *cc;
     cc = strchr(host, (int)':');
     if (cc == 0) {
@@ -203,7 +202,7 @@ int tcpresolve(const char *host, struct in_addr *in, int *port)
         /* it's dotted-decimal */
         memcpy(&in->s_addr, &inaddr, sizeof(inaddr));
     } else {
-        hp = bb_gethostbyname(tok);
+        struct hostent *hp = bb_gethostbyname(tok);
         if (hp == NULL)
             return -1;
         memcpy(&in->s_addr, hp->h_addr, hp->h_length);

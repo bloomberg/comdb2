@@ -1,0 +1,162 @@
+#!/bin/bash
+
+#debug=1
+# Runs the insert utility
+[[ "$debug" == 1 ]] && set -x
+
+db=$1
+failed=0
+debug_trace="-D"
+instest=${TESTSROOTDIR}/tools/insert
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "This test is only relevant for a CLUSTERED instance."
+    exit 0
+fi
+
+if [[ -z "$stage" ]]; then
+    echo "Setting stage to 'default' (set 'stage' var to override)."
+    stage="default"
+fi
+
+function createtables
+{
+    [[ "$debug" == 1 ]] && set -x
+    cdb2sql ${CDB2_OPTIONS} $db $stage "create table jepsen {schema{int id int value} keys{ \"value\" = value }}" >/dev/null 2>&1
+}
+
+function checkforerrors
+{
+    [[ "$debug" == 1 ]] && set -x
+    outfile=$1
+    grep "lost value" $outfile
+    if [[ $? == 0 ]]; then
+        echo "LOST VALUE : see $outfile !!!"
+        exit 1
+    fi
+
+    grep "^XXX " $outfile
+    if [[ $? == 0 ]]; then
+        # This is only allowed if we have exceeded retries
+        grep "Maximum number of retries done" $outfile >/dev/null 2>&1
+        if [[ $? != 0 ]]; then
+            echo "XXX Failure : see $outfile !!!"
+            exit 1
+        fi
+    fi
+
+    grep "THIS SHOULD HAVE RETURNED DUP" $outfile
+    if [[ $? == 0 ]]; then
+        echo "DUP BLKSEQ FAILURE !!!"
+        exit 1
+    fi
+ 
+    grep "FAIL THIS TEST" $outfile
+    if [[ $? == 0 ]]; then
+        echo "!!! DUP VALUE IN ITERATION !!!"
+        exit 1
+    fi
+
+    cnonce=$(egrep cnonce $outfile | egrep cdb2_ | awk '{print $8,$9}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1" | egrep -v '2 -s' | wc -l)
+    if [[ "$cnonce" != 0 ]]; then
+        echo "!!! CNONCE HAS MORE THAN ONE LSN !!!"
+        egrep cnonce $outfile | egrep cdb2_ | awk '{print $8,$9}' | egrep -v "\[0]\[0\]" | sort -u | awk '{print $1}' | uniq -c | egrep -v "^      1"  | egrep -v '2 -s'
+        exit 1
+    fi
+
+    grep "handle state" $outfile
+    if [[ $? == 0 ]]; then
+        echo "!!! HANDLE STATE ERROR IN ITERATION $iter !!!"
+        exit 1
+    fi
+
+    return 0
+}
+
+function heal
+{
+    [[ "$debug" == 1 ]] && set -x
+    machs=$(cdb2sql -showports $db $stage "select 1" 2>&1 >/dev/null | while read mach xxx ; do echo $mach ; done)
+    ports=$(cdb2sql -showports $db $stage "select 1" 2>&1 >/dev/null)
+    for mach in $machs ; do 
+        echo "$ports" | while read m p ; do 
+	        ssh $mach "sudo iptables -D INPUT -s $m -p tcp --destination-port $p -j DROP -w" < /dev/null >/dev/null 2>&1
+	        ssh $mach "sudo iptables -D INPUT -s $m -p udp --destination-port $p -j DROP -w" < /dev/null >/dev/null 2>&1
+	        ssh $mach "sudo kill -CONT \$(cat /tmp/$db.pid)" < /dev/null >/dev/null 2>&1
+        done
+    done
+}
+
+function waitforcoherency
+{
+    [[ "$debug" == 1 ]] && set -x
+    heal
+    ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+    m=${ma%%:*}
+    c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+    echo "$c"
+    echo "$c" | egrep COHERENT
+    r=$?
+    while [[ $r == 0 ]] ; do
+        echo "$(date) waiting for $db cluster to become coherent"
+        heal
+        sleep 1
+        ma=$(cdb2sql -tabs $db $stage "exec procedure sys.cmd.send('bdb cluster')" | egrep MASTER | egrep lsn) 
+        m=${ma%%:*}
+        c=$(ssh $m "/opt/bb/bin/cdb2sql -tabs $db @localhost \"exec procedure sys.cmd.send('bdb cluster')\"")
+        echo "$c"
+        echo "$c" | egrep COHERENT
+        r=$?
+    done
+}
+
+function runtestwithoptions
+{
+    [[ "$debug" == 1 ]] && set -x
+    outfile=insert.$db.$(date +%Y%m%d%H%M%S).out
+    echo "$instest -d $db -c ${CDB2_CONFIG} -t $stage $debug_trace $*" > $outfile
+    $instest -d $db -c ${CDB2_CONFIG} -t $stage $debug_trace $* >> $outfile 2>&1
+    checkforerrors $outfile
+    cat $outfile
+    rm $outfile
+}
+
+# Run these test-options against several insert granularities
+function testround
+{
+    [[ "$debug" == 1 ]] && set -x
+    runtestwithoptions -i 1 $*
+    runtestwithoptions -i 10 $*
+    runtestwithoptions -i 100 $*
+    runtestwithoptions -i 1000 $*
+}
+
+function longtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    testround -G parition
+    testround -G sigstop
+    testround -G sigstop -G partition
+}
+
+function normaltest
+{
+    [[ "$debug" == 1 ]] && set -x
+    testround -G sigstop -G partition
+}
+
+function runtest
+{
+    [[ "$debug" == 1 ]] && set -x
+    if [[ -z "$CONTINUOUS" ]]; then
+        normaltest
+    else
+        longtest
+    fi
+}
+
+createtables
+runtest
+
+echo "Success"
+exit 0

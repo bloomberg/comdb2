@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
+
+# Remember if we've started the coprocess.
+stco=1
 
 # Debug variable
 debug=0
@@ -17,6 +20,9 @@ nins=0
 
 function failexit
 {
+    if [[ "$stco" == "1" ]]; then
+        echo "quit" >&${COPROC[1]}
+    fi
     echo "Failed $1"
     exit -1
 }
@@ -45,41 +51,6 @@ function do_verify
     fi
 }
 
-
-# Update all records in the table
-function update_all_records
-{
-    typeset prmsg=$1
-    typeset iter=0
-
-    [[ "$debug" == 1 ]] && set -x
-
-    while :; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
-        let iter=iter+1
-
-        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
-
-            echo "Updated all of table t1 $iter times."
-
-        fi
-
-    done
-}
-
-function update_records
-{
-    j=0
-    nrecs=$1
-    echo "Updating $nrecs records."
-    echo "" > update.out
-
-    while [[ $j -lt $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=c+10000 where a = $j" >> update.out 
-        let j=j+1
-    done
-}
 
 function insert_records_oneshot
 {
@@ -233,6 +204,7 @@ function test1
 
 function test2
 {
+    recom=$1
     #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 100')"
     #to have begin, insert, insert, commit
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c from t1 order by a" > pre.txt
@@ -246,6 +218,9 @@ function test2
     read -t 1.9 -ru ${COPROC[0]} out
     echo "out=$out"
 
+    if [ $recom -ne 0 ] ; then
+        echo "set transaction read committed" >&${COPROC[1]}
+    fi
     echo "begin" >&${COPROC[1]}
     echo "update t1 set c=c+100000 where a = 300000" >&${COPROC[1]}
     echo "delete from t1 where c = $j" >&${COPROC[1]}
@@ -274,6 +249,28 @@ function test2
     cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" || failexit "alter to t1_1"
 }
 
+function test3
+{
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t3 {schema {int a int b}}"
+
+    echo "set transaction read committed" >&${COPROC[1]}
+    echo "begin" >&${COPROC[1]}
+    echo "insert into t3(a,b) values (1, 10)" >&${COPROC[1]}
+    echo "insert into t3(a,b) values (2, 20)" >&${COPROC[1]}
+
+    echo "Alter table t3 and swap column a and b"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t3 {schema {int b int a}}"
+
+    echo "commit" >&${COPROC[1]}
+    sleep 0.4
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t3" > test3.res
+
+    if ! diff test3.out test3.res; then
+        failexit "test3 failed"
+    fi
+}
+
 echo "Test with insert, SC should not fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
@@ -288,21 +285,26 @@ done
 coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default -
 cppid=$!
 echo me: $$ COPROC $cppid fd in ${COPROC[0]} out ${COPROC[1]}
+stco=1
 
 master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
 
-for i in `seq 1 5`; do 
+for i in `seq 1 5`; do
     insert_records_oneshot 1 $INITCNT
     echo "test1 $i"
     test1
 done
 
 
+cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1" || failexit "truncate"
 insert_records_oneshot 1 $INITCNT
-for i in `seq 1 1`; do 
-    echo "test2 $i"
-    test2
-done
+echo "test2 $i sosql"
+test2 0
+echo "test2 $i recom"
+test2 1
 
+test3
+
+echo "quit" >&${COPROC[1]}
 
 echo "Success"

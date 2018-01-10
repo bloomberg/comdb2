@@ -580,7 +580,6 @@ __txn_begin_int_int(txn, internal, retries, we_start_at_this_lsn)
 	txn->id = __txn_id;
 	txn->prepare = __txn_prepare;
 	txn->set_timeout = __txn_set_timeout;
-	txn->snapshot == __txn_snapshot;
 
 	/*
 	 * If this is a transaction family, we must link the child to the
@@ -1531,7 +1530,7 @@ __txn_discard(txnp, flags)
 		__os_free(dbenv, freep);
 	}
 
-	if ((ret = pthread_setspecific(txn_key, NULL)) != 0)
+	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
 		return (ret);
 
 	return (0);
@@ -1875,7 +1874,7 @@ __txn_end(txnp, is_commit)
 		(void)__txn_checkpoint(dbenv, 0, 0, DB_FORCE);
 	}
 
-	if ((ret = pthread_setspecific(txn_key, NULL)) != 0)
+	if (dbenv->tx_perfect_ckp && (ret = pthread_setspecific(txn_key, NULL)) != 0)
 		return (ret);
 
 	return (0);
@@ -2544,18 +2543,7 @@ __txn_updateckp(dbenv, lsnp)
 	R_UNLOCK(dbenv, &mgr->reginfo);
 }
 
-/*
- * __txn_snapshot --
- * Create a logical snapshot 
- *
- * PUBLIC: void __txn_snapshot __P((DB_TXN*));
- */
-int
-__txn_snapshot(txnp)
-	DB_TXN *txnp;
-{
-	return 0;
-}
+
 
 int
 cmp_by_lsn(const void *pp1, const void *pp2)

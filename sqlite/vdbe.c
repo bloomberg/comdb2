@@ -66,6 +66,11 @@ void getRowid(BtCursor *pCursor, i64 rowid, u8 p3, Mem *pOut)
       return;
   }
 
+  if( pCursor==NULL ){
+      MemSetTypeFlag(pOut, MEM_Null);
+      return;
+  }
+
   if( p3 == 1 ){
     sqlite3BtreeRecordIDString(pCursor, rowid, &pOut->z, 0);
     pOut->n = strlen(pOut->z);
@@ -942,7 +947,7 @@ int sqlite3VdbeExec(
 
     /* COMDB2 MODIFICATION */
     if( gbl_debug_sql_opcodes ){
-      logmsg(LOGMSG_USER, "tid 0x%x step %d pc %d op %d %s\n", pthread_self(), nVmStep, 
+      logmsg(LOGMSG_USER, "tid 0x%lx step %d pc %d op %d %s\n", pthread_self(), nVmStep,
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 
@@ -1822,8 +1827,8 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   else if( ((pIn1->flags & pIn2->flags & MEM_Interval)==MEM_Interval) &&
             (
              pIn1->du.tv.type == pIn2->du.tv.type ||
-             pIn1->du.tv.type == INTV_DS_TYPE && pIn2->du.tv.type == INTV_DSUS_TYPE ||
-             pIn1->du.tv.type == INTV_DSUS_TYPE && pIn2->du.tv.type == INTV_DS_TYPE
+             (pIn1->du.tv.type == INTV_DS_TYPE && pIn2->du.tv.type == INTV_DSUS_TYPE) ||
+             (pIn1->du.tv.type == INTV_DSUS_TYPE && pIn2->du.tv.type == INTV_DS_TYPE)
              ) &&
             ((pOp->opcode == OP_Add) || (pOp->opcode == OP_Subtract))){
   
@@ -3649,7 +3654,10 @@ case OP_Transaction: {
   assert( p->bIsReader );
   assert( p->readOnly==0 || pOp->p2==0 );
   assert( pOp->p1>=0 && pOp->p1<db->nDb );
-  assert( DbMaskTest(p->btreeMask, pOp->p1) );
+  /* COMDB2: we have not set btreeMask because we dont set cookieMask
+   * which then is used to set btreeMask in sqlite3FinishCoding
+   * (modified by COMDB2) by calling sqlite3VdbeUsesBtree.
+   * assert( DbMaskTest(p->btreeMask, pOp->p1) ); */
   if( pOp->p2 && (db->flags & SQLITE_QueryOnly)!=0 ){
     rc = SQLITE_READONLY;
     goto abort_due_to_error;
@@ -3957,7 +3965,7 @@ case OP_OpenWrite:
   pCur->isOrdered = 1;
   pCur->pgnoRoot = p2;
 #ifdef SQLITE_DEBUG
-  pCur->wrFlag = wrFlag;
+  pCur->wrFlag = flag;
 #endif
 /* COMDB2 MODIFICATION */
   pCur->nCookFields = -1;

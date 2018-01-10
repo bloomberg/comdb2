@@ -40,6 +40,7 @@ struct __fname {
 	roff_t	  name_off;		/* Name offset. */
 	db_pgno_t meta_pgno;		/* Page number of the meta page. */
 	u_int8_t  ufid[DB_FILE_ID_LEN];	/* Unique file id. */
+	u_int8_t  ufid_chk[DB_FILE_ID_LEN];	/* Unique file id sanity check. */
 
 	u_int32_t create_txnid;		/*
 					 * Txn ID of the DB create, stored so

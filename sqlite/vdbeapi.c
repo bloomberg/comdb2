@@ -189,7 +189,7 @@ int sqlite3_stmt_has_remotes(sqlite3_stmt *pStmt)
       if( v->btreeMask[0] >= 4){
         rc = 1;
       }else{
-        rc = sqlite3DbMaskAllZero(v->btreeMask, 1);
+        rc = !sqlite3DbMaskAllZero(v->btreeMask, 1);
       }
 #else
       rc = (v->btreeMask >= 4);
@@ -787,12 +787,12 @@ end_of_step:
   ** contains the value that would be returned if sqlite3_finalize() 
   ** were called on statement p.
   */
-  assert( rc==SQLITE_ROW  || rc==SQLITE_DONE   || rc==SQLITE_ERROR 
-       || (rc&0xff)==SQLITE_BUSY || rc==SQLITE_MISUSE
-       || rc==SQLITE_ABORT
-       /* COMDB2 MODIFICATION */
-       || rc==SQLITE_TOOBIG
-  );
+    assert(rc == SQLITE_ROW || rc == SQLITE_DONE || rc == SQLITE_ERROR ||
+           (rc & 0xff) == SQLITE_BUSY || rc == SQLITE_MISUSE ||
+           rc == SQLITE_ABORT
+           /* COMDB2 MODIFICATION */
+           ||
+           rc == SQLITE_TOOBIG || rc == SQLITE_ACCESS || SQLITE_SCHEMA_REMOTE);
   assert( (p->rc!=SQLITE_ROW && p->rc!=SQLITE_DONE) || p->rc==p->rcApp );
   if( p->isPrepareV2 && rc!=SQLITE_ROW && rc!=SQLITE_DONE ){
     /* If this statement was prepared using sqlite3_prepare_v2(), and an

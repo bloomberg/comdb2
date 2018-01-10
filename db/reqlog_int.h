@@ -110,7 +110,7 @@ struct reqlogger {
     uint64_t durationus;
     int vreplays;
     uint64_t queuetimeus;
-    char fingerprint[16];
+    char fingerprint[FINGERPRINTSZ];
     int have_fingerprint;
     char id[41];
     int have_id;
@@ -122,6 +122,7 @@ struct reqlogger {
     int alloctables;
     char **sqltables;
     char *error;
+    char error_code;
 
     struct client_query_stats *path;
     int ncontext;

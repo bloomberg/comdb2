@@ -1,5 +1,9 @@
 COMDB2_UNITTEST=1
-include $(TESTSROOTDIR)/testcase.mk
+ifeq ($(TESTSROOTDIR),)
+  include ../testcase.mk
+else
+  include $(TESTSROOTDIR)/testcase.mk
+endif
 
 unit:
 	gcc $(CURRDIR)/test.c $(SRCHOME)/bb/int_overflow.c -o test -I$(SRCHOME)/bbinc

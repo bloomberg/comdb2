@@ -66,8 +66,9 @@
 #define FDB_VER_LEGACY 0
 #define FDB_VER_CODE_VERSION 1
 #define FDB_VER_SOURCE_ID 2
+#define FDB_VER_WR_NAMES 3
 
-#define FDB_VER FDB_VER_SOURCE_ID
+#define FDB_VER FDB_VER_WR_NAMES
 
 /* cc2 ftw */
 #define fdb_ver_encoded(ver) (-(ver + 1))
@@ -365,6 +366,14 @@ int fdb_heartbeats(struct sqlclntstate *clnt);
  */
 void fdb_cursor_use_table(fdb_cursor_t *cur, struct fdb *fdb,
                           const char *tblname);
+
+/**
+ * Retrieve the schema of a remote table
+ *
+ */
+int fdb_get_remote_version(const char *dbname, const char *table,
+                           enum mach_class class, int local,
+                           unsigned long long *version);
 
 #endif
 

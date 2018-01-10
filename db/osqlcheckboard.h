@@ -121,7 +121,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt);
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master);
 
 /**
  * Retrieve the sqlclntstate for a certain rqid

@@ -13,6 +13,7 @@ static const char revid[] = "$Id: mp_bh.c,v 11.86 2003/07/02 20:02:37 mjc Exp $"
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <alloca.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -515,7 +516,7 @@ __memp_pgread(dbmfp, hp, bhp, can_create, is_recovery_page)
 
 	if (0) {
 recover_page:
-		if (ret = __memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
+		if (__memp_recover_page(dbmfp, hp, bhp, bhp->pgno)) {
 			/* This is a catastrophic error: panic the database. */
 			__db_err(dbenv,
 			    "checksum error: page %lu: catastrophic "
@@ -575,8 +576,7 @@ berkdb_verify_page_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn)
 	DIR *d;
 	int filenum = 0;
 	struct dirent *ent;
-	char dir[512];
-
+	char dir[PATH_MAX];
 	bdb_trans(dbenv->db_home, dir);
 
 	pthread_mutex_lock(&verifylk);

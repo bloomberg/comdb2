@@ -24,7 +24,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <db.h>
+#include <build/db.h>
 #include <bb_stdint.h>
 #include <compile_time_assert.h>
 
@@ -45,8 +45,6 @@
 #include "averager.h"
 #include "intern_strings.h"
 #include "bdb_schemachange.h"
-
-#define NAME_MANGLE
 
 #define MAXRECSZ (17 * 1024)
 #define MAXKEYSZ (1024)
@@ -720,7 +718,6 @@ typedef struct {
 struct sockaddr_in;
 typedef struct {
     netinfo_type *netinfo;
-    netinfo_type *netinfo_signal;
 
     char *master_host;
     char *myhost;
@@ -1008,9 +1005,9 @@ struct bdb_state_tag {
     comdb2bma bma;
 
     pthread_mutex_t durable_lsn_lk;
-    pthread_cond_t durable_lsn_wait;
-
     uint16_t *fld_hints;
+
+    int hellofd;
 };
 
 /* define our net user types */
@@ -1056,7 +1053,6 @@ enum {
     USER_TYPE_ADD_NAME,
     USER_TYPE_DEL_NAME,
     USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_DURABLE_LSN,
     USER_TYPE_REQ_START_LSN
 };
 
@@ -1094,23 +1090,6 @@ const uint8_t *colease_type_get(colease_t *p_colease_type, const uint8_t *p_buf,
 
 uint8_t *colease_type_put(const colease_t *p_colease_type, uint8_t *p_buf,
                           uint8_t *p_buf_end);
-
-typedef struct udp_durable_lsn_type {
-    DB_LSN lsn;
-    uint32_t generation;
-} udp_durable_lsn_t;
-
-enum { UDP_DURABLE_LSN_TYPE_LEN = sizeof(DB_LSN) + sizeof(uint32_t) };
-BB_COMPILE_TIME_ASSERT(udp_durable_lsn_type,
-                       sizeof(udp_durable_lsn_t) == UDP_DURABLE_LSN_TYPE_LEN);
-
-uint8_t *
-udp_durable_lsn_type_put(const udp_durable_lsn_t *p_udp_durable_lsn_type,
-                         uint8_t *p_buf, uint8_t *p_buf_end);
-
-const uint8_t *
-udp_durable_lsn_type_get(udp_durable_lsn_t *p_udp_durable_lsn_type,
-                         const uint8_t *p_buf, const uint8_t *p_buf_end);
 
 /* Each data item fragment has this header. */
 struct bdb_queue_header {
@@ -1796,9 +1775,6 @@ void receive_coherency_lease(void *ack_handle, void *usr_ptr, char *from_host,
 void receive_start_lsn_request(void *ack_handle, void *usr_ptr, char *from_host,
                              int usertype, void *dta, int dtalen,
                              uint8_t is_tcp);
-void receive_durable_lsn(void *ack_handle, void *usr_ptr, char *from_host,
-                         int usertype, void *dta, int dtalen, uint8_t is_tcp);
-
 uint8_t *rep_berkdb_seqnum_type_put(const seqnum_type *p_seqnum_type,
                                     uint8_t *p_buf, const uint8_t *p_buf_end);
 uint8_t *rep_udp_filepage_type_put(const filepage_type *p_filepage_type,
@@ -1859,6 +1835,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                bdb_state_type *bdb_state, int *last,
                                int *bdberr);
 void wait_for_sc_to_stop(void);
+void allow_sc_to_run(void);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
 
@@ -1871,15 +1848,11 @@ int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
 
 void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
                            int *do_add);
-void udp_send_durable_lsn(bdb_state_type *bdb_state, DB_LSN *lsn, uint32_t gen);
-int bdb_durable_block(bdb_state_type *bdb_state, DB_LSN *commit_lsn,
-                      uint32_t original_gen, int wait_durable);
-
 void populate_deleted_files(bdb_state_type *bdb_state);
 
 int has_low_headroom(const char *path, int threshold, int debug);
 
-const char *deadlock_policy_str(int policy);
+const char *deadlock_policy_str(u_int32_t policy);
 int deadlock_policy_max();
 
 #endif /* __bdb_int_h__ */

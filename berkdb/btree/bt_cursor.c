@@ -884,7 +884,7 @@ __bam_pgorder_next(dbc, pgno)
 	static int lastpr=0;
 	if (gbl_enable_pageorder_trace && time(NULL) > lastpr + 1) {
 		logmsg(LOGMSG_USER, "Berkdb cursor %p page-order next to page"
-			"%d, skip=%llu next=%llu\n", 
+			"%d, skip=%lu next=%lu\n",
 			dbc, pgno + 1, dbc->skipcount, dbc->nextcount);
 		lastpr=time(NULL);
 	}
@@ -3161,8 +3161,10 @@ split:	ret = stack = 0;
 		 */
 
         /* Invalidate the cursor before releasing the pagelock */
-		cp->pgno = PGNO_INVALID;
-		cp->indx = 0;
+		if (own == 0) {
+			cp->pgno = PGNO_INVALID;
+			cp->indx = 0;
+		}
 
 		/*
 		 * Discard any locks and pinned pages (the locks are discarded
@@ -3764,6 +3766,7 @@ __bam_c_search(dbc, root_pgno, key, flags, exactp)
 	db_recno_t recno;
 	u_int32_t sflags;
 	int cmp, ret;
+	int oldret;
 
 	dbp = dbc->dbp;
 	cp = (BTREE_CURSOR *)dbc->internal;
@@ -3933,11 +3936,14 @@ fast_miss:	/*
 		 * This was not the right page, so we do not need to retain
 		 * the lock even in the presence of transactions.
 		 */
+		oldret = ret;
 		DISCARD_CUR(dbc, ret);
 		cp->pgno = PGNO_INVALID;
 		(void)__LPUT(dbc, cp->lock);
 		if (ret != 0)
 			return (ret);
+		if (oldret == DB_LOCK_DEADLOCK) 
+		    return oldret;
 
 search:		if ((ret = __bam_search(dbc, root_pgno,
 		     key, sflags, 1, NULL, exactp)) != 0)

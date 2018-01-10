@@ -36,6 +36,7 @@ public class BBSysUtils {
     /**
      * Comdb2db configuration files.
      */
+    static final String CDB2DBCONFIG_PROP = "comdb2db.cfg";
     static final String CDB2DBCONFIG_LOCAL = "/bb/bin/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV = "/opt/bb/etc/cdb2/config/comdb2db.cfg";
     static final String CDB2DBCONFIG_NOBBENV_PATH = "/opt/bb/etc/cdb2/config.d/";
@@ -141,7 +142,14 @@ public class BBSysUtils {
      * @return
      */
     private static boolean getComdb2dbHosts(Comdb2Handle hndl, boolean just_defaults) {
-        boolean rc = readComdb2dbCfg(CDB2DBCONFIG_NOBBENV, hndl);
+        /*
+         * Load conf from path specified in system property
+         * CDB2DBCONFIG_PROP (comdb2db.cfg), defaulting to
+         * CDB2DBCONFIG_NOBBENV (/opt/bb/etc/cdb2/config/comdb2db.cfg) if the
+         * property is not specified.
+         */
+        String configPath = System.getProperty(CDB2DBCONFIG_PROP, CDB2DBCONFIG_NOBBENV);
+        boolean rc = readComdb2dbCfg(configPath, hndl);
         if (!rc) /* fall back to /bb/bin if noenv conf not found */
             rc = readComdb2dbCfg(CDB2DBCONFIG_LOCAL, hndl);
         readComdb2dbCfg(CDB2DBCONFIG_NOBBENV_PATH + hndl.myDbName + ".cfg", hndl);
@@ -154,12 +162,9 @@ public class BBSysUtils {
 
         String comdb2db_bdns = null;
         try {
-            if (hndl.defaultType == null)
-                comdb2db_bdns = String.format("%s.%s",
-                        hndl.comdb2dbName, hndl.dnssuffix);
-            else
-                comdb2db_bdns = String.format("%s-%s.%s",
-                        hndl.defaultType, hndl.comdb2dbName, hndl.dnssuffix);
+            comdb2db_bdns = String.format("%s-%s.%s",
+                    (hndl.defaultType == null) ? hndl.defaultType : hndl.myDbCluster,
+                    hndl.comdb2dbName, hndl.dnssuffix);
 
             InetAddress inetAddress[] = InetAddress.getAllByName(comdb2db_bdns);
             for (int i = 0; i < inetAddress.length; i++) {
@@ -288,8 +293,10 @@ public class BBSysUtils {
                 System.out.println("dbinfoQuery: dbinfo response " +
                         "returns " + dbInfoResp.nodes);
             }
+
+            /* Add coherent nodes. */
             for (NodeInfo node : dbInfoResp.nodes) {
-                if (node.incoherent != 0 || node.port < 0) {
+                if (node.incoherent != 0) {
                     if (debug) {
                         System.out.println("dbinfoQuery: Skipping " +
                                 node.name + ": incoherent=" + 
@@ -314,6 +321,18 @@ public class BBSysUtils {
 
                 if (myroom == node.room)
                     ++hosts_same_room;
+            }
+
+            /* Add incoherent nodes too, but don't count them for same room hosts. */
+            for (NodeInfo node : dbInfoResp.nodes) {
+                if (node.incoherent == 0)
+                    continue;
+
+                validHosts.add(node.name);
+                validPorts.add(node.port);
+
+                if (node.name.equalsIgnoreCase(dbInfoResp.master.name))
+                    master = validHosts.size() - 1;
             }
 
             if (validHosts.size() <= 0)

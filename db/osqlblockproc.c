@@ -54,7 +54,6 @@
 #include <unistd.h>
 #include <plhash.h>
 #include <assert.h>
-#include <semaphore.h>
 
 #include "comdb2.h"
 #include "osqlblockproc.h"
@@ -100,7 +99,6 @@ struct blocksql_tran {
 
     int num; /* count how many sessions were started for this tran */
 
-    sem_t throttle; /* parallel sessions in blocksql */
     int delayed;
 
     int rows;
@@ -189,8 +187,8 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     info = (blocksql_info_t *)calloc(1, sizeof(blocksql_info_t));
     if (!info) {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
-                sizeof(blocksql_info_t));
+        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
+               sizeof(blocksql_info_t));
         return -1;
     }
 
@@ -199,7 +197,7 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 
     tran = calloc(sizeof(blocksql_tran_t), 1);
     if (!tran) {
-        logmsg(LOGMSG_ERROR, "%s: error allocating %d bytes\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                sizeof(blocksql_tran_t));
         free(info);
         return -1;
@@ -208,11 +206,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     pthread_mutex_init(&tran->store_mtx, NULL);
     pthread_mutex_init(&tran->mtx, NULL);
     pthread_cond_init(&tran->cond, NULL);
-
-    rc = sem_init(&tran->throttle, 0, g_osql_blocksql_parallel_max);
-    if (rc == -1) {
-        logmsgperror("sem_init");
-    }
 
     iq->blocksql_tran = tran; /* now blockproc knows about it */
 
@@ -335,8 +328,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
             break;
 
         if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%d %s:%d blocksql session closing early\n",
-                    pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
+                   pthread_self(), __FILE__, __LINE__);
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;
@@ -526,15 +519,6 @@ int osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func, 
         pthread_cond_destroy(&tran->cond);
         pthread_mutex_destroy(&tran->mtx);
         pthread_mutex_destroy(&tran->store_mtx);
-
-        /* this will clean up any hung block procs */
-        sem_getvalue(&tran->throttle, &val);
-        while (val < g_osql_blocksql_parallel_max) {
-            sem_post(&tran->throttle);
-            poll(NULL, 0, 10);
-            sem_getvalue(&tran->throttle, &val);
-        }
-        sem_destroy(&tran->throttle);
 
         rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
         if (rc != 0) {
@@ -859,12 +843,13 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /* provide db[0], it doesn't matter anyway */
     db = thedb->dbs[0];
     usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->dbname) + 1 /*NUL byte*/;
+    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
 
     /* pack usekl */
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, *pp_buf_end)))
         return -1;
-    if (!(p_buf = buf_no_net_put(db->dbname, usekl.taglen, p_buf, *pp_buf_end)))
+    if (!(p_buf =
+              buf_no_net_put(db->tablename, usekl.taglen, p_buf, *pp_buf_end)))
         return -1;
 
     /* build usekl op hdr */
@@ -1036,17 +1021,8 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
 int osql_bplog_session_is_done(struct ireq *iq)
 {
     blocksql_tran_t *tran = iq->blocksql_tran;
-    int rc;
-
-    if (!tran) {
-        return -1;
-    }
-
-    rc = sem_post(&tran->throttle);
-    if (rc) {
-        logmsgperror("sem_post");
-    }
-    return rc;
+    if (tran) return 0;
+    return -1;
 }
 
 /**
@@ -1089,8 +1065,8 @@ static int process_this_session(
 
     key = (oplog_key_t *)malloc(sizeof(oplog_key_t));
     if (!key) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocated %d bytes\n", __func__,
-                sizeof(oplog_key_t));
+        logmsg(LOGMSG_ERROR, "%s: unable to allocated %zu bytes\n", __func__,
+               sizeof(oplog_key_t));
         return -1;
     }
 
@@ -1109,6 +1085,8 @@ static int process_this_session(
     /* go through each record */
     rc = bdb_temp_table_find_exact(thedb->bdb_env, dbc, key, sizeof(*key),
                                    bdberr);
+    if(rc != IX_FND)
+        free(key);
     if (rc && rc != IX_EMPTY && rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_first failed rc=%d bdberr=%d\n",
                 __func__, rc, *bdberr);
@@ -1127,8 +1105,8 @@ static int process_this_session(
         datalen = bdb_temp_table_datasize(dbc);
 
         if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%d %s:%d blocksql session closing early\n",
-                    pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
+                   pthread_self(), __FILE__, __LINE__);
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;
@@ -1281,14 +1259,11 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     /* go through the complete list and apply all the changes */
     LISTC_FOR_EACH(&tran->complete, info, c_reqs)
     {
-
-        /* TODO: add an extended error structure to be passed back to the client
-         */
         out_rc = process_this_session(iq, iq_tran, info->sess, &bdberr, nops,
                                       err, logsb, dbc, osql_process_packet);
-
-        if (out_rc)
+        if (out_rc) {
             break;
+        }
     }
 #if 0
     /* we will apply these outside a transaction */
@@ -1307,7 +1282,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     }
 #endif
 
-    if (rc = pthread_mutex_unlock(&tran->store_mtx)) {
+    if ((rc = pthread_mutex_unlock(&tran->store_mtx)) != 0) {
         logmsg(LOGMSG_ERROR, "pthread_mutex_unlock: error code %d\n", rc);
         return rc;
     }
@@ -1515,22 +1490,6 @@ static int osql_bplog_loginfo(struct ireq *iq, osql_sess_t *sess)
     sbuf2close(logsb);
 
     return outrc;
-}
-
-int osql_throttle_session(struct ireq *iq)
-{
-    blocksql_tran_t *tran = iq->blocksql_tran;
-    int rc;
-
-    if (!tran) {
-        return -1;
-    }
-
-    rc = sem_wait(&tran->throttle);
-    if (rc) {
-        logmsgperror("sem_wait");
-    }
-    return rc;
 }
 
 void osql_set_delayed(struct ireq *iq)

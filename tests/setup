@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 set -x
@@ -12,7 +12,7 @@ while [[ $# -gt 0 && $1 = -* ]]; do
     shift
 done
 
-vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG"
+vars="TESTID SRCHOME TESTCASE DBNAME DBDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE COMDB2MD5SUM CDB2SQL_EXE "
 for required in $vars; do
     q=${!required}
     if [[ -z "$q" ]]; then
@@ -21,6 +21,8 @@ for required in $vars; do
     fi
 #    echo "$required=$q"
 done
+
+DBDIR=$(realpath $DBDIR)
 
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
@@ -39,8 +41,26 @@ if [[ -n ${DEBUGGER} ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
+    memcheck)
+        DEBUG_PREFIX="valgrind  --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
     callgrind)
         DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
+    drd)
+        DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
+        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+            INTERACTIVE_DEBUG=0
+        fi
+        ;;
+    helgrind)
+        DEBUG_PREFIX="valgrind --tool=helgrind "
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
             INTERACTIVE_DEBUG=0
         fi
@@ -64,18 +84,23 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="${TESTDIR}/:${PATH}"
-    echo "To run the ${TESTCASE} test, please run the following:"
-    echo
+    RUNTEST="${PWD}/runtest.sh "
+    echo "Once db is ready, please run: $RUNTEST"
+    echo "#!/usr/bin/env bash" > $RUNTEST
+    #echo "set +x"  >> $RUNTEST
     for env in $vars; do
-        echo "export $env=\"${!env}\""
+        echo "export $env=\"${!env}\"" >> $RUNTEST
     done
-    echo 'export PATH=${TESTDIR}/:${PATH}'
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"'
-    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/"
-    echo "./runit ${DBNAME} >${TESTDIR}/logs/${TESTCASE}.testcase 2>&1"
-    echo "${TESTSROOTDIR}/unsetup"
+    echo 'export PATH=${TESTDIR}/:${PATH}' >> $RUNTEST
+    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $RUNTEST
+    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $RUNTEST
+    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
+    echo "./runit ${DBNAME} " >> $RUNTEST
+    echo "echo; echo; echo;" >> $RUNTEST
+    echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo
     echo
+    chmod +x $RUNTEST
 fi
 
 # TESTDIR looks like this: tests/test_12758
@@ -89,7 +114,7 @@ LRL="$DBDIR/$DBNAME.lrl"
 > ${LRL}
 
 if [[ -z $SKIPSSL ]] ; then
-    cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
+    cat >> ${LRL} <<EOPTIONS
 ssl_client_mode REQUIRE
 ssl_cert_path $TESTDIR
 EOPTIONS
@@ -102,124 +127,150 @@ if [[ -f "${TESTSROOTDIR}/${TESTCASE}.test/lrl.options" ]]; then
     cat ${TESTSROOTDIR}/${TESTCASE}.test/lrl.options >> ${LRL}
 fi
 
-cat >> $DBDIR/$DBNAME.lrl <<EOPTIONS
+cat >> ${LRL} <<EOPTIONS
 name    $DBNAME
 dir     $DBDIR
 
 setattr MASTER_REJECT_REQUESTS 0
 EOPTIONS
 
+if [[ -n "$CUSTOMLRLPATH" ]]; then
+    cat $CUSTOMLRLPATH >> ${LRL}
+fi
+
 df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${LRL}
 
-# Do we have a cluster?
+# If CLUSTER is defined, populate config and lrl with that info
 if [[ -n "$CLUSTER" ]]; then
     echo $DBNAME 0 $CLUSTER > $CDB2_CONFIG
     echo "comdb2_config:default_type=testsuite" >> $CDB2_CONFIG
-    echo "cluster nodes $CLUSTER" >> $DBDIR/$DBNAME.lrl
+    echo "cluster nodes $CLUSTER" >> ${LRL}
 else
+    mkdir -p $(dirname $CDB2_CONFIG)
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
 fi
 
 # Configure client SSL
 echo "comdb2_config:ssl_cert_path=$TESTDIR" >>$CDB2_CONFIG
+echo "comdb2_config:allow_pmux_route:true" >> $CDB2_CONFIG
 
 myhostname=`hostname`
 set +e
 
 pmux_port=5105
-pmux_cmd='pmux -l'
+pmux_cmd="$PMUX_EXE -l"
+
+# If PMUXPORT is defined we will overwrite the default pmux port with that
 if [ -n "$PMUXPORT" ] ; then
     pmux_port=$PMUXPORT
     pmux_socket=/tmp/pmux.socket.$PMUXPORT
     pmux_port_range="-r 21000:22000"
-    pmux_cmd="pmux -l -p $PMUXPORT -b $pmux_socket $pmux_port_range"
+    pmux_cmd="$PMUX_EXE -l -p $PMUXPORT -b $pmux_socket $pmux_port_range"
     echo "comdb2_config:portmuxport=$PMUXPORT" >> $CDB2_CONFIG
     echo "portmux_port $PMUXPORT" >> ${LRL}
     echo "portmux_bind_path $pmux_socket" >> ${LRL}
 fi
-stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 )"
-
+stop_pmux="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port} && echo exit >&3 ) && sleep 2 && killall pmux || echo PMUX DOWN"
 
 COPIEDTOCLUSTER=${TMPDIR}/copiedtocluster.log
-export COMDB2AR_EXOPTS="-x $comdb2task"
+export COMDB2AR_EXOPTS="-x $COMDB2_EXE"
 
 copy_files_to_cluster() 
 {
     # copy executables to each node except localhost
-    pmux=${TESTDIR}/pmux
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${TESTDIR}"
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2"
-        scp -o StrictHostKeyChecking=no $comdb2ar $node:${TESTDIR} 
-        scp -o StrictHostKeyChecking=no $comdb2task $node:${TESTDIR}
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${TESTDIR}" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "killall pmux || echo PMUX DOWN" < /dev/null
+        scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
+        scp -o StrictHostKeyChecking=no $COMDB2_EXE $node:$COMDB2_EXE
         # stop pmux on nodes first before copying and starting it
         if [ -n "$PMUXPORT" ] ; then
-            ssh -o StrictHostKeyChecking=no $node "$stop_pmux"
+            ssh -o StrictHostKeyChecking=no $node "$stop_pmux" < /dev/null
         fi
-        scp -o StrictHostKeyChecking=no $pmux $node:${pmux}
+        set +e
+        scp -o StrictHostKeyChecking=no $PMUX_EXE $node:$PMUX_EXE
         echo start pmux on $node if not running 
-        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' ${TESTDIR}/$pmux_cmd"
+        ssh -o StrictHostKeyChecking=no $node "COMDB2_PMUX_FILE='$TESTSROOTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
+        set -e
     done
 }
 
 
 # restart pmux only once on localhost -- noclobber ensures atomicity
 set -o noclobber 
-{ > ${TMPDIR}/restarted_pmux.log ; } &> /dev/null
+{ > ${TMPDIR}/started_pmux_${pmux_port}.log ; } &> /dev/null
 if [ $? -eq 0 ] ; then
     if [ -n "$PMUXPORT" ] ; then
         eval $stop_pmux
     fi
     echo start pmux on local host if not running
-    COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" ${TESTDIR}/$pmux_cmd
+    COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd
 fi
 
 # if CLUSTER is length is nonzero, and file does not exist, copy to cluster
 if [ -n "$CLUSTER" ] ; then 
     { > $COPIEDTOCLUSTER ; } &> /dev/null 
     if [ $? -eq 0 ] ; then
+        set -e  # from here, a bad rc will mean failure and exit
         copy_files_to_cluster
     fi
 fi
 set +o noclobber 
 
 
-set -e  # from here, a bad rc will mean failure and exit
 
 for csc2 in $(ls *.csc2 2>/dev/null); do
     table=${csc2%%.csc2}
     cp $PWD/$csc2 $DBDIR/
-done >> $DBDIR/${DBNAME}.lrl
+done >> ${LRL}
 
 mkdir -p $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2
 
-$comdb2task --create --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/$DBNAME.pid $DBNAME  >$TESTDIR/logs/${DBNAME}.init 2>&1
+PARAMS="$DBNAME --no-global-lrl"
+
+# The script occasionally fails here. Let's find out what the rc is.
+set +e
+$COMDB2_EXE --create --lrl ${LRL} --pidfile ${TMPDIR}/$DBNAME.pid $PARAMS &> $TESTDIR/logs/${DBNAME}.init
 rc=$?
 rm -f ${DBNAME}.trap
 if [[ $rc -ne 0 ]]; then
     echo "Error rc=$rc while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
     exit 1
 fi
+echo "${DBNAME} created successfully"
 
-# test largecsc2 throws error about col width, can't enable this by default
-#if grep "ERROR" $TESTDIR/logs/${DBNAME}.init ; then
+set -e
+
+# test largecsc2 throws error about col width
+#if grep "ERROR" $TESTDIR/logs/${DBNAME}.init | grep -v largecsc2 ; then
 #    echo "Error while initializing DB, see $TESTDIR/logs/${DBNAME}.init "
 #    exit 1
 #fi
 
+compare_md5_sum()
+{
+    if [ "$1" != "$COMDB2MD5SUM" ]; then
+        echo "Comdb2 md5 checksum mismatch, expected: $COMDB2MD5SUM got: $1"
+        exit 1
+    fi
+}
 
 # start it
 cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then
+    loc_comdb2md5sum=`md5sum $COMDB2_EXE`
+    compare_md5_sum $loc_comdb2md5sum
+
     echo "!$TESTCASE: starting single node"
     if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
+        echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid${NOCOLOR}"
     else
-        ${DEBUG_PREFIX} $comdb2task $DBNAME -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.db &
+        ${DEBUG_PREFIX} $COMDB2_EXE $PARAMS -pidfile ${TMPDIR}/$DBNAME.pid &> $TESTDIR/logs/${DBNAME}.db &
     fi
 
     set +e
@@ -227,67 +278,75 @@ if [[ -z "$CLUSTER" ]]; then
     # wait until we can query it
     echo "!$TESTCASE: waiting until ready"
     while [[ "$out" != "1" ]]; do
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2>/dev/null)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
         sleep 1
     done
 else
     echo "!$TESTCASE: copying to cluster"
     for node in $CLUSTER; do
-        if [ $node == $myhostname ] ; then # skip copying to ourself
-            continue
+        if [ $node == $myhostname ] ; then
+            loc_comdb2md5sum=`md5sum $COMDB2_EXE | cut -d ' ' -f1`
+            compare_md5_sum $loc_comdb2md5sum
+            continue        # no copying to self
+        else 
+            loc_comdb2md5sum=`ssh -o StrictHostKeyChecking=no $node "md5sum $COMDB2_EXE" < /dev/null | cut -d ' ' -f1`
+            compare_md5_sum $loc_comdb2md5sum
         fi
-        ${SRCHOME}/db/copycomdb2 $DBDIR/${DBNAME}.lrl ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
+        $COPYCOMDB2_EXE ${LRL} ${node}: &> $TESTDIR/logs/${DBNAME}.${node}.copy
         if [[ $? -ne 0 ]]; then
-            echo "FAILED: copycomdb2 $DBDIR/${DBNAME}.lrl ${node}: "
+            echo "FAILED: $COPYCOMDB2_EXE ${LRL} ${node}: "
             echo "see $TESTDIR/logs/${DBNAME}.${node}.copy "
             exit 1
         fi
     done
 
     echo "export COMDB2_ROOT=$COMDB2_ROOT" >> ${TESTDIR}/replicant_vars
-    CMD="source ${TESTDIR}/replicant_vars ; $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl"
+    CMD="source ${TESTDIR}/replicant_vars ; ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 | tee $TESTDIR/${DBNAME}.db"
     echo "!$TESTCASE: starting"
     for node in $CLUSTER; do
         if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
             if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
+                echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/${DBNAME}.${node}.pid${NOCOLOR}"
             else
-                ${DEBUG_PREFIX} $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
+                ${DEBUG_PREFIX} $COMDB2_EXE ${PARAMS} --lrl ${LRL} -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &> $TESTDIR/logs/${DBNAME}.${node}.db &
             fi
             continue
         fi
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
-            echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} ${CMD}${NOCOLOR}"
+            echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
         else
             scp -o StrictHostKeyChecking=no ${TESTDIR}/replicant_vars $node:${TESTDIR}/replicant_vars
             # redirect output from CMD to a subshell which runs awk to prepend time
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' > $TESTDIR/logs/${DBNAME}.${node}.db)  &
+            ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &>$TESTDIR/logs/${DBNAME}.${node}.db &
             # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi
     done
 
-    set +e
     echo "!$TESTCASE: waiting until ready"
     sleep 1
     for node in $CLUSTER; do
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+        set +e
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
         while  [[ "$out" != "1" ]]; do
             sleep 2
-            out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' 2>&1)
+            $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select 1' &> $TESTDIR/logs/${DBNAME}.${node}.conn
         done
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'comdb2_host()' 2>&1)
-        if [ $out != $node ] ; then
+        set -e
+        $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' &> $TESTDIR/logs/${DBNAME}.${node}.conn
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node $DBNAME 'select comdb2_host()' 2>&1)
+        if [ "$out" != "$node" ] ; then
             echo "comdb2_host() '$out' != expected '$node'"
             sleep 1
             exit 1
         fi
     done
     for node in $CLUSTER; do
-        cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
-        cdb2sql ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
+        $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp stat all")'
+        $CDB2SQL_EXE ${CDB2_OPTIONS} -tabs $DBNAME --host $node 'exec procedure sys.cmd.send("udp ping all")'
     done
 fi
 
-exit 0
+echo 'setup successful'

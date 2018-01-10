@@ -34,7 +34,7 @@
 #include <unistd.h>
 #include <stddef.h>
 
-#include <db.h>
+#include <build/db.h>
 #include <epochlib.h>
 
 #include <ctrace.h>
@@ -157,6 +157,12 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return NULL;
 }
 
+int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
+                       uint32_t *egen)
+{
+    return bdb_state->dbenv->get_rep_master(bdb_state->dbenv, master_out, egen);
+}
+
 int bdb_get_sanc_list(bdb_state_type *bdb_state, int max_nodes,
                       const char *nodes[REPMAX])
 {
@@ -211,15 +217,11 @@ int bdb_get_seqnum(bdb_state_type *bdb_state, seqnum_type *seqnum)
 
 int bdb_get_lsn(bdb_state_type *bdb_state, int *logfile, int *offset)
 {
-    seqnum_type seqnum;
-    int rc;
-
-    rc = bdb_get_seqnum(bdb_state, &seqnum);
-    if (rc == 0) {
-        *logfile = seqnum.lsn.file;
-        *offset = seqnum.lsn.file;
-    }
-    return rc;
+    DB_LSN outlsn;
+    __log_txn_lsn(bdb_state->dbenv, &outlsn, NULL, NULL);
+    *logfile = outlsn.file;
+    *offset = outlsn.offset;
+    return 0;
 }
 
 int bdb_get_lsn_node(bdb_state_type *bdb_state, char *host, int *logfile,

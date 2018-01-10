@@ -37,22 +37,20 @@ failure before freeing the handle object with [cdb2_close](#cdb2close).
 
 Parameters:
 
-Parameters:
-
 |Name|Type|Description|Notes|
 |-|-|-|-|
 |*hndl*| input/output | pointer to a cdb2 handle | A handle is allocated and a pointer to it is written into *hndl*
 |*dbname*| input | database name  | The database name to be associated with the handle
-|*type*| input | cluster type | The 'stage' to connect to.  If it's set to "default" it will use the value given in ```comdb2_config:default_type``` in comdb2db config - see the section on [configuring clients](/clients.html). Use "local" if target db is running on same machine as the application.  In rarely needed cases, and explicit target can be set with, eg: "dev", "alpha", "beta", etc.  The stage must be registered in your [meta database](clients.html#comdb2db).  Alternatively you can pass a [list of machines](clients.html#passing-location-information).
+|*type*| input | cluster type | The 'stage' to connect to.  If it's set to "default" it will use the value given in ```comdb2_config:default_type``` in comdb2db config - see the section on [configuring clients](clients.html). Use "local" if target db is running on same machine as the application.  In rarely needed cases, and explicit target can be set with, eg: "dev", "alpha", "beta", etc.  The stage must be registered in your [meta database](clients.html#comdb2db).  Alternatively you can pass a [list of machines](clients.html#passing-location-information).
 |*flag*| input | alloc flags | The flags to be used to allocate handle, the values allowed are 0, ```CDB2_READ_INTRANS_RESULTS```, ```CDB2_RANDOM```, ```CDB2_RANDOMROOM``` , ```CDB2_ROOM```and ```CDB2_DIRECT_CPU``` 
 
 |Flag Value|Description|
 |---|---|
-|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2geteffects)|
+|```CDB2_READ_INTRANS_RESULTS``` | insert/update/deletes return rows (num changed) inside a transaction, thus disabling an optimization where server sends replies once per transaction - see [cdb2_get_effects](#cdb2_get_effects)|
 |```CDB2_ROOM``` |  Queries are sent to one of the nodes in the same data center (see section on [comdb2db](clients.html#comdb2db) to see how this is configured) |
 |```CDB2_RANDOMROOM``` |  Queries are sent to one of the randomly selected node of the same data center |
 |```CDB2_RANDOM``` |  Queries are sent to one of the randomly selected node of the same or different data center |
-|```CDB2_DIRECTCPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
+|```CDB2_DIRECT_CPU``` |  Queries are sent to the hostname/ip given in the *type* argument |
 
 
 ### cdb2_close
@@ -62,7 +60,7 @@ int cdb2_close(cdb2_hndl_tp *hndl);
 Description:
 
 This routine closes the cdb2 handle and releases all associated memory. 
-Depending on your [client setup](/clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
+Depending on your [client setup](clients.html) making this call may donate the database connection to a system-wide connection pool.  Only connections that don't have pending transactions or query results will be donated to the connection pool.
 
 Parameters:
 
@@ -365,7 +363,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
 
 Description:
 
-This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). 
+This routine allows the caller to to get the number rows affected, selected, updated, deleted and inserted in the last query, (or until last query from the start of the transaction.). This routine initialize the data members of the ```cdb2_effects_tp``` structure (see below), the address of which is supplied as an argument. Number of rows affected is a sum of number of rows updated, deleted and inserted.
 These values only make sense after COMMIT, since the transaction may get replayed and the values for each individual statements may change.  The replay can be turned off by running ```"SET VERIFYRETRY OFF"```, after which you can call ```cdb2_get_effects``` in the middle of a transaction. 
 For rationale, see the [Comdb2 transaction model](transaction_model.html)
 section.
@@ -376,6 +374,16 @@ Parameters:
 |---|---|---|---|
 |*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
 |*effects*| input | The pointer to effects structure | | 
+
+```c
+typedef struct cdb2_effects_type {
+    int num_affected;
+    int num_selected;
+    int num_updated;
+    int num_deleted;
+    int num_inserted;
+} cdb2_effects_tp;
+```
 
 ### cdb2_clearbindings
 ```
@@ -417,7 +425,7 @@ int cdb2_set_comdb2db_config(char *cfg_file);
 Description:
 
 This function sets location of a config file the API uses to discover databases. 
-See the [Client Setup] section for more details.
+See the [Client setup](clients.html) section for more details.
 
 Parameters:
 

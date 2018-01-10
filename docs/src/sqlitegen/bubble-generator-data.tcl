@@ -449,11 +449,13 @@ set all_graphs {
 
   key-section {
       loop
-      {line
-          {opt dup}
-          {opt datacopy}
+      {stack
           {line
-              /string-literal =
+              {opt dup}
+              {opt datacopy}
+              {line /string-literal = }
+          }
+          {stack
               {loop {line
                         {opt <DESCEND>}
                         {or
@@ -489,28 +491,154 @@ set all_graphs {
       }
   }
 
+
+
   constraint-section {
-      loop {line /keyname -> /table-name : /keyname}
+      loop
+      {stack
+          {line /keyname -> 
+               {or 
+                    {line /ref-table-name : /ref-keyname }
+                    {line {loop {line < /ref-table-name : /ref-keyname > } } }
+               }
+          }
+          {opt 
+            {loop 
+               {line on {or update delete} {or cascade restrict }}
+            }
+          }
+      }
   }
 
   table-event {
-      line
-          ( TABLE /table-name FOR 
-            {loop
-               {or {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
-                   {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
-                   {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
-                   }
-            }
-          ) 
-
-          {opt {loop {line
-              ,
-              more-table-events
+      stack
+      {line ( TABLE /table-name FOR }
+      {loop
+          {or
+              {line INSERT {opt {line OF ID {opt {loop , ID}}}}}
+              {line UPDATE {opt {line OF ID {opt {loop , ID}}}}}
+              {line DELETE {opt {line OF ID {opt {loop , ID}}}}}
           }
+      }
+      {line )
+          {opt
+              {loop
+                  {line , more-table-events }
+              }
           }
-          }
+      }
   }
 
-  
+  create-table-ddl {
+      stack
+      {line CREATE TABLE {opt IF NOT EXISTS}}
+      {line {opt db-name .} table-name}
+      {stack
+          {line ( }
+          {loop
+              {line column-name column-type
+                  {opt {loop { column-constraint } { , } } } }
+              { , }
+          }
+          {opt
+              {loop
+                  {line , table-constraint }
+              }
+          }
+          {line ) }
+      }
+      {line {opt table-options }}
+  }
+
+  column-constraint {
+      or
+      {line DEFAULT expr }
+      {line NULL }
+      {line NOT NULL }
+      {line PRIMARY KEY {opt {or {line ASC } {line DESC } } } }
+      {line UNIQUE }
+      {line KEY }
+      {line foreign-key-def }
+      {line WITH DBPAD = signed-number }
+  }
+
+  table-constraint {
+      or
+      {line
+          {stack
+              {line {or {line UNIQUE } {line KEY } }
+                  {opt index-name } ( index-column-list ) }
+              {line {opt WITH DATACOPY } {opt WHERE expr } }
+          }
+      }
+      {line PRIMARY KEY ( index-column-list ) }
+      {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+  }
+
+  foreign-key-def {
+      stack
+      {line REFERENCES table-name ( index-column-list ) }
+      {opt
+          {loop
+              {line ON
+                  {or
+                      {line UPDATE}
+                      {line DELETE}
+                  }
+                  {or
+                      {line NO ACTION}
+                      {line CASCADE}
+                  }
+              }
+          }
+      }
+  }
+
+  index-column-list {
+      loop
+      {line column-name {opt {or {line ASC } {line DESC } } } }
+      { , }
+  }
+
+  alter-table-ddl {
+      stack
+      {line ALTER TABLE {opt db-name .} table-name }
+      {opt 
+          {or
+              {line RENAME TO new-table-name}
+              {loop
+                  {or
+                      {line ADD column-name column-type
+                          {opt {loop {line column-constraint } { , } } }
+                      }
+                      {line DROP {opt COLUMN} column-name }
+                      {stack
+                          {line ADD {opt UNIQUE } INDEX index-name
+                              ( index-column-list ) }
+                          {line {opt WITH DATACOPY } {opt WHERE expr } }
+                      }
+                      {line DROP INDEX index-name }
+                      {line ADD PRIMARY KEY ( index-column-list ) }
+                      {line DROP PRIMARY KEY }
+                      {line ADD FOREIGN KEY ( index-column-list ) foreign-key-def }
+                      {line DROP FOREIGN KEY constraint-name }
+                  }
+                  { , }
+              }
+           }
+       }
+  }
+
+  create-index {
+      stack
+      {line CREATE {opt UNIQUE } INDEX {opt IF NOT EXISTS } }
+      {line {opt db-name } index-name ON table-name ( index-column-list ) }
+      {line {opt WITH DATACOPY } {opt WHERE expr } }
+  }
+
+  drop-index {
+      stack
+      {line DROP INDEX {opt {line IF EXISTS } } }
+      {line index-name {opt {line ON table-name } } }
+  }
 }

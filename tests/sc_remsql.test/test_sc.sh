@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Remote cursor moves testcase for comdb2
 ################################################################################
@@ -42,16 +42,18 @@ sleep 5
 cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default 'select table_version("t")' >> $output
 
 # retrieve data
-cdb2sql ${CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
+cdb2sql -cost ${CDB2_OPTIONS} $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
 
 # get the new version V2'
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
 echo cdb2sql --tabs $a_cdb2config $a_dbname default "exec procedure sys.cmd.send(\"fdb info db\")" 
 cdb2sql --tabs $a_cdb2config $a_dbname default "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
+sed "s/DBNAME/${a_remdbname}/g" output.log > output.log.actual
+
 # validate results 
 testcase_output=$(cat $output)
-expected_output=$(cat output.log)
+expected_output=$(cat output.log.actual)
 if [[ "$testcase_output" != "$expected_output" ]]; then
 
    # print message 
@@ -67,28 +69,5 @@ if [[ "$testcase_output" != "$expected_output" ]]; then
    # quit
    exit 1
 fi
-
-#TEST2 test conflicts between V3 and V2 (see README)
-#gonna simulate this by dropping the table manually
-
-
-# get the version V1 
-
-# get the version V2
-
-# schema change the remote V1->V1'
-
-# get the new version V1'
-
-# get the version V2
-
-# drop the version V2 cache
-
-# retrieve the data
-
-# get the new version V2'
-
-# validate results 
-
 
 echo "Testcase passed."

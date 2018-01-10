@@ -9,9 +9,9 @@
 (id=23, b1=x'58')
 (id=123, b1=x'59')
 (id=11115, b1=x'60')
-Table "sqlite_stat1" Rootp 18 Remrootp 6 Version=0
-Table "sqlite_stat4" Rootp 19 Remrootp 7 Version=0
-Index "$ID_1C16AC86" for table "t2" Rootp 21 Remrootp 5 Version=0
-Index "$ID_52596C31" for table "t" Rootp 17 Remrootp 3 Version=0
-Table "t" Rootp 16 Remrootp 2 Version=0
-Table "t2" Rootp 20 Remrootp 4 Version=0
+Table "sqlite_stat1" Rootp 1073741836 Remrootp 6 Version=0
+Table "sqlite_stat4" Rootp 1073741837 Remrootp 7 Version=0
+Index "$ID_1C16AC86" for table "t2" Rootp 1073741839 Remrootp 5 Version=0
+Index "$ID_52596C31" for table "t" Rootp 1073741835 Remrootp 3 Version=0
+Table "t" Rootp 1073741834 Remrootp 2 Version=0
+Table "t2" Rootp 1073741838 Remrootp 4 Version=0

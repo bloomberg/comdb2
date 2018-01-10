@@ -112,7 +112,7 @@ int init_debug_switches(void)
     debug_switches.skip_duplicate_seqnums = 1;
     debug_switches.allow_key_typechange = 0;
     debug_switches.check_for_hung_checkpoint_thread = 0;
-    debug_switches.skip_skipables_on_verify = 0;
+    debug_switches.skip_skipables_on_verify = 1;
     debug_switches.verbose_deadlocks = 0;
     debug_switches.stack_on_deadlock = 0;
     debug_switches.verbose_fix_pinref = 1;

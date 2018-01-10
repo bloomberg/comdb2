@@ -28,23 +28,15 @@
 #include <strings.h>
 #include <signal.h>
 #include <unistd.h>
-#include <getopt.h>
-
-#include <sbuf2.h>
-#include <string.h>
-#include <str0.h>
-
+#include <bb_getopt_long.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-
 #include "cdb2api.h"
 #include <pthread.h>
-
 #include <assert.h>
-
-#include "mem.h"
+#include <sys/time.h>
 #include "cdb2_constants.h"
-#include "epochlib.h"
+#include <inttypes.h>
 
 static char *dbname = NULL;
 static char *dbtype = NULL;
@@ -67,9 +59,9 @@ static int show_ports = 0;
 static int debug_trace = 0;
 static int pausemode = 0;
 static int printmode = DEFAULT;
+static int verbose = 0;
 static int scriptmode = 0;
 static int error = 0;
-static int set_debug = 0;
 static cdb2_hndl_tp *cdb2h = NULL;
 static int time_mode = 0;
 static int rowsleep = 0;
@@ -78,6 +70,7 @@ static int show_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
 static int maxretries = 0;
+static int minretries = 0;
 static FILE *redirect = NULL;
 static int hold_stdout = -1;
 static char *history_file = NULL;
@@ -85,9 +78,19 @@ static int istty = 0;
 static char *gensql_tbl = NULL;
 static char *prompt = main_prompt;
 
+static int now_ms(void)
+{
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) != 0) {
+        perror(__func__);
+        abort();
+    }
+    return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
 static void hexdump(FILE *f, void *datap, int len)
 {
-    u_char *data = (u_char *)datap;
+    uint8_t *data = (uint8_t *)datap;
     int i;
     for (i = 0; i < len; i++)
         fprintf(f, "%02x", (unsigned int)data[i]);
@@ -108,25 +111,30 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
         fprintf(f, "'");
 }
 
+#define verbose_print(...)                                                     \
+    {                                                                          \
+        if (verbose)                                                           \
+            printf(__VA_ARGS__);                                               \
+    }
+
 static const char *usage_text =
     "Usage: cdb2sql [options] dbname [sql [type1 [type2 ...]]]\n"
     "\n"
     "Options:\n"
-    " -h, --help             Help on usage \n"
-    " -s, --script           Script mode (less verbose output)\n"
-    "     --tabs             Seperate output columns with tabs rather\n"
-    "                        than commas\n"
-    " -c, --cdb2cfg          Change the config file to point to comdb2db\n"
-    "                        configuration file\n"
-    " -t, --type TYPE        Type of database or tier (ie 'dev' or 'prod',\n"
-    "                                              default 'local')\n"
-    " -n, --host HOSTNAME    Host to connect to and run query.\n"
-    "     --debugtrace       Set debug trace flag on api handle\n"
-    "     --showeffects      Show the effects of query at the end\n"
-    "     --cost             Log the cost of query in db trace files\n"
-    " -p, --precision #      Set precision for floation point outputs\n"
-    "     --strblobs         Display blobs as strings\n"
-    " -f, --file FL          reads queries from the specified file FL\n"
+    " -c, --cdb2cfg FL    Set the config file to FL\n"
+    "     --cost          Log the cost of query in db trace files\n"
+    "     --debugtrace    Set debug trace flag on api handle\n"
+    " -f, --file FL       Read queries from the specified file FL\n"
+    " -h, --help          Help on usage \n"
+    " -n, --host HOST     Host to connect to and run query.\n"
+    " -p, --precision #   Set precision for floation point outputs\n"
+    " -s, --script        Script mode (less verbose output)\n"
+    "     --showeffects   Show the effects of query at the end\n"
+    "     --strblobs      Display blobs as strings\n"
+    "     --tabs          Set column separator to tabs rather than commas\n"
+    " -t, --type TYPE     Type of database or tier ('dev' or 'prod',"
+    " default 'local')\n"
+    " -v, --verbose       Verbose debug output, implies --debugtrace"
     "\n"
     " Examples: \n"
     " * Querying db with name mydb on local server \n"
@@ -140,9 +148,186 @@ static const char *usage_text =
 
 void cdb2sql_usage(int exit_val)
 {
-    fprintf((exit_val == EXIT_SUCCESS) ? stdout : stderr, usage_text);
+    fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
 }
+
+
+const char *words[] = {
+  "ALTER", "ANALYZE", 
+  "BEGIN", 
+  "COMMIT",
+  "CREATE", 
+  "DELETE", "DROP", "DRYRUN",
+  "EXEC", "EXPLAIN",
+  "INSERT", 
+  "PUT",
+  "REBUILD",
+  "ROLLBACK",
+  "SELECT", "SELECTV", "SET",
+  "TRUNCATE",
+  "UPDATE",
+  "WITH", NULL, }; // must be terminated by NULL
+
+
+
+// Generator function for word completion.
+char *level_one_generator (const char *text, int state)
+{
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the length of text
+        list_index = 0;
+        len = strlen (text);
+    }
+    while ((name = words[list_index]) != NULL) {
+        list_index++;
+        if (len == 0 || strncasecmp (name, text, len) == 0) {
+            return strdup (name);
+        }
+    }
+    return ((char *) NULL); // If no names matched, then return NULL.
+}
+
+char *db_generator (int state, const char *sql)
+{
+    static char **db_words;
+    static int list_index, len;
+    const char *name;
+    if (!state) { //if state is 0 get the completions from the db
+        cdb2_hndl_tp *cdb2h_2 = NULL; // use a new db handle
+        if (db_words) {
+            char *wrd;
+            list_index = 0;
+            while ((wrd = db_words[list_index])) {
+                free(wrd);
+                db_words[list_index] = NULL;
+                list_index++;
+            }
+            free(db_words);
+            db_words = NULL;
+        }
+
+        list_index = 0;
+        int rc;
+        if (dbhostname) {
+            rc = cdb2_open(&cdb2h_2, dbname, dbhostname, CDB2_DIRECT_CPU);
+        } else {
+            rc = cdb2_open(&cdb2h_2, dbname, dbtype, 0);
+        }
+        if (rc) {
+            if (debug_trace)
+                fprintf(stderr, "cdb2_open rc %d %s\n", rc, cdb2_errstr(cdb2h));
+            cdb2_close(cdb2h_2);
+            return ((char *) NULL);
+        }
+        rc = cdb2_run_statement(cdb2h_2, sql);
+        if (rc) {
+            if (debug_trace)
+                fprintf(stderr, "failed to run sql '%s'\n", sql);
+            return ((char *) NULL);
+        }
+        
+        int ncols = cdb2_numcolumns(cdb2h_2);
+        assert(ncols == 1);
+        int count = 0;
+        int sz = 0;
+        while ((rc = cdb2_next_record(cdb2h_2)) == CDB2_OK) {
+            if ( sz < count + 1 ) {
+                sz = (sz == 0) ? 32 : sz * 2;
+                void * m = (char**) realloc(db_words, sz * sizeof(char *));
+                if (!m) { 
+                    fprintf(stderr, "error with malloc/realloc\n");
+                    abort();
+                    break; 
+                }
+                db_words = m; 
+            }
+            void *val = cdb2_column_value(cdb2h_2, 0);
+            assert(count < sz);
+            db_words[count] = strdup((char*) val);
+            count++;
+        }
+        if (db_words)
+            db_words[count] = NULL; //last one always NULL
+        cdb2_close(cdb2h_2);
+    }
+
+    if (!db_words)
+        return ((char *) NULL);
+
+    while ((name = db_words[list_index]) != NULL) {
+        list_index++;
+        return strdup(name);
+    }
+    return ((char *) NULL); // If no names matched, then return NULL.
+}
+
+
+char *tunables_generator (const char *text, int state)
+{
+    char sql[256];
+    if (*text)
+        //TODO: escape text
+        snprintf(sql, sizeof(sql), 
+                "SELECT DISTINCT name FROM comdb2_tunables WHERE name LIKE '%s%%'", text);
+    else
+        snprintf(sql, sizeof(sql), 
+                "SELECT DISTINCT name FROM comdb2_tunables");
+    return db_generator(state, sql);
+}
+
+char *generic_generator(const char *text, int state)
+{
+    char sql[256];
+    //TODO: escape text
+    snprintf(sql, sizeof(sql), 
+            "SELECT DISTINCT candidate "
+            "FROM comdb2_completion('%s')", text);
+
+    return db_generator(state, sql);
+}
+
+
+
+// Custom completion function
+static char **my_completion (const char *text, int start, int end)
+{
+    rl_attempted_completion_over = 1; // skip directory listing
+    char *bgn = rl_line_buffer;
+    while(*bgn && *bgn == ' ') bgn++; // skip beginning spaces
+
+    char *endptr = bgn;
+    while(*endptr) endptr++; //go to end
+
+    if(endptr == bgn)
+        return rl_completion_matches ((char *) text, &level_one_generator);
+
+    endptr--;
+    // find last space (or will hit bgn)
+    while(endptr != bgn && *endptr != ' ') 
+        endptr--; 
+
+    if(endptr == bgn)
+        return rl_completion_matches ((char *) text, &level_one_generator);
+
+    // find end of previous word
+    while(endptr != bgn && *endptr == ' ') 
+        endptr--;
+
+    char *lastw = endptr;
+    // find begining of previous word
+    while(lastw != bgn && *lastw != ' ') 
+        lastw--;
+    lastw++;
+
+    int l = sizeof("TUNABLE") - 1;
+    if(endptr - lastw + 1 == l && strncasecmp(lastw, "TUNABLE", l) == 0)
+        return rl_completion_matches ((char *) text, &tunables_generator);
+    else
+        return rl_completion_matches ((char *) text, &generic_generator);
+}
+
 
 static char *read_line()
 {
@@ -462,11 +647,23 @@ static int run_statement(const char *sql, int ntypes, int *types,
     if (printmode & STDERR)
         out = stderr;
 
-    startms = time_epochms();
+    startms = now_ms();
     *start_time = 0;
     *run_time = 0;
 
     if (cdb2h == NULL) {
+
+        if (maxretries) {
+            cdb2_set_max_retries(maxretries);
+        }
+        if (minretries) {
+            cdb2_set_min_retries(minretries);
+        }
+
+        verbose_print("calling cdb2_open\n");
+        if (verbose)
+            setenv("CDB2_DEBUG", "1", 1);
+
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
         } else {
@@ -486,10 +683,6 @@ static int run_statement(const char *sql, int ntypes, int *types,
         if (show_ports) {
             cdb2_dump_ports(cdb2h, stderr);
         }
-        if (maxretries) {
-            cdb2_set_max_retries(maxretries);
-        }
-
         if (docost) {
             rc = cdb2_run_statement(cdb2h, "set getcost on");
             if (rc) {
@@ -545,6 +738,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
     /* Bind parameter ability -- useful for debugging */
     if (sql[0] == '@') {
         if (strncasecmp(sql, "@bind", 5) == 0) {
+            verbose_print("setting bind parameter\n");
             //@bind BINDTYPE parameter value
             sql += 5;
 
@@ -569,13 +763,14 @@ static int run_statement(const char *sql, int ntypes, int *types,
     {
         int retries = 0;
         while (retries < 10) {
+            verbose_print("running stmt\n");
             rc = cdb2_run_statement_typed(cdb2h, sql, ntypes, types);
             if (rc != CDB2ERR_IO_ERROR)
                 break;
             retries++;
         }
     }
-    rowms = time_epochms();
+    rowms = now_ms();
     *start_time = rowms - startms;
 
     cdb2_clearbindings(cdb2h);
@@ -649,7 +844,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
     }
 
-    endms = time_epochms();
+    endms = now_ms();
     *run_time = endms - startms;
     if (rc != CDB2_OK_DONE) {
         const char *err = cdb2_errstr(cdb2h);
@@ -678,6 +873,7 @@ static void process_line(char *sql, int ntypes, int *types)
     int rc;
     int len;
 
+    verbose_print("processing line\n");
     /* Trim whitespace and then ignore comments */
     while (isspace(*sqlstr))
         sqlstr++;
@@ -742,6 +938,7 @@ void save_readline_history()
 
 static int *process_typed_statement_args(int ntypes, char **args)
 {
+    verbose_print("processing typed statement arguments\n");
     int *types = NULL;
 
     if (ntypes > 0)
@@ -855,8 +1052,6 @@ static void replace_args(int argc, char *argv[])
             argv[ii] = "--tabs";
         else if (!strcmp(argv[ii], "-strblobs"))
             argv[ii] = "--strblobs";
-        else if (!strcmp(argv[ii], "-debug"))
-            argv[ii] = "--debug";
         else if (!strcmp(argv[ii], "-debugtrace"))
             argv[ii] = "--debugtrace";
         else if (!strcmp(argv[ii], "-showports"))
@@ -931,12 +1126,12 @@ void send_cancel_cnonce(const char *cnonce)
  */
 static void int_handler(int signum)
 {
-    printf("\n");
     if (gbl_in_stmt && !gbl_sent_cancel_cnonce)
         printf("Requesting to cancel query (press Ctrl-C to exit program). "
                "Please wait...\n");
-    if (gbl_sent_cancel_cnonce) exit(1);
+    if (gbl_sent_cancel_cnonce) exit(1); // pressed ctrl-c again
     if (!gbl_in_stmt) {
+        rl_crlf();
         rl_on_new_line();
         rl_replace_line("", 0);
         rl_redisplay();
@@ -956,8 +1151,7 @@ int main(int argc, char *argv[])
     int opt_indx = 0;
     int c;
 
-    comdb2ma_init(0, 0);
-    sigignore(SIGPIPE);
+    sighold(SIGPIPE);
 
     replace_args(argc, argv);
 
@@ -965,8 +1159,8 @@ int main(int argc, char *argv[])
         {"pause",      no_argument,       &pausemode,         1},
         {"binary",     no_argument,       &printmode,         BINARY},
         {"tabs",       no_argument,       &printmode,         TABS},
+        {"verbose",    no_argument,       &verbose,           1},
         {"strblobs",   no_argument,       &string_blobs,      1},
-        {"debug",      no_argument,       &set_debug,         1},
         {"debugtrace", no_argument,       &debug_trace,       1},
         {"showports",  no_argument,       &show_ports,        1},
         {"showeffects",no_argument,       &show_effects,      1},
@@ -983,11 +1177,12 @@ int main(int argc, char *argv[])
         {"gensql",     required_argument, NULL,               'g'},
         {"type",       required_argument, NULL,               't'},
         {"host",       required_argument, NULL,               'n'},
+        {"minretries", required_argument, NULL,               'R'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "hsr:p:c:f:g:t:n:",
-                            long_options, &opt_indx)) != -1) {
+    while ((c = bb_getopt_long(argc, argv, "hsvr:p:c:f:g:t:n:R:", long_options,
+                               &opt_indx)) != -1) {
         switch (c) {
         case 0:
             break;
@@ -997,8 +1192,14 @@ int main(int argc, char *argv[])
         case 's':
             scriptmode = 1;
             break;
+        case 'v':
+            verbose = 1;
+            break;
         case 'r':
             maxretries = atoi(optarg);
+            break;
+        case 'R':
+            minretries = atoi(optarg);
             break;
         case 'p':
             precision = atoi(optarg);
@@ -1052,6 +1253,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "DB name \"%s\" too long\n", dbname);
         return 1;
     }
+    if (verbose)
+        debug_trace = 1;
 
     dbname = argv[optind];
     optind++;
@@ -1094,6 +1297,7 @@ int main(int argc, char *argv[])
     if (isttyarg == 2)
         istty = 0;
     if (istty) {
+        rl_attempted_completion_function = my_completion;
         load_readline_history();
         struct sigaction sact;
         sact.sa_handler = int_handler;

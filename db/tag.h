@@ -71,7 +71,6 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
-    uint8_t disableskipscan;
     LINKC_T(struct schema) lnk;
 };
 
@@ -115,7 +114,8 @@ typedef enum convert_errcode {
     CONVERT_FAILED_INVALID_PARTIAL_TYPE,
     CONVERT_FAILED_BAD_BLOB_PROGRAMMER,
     CONVERT_FAILED_INPUT_TAG_HAS_INVALID_FIELD,
-    CONVERT_FAILED_INDEX_EXPRESSION
+    CONVERT_FAILED_INDEX_EXPRESSION,
+    CONVERT_FAILED_BLOB_SIZE,
 } convert_errcode;
 
 struct convert_failure {
@@ -388,6 +388,7 @@ struct dbenv;
 void free_db_record(struct dbrecord *db);
 
 void delete_schema(const char *dbname);
+void rename_schema(const char *oldname, char *newname);
 
 void freeschema(struct schema *schema);
 void freeschema_internals(struct schema *schema);

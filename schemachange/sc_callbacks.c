@@ -28,6 +28,18 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 
+static int reload_rename_table(const char *name, const char *newtable)
+{
+    struct dbtable *db = get_dbtable_by_name(name);
+
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
+        return -1;
+    }
+
+    return rename_db(db, newtable);
+}
+
 static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
 {
     int bdberr, rc;
@@ -37,6 +49,8 @@ static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
         break;
     case (genid48_disable):
         bdb_genid_set_format(bdb_state, LLMETA_GENID_ORIGINAL);
+        break;
+    default:
         break;
     }
     return 0;
@@ -72,7 +86,7 @@ int is_genid_right_of_stripe_pointer(bdb_state_type *bdb_state,
 
 /* delete from new btree when genid is older than schemachange position
  */
-int live_sc_post_delete_int(struct ireq *iq, void *trans,
+int live_sc_post_del_record(struct ireq *iq, void *trans,
                             unsigned long long genid, const void *old_dta,
                             unsigned long long del_keys,
                             blob_buffer_t *oldblobs)
@@ -81,7 +95,7 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
 
     iq->usedb = usedb->sc_to;
     if (iq->debug) {
-        reqpushprefixf(iq, "live_sc_post_delete_int: ");
+        reqpushprefixf(iq, "%s: ", __func__);
         reqprintf(iq, "deleting genid 0x%llx from new table", genid);
     }
 
@@ -173,7 +187,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     if (!(sc_live && usedb->sc_from == iq->usedb)) {
         return 0;
     }
-#ifdef DEBUG
+#ifdef DEBUG_SC
     printf("live_sc_post_update_delayed_key_adds_int: looking at genid %llx\n",
            newgenid);
 #endif
@@ -219,7 +233,7 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->dbname, ".ONDISK", od_dta,
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK", od_dta,
                                 ".NEW..ONDISK", new_dta, &reason, add_idx_blobs,
                                 add_idx_blobs ? MAXBLOBS : 0, 1);
     if (rc) {
@@ -263,14 +277,14 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     return rc;
 }
 
-int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
-                         const uint8_t *od_dta, unsigned long long ins_keys,
-                         blob_buffer_t *blobs, size_t maxblobs, int origflags,
-                         int *rrn)
+int live_sc_post_add_record(struct ireq *iq, void *trans,
+                            unsigned long long genid, const uint8_t *od_dta,
+                            unsigned long long ins_keys, blob_buffer_t *blobs,
+                            size_t maxblobs, int origflags, int *rrn)
 
 {
-#ifdef DEBUG
-    printf("live_sc_post_add_int: looking at genid %llx\n", genid);
+#ifdef DEBUG_SC
+    printf("%s: looking at genid %llx\n", __func__, genid);
 #endif
     // this is an INSERT of new row so add_record to sc_to
     char *tagname = ".NEW..ONDISK";
@@ -289,9 +303,9 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
         return 1;
     }
     struct convert_failure reason;
-    rc = stag_to_stag_buf_blobs(usedb->sc_to->dbname, ".ONDISK", od_dta,
-                                ".NEW..ONDISK", new_dta, &reason, blobs,
-                                maxblobs, 1);
+    rc = stag_to_stag_buf_blobs(usedb->sc_to->tablename, ".ONDISK",
+                                (const char *)od_dta, ".NEW..ONDISK", new_dta,
+                                &reason, blobs, maxblobs, 1);
     if (rc) {
         gbl_sc_abort = 1;
         MEMORY_SYNC;
@@ -304,19 +318,17 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
 
     if ((origflags & RECFLAGS_NO_CONSTRAINTS) && usedb->sc_to->n_constraints) {
         int rebuild = usedb->sc_to->plan && usedb->sc_to->plan->dta_plan;
-#ifdef DEBUG
-        fprintf(stderr, "live_sc_post_add_int: need to "
-                        "verify_record_constraint genid 0x%llx\n",
-                genid);
+#ifdef DEBUG_SC
+        fprintf(stderr, "%s: need to verify_record_constraint genid 0x%llx\n",
+                __func__, genid);
 #endif
         rc = verify_record_constraint(iq, usedb->sc_to, trans, new_dta,
                                       ins_keys, blobs, maxblobs, ".NEW..ONDISK",
                                       rebuild, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "live_sc_post_add_int: verify_record_constraint "
-                   "rcode %d, genid 0x%llx\n",
-                   rc, genid);
+            logmsg(LOGMSG_ERROR, "%s: verify_record_constraint "
+                                 "rcode %d, genid 0x%llx\n",
+                   __func__, rc, genid);
             logmsg(LOGMSG_ERROR, "Aborting schema change due to constraint "
                                  "violation in new schema\n");
 
@@ -328,7 +340,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "live_sc_post_add_int: ");
+        reqpushprefixf(iq, "%s: ", __func__);
         reqprintf(iq, "adding genid 0x%llx to new table", genid);
     }
 
@@ -351,8 +363,8 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
     iq->usedb = usedb;
 
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
-        logmsg(LOGMSG_ERROR, "live_sc_post_add_int rcode %d, genid 0x%llx\n",
-               rc, genid);
+        logmsg(LOGMSG_ERROR, "%s: rcode %d, genid 0x%llx\n", __func__, rc,
+               genid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
         gbl_sc_abort = 1;
@@ -370,7 +382,7 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
 
 /* both new and old are to the left of SC ptr, need to update
  */
-int live_sc_post_update_int(struct ireq *iq, void *trans,
+int live_sc_post_upd_record(struct ireq *iq, void *trans,
                             unsigned long long oldgenid, const void *old_dta,
                             unsigned long long newgenid, const void *new_dta,
                             unsigned long long ins_keys,
@@ -380,10 +392,10 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
 {
     struct dbtable *usedb = iq->usedb;
 
-#ifdef DEBUG
-    fprintf(stderr, "live_sc_post_update_int: oldgenid 0x%llx, newgenid "
+#ifdef DEBUG_SC
+    fprintf(stderr, "%s: oldgenid 0x%llx, newgenid "
                     "0x%llx, deferredAdd %d\n",
-            oldgenid, newgenid, deferredAdd);
+            __func__, oldgenid, newgenid, deferredAdd);
 #endif
 
     int rc;
@@ -391,7 +403,7 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
     iq->usedb = usedb->sc_to;
 
     if (iq->debug) {
-        reqpushprefixf(iq, "live_sc_post_update_int: ");
+        reqpushprefixf(iq, "%s: ", __func__);
         reqprintf(iq,
                   "updating genid 0x%llx to 0x%llx in new table (defered=%d)",
                   oldgenid, newgenid, deferredAdd);
@@ -402,10 +414,8 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                         oldblobs, newblobs);
     iq->usedb = usedb;
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
-        logmsg(LOGMSG_ERROR,
-               "live_sc_post_update_int: rcode %d for update genid "
-               "0x%llx to 0x%llx\n",
-               rc, oldgenid, newgenid);
+        logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
+               __func__, rc, oldgenid, newgenid);
         logmsg(LOGMSG_ERROR,
                "Aborting schema change due to unexpected error\n");
         gbl_sc_abort = 1;
@@ -465,7 +475,7 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
 
 void sc_del_unused_files(struct dbtable *db)
 {
-    return sc_del_unused_files_tran(db, NULL);
+    sc_del_unused_files_tran(db, NULL);
 }
 
 /* Checks to see if a schema change has been trying to delete files for longer
@@ -534,10 +544,11 @@ static int bthash_callback(const char *table)
         if (bthashsz) {
             logmsg(LOGMSG_INFO,
                    "Building bthash for table %s, size %dkb per stripe\n",
-                   db->dbname, bthashsz);
+                   db->tablename, bthashsz);
             bdb_handle_dbp_add_hash(db->handle, bthashsz);
         } else {
-            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n", db->dbname);
+            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n",
+                   db->tablename);
             bdb_handle_dbp_drop_hash(db->handle);
         }
         return 0;
@@ -564,7 +575,7 @@ static int replicant_reload_views(const char *name)
  * their copies of the modified database
  * if this fails, we panic so that we will be restarted back into a consistent
  * state */
-int scdone_callback(bdb_state_type *bdb_state, const char table[],
+int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
     switch (type) {
@@ -587,6 +598,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
     case genid48_disable: return set_genid_format(thedb->bdb_env, type);
     case lua_sfunc: return reload_lua_sfuncs();
     case lua_afunc: return reload_lua_afuncs();
+    case rename_table:
+        return reload_rename_table(table, (char *)arg);
+    default:
+        break;
     }
 
     int add_new_db = 0;
@@ -660,7 +675,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
                    table);
             exit(1);
         }
-        create_master_tables();
+        create_sqlite_master();
         ++gbl_dbopen_gen;
         goto done;
     } else if (type == bulkimport) {
@@ -687,7 +702,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
                    table);
             exit(1);
         }
-        create_master_tables(); /* create sql statements */
+        create_sqlite_master(); /* create sql statements */
 
         /* update the delayed deleted files */
         assert(db && !add_new_db);
@@ -721,10 +736,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
         struct schema *ver_one;
         char tag[MAXTAGLEN];
 
-        ondisk_schema = find_tag_schema(db->dbname, ".ONDISK");
+        ondisk_schema = find_tag_schema(db->tablename, ".ONDISK");
         if (NULL == ondisk_schema) {
             logmsg(LOGMSG_FATAL, ".ONDISK not found in %s! PANIC!!\n",
-                   db->dbname);
+                   db->tablename);
             exit(1);
         }
         ver_one = clone_schema(ondisk_schema);
@@ -735,7 +750,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
             logmsg(LOGMSG_FATAL, "strdup failed %s @ %d\n", __func__, __LINE__);
             exit(1);
         }
-        add_tag_schema(db->dbname, ver_one);
+        add_tag_schema(db->tablename, ver_one);
     }
 
     ++gbl_dbopen_gen;
@@ -746,10 +761,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[],
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch
      * it from there. */
-    dbnum = llmeta_get_dbnum_tran(tran, db->dbname, &bdberr);
+    dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
     if (dbnum == -1) {
         logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
-               db->dbname);
+               db->tablename);
         rc = BDBERR_MISC;
         goto done;
     }
@@ -781,7 +796,7 @@ void getMachineAndTimeFromFstSeed(const char **mach, time_t *timet)
      * it was done. */
     unsigned int *iptr = (unsigned int *)&sc_seed;
 
-    *mach = get_hostname_with_crc32(thedb->bdb_env, ntohl(iptr[1]));
+    *mach = get_hostname_with_crc32(thedb->bdb_env, sc_host);
     *timet = ntohl(iptr[0]);
     return;
 }

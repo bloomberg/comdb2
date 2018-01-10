@@ -1,0 +1,10 @@
+schema
+{
+   int  id
+   datetime dt
+}
+
+keys
+{
+   "ID"         = id
+}

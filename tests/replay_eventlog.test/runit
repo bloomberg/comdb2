@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
@@ -18,8 +18,8 @@ if [ "x$dbnm" == "x" ] ; then
     exit 1
 fi
 
-if [ -z $comdb2task ] ; then
-   failexit '$comdb2task is not set'
+if [ -z $COMDB2_EXE ] ; then
+   failexit '$COMDB2_EXE is not set'
 fi
 
 nout=0
@@ -138,7 +138,7 @@ insert_records()
     echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))0000$j ,$((1-2*(j%2)))00000000$j ,$((1-2*(j%2)))000000000000000$j )"  &>> $insfl
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
         if [ $? -ne 0 ]; then 
             sleep 1
             continue
@@ -325,18 +325,18 @@ kill_restart_node()
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
         sleep $delay
         if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         else
-            $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
         fi
     else
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
         sleep $delay
         echo "$DBNAME: starting single node"
-        echo "$comdb2task $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $comdb2task $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
     fi
 
     popd
@@ -376,9 +376,10 @@ force_delay_master()
 echo "Test with insert, SC should not fail"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events detailed on")'
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t1"
 #cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat alltypes.csc2 ` }"
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t2"
 
 assert_vers t1 0
 assert_schema t1 alltypes.csc2
@@ -400,6 +401,10 @@ assertcnt $NEWNUMREC
 #update_records_with_bind $NEWSTRT $NEWNUMREC
 #assertcnt $NEWNUMREC
 
+set -e
+#echo "Now call task that uses cdb2api to ins/upd/del"
+${TESTSROOTDIR}/tools/cdb2api_caller $dbnm t1 > cdb2api_caller.out
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1 order by alltypes_u_short" > orig.txt
 
 
@@ -412,6 +417,8 @@ cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.se
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("flush")'
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("reql events roll")'
+
+set +e
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("exit")'
 sleep 10
@@ -456,17 +463,33 @@ for required in $vars; do
     fi
 done
 
+set -e
 
 #setup remode db
 $TESTSROOTDIR/setup
 
-${SRCHOME}/cdb2_sqlreplay $alterdbname $logflunziped > sqlreplay.out
+echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
+$CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
 cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
 
-
-$TESTSROOTDIR/unsetup
+set +e
+success=1
 
 if ! diff orig.txt replayed.txt ; then
-        failexit "replayed.txt content is not the same as original.txt"
+        success=0
 fi
+
+set -e
+$TESTSROOTDIR/unsetup $success
+set +e
+
+if [ $success != 1 ] ; then
+    failexit "replayed.txt content is not the same as original.txt"
+fi
+
+if [ "$CLEANUPDBDIR" == "1" ] ; then
+    #delete files now that test is successful
+    rm orig.txt replayed.txt sqlreplay.out
+fi
+
 echo "Success"

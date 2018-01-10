@@ -37,6 +37,7 @@
 #include <flibc.h>
 #include <luaglue.h>
 #include <sp.h>
+#include "util.h"
 
 dbtypes_t dbtypes;
 
@@ -360,13 +361,13 @@ void luabb_tointervalym(Lua lua, int idx, intv_t *ret)
     case DBTYPES_INTEGER:
         type = 2; // see str_to_interval()
         luabb_tointeger(lua, idx, &i);
-        rc = int_to_interval(i, &tmp, &tmp2, &ret->sign);
+        rc = int_to_interval(i, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case LUA_TNUMBER:
     case DBTYPES_REAL:
         type = 2; // see str_to_interval()
         luabb_toreal(lua, idx, &d);
-        rc = double_to_interval(d, &tmp, &tmp2, &ret->sign);
+        rc = double_to_interval(d, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case DBTYPES_INTERVALYM:
         *ret = ((lua_intervalym_t *)lua_topointer(lua, idx))->val;
@@ -375,7 +376,7 @@ void luabb_tointervalym(Lua lua, int idx, intv_t *ret)
     case DBTYPES_CSTRING:
         type = INTV_YM_TYPE;
         c = luabb_tostring(lua, idx);
-        rc = str_to_interval(c, strlen(c), &type, &tmp, &tmp2, &ret->u.ds,
+        rc = str_to_interval(c, strlen(c), &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
           &ret->sign);
         if (type == 0 || type == 2) // 'years-months' or 'number'
              break;
@@ -408,12 +409,12 @@ void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
     switch(luabb_dbtype(lua, idx)) {
     case DBTYPES_INTEGER:
         luabb_tointeger(lua, idx, &i);
-        rc = int_to_interval(i, &tmp, &tmp2, &ret->sign);
+        rc = int_to_interval(i, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case LUA_TNUMBER:
     case DBTYPES_REAL:
         luabb_toreal(lua, idx, &d);
-        rc = double_to_interval(d, &tmp, &tmp2, &ret->sign);
+        rc = double_to_interval(d, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case DBTYPES_INTERVALDS:
         *ret = ((lua_intervalds_t *)lua_topointer(lua, idx))->val;
@@ -422,7 +423,7 @@ void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
     case DBTYPES_CSTRING:
         type = INTV_DS_TYPE;
         c = luabb_tostring(lua, idx);
-        rc = str_to_interval(c, strlen(c), &type, &tmp, &tmp2, &ret->u.ds,
+        rc = str_to_interval(c, strlen(c), &type, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->u.ds,
           &ret->sign);
         if (type == 1) // days hr:mn:sec.msec
             return;
@@ -671,7 +672,7 @@ void luabb_todecimal(lua_State *lua, int idx, decQuad *val)
         break;
     case DBTYPES_INTEGER:
         ival = ((lua_int_t *) lua_topointer(lua, idx))->val;
-        sprintf(sbuf, "%lld", ival);
+        sprintf(sbuf, "%d", ival);
         sval = sbuf;
         break;
     case DBTYPES_REAL:
@@ -1822,8 +1823,8 @@ static int l_blob_tostring_int(Lua lua, int idx)
         lua_pushstring(lua, null_str);
     else {
       int len = blob->val.length * 2;
-      uint8_t *hexified = malloc(len + 1);
-      luabb_tohex(hexified, blob->val.data, blob->val.length);
+      char *hexified = malloc(len + 1);
+      util_tohex(hexified, blob->val.data, blob->val.length);
       lua_pushlstring(lua, hexified, len);
       free(hexified);
     }

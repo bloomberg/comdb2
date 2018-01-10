@@ -149,6 +149,7 @@
 
 /* COMDB2 MODIFICATION */
 #include <logmsg.h>
+int is_comdb2_index_disableskipscan(const char *);
 
 #if SQLITE_VERSION_NUMBER == 3007002
 #define SQLITE372
@@ -197,8 +198,6 @@ static void sqlite3VdbeSetP4KeyInfo(Parse *pParse, Index *pIdx){
 
 static __thread int skip2, skip4;
 int analyze_get_nrecs( int iTable );
-/* COMDB2 MODIFICATION */
-int is_comdb2_index_disableskipscan(const char *dbname, char *idx);
 
 
 /*
@@ -241,68 +240,69 @@ static int openStatTable(
   assert( sqlite3VdbeDb(v)==db );
   pDb = &db->aDb[iDb];
 
-  /* Create new statistic tables if they do not exist, or clear them
-  ** if they do already exist.
-  */
-  skip2 = skip4 = 0;
-  for(i=0; i<ArraySize(aTable); i++){
-    const char *zTab = aTable[i].zName;
-    Table *pStat;
-    if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
-      if( zTab[11] == '1' ){
-        return -1;
-      }else if( zTab[11] == '2' ){
-        skip2 = 1;
-      }else if( zTab[11] == '4' ){
-        skip4 = 1;
+  /* COMDB2 MODIFICATION */
+  if (pParse->db->isExpert == 0) {
+      /* Create new statistic tables if they do not exist, or clear them
+      ** if they do already exist.
+      */
+      skip2 = skip4 = 0;
+      for(i=0; i<ArraySize(aTable); i++){
+        const char *zTab = aTable[i].zName;
+        Table *pStat;
+        if( (pStat = sqlite3FindTable(db, zTab, NULL))==0 ){
+          if( zTab[11] == '1' ){
+          }else if( zTab[11] == '2' ){
+            skip2 = 1;
+          }else if( zTab[11] == '4' ){
+            skip4 = 1;
+          }
+        }else{
+          aRoot[i] = pStat->tnum;
+            sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+        }
       }
-    }else{
-      aRoot[i] = pStat->tnum;
-        sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-    }
-  }
-#if 0
-  for(i=0; i<ArraySize(aTable); i++){
-    const char *zTab = aTable[i].zName;
-    Table *pStat;
-    if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
-      if( aTable[i].zCols ){
-        /* The sqlite_statN table does not exist. Create it. Note that a 
-        ** side-effect of the CREATE TABLE statement is to leave the rootpage 
-        ** of the new table in register pParse->regRoot. This is important 
-        ** because the OpenWrite opcode below will be needing it. */
-        sqlite3NestedParse(pParse,
-            "CREATE TABLE %Q.%s(%s)", pDb->zDbSName, zTab, aTable[i].zCols
-        );
-        aRoot[i] = pParse->regRoot;
-        aCreateTbl[i] = OPFLAG_P2ISREG;
+  } else {
+      for(i=0; i<ArraySize(aTable); i++){
+        const char *zTab = aTable[i].zName;
+        Table *pStat;
+        if( (pStat = sqlite3FindTable(db, zTab, pDb->zDbSName))==0 ){
+          if( aTable[i].zCols ){
+            /* The sqlite_statN table does not exist. Create it. Note that a 
+            ** side-effect of the CREATE TABLE statement is to leave the rootpage 
+            ** of the new table in register pParse->regRoot. This is important 
+            ** because the OpenWrite opcode below will be needing it. */
+            sqlite3NestedParse(pParse,
+                "CREATE TABLE %Q.%s(%s)", pDb->zDbSName, zTab, aTable[i].zCols
+            );
+            aRoot[i] = pParse->regRoot;
+            aCreateTbl[i] = OPFLAG_P2ISREG;
+          }
+        }else{
+          /* The table already exists. If zWhere is not NULL, delete all entries 
+          ** associated with the table zWhere. If zWhere is NULL, delete the
+          ** entire contents of the table. */
+          aRoot[i] = pStat->tnum;
+          aCreateTbl[i] = 0;
+          sqlite3TableLock(pParse, iDb, aRoot[i], 1, zTab);
+          if( zWhere ){
+            sqlite3NestedParse(pParse,
+               "DELETE FROM %Q.%s WHERE %s=%Q",
+               pDb->zDbSName, zTab, zWhereType, zWhere
+            );
+          }else{
+            /* The sqlite_stat[134] table already exists.  Delete all rows. */
+            sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
+          }
+        }
       }
-    }else{
-      /* The table already exists. If zWhere is not NULL, delete all entries 
-      ** associated with the table zWhere. If zWhere is NULL, delete the
-      ** entire contents of the table. */
-      aRoot[i] = pStat->tnum;
-      aCreateTbl[i] = 0;
-      sqlite3TableLock(pParse, iDb, aRoot[i], 1, zTab);
-      if( zWhere ){
-        sqlite3NestedParse(pParse,
-           "DELETE FROM %Q.%s WHERE %s=%Q",
-           pDb->zDbSName, zTab, zWhereType, zWhere
-        );
-      }else{
-        /* The sqlite_stat[134] table already exists.  Delete all rows. */
-        sqlite3VdbeAddOp2(v, OP_Clear, aRoot[i], iDb);
-      }
-    }
-  }
 
-  /* Open the sqlite_stat[134] tables for writing. */
-  for(i=0; aTable[i].zCols; i++){
-    assert( i<ArraySize(aTable) );
-    sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
-    sqlite3VdbeChangeP5(v, aCreateTbl[i]);
+      /* Open the sqlite_stat[134] tables for writing. */
+      /* COMDB2 MODIFICATION */
+      for(i=0; i < ArraySize(aTable); i++){
+        sqlite3VdbeAddOp4Int(v, OP_OpenWrite, iStatCur+i, aRoot[i], iDb, 3);
+        sqlite3VdbeChangeP5(v, aCreateTbl[i]);
+      }
   }
-#endif
   return 0;
 }
 
@@ -1458,6 +1458,7 @@ static void loadAnalysis(Parse *pParse, int iDb){
 ** Generate code that will do an analysis of an entire database
 */
 static void analyzeDatabase(Parse *pParse, int iDb){
+#if 0
   /* COMDB2 MODIFICATION */
   if( !pParse->explain ){
       logmsg(LOGMSG_ERROR, "this should never be called, as we never allow from sql "
@@ -1465,6 +1466,7 @@ static void analyzeDatabase(Parse *pParse, int iDb){
         "individualy for each table.\n");
       return;
   }
+#endif
 
   sqlite3 *db = pParse->db;
   Schema *pSchema = db->aDb[iDb].pSchema;    /* Schema of database iDb */
@@ -1706,11 +1708,9 @@ static int analysisLoader(void *pData, int argc, char **argv, char **NotUsed){
     pIndex->bUnordered = 0;
     decodeIntArray((char*)z, nCol, aiRowEst, pIndex->aiRowLogEst, pIndex);
     if( pIndex->pPartIdxWhere==0 ) pTable->nRowLogEst = pIndex->aiRowLogEst[0];
-    /* COMDB2 MODIFICATION: assign noskipscan parameter, only if not disabled 
-    ** already.  */ 
-    if( !pIndex->noSkipScan ){
-      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName, 
-                                                           pIndex->zName);
+    /* COMDB2 MODIFICATION: assign noskipscan, only if not foreign table */ 
+    if( pIndex->pTable->iDb == 0){
+      pIndex->noSkipScan = is_comdb2_index_disableskipscan(pTable->zName);
 #ifdef DEBUG
       if(pIndex->noSkipScan)
         printf("SET INDEX %s.%s noskipscan\n", pTable->zName, pIndex->zName);

@@ -94,7 +94,7 @@ static void get_read_lock_log(bdb_state_type *bdb_state)
     Pthread_mutex_lock(&(bdb_state->bdblock_debug_lock));
 
     logmsgf(LOGMSG_USER, bdb_state->bdblock_debug_fp,
-            "GOT THE READ LOCK AT BDB_STATE=%p THREAD=%d: ", bdb_state,
+            "GOT THE READ LOCK AT BDB_STATE=%p THREAD=%lu: ", bdb_state,
             pthread_self());
     comdb2_cheap_stack_trace_file(bdb_state->bdblock_debug_fp);
 
@@ -112,7 +112,7 @@ static void get_read_lock_ref_log(bdb_state_type *bdb_state, int ref)
     Pthread_mutex_lock(&(bdb_state->bdblock_debug_lock));
 
     logmsgf(LOGMSG_USER, bdb_state->bdblock_debug_fp,
-            "INCREMENTING READ LOCK TO %d AT BDB_STATE=%p THREAD=%d: ", ref,
+            "INCREMENTING READ LOCK TO %d AT BDB_STATE=%p THREAD=%lu: ", ref,
             bdb_state, pthread_self());
     comdb2_cheap_stack_trace_file(bdb_state->bdblock_debug_fp);
 
@@ -130,7 +130,7 @@ static void get_write_lock_log(bdb_state_type *bdb_state)
     Pthread_mutex_lock(&(bdb_state->bdblock_debug_lock));
 
     logmsgf(LOGMSG_USER, bdb_state->bdblock_debug_fp,
-            "GOT THE WRITE LOCK AT BDB_STATE=%p THREAD=%d: ", bdb_state,
+            "GOT THE WRITE LOCK AT BDB_STATE=%p THREAD=%lu: ", bdb_state,
             pthread_self());
     comdb2_cheap_stack_trace_file(bdb_state->bdblock_debug_fp);
 
@@ -148,7 +148,7 @@ static void get_write_lock_try_log(bdb_state_type *bdb_state)
     Pthread_mutex_lock(&(bdb_state->bdblock_debug_lock));
 
     logmsgf(LOGMSG_USER, bdb_state->bdblock_debug_fp,
-            "TRY GET THE WRITE LOCK AT BDB_STATE=%p THREAD=%d: ", bdb_state,
+            "TRY GET THE WRITE LOCK AT BDB_STATE=%p THREAD=%lu: ", bdb_state,
             pthread_self());
     comdb2_cheap_stack_trace_file(bdb_state->bdblock_debug_fp);
 
@@ -166,7 +166,7 @@ static void rel_lock_log(bdb_state_type *bdb_state)
     Pthread_mutex_lock(&(bdb_state->bdblock_debug_lock));
 
     logmsgf(LOGMSG_USER, bdb_state->bdblock_debug_fp,
-            "RELEASED THE LOCK AT BDB_STATE=%p THREAD=%d: ", bdb_state,
+            "RELEASED THE LOCK AT BDB_STATE=%p THREAD=%lu: ", bdb_state,
             pthread_self());
     comdb2_cheap_stack_trace_file(bdb_state->bdblock_debug_fp);
 
@@ -184,7 +184,7 @@ static void rel_lock_ref_log(bdb_state_type *bdb_state, int ref)
     Pthread_mutex_lock(&(bdb_state->bdblock_debug_lock));
 
     logmsgf(LOGMSG_USER, bdb_state->bdblock_debug_fp,
-            "DECREMENTING LOCK TO %d AT BDB_STATE=%p THREAD=%d: ", ref,
+            "DECREMENTING LOCK TO %d AT BDB_STATE=%p THREAD=%lu: ", ref,
             bdb_state, pthread_self());
     comdb2_cheap_stack_trace_file(bdb_state->bdblock_debug_fp);
 
@@ -296,13 +296,7 @@ static const char *locktype2str(enum bdb_lock_type locktype)
 
 static int init_thd_priority(void)
 {
-    int rc = pthread_setschedprio(pthread_self(), 10);
-    if (0 != rc) {
-        logmsg(LOGMSG_ERROR, "%s:pthread_setschedprio returns %d for thd %d\n",
-                __func__, rc, pthread_self());
-        return rc;
-    }
-    return 0;
+    return pthread_setschedprio(pthread_self(), 10);
 }
 
 static int lower_thd_priority(void)
@@ -419,10 +413,10 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
 
         rc = pthread_rwlock_trywrlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
-            logmsg(LOGMSG_ERROR, 
-                    "trying writelock (%s %d), last writelock is %s %d\n",
-                    idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
-                    lock_handle->bdb_lock_write_holder);
+            logmsg(LOGMSG_ERROR,
+                   "trying writelock (%s %lu), last writelock is %s %lu\n",
+                   idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
+                   lock_handle->bdb_lock_write_holder);
 
             /*
              * Abort threads waiting on logical locks.
@@ -529,9 +523,10 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
 
         rc = pthread_rwlock_tryrdlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
-            logmsg(LOGMSG_INFO, "trying readlock (%s %d), last writelock is %s %d\n", idstr,
-                    pthread_self(), lock_handle->bdb_lock_write_idstr,
-                    lock_handle->bdb_lock_write_holder);
+            logmsg(LOGMSG_INFO,
+                   "trying readlock (%s %lu), last writelock is %s %lu\n",
+                   idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
+                   lock_handle->bdb_lock_write_holder);
 
             rc = pthread_rwlock_rdlock(lock_handle->bdb_lock);
             if (rc != 0) {
@@ -663,12 +658,12 @@ void bdb_checklock(bdb_state_type *bdb_state)
     if (lk == NULL || lk->lockref == 0)
         return; /* all good */
 
-    logmsg(LOGMSG_FATAL, 
-            "%d %s: request terminated but thread is holding bdb lock!\n",
-            pthread_self(), __func__);
-    logmsg(LOGMSG_FATAL, "%d %s: %s %s lockref=%u\n", pthread_self(), __func__,
-            locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-            lk->lockref);
+    logmsg(LOGMSG_FATAL,
+           "%lu %s: request terminated but thread is holding bdb lock!\n",
+           pthread_self(), __func__);
+    logmsg(LOGMSG_FATAL, "%lu %s: %s %s lockref=%u\n", pthread_self(), __func__,
+           locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
+           lk->lockref);
     abort_lk(lk);
 }
 
@@ -743,40 +738,39 @@ static void new_thread_lock_info(bdb_state_type *bdb_state)
 
     if (lk) {
         logmsg(LOGMSG_WARN, "%s: redundant thread start!\n", __func__);
-    } else {
-        lk = malloc(sizeof(thread_lock_info_type));
-        if (!lk) {
+        return;
+    }
+
+    lk = calloc(1, sizeof(thread_lock_info_type));
+    if (!lk) {
+        logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
+        exit(1);
+    }
+
+    lk->threadid = pthread_self();
+
+    if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
+        lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
+        if (!lk->stack) {
             logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
+            free(lk);
             exit(1);
         }
-
-        bzero(lk, sizeof(thread_lock_info_type));
-        lk->threadid = pthread_self();
-
-        if (bdb_state->attr && bdb_state->attr->debug_bdb_lock_stack) {
-            lk->stack = (void **)malloc(sizeof(void *) * BDB_DEBUG_STACK);
-            if (!lk->stack) {
-                logmsg(LOGMSG_FATAL, "%s: out of memory\n", __func__);
-                free(lk);
-                exit(1);
-            }
-            rc =
-                stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
-            if (rc) {
+        rc = stack_pc_getlist(NULL, lk->stack, BDB_DEBUG_STACK, &lk->nstack);
+        if (rc) {
 #ifndef _LINUX_SOURCE
-                logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
+            logmsg(LOGMSG_WARN, "%s: failed to get stack %d\n", __func__, rc);
 #endif
-                free(lk->stack);
-                lk->stack = NULL;
-            }
+            free(lk->stack);
+            lk->stack = NULL;
         }
-
-        pthread_setspecific(lock_key, lk);
-
-        Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
-        listc_atl(&bdb_state->thread_lock_info_list, lk);
-        Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
     }
+
+    pthread_setspecific(lock_key, lk);
+
+    Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
+    listc_atl(&bdb_state->thread_lock_info_list, lk);
+    Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
 }
 
 /* Free the current thread's lock info struct. */
@@ -785,24 +779,25 @@ static void delete_thread_lock_info(bdb_state_type *bdb_state)
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     if (!lk) {
         logmsg(LOGMSG_WARN, "%s: thread stop before init!!\n", __func__);
-    } else {
-        if (lk->lockref != 0) {
-            logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
-            logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
-                    locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
-                    lk->lockref);
-            abort_lk(lk);
-        }
-
-        Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
-        listc_rfl(&bdb_state->thread_lock_info_list, lk);
-        Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
-
-        if (lk->stack)
-            free(lk->stack);
-        free(lk);
-        pthread_setspecific(lock_key, NULL);
+        return;
     }
+
+    if (lk->lockref != 0) {
+        logmsg(LOGMSG_FATAL, "%s: exiting thread holding lock!\n", __func__);
+        logmsg(LOGMSG_FATAL, "%s: %s %s lockref=%u\n", __func__,
+               locktype2str(lk->locktype), lk->ident ? lk->ident : "?",
+               lk->lockref);
+        abort_lk(lk);
+    }
+
+    Pthread_mutex_lock(&bdb_state->thread_lock_info_list_mutex);
+    listc_rfl(&bdb_state->thread_lock_info_list, lk);
+    Pthread_mutex_unlock(&bdb_state->thread_lock_info_list_mutex);
+
+    if (lk->stack)
+        free(lk->stack);
+    free(lk);
+    pthread_setspecific(lock_key, NULL);
 }
 
 void bdb_stripe_get(bdb_state_type *bdb_state)
@@ -875,8 +870,8 @@ static void dump_int(thread_lock_info_type *lk, FILE *out)
 {
 
 #ifdef _LINUX_SOURCE
-    logmsgf(LOGMSG_USER, out, "thr %llu (0x%llx)  lk %9s %u", (int)lk->threadid,
-            (int)lk->threadid, locktype2str(lk->locktype), lk->lockref);
+    logmsgf(LOGMSG_USER, out, "thr %lu (0x%lx)  lk %9s %u", lk->threadid,
+            lk->threadid, locktype2str(lk->locktype), lk->lockref);
 #else
     logmsgf(LOGMSG_USER, out, "thr %u (0x%x)  lk %9s %u", (int)lk->threadid,
             (int)lk->threadid, locktype2str(lk->locktype), lk->lockref);

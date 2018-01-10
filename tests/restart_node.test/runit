@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 bash -n "$0" | exit 1
 
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
@@ -18,8 +18,8 @@ if [ "x$dbnm" == "x" ] ; then
     exit 1
 fi
 
-if [ -z $comdb2task ] ; then
-   failexit '$comdb2task is not set'
+if [ -z $COMDB2_EXE ] ; then
+   failexit '$COMDB2_EXE is not set'
 fi
 
 # Number of insert_records function calls
@@ -129,42 +129,6 @@ do_verify()
 }
 
 
-# Update all records in the table
-update_all_records()
-{
-    typeset prmsg=$1
-    typeset iter=0
-
-    [[ "$debug" == 1 ]] && set -x
-
-    while :; do 
-
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=x'1234' where b='test1'" >/dev/null 2>&1
-        let iter=iter+1
-
-        if [[ -n "$prmsg" && $(( iter % prmsg )) == 0 ]]; then
-
-            echo "Updated all of table t1 $iter times."
-
-        fi
-
-    done
-}
-
-
-update_records()
-{
-    j=0
-    nrecs=$1
-    echo "Updating $nrecs records."
-    echo "" > update.out
-
-    while [[ $j -lt $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "update t1 set c=c+100000 where a = $j" >> update.out 
-        let j=j+1
-    done
-}
-
 
 insert_records()
 {
@@ -261,18 +225,18 @@ kill_restart_node()
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
         sleep $delay
         if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
+            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         else
-            $comdb2task ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
+            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
         fi
     else
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
         sleep $delay
         echo "$DBNAME: starting single node"
-        echo "$comdb2task $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $comdb2task $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
+        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
     fi
 
     popd

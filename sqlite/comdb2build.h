@@ -55,15 +55,18 @@ void comdb2AddDefaultValue(Parse *, ExprSpan *);
 void comdb2AddNull(Parse *);
 void comdb2AddNotNull(Parse *, int);
 void comdb2AddPrimaryKey(Parse *, ExprList *, int, int, int);
-void comdb2AddIndex(Parse *, ExprList *, int, u8);
+void comdb2DropPrimaryKey(Parse *);
+void comdb2AddIndex(Parse *, Token *, ExprList *, int, ExprSpan *, int, u8,
+                    int);
 void comdb2AddDbpad(Parse *, int);
 void comdb2CreateIndex(Parse *, Token *, Token *, SrcList *, ExprList *, int,
-                       Token *, ExprSpan *, int, int, u8, int);
+                       Token *, ExprSpan *, int, int, u8, int, int);
 void comdb2CreateForeignKey(Parse *, ExprList *, Token *, ExprList *, int);
 void comdb2DeferForeignKey(Parse *, int);
+void comdb2DropForeignKey(Parse *, Token *);
 void comdb2DropColumn(Parse *, Token *);
-void comdb2DropIndex(Parse *, SrcList *, int);
-void comdb2DropIndexExtn(Parse *, Token *, Token *, int);
+void comdb2DropIndex(Parse *, Token *, Token *, int);
+void comdb2AlterDropIndex(Parse *, Token *);
 
 void comdb2enableGenid48(Parse*, int);
 void comdb2enableRowlocks(Parse*, int);
@@ -77,15 +80,11 @@ void comdb2setSkipscan(Parse* pParse, Token* nm, Token* lnm, int enable);
 void comdb2setAlias(Parse*, Token*, Token*);
 void comdb2getAlias(Parse*, Token*);
 
-void comdb2rebuildFull(Parse*,Token*,Token*);
-
-void comdb2rebuildIndex(Parse*, Token*, Token*, Token*);
-
-void comdb2rebuildData(Parse*, Token*, Token*);
-
-void comdb2rebuildDataBlob(Parse*,Token*, Token*);
-
-void comdb2truncate(Parse*, Token*, Token*);
+void comdb2RebuildFull(Parse*,Token*,Token*);
+void comdb2RebuildIndex(Parse*, Token*, Token*, Token*);
+void comdb2RebuildData(Parse*, Token*, Token*);
+void comdb2RebuildDataBlob(Parse*,Token*, Token*);
+void comdb2Truncate(Parse*, Token*, Token*);
 
 void comdb2bulkimport(Parse*, Token*, Token*, Token*, Token*);
 

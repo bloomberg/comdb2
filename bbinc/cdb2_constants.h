@@ -19,7 +19,7 @@
 
 #define COMDB2_MAX_RECORD_SIZE 16384
 #define LONG_REQMS 2000
-#define MAXBLOBLENGTH 256 * 1024 * 1024 /* TODO: set a good maximum here */
+#define MAXBLOBLENGTH 255 * 1024 * 1024 /* TODO: set a good maximum here */
 #define MAXBLOBS 15                     /* Should be bdb's MAXDTAFILES - 1 */
 #define MAXCOLNAME 99                   /* not incl. \0 */
 #define MAXCOLUMNS 1024
@@ -43,5 +43,9 @@
 #define MAXTABLELEN 32
 #define MAXTAGLEN 64
 #define REPMAX 32
+/* Maximum buffer length for generated key name. */
+#define MAXGENKEYLEN 25
+/* Maximum buffer length for generated constraint name. */
+#define MAXGENCONSLEN 25
 
 #endif
