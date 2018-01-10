@@ -30,6 +30,7 @@
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
+extern int gbl_check_access_controls;
 /******************* Utility ****************************/
 
 static inline int setError(Parse *pParse, int rc, const char *msg)
@@ -1425,6 +1426,7 @@ void comdb2enableAuth(Parse* pParse, int on)
     arg->auth = auth;
     arg->type = BPFUNC_AUTHENTICATION;
     auth->enabled = on;
+    gbl_check_access_controls = 1;
 
     comdb2prepareNoRows(v, pParse, 0, arg, &comdb2SendBpfunc, 
         (vdbeFuncArgFree) &free_bpfunc_arg);

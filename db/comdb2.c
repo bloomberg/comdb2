@@ -1808,11 +1808,6 @@ void check_access_controls(struct dbenv *dbenv)
             gbl_uses_password = 1;
             gbl_upgrade_blocksql_2_socksql = 1;
             logmsg(LOGMSG_INFO, "User authentication enabled\n");
-            int valid_user;
-            bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD,
-                                    &valid_user);
-            if (!valid_user)
-                bdb_user_password_set(NULL, DEFAULT_USER, DEFAULT_PASSWORD);
         }
     } else {
         gbl_uses_password = 0;
