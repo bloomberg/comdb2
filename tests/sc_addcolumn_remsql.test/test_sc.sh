@@ -7,8 +7,8 @@ set -x
 
 function fdbinfo
 {
-    echo cdb2sql --tabs ${a_cdb2config} $a_dbname default "exec procedure sys.cmd.send('fdb info db')" 
-    cdb2sql --tabs ${a_cdb2config} $a_dbname default "exec procedure sys.cmd.send('fdb info db')" >> $output 2>&1
+    echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')"
+    cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')" >> $output 2>&1
     if (( $? != 0 )) ; then
         echo "Failed to retrieved fdb info ${a_dbname}"
         exit 1
@@ -42,8 +42,8 @@ function alter
 function sel
 {
     col=$1
-    echo cdb2sql ${a_cdb2config} ${a_dbname} default "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}"
-    cdb2sql ${a_cdb2config} ${a_dbname} default "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
+    echo cdb2sql --host $mach ${a_dbname} "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}"
+    cdb2sql --host $mach ${a_dbname} "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
     if (( $? != 0 )) ; then
         echo "Failed to select rows from ${a_dbname}"
         exit 1
@@ -59,7 +59,6 @@ a_dbdir=$4
 a_testdir=$5
 
 output=run.out
-a_cdb2config=${CDB2_OPTIONS}
 col1="a"
 col2="b"
 csc1="t1.csc2"
@@ -78,6 +77,9 @@ if (( $# > 5 )); then
         test2=${test1}
     fi
 fi
+
+# Make sure we talk to the same host
+mach=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
 
 test=1
 if (( $test >= $test1 && $test<= $test2 )) ; then
@@ -138,7 +140,7 @@ let test=test+1
 if (( $test >= $test1 && $test<= $test2 )) ; then
 
 # error now
-cdb2sql ${a_cdb2config} ${a_dbname} default "select ${col2} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
+cdb2sql --host $mach ${a_dbname} "select ${col2} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
 
 fdbinfo 
 tblver
