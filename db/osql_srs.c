@@ -355,7 +355,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
             osql_shadtbl_close(clnt); 
         }
 
-        if (clnt->verify_retries == 500)
+        if (clnt->verify_retries == gbl_osql_verify_retries_max + 1)
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
 
         if (0 /*!bdb_am_i_coherent(thedb->bdb_env)*/) {
