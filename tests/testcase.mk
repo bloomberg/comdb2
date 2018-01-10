@@ -43,11 +43,6 @@ export COPYCOMDB2_EXE?=$(TESTDIR)/db/copycomdb2
 export CDB2_SQLREPLAY_EXE?=$(TESTDIR)/cdb2_sqlreplay
 export PMUX_EXE?=$(SRCDIR)/pmux
 
-ifeq ($(COMDB2MD5SUM),)
-  # record md5sum so we can verify from setup of each individual test
-  export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
-endif
-
 
 test:: tool unit
 	@mkdir -p ${TESTDIR}/
