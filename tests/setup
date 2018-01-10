@@ -261,7 +261,6 @@ compare_md5_sum()
     fi
 }
 
-
 # start it
 cd $DBDIR >/dev/null
 if [[ -z "$CLUSTER" ]]; then

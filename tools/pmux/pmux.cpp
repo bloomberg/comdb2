@@ -869,7 +869,19 @@ static int make_range(char *s, std::pair<int, int> &range)
 static int usage(int rc)
 {
     printf("usage: pmux [-h] [-c pmuxdb cluster] [-d pmuxdb name] [-b bind path] "
-           "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n");
+           "[-p listen port] [-r free ports range x:y][-l|-n][-f]\n"
+           "\n"
+           "Options:\n"
+           "-h            this help message\n"
+           "-c            cluster information for pmuxdb\n"
+           "-d            db information for pmuxdb\n"
+           "-b            unix bind path\n"
+           "-p            port pmux will listen on\n"
+           "-r            range of ports to allocate for databases\n"
+           "-l            use file to persist port allocation\n"
+           "-n            use only store in memory, will not persist port allocation\n"
+           "-f            run in foreground rather than put to background\n"
+           );
     return rc;
 }
 
