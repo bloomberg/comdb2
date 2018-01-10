@@ -341,6 +341,7 @@ assert_vers t1 1
 assert_schema t1 t1_2.csc2
 do_verify
 
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 echo restart master to make sure when it comes up we are still at version 1
 kill_restart_node $master 
 master=`getmaster`
