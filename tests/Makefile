@@ -26,33 +26,15 @@ endif
 all_tests: $(ALL_TESTS)
 
 # get md5sum of executable use check when running every test in a series
-export COMDB2AR_EXE:=$(SRCHOME)/comdb2ar
-export COMDB2_EXE:=$(SRCHOME)/comdb2
-export CDB2SQL_EXE:=$(SRCHOME)/cdb2sql
+export COMDB2AR_EXE:=$(TESTDIR)/comdb2ar
+export COMDB2_EXE:=$(TESTDIR)/comdb2
+export CDB2SQL_EXE:=$(TESTDIR)/cdb2sql
 export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
 export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
 export PMUX_EXE:=$(SRCHOME)/pmux
-
-ifeq ($(wildcard $(COMDB2_EXE)),)
-  $(error $(COMDB2_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(COMDB2AR_EXE)),)
-  $(error $(COMDB2AR_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(CDB2SQL_EXE)),)
-  $(error $(CDB2SQL_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(CDB2_SQLREPLAY_EXE)),)
-  $(error $(CDB2_SQLREPLAY_EXE) missing, please run make in $(SRCHOME))
-endif
-ifeq ($(wildcard $(COPYCOMDB2_EXE)),)
-  $(error $(COPYCOMDB2_EXE) missing, please ensure it exists)
-endif
-ifeq ($(wildcard $(PMUX_EXE)),)
-  $(error $(PMUX_EXE) missing, please run make in $(SRCHOME))
-endif
-
-export COMDB2MD5SUM:=$(shell md5sum ${COMDB2_EXE} | cut -d ' ' -f1)
+#$(shell cp $(SRCHOME)/comdb2ar $(COMDB2AR_EXE) )
+#$(shell cp $(SRCHOME)/comdb2 $(COMDB2_EXE) )
+#$(shell cp $(SRCHOME)/cdb2sql $(CDB2SQL_EXE) )
 
 basicops_nokey: executables
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)
@@ -66,15 +48,15 @@ basicops_nokey: executables
 	$(shell echo "" >> ${TESTDIR}/test.log)
 	$(shell echo ${MAKECMDGOALS} >> ${TESTDIR}/test.log)
 
-executables: execomdb2 exesqlreplay execdb2sql execomdb2ar exepmux
+executables:
 	@mkdir -p ${TESTDIR}
-	@mv ${SRCHOME}/comdb2 ${SRCHOME}/cdb2sql ${SRCHOME}/comdb2ar ${SRCHOME}/cdb2_sqlreplay ${SRCHOME}/pmux ${TESTDIR}/
-
-execomdb2: ; @command -v ${SRCHOME}/comdb2 &> /dev/null
-exesqlreplay: ; @command -v ${SRCHOME}/cdb2_sqlreplay &> /dev/null
-execdb2sql: ; @command -v ${SRCHOME}/cdb2sql &> /dev/null
-execomdb2ar: ; @command -v ${SRCHOME}/comdb2ar &> /dev/null
-exepmux: ; @command -v ${SRCHOME}/pmux &> /dev/null
+	@cp ${SRCHOME}/comdb2 ${SRCHOME}/cdb2sql ${SRCHOME}/comdb2ar ${TESTDIR}/
+	@command -v ${COMDB2_EXE} > /dev/null || (echo "${COMDB2_EXE} missing "; exit 1)
+	@command -v ${CDB2_SQLREPLAY_EXE} > /dev/null || (echo "${CDB2_SQLREPLAY_EXE} missing "; exit 1)
+	@command -v ${CDB2SQL_EXE} > /dev/null || (echo "${CDB2SQL_EXE} missing "; exit 1)
+	@command -v ${COMDB2AR_EXE} > /dev/null || (echo "${COMDB2AR_EXE} missing "; exit 1)
+	@command -v ${COPYCOMDB2_EXE} > /dev/null || (echo "${COPYCOMDB2_EXE} missing "; exit 1)
+	@command -v ${PMUX_EXE} > /dev/null || (echo "${PMUX_EXE} missing "; exit 1)
 
 
 basicops: basicops_nokey
