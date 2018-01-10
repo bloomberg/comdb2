@@ -364,6 +364,8 @@ long long gbl_nsql_steps;
 unsigned int gbl_nnewsql;
 long long gbl_nnewsql_steps;
 
+unsigned int gbl_masterrejects = 0;
+
 volatile int gbl_dbopen_gen = 0;
 volatile int gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
@@ -1038,9 +1040,9 @@ static void *purge_old_blkseq_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
     loop = 0;
+    sleep(1);
 
-    while (1) {
-        sleep(1);
+    while (!db_is_stopped()) {
 
         /* Check del unused files progress about twice per threshold  */
         if (!(loop % (gbl_sc_del_unused_files_threshold_ms /
@@ -1051,12 +1053,6 @@ static void *purge_old_blkseq_thread(void *arg)
             loop = 0;
         else
             ++loop;
-
-        if (dbenv->exiting || dbenv->stopped) {
-            dbenv->purge_old_blkseq_is_running = 0;
-            backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
-            return NULL;
-        }
 
         if (debug_switch_check_for_hung_checkpoint_thread() &&
             dbenv->master == gbl_mynode) {
@@ -1165,7 +1161,13 @@ static void *purge_old_blkseq_thread(void *arg)
 
         if ((loop % 30) == 0 && gbl_verify_dbreg)
             bdb_verify_dbreg(dbenv->bdb_env);
+
+        sleep(1);
     }
+
+    dbenv->purge_old_blkseq_is_running = 0;
+    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
+    return NULL;
 }
 
 static void *purge_old_files_thread(void *arg)
@@ -1374,6 +1376,10 @@ void clean_exit(void)
     thedb->exiting = 1;
     stop_threads(thedb);
     logmsg(LOGMSG_INFO, "stopping db engine...\n");
+
+    /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
+      them to quit.
+    */
     sleep(4);
 
     cleanup_q_vars();
@@ -1382,6 +1388,9 @@ void clean_exit(void)
     free_tzdir();
     tz_hash_free();
     bdb_cleanup_private_blkseq(thedb->bdb_env);
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+    }
 
     rc = backend_close(thedb);
     if (rc != 0) logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
@@ -1411,13 +1420,10 @@ void clean_exit(void)
     if (fd != -1) close(fd);
     logmsg(LOGMSG_INFO, "creating %s\n", indicator_file);
     free(indicator_file);
+    extern char *gbl_portmux_unix_socket;
+    free(gbl_portmux_unix_socket);
     cleanup_file_locations();
-
-    /*
-      Wait for other threads to exit by themselves.
-      TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
-      them to quit.
-    */
+    ctrace_closelog();
 
     backend_cleanup(thedb);
     net_cleanup_subnets();
@@ -1436,10 +1442,9 @@ void clean_exit(void)
     }
     cleanup_interned_strings();
     cleanup_peer_hash();
+    // TODO: would be nice but other threads need to exit first:
+    // comdb2ma_exit();
 
-    if (gbl_create_mode) {
-        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
-    }
     logmsg(LOGMSG_USER, "goodbye\n");
 
     exit(0);
@@ -3183,9 +3188,10 @@ static int init(int argc, char **argv)
         exit(1);
     }
     dbname = argv[optind++];
-    if (strlen(dbname) == 0 || strlen(dbname) >= MAX_DBNAME_LENGTH) {
-       logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n", 
-                MAX_DBNAME_LENGTH - 1);
+    int namelen = strlen(dbname);
+    if (namelen == 0 || namelen >= MAX_DBNAME_LENGTH) {
+        logmsg(LOGMSG_FATAL, "Invalid dbname, must be < %d characters\n",
+               MAX_DBNAME_LENGTH);
         return -1;
     }
     strcpy(gbl_dbname, dbname);
@@ -4236,7 +4242,7 @@ void *statthd(void *p)
         reqlog_diffstat_init(statlogger);
     }
 
-    while (!dbenv->exiting && !dbenv->stopped) {
+    while (!db_is_stopped()) {
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;

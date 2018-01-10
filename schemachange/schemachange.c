@@ -31,9 +31,11 @@
 #include "sc_add_table.h"
 #include "sc_callbacks.h"
 #include "sc_schema.h"
+#include "comdb2_atomic.h"
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
+extern int gbl_test_sc_resume_race;
 int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 {
     struct schema_change_type *s = iq->sc;
@@ -243,7 +245,12 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->iq = iq;
 
     if (s->resume && s->alteronly && !s->finalize_only) {
-        gbl_sc_resume_start = time_epochms();
+        if (gbl_test_sc_resume_race) {
+            logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
+                   __func__, __LINE__);
+            sleep(5);
+        }
+        ATOMIC_ADD(gbl_sc_resume_start, 1);
     }
     /*
     ** if s->partialuprecs, we're going radio silent from this point forward
@@ -296,8 +303,9 @@ void delay_if_sc_resuming(struct ireq *iq)
 
     int diff;
     int printerr = 0;
+    int start_time = time_epochms();
     while (gbl_sc_resume_start) {
-        if ((diff = time_epochms() - gbl_sc_resume_start) > 300 && !printerr) {
+        if ((diff = time_epochms() - start_time) > 300 && !printerr) {
             logmsg(LOGMSG_WARN, "Delaying since gbl_sc_resume_start has not "
                                 "been reset to 0 for %dms\n",
                    diff);

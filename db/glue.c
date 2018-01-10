@@ -3322,7 +3322,7 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
     seed = dtap;
-    rc = sc_set_running(0, 0, NULL, 0);
+    rc = sc_set_running(0, *seed, NULL, 0);
     net_ack_message(hndl, rc == 0 ? 0 : 1);
 }
 

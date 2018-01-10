@@ -103,10 +103,9 @@ static int get_fd(const char *svc)
     std::string key(svc);
     std::lock_guard<std::mutex> l(fdmap_mutex);
     const auto &fd = fd_map.find(key);
-    if (fd == fd_map.end()) {
-        return fd_ret;
+    if (fd != fd_map.end()) {
+        fd_ret = fd->second;
     }
-    fd_ret = fd->second;
     return fd_ret;
 }
 
@@ -489,6 +488,7 @@ static int watchfd(int fd, std::vector<struct pollfd> &fds, struct in_addr addr)
     connections[fd].fd = fd;
     connections[fd].writable = is_local(addr);
     connections[fd].addr = addr;
+    connections[fd].is_hello = false;
     return 0;
 }
 

@@ -58,7 +58,7 @@ keys
 		"$KEY_FF23FD33" = j 
 	}
 ')
-(type='index', name='$$KEY_FF23FD33_BAF4622F', tbl_name='t4', rootpage=8, sql='create index "$$KEY_FF23FD33_BAF4622F" on "t4" (j);', csc2=NULL)
+(type='index', name='$$KEY_FF23FD33_BAF4622F', tbl_name='t4', rootpage=8, sql='create index "$$KEY_FF23FD33_BAF4622F" on "t4" ("j");', csc2=NULL)
 (type='table', name='t5', tbl_name='t5', rootpage=9, sql='create table "t5"("i" int, "j" int DEFAULT 1);', csc2='schema
 	{
 		int i null = yes 
@@ -104,7 +104,7 @@ keys
 		dup "IDX" = i 
 	}
 ')
-(type='index', name='$IDX_4DE4D8DB', tbl_name='t1', rootpage=5, sql='create index "$IDX_4DE4D8DB" on "t1" (i);', csc2=NULL)
+(type='index', name='$IDX_4DE4D8DB', tbl_name='t1', rootpage=5, sql='create index "$IDX_4DE4D8DB" on "t1" ("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("v" char(10) DEFAULT 'foo', "d" datetime DEFAULT CURRENT_TIMESTAMP, "i" int DEFAULT 10);', csc2='schema
 	{
 		cstring v[11] dbstore = "foo" null = yes 
@@ -116,7 +116,7 @@ keys
 		dup "IDX" = i 
 	}
 ')
-(type='index', name='$IDX_A44A20B', tbl_name='t2', rootpage=7, sql='create index "$IDX_A44A20B" on "t2" (i);', csc2=NULL)
+(type='index', name='$IDX_A44A20B', tbl_name='t2', rootpage=7, sql='create index "$IDX_A44A20B" on "t2" ("i");', csc2=NULL)
 (tablename='t1')
 (tablename='t2')
 (tablename='t1', columnname='v', type='cstring', size=11, sqltype='char(10)', varinlinesize=NULL, defaultvalue=''foo'', dbload=NULL, isnullable='Y')
@@ -169,11 +169,11 @@ keys
 		"COMDB2_PK" = k 
 	}
 ')
-(type='index', name='$IDX1_F9E83FD8', tbl_name='t1', rootpage=5, sql='create index "$IDX1_F9E83FD8" on "t1" (i, j);', csc2=NULL)
-(type='index', name='$IDX2_5E8AC7D0', tbl_name='t1', rootpage=6, sql='create index "$IDX2_5E8AC7D0" on "t1" (i);', csc2=NULL)
-(type='index', name='$IDX3_DC0D8A36', tbl_name='t1', rootpage=7, sql='create index "$IDX3_DC0D8A36" on "t1" (j, i);', csc2=NULL)
-(type='index', name='$IDX4_4DE4D8DB', tbl_name='t1', rootpage=8, sql='create index "$IDX4_4DE4D8DB" on "t1" (i);', csc2=NULL)
-(type='index', name='$COMDB2_PK_B084A6FC', tbl_name='t1', rootpage=9, sql='create index "$COMDB2_PK_B084A6FC" on "t1" (k);', csc2=NULL)
+(type='index', name='$IDX1_F9E83FD8', tbl_name='t1', rootpage=5, sql='create index "$IDX1_F9E83FD8" on "t1" ("i", "j");', csc2=NULL)
+(type='index', name='$IDX2_5E8AC7D0', tbl_name='t1', rootpage=6, sql='create index "$IDX2_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$IDX3_DC0D8A36', tbl_name='t1', rootpage=7, sql='create index "$IDX3_DC0D8A36" on "t1" ("j", "i");', csc2=NULL)
+(type='index', name='$IDX4_4DE4D8DB', tbl_name='t1', rootpage=8, sql='create index "$IDX4_4DE4D8DB" on "t1" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_B084A6FC', tbl_name='t1', rootpage=9, sql='create index "$COMDB2_PK_B084A6FC" on "t1" ("k");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=10, sql='create table "t2"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i null = yes 
@@ -189,7 +189,7 @@ constraints
 		"IDX1" -> <"t1":"IDX1"> 
 	}
 ')
-(type='index', name='$IDX1_FBAE8181', tbl_name='t2', rootpage=11, sql='create index "$IDX1_FBAE8181" on "t2" (i, j);', csc2=NULL)
+(type='index', name='$IDX1_FBAE8181', tbl_name='t2', rootpage=11, sql='create index "$IDX1_FBAE8181" on "t2" ("i", "j");', csc2=NULL)
 [ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j)] failed with rc -3 Constraint '$CONSTRAINT_95177019' already exists.
 (tablename='t1')
 (tablename='t2')
@@ -214,7 +214,7 @@ keys
 		dup "idx" = i + j 
 	}
 ')
-(type='index', name='$IDX_6E29884F', tbl_name='t1', rootpage=5, sql='create index "$IDX_6E29884F" on "t1" (i, j);', csc2=NULL)
+(type='index', name='$IDX_6E29884F', tbl_name='t1', rootpage=5, sql='create index "$IDX_6E29884F" on "t1" ("i", "j");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -229,7 +229,7 @@ constraints
 		"IDX" -> <"t1":"IDX"> 
 	}
 ')
-(type='index', name='$IDX_E8BDFAE1', tbl_name='t2', rootpage=7, sql='create index "$IDX_E8BDFAE1" on "t2" (i, j);', csc2=NULL)
+(type='index', name='$IDX_E8BDFAE1', tbl_name='t2', rootpage=7, sql='create index "$IDX_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -240,7 +240,7 @@ keys
 		"COMDB2_PK" = i + j 
 	}
 ')
-(type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" (i, j);', csc2=NULL)
+(type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
 [ALTER TABLE t1 DROP INDEX 'idx'] failed with rc 240 
 (tablename='t1')
 (tablename='t2')
