@@ -5,7 +5,6 @@ debug=1
 
 db=$1
 export COMDB2_PMUX_PORT=19500
-export CDB2SQL=${TESTSROOTDIR}/../cdb2sql
 export pmux_pid=0
 export start_iters=10
 export start_sleep=5
@@ -45,7 +44,7 @@ function start_database
     jj=0
 
     while [[ $jj -lt $start_iters ]]; do
-        ${TESTSROOTDIR}/../comdb2 ${db} --lrl $DBLRL &
+        ${COMDB2_EXE} ${db} --lrl $DBLRL &
         dbpid=$!
         echo $dbpid > $dbpidfile
         sleep $start_sleep
@@ -66,8 +65,8 @@ function verify_hello_reuse
     start_timeout=30
 
     # Create a db
-    DBDIR=$(pwd)/$db
-    ${TESTSROOTDIR}/../comdb2 $db --create --dir $DBDIR
+    DBDIR=$TESTDIR/$DBNAME
+    mkdir $DBDIR
 
     # Create config file
     echo "$db 0 localhost" > $CDB2_CONFIG
@@ -79,6 +78,9 @@ function verify_hello_reuse
     DBLRL=$DBDIR/${db}.lrl
     echo "portmux_port ${COMDB2_PMUX_PORT}" >> $DBLRL
     echo "portmux_bind_path /tmp/pmux.${COMDB2_PMUX_PORT} " >> $DBLRL
+    echo "dir $DBDIR " >> $DBLRL
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> ${DBLRL}
+    ${COMDB2_EXE} $db --create --lrl $DBLRL
 
     # Start the test
     i=0
@@ -89,7 +91,7 @@ function verify_hello_reuse
         t=0
         started=0
         while [[ $t -lt $start_timeout ]]; do
-            $CDB2SQL --cdb2cfg $CDB2_CONFIG $db default "select 1" >/dev/null 2>&1
+            $CDB2SQL_EXE --cdb2cfg $CDB2_CONFIG $db default "select 1" >/dev/null 2>&1
             if [[ $? == 0 ]]; then
                 started=1
             else
@@ -122,7 +124,6 @@ rte                     : get route to instance service/port
 hello service           : keep active connection
 active                  : list active connections
 exit                    : shutdown pmux (may be restarted by system)
-
 EOF
 
     ${TESTSROOTDIR}/tools/send_msg_port.sh "help" ${COMDB2_PMUX_PORT} &> help.out
@@ -134,7 +135,6 @@ EOF
     ${TESTSROOTDIR}/tools/send_msg_port.sh "stat" ${COMDB2_PMUX_PORT} &> stat.out
     cat <<EOF > stat.expected
 free ports: 999
-
 EOF
 
     if ! diff stat.expected stat.out ; then
@@ -146,7 +146,6 @@ EOF
     ${TESTSROOTDIR}/tools/send_msg_port.sh "reg $name" ${COMDB2_PMUX_PORT} &> reg.out
     cat <<EOF > reg.expected
 19000
-
 EOF
     if ! diff reg.expected reg.out ; then
         failexit "differing reg.expected reg.out"
@@ -157,7 +156,6 @@ EOF
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     cat <<EOF > get.expected
 19000
-
 EOF
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
@@ -168,7 +166,6 @@ EOF
     cat <<EOF > stat2.expected
 free ports: 998
 $name -> 19000
-
 EOF
     if ! diff stat2.expected stat2.out ; then
         failexit "differing stat2.expected stat2.out"
@@ -178,7 +175,6 @@ EOF
     ${TESTSROOTDIR}/tools/send_msg_port.sh "del $name" ${COMDB2_PMUX_PORT} &> del.out
     cat <<EOF > del.expected
 0
-
 EOF
     if ! diff del.expected del.out ; then
         failexit "differing del.expected del.out"
@@ -196,7 +192,6 @@ EOF
     ${TESTSROOTDIR}/tools/send_msg_port.sh "use $name 19001" ${COMDB2_PMUX_PORT} &> use.out
     cat <<EOF > use.expected
 0
-
 EOF
     if ! diff use.expected use.out ; then
         failexit "differing use.expected use.out"
@@ -207,7 +202,6 @@ EOF
     ${TESTSROOTDIR}/tools/send_msg_port.sh "get $name" ${COMDB2_PMUX_PORT} &> get.out
     cat <<EOF > get.expected
 19001
-
 EOF
     if ! diff get.expected get.out ; then
         failexit "differing get.expected get.out"
@@ -218,7 +212,6 @@ EOF
     cat <<EOF > stat3.expected
 free ports: 998
 $name -> 19001
-
 EOF
     if ! diff stat3.expected stat3.out ; then
         failexit "differing stat3.expected stat3.out"
@@ -231,7 +224,7 @@ function runtest
     [[ "$debug" == 1 ]] && echo "STARTING ${FUNCNAME[0]}" && set -x
 
     # Start pmux
-    ${TESTSROOTDIR}/../pmux -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
+    ${PMUX_EXE} -n -f -p ${COMDB2_PMUX_PORT} -b /tmp/pmux.${COMDB2_PMUX_PORT} &
     pmux_pid=$!
 
     sleep 5

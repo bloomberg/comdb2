@@ -20,11 +20,13 @@ fi
 exec 3<>/dev/tcp/localhost/$port || failexit "no listener in port $port"
 
 echo $msg >&3
-rc=0
+
+read -t 0.2 resp <&3
+rc=$?
 while [ $rc -eq 0 ] ; do
+    echo "$resp"
     read -t 0.2 resp <&3
     rc=$?
-    echo "$resp"
 done
 
 exec 3>&- #close output connection
