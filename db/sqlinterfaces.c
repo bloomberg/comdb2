@@ -5826,11 +5826,10 @@ check_version:
             if (!clnt->dbtran.cursor_tran) {
                 rc = get_curtran(thedb->bdb_env, clnt);
                 if (rc) {
-                    logmsg(LOGMSG_ERROR, 
-                            "%s: unable to get a CURSOR transaction, rc = %d!\n",
-                            __func__, rc);
-                }
-                else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: unable to get a CURSOR transaction, rc = %d!\n",
+                           __func__, rc);
+                } else {
                     got_curtran = 1;
                 }
             }
@@ -5888,7 +5887,7 @@ check_version:
 
     if (got_curtran && put_curtran(thedb->bdb_env, clnt)) {
         logmsg(LOGMSG_ERROR, "%s: unable to destroy a CURSOR transaction!\n",
-                __func__);
+               __func__);
     }
 
     return rc;
