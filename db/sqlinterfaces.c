@@ -8164,13 +8164,11 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     set_high_availability(&clnt, 0);
     // clnt.high_availability = 0;
 
-    /* these connections shouldn't time out */
-    sbuf2settimeout(clnt.sb, 0, 0);
-
     int notimeout = disable_server_sql_timeouts();
     sbuf2settimeout(
         sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) * 1000,
         notimeout ? 0 : gbl_sqlwrtimeoutms);
+
     sbuf2flush(sb);
     net_set_writefn(sb, fsql_writer);
 

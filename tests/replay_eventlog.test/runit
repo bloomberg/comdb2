@@ -472,11 +472,24 @@ echo running $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped
 $CDB2_SQLREPLAY_EXE $alterdbname $logflunziped > sqlreplay.out
 cdb2sql ${CDB2_OPTIONS} $alterdbname default "select * from t1 order by alltypes_u_short" > replayed.txt
 
-
-$TESTSROOTDIR/unsetup
 set +e
+success=1
 
 if ! diff orig.txt replayed.txt ; then
-        failexit "replayed.txt content is not the same as original.txt"
+        success=0
 fi
+
+set -e
+$TESTSROOTDIR/unsetup $success
+set +e
+
+if [ $success != 1 ] ; then
+    failexit "replayed.txt content is not the same as original.txt"
+fi
+
+if [ "$CLEANUPDBDIR" == "1" ] ; then
+    #delete files now that test is successful
+    rm orig.txt replayed.txt sqlreplay.out
+fi
+
 echo "Success"

@@ -222,7 +222,8 @@ static void flushdump(struct reqlogger *logger, struct output *out)
         niov++;
         if (out == default_out) {
             for (int i = 0; i < niov; i++)
-                logmsg(LOGMSG_USER, "%s", (char *)iov[i].iov_base);
+                logmsg(LOGMSG_USER, "%.*s", (int)iov[i].iov_len,
+                       (char *)iov[i].iov_base);
         } else {
             int dum = writev(out->fd, iov, niov);
         }
