@@ -2310,7 +2310,7 @@ retry_next_record:
                     shouldretry, hndl->snapshot_file, num_retry);
         }
         /* AZ: remove  hndl->snapshot_file dependency and always retry */
-        if (shouldretry && num_retry < hndl->max_retries) {
+        if (shouldretry && num_retry < hndl->max_retries && hndl->snapshot_file) {
             num_retry++;
             if (num_retry > hndl->num_hosts) {
                 int tmsec;
@@ -2357,7 +2357,7 @@ retry_next_record:
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
         // "Good" rcodes are not retryable
         // AZ: snapshot_file here
-        if (is_retryable(hndl, hndl->lastresponse->error_code)) {
+        if (is_retryable(hndl, hndl->lastresponse->error_code) && hndl->snapshot_file) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);

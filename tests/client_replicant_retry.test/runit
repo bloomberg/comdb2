@@ -125,7 +125,7 @@ if [ "$node" == "$master" ] ; then
 fi
 
 # store 100 in account with id 1
-cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)"
+cdb2sql -v ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)" > insert.out
 assertcnt 1
 sleep 1
 
