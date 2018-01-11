@@ -32,9 +32,6 @@ export CDB2SQL_EXE:=$(TESTDIR)/cdb2sql
 export COPYCOMDB2_EXE:=$(SRCHOME)/db/copycomdb2
 export CDB2_SQLREPLAY_EXE:=$(SRCHOME)/cdb2_sqlreplay
 export PMUX_EXE:=$(SRCHOME)/pmux
-#$(shell cp $(SRCHOME)/comdb2ar $(COMDB2AR_EXE) )
-#$(shell cp $(SRCHOME)/comdb2 $(COMDB2_EXE) )
-#$(shell cp $(SRCHOME)/cdb2sql $(CDB2SQL_EXE) )
 
 basicops_nokey: executables
 	$(shell which git > /dev/null 2>&1 && git rev-parse --abbrev-ref HEAD | xargs echo "Branch" >> ${TESTDIR}/test.log)

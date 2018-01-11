@@ -185,7 +185,7 @@ copy_files_to_cluster()
             continue
         fi
 
-        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${TESTDIR}" < /dev/null
+        ssh -o StrictHostKeyChecking=no $node "mkdir -p ${SRCHOME}" < /dev/null
         ssh -o StrictHostKeyChecking=no $node "mkdir -p $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
         ssh -o StrictHostKeyChecking=no $node "killall pmux || echo PMUX DOWN" < /dev/null
         scp -o StrictHostKeyChecking=no $COMDB2AR_EXE $node:$COMDB2AR_EXE
