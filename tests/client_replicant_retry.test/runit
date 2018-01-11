@@ -119,6 +119,10 @@ done
 
 # get a replicant
 node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"`
+if [ "$node" == "$master" ] ; then
+    cdb2sql -v --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()" > host.out
+    failexit "node is same as master $master"
+fi
 
 # store 100 in account with id 1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1, 100)"
@@ -127,23 +131,29 @@ sleep 1
 
 #set master commit_delay to X seconds so we have time to kill the replicant
 cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('bdb setattr delay_after_toblock_commit 3000')"
+cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master "exec procedure sys.cmd.send('bdb attr')" > attr.out
 
 #commands:
 #select comdb2_host()
 #set HASQL on
 #update > in.sql
-cdb2sql -v ${CDB2_OPTIONS} $dbnm default "update t1 set b=b + 10 where id = 1" 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &>> upd.out & 
+#cdb2sql -v ${CDB2_OPTIONS} $dbnm default "update t1 set b=b + 10 where id = 1" 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &>> upd.out & 
+cdb2sql -v ${CDB2_OPTIONS} $dbnm default "update t1 set b=b + 10 where id = 1" &>> upd.out & 
 upid=$!
 
 sleep 1
-echo "killing replicant" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
+echo "killing replicant $node" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
 kill_restart_node $node
-echo "killed replicant, waiting for update" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
+echo "killed replicant $node, waiting for update" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
+
+set +e
 
 wait $upid
-echo "done waiting for update" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
-set +e
-set -e
+rc=$?
+echo "done waiting for update, rc=$rc" | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> upd.out
+if [ $rc != 0 ] ; then
+    failexit "update failed, rc=$rc"
+fi
 
 #allow time for cdb2sql to retry
 
