@@ -1684,6 +1684,10 @@ static inline int cdb2_try_on_same_room(cdb2_hndl_tp *hndl)
             continue;
         hndl->hosts_connected[try_node] = 1;
         hndl->connected_host = try_node;
+        if (hndl->debug_trace) {
+            fprintf(stderr, "td %u %s line %d connected_host=%s\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, hndl->hosts[try_node]);
+        }
         return 0;
     }
     return -1;
@@ -1735,7 +1739,12 @@ static int cdb2_random_int()
         rand_state[1] = hash >> 16;
         rand_state[2] = hash >> 32;
     }
-    return nrand48(rand_state);
+    int r = nrand48(rand_state); 
+    if (log_calls) {
+        fprintf(stderr, "td %u %s line %d rand_val=%d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, r);
+    }
+    return r;
 }
 
 static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
@@ -1763,8 +1772,10 @@ static int cdb2_connect_sqlhost(cdb2_hndl_tp *hndl)
 
 retry_connect:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d cdb2_connect_sqlhost\n",
-                (uint32_t)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td %u %s line %d node_seq=%d "
+                "flags=0x%x, num_hosts=%d, num_hosts_sameroom=%d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, hndl->node_seq,
+                hndl->flags, hndl->num_hosts, hndl->num_hosts_sameroom);
     }
 
     if ((hndl->node_seq == 0) &&
@@ -2089,7 +2100,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
 
     if (hndl && hndl->debug_trace) {
         char *host = "NOT-CONNECTED";
-        if (hndl && hndl->connected_host >= 0)
+        if (hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
 
         fprintf(stderr, "td %u %s sending '%s' to %s from-line %d retries is "
@@ -2298,7 +2309,8 @@ retry_next_record:
                     (void *)pthread_self(), __func__, __LINE__,
                     shouldretry, hndl->snapshot_file, num_retry);
         }
-        if (shouldretry && hndl->snapshot_file && num_retry < hndl->max_retries) {
+        /* AZ: remove  hndl->snapshot_file dependency and always retry */
+        if (shouldretry && num_retry < hndl->max_retries) {
             num_retry++;
             if (num_retry > hndl->num_hosts) {
                 int tmsec;
@@ -2344,8 +2356,8 @@ retry_next_record:
 
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
         // "Good" rcodes are not retryable
-        if (is_retryable(hndl, hndl->lastresponse->error_code) &&
-            hndl->snapshot_file) {
+        // AZ: snapshot_file here
+        if (is_retryable(hndl, hndl->lastresponse->error_code)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);
@@ -2619,6 +2631,9 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
 #endif
                              )
 {
+    if (log_calls)
+        fprintf(stderr, "td %d %s line %d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__);
     int num_hosts = dbinfo_response->n_nodes;
     *num_valid_hosts = 0;
     if (num_valid_sameroom_hosts)
@@ -2626,27 +2641,34 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
     int myroom = 0;
     int i = 0;
     for (i = 0; i < num_hosts; i++) {
+        CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
         if (!myroom) {
-            if (dbinfo_response->nodes[i]->has_room) {
-                myroom = dbinfo_response->nodes[i]->room;
+            if (currnode->has_room) {
+                myroom = currnode->room;
             } else {
                 myroom = -1;
             }
         }
-        if (dbinfo_response->nodes[i]->incoherent)
+        if (currnode->incoherent)
             continue;
-        strcpy(valid_hosts[*num_valid_hosts], dbinfo_response->nodes[i]->name);
-        if (dbinfo_response->nodes[i]->has_port) {
-            valid_ports[*num_valid_hosts] = dbinfo_response->nodes[i]->port;
+
+        strcpy(valid_hosts[*num_valid_hosts], currnode->name);
+        if (currnode->has_port) {
+            valid_ports[*num_valid_hosts] = currnode->port;
         } else {
             valid_ports[*num_valid_hosts] = -1;
         }
-        if (dbinfo_response->nodes[i]->number ==
-            dbinfo_response->master->number)
+        if (strcmp(currnode->name, dbinfo_response->master->name) == 0)
             *master_node = *num_valid_hosts;
 
-        if (num_valid_sameroom_hosts &&
-            (myroom == dbinfo_response->nodes[i]->room))
+        if (log_calls)
+            fprintf(stderr, "td %d %s line %d, %d) host=%s(%d)%s\n",
+                    (uint32_t)pthread_self(), __func__, __LINE__, 
+                    num_valid_hosts, valid_hosts[*num_valid_hosts],
+                    valid_ports[*num_valid_hosts], 
+                    (*master_node == *num_valid_hosts)?"*":"");
+
+        if (num_valid_sameroom_hosts && (myroom == currnode->room))
             (*num_valid_sameroom_hosts)++;
 
         (*num_valid_hosts)++;
@@ -2654,16 +2676,16 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
 
     /* Add incoherent nodes too, don't count them for same room hosts. */
     for (i = 0; i < num_hosts; i++) {
-        if (!dbinfo_response->nodes[i]->incoherent)
+        CDB2DBINFORESPONSE__Nodeinfo *currnode = dbinfo_response->nodes[i];
+        if (!currnode->incoherent)
             continue;
-        strcpy(valid_hosts[*num_valid_hosts], dbinfo_response->nodes[i]->name);
-        if (dbinfo_response->nodes[i]->has_port) {
-            valid_ports[*num_valid_hosts] = dbinfo_response->nodes[i]->port;
+        strcpy(valid_hosts[*num_valid_hosts], currnode->name);
+        if (currnode->has_port) {
+            valid_ports[*num_valid_hosts] = currnode->port;
         } else {
             valid_ports[*num_valid_hosts] = -1;
         }
-        if (dbinfo_response->nodes[i]->number ==
-            dbinfo_response->master->number)
+        if (currnode->number == dbinfo_response->master->number)
             *master_node = *num_valid_hosts;
 
         (*num_valid_hosts)++;
@@ -3232,7 +3254,7 @@ static int cdb2_run_statement_typed_int(cdb2_hndl_tp *hndl, const char *sql,
 
 retry_queries:
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host %d (%s)\n",
+        fprintf(stderr, "td %u %s line %d retry_queries: hndl->host=%d (%s)\n",
                 (uint32_t)pthread_self(), __func__, __LINE__,
                 hndl->connected_host,
                 (hndl->connected_host >= 0 ? hndl->hosts[hndl->connected_host]
@@ -4313,7 +4335,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, char *type, char *dbname,
     int port = 0;
     int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL);
     if (hndl->debug_trace)
-        fprintf(stderr, "cdb2_socket_pool_get fd %d, host '%s'\n", fd, host);
+        fprintf(stderr, "td %d %s line %d, cdb2_socket_pool_get fd %d, host '%s'\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, fd, host);
     if (fd < 0) {
         if (host == NULL)
             return -1;
@@ -4506,8 +4529,10 @@ retry:
         rc = 0;
     }
     if (hndl->debug_trace)
-        fprintf(stderr, "td %d %s line %d: num_retry=%d\n",
-                (uint32_t)pthread_self(), __func__, __LINE__, num_retry);
+        fprintf(stderr, "td %d %s line %d: num_retry=%d hndl->num_hosts=%d "
+                "num_comdb2db_hosts=%d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, num_retry,
+                hndl->num_hosts, num_comdb2db_hosts);
 
     if (hndl->num_hosts == 0) {
         if (master == -1) {
