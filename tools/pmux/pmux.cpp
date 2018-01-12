@@ -187,6 +187,7 @@ int client_func(int fd)
         }
         connect_instance(listenfd, cmd);
     }
+    close(fd);
     return 0;
 }
 
