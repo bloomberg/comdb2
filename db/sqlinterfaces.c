@@ -7482,8 +7482,10 @@ retry_read:
            2) Doing SSL_accept() immediately would cause too many
               unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
         ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
-        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
             return NULL;
+        }
 
         if (ssl_able == 'Y' &&
             sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1)
@@ -7497,12 +7499,15 @@ retry_read:
             resp.rcode = CDB2ERR_CONNECT_ERROR;
             rc = fsql_write_response(clnt, &resp, err, strlen(err) + 1, 1,
                                      __func__, __LINE__);
+            logmsg(LOGMSG_DEBUG, "sslio_verify returned non zero rc\n");
             return NULL;
         }
 #else
         /* Not compiled with SSL. Send back `N' to client and retry read. */
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
+        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0) {
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2putc rc=%d\n", rc);
             return NULL;
+        }
 #endif
         goto retry_read;
     } else if (hdr.type == FSQL_RESET) { /* Reset from sockpool.*/
@@ -7576,6 +7581,7 @@ retry_read:
         rc = sbuf2fread(p, bytes, 1, sb);
         if (rc != 1) {
             free(p);
+            logmsg(LOGMSG_DEBUG, "Error in sbuf2fread rc=%d\n", rc);
             return NULL;
         }
     }
@@ -7682,6 +7688,7 @@ retry_read:
                                      __func__, __LINE__);
         }
         cdb2__query__free_unpacked(query, &pb_alloc);
+        logmsg(LOGMSG_DEBUG, "SSL is required by db\n");
         return NULL;
     }
 #endif
@@ -8076,7 +8083,6 @@ retry:
 static int do_query_on_master_check(struct sqlclntstate *clnt,
                                     CDB2SQLQUERY *sql_query)
 {
-    int rc = 0;
     int allow_master_exec = 0;
     int allow_master_dbinfo = 0;
     for (int ii = 0; ii < sql_query->n_features; ii++) {
@@ -8103,12 +8109,11 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
         ATOMIC_ADD(gbl_masterrejects, 1);
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
-        rc = 1;
-    }
-    if (rc) {
+
         logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
+        return 1;
     }
-    return rc;
+    return 0;
 }
 
 int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
@@ -8149,8 +8154,10 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     }
 
     CDB2QUERY *query = read_newsql_query(&clnt, sb);
-    if (query == NULL)
+    if (query == NULL) {
+        logmsg(LOGMSG_INFO, "Query is null so nothing to run (maybe reset from sockpool).\n");
         goto done;
+    }
     assert(query->sqlquery);
     CDB2SQLQUERY *sql_query = query->sqlquery;
     clnt.query = query;
@@ -8158,14 +8165,9 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
     if (do_query_on_master_check(&clnt, sql_query))
         goto done;
 
-#ifdef DEBUGQUERY
-    printf("\n Query '%s'\n", sql_query->sql_query);
-#endif
-
     clnt.osql.count_changes = 1;
     clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
     set_high_availability(&clnt, 0);
-    // clnt.high_availability = 0;
 
     int notimeout = disable_server_sql_timeouts();
     sbuf2settimeout(
@@ -8200,6 +8202,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
         clnt.sql = skipws(sql_query->sql_query);
         clnt.query = query;
         clnt.added_to_hist = 0;
+        logmsg(LOGMSG_DEBUG, "Query '%s'\n", sql_query->sql_query);
 
         if (!clnt.in_client_trans) {
             bzero(&clnt.effects, sizeof(clnt.effects));
@@ -9017,7 +9020,10 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     case SQLITE_SCHEMA_REMOTE:
         rc = SQLITE_OK; /* this is processed based on clnt->osql.xerr */
         break;
+
     default:
+        logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, returning as %d\n", 
+               rc, SQLITE_INTERNAL);
         rc = SQLITE_INTERNAL;
         *errstr = sqlite3_errmsg(sqldb);
         break;

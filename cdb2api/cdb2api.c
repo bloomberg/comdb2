@@ -1590,7 +1590,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
 
     if (hndl->debug_trace) {
         fprintf(stderr, "td %p %s line %d disconnecting from %s\n",
-                (void *)pthread_self(), __func__, line, hndl->connected_host);
+                (void *)pthread_self(), __func__, line, 
+                hndl->hosts[hndl->connected_host]);
     }
     int fd = sbuf2fileno(sb);
 
@@ -1862,6 +1863,11 @@ static int cdb2_read_record(cdb2_hndl_tp *hndl, uint8_t **buf, int *len, int *ty
     int b_read;
 
 retry:
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %p %s line %d\n",
+            (void *)pthread_self(), __func__, __LINE__);
+    }
+
     b_read = sbuf2fread((char *)&hdr, 1, sizeof(hdr), sb);
     if (b_read != sizeof(hdr)) {
         if (hndl->debug_trace) {
@@ -2069,6 +2075,11 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
                            int ntypes, int *types, int is_begin, int skip_nrows,
                            int retries_done, int do_append, int fromline)
 {
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %p %s line %d\n",
+                (void *)pthread_self(), __func__, __LINE__);
+    }
+
     int n_features = 0;
     int features[10]; // Max 10 client features??
     CDB2QUERY query = CDB2__QUERY__INIT;
@@ -2369,6 +2380,12 @@ retry_next_record:
             /* Give the same error for every query until commit/rollback */
             hndl->error_in_trans =
                 cdb2_convert_error_code(hndl->lastresponse->error_code);
+        }
+
+        if (hndl->debug_trace) {
+            fprintf(stderr, "td %p %s line %d error_string=%s\n",
+                (void *)pthread_self(), __func__, __LINE__,
+                hndl->lastresponse->error_string);
         }
         rc = cdb2_convert_error_code(hndl->lastresponse->error_code);
         PRINT_RETURN_OK(rc);
@@ -3688,7 +3705,7 @@ read_record:
             hndl->ports[i] = -1;
         }
         if (retries_done < MAX_RETRIES) {
-            goto retry_queries;
+            GOTO_RETRY_QUERIES();
         }
     }
 
@@ -3814,6 +3831,9 @@ read_record:
 
             clear_responses(hndl);
             goto retry_queries;
+        } else if (is_retryable(hndl, rc)) {
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            GOTO_RETRY_QUERIES();
         }
 
         return_value = cdb2_convert_error_code(rc);
