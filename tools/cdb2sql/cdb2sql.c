@@ -764,7 +764,9 @@ static int run_statement(const char *sql, int ntypes, int *types,
         int retries = 0;
         while (retries < 10) {
             rc = cdb2_run_statement_typed(cdb2h, sql, ntypes, types);
-            verbose_print("run_statement_typed rc=%d, retries=%d, sql='%.30s...'\n", rc, retries, sql);
+            verbose_print(
+                "run_statement_typed rc=%d, retries=%d, sql='%.30s...'\n", rc,
+                retries, sql);
             if (rc != CDB2ERR_IO_ERROR)
                 break;
             retries++;
