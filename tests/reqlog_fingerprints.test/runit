@@ -27,8 +27,8 @@ if [ -n "$CLUSTER" ] ; then
 else
     logfile="$TESTDIR/logs/$dbnm.db"
 fi
-grep '57d3bf4a162583e33381d79f2deac343' $logfile
-grep 'fdf53d1d2812dbce0f56bf5b10369c1a' $logfile
+grep '57d3bf4a162583e33381d79f2deac343' $logfile # SELECT 1
+grep 'fdf53d1d2812dbce0f56bf5b10369c1a' $logfile # SELECT 1+1
 # Compare results with pre-calculated hashes
 
 echo "Passed."
