@@ -204,9 +204,9 @@ add_record_int(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     if (!(flags & RECFLAGS_NEW_SCHEMA)) { // dont lock if adding from SC
 
         int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
-        if(d_ms) {
-            if (iq->debug) reqprintf(iq, "Sleeping for %d ms", d_ms);
-            usleep(1000*d_ms);
+            if (iq->debug)
+                reqprintf(iq, "Sleeping for %d ms", d_ms);
+            usleep(1000 * d_ms);
         }
 
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -857,9 +857,10 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
-    if(d_ms) {
-        if (iq->debug) reqprintf(iq, "Sleeping for %d ms", d_ms);
-        usleep(1000*d_ms);
+    if (d_ms) {
+        if (iq->debug)
+            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        usleep(1000 * d_ms);
     }
 
     rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -1847,9 +1848,10 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
     int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_LOCK_TABLE_RECORD_C);
-    if(d_ms) {
-        if (iq->debug) reqprintf(iq, "Sleeping for %d ms", d_ms);
-        usleep(1000*d_ms);
+    if (d_ms) {
+        if (iq->debug)
+            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        usleep(1000 * d_ms);
     }
 
     rc = bdb_lock_table_read(iq->usedb->handle, trans);

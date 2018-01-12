@@ -9,9 +9,9 @@ testdir=${TESTDIR}
 set -e
 
 for t in $(seq 1 100); do
-    cdb2sql $dbname "create table ttttttttttttttttttt${t}(a int)"
-    cdb2sql $dbname "insert into ttttttttttttttttttt${t} values(1)"
-    a=$(cdb2sql -tabs $dbname "select a from ttttttttttttttttttt${t}")
+    cdb2sql ${CDB2_OPTIONS} $dbname default "create table ttttttttttttttttttt${t}(a int)"
+    cdb2sql ${CDB2_OPTIONS} $dbname default "insert into ttttttttttttttttttt${t} values(1)"
+    a=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "select a from ttttttttttttttttttt${t}")
     if [[ "$a" != "1" ]]; then
         echo "expected value in ttttttttttttttttttt${t}"
         exit 1
@@ -19,7 +19,7 @@ for t in $(seq 1 100); do
 done
 
 for t in $(seq 1 100); do
-    cdb2sql $dbname "drop table ttttttttttttttttttt${t}"
+    cdb2sql ${CDB2_OPTIONS} $dbname default "drop table ttttttttttttttttttt${t}"
 done
 
 exit 0
