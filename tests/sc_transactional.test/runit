@@ -255,16 +255,16 @@ do_verify t2
 do_verify t3
 
 echo "TEST TRAN: TRUNCATE T1; ALTER T2 (DUP live_sc); ALTER T3 (DUP live_sc) (expected: fail)"
-cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 15"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF" &
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 10"
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm - <<"EOF" &
 begin
 truncate t1
 alter table t2 {schema{int a int b} keys{"B" = b}}$$
 alter table t3 {schema{int a int b} keys{"A" = a}}$$
 commit
 EOF
-cdb2sql ${CDB2_OPTIONS} $dbnm "insert into t2 values (2, 20)"
-cdb2sql ${CDB2_OPTIONS} $dbnm "insert into t3 values (2, 20)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t2 values (2, 20)"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t3 values (2, 20)"
 wait
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
 assertcnt t1 3

@@ -32,7 +32,7 @@ done
 done
 done
 done
-[commit] failed with rc 240 stale table version for schema change
+[commit] failed with rc 240 stale version for table:t70 master:1 replicant:0
 done
 (a=10)
 done
@@ -54,6 +54,6 @@ done
 done
 done
 done
-[commit] failed with rc 110 stale table version in shadow table
+[commit] failed with rc -3 table "t70" was schema changed
 done
 done
