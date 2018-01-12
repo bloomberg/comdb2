@@ -114,7 +114,7 @@ void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 #define verbose_print(...)                                                     \
     {                                                                          \
         if (verbose)                                                           \
-            printf(__VA_ARGS__);                                               \
+            fprintf(stderr, __VA_ARGS__);                                      \
     }
 
 static const char *usage_text =
@@ -641,13 +641,11 @@ static int run_statement(const char *sql, int ntypes, int *types,
     int cost;
     FILE *out = stdout;
     char cmd[60];
-
-    int startms, rowms, endms;
+    int startms = now_ms();
 
     if (printmode & STDERR)
         out = stderr;
 
-    startms = now_ms();
     *start_time = 0;
     *run_time = 0;
 
@@ -661,8 +659,10 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
 
         verbose_print("calling cdb2_open\n");
-        if (verbose)
+        if (verbose) {
             setenv("CDB2_DEBUG", "1", 1);
+            setenv("CDB2_LOG_CALLS", "1", 1);
+        }
 
         if (dbhostname) {
             rc = cdb2_open(&cdb2h, dbname, dbhostname, CDB2_DIRECT_CPU);
@@ -763,24 +763,23 @@ static int run_statement(const char *sql, int ntypes, int *types,
     {
         int retries = 0;
         while (retries < 10) {
-            verbose_print("running stmt\n");
             rc = cdb2_run_statement_typed(cdb2h, sql, ntypes, types);
+            verbose_print(
+                "run_statement_typed rc=%d, retries=%d, sql='%.30s...'\n", rc,
+                retries, sql);
             if (rc != CDB2ERR_IO_ERROR)
                 break;
             retries++;
         }
     }
-    rowms = now_ms();
-    *start_time = rowms - startms;
+    *start_time = now_ms() - startms;
 
     cdb2_clearbindings(cdb2h);
 
     if (rc != CDB2_OK) {
         const char *err = cdb2_errstr(cdb2h);
         /* cdb2tcm mode needs to pass this info through stdout */
-        FILE *out = stderr;
-
-        fprintf(out, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
+        fprintf(stderr, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
         return rc;
     }
 
@@ -844,8 +843,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
         }
     }
 
-    endms = now_ms();
-    *run_time = endms - startms;
+    *run_time = now_ms() - startms;
     if (rc != CDB2_OK_DONE) {
         const char *err = cdb2_errstr(cdb2h);
         fprintf(stderr, "[%s] failed with rc %d %s\n", sql, rc, err ? err : "");
@@ -873,7 +871,7 @@ static void process_line(char *sql, int ntypes, int *types)
     int rc;
     int len;
 
-    verbose_print("processing line\n");
+    verbose_print("processing line sql '%.30s...'\n", sql);
     /* Trim whitespace and then ignore comments */
     while (isspace(*sqlstr))
         sqlstr++;
@@ -907,7 +905,7 @@ static void process_line(char *sql, int ntypes, int *types)
         }
     }
 
-    if (docost) {
+    if (docost && !rc) {
         int saved_printmode = printmode;
         printmode = TABS | STDERR;
         const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
@@ -1278,6 +1276,7 @@ int main(int argc, char *argv[])
         if (cdb2h) {
             cdb2_close(cdb2h);
         }
+        verbose_print("process_line error=%d\n", error);
         return (error == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
     }
 

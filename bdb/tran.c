@@ -29,7 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/poll.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -1944,7 +1943,6 @@ static int bdb_tran_commit_with_seqnum_int_int(
     if (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host &&
         bdb_state->attr->commitdelay && tran->master) {
         usleep(1000 * bdb_state->attr->commitdelay);
-        //    poll(NULL, 0, bdb_state->attr->commitdelay);
     }
 
     if (tran->master) {
