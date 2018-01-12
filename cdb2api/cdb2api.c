@@ -1521,8 +1521,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, char *host, int port, int myport,
 {
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %u %s line %d newsql_connect\n",
-                (uint32_t)pthread_self(), __func__, __LINE__);
+        fprintf(stderr, "td %u %s line %d newsql_connect host '%s:%d'\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, host, port);
     }
     int fd = -1;
     SBUF2 *sb = NULL;
@@ -1589,8 +1589,8 @@ static int newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
         return 0;
 
     if (hndl->debug_trace) {
-        fprintf(stderr, "td %p %s line %d disconnecting\n",
-                (void *)pthread_self(), __func__, line);
+        fprintf(stderr, "td %p %s line %d disconnecting from %s\n",
+                (void *)pthread_self(), __func__, line, hndl->connected_host);
     }
     int fd = sbuf2fileno(sb);
 
@@ -2103,10 +2103,10 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, SBUF2 *sb, char *dbname,
         if (hndl->connected_host >= 0)
             host = hndl->hosts[hndl->connected_host];
 
-        fprintf(stderr, "td %u %s sending '%s' to %s from-line %d retries is "
-                        "%d do_append is %d\n",
-                (uint32_t)pthread_self(), __func__, sql, host, fromline,
-                retries_done, do_append);
+        fprintf(stderr, "td %u %s:%d sending to %s '%s' from-line %d retries is"
+                        " %d do_append is %d\n",
+                (uint32_t)pthread_self(), __func__, __LINE__, host,  sql,
+                fromline, retries_done, do_append);
     }
 
     query.sqlquery = &sqlquery;
@@ -2310,7 +2310,7 @@ retry_next_record:
                     shouldretry, hndl->snapshot_file, num_retry);
         }
         /* AZ: remove  hndl->snapshot_file dependency and always retry */
-        if (shouldretry && num_retry < hndl->max_retries && hndl->snapshot_file) {
+        if (shouldretry && num_retry < hndl->max_retries) {
             num_retry++;
             if (num_retry > hndl->num_hosts) {
                 int tmsec;
@@ -2357,7 +2357,7 @@ retry_next_record:
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
         // "Good" rcodes are not retryable
         // AZ: snapshot_file here
-        if (is_retryable(hndl, hndl->lastresponse->error_code) && hndl->snapshot_file) {
+        if (is_retryable(hndl, hndl->lastresponse->error_code)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);
@@ -2928,9 +2928,17 @@ static int retry_queries(cdb2_hndl_tp *hndl, int num_retry, int run_last)
 static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
                                   int skip_nrows)
 {
+    if (hndl->debug_trace) {
+        fprintf(stderr, "td %p %s line %d num_retry=%d, skip_nrows=%d\n", 
+                (void *)pthread_self(), __func__, __LINE__,
+                num_retry, skip_nrows);
+    }
+
     int rc = 0, len;
+    /* AZ:
     if (!(hndl->snapshot_file))
         return -1;
+        */
 
     hndl->retry_all = 1;
 

@@ -8076,6 +8076,7 @@ retry:
 static int do_query_on_master_check(struct sqlclntstate *clnt,
                                     CDB2SQLQUERY *sql_query)
 {
+    int rc = 0;
     int allow_master_exec = 0;
     int allow_master_dbinfo = 0;
     for (int ii = 0; ii < sql_query->n_features; ii++) {
@@ -8102,9 +8103,12 @@ static int do_query_on_master_check(struct sqlclntstate *clnt,
         ATOMIC_ADD(gbl_masterrejects, 1);
         if (allow_master_dbinfo)
             send_dbinforesponse(clnt->sb); /* Send sql response with dbinfo. */
-        return 1;
+        rc = 1;
     }
-    return 0;
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
+    }
+    return rc;
 }
 
 int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
