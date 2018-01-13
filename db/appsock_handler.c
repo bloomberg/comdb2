@@ -522,7 +522,6 @@ static void *thd_appsock_int(SBUF2 *sb, int *keepsocket,
              * queries. */
             thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
             *keepsocket = 1;
-            logmsg(LOGMSG_DEBUG, "AZ: calling handle_newsql_requests\n");
             handle_newsql_requests(thr_self, sb);
 
             break;

@@ -1,6 +1,7 @@
 table t1 t1.csc2
 table t2 t1.csc2
 
+#on print_deadlock_cycles
 logmsg level debug
-always_send_cnonce off
+#always_send_cnonce off
 master_reject_requests

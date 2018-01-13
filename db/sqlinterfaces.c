@@ -3980,6 +3980,13 @@ static int ha_retrieve_snapshot(struct sqlclntstate *clnt)
     if (!clnt->is_newsql)
         return 0;
 
+    if (clnt->sql_query && clnt->sql_query->retry && 
+            !clnt->sql_query->snapshot_info) {
+        logmsg(LOGMSG_USER, "AZ: %s: retry sql '%s' cnonce '%.64s'\n",
+                __func__, clnt->sql_query->sql_query, clnt->sql_query->cnonce.data);
+        //search in blkseq for this cnonce -- need to 
+    }
+
     /* MOHIT -- Check here that we are in high availablity, its cdb2api, and
      * is its a retry. */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS && clnt->sql_query) {
@@ -7457,6 +7464,7 @@ retry_read:
         if (was_timeout) {
             handle_failed_dispatch(clnt, "Socket read timeout.");
         }
+        logmsg(LOGMSG_DEBUG, "sbuf2fread_timeout rc=%d\n", rc);
         return NULL;
     }
 
@@ -7488,8 +7496,10 @@ retry_read:
         }
 
         if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1)
+            sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL, 0) != 1) {
+            logmsg(LOGMSG_DEBUG, "Error with sslio_accept\n");
             return NULL;
+        }
 
         if (sslio_verify(sb, gbl_client_ssl_mode, NULL, 0) != 0) {
             char *err = "Client certificate authentication failed.";
@@ -8155,7 +8165,7 @@ int handle_newsql_requests(struct thr_handle *thr_self, SBUF2 *sb)
 
     CDB2QUERY *query = read_newsql_query(&clnt, sb);
     if (query == NULL) {
-        logmsg(LOGMSG_INFO, "Query is null so nothing to run (maybe reset from sockpool).\n");
+        logmsg(LOGMSG_INFO, "Query is null so nothing to run.\n");
         goto done;
     }
     assert(query->sqlquery);
@@ -9017,13 +9027,18 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         *errstr = "Client api should run query against a different node";
         break;
 
+    case 147: // 147 = 0 - SQLHERR_MASTER_TIMEOUT
+        *errstr = "Client api should run query against a different node";
+        rc = SQLITE_CLIENT_CHANGENODE;
+        break;
+
     case SQLITE_SCHEMA_REMOTE:
         rc = SQLITE_OK; /* this is processed based on clnt->osql.xerr */
         break;
 
     default:
-        logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, returning as %d\n", 
-               rc, SQLITE_INTERNAL);
+        logmsg(LOGMSG_DEBUG, "sql_check_errors got rc = %d, "
+                             "returning as SQLITE_INTERNAL\n", rc);
         rc = SQLITE_INTERNAL;
         *errstr = sqlite3_errmsg(sqldb);
         break;
